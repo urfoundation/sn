@@ -11,7 +11,7 @@ import (
 // Independent protocol artifact literals keep a product pin change observable.
 func runtime460ValidatorTestConfig() ReleaseConfig {
 	return ReleaseConfig{RuntimeSpec: 460, TransactionVersion: 1, StateVersion: 1,
-		RuntimeCodeHash: "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d",
+		RuntimeCodeHash:     "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d",
 		RuntimeMetadataHash: "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c"}
 }
 

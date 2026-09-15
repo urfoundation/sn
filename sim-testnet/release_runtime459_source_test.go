@@ -73,8 +73,12 @@ func TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory(t *
 		{name: "exact"},
 		{name: "current independent claim", change: func(_ map[string]any, artifacts []any) { artifacts[7].(map[string]any)["independent_rpc"] = true }},
 		{name: "current missing disclosure", change: func(_ map[string]any, artifacts []any) { delete(artifacts[7].(map[string]any), "independent_rpc") }},
-		{name: "current foreign observation", change: func(_ map[string]any, artifacts []any) { artifacts[7].(map[string]any)["observation_rpc_url"] = "http://archive.example" }},
-		{name: "missing459", change: func(manifest map[string]any, artifacts []any) { manifest["artifacts"] = append(artifacts[:6:6], artifacts[7]) }},
+		{name: "current foreign observation", change: func(_ map[string]any, artifacts []any) {
+			artifacts[7].(map[string]any)["observation_rpc_url"] = "http://archive.example"
+		}},
+		{name: "missing459", change: func(manifest map[string]any, artifacts []any) {
+			manifest["artifacts"] = append(artifacts[:6:6], artifacts[7])
+		}},
 		{name: "independent claim", change: func(_ map[string]any, artifacts []any) { artifacts[6].(map[string]any)["independent_rpc"] = true }},
 		{name: "missing disclosure", change: func(_ map[string]any, artifacts []any) { delete(artifacts[6].(map[string]any), "independent_rpc") }},
 		{name: "foreign observation", change: func(_ map[string]any, artifacts []any) {

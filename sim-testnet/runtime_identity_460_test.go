@@ -12,12 +12,12 @@ import (
 func runtime460ReviewedTestLock() *ReleaseLock {
 	return &ReleaseLock{SchemaVersion: 1, Release: "1.0", Runtime: ReleaseRuntimeLock{
 		SourceRepository: "https://github.com/RaoFoundation/subtensor",
-		SourceRefKind: "commit", SourceRefName: "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
-		SourceCommit: "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
-		CodeHash: "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d",
-		MetadataHash: "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c",
+		SourceRefKind:    "commit", SourceRefName: "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+		SourceCommit:         "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+		CodeHash:             "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d",
+		MetadataHash:         "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c",
 		CompressedWasmSHA256: "0x12b9affec176cbb79c7e5db253d3d0e47f4cb575ce4501ef10de6578afbb817f",
-		SpecVersion: 460, TransactionVersion: 1, StateVersion: 1,
+		SpecVersion:          460, TransactionVersion: 1, StateVersion: 1,
 	}}
 }
 
@@ -57,11 +57,17 @@ func TestRuntime460Archived459LockRetainsExactProvenance(t *testing.T) {
 		t.Fatal("original459 acquired current460 authority")
 	}
 	for _, change := range []func(*ReleaseRuntimeLock){
-		func(value *ReleaseRuntimeLock) { value.SourceCommit = runtime460ReviewedTestLock().Runtime.SourceCommit },
+		func(value *ReleaseRuntimeLock) {
+			value.SourceCommit = runtime460ReviewedTestLock().Runtime.SourceCommit
+		},
 		func(value *ReleaseRuntimeLock) { value.SourceRefName = "testnet" },
 		func(value *ReleaseRuntimeLock) { value.CodeHash = runtime460ReviewedTestLock().Runtime.CodeHash },
-		func(value *ReleaseRuntimeLock) { value.MetadataHash = runtime460ReviewedTestLock().Runtime.MetadataHash },
-		func(value *ReleaseRuntimeLock) { value.CompressedWasmSHA256 = runtime460ReviewedTestLock().Runtime.CompressedWasmSHA256 },
+		func(value *ReleaseRuntimeLock) {
+			value.MetadataHash = runtime460ReviewedTestLock().Runtime.MetadataHash
+		},
+		func(value *ReleaseRuntimeLock) {
+			value.CompressedWasmSHA256 = runtime460ReviewedTestLock().Runtime.CompressedWasmSHA256
+		},
 		func(value *ReleaseRuntimeLock) { value.TransactionVersion++ },
 		func(value *ReleaseRuntimeLock) { value.StateVersion++ },
 	} {

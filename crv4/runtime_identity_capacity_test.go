@@ -72,7 +72,10 @@ func TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory(t *
 			extra.Version.SpecVersion = 461
 			return append(values, extra)
 		},
-		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity { values[len(values)-1] = values[0]; return values },
+		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
+			values[len(values)-1] = values[0]
+			return values
+		},
 		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
 			values[len(values)-1].MetadataHash = ""
 			return values

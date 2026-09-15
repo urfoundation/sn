@@ -2450,7 +2450,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		ObservationRpcUrl: artifactManifest.Artifacts[7].ObservationRpcUrl, IndependentRpc: artifactManifest.Artifacts[7].IndependentRpc,
 		CodeSource: "substrate-storage", CodeSize: 2525524, CodeSHA256: "12b9affec176cbb79c7e5db253d3d0e47f4cb575ce4501ef10de6578afbb817f",
 		CodeBlake2b256: "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d",
-		MetadataSize: 336358, MetadataSHA256: "0e18eed4701255a567411bdc646c76eba355cf41bcb5fcbed8f673a458118e1a",
+		MetadataSize:   336358, MetadataSHA256: "0e18eed4701255a567411bdc646c76eba355cf41bcb5fcbed8f673a458118e1a",
 		MetadataBlake2b256: "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c",
 	}
 	if independent := artifactManifest.Artifacts[7].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[7].ObservationRpcUrl != artifactManifest.Artifacts[6].ObservationRpcUrl {

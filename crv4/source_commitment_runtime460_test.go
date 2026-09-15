@@ -25,38 +25,62 @@ func TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant(t *testing.T)
 	for _, pallet := range prior.Meta.AsMetadataV14.Pallets {
 		if pallet.Name == "System" {
 			for _, constant := range pallet.Constants {
-				if constant.Name == "Version" { priorValue = append([]byte(nil), constant.Value...) }
+				if constant.Name == "Version" {
+					priorValue = append([]byte(nil), constant.Value...)
+				}
 			}
 		}
 	}
-	if len(priorValue) == 0 { t.Fatal("prior metadata omitted System.Version") }
+	if len(priorValue) == 0 {
+		t.Fatal("prior metadata omitted System.Version")
+	}
 	found := false
 	for palletIndex := range current.Meta.AsMetadataV14.Pallets {
 		pallet := &current.Meta.AsMetadataV14.Pallets[palletIndex]
-		if pallet.Name != "System" { continue }
+		if pallet.Name != "System" {
+			continue
+		}
 		for constantIndex := range pallet.Constants {
 			constant := &pallet.Constants[constantIndex]
-			if constant.Name != "Version" { continue }
-			if len(constant.Value) != len(priorValue) { t.Fatal("runtime version constant length changed") }
+			if constant.Name != "Version" {
+				continue
+			}
+			if len(constant.Value) != len(priorValue) {
+				t.Fatal("runtime version constant length changed")
+			}
 			differences := 0
 			for index, value := range constant.Value {
 				if value != priorValue[index] {
 					differences++
-					if priorValue[index] != 0xcb || value != 0xcc { t.Fatal("runtime version raw constant changed outside459-to460") }
+					if priorValue[index] != 0xcb || value != 0xcc {
+						t.Fatal("runtime version raw constant changed outside459-to460")
+					}
 				}
 			}
-			if differences != 1 { t.Fatal("runtime version constant did not retain every non-spec byte") }
+			if differences != 1 {
+				t.Fatal("runtime version constant did not retain every non-spec byte")
+			}
 			var oldVersion, newVersion types.RuntimeVersion
-			if err := codec.Decode(priorValue, &oldVersion); err != nil { t.Fatal(err) }
-			if err := codec.Decode(constant.Value, &newVersion); err != nil { t.Fatal(err) }
-			if oldVersion.SpecVersion != 459 || newVersion.SpecVersion != 460 { t.Fatal("metadata spec constant differs") }
+			if err := codec.Decode(priorValue, &oldVersion); err != nil {
+				t.Fatal(err)
+			}
+			if err := codec.Decode(constant.Value, &newVersion); err != nil {
+				t.Fatal(err)
+			}
+			if oldVersion.SpecVersion != 459 || newVersion.SpecVersion != 460 {
+				t.Fatal("metadata spec constant differs")
+			}
 			oldVersion.SpecVersion = 460
-			if !reflect.DeepEqual(oldVersion, newVersion) { t.Fatal("runtime metadata version changed outside spec") }
+			if !reflect.DeepEqual(oldVersion, newVersion) {
+				t.Fatal("runtime metadata version changed outside spec")
+			}
 			constant.Value = append([]byte(nil), priorValue...)
 			found = true
 		}
 	}
-	if !found || !reflect.DeepEqual(prior.Meta, current.Meta) { t.Fatal("runtime460 metadata changed outside System.Version") }
+	if !found || !reflect.DeepEqual(prior.Meta, current.Meta) {
+		t.Fatal("runtime460 metadata changed outside System.Version")
+	}
 }
 
 // Bounds and authenticates the actual460 metadata before any call construction.
