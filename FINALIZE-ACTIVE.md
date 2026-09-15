@@ -50,7 +50,22 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 20:19 UTC: the renewal completed at 19:09:41,
+Latest checkpoint, 2026-09-15 21:23 UTC: strict resume remains active under
+the same owner started at 20:14:29. It authenticated all 1,000 historical
+fleets and 4,660 carried actions, verified both campaign reserve actions, and
+entered `config.render`. The supervisor remains stopped. Source inspection
+and repeated live ledger-descriptor transitions identified nine full signed
+ledger replays before service startup; one observed replay took about twelve
+minutes. Astra's isolated patch gives one startup an in-memory cache of
+successful replays, with fresh hashing of all storage bytes and unchanged
+caller/history/configuration checks. Terra is qualifying 11 validator and
+14 simulator tests normally and under race detection on formatted candidate
+`c9bf5e6`. Those results and deployment are pending. The physical c5 runtime
+and current owner remain unchanged. Preserve completed setup, funding and
+on-chain actions when adopting any required patch; reuse unaffected accepted
+gate coverage. Final acceptance remains false and the soak has not started.
+
+Previous checkpoint, 2026-09-15 20:19 UTC: the renewal completed at 19:09:41,
 with all **1,212 actions** verified across **202 fleets**. The corrected relay
 continuation was adopted at 20:04:13 with zero chain transactions, retaining
 all required work through block **8,021,242**. Final restart history selects
