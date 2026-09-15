@@ -46,7 +46,7 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 14:00 UTC: the user approved the lifetime
+Latest checkpoint, 2026-09-15 15:05 UTC: the user approved the lifetime
 increase to 205 EVM within 225 total TAO for one fleet renewal capped at
 13.13 EVM plus 0.606 native TAO. Alpha limits remain unchanged. The vault
 setting is published at `9651a13062af2fd25dcd9e98db8c8871d148d114`.
@@ -65,11 +65,29 @@ artifact APIs and both RPC proxies stopped and joined cleanly. Full strict
 resume preparation passed all 18 hard checks at 13:58:20 UTC, including both
 validator namespaces, host readiness and runtime inputs. All 1,000 fleet
 records and 3,449 carried actions were authenticated, with unchanged recorded
-campaign state. The soak remains stopped. The full producer has recorded a
-capture-cohort race timeout; Astra is correcting the repeated test-helper work
-while Terra completes every independent phase in both gates. Finish the error
-batch, qualify it, then choose the actual renewal window, final relay end and
-fresh native history epoch immediately before their native apply/resume steps.
+campaign state. The soak remains stopped.
+
+On source `330ba512`, the complete producer closed with 39 passing phases and
+one capture-race timeout; its final source checks passed. The complete aggregate
+closed at 15:05 UTC with all 25 phases, cleanup and final source checks passing.
+The two-test-file correction `03d529b` removes repeated whole-script scans.
+Its 30 affected tests pass normally and under race, and the two defect controls
+each complete three fresh passing processes in both modes. The actual 376-test
+capture race, including 140 declared subtests, passes in 567.382 seconds within
+its original 600-second limit. Both causal controls reproduce the old scan
+failure. Existing Go verification reuses the successful raw results; earlier
+compiler-owner and missing-metadata refusals remain recorded. The original
+failed producer remains failed.
+
+Production code, scripts, the release lock and approved native plan identity
+are unchanged by this correction. Publish it with these report updates, build
+one matching CLI and complete the final candidate gates. The producer receives
+16 processors and the aggregate eight, retaining four processors per job and
+all test limits. Start the CLI alongside the producer and admit the aggregate
+when the CLI joins, keeping the combined reservation at or below 24. Reuse the
+completed native preparation. Choose the actual renewal window, final relay
+end and fresh native history epoch immediately before their native apply/resume
+steps. The canonical executable and producer pass still precede chain apply.
 [Approval, adopted allowance, renewal bounds and on-chain repair evidence](sim-testnet/peerreview/evidence/FINAL-2-approved-renewal-and-reserve-20260915/README.md).
 
 Historical checkpoint, 2026-09-15 02:38 UTC: the explicit runtime configuration

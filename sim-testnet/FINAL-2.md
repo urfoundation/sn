@@ -31,12 +31,26 @@ remained unchanged. The native renewal preview passed for **202 fleets**
 and **2,020 new actions**, capped at **13.13 EVM TAO plus 0.606 native TAO**;
 no renewal transaction was submitted by that preview. Existing keeper/oracle
 balances cover those ceilings. Its F388/T419 window is diagnostic only.
-The new producer attempt has recorded a capture-cohort race timeout, and
-the complete gates are still collecting their independent results. Full
-qualification, actual renewal, the complete RC/production campaign, final
-accounting and shutdown remain outstanding. These preparation claims are
-local artifact evidence; all new chain observations use the owned LAN node
-and record **`independent_rpc=false`**.
+On source `330ba512`, the producer finished with **39 passing phases and one
+capture-race timeout**; the aggregate finished at **15:05 UTC** with **25/25
+phases passing**, including cleanup and unchanged final source checks. The
+two-test-file correction `03d529b` passes its 30 affected tests normally and
+under race, three fresh confirmations of both defect controls in each mode,
+and the actual **376-parent/140-subtest capture race in 567.382 seconds** under
+the original 600-second limit. Both causal controls reproduce the old repeated
+scan failure. Existing Go verification checks the retained raw results without
+rerunning successful bodies. Two pre-body compiler-owner timeouts and one
+missing-metadata refusal remain recorded. The composed capture's compiled
+membership was checked after admission against its exact retained executable;
+this is disclosed as a capture correction. The original producer remains a
+failed attempt.
+
+The correction changes no production code, scripts, release lock or approved
+native plan identity. Its final candidate gates, actual renewal, complete
+RC/production campaign, final accounting and shutdown remain outstanding.
+These preparation and qualification claims are local artifact evidence; all
+new chain observations use the owned LAN node and record
+**`independent_rpc=false`**.
 
 ## Historical checkpoint: September 15, 02:38 UTC
 
