@@ -1,0 +1,9 @@
+{
+  "command": "fleet-renew",
+  "fleets": 202,
+  "plan_hash": "0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1",
+  "renewal_round": 2,
+  "status": "postcondition_verified",
+  "valid_from_epoch": 393,
+  "valid_to_epoch": 424
+}

@@ -8,14 +8,24 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
-**Renewal 2 is now executing on-chain.** Its exact approved plan
+**Renewal 2 completed at 19:09:41 UTC on September 15.** The native command
+returned `postcondition_verified`; its body, wrapper and joined process all
+exited 0. The journal records all **1,212 new actions** broadcast and
+postcondition-verified, with **zero failed entries**, covering all **202 fleets**
+for epochs **393–424**. Its exact approved plan
 `0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1`
-is adopted. The first sampled native commitment is included in block
+remains adopted. These completion counts come from the native command and
+retained journal. The public completion bundle includes all **1,212 transaction
+hashes and inclusion blocks**: **202 native commitments and 1,010 EVM mirror or
+binding transactions**.
+[Completion receipts and action list](peerreview/evidence/FINAL-2-renewal-2-completed-20260915/README.md).
+The first separately sampled native commitment is included in block
 **8,012,725**, and the sampled EVM mirror has a successful receipt in block
 **8,012,728**. Canonical block lookups match both; the observed native
 finalized head is **8,012,747**. The full native extrinsic hash also reproduces
 using `b2sum`, separately from the project's implementation. These are two
-verified transactions from the active renewal, not its completion certificate.
+verified transaction samples from the completed renewal; their direct RPC
+reproduction covers those two samples.
 [Raw chain evidence, transaction hashes and reproduction inputs](peerreview/evidence/FINAL-2-renewal-2-first-onchain-20260915/README.md).
 
 The repair transaction is
@@ -90,7 +100,22 @@ runtime binary and release lock remained unchanged; no transaction was sent.
 Cleanup removed only two generated fixture trees owned by a terminal test
 run, recovering **3,681,648,640 bytes** and retaining all 61 parent evidence
 artifacts unchanged. With **22.28 GiB** available, the same approved plan
-resumed in a fresh capture at **17:46:51 UTC**. Its result remains pending.
+resumed in a fresh capture at **17:46:51 UTC** and completed successfully at
+**19:09:41 UTC**, with all 1,212 actions verified. Binary and release-lock
+comparisons remained unchanged; campaign-state changes record the adopted
+plan and completed transactions. The four temporary artifact services are
+healthy. The first actual relay-continuation capture, using end block
+**8,021,610**, stopped at **19:18:46 UTC** with
+`relay continuation exceeds unchanged source lifetime or storage bounds`.
+Its campaign-state, binary and release-lock comparisons are unchanged; no
+continuation was adopted. The busiest source retained 16,958 audit trails;
+the unchanged 81,920-trail lifetime limit permits at most 8,065 future blocks
+under the configured forecast. The corrected capture started at **19:28:36 UTC**
+with an **8,060-block horizon**, ending at block **8,021,242**. It retains all
+7,570 required campaign blocks and 490 blocks of capture/import/startup margin.
+The adjacent record, byte, file and relay-slot limits also fit. No production
+code, spending limit or completed renewal action changed. The corrected
+capture, exact import and simulator startup remain pending.
 
 The user's September 15 instruction permits incremental recovery and composed
 acceptance. Under the [harness recovery policy](README.md#incremental-recovery-and-acceptance),
@@ -125,8 +150,7 @@ invocation is relabeled as a passing full invocation. Production inputs and
 the release lock are unchanged, so the existing canonical c5 executable runs
 the renewal without repeating the 18 passed native preparation checks.
 
-Actual renewal completion, complete
-RC/production campaign, final accounting and shutdown remain outstanding.
+The complete RC/production campaign, final accounting and shutdown remain outstanding.
 These preparation and qualification claims are local artifact evidence; all
 new chain observations use the owned LAN node and record
 **`independent_rpc=false`**.

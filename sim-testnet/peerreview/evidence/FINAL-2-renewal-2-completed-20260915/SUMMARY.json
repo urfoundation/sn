@@ -1,0 +1,49 @@
+{
+  "scope": "Completed fleet renewal 2 CLI and local journal evidence; no fresh RPC request was made for this bundle.",
+  "plan_hash": "0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1",
+  "renewal_round": 2,
+  "fleets": 202,
+  "valid_from_epoch": 393,
+  "valid_to_epoch": 424,
+  "cli_result": {
+    "command": "fleet-renew",
+    "status": "postcondition_verified",
+    "body_exit": 0,
+    "outer_exit": 0,
+    "binary_compare_exit": 0,
+    "release_lock_compare_exit": 0,
+    "state_compare_exit": 1,
+    "state_compare_interpretation": "Expected completed adoption and transaction changes; retained as an observed comparison result."
+  },
+  "journal_projection": {
+    "provenance": "Completed local journal filtered by exact plan hash; no raw journal is included.",
+    "distinct_actions": 1212,
+    "stages": {
+      "intent": 1212,
+      "broadcast": 1212,
+      "included": 1212,
+      "finalized": 1212,
+      "postcondition_verified": 1212
+    },
+    "failed_or_error_actions": 0,
+    "chains": {
+      "native": 202,
+      "evm": 1010
+    },
+    "transaction_hash_coverage": 1212,
+    "inclusion_block_coverage": 1212
+  },
+  "direct_onchain_samples": {
+    "source_bundle": "FINAL-2-renewal-2-first-onchain-20260915",
+    "independent_rpc": false,
+    "fresh_rpc_performed_for_this_bundle": false,
+    "scope": "Two separate direct native/EVM receipt samples only; not an independent verification of the full journal projection."
+  },
+  "excluded": [
+    "private command and request contents",
+    "private renewal plan",
+    "raw journal",
+    "signed bytes",
+    "secrets"
+  ]
+}

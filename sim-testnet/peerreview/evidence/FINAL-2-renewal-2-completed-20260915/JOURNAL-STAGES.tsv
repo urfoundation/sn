@@ -1,0 +1,6 @@
+stage	journal_entries	distinct_action_ids
+broadcast	1212	1212
+finalized	1212	1212
+included	1212	1212
+intent	1212	1212
+postcondition_verified	1212	1212
