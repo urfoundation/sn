@@ -70,7 +70,7 @@ type ReleaseConfig struct {
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
 
 	ProvisionalDeferClosedNativeInput bool `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
-	historyAdoptionV2 *ReleaseHistoryAdoptionV2
+	historyAdoptionV2                 *ReleaseHistoryAdoptionV2
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {

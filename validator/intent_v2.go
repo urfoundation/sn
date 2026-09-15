@@ -28,7 +28,7 @@ type releaseIntentV2Owner struct {
 	fault   error
 	// Invocation authority comes only from the validated retained startup owner.
 	provisionalEpochGaps bool
-	historyAdoption *releaseHistoryAdoptionV2
+	historyAdoption      *releaseHistoryAdoptionV2
 }
 
 type releaseIntentV2Read struct {

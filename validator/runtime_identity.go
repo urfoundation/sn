@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	releaseRuntimeSpecVersion        = uint32(458)
-	releaseRuntimeTransactionVersion = uint32(1)
-	releaseRuntimeStateVersion       = uint8(1)
-	releaseRuntimeCodeHash           = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
-	releaseRuntimeMetadataHash       = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
-	releaseHistoricalRuntimeCodeHash = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
+	releaseRuntimeSpecVersion            = uint32(458)
+	releaseRuntimeTransactionVersion     = uint32(1)
+	releaseRuntimeStateVersion           = uint8(1)
+	releaseRuntimeCodeHash               = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
+	releaseRuntimeMetadataHash           = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
+	releaseHistoricalRuntimeCodeHash     = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
 	releaseHistoricalRuntimeMetadataHash = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
 )
 
@@ -58,8 +58,8 @@ func HistoricalReleaseRuntimeArtifacts(current crv4.RuntimeArtifactIdentity) []c
 		return allowed
 	}
 	return append(allowed, crv4.RuntimeArtifactIdentity{
-		Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1},
-		CodeHash: releaseHistoricalRuntimeCodeHash,
+		Version:      crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1},
+		CodeHash:     releaseHistoricalRuntimeCodeHash,
 		MetadataHash: releaseHistoricalRuntimeMetadataHash,
 	})
 }
