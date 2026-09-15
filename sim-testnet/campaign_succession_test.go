@@ -9,6 +9,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +27,8 @@ type campaignSuccessionFixture struct {
 	now            time.Time
 }
 
+// Owns complete provider custody and independently persisted signed history;
+// the plan retains only the dependency closure needed for succession admission.
 func newCampaignSuccessionFixture(t *testing.T) *campaignSuccessionFixture {
 	t.Helper()
 	f := &campaignSuccessionFixture{cfg: testResolvedConfig(t), stateDir: filepath.Join(t.TempDir(), "state"), now: time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC)}
@@ -37,6 +41,57 @@ func newCampaignSuccessionFixture(t *testing.T) *campaignSuccessionFixture {
 	}
 	f.prior, err = buildPlan(f.cfg, testSetupFacts(), public, time.Unix(1, 0))
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Succession authenticates retained plans, not the fleet setup scheduler.
+	// Keep the policy, evidence and alpha barriers with their original dependency closure.
+	renderDependencyKVs := map[string]bool{
+		"policy.await-bootstrap":            true,
+		validatorEvidenceAnchorActionID:     true,
+		"alpha.transfer.operator-deposit.1": true,
+		"alpha.transfer.operator-deposit.2": true,
+		"validator.reserve-majority":        true,
+	}
+	requiredActionKVs := map[string]bool{"config.render": true}
+	var retainedActions []Action
+	for index := len(f.prior.Actions) - 1; index >= 0; index-- {
+		action := f.prior.Actions[index]
+		if !requiredActionKVs[action.ID] {
+			continue
+		}
+		delete(requiredActionKVs, action.ID)
+		if action.ID == "config.render" {
+			var dependencies []string
+			for _, dependency := range action.DependsOn {
+				if renderDependencyKVs[dependency] {
+					dependencies = append(dependencies, dependency)
+				}
+			}
+			action.DependsOn = dependencies
+			action.IntentHash, err = actionIntentHash(action)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, dependency := range action.DependsOn {
+			requiredActionKVs[dependency] = true
+		}
+		retainedActions = append(retainedActions, action)
+	}
+	if len(requiredActionKVs) != 0 {
+		t.Fatalf("succession fixture lost action dependencies: %v", requiredActionKVs)
+	}
+	slices.Reverse(retainedActions)
+	f.prior.Actions = retainedActions
+	f.prior.MaximumSpend, err = maximumActionSpend(f.prior.Actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.prior.PlanHash, err = f.prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(f.prior); err != nil {
 		t.Fatal(err)
 	}
 	f.roles, err = BuildRoleSecrets(f.cfg)
@@ -126,6 +181,84 @@ func readCampaignSuccessionFixtureBytes(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// Bounds repeated history decoding without reducing the real custody census or
+// bypassing either active or historical plan authentication.
+func TestScenarioCampaignAttemptSuccessionFixtureBoundsPlanDecoding(t *testing.T) {
+	t.Parallel()
+	f := newCampaignSuccessionFixture(t)
+	for _, plan := range []*SetupPlan{f.prior, f.current} {
+		raw, err := json.Marshal(plan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(raw) > 256*1024 || len(plan.Actions) > 192 {
+			t.Fatalf("succession fixture exceeds its plan decoding work bound: bytes=%d actions=%d", len(raw), len(plan.Actions))
+		}
+		if _, err := decodePersistedPlanBytes(raw); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readValidatorEvidenceHistoricalPlan(f.stateDir, plan.PlanHash); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("authenticated succession fixture: bytes=%d actions=%d", len(raw), len(plan.Actions))
+	}
+	if f.cfg.Config.Topology.Miners != 1000 {
+		t.Fatalf("succession fixture reduced the provider census to %d", f.cfg.Config.Topology.Miners)
+	}
+	providerIdKVs := map[string]bool{}
+	for index := 1; index <= f.cfg.Config.Topology.Miners; index++ {
+		role, exists := f.roles.Clients["miner-"+strconv.Itoa(index)]
+		id, err := hex.DecodeString(role.ClientIDHex)
+		if !exists || err != nil || len(id) != 16 || providerIdKVs[role.ClientIDHex] {
+			t.Fatalf("succession fixture lost unique assigned provider %d", index)
+		}
+		providerIdKVs[role.ClientIDHex] = true
+	}
+	if _, err := loadPersistedPlan(f.cfg, f.stateDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.open(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Rehashed fixture mutations must still reach the production budget and intent
+// checks; the smaller history is never a relaxed plan decoder.
+func TestScenarioCampaignAttemptSuccessionFixtureRejectsRehashedBudgetAndIntent(t *testing.T) {
+	t.Parallel()
+	f := newCampaignSuccessionFixture(t)
+	raw, err := json.Marshal(f.current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mutation := range []string{"budget", "intent"} {
+		var plan SetupPlan
+		if err := json.Unmarshal(raw, &plan); err != nil {
+			t.Fatal(err)
+		}
+		want := "action spend total"
+		if mutation == "budget" {
+			plan.MaximumSpend.TAORao++
+		} else {
+			plan.Actions[0].Spend.TAORao++
+			want = "intent hash does not bind its executable fields"
+		}
+		plan.PlanHash, err = plan.hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		changed, err := json.Marshal(&plan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, historical := range []bool{false, true} {
+			if _, err := decodePersistedPlanBytesForHistory(changed, historical); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s mutation bypassed plan authentication (historical=%v): %v", mutation, historical, err)
+			}
+		}
+	}
 }
 
 func TestScenarioCampaignAttemptSuccessionPreservesFailureAndRestartsPreparation(t *testing.T) {
