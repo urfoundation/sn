@@ -15,15 +15,18 @@ const testMib = connect.ByteCount(1024 * 1024)
 const testGib = 1024 * testMib
 
 // TestProviderMemoryPlanNoFlagDefault: without --max-memory the provider has
-// no ceiling. Each provider's target is host / (3 x count), the soft limit is
-// 3 x count x target (the host memory itself), and the process budget is the
-// soft limit; never below the previous 20 MiB target; an unknown host keeps
-// the previous 64 MiB. Pools are untouched.
+// no ceiling. Each provider's target is (4/5 x host) / (3 x count), the soft
+// limit is 3 x count x target (four fifths of the host), and the process
+// budget is the soft limit; never below the previous 20 MiB target; an unknown
+// host keeps the previous 64 MiB. Pools are untouched.
 func TestProviderMemoryPlanNoFlagDefault(t *testing.T) {
 	opts := parseArgsForTest(t, []string{"provide"})
 	if explicit := parseProviderMaxMemory(opts); explicit != 0 {
 		t.Fatalf("absent flag parsed as %d", explicit)
 	}
+	// the 80% composition, written out: four fifths of the host, a third of
+	// that per provider
+	heap := func(host connect.ByteCount) connect.ByteCount { return host * 4 / 5 }
 	for _, c := range []struct {
 		host   connect.ByteCount
 		count  int
@@ -34,20 +37,21 @@ func TestProviderMemoryPlanNoFlagDefault(t *testing.T) {
 		{0, 1, 64 * testMib, 192 * testMib},
 		{0, 0, 64 * testMib, 192 * testMib},
 		{0, 4, 64 * testMib, 768 * testMib},
-		// known hosts: a third of the host per provider, no cap
-		{4 * testGib, 1, 4 * testGib / 3, 4 * testGib / 3 * 3},
-		{4 * testGib, 4, 4 * testGib / 12, 4 * testGib / 12 * 12},
-		{8 * testGib, 1, 2863311530, 3 * 2863311530},
-		{8 * testGib, 4, 8 * testGib / 12, 8 * testGib / 12 * 12},
-		{32 * testGib, 1, 32 * testGib / 3, 32 * testGib / 3 * 3},
-		{32 * testGib, 4, 32 * testGib / 12, 32 * testGib / 12 * 12},
-		{256 * testGib, 1, 256 * testGib / 3, 256 * testGib / 3 * 3},
-		{256 * testGib, 4, 256 * testGib / 12, 256 * testGib / 12 * 12},
-		// 2 GiB / (3 x 16) = 42.66 MiB
-		{2 * testGib, 16, 2 * testGib / 48, 2 * testGib / 48 * 48},
+		// known hosts: four fifths of the host over three per provider, no cap
+		{4 * testGib, 1, heap(4*testGib) / 3, heap(4*testGib) / 3 * 3},
+		{4 * testGib, 4, heap(4*testGib) / 12, heap(4*testGib) / 12 * 12},
+		// 8 GiB x 4/5 = 6871947673, over 3
+		{8 * testGib, 1, 2290649224, 3 * 2290649224},
+		{8 * testGib, 4, heap(8*testGib) / 12, heap(8*testGib) / 12 * 12},
+		{32 * testGib, 1, heap(32*testGib) / 3, heap(32*testGib) / 3 * 3},
+		{32 * testGib, 4, heap(32*testGib) / 12, heap(32*testGib) / 12 * 12},
+		{256 * testGib, 1, heap(256*testGib) / 3, heap(256*testGib) / 3 * 3},
+		{256 * testGib, 4, heap(256*testGib) / 12, heap(256*testGib) / 12 * 12},
+		// 2 GiB x 4/5 / (3 x 16) = 34.13 MiB
+		{2 * testGib, 16, heap(2*testGib) / 48, heap(2*testGib) / 48 * 48},
 		// the floor: the soft limit then exceeds the host, as before
 		{8 * testGib, 200, 20 * testMib, 12000 * testMib},
-		{128 * testMib, 1, 42*testMib + 682*1024 + 682, 3 * (42*testMib + 682*1024 + 682)},
+		{128 * testMib, 1, heap(128*testMib) / 3, heap(128*testMib) / 3 * 3},
 		{32 * testMib, 1, 20 * testMib, 60 * testMib},
 	} {
 		plan := newProviderMemoryPlan(0, c.host, c.count)
@@ -74,11 +78,52 @@ func TestProviderMemoryPlanNoFlagDefault(t *testing.T) {
 	}
 }
 
+// TestProviderMemoryPlanLeavesHostHeadroom: the property asked for. At every
+// host size and provider count where the 20 MiB floor does not bind, the
+// composed soft limit is at most four fifths of the host, leaving a fifth to
+// the operating system and co-resident processes. Where the floor binds (a
+// host too small for 20 MiB x 3 per provider) the floor is what exceeds it,
+// and that is stated rather than hidden.
+func TestProviderMemoryPlanLeavesHostHeadroom(t *testing.T) {
+	floorBound := 0
+	for _, host := range []connect.ByteCount{
+		256 * testMib, 512 * testMib, 1 * testGib, 2 * testGib, 4 * testGib,
+		8 * testGib, 16 * testGib, 32 * testGib, 64 * testGib, 128 * testGib, 256 * testGib,
+	} {
+		for _, count := range []int{1, 2, 3, 4, 8, 16, 64} {
+			plan := newProviderMemoryPlan(0, host, count)
+			if plan.DeviceMemoryTargetByteCount == providerMinDeviceMemoryTargetByteCount &&
+				host*4/5 < plan.SoftLimitByteCount {
+				floorBound += 1
+				continue
+			}
+			if host*4/5 < plan.SoftLimitByteCount {
+				t.Errorf("host %d count %d: soft limit %d is over four fifths of the host (%d)",
+					host, count, plan.SoftLimitByteCount, host*4/5)
+			}
+			if plan.SoftLimitByteCount < host*4/5-3*connect.ByteCount(count) {
+				// integer division loses at most 3 x count bytes; anything
+				// more is a formula that is not the 80% composition
+				t.Errorf("host %d count %d: soft limit %d is not four fifths of the host (%d)",
+					host, count, plan.SoftLimitByteCount, host*4/5)
+			}
+		}
+	}
+	// the one exception exists and is the tiny-host floor: 256 MiB across 64
+	// providers is 3.2 MiB each, under the 20 MiB floor
+	if floorBound == 0 {
+		t.Error("no floor-bound row; the grid should include a host too small for its providers")
+	}
+	if plan := newProviderMemoryPlan(0, 256*testMib, 64); plan.DeviceMemoryTargetByteCount != providerMinDeviceMemoryTargetByteCount {
+		t.Errorf("256 MiB / 64 providers: target %d, want the %d floor", plan.DeviceMemoryTargetByteCount, providerMinDeviceMemoryTargetByteCount)
+	}
+}
+
 // assertProviderMemoryPlanConstraints checks the two constraints every
 // derived plan keeps: the budget is at least three times one target (the
 // runtime amplification), one target is at most 20/34 of the budget (the
 // SDK's pool : target split of a process budget), and the soft limit does not
-// exceed a known host unless the 20 MiB floor forced it.
+// exceed four fifths of a known host unless the 20 MiB floor forced it.
 func assertProviderMemoryPlanConstraints(
 	t *testing.T,
 	plan providerMemoryPlan,
@@ -97,8 +142,8 @@ func assertProviderMemoryPlanConstraints(
 	if budget != plan.SoftLimitByteCount {
 		t.Errorf("host %d count %d: budget %d is not the soft limit %d", host, count, budget, plan.SoftLimitByteCount)
 	}
-	if 0 < host && providerMinDeviceMemoryTargetByteCount < target && host < plan.SoftLimitByteCount {
-		t.Errorf("host %d count %d: soft limit %d exceeds the host", host, count, plan.SoftLimitByteCount)
+	if 0 < host && providerMinDeviceMemoryTargetByteCount < target && host*4/5 < plan.SoftLimitByteCount {
+		t.Errorf("host %d count %d: soft limit %d exceeds four fifths of the host", host, count, plan.SoftLimitByteCount)
 	}
 }
 

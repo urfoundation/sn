@@ -30,7 +30,10 @@ import (
 //   - the Go runtime soft limit (debug.SetMemoryLimit). The runtime holds
 //     roughly three bytes per live byte, so a soft limit equal to the summed
 //     targets makes GC run continuously once live memory reaches a third of
-//     it. The default soft limit is therefore three times the summed targets.
+//     it. The default soft limit is therefore three times the summed targets,
+//     and the targets are derived so that this is four fifths of the usable
+//     host memory (providerHostMemoryFraction), leaving the rest to the
+//     operating system and co-resident processes.
 //
 // The budget is the soft limit. That keeps the two constraints the default
 // plan encodes: the budget is at least three times one target (the runtime
@@ -54,6 +57,15 @@ const providerMinDeviceMemoryTargetByteCount = connect.ByteCount(20 * 1024 * 102
 // providerRuntimeBytesPerLiveByte is the runtime overhead factor applied to
 // the summed targets for the default soft limit.
 const providerRuntimeBytesPerLiveByte = 3
+
+// providerHostMemoryFraction (numerator / denominator, 4/5) is the fraction of
+// the usable host memory the provider may let its heap climb to: the default
+// soft limit is this much of the host. The remaining fifth is headroom for the
+// operating system and co-resident processes. It is a separate quantity from
+// the runtime factor above (which relates the soft limit to the live targets),
+// and must not be folded into it.
+const providerHostMemoryFractionNumerator = 4
+const providerHostMemoryFractionDenominator = 5
 
 type providerMemoryPlan struct {
 	// per provider device; 0 keeps the SDK default
@@ -84,9 +96,10 @@ func newProviderAuthMemoryPlan(explicitMaxMemory connect.ByteCount) providerMemo
 // Explicit --max-memory: soft limit = budget = max-memory, target =
 // max-memory / count.
 //
-// Absent: no ceiling. target = host / (3 x count) when the usable host memory
-// is known, so the default soft limit (3 x count x target) is the host memory
-// itself and never exceeds it; never below the previous 20 MiB default. An
+// Absent: no ceiling. target = (4/5 x host) / (3 x count) when the usable host
+// memory is known, so the default soft limit (3 x count x target) is four
+// fifths of the host and never exceeds it; never below the previous 20 MiB
+// default (on a host too small for that, the floor is what exceeds it). An
 // unknown host keeps the previous 64 MiB target. budget = soft limit.
 func newProviderMemoryPlan(
 	explicitMaxMemory connect.ByteCount,
@@ -104,8 +117,11 @@ func newProviderMemoryPlan(
 	}
 	target := providerUnknownHostDeviceMemoryTargetByteCount
 	if 0 < hostByteCount {
+		heapByteCount := hostByteCount *
+			providerHostMemoryFractionNumerator /
+			providerHostMemoryFractionDenominator
 		target = max(
-			hostByteCount/(providerRuntimeBytesPerLiveByte*count),
+			heapByteCount/(providerRuntimeBytesPerLiveByte*count),
 			providerMinDeviceMemoryTargetByteCount,
 		)
 	}
