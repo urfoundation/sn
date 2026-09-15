@@ -38,8 +38,8 @@ Current work:
    execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
    fix failures and flakiness, then return corrected source to Terra for reruns.
 3. Complete producer and aggregate coverage using valid retained phase results
-   plus failed, missing or patch-affected checks. Keep both active full gates
-   collecting errors; do not restart them automatically after the fixture fix.
+   plus failed, missing or patch-affected checks. Collect independent failures
+   in a batch; preserve completed phases when a gate is interrupted.
    Retain earlier confirmations and every failed or interrupted result. Record
    accepted composition separately from each gate invocation's actual exit.
 4. Complete the required real release campaign and production soak, then
@@ -50,7 +50,55 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 16:15 UTC: the published `c5db71a` producer's
+Latest checkpoint, 2026-09-15 17:48 UTC: producer and aggregate coverage are
+**accepted by composition**. The succession fixture correction at `93f6d35`
+passes its nine affected normal tests and 29 children. The complete capture
+race passes all 378 tests and 140 children in 479.526 seconds, within the
+unchanged 600-second limit. The old-fixture control reproduces the expected
+work-bound failure. All actual exits, thirteen-repository source comparisons,
+binary comparisons and cleanup checks pass. These are local test results;
+the original failed and interrupted gates retain their recorded outcomes.
+The full cohort ran with four processors on a lighter host load than the
+previous simultaneous full gates; that execution condition is retained.
+[Replacement qualification receipts](sim-testnet/peerreview/evidence/FINAL-2-incremental-capture-20260915/README.md).
+
+The unchanged 39 producer phases and unchanged aggregate scopes retain their
+complete earlier receipts. No full gate restart or extra confirmation is
+required. The approved exact Q09ac683b fleet renewal apply started at
+17:27:28 UTC using the existing canonical c5 executable and LAN RPC node.
+It stopped at 17:33:09 on the host disk check, before any transaction; campaign
+state, executable and release lock comparisons were unchanged. Removing two
+generated fixture trees from a terminal test owner recovered 3,681,648,640
+bytes and restored free space to 22.28 GiB. All 61 parent evidence artifacts
+remained unchanged. The same exact plan resumed in a fresh capture at
+17:46:51 UTC. One journal writer owns this operation; retain the exact saved
+plan and any persisted transactions on interruption. Completion and new
+finalized actions are not yet claimed. The soak remains stopped, with strict continuation and
+the actual release campaign next. Keep canonical/source c5 frozen while this
+native owner runs; local test and report publication can be prepared separately.
+
+Previous checkpoint, 2026-09-15 17:12 UTC: recover the interrupted c5 gate
+attempts through composed coverage. Root verified both outer processes and
+their test descendants absent; the retained logs record stop143, with no
+final outer exit or final source receipt. Producer retained 38 passing joins,
+the capture failure and one interrupted database phase. Aggregate retained
+five passing joins and two interrupted race bodies. Reuse unchanged phases
+from the earlier completed 330ba512 gates. No full gate restart is planned.
+The test-only succession fixture repair is frozen at `93f6d35`; Terra is
+building the corrected normal/race and old-fixture normal executables for
+the three admitted bodies. Qualification remains pending.
+
+Actual read-only renewal planning passed at 17:07:03 UTC for epochs 393–424:
+plan `0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1`,
+all 202 fleets, 1,212 new actions, bounded at 9.09 EVM TAO plus 0.606 native TAO.
+Expired predecessor bindings require no revocations. State, executable and
+lock comparisons passed unchanged; no chain transaction was submitted.
+The exact saved plan and apply command are ready. Complete producer coverage
+precedes apply; reuse the existing canonical c5 runtime while its source and
+approved production inputs remain unchanged. The 18 native preparation passes,
+approved allowance and finalized reserve repair remain retained.
+
+Previous checkpoint, 2026-09-15 16:15 UTC: the published `c5db71a` producer's
 capture phase passed normally in 120.920 seconds and timed out under race at
 600.377 seconds. The active succession test repeatedly builds and authenticates
 a full 1,000-provider plan; Astra is correcting that test fixture while Terra

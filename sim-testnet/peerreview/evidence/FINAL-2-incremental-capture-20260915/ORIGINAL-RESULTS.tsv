@@ -1,0 +1,2 @@
+scope	original_result	actual_elapsed_seconds	retention
+c5_capture_race	FAIL	600.377	Retained as the original cumulative-timeout result; the successor receipt does not alter it.

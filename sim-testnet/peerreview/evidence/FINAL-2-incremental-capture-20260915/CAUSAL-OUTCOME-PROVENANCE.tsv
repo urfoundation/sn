@@ -1,0 +1,13 @@
+field	value
+authority	Completed causal body/replay expected-outcome input
+fixture_relative_path	qualification/causal.outcomes.tsv
+sha256	a564b0f88658c81c3442a6ef4c1534101c020a833309f20c7ae441fcc9523029
+bundle_copy	records/causal/body/expected.outcomes.tsv
+bundle_copy_matches_authority	true
+expected_outcomes	1
+expected_result	FAIL
+body_exit	1
+converter_exit	0
+replay_exit	0
+body_result	EXPECTED_FAILURE_MATCHED
+provenance_basis	Pre-body input digest and completed causal body receipts

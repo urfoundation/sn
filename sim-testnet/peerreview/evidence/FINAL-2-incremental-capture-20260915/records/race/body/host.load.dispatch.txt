@@ -1,0 +1,8 @@
+2026-09-15T17:16:34.077855815Z
+ 17:16:34 up 20 days, 14:08,  2 users,  load average: 1.19, 2.49, 4.24
+24
+               total        used        free      shared  buff/cache   available
+Mem:     135037382656  4551368704 77432627200   383844352 54728982528 130486013952
+Swap:     8589930496   913571840  7676358656
+Filesystem                           1B-blocks         Used   Available Use% Mounted on
+/dev/mapper/ubuntu--vg-ubuntu--lv 980468039680 910340079616 20247412736  98% /

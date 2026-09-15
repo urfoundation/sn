@@ -1,0 +1,4 @@
+scope	mode	package_timeout_seconds	owner_timeout_seconds	raw_listed_roots	selected_roots	expected_outcomes	children	body_exit	converter_exit	replay_exit	body_elapsed_seconds	result
+normal	normal	300	360	9	9	38	29	0	0	0	13.844316643	PASS
+race	race	600	660	490	378	518	140	0	0	0	479.525902592	PASS
+causal	normal	60	120	1	1	1	0	1	0	0	1.327408857	EXPECTED_FAILURE_MATCHED

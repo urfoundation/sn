@@ -133,6 +133,7 @@ package/mode. A new failure reopens its affected scope, not the whole campaign.
 | Launcher, selector, capture path or result-checker correction | Repair the refused stage; reuse unchanged builds and completed bodies. Replay retained raw results when they suffice, and verify membership if selection changed. |
 | Production code or dependency change | Build affected executables; test changed behavior and affected integrations. Reuse phases whose code, inputs and assumptions are unchanged. |
 | Expired epoch, fee observation or other time-sensitive prerequisite | Refresh that observation and its dependent plan/window through the supported revision path. Retain immutable history and completed actions. |
+| Disk, port, service or transient RPC refusal before submission | Repair the failed operational prerequisite and retry the same approved command in a fresh capture. Retain valid tests, preparation and state; reconcile any uncertain submission before retrying. |
 | Interrupted submission or lost RPC response | Reconcile the persisted intent, signed bytes, nonce and canonical receipt before retrying. An unknown outcome is pending, never a new action. |
 | Failed live scenario or service | Recover the affected process or phase from its journal. Retain other valid phase markers and prior finalized work. |
 
@@ -838,11 +839,16 @@ shortfall without persisting or broadcasting transaction bytes.
   quic-go's release socket requirement. `doctor` fails closed below that floor;
   on Linux set a 16 MiB margin before launch with
   `sudo sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216`.
-- Live launch/resume requires at least 20 GiB free on the simulator state
+- Live launch/resume and native apply commands that run `doctor`, including
+  `fleet-renew --apply`, require at least 20 GiB free on the simulator state
   filesystem. Budget offline compilation and focused tests separately from
   their measured footprint and available headroom for running jobs; those
   bounded jobs may proceed below the live-runtime floor. Recheck that floor
-  before actual launch/resume. Immediately before constructing a chain-capable
+  before the actual native operation. If capacity must be recovered, remove
+  only identified disposable scratch from terminal owners, keeping source,
+  admitted binaries, result receipts, journals and signed transaction bytes.
+  Retry the refused operation without reopening unrelated passing checks.
+  Immediately before constructing a chain-capable
   executor, the harness also binds every required loopback process port and
   rejects any unrelated or stale listener.
 - Docker with direct permission for the invoking user or passwordless `sudo -n

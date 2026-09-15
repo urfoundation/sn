@@ -52,18 +52,70 @@ normal capture in 120.920 seconds but its race capture timed out again at
 `TestScenarioCampaignAttemptSuccessionReopenRejectsChangedAndMissingSources/another-plan`.
 The seven-case parent had run for 90 seconds; the last child was still opening
 its initial fixture. Investigation identifies repeated full-plan fixture work,
-not a demonstrated chain or historical-decoder defect. A test-only correction
-is in progress; neither its qualification nor a repaired capture pass is claimed.
-Both original gates continue collecting independent results.
+not a demonstrated chain or historical-decoder defect. The test-only correction
+and replacement qualification are described below.
+Both original gates subsequently stopped during agent usage-limit failures.
+At 17:01–17:03 UTC root verified their processes absent; their worker logs record
+stop 143 and joined descendants. No final outer exit or final source receipt
+exists for either interrupted c5 invocation. Producer retained 38 passing phase
+joins, the capture failure and an interrupted server-db phase. Aggregate
+retained five passing joins and two interrupted race bodies. Preserve those
+results and the earlier complete 330ba512 phase receipts; neither c5 invocation
+is a full-gate PASS.
+
+The next actual renewal preview passed at 17:07:03 UTC without sending a chain
+transaction or changing campaign state. Plan
+`0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1`
+covers epochs 393–424 and all 202 fleets, with 1,212 new actions capped at
+**9.09 EVM TAO plus 0.606 native TAO**. Predecessor expiry removes the need for
+revocations in that window. The exact saved plan entered actual apply at
+17:27:28 UTC through the owned LAN node, after producer coverage was accepted
+by composition. Its native admission rechecks the future window, custody,
+nonces, liabilities and fees. This records dispatch of the apply command, not
+yet successful completion or a new finalized transaction. One journal writer
+retains the exact plan and transaction history for partial recovery. That first
+apply stopped at **17:33:09 UTC** with `host/default-state-disk`: available
+space was below the existing 20 GiB floor. The six campaign-state files,
+runtime binary and release lock remained unchanged; no transaction was sent.
+Cleanup removed only two generated fixture trees owned by a terminal test
+run, recovering **3,681,648,640 bytes** and retaining all 61 parent evidence
+artifacts unchanged. With **22.28 GiB** available, the same approved plan
+resumed in a fresh capture at **17:46:51 UTC**. Its result remains pending.
 
 The user's September 15 instruction permits incremental recovery and composed
 acceptance. Under the [harness recovery policy](README.md#incremental-recovery-and-acceptance),
 retain unaffected completed phases, native preparation and finalized actions,
 then replace only failed or affected coverage after a patch. Original failed
 gate results remain failed. No blanket three-run confirmation or complete gate
-restart is required solely for a test or documentation change. Accepted
-composition, when complete, will name each original and replacement receipt.
-Current producer coverage remains incomplete. Actual renewal, complete
+restart is required solely for a test or documentation change.
+
+At **17:27 UTC**, producer and aggregate coverage are **accepted by composition**.
+The correction at `93f6d352d979c3dfb5fe068d4c07f400a227bc56` changes only
+`campaign_succession_test.go`: it bounds repeated fixture plan decoding while
+retaining all 1,000 provider identities and the authenticated budget, intent,
+history and custody assertions. Its nine affected normal tests and 29 children
+PASS. The complete corrected capture race passes **378/378 tests and 140/140
+subtests in 479.526 seconds**, within the original 600-second deadline. The
+old-fixture control produces the expected deterministic failure: 1,375,813
+encoded bytes and 2,288 actions exceed the new work bound; the corrected
+fixture contains about 151,500 bytes and 136 actions. Actual body, conversion,
+membership and outer results match their expected outcomes; all thirteen
+source comparisons, binary checks and cleanup pass. The complete race cohort
+used four processors and overlapped the short normal body on a lighter host
+load; the earlier simultaneous full-gate load was not recreated.
+[Test qualification and original-result boundaries](peerreview/evidence/FINAL-2-incremental-capture-20260915/README.md).
+
+These replacement runs cover the changed succession fixtures in normal/race
+and close the failed complete capture phase. Unchanged phases retain the
+completed 330ba512 receipts: 39 producer phases and the aggregate's unaffected
+scopes. C5's complete normal result and the earlier qualified scan correction
+retain their unaffected coverage. Every required producer and aggregate phase
+therefore has valid coverage on its effective inputs; neither interrupted c5
+invocation is relabeled as a passing full invocation. Production inputs and
+the release lock are unchanged, so the existing canonical c5 executable runs
+the renewal without repeating the 18 passed native preparation checks.
+
+Actual renewal completion, complete
 RC/production campaign, final accounting and shutdown remain outstanding.
 These preparation and qualification claims are local artifact evidence; all
 new chain observations use the owned LAN node and record

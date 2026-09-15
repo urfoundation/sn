@@ -1,0 +1,17 @@
+field	value
+dispatch_started_at	2026-09-15T17:16:34.077855815Z
+logical_processors	24
+dispatch_load_average_1m	1.19
+dispatch_load_average_5m	2.49
+dispatch_load_average_15m	4.24
+dispatch_load_receipt	records/race/body/host.load.dispatch.txt
+body_owners_dispatched	3
+gomaxprocs_per_owner	4
+normal_body_started_at	2026-09-15T17:17:06.206237230Z
+race_body_started_at	2026-09-15T17:17:08.018790671Z
+normal_body_finished_at	2026-09-15T17:17:20.050553873Z
+race_normal_overlap_seconds	12.031763202
+race_body_finished_at	2026-09-15T17:25:07.544693212Z
+load_interpretation	Actual lighter host load; no 24-CPU stress-equivalence claim.
+terminal_cleanup	All owned compiler/body outer, owner, timeout, and test processes absent after terminal receipts.
+terminal_cleanup_receipt	records/race/body/host.load.after-terminal.txt
