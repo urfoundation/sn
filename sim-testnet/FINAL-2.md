@@ -14,7 +14,7 @@ exited 0. The journal records all **1,212 new actions** broadcast and
 postcondition-verified, with **zero failed entries**, covering all **202 fleets**
 for epochs **393–424**. Its exact approved plan
 `0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1`
-remains adopted. These completion counts come from the native command and
+is retained by the adopted relay continuation described below. These completion counts come from the native command and
 retained journal. The public completion bundle includes all **1,212 transaction
 hashes and inclusion blocks**: **202 native commitments and 1,010 EVM mirror or
 binding transactions**.
@@ -103,8 +103,8 @@ artifacts unchanged. With **22.28 GiB** available, the same approved plan
 resumed in a fresh capture at **17:46:51 UTC** and completed successfully at
 **19:09:41 UTC**, with all 1,212 actions verified. Binary and release-lock
 comparisons remained unchanged; campaign-state changes record the adopted
-plan and completed transactions. The four temporary artifact services are
-healthy. The first actual relay-continuation capture, using end block
+plan and completed transactions. The four temporary artifact services supported
+the relay capture and import. The first actual relay-continuation capture, using end block
 **8,021,610**, stopped at **19:18:46 UTC** with
 `relay continuation exceeds unchanged source lifetime or storage bounds`.
 Its campaign-state, binary and release-lock comparisons are unchanged; no
@@ -115,7 +115,29 @@ with an **8,060-block horizon**, ending at block **8,021,242**. It retains all
 7,570 required campaign blocks and 490 blocks of capture/import/startup margin.
 The adjacent record, byte, file and relay-slot limits also fit. No production
 code, spending limit or completed renewal action changed. The corrected
-capture, exact import and simulator startup remain pending.
+capture completed at **19:44:33 UTC** with unchanged campaign state, binary
+and release lock. Its exact saved output was imported successfully at
+**20:04:13 UTC**, adopting continuation plan
+`0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30`
+through block **8,021,242** with **zero chain transactions**. Both native
+commands and their joined wrappers exited 0. Import changes reflect plan
+adoption; binary and release-lock comparisons remained unchanged.
+[Relay refusal, corrected capture and zero-transaction adoption receipts](peerreview/evidence/FINAL-2-relay-continuation-20260915/README.md).
+
+The final history-adoption capture completed at **20:09:43 UTC**, with all
+state, binary and release-lock comparisons unchanged. The finalized LAN
+schedule at native block **8,013,383** reports epoch **1,476**, tempo **360**,
+last epoch block **8,013,131** and no pending earlier boundary. The saved
+request selects **1,477** as the first fresh steering epoch and has SHA-256
+`554ace3866c4264b821eaa980396ecf19e7836b5fa4f55902bf0d70956c89507`.
+The first decision and preparation snapshots must occur during that epoch;
+startup may finish before or during it. All four temporary services stopped
+and joined with exit 0 before actual strict resume. That first startup attempt
+stopped at **20:12:07 UTC** because its configured private temporary directory
+did not exist. Campaign state, runtime binary and release lock remained
+unchanged. The recovery creates the required directories and retries the same
+plan and saved history; it does not repeat completed preparation or renewal.
+Simulator startup and campaign acceptance remain pending.
 
 The user's September 15 instruction permits incremental recovery and composed
 acceptance. Under the [harness recovery policy](README.md#incremental-recovery-and-acceptance),

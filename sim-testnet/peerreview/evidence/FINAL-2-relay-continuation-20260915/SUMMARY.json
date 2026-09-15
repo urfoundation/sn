@@ -1,0 +1,56 @@
+{
+  "scope": "Closed relay-continuation capacity correction and adoption evidence only; no fresh RPC, test, build, or native command was run for this bundle.",
+  "failed_r1": {
+    "requested_span_blocks": 8500,
+    "relay_end_block": 8021610,
+    "body_exit": 1,
+    "outer_exit": 1,
+    "state_compare_exit": 0,
+    "binary_compare_exit": 0,
+    "release_lock_compare_exit": 0,
+    "interpretation": "Capacity operand refused before state or chain transaction change."
+  },
+  "corrected_capture_r2": {
+    "relay_plan_hash": "0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30",
+    "requested_span_blocks": 8060,
+    "maximum_permitted_span_blocks": 8065,
+    "relay_end_block": 8021242,
+    "required_work_blocks": 7570,
+    "relay_slots_ceiling": 1024,
+    "budget_operands_identical_to_failed_r1": true,
+    "relay_debits": 0,
+    "body_exit": 0,
+    "outer_exit": 0,
+    "state_compare_exit": 0,
+    "binary_compare_exit": 0,
+    "release_lock_compare_exit": 0,
+    "full_stdout_sha256": "e390a6152b0743593d7972d2b5a8569259fcf93e802919c0e33edb59c9ebf055"
+  },
+  "adoption_apply_r1": {
+    "relay_plan_hash": "0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30",
+    "end_block": 8021242,
+    "status": "adopted",
+    "chain_transactions": 0,
+    "body_exit": 0,
+    "outer_exit": 0,
+    "body_finished_at": "2026-09-15T20:04:13Z",
+    "state_compare_exit": 1,
+    "state_compare_interpretation": "Expected adoption change.",
+    "binary_compare_exit": 0,
+    "release_lock_compare_exit": 0
+  },
+  "provenance": {
+    "failed_capture": "relay-continuation-final-c5db71a-20260915-r1",
+    "corrected_capture": "relay-continuation-final-c5db71a-20260915-r2",
+    "adoption": "relay-continuation-apply-c5db71a-20260915-r1",
+    "input_contents_included": false,
+    "full_private_capture_stdout_included": false
+  },
+  "excluded": [
+    "private relay plans",
+    "raw commands and requests",
+    "full private capture stdout",
+    "signed bytes",
+    "secrets"
+  ]
+}

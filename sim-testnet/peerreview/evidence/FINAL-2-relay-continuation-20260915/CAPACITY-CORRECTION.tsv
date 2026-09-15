@@ -1,0 +1,10 @@
+field	failed_r1	corrected_r2
+requested_span_blocks	8500	8060
+relay_end_block	8021610	8021242
+required_work_blocks	7570	7570
+capture_import_startup_allowance_blocks	930	490
+relay_slots_ceiling	1024	1024
+budget_operands_identical	true	true
+capacity_result	refused	accepted
+corrected_maximum_permitted_span		8065
+corrected_relay_debits		0
