@@ -1,0 +1,6 @@
+requested_at=2026-09-15T01:30:47.266499782Z
+reason=source_superseded_by_confirmed_native_production_compatibility_defect
+outer_pid=128454
+inner_pid=128464
+inner_start_ticks=172197277
+inner_command=bash /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/scripts/test-release-1.0-producer-gate.sh 

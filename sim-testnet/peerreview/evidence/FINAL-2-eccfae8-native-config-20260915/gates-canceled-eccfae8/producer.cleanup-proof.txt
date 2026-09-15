@@ -1,0 +1,9 @@
+kind=producer
+outer_pid=128454
+inner_pid=128464
+gate_root=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-eccfae8-canonical-r1/tmp/urnetwork-release-gate.PDsGZFVb
+outer_exit=143
+job_dirs=0
+private_pid_or_container_paths=0
+matching_process_group_count=0
+runtime_metadata_exit_record=absent_interrupted_by_controlled_cancellation

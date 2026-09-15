@@ -1,0 +1,6 @@
+body_exit=1
+converter_exit=0
+validation_exit=1
+source_manifests=13
+repos_equal=true
+binary_equal=true

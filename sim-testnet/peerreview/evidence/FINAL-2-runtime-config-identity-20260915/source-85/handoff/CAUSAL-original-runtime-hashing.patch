@@ -1,0 +1,10 @@
+--- a/sim-testnet/config.go
++++ b/sim-testnet/config.go
+@@ -510,7 +510,6 @@
+ 	}
+ 	identity := *public
+ 	if identity.Chain.ConfigIdentityRuntimeSpec != 0 {
+-		identity.Chain.ExpectedRuntimeSpec = identity.Chain.ConfigIdentityRuntimeSpec
+ 		identity.Chain.ConfigIdentityRuntimeSpec = 0
+ 	}
+ 	return canonicalHashHex(struct {

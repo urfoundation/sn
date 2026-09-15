@@ -1,0 +1,12 @@
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/diff.after.check
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/diff.before.check
+a6a32b8079d6ff4bb2d004e51300f6ce42f56303e299ab5502e1bc569455c819  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/file.after.sha256
+a6a32b8079d6ff4bb2d004e51300f6ce42f56303e299ab5502e1bc569455c819  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/file.before.sha256
+15dbd676a01dba66d1e32f09bd43ffc5696f25be5dbf3bf8c5509b218fe53809  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/format.paths
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/gofmt.actual.diff.patch
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/gofmt.after.diff
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/gofmt.diff.patch
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/gofmt.numstat
+0a8cbcc75c32c45d8ad413cfccbb1b394f8c9f6339f803c766818712d2e61ec5  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/head.raw
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/status.after
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/formatter-5a411d2/status.before

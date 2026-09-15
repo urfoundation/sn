@@ -1,0 +1,1 @@
+env EXPECTED_SN=eccfae8a5f4176ccaa6099ce5ce555924057f3d3 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/final-cli-eccfae8-canonical/commands/final-cli-build.command

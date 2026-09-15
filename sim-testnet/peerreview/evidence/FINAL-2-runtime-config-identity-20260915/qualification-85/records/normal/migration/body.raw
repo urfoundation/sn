@@ -1,0 +1,126 @@
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority
+=== PAUSE TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/runtime
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/immutable
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/activation
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/custody
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/receipt
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/nonce
+=== RUN   TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/pending
+--- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites (3.89s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/runtime (0.25s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/immutable (0.24s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/activation (0.23s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/custody (0.25s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/receipt (0.28s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/nonce (0.25s)
+    --- PASS: TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/pending (0.31s)
+=== RUN   TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory
+=== RUN   TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/artifact.json
+=== RUN   TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/budget.json
+=== RUN   TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/request.json
+=== RUN   TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/result.json
+--- PASS: TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory (2.08s)
+    --- PASS: TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/artifact.json (0.16s)
+    --- PASS: TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/budget.json (0.19s)
+    --- PASS: TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/request.json (0.15s)
+    --- PASS: TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/result.json (0.20s)
+=== RUN   TestCoordinatorRepairCarryKeepsOriginalProbeAndNextNonceSeparate
+--- PASS: TestCoordinatorRepairCarryKeepsOriginalProbeAndNextNonceSeparate (0.03s)
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/old-upgrade
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/result-signature
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/companion-source
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/next-batcher
+=== RUN   TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/batcher-signer
+--- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade (2.62s)
+    --- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/old-upgrade (0.05s)
+    --- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/result-signature (0.08s)
+    --- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/companion-source (0.04s)
+    --- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/next-batcher (0.05s)
+    --- PASS: TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/batcher-signer (0.07s)
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/source
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/action
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/intent
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/hash
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/inclusion
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/block
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/signer
+=== RUN   TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/nonce
+--- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions (2.16s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/source (0.03s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/action (0.02s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/intent (0.04s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/hash (0.03s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/inclusion (0.02s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/block (0.02s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/signer (0.02s)
+    --- PASS: TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/nonce (0.02s)
+=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== RUN   TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+=== PAUSE TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+=== RUN   TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+=== PAUSE TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+=== RUN   TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+=== PAUSE TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+=== RUN   TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== PAUSE TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== RUN   TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== PAUSE TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== RUN   TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys
+--- PASS: TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys (88.77s)
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair
+    runtime_config_identity_test.go:330: setup migration changed original action or budget authority: <nil>
+--- FAIL: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (2.03s)
+=== CONT  TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+=== CONT  TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-observation
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-projection
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-field
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-intent-field
+=== RUN   TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/wrong-field-type
+--- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority (0.00s)
+    --- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-observation (0.00s)
+    --- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-projection (0.00s)
+    --- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-field (0.00s)
+    --- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-intent-field (0.00s)
+    --- PASS: TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/wrong-field-type (0.00s)
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership (0.01s)
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire (0.00s)
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin (0.01s)
+=== CONT  TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+--- PASS: TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority (0.49s)
+=== CONT  TestValidatorEvidenceHistoricalLockPreservesStaticControls
+--- PASS: TestValidatorEvidenceHistoricalLockPreservesStaticControls (0.02s)
+=== CONT  TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions (0.73s)
+=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution (0.83s)
+=== CONT  TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+--- PASS: TestValidatorEvidenceHistoricalLockRejectsApprovalDrift (0.84s)
+=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (0.72s)
+--- PASS: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (0.67s)
+--- PASS: TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority (0.91s)
+--- PASS: TestValidatorEvidenceHistoricalLockRejectsForeignRuntime (3.32s)
+FAIL

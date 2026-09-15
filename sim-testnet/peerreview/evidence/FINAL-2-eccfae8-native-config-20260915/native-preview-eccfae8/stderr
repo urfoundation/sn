@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0915 01:25:42.929906  125656 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0915 01:25:42.930117  125656 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0915 01:25:42.930201  125656 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0915 01:25:42.930228  125656 env.go:67] [env]settings = map[]
+sim-testnet: coordinator repair completed source authority: coordinator repair configured strict domain differs

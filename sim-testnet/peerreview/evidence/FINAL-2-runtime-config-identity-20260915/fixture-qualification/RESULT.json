@@ -1,0 +1,11 @@
+{
+  "source_head": "5a411d2bf57e03c60a6ea3b3998d1cf401877342",
+  "source_parent": "85c09583ce8a0728b4b33b04b19c9e7d7ea1272a",
+  "scope": {"root": "TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair", "top_level_roots": 1, "descendants": 0},
+  "formatter": {"path": "sim-testnet/runtime_config_identity_test.go", "bytes_changed": 0},
+  "normal": {"compile_exit": 0, "binary_sha256": "011e9497babf39ee8760a8fcaed7e3921a2403eac9f2ed92e43d2abeb6f77657", "p1": "PASS", "p2": "PASS", "p3": "PASS"},
+  "race": {"compile_exit": 0, "binary_sha256": "7dc0224ad65db3cacb61172d0b6fab13e14f10d16c3704de0379372035b1c06c", "p1": "PASS", "p2": "PASS", "p3": "PASS"},
+  "every_body": {"outer_exit": 0, "body_exit": 0, "converter_exit": 0, "replay_exit": 0, "compiled_roots": 1, "events": 7, "source_manifests": 13, "repositories_equal": true, "binary_equal": true},
+  "reused_scope": {"prior_85_top_level_passes_per_mode": 69, "causal5_reused": true, "broad_70_matrix_rerun": false},
+  "excluded": ["compiled binaries", "cache and temporary directories", "source worktree", "independent causal subtree"]
+}

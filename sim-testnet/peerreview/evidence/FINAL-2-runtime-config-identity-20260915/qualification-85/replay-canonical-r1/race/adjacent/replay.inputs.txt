@@ -1,0 +1,4 @@
+events=/home/by/urnetwork/temp/sn-runtime-config-identity-correction-20260915/terra-runtime/qualification-runtime-config-identity-85c0958/race/adjacent-sim-testnet/events.json
+outcomes=/home/by/urnetwork/temp/sn-runtime-config-identity-correction-20260915/terra-runtime/qualification-runtime-config-identity-85c0958/replay-canonical-retained-events-r1/inputs/adjacent.actual-passing.outcomes.tsv
+literals=/home/by/urnetwork/temp/sn-runtime-config-identity-correction-20260915/terra-runtime/qualification-runtime-config-identity-85c0958/replay-canonical-retained-events-r1/inputs/empty-literals.tsv
+body_exit=/home/by/urnetwork/temp/sn-runtime-config-identity-correction-20260915/terra-runtime/qualification-runtime-config-identity-85c0958/race/adjacent-sim-testnet/body.exit

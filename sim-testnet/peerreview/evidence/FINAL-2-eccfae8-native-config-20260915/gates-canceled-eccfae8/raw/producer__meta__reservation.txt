@@ -1,0 +1,7 @@
+owner=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-eccfae8-canonical-r1
+reservation=RELEASE_GATE_CONCURRENT_GATES=1 RELEASE_GATE_JOBS=4
+jobs=4
+cpus_per_job=4
+reserved_cpus=16
+parallel_gate_aggregate=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-eccfae8-canonical-r1
+combined_reserved_cpus=20

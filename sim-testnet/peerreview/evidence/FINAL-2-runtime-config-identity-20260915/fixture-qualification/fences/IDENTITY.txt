@@ -1,0 +1,4 @@
+source=/home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/sn
+head=5a411d2bf57e03c60a6ea3b3998d1cf401877342
+selector=^TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair$
+body_exit_receipt=absolute-stage-body-exit

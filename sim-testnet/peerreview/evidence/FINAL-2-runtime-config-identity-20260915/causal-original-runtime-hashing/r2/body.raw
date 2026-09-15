@@ -1,0 +1,24 @@
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair
+    runtime_config_identity_test.go:307: original signed repair lost authority after explicit runtime migration: coordinator repair configured strict domain differs
+--- FAIL: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (1.98s)
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution
+=== CONT  TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire (0.00s)
+=== NAME  TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership
+    runtime_config_identity_test.go:123: explicit runtime migration changed signed configuration identity: <nil>
+--- FAIL: TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership (0.01s)
+=== NAME  TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions
+    runtime_config_identity_test.go:173: migration approval lost its explicit pin or changed retained activation inputs
+--- FAIL: TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions (0.33s)
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution (0.74s)
+FAIL

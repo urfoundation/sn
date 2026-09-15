@@ -1,5 +1,102 @@
 # Sim-testnet finalization report 2
 
+**Current status: in progress; `final_acceptance=false`.** At **02:38 UTC on
+2026-09-15**, the soak remains stopped and the approved reserve repair is
+unsubmitted. The runtime configuration-identity correction is qualified. No new
+setup plan or transaction has resulted from this local qualification.
+All 1,212 finalized renewals, 3,521 action identities, generation 3 custody and
+the original signed probe anchor and nonce 34 remain retained.
+
+The migration explicitly preserves the original 455 configuration identity
+while requiring the exact reviewed 458 runtime for current authority. The
+optional public `config_identity_runtime_spec: 455` pin is also bound into the
+new setup plan hash. Existing historical signature and hash comparisons remain
+intact; the original signed archives are not rewritten. Source
+`85c09583ce8a0728b4b33b04b19c9e7d7ea1272a` completed the 70 selected tests in
+both normal and race modes: **69 PASS, one FAIL per mode**. The two adjacent
+50-test groups passed. The sole failed root authenticated the original signed
+repair, then incorrectly compared plans with different RPC routes: its HTTP
+fixture had replaced the approved `OperationalEVM` endpoint after planning.
+
+The one-file fixture correction is
+`5a411d2bf57e03c60a6ea3b3998d1cf401877342`. It preserves the approved endpoint,
+reproduces the original resolved-input hash, and verifies that changing a
+synthetic route changes only the `config.render` action intent. The corrected
+root passed **three consecutive fresh normal runs and three consecutive fresh
+race runs**, with exact one-test lists, seven events per run and all body,
+converter, verifier and outer exits0. All thirteen repository observations
+and each mode's binary remained unchanged. The normal binary SHA-256 is
+`011e9497babf39ee8760a8fcaed7e3921a2403eac9f2ed92e43d2abeb6f77657`;
+the race binary is
+`7dc0224ad65db3cacb61172d0b6fab13e14f10d16c3704de0379372035b1c06c`.
+The final race owner closed at **02:38:10 UTC**. The other 69 test bodies per
+mode are unchanged and retain their original qualified scope. Together these
+provide passing scoped coverage of the 70 affected roots per mode across the
+two named sources; the failed 85c0958 matrices remain failures.
+[Implementation, original failures, corrected confirmations and scoped reuse](peerreview/evidence/FINAL-2-runtime-config-identity-20260915/README.md).
+The portable bundle contains680 checksum entries; its manifest SHA-256 is
+`09713bbd8a396831b926cda1fe1ed758d7fc2b384fdedea1dfade5e186361fe9`.
+Initial event-verifier invocations passed a numeric
+status where the existing verifier requires an absolute `body.exit` path.
+Replaying the retained events with that operand corrected verified all four
+actual outcomes without rerunning any test body.
+
+The separate production control restores only the old runtime hashing. It
+reproduces **three expected failures with two passing controls**: body exit1,
+converter/checker/outer exits0 and 42 events. Source, dependency, binary and
+mutation observations remain equal. Its repair failure occurs at the unchanged
+authentication call before the corrected fixture's planning assertions, so this
+control retains its scope across the one-file fixture correction.
+[Original-hashing control](peerreview/evidence/FINAL-2-runtime-config-identity-20260915/causal-original-runtime-hashing/RESULT.json).
+
+The updated read-only parser built successfully at **01:51:24 UTC**, SHA-256
+`5cee8ea3fe7dd23678d8ee9b646433ee2666390ad61cb1ace833caecebf327e6`.
+It rendered the successor lock at **01:58:24–01:58:28 UTC**, with 19 equal
+repository/library observations and no RPC or campaign-state action. The YAML
+SHA-256 is `c437900d8cb2d29ff0d363ef629b88ceb8ace35976bd28bfd194a2d8dc6eb639`.
+Only `repositories.sn_go_source_hash` changed; all other lock fields are equal.
+The test-only fixture correction does not require another render. Publication,
+the canonical executable, actual setup, both complete gates and the real
+RC/production soak remain outstanding.
+[Parser and exact lock-render receipts](peerreview/evidence/FINAL-2-runtime-config-identity-20260915/final-lock/RESULT.json).
+
+## Latest native attempt: September 15, 01:26 UTC
+
+The runtime455 historical-lock correction is qualified and published at
+`eccfae8a5f4176ccaa6099ce5ce555924057f3d3`. Its next actual setup attempt
+reached a different retained-history check and stopped without changing the
+six recorded campaign-state files or submitting a transaction.
+
+The matching canonical executable built with actual build/outer exits0 at
+**01:24:29 UTC**, a genuine clean eccfae8 Git stamp and equal thirteen-repository
+observations. Its SHA-256 is
+`73264ab8365c6cf538390c53ed0a6a71a39d3972e405b916088559b486218e99`.
+Using the same retained campaign and LAN RPC options, read-only setup ran at
+**01:25:42–01:26:11 UTC** and exited1 with
+`coordinator repair completed source authority: coordinator repair configured
+strict domain differs`. It emitted no new plan. The prior archived-lock refusal
+did not recur.
+
+The refusing comparison is the configuration identity: changing the public
+manifest's expected runtime from 455 to 458 changed ConfigHash. The original
+signed repair, probe and activation evidence still authenticates its previous
+identity. The explicit configuration-identity correction described above
+addresses that comparison while retaining the signed originals, action intents
+and budgets. It has not yet been exercised against the actual retained state.
+
+Once that actual failure proved a production successor was necessary, both
+eccfae8 full-gate attempts were intentionally canceled before any test phase.
+Producer closed143 at **01:32:11 UTC** and aggregate at **01:33:33 UTC**. Both
+passed source-freeze, source-integrity, binding-toolchain and runtime-source
+preflights, then were interrupted during runtime-metadata attestation. Both
+owners and their private process records are gone. These are recorded
+cancellations, not passing full gates or executed-test failures.
+[Canonical build, native refusal and gate cancellation evidence](peerreview/evidence/FINAL-2-eccfae8-native-config-20260915/README.md).
+The 123-entry portable manifest SHA-256 is
+`b6b1dfc4fa43778945fe3c4d1910d5c69bf2ee96654cc2d6c74ad761ab13ce35`.
+
+## Historical checkpoint: September 15, 01:15 UTC
+
 **Current status: in progress; `final_acceptance=false`.** At **01:15 UTC on
 2026-09-15**, the soak remains stopped and the **6,000-alpha repair remains
 unsubmitted**. The next actual setup preview exposed a historical-evidence

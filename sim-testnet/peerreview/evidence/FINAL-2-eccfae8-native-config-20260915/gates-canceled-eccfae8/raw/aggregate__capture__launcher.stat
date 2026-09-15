@@ -1,0 +1,4 @@
+700 1080 52340993 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-eccfae8-canonical-r1/commands/aggregate-gate.command
+700 1841 52180110 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-eccfae8-canonical-r1/capture-aggregate-gate.sh
+600 3986 52340994 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-eccfae8-canonical-r1/meta/source-pair-aggregate.tsv
+600 20 52340996 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-eccfae8-canonical-r1/meta/gomodcache.path

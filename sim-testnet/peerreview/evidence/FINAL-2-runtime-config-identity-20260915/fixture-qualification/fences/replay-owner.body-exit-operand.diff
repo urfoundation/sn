@@ -1,0 +1,11 @@
+--- /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/qualification-runtime-config-fixture-5a411d2/templates/test-sim-testnet-replay-owner.sh	2026-09-15 02:23:14.156913843 +0000
++++ /home/by/urnetwork/temp/sn-runtime-config-fixture-correction-20260915/terra-runtime/qualification-runtime-config-fixture-5a411d2/templates/test-sim-testnet-replay-owner.corrected.sh	2026-09-15 02:23:14.165913489 +0000
+@@ -64,7 +64,7 @@
+ ( cd "$source_root/sim-testnet" && go tool test2json -t -p "$package" ) < "$stage/body.raw" > "$stage/events.json" 2> "$stage/converter.stderr"
+ converter_status=$?
+ printf '%s\n' "$converter_status" > "$stage/converter.exit"
+-"$replay" replay "$stage/events.json" "$expected_file" "$literal_file" "$package" "$body_status" > "$stage/events.validation.json" 2> "$stage/events.validation.stderr"
++"$replay" replay "$stage/events.json" "$expected_file" "$literal_file" "$package" "$stage/body.exit" > "$stage/events.validation.json" 2> "$stage/events.validation.stderr"
+ validation_status=$?
+ printf '%s\n' "$validation_status" > "$stage/validation.exit"
+ set -e

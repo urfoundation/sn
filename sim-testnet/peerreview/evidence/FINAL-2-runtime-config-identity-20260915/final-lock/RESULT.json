@@ -1,0 +1,34 @@
+{
+  "kind": "readonly-runtime-config-identity-release-lock-preview",
+  "status": "rendered_reviewed_installed_in_idle_integration",
+  "source": "85c09583ce8a0728b4b33b04b19c9e7d7ea1272a",
+  "source_raw": "c4b6a6c0f5dbcb23fb67ac6f686a1022e31c05fb",
+  "idle_install_commit": "fa838d4c2dc374f8d111414763c5e4d5122e60ba",
+  "canonical_main_unchanged": "eccfae8a5f4176ccaa6099ce5ce555924057f3d3",
+  "renderer_sha256": "5cee8ea3fe7dd23678d8ee9b646433ee2666390ad61cb1ace833caecebf327e6",
+  "renderer_vcs_attestation_required": false,
+  "body_exit": 0,
+  "outer_exit": 0,
+  "started_at": "2026-09-15T01:58:24Z",
+  "finished_at": "2026-09-15T01:58:28Z",
+  "repository_observations": 19,
+  "repositories_before_after_equal": true,
+  "repositories_pair_sha256": "f43b8da6fd70ce376b6f46714832f828b61df1cbec5f052c3b55a36155a7309e",
+  "input_lock_unchanged_during_preview": true,
+  "input_lock_sha256": "5b8c412454adfde72f2cf51c682b5ce4b9b335a2095eaafc21bf4e92a153a4ab",
+  "candidate_lock_sha256": "c437900d8cb2d29ff0d363ef629b88ceb8ace35976bd28bfd194a2d8dc6eb639",
+  "actual_changed_fields": {
+    "repositories.sn_go_source_hash": {
+      "from": "sha256:93bb23572d17082aea5e64611377753f7348503bff7cfd44494798c6b7284bc0",
+      "to": "sha256:d7423269c0f2b23b9de9c282921312191e9c9f30bed4f4ad12aa1e4a3cd69f28"
+    }
+  },
+  "all_other_lock_fields_equal": true,
+  "protocol_hash_note": "The prepared request anticipated a possible protocol-source change. Actual protocol digest is unchanged: protocolSourceHash enumerates protocol, docs/spec and explicit specification/enforcement paths, not deploy/testnet/public.yml. No retry or lock edit was needed.",
+  "read_only_preview": true,
+  "rpc_calls": 0,
+  "native_state_changes": 0,
+  "transactions": 0,
+  "qualification_status": "70 affected normal/race roots plus required confirmation and causal pending; no final acceptance",
+  "source_isolation_note": "The qualification source lacked ignored Foundry checkouts. Root left it untouched and used clean idle integration at identical source85 with already-pinned libraries. Root-authored report drafts were preserved externally before the idle fast-forward."
+}

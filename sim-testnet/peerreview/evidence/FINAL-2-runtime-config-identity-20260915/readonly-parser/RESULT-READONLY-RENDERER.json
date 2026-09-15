@@ -1,0 +1,12 @@
+{
+  "kind":"readonly-runtime-config-identity-renderer-cli-build",
+  "build_exit":0,
+  "repos_before_after_identical":true,
+  "repos_before_sha256":"e638f4f85b71416c1304790d381635b6c4202918a6338542202b4f945a387fdc",
+  "repos_after_sha256":"e638f4f85b71416c1304790d381635b6c4202918a6338542202b4f945a387fdc",
+  "artifact":{"path":"/home/by/urnetwork/temp/sn-runtime-config-identity-correction-20260915/terra-runtime/renderer-cli-runtime-config-identity-readonly-prepared/sim-testnet","sha256":"5cee8ea3fe7dd23678d8ee9b646433ee2666390ad61cb1ace833caecebf327e6","bytes":140675640,"mode":"0700"},
+  "source_head":"85c09583ce8a0728b4b33b04b19c9e7d7ea1272a",
+  "build_flags":{"trimpath":true,"buildvcs":true},
+  "vcs_attestation_required":false,
+  "native_or_rpc_action":"none"
+}

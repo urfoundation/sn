@@ -1,0 +1,7 @@
+{"Time":"2026-09-15T02:32:14.376331957Z","Action":"start","Package":"github.com/urfoundation/sn/sim-testnet"}
+{"Time":"2026-09-15T02:32:14.376613966Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair"}
+{"Time":"2026-09-15T02:32:14.376630474Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair\n"}
+{"Time":"2026-09-15T02:32:14.376660446Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (2.64s)\n"}
+{"Time":"2026-09-15T02:32:14.376673034Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Elapsed":2.64}
+{"Time":"2026-09-15T02:32:14.376689071Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Output":"PASS\n"}
+{"Time":"2026-09-15T02:32:14.376698849Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Elapsed":0}

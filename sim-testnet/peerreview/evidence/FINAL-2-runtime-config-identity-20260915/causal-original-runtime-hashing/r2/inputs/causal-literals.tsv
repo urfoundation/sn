@@ -1,0 +1,3 @@
+TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair	original signed repair lost authority after explicit runtime migration: coordinator repair configured strict domain differs
+TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions	migration approval lost its explicit pin or changed retained activation inputs
+TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership	explicit runtime migration changed signed configuration identity

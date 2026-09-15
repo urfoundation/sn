@@ -1,0 +1,3 @@
+=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair
+--- PASS: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (2.64s)
+PASS

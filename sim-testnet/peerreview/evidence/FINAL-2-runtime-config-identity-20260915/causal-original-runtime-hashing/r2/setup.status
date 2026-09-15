@@ -1,0 +1,6 @@
+setup=0
+candidate_clean=true
+worktree_head=85c09583ce8a0728b4b33b04b19c9e7d7ea1272a
+patch_forward_check=true
+patch_reverse_check=true
+mutant_path_exact=true

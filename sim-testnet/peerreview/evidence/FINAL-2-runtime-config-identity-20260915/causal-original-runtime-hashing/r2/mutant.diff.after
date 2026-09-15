@@ -1,0 +1,12 @@
+diff --git a/sim-testnet/config.go b/sim-testnet/config.go
+index f6a29f8..3f88720 100644
+--- a/sim-testnet/config.go
++++ b/sim-testnet/config.go
+@@ -510,7 +510,6 @@ func releaseConfigHash(config *HarnessConfig, public *PublicManifest, hyperparam
+ 	}
+ 	identity := *public
+ 	if identity.Chain.ConfigIdentityRuntimeSpec != 0 {
+-		identity.Chain.ExpectedRuntimeSpec = identity.Chain.ConfigIdentityRuntimeSpec
+ 		identity.Chain.ConfigIdentityRuntimeSpec = 0
+ 	}
+ 	return canonicalHashHex(struct {

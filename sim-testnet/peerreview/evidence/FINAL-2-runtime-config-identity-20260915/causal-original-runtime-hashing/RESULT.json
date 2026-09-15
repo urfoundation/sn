@@ -1,0 +1,11 @@
+{
+  "kind":"runtime-config-identity-original-hashing-causal",
+  "candidate":{"head":"85c09583ce8a0728b4b33b04b19c9e7d7ea1272a","clean":true},
+  "input_seal":{"handoff_sha256":"9d84c405a19cd25ea7064a979bac873058ebda27ff887991e7eba92be7d4900b","handoff_sums_sha256":"8a337a003707f5d791a103737a600ba9974ad7ca55f2ef38cb63f84754b7a09a","patch_sha256":"400b5a4de792fedc44388e0b91d5f2688afcf2aa018e0bb4707e445aa041ac33"},
+  "initial_setup_refusal":{"status":125,"phase":"pre-worktree","reason":"handoff path assumed under handoff/; retained separately","compiler_started":false,"source_mutated":false},
+  "mutation":{"path":"sim-testnet/config.go","forward_reverse_checks":true,"stable_diff_sha256":"239a07575effc72a3f57352552c4df980fbf324681485f7c314c806d67b74b0c"},
+  "compile":{"outer_exit":0,"build_exit":0,"started":"2026-09-15T02:01:58Z","finished":"2026-09-15T02:04:02Z","binary_sha256":"f94a9b5451d971f6151bfcf634c9249af983cffe6ccc151c285ae97f6c534828","gomaxprocs":4},
+  "body":{"outer_exit":0,"body_exit":1,"converter_exit":0,"checker_exit":0,"started":"2026-09-15T02:04:40Z","finished":"2026-09-15T02:04:47Z","roots":5,"expected_failures":3,"passes":2,"events":42,"outcomes":"matched"},
+  "fences":{"candidate_dependency_pairs":13,"candidate_dependency_pairs_equal":true,"pair_sha256":"b8c006c051b866f9d83b9e274bc71b677b5aa8e7c7b300214744b132251bc101","binary_equal":true,"mutant_diff_equal":true,"reverse_apply_check":true,"package_cwd":"sim-testnet","fixtures":["testnet.yml","../deploy/testnet/policy-v1.yml"]},
+  "native_rpc_test_action":"none"
+}

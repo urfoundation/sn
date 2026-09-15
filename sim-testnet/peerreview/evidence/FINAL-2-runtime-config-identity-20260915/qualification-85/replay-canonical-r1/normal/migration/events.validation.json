@@ -1,0 +1,1 @@
+{"status":"matched","package":"github.com/urfoundation/sn/sim-testnet","verification":{"roots":20,"passed":19,"expected_failures":1,"subtests":29,"subtests_passed":29,"expected_subtest_failures":0,"binary_exit":1,"events":252,"bytes":61537}}

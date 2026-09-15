@@ -1,0 +1,13 @@
+{
+  "source_head": "85c09583ce8a0728b4b33b04b19c9e7d7ea1272a",
+  "source_parent": "c4b6a6c0f5dbcb23fb67ac6f686a1022e31c05fb",
+  "scope": {"top_level_roots": 70, "declared_descendants": 58, "migration_roots": 20, "adjacent_roots": 50},
+  "normal": {"compile_exit": 0, "migration_body_exit": 1, "migration_top_level_pass": 19, "migration_top_level_fail": 1, "adjacent_body_exit": 0, "adjacent_top_level_pass": 50, "adjacent_top_level_fail": 0, "converter_exit": 0, "source_fences_equal": true, "binary_fences_equal": true},
+  "race": {"compile_exit": 0, "migration_body_exit": 1, "migration_top_level_pass": 19, "migration_top_level_fail": 1, "adjacent_body_exit": 0, "adjacent_top_level_pass": 50, "adjacent_top_level_fail": 0, "converter_exit": 0, "source_fences_equal": true, "binary_fences_equal": true},
+  "sole_candidate_failure": {"root": "TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair", "literal": "setup migration changed original action or budget authority: <nil>", "normal_and_race": true},
+  "original_precompiler_refusals": {"normal": 127, "race": 127, "cause": "capture-local missing snapshot path; no compiler/body admitted"},
+  "original_replay_refusals": {"normal_migration": "path must be absolute and canonical", "normal_adjacent": "path must be absolute and canonical", "race_migration": "path must be absolute and canonical", "race_adjacent": "path must be absolute and canonical"},
+  "canonical_replay_r1": {"normal_migration": 0, "normal_adjacent": 0, "race_migration": 0, "race_adjacent": 0, "body_rerun": false},
+  "qualification_status": "failed candidate; no confirmation retries were run",
+  "excluded": ["compiled binaries", "cache and temporary directories", "source worktree", "independent causal subtree"]
+}

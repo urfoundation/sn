@@ -1,0 +1,7 @@
+source=85c09583ce8a0728b4b33b04b19c9e7d7ea1272a
+mode=normal
+package=github.com/urfoundation/sn/sim-testnet
+expected_cpu=4
+expected_body_exit=1
+expected_outcomes=3FAIL,2PASS
+kind=causal-original-runtime-hashing

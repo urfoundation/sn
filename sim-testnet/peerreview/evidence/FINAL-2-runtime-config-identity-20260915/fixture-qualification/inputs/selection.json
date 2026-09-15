@@ -1,0 +1,13 @@
+{
+  "head": "5a411d2bf57e03c60a6ea3b3998d1cf401877342",
+  "base": "85c09583ce8a0728b4b33b04b19c9e7d7ea1272a",
+  "package": "github.com/urfoundation/sn/sim-testnet",
+  "package_directory": "sim-testnet",
+  "selector": "^TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair$",
+  "roots": ["TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair"],
+  "descendants": [],
+  "expected_body_exit": 0,
+  "normal": {"test_seconds": 600, "outer_seconds": 660, "fresh_sequential_passes": 3},
+  "race": {"test_seconds": 600, "outer_seconds": 660, "fresh_sequential_passes": 3},
+  "causal_rerun_required": false
+}

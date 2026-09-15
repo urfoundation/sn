@@ -46,7 +46,65 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 01:15 UTC: the canonical c572 build passed.
+Latest checkpoint, 2026-09-15 02:38 UTC: the explicit runtime configuration
+identity correction is frozen at85c0958. Its normal/race70 matrices each have
+69PASS/oneFAIL; both adjacent50 bodies pass. The sole failed root already
+authenticated the original repair but then planned with a temporary mock RPC
+route, correctly changing resolved inputs and config.render intent. The one-file
+fixture correction5a411d2 preserves the approved route and adds a deterministic
+changed-route control. Its three fresh normal passes and three fresh race passes
+are complete with exact one-test lists, seven events each and all outer/body/
+converter/verifier exits0. All13 repository/source observations and per-mode
+binaries remain unchanged; the final owner closed02:38:10UTC. The680-entry
+portable bundle is sealed with manifest SHA-256
+`09713bbd8a396831b926cda1fe1ed758d7fc2b384fdedea1dfade5e186361fe9`.
+Retain the69
+unchanged passing roots per mode and earlier181/36 scopes. All
+four original matrix bodies and their capture-only verifier refusals are saved;
+corrected replay of their retained events passes without body reruns.
+
+The original-hashing control closed3 expectedFAIL/2PASS with body1 and
+converter/checker/outer0; all source/dependency/binary/diff observations match.
+Its failing authentication occurs before the fixture's changed planning section,
+so no new causal compile is needed. The updated read-only parser and lock render
+also closed0; lock SHA-256 is
+`c437900d8cb2d29ff0d363ef629b88ceb8ace35976bd28bfd194a2d8dc6eb639`.
+Only SN's production Go hash changes. Idle integrationf9970d6 includes that lock
+and the qualified fixture correction; it is not published. Seal retained
+evidence and publish. Reuse the accepted
+parser for actual read-only setup while the canonical stamped CLI and both full
+gates run. The canonical executable and producer PASS still gate approved apply.
+Soak stopped; repair unsubmitted; approvals and retained custody unchanged.
+
+Historical checkpoint, 2026-09-15 01:39 UTC: the historical455 lock correction is
+qualified and published at eccfae8a5f4176ccaa6099ce5ce555924057f3d3. Its final
+CLI built cleanly and passed, SHA-256
+`73264ab8365c6cf538390c53ed0a6a71a39d3972e405b916088559b486218e99`.
+Actual read-only setup advanced past that check, then exited1 at01:26:11 with
+`coordinator repair configured strict domain differs`. All six state files,
+binary and lock remained unchanged; no successor plan or transaction resulted.
+
+The public expected runtime455→458 change also changed ConfigHash, while
+original signed repair/probe/activation history retains the previous identity.
+Astra is implementing an explicit reviewed configuration-identity pin, bound
+into the new setup plan while current runtime authority remains exact458.
+The shared hash/admission correction and deterministic transition/adjacent
+controls are not qualified yet. Preserve action intents, ResolvedInputsHash,
+signed originals,1212 finalized renewals,3521 actions, generation3 and nonce34.
+
+Both eccfae8 full gates were intentionally canceled once the native failure
+proved a production successor was required. Producer closed143 at01:32:11;
+aggregate closed143 at01:33:33. Each passed its first four preflights, was
+interrupted during runtime metadata, and admitted zero test phases. All owners
+and private process records are gone. The123-entry portable capture manifest
+is `b6b1dfc4fa43778945fe3c4d1910d5c69bf2ee96654cc2d6c74ad761ab13ce35`.
+These attempts are cancellations, not full-gate passes or executed-test failures.
+An added public manifest field requires an updated parser for the next lock
+render; overlap that one read-only build with the frozen-source qualification.
+Then publish the successor, build the canonical CLI, retry actual setup and run
+both full gates. Producer PASS still gates approved apply; soak remains stopped.
+
+Historical checkpoint, 2026-09-15 01:15 UTC: the canonical c572 build passed.
 The actual read-only setup then exited1 at00:24:56 because the historical
 validator-evidence reader applied current458 lock validation to an authentic
 original455 archive. All six campaign-state hashes, binary and lock were

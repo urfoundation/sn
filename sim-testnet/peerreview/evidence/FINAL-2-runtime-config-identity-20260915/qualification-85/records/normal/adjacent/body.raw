@@ -1,0 +1,211 @@
+=== RUN   TestPublicRPCOverrideRequiresBoundedEventIndexingCapability
+--- PASS: TestPublicRPCOverrideRequiresBoundedEventIndexingCapability (0.00s)
+=== RUN   TestResolvedConfigBindsAllRuntimeVersions
+--- PASS: TestResolvedConfigBindsAllRuntimeVersions (0.01s)
+=== RUN   TestResolvedConfigPinsReviewedRuntimeArtifactIdentity
+--- PASS: TestResolvedConfigPinsReviewedRuntimeArtifactIdentity (0.01s)
+=== RUN   TestReleaseConfigHashBindsPublicAndHyperparameterManifests
+--- PASS: TestReleaseConfigHashBindsPublicAndHyperparameterManifests (0.00s)
+=== RUN   TestReleaseConfigHashRejectsIncompleteManifestSet
+--- PASS: TestReleaseConfigHashRejectsIncompleteManifestSet (0.00s)
+=== RUN   TestValidatorEvidenceCarryRevisionBindsFreshActivationAndRelayOwners
+=== PAUSE TestValidatorEvidenceCarryRevisionBindsFreshActivationAndRelayOwners
+=== RUN   TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen
+=== PAUSE TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen
+=== RUN   TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases
+=== PAUSE TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases
+=== RUN   TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents
+=== PAUSE TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents
+=== RUN   TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads
+=== PAUSE TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads
+=== RUN   TestValidatorEvidenceFixtureReleaseLockMatchesGeneratedBodies
+--- PASS: TestValidatorEvidenceFixtureReleaseLockMatchesGeneratedBodies (0.01s)
+=== RUN   TestValidatorEvidenceFixtureDeploymentAnchorsBindCompleteSource
+--- PASS: TestValidatorEvidenceFixtureDeploymentAnchorsBindCompleteSource (0.94s)
+=== RUN   TestValidatorEvidenceFixtureDeploymentAnchorsKeepCurrentApprovalAndOwnSources
+--- PASS: TestValidatorEvidenceFixtureDeploymentAnchorsKeepCurrentApprovalAndOwnSources (0.31s)
+=== RUN   TestValidatorEvidenceFixtureCanonicalWireIdentityRefusesDrift
+--- PASS: TestValidatorEvidenceFixtureCanonicalWireIdentityRefusesDrift (0.36s)
+=== RUN   TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+=== PAUSE TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+=== RUN   TestValidatorEvidenceCarryHistoricalActionRecovery
+=== PAUSE TestValidatorEvidenceCarryHistoricalActionRecovery
+=== RUN   TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+=== PAUSE TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+=== RUN   TestValidatorEvidenceCarryHistoricalCaptureCensus
+=== PAUSE TestValidatorEvidenceCarryHistoricalCaptureCensus
+=== RUN   TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+=== PAUSE TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+=== RUN   TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+=== PAUSE TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+=== RUN   TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal
+=== PAUSE TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal
+=== RUN   TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+=== PAUSE TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+=== RUN   TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory
+=== PAUSE TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory
+=== RUN   TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+=== PAUSE TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+=== RUN   TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+=== PAUSE TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+=== RUN   TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors
+=== PAUSE TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors
+=== RUN   TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce
+=== PAUSE TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce
+=== RUN   TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJournal
+=== PAUSE TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJournal
+=== RUN   TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority
+=== PAUSE TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority
+=== RUN   TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding
+=== PAUSE TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding
+=== RUN   TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts
+=== PAUSE TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts
+=== RUN   TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders
+=== PAUSE TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders
+=== RUN   TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC
+=== PAUSE TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC
+=== RUN   TestValidatorEvidenceCarryRejectsUnreviewedABIAndImmutableAliases
+=== PAUSE TestValidatorEvidenceCarryRejectsUnreviewedABIAndImmutableAliases
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/implicit-private
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unbound-origin
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/wrong-authority
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/current-public-receipt
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/false-independent-clone
+=== RUN   TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unapproved-plan
+--- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts (1.52s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/implicit-private (0.00s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unbound-origin (0.17s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/wrong-authority (0.00s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/current-public-receipt (0.16s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/false-independent-clone (0.17s)
+    --- PASS: TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unapproved-plan (0.00s)
+=== RUN   TestOwnedRPCPlanApprovalBindsExactRouteWithoutChangingCustody
+--- PASS: TestOwnedRPCPlanApprovalBindsExactRouteWithoutChangingCustody (0.71s)
+=== RUN   TestPersistedV3PlanHashSurvivesV4WireFields
+--- PASS: TestPersistedV3PlanHashSurvivesV4WireFields (0.66s)
+=== RUN   TestPersistedHistoricalPlanHashNormalizesOnlySchemaObservations
+--- PASS: TestPersistedHistoricalPlanHashNormalizesOnlySchemaObservations (1.25s)
+=== RUN   TestPersistedV4HashPreservesPreV5WireShape
+--- PASS: TestPersistedV4HashPreservesPreV5WireShape (0.00s)
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/transferable
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/stored_lock
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/collateral
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_alpha
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_collateral
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/initial_minimum
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/price
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_alpha
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/reserve_alpha
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/independent_alpha
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_source
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_implementation
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_runtime
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_deployment
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_executable
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_probe
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block_hash
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployer_nonce
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block_hash
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployment
+=== RUN   TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_superseded_spend
+--- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/transferable (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/stored_lock (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/collateral (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_alpha (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_collateral (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/initial_minimum (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/price (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_alpha (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/reserve_alpha (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/independent_alpha (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_source (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_implementation (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_runtime (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_deployment (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_executable (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_probe (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block_hash (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployer_nonce (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block_hash (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployment (0.00s)
+    --- PASS: TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_superseded_spend (0.00s)
+=== RUN   TestPersistedPlanHashRejectsDuplicateAndMalformedAdjacentObjects
+--- PASS: TestPersistedPlanHashRejectsDuplicateAndMalformedAdjacentObjects (0.00s)
+=== RUN   TestPersistedV4HashMatchesTypedPlanHash
+--- PASS: TestPersistedV4HashMatchesTypedPlanHash (0.27s)
+=== RUN   TestPlanHashBindsTheCompleteReleaseLock
+--- PASS: TestPlanHashBindsTheCompleteReleaseLock (0.30s)
+=== RUN   TestRuntimeConfigActionsBindTheApprovedConfigAndPolicy
+--- PASS: TestRuntimeConfigActionsBindTheApprovedConfigAndPolicy (0.30s)
+=== RUN   TestPlanHashBindsResolvedVaultLaunchInputs
+--- PASS: TestPlanHashBindsResolvedVaultLaunchInputs (0.29s)
+=== RUN   TestProducerGateCaptureSelectionRequiresIndependentPopulation
+=== PAUSE TestProducerGateCaptureSelectionRequiresIndependentPopulation
+=== RUN   TestProducerGatePinsSemanticIntegrityRegressions
+--- PASS: TestProducerGatePinsSemanticIntegrityRegressions (4.12s)
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458HistoricalPublicationsRemainEvidenceOnly
+--- PASS: TestRuntime458HistoricalPublicationsRemainEvidenceOnly (0.00s)
+=== RUN   TestRuntime458CurrentLockRejectsOfficialSeedVariant
+--- PASS: TestRuntime458CurrentLockRejectsOfficialSeedVariant (0.00s)
+=== CONT  TestValidatorEvidenceCarryRevisionBindsFreshActivationAndRelayOwners
+=== CONT  TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory
+=== CONT  TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding
+=== CONT  TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce
+--- PASS: TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding (0.05s)
+=== CONT  TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority
+--- PASS: TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce (1.18s)
+=== CONT  TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJournal
+--- PASS: TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority (1.39s)
+=== CONT  TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC
+--- PASS: TestValidatorEvidenceCarryRevisionBindsFreshActivationAndRelayOwners (1.80s)
+=== CONT  TestProducerGateCaptureSelectionRequiresIndependentPopulation
+--- PASS: TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC (1.07s)
+=== CONT  TestValidatorEvidenceCarryRejectsUnreviewedABIAndImmutableAliases
+--- PASS: TestValidatorEvidenceCarryRejectsUnreviewedABIAndImmutableAliases (0.01s)
+=== CONT  TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+--- PASS: TestProducerGateCaptureSelectionRequiresIndependentPopulation (0.84s)
+=== CONT  TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+--- PASS: TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory (3.15s)
+=== CONT  TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal
+--- PASS: TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal (1.53s)
+=== CONT  TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+--- PASS: TestValidatorEvidenceCarryHistoricalCommitmentRecovery (2.24s)
+=== CONT  TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+--- PASS: TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution (3.09s)
+=== CONT  TestValidatorEvidenceCarryHistoricalCaptureCensus
+--- PASS: TestValidatorEvidenceCarryHistoricalCoordinatorBaseline (1.82s)
+=== CONT  TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+--- PASS: TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime (2.38s)
+=== CONT  TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors
+--- PASS: TestValidatorEvidenceCarryHistoricalCaptureCensus (1.93s)
+=== CONT  TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders
+--- PASS: TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend (1.97s)
+=== CONT  TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts
+--- PASS: TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors (1.57s)
+=== CONT  TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+--- PASS: TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders (1.30s)
+=== CONT  TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads
+--- PASS: TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts (1.26s)
+=== CONT  TestValidatorEvidenceCarryHistoricalActionRecovery
+--- PASS: TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact (2.09s)
+=== CONT  TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+--- PASS: TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads (2.58s)
+=== CONT  TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases
+--- PASS: TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases (0.14s)
+=== CONT  TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents
+--- PASS: TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents (0.00s)
+=== CONT  TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen
+--- PASS: TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen (0.19s)
+--- PASS: TestValidatorEvidenceCarryHistoricalActionRecovery (2.06s)
+--- PASS: TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly (2.07s)
+--- PASS: TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJournal (38.59s)
+PASS

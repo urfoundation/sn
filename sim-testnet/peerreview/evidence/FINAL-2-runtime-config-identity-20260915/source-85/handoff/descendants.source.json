@@ -1,0 +1,355 @@
+{
+  "derivation": "Exact existing t.Run source literals; Go whitespace-to-underscore name rewriting. No newly authored root or modified offline authority root has descendants.",
+  "parents": 7,
+  "descendants": 58,
+  "entries": [
+    {
+      "name": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/batcher-signer",
+      "parent": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade",
+      "literal": "batcher-signer",
+      "source": "coordinator_repair_companion_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/companion-source",
+      "parent": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade",
+      "literal": "companion-source",
+      "source": "coordinator_repair_companion_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/next-batcher",
+      "parent": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade",
+      "literal": "next-batcher",
+      "source": "coordinator_repair_companion_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/old-upgrade",
+      "parent": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade",
+      "literal": "old-upgrade",
+      "source": "coordinator_repair_companion_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade/result-signature",
+      "parent": "TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade",
+      "literal": "result-signature",
+      "source": "coordinator_repair_companion_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/artifact.json",
+      "parent": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory",
+      "literal": "artifact.json",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/budget.json",
+      "parent": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory",
+      "literal": "budget.json",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/request.json",
+      "parent": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory",
+      "literal": "request.json",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory/result.json",
+      "parent": "TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory",
+      "literal": "result.json",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/activation",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "activation",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/custody",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "custody",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/immutable",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "immutable",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/nonce",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "nonce",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/pending",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "pending",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/receipt",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "receipt",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites/runtime",
+      "parent": "TestCoordinatorRepairCarryReplaysExactFinalizedCorrectionWithoutWrites",
+      "literal": "runtime",
+      "source": "coordinator_repair_carry_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-observation",
+      "parent": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority",
+      "literal": "changed-observation",
+      "source": "coordinator_repair_budget_document_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/changed-projection",
+      "parent": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority",
+      "literal": "changed-projection",
+      "source": "coordinator_repair_budget_document_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-field",
+      "parent": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority",
+      "literal": "unknown-field",
+      "source": "coordinator_repair_budget_document_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/unknown-intent-field",
+      "parent": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority",
+      "literal": "unknown-intent-field",
+      "source": "coordinator_repair_budget_document_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority/wrong-field-type",
+      "parent": "TestCoordinatorRepairCarryRetainedBudgetWireKeepsSignedAuthority",
+      "literal": "wrong-field-type",
+      "source": "coordinator_repair_budget_document_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/action",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "action",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/block",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "block",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/hash",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "hash",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/inclusion",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "inclusion",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/intent",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "intent",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/nonce",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "nonce",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/signer",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "signer",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions/source",
+      "parent": "TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions",
+      "literal": "source",
+      "source": "coordinator_repair_revision_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/collateral",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "collateral",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/independent_alpha",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "independent alpha",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/initial_minimum",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "initial minimum",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v4 EVM block",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_EVM_block_hash",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v4 EVM block hash",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployer_nonce",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v4 deployer nonce",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_deployment",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v4 deployment",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v4_superseded_spend",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v4 superseded spend",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 baseline block",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_block_hash",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 baseline block hash",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_deployment",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 baseline deployment",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_executable",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 baseline executable",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_baseline_probe",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 baseline probe",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_implementation",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 upgrade implementation",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/pre-v6_upgrade_runtime",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "pre-v6 upgrade runtime",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/price",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "price",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_alpha",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "registered alpha",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/registered_source",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "registered source",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/reserve_alpha",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "reserve alpha",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/stored_lock",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "stored lock",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/transferable",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "transferable",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_alpha",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "wallet alpha",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum/wallet_collateral",
+      "parent": "TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum",
+      "literal": "wallet collateral",
+      "source": "plan_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/current-public-receipt",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "current-public-receipt",
+      "source": "owned_rpc_history_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/false-independent-clone",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "false-independent-clone",
+      "source": "owned_rpc_history_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/implicit-private",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "implicit-private",
+      "source": "owned_rpc_history_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unapproved-plan",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "unapproved-plan",
+      "source": "owned_rpc_history_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/unbound-origin",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "unbound-origin",
+      "source": "owned_rpc_history_test.go"
+    },
+    {
+      "name": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts/wrong-authority",
+      "parent": "TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts",
+      "literal": "wrong-authority",
+      "source": "owned_rpc_history_test.go"
+    }
+  ]
+}

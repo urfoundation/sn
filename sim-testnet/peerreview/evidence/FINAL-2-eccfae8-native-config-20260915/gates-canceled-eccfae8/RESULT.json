@@ -1,0 +1,45 @@
+{
+  "aggregate": {
+    "admitted_test_phases": 0,
+    "completed_preflights": {
+      "binding_toolchain": 0,
+      "runtime_source": 0,
+      "source_freeze": 0,
+      "source_integrity": 0
+    },
+    "finished_at": "2026-09-15T01:33:33Z",
+    "outer_exit": 143,
+    "runtime_metadata": "interrupted before exit record",
+    "started_at": "2026-09-15T01:28:16Z",
+    "status": "CANCELED"
+  },
+  "classification": "No original gate test failure was observed. Completed preflights are retained as partial evidence only and neither gate is a PASS.",
+  "cleanup": {
+    "both_outer_process_groups_absent": true,
+    "inner_TERM_requests_recorded": true,
+    "job_dirs": 0,
+    "private_pid_or_container_records": 0
+  },
+  "kind": "final-eccfae8-full-gates-canceled-for-confirmed-native-production-successor",
+  "producer": {
+    "admitted_test_phases": 0,
+    "completed_preflights": {
+      "binding_toolchain": 0,
+      "runtime_source": 0,
+      "source_freeze": 0,
+      "source_integrity": 0
+    },
+    "finished_at": "2026-09-15T01:32:11Z",
+    "outer_exit": 143,
+    "runtime_metadata": "interrupted before exit record",
+    "started_at": "2026-09-15T01:27:13Z",
+    "status": "CANCELED"
+  },
+  "reason": "native setup preview confirmed a production compatibility defect: coordinator repair configured strict domain differs; source successor required",
+  "scope": "Compact raw commands, capture channels, preflight records, cancellation records, and cleanup proofs are copied. No source checkout, binary, module cache, service state, or runtime-metadata artifact directory is copied.",
+  "source": {
+    "gate_source_pair_sha256": "13e2271a1f21254ae6de500b1f97a9fbec42cb423cfabb8e9f1cf1a6ae96a85e",
+    "release_lock_sha256": "5b8c412454adfde72f2cf51c682b5ce4b9b335a2095eaafc21bf4e92a153a4ab",
+    "sn_head": "eccfae8a5f4176ccaa6099ce5ce555924057f3d3"
+  }
+}
