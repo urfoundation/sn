@@ -48,6 +48,18 @@ N --format json` reads the original activation source and intent prefix and
 renders the expected validator config bytes without changing runtime state.
 Retain its exact JSON under the state root's private `history-adoptions/`
 directory. Choose `N` only after renewal and qualification timing are known.
+Use the finalized native `SubnetEpochIndex` and its actual schedule, after
+the continuation plan is adopted. `N` identifies the first fresh steering
+decision's epoch; it is not a deadline for the validator process to start.
+The request must advance beyond the retained last native epoch. After startup,
+the submitter waits while the observed epoch is below `N`, permits the first
+decision during `N`, and rejects a missed `N` if that first intent has not
+already been persisted. Both the decision and preparation snapshots must be
+inside `N`; transaction inclusion may cross the boundary and retains its
+actual epoch counters. Allow startup and first-decision preparation before
+the end of `N`. Do not add an extra epoch solely because `N` may begin during
+startup. These are the existing history and submission checks, with all
+required fully observed campaign epochs retained.
 Strict `launch` or `resume` consumes that file with
 `--strict-history-adoption PATH --strict-history-adoption-sha256 sha256:HASH`
 and the ordinary `--apply --plan-hash CURRENT` approval. A changed source,
@@ -133,6 +145,7 @@ package/mode. A new failure reopens its affected scope, not the whole campaign.
 | Launcher, selector, capture path or result-checker correction | Repair the refused stage; reuse unchanged builds and completed bodies. Replay retained raw results when they suffice, and verify membership if selection changed. |
 | Production code or dependency change | Build affected executables; test changed behavior and affected integrations. Reuse phases whose code, inputs and assumptions are unchanged. |
 | Expired epoch, fee observation or other time-sensitive prerequisite | Refresh that observation and its dependent plan/window through the supported revision path. Retain immutable history and completed actions. |
+| Stopped continuation horizon exceeds source capacity | Fit the end block to the tightest retained trail, record, byte, file and relay-slot limits while keeping the full required work and capture/import/startup margin. Correct the refused operand and retry that step; retain the completed renewal and existing approvals. |
 | Disk, port, service or transient RPC refusal before submission | Repair the failed operational prerequisite and retry the same approved command in a fresh capture. Retain valid tests, preparation and state; reconcile any uncertain submission before retrying. |
 | Interrupted submission or lost RPC response | Reconcile the persisted intent, signed bytes, nonce and canonical receipt before retrying. An unknown outcome is pending, never a new action. |
 | Failed live scenario or service | Recover the affected process or phase from its journal. Retain other valid phase markers and prior finalized work. |
