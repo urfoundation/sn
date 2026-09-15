@@ -188,7 +188,9 @@ func TestRuntime458HistoricalLockRejectsOfficialSeedVariant(t *testing.T) {
 	runtimeImage := lock.Runtime.Image
 	lock.Runtime = runtime458ReviewedTestLock().Runtime
 	lock.Runtime.Image = runtimeImage
-	if err := validateValidatorEvidenceHistoricalReleaseLock(lock); err != nil { t.Fatal(err) }
+	if err := validateValidatorEvidenceHistoricalReleaseLock(lock); err != nil {
+		t.Fatal(err)
+	}
 	for _, mutate := range []func(*ReleaseRuntimeLock){
 		func(value *ReleaseRuntimeLock) {
 			value.CodeHash = "0x3708442dc6aae2ea654d827d8b9985d36b6640b2447cfd48125a1a0205c8f1d3"

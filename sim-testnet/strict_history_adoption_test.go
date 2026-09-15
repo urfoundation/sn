@@ -31,9 +31,13 @@ func TestStrictHistoryAdoptionInvocationCancellationStopsBackgroundPreflight(t *
 	case <-time.After(5 * time.Second):
 		t.Fatal("rendering retained Background after invocation cancellation")
 	}
-	if !errors.Is(bound.Err(), context.Canceled) { t.Fatal("bound read lost cancellation") }
+	if !errors.Is(bound.Err(), context.Canceled) {
+		t.Fatal("bound read lost cancellation")
+	}
 	cfg := &ResolvedConfig{strictHistoryAdoption: state}
-	if err := preflightStrictHistoryAdoption(context.Background(), cfg, t.TempDir()); !errors.Is(err, context.Canceled) { t.Fatal("canceled preflight opened history instead of stopping", err) }
+	if err := preflightStrictHistoryAdoption(context.Background(), cfg, t.TempDir()); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled preflight opened history instead of stopping", err)
+	}
 }
 
 // Releasing a completed check detaches its invocation callback and cancels
@@ -48,15 +52,21 @@ func TestStrictHistoryAdoptionPreflightCancellationKeepsOwnersIndependent(t *tes
 	bound, cleanup := state.preflightContext(caller)
 	cleanup()
 	cleanup()
-	if !errors.Is(bound.Err(), context.Canceled) || caller.Err() != nil || invocation.Err() != nil { t.Fatal("completed check canceled an enclosing owner or retained its own context") }
+	if !errors.Is(bound.Err(), context.Canceled) || caller.Err() != nil || invocation.Err() != nil {
+		t.Fatal("completed check canceled an enclosing owner or retained its own context")
+	}
 	bound, cleanup = state.preflightContext(caller)
 	defer cleanup()
 	stopCaller()
-	if !errors.Is(bound.Err(), context.Canceled) || invocation.Err() != nil { t.Fatal("caller cancellation failed to stop only its own check") }
+	if !errors.Is(bound.Err(), context.Canceled) || invocation.Err() != nil {
+		t.Fatal("caller cancellation failed to stop only its own check")
+	}
 	stopInvocation()
 	alreadyCanceled, cleanupCanceled := state.preflightContext(context.Background())
 	defer cleanupCanceled()
-	if !errors.Is(alreadyCanceled.Err(), context.Canceled) { t.Fatal("already canceled invocation entered another replay") }
+	if !errors.Is(alreadyCanceled.Err(), context.Canceled) {
+		t.Fatal("already canceled invocation entered another replay")
+	}
 }
 
 func TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate(t *testing.T) {

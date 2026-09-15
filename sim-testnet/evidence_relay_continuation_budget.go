@@ -162,50 +162,50 @@ func validateEvidenceRelayContinuationSource(stateDir string, current *SetupPlan
 	owners := map[string]*SetupPlan{}
 	maximum := len(current.PriorPlanHashes) + 1
 	for current.EvidenceRelayContinuation != nil {
-	if seen[current.PlanHash] || len(seen) >= maximum {
-		return errors.New("relay continuation predecessor chain is cyclic or incomplete")
-	}
-	seen[current.PlanHash] = true
-	c := current.EvidenceRelayContinuation
-	base, err := readValidatorEvidenceHistoricalPlan(stateDir, c.SourcePlanHash)
-	if err != nil {
-		return err
-	}
-	want, err := appendEvidenceRelayContinuationPlan(base, *c)
-	if err != nil {
-		return err
-	}
-	if want.PlanHash != current.PlanHash && !current.allowedPlanHashes()[want.PlanHash] {
-		return errors.New("relay continuation no longer contains its exact approved append")
-	}
-	prefix, err := evidenceRelayContinuationJournalPrefix(entries, c)
-	if err != nil {
-		return err
-	}
-	if base.EvidenceRelayContinuation != nil {
-		if _, err := evidenceRelayContinuationJournalPrefix(prefix, base.EvidenceRelayContinuation); err != nil {
-			return errors.New("relay refresh predates its previous journal checkpoint")
+		if seen[current.PlanHash] || len(seen) >= maximum {
+			return errors.New("relay continuation predecessor chain is cyclic or incomplete")
 		}
-	}
-	admitted := map[string]bool{}
-	for _, entry := range prefix {
-		if strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) {
-			admitted[entry.ActionID] = true
+		seen[current.PlanHash] = true
+		c := current.EvidenceRelayContinuation
+		base, err := readValidatorEvidenceHistoricalPlan(stateDir, c.SourcePlanHash)
+		if err != nil {
+			return err
 		}
-	}
-	if len(admitted) != len(c.Debits) {
-		return errors.New("relay continuation omitted an admitted checkpoint liability")
-	}
-	for _, debit := range c.Debits {
-		if !admitted[debit.ActionID] {
-			return errors.New("relay continuation debit is outside its journal checkpoint")
+		want, err := appendEvidenceRelayContinuationPlan(base, *c)
+		if err != nil {
+			return err
 		}
-		owner, record, raw, err := readOwnedEvidenceRelayRequest(context.Background(), stateDir, current, entries, debit.ActionID, owners)
-		if err != nil || owner.PlanHash != debit.PlanHash || bytesSHA256(raw) != debit.RequestSHA256 || record.Action.Spend.EVMGasWei != debit.AllowanceWei {
-			return errors.Join(errors.New("relay continuation original liability source changed"), err)
+		if want.PlanHash != current.PlanHash && !current.allowedPlanHashes()[want.PlanHash] {
+			return errors.New("relay continuation no longer contains its exact approved append")
 		}
-	}
-	current = base
+		prefix, err := evidenceRelayContinuationJournalPrefix(entries, c)
+		if err != nil {
+			return err
+		}
+		if base.EvidenceRelayContinuation != nil {
+			if _, err := evidenceRelayContinuationJournalPrefix(prefix, base.EvidenceRelayContinuation); err != nil {
+				return errors.New("relay refresh predates its previous journal checkpoint")
+			}
+		}
+		admitted := map[string]bool{}
+		for _, entry := range prefix {
+			if strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) {
+				admitted[entry.ActionID] = true
+			}
+		}
+		if len(admitted) != len(c.Debits) {
+			return errors.New("relay continuation omitted an admitted checkpoint liability")
+		}
+		for _, debit := range c.Debits {
+			if !admitted[debit.ActionID] {
+				return errors.New("relay continuation debit is outside its journal checkpoint")
+			}
+			owner, record, raw, err := readOwnedEvidenceRelayRequest(context.Background(), stateDir, current, entries, debit.ActionID, owners)
+			if err != nil || owner.PlanHash != debit.PlanHash || bytesSHA256(raw) != debit.RequestSHA256 || record.Action.Spend.EVMGasWei != debit.AllowanceWei {
+				return errors.Join(errors.New("relay continuation original liability source changed"), err)
+			}
+		}
+		current = base
 	}
 	return nil
 }

@@ -2248,7 +2248,7 @@ type releaseRuntimeMetadataArtifactManifest struct {
 // Binds one historical observation to its exact source ref, Wasm bytes and
 // runtime-produced metadata bytes.
 type releaseRuntimeMetadataArtifact struct {
-	IndependentRpc *bool `json:"independent_rpc,omitempty"`
+	IndependentRpc       *bool   `json:"independent_rpc,omitempty"`
 	ObservationRpcUrl    string  `json:"observation_rpc_url,omitempty"`
 	SpecVersion          uint32  `json:"spec_version"`
 	SourceRefKind        string  `json:"source_ref_kind"`
@@ -2440,7 +2440,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		ObservationRpcUrl: artifactManifest.Artifacts[6].ObservationRpcUrl, IndependentRpc: artifactManifest.Artifacts[6].IndependentRpc,
 		CodeSource: "substrate-storage", CodeSize: 2524988, CodeSHA256: "c78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
 		CodeBlake2b256: "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b",
-		MetadataSize: 336358, MetadataSHA256: "52256b0b4a5c682e94e1d68a7b7a5dc1ba4114cfde4fb39057be808a8443673d",
+		MetadataSize:   336358, MetadataSHA256: "52256b0b4a5c682e94e1d68a7b7a5dc1ba4114cfde4fb39057be808a8443673d",
 		MetadataBlake2b256: "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef",
 	}
 	if independent := artifactManifest.Artifacts[6].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[6].ObservationRpcUrl != artifactManifest.Artifacts[5].ObservationRpcUrl {

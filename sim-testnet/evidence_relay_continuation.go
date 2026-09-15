@@ -240,13 +240,13 @@ func appendEvidenceRelayContinuationPlan(base *SetupPlan, c EvidenceRelayContinu
 			return nil, err
 		}
 	} else {
-	if c.Schema == evidenceRelayContinuationRefreshSchema || !reflect.DeepEqual(original, c.OriginalReserve) {
-		return nil, errors.Join(errors.New("relay continuation replaced its original reserve"), err)
-	}
-	gas, fee, maximum, err := evidenceRelayPlanAllowance(base, original)
-	if err != nil || gas != evidenceRelayContinuationGas || fee != evidenceRelayOriginalFee || maximum != evidenceRelayOriginalSlots {
-		return nil, errors.Join(errors.New("relay continuation is outside the retained256-slot100gwei approval"), err)
-	}
+		if c.Schema == evidenceRelayContinuationRefreshSchema || !reflect.DeepEqual(original, c.OriginalReserve) {
+			return nil, errors.Join(errors.New("relay continuation replaced its original reserve"), err)
+		}
+		gas, fee, maximum, err := evidenceRelayPlanAllowance(base, original)
+		if err != nil || gas != evidenceRelayContinuationGas || fee != evidenceRelayOriginalFee || maximum != evidenceRelayOriginalSlots {
+			return nil, errors.Join(errors.New("relay continuation is outside the retained256-slot100gwei approval"), err)
+		}
 	}
 	continuedFee, continuedSlots, err := c.feeTerms()
 	if err != nil {

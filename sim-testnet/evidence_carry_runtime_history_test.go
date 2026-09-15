@@ -67,7 +67,9 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalPublic := *config.Public
 	originalPublic.Chain.ExpectedRuntimeSpec = spec
 	originalPublic.Chain.ConfigIdentityRuntimeSpec = 0
-	if spec == 458 { originalPublic.Chain.ConfigIdentityRuntimeSpec = 455 }
+	if spec == 458 {
+		originalPublic.Chain.ConfigIdentityRuntimeSpec = 455
+	}
 	originalConfig.Public = &originalPublic
 	originalConfig.ConfigHash, err = releaseConfigHash(originalConfig.Config, originalConfig.Public, originalConfig.Hyperparameters)
 	if err != nil {
@@ -76,7 +78,9 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalConfig.Release = validatorEvidenceRuntime455TestLock(t)
 	// Build the synthetic original with current planner checks, then bind its
 	// independently approved458 source before producing any persisted bytes.
-	if spec == 458 { originalConfig = *config }
+	if spec == 458 {
+		originalConfig = *config
+	}
 	original, err := buildPlan(&originalConfig, testSetupFacts(), roles, time.Unix(1, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +92,9 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 		lock.Runtime.Image = image
 		rebindValidatorEvidenceReleaseLockTest(t, original, lock)
 		original.PlanHash, err = original.hash()
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	current, err := buildPlan(config, testSetupFacts(), roles, time.Unix(2, 0))
 	if err != nil {

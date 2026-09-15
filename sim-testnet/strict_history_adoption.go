@@ -34,10 +34,10 @@ type strictHistoryAdoptionBundle struct {
 }
 
 type strictHistoryAdoptionState struct {
-	path, hash    string
-	bundle        strictHistoryAdoptionBundle
-	requests      [][]byte
-	capacityCache validatorcomponent.StoppedAttemptLedgerCapacityCache
+	path, hash        string
+	bundle            strictHistoryAdoptionBundle
+	requests          [][]byte
+	capacityCache     validatorcomponent.StoppedAttemptLedgerCapacityCache
 	invocationContext context.Context
 }
 

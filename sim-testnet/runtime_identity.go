@@ -71,7 +71,7 @@ func reviewedHistoricalRuntimeArtifact(version runtimeVersionIdentity) (historic
 		}, true
 	case 458:
 		return historicalRuntimeArtifactIdentity{
-			CodeHash: "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a",
+			CodeHash:     "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a",
 			MetadataHash: "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d",
 		}, true
 	default:
