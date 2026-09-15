@@ -156,21 +156,21 @@ func (e *Executor) authenticateProvisionalReceipt(action Action, entry JournalEn
 
 func (e *Executor) verifyProvisionalActionHistory(ctx context.Context) error {
 	count := 0
+	var failures []error
 	for _, action := range e.plan.Actions {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		entry, ok := e.verifiedActionEntryForScope(action, true)
 		if !ok {
 			continue
 		}
+		if err := ctx.Err(); err != nil { failures = append(failures, fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err)); continue }
 		if err := e.authenticateProvisionalReceipt(action, entry); err != nil {
-			return fmt.Errorf("action %s: %w", action.ID, err)
+			failures = append(failures, fmt.Errorf("action %s: %w", action.ID, err))
+			continue
 		}
 		count++
 	}
 	fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume authenticated %d verified local receipts; current topology readiness remains required\n", count)
-	return nil
+	return errors.Join(failures...)
 }
 
 func applyProvisionalScenarioProvenance(cfg *ResolvedConfig, result *ScenarioResult) {

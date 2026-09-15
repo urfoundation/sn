@@ -341,158 +341,102 @@ func readHistoricalFleetGenerationOneBatch(ctx context.Context, client *ethclien
 // after both required observers have passed that action's exact comparison.
 func (self *Executor) verifyHistoricalFleetGenerationOneCalls(ctx context.Context, calls []historicalFleetGenerationOneCall) (map[string]bool, error) {
 	verifiedKeys := map[string]bool{}
-	if len(calls) == 0 {
-		return verifiedKeys, nil
-	}
-	if self.deployer == nil || self.deployer.client == nil {
-		return nil, errors.New("operational historical fleet EVM client is unavailable")
-	}
-	if err := verifyHistoricalFleetGenerationOneCheckpoints(ctx, self.deployer.client, calls, false); err != nil {
-		return nil, fmt.Errorf("operational historical fleet audit: %w", err)
-	}
+	if len(calls) == 0 { return verifiedKeys, nil }
+	var failures []error
+	var operationalClient *ethclient.Client
+	if self.deployer != nil { operationalClient = self.deployer.client }
+	operationalCheckpoints := collectHistoricalFleetCheckpoints(ctx, operationalClient, calls, false)
 	independent := independentRPCRequired(self.cfg)
-	if independent {
-		if err := verifyHistoricalFleetGenerationOneCheckpoints(ctx, self.independentEVM, calls, true); err != nil {
-			return nil, fmt.Errorf("independent historical fleet audit: %w", err)
-		}
-	} else {
-		for _, call := range calls {
-			if call.record.IndependentEVMFinalized.Number != call.record.EVMFinalized.Number || !strings.EqualFold(call.record.IndependentEVMFinalized.Hash, call.record.EVMFinalized.Hash) {
-				return nil, fmt.Errorf("action %s shared-provider historical EVM checkpoints differ", call.action.ID)
-			}
-			if err := observedPostconditionMatches(call.record.Observed, call.record.IndependentObserved); err != nil {
-				return nil, fmt.Errorf("action %s shared-provider historical EVM clone: %w", call.action.ID, err)
-			}
-		}
+	independentCheckpoints := make([]error, len(calls))
+	if independent { independentCheckpoints = collectHistoricalFleetCheckpoints(ctx, self.independentEVM, calls, true) }
+	admitted := make([]historicalFleetGenerationOneCall, 0, len(calls))
+	for index, call := range calls {
+		var checkpointFailures []error
+		if operationalCheckpoints[index] != nil { checkpointFailures = append(checkpointFailures, fmt.Errorf("operational checkpoint: %w", operationalCheckpoints[index])) }
+		if independentCheckpoints[index] != nil { checkpointFailures = append(checkpointFailures, fmt.Errorf("independent checkpoint: %w", independentCheckpoints[index])) }
+		if err := errors.Join(checkpointFailures...); err != nil { failures = append(failures, fmt.Errorf("action %s contract observation blocked: %w", call.action.ID, err)); continue }
+		admitted = append(admitted, call)
 	}
+	calls = admitted
 	misses := make([]historicalFleetGenerationOneCall, 0, len(calls))
 	entries := make([]*historicalAuditCacheEntry, 0, len(calls))
 	for _, call := range calls {
+		if !independent {
+			if call.record.IndependentEVMFinalized.Number != call.record.EVMFinalized.Number || !strings.EqualFold(call.record.IndependentEVMFinalized.Hash, call.record.EVMFinalized.Hash) {
+				failures = append(failures, fmt.Errorf("action %s shared-provider historical EVM checkpoints differ", call.action.ID)); continue
+			}
+			if err := observedPostconditionMatches(call.record.Observed, call.record.IndependentObserved); err != nil {
+				failures = append(failures, fmt.Errorf("action %s shared-provider historical EVM clone: %w", call.action.ID, err)); continue
+			}
+		}
 		if len(call.data) == 0 {
-			if err := verifyHistoricalFleetGenerationOneObservation(call, nil, false); err != nil {
-				return nil, fmt.Errorf("operational historical fleet audit: %w", err)
-			}
-			if independent {
-				if err := verifyHistoricalFleetGenerationOneObservation(call, nil, true); err != nil {
-					return nil, fmt.Errorf("independent historical fleet audit: %w", err)
-				}
-			}
+			operationalErr := verifyHistoricalFleetGenerationOneObservation(call, nil, false)
+			var comparisonErr error
+			if independent { comparisonErr = verifyHistoricalFleetGenerationOneObservation(call, nil, true) }
+			if err := errors.Join(operationalErr, comparisonErr, ctx.Err()); err != nil { failures = append(failures, err); continue }
 			verifiedKeys[carriedVerificationKey(call.entry)] = true
 			continue
 		}
-		if call.expectation == nil {
-			return nil, fmt.Errorf("action %s has no historical fleet decoder evidence", call.action.ID)
-		}
-		observers := []historicalFleetObserverRequest{{
-			Observer: "operational", Checkpoint: call.record.EVMFinalized,
-			Request: historicalFleetGenerationOneRequest(call, false),
-		}}
-		if independent {
-			observers = append(observers, historicalFleetObserverRequest{
-				Observer: "independent", Checkpoint: call.record.IndependentEVMFinalized,
-				Request: historicalFleetGenerationOneRequest(call, true),
-			})
-		}
-		entry, hit := self.lookupHistoricalAuditCache(ctx, historicalFleetGenerationOneCacheKind, historicalFleetGenerationOneCacheInput{
-			Action: call.action, Entry: call.entry, Record: call.record, Expectation: call.expectation, Observers: observers,
-		})
-		if hit {
-			verifiedKeys[carriedVerificationKey(call.entry)] = true
-			continue
-		}
+		if call.expectation == nil { failures = append(failures, fmt.Errorf("action %s has no historical fleet decoder evidence", call.action.ID)); continue }
+		observers := []historicalFleetObserverRequest{{Observer: "operational", Checkpoint: call.record.EVMFinalized, Request: historicalFleetGenerationOneRequest(call, false)}}
+		if independent { observers = append(observers, historicalFleetObserverRequest{Observer: "independent", Checkpoint: call.record.IndependentEVMFinalized, Request: historicalFleetGenerationOneRequest(call, true)}) }
+		entry, hit := self.lookupHistoricalAuditCache(ctx, historicalFleetGenerationOneCacheKind, historicalFleetGenerationOneCacheInput{Action: call.action, Entry: call.entry, Record: call.record, Expectation: call.expectation, Observers: observers})
+		if hit { verifiedKeys[carriedVerificationKey(call.entry)] = true; continue }
 		misses = append(misses, call)
 		entries = append(entries, entry)
 	}
 	for start := 0; start < len(misses); start += maximumEVMRPCBatchCalls {
 		end := min(start+maximumEVMRPCBatchCalls, len(misses))
 		batch := misses[start:end]
-		operational, err := readHistoricalFleetGenerationOneBatch(ctx, self.deployer.client, batch, false)
-		if err != nil {
-			return nil, fmt.Errorf("operational historical fleet contract calls: %w", err)
-		}
+		if err := ctx.Err(); err != nil { failures = append(failures, fmt.Errorf("historical fleet calls %d-%d blocked by canceled preparation: %w", start, end-1, err)); continue }
+		operational, operationalErr := readHistoricalFleetGenerationOneBatch(ctx, self.deployer.client, batch, false)
 		var comparison []historicalFleetGenerationOneResult
-		if independent {
-			comparison, err = readHistoricalFleetGenerationOneBatch(ctx, self.independentEVM, batch, true)
-			if err != nil {
-				return nil, fmt.Errorf("independent historical fleet contract calls: %w", err)
-			}
-		}
+		var comparisonErr error
+		if independent { comparison, comparisonErr = readHistoricalFleetGenerationOneBatch(ctx, self.independentEVM, batch, true) }
 		for index, call := range batch {
-			if operational[index].err != nil {
-				return nil, fmt.Errorf("action %s operational historical fleet call: %w", call.action.ID, operational[index].err)
-			}
-			if err := verifyHistoricalFleetGenerationOneObservation(call, operational[index].output, false); err != nil {
-				return nil, fmt.Errorf("operational historical fleet audit: %w", err)
-			}
+			var actionFailures []error
+			if operationalErr != nil { actionFailures = append(actionFailures, fmt.Errorf("operational historical fleet batch: %w", operationalErr)) } else if operational[index].err != nil { actionFailures = append(actionFailures, fmt.Errorf("operational historical fleet call: %w", operational[index].err)) } else if err := verifyHistoricalFleetGenerationOneObservation(call, operational[index].output, false); err != nil { actionFailures = append(actionFailures, err) }
 			if independent {
-				if comparison[index].err != nil {
-					return nil, fmt.Errorf("action %s independent historical fleet call: %w", call.action.ID, comparison[index].err)
-				}
-				if err := verifyHistoricalFleetGenerationOneObservation(call, comparison[index].output, true); err != nil {
-					return nil, fmt.Errorf("independent historical fleet audit: %w", err)
-				}
+				if comparisonErr != nil { actionFailures = append(actionFailures, fmt.Errorf("independent historical fleet batch: %w", comparisonErr)) } else if comparison[index].err != nil { actionFailures = append(actionFailures, fmt.Errorf("independent historical fleet call: %w", comparison[index].err)) } else if err := verifyHistoricalFleetGenerationOneObservation(call, comparison[index].output, true); err != nil { actionFailures = append(actionFailures, err) }
 			}
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
+			if err := errors.Join(append(actionFailures, ctx.Err())...); err != nil { failures = append(failures, fmt.Errorf("action %s: %w", call.action.ID, err)); continue }
 			entries[start+index].saveSuccess(ctx)
 			verifiedKeys[carriedVerificationKey(call.entry)] = true
 		}
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return verifiedKeys, nil
+	return verifiedKeys, errors.Join(append(failures, ctx.Err())...)
 }
 
 // Authenticate every superseded per-fleet proof before the ordinary carried
 // audit workers begin. The returned keys are installed only after all reads
-// and both configured observers succeed, so a partial batch cannot suppress a
-// later verifier.
+// and both configured observers succeed for each action. Failed or blocked
+// actions never receive a key; independent successful actions remain reusable.
 func (self *Executor) verifyCarriedFleetGenerationOneHistory(ctx context.Context, audits []carriedActionAudit) (map[string]bool, error) {
-	verifiedKeys := map[string]bool{}
 	calls := make([]historicalFleetGenerationOneCall, 0)
+	var failures []error
 	readPostcondition := carriedFleetHistoryPostconditionReader(audits, self.readPersistedPostcondition)
 	batchCtx, cancel := context.WithTimeout(ctx, carriedFleetHistoryBatchTimeout)
 	defer cancel()
 	for _, audit := range audits {
-		if err := batchCtx.Err(); err != nil {
-			return nil, err
-		}
+		if err := batchCtx.Err(); err != nil { failures = append(failures, fmt.Errorf("action %s historical fleet preparation blocked: %w", audit.action.ID, err)); continue }
 		coordinates, applicable, err := fleetGenerationOneCoordinates(self.cfg, audit.action)
-		if err != nil {
-			return nil, fmt.Errorf("action %s generation-1 coordinates: %w", audit.action.ID, err)
-		}
-		if !applicable || coordinates.Install {
-			continue
-		}
+		if err != nil { failures = append(failures, fmt.Errorf("action %s generation-1 coordinates: %w", audit.action.ID, err)); continue }
+		if !applicable || coordinates.Install { continue }
 		superseded, err := self.fleetGenerationOneActionSupersededWithPostconditions(audit.action, audit.entry, audit.record, readPostcondition)
-		if err != nil {
-			return nil, fmt.Errorf("action %s generation-1 successor: %w", audit.action.ID, err)
-		}
-		if !superseded {
-			continue
-		}
+		if err != nil { failures = append(failures, fmt.Errorf("action %s generation-1 successor: %w", audit.action.ID, err)); continue }
+		if !superseded { continue }
 		hash, err := canonicalHashHex(audit.record)
-		if err != nil || hash != audit.entry.PostconditionHash {
-			return nil, stateMismatchError(err, "action %s historical fleet receipt hash %s differs from verified %s", audit.action.ID, hash, audit.entry.PostconditionHash)
-		}
+		if err != nil || hash != audit.entry.PostconditionHash { failures = append(failures, stateMismatchError(err, "action %s historical fleet receipt hash %s differs from verified %s", audit.action.ID, hash, audit.entry.PostconditionHash)); continue }
 		call, err := self.prepareHistoricalFleetGenerationOneCall(batchCtx, audit, coordinates)
-		if err != nil {
-			return nil, fmt.Errorf("action %s historical fleet preparation: %w", audit.action.ID, err)
-		}
+		if err != nil { failures = append(failures, fmt.Errorf("action %s historical fleet preparation: %w", audit.action.ID, err)); continue }
 		calls = append(calls, call)
 	}
-	if len(calls) == 0 {
-		return verifiedKeys, nil
-	}
+	if len(calls) == 0 { return map[string]bool{}, errors.Join(failures...) }
 	fmt.Fprintf(os.Stderr, "sim-testnet: batched historical fleet audit 0/%d\n", len(calls))
 	verifiedKeys, err := self.verifyHistoricalFleetGenerationOneCalls(batchCtx, calls)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Fprintf(os.Stderr, "sim-testnet: batched historical fleet audit %d/%d\n", len(calls), len(calls))
-	return verifiedKeys, nil
+	if err != nil { failures = append(failures, err) }
+	fmt.Fprintf(os.Stderr, "sim-testnet: batched historical fleet audit authenticated %d/%d\n", len(verifiedKeys), len(calls))
+	return verifiedKeys, errors.Join(failures...)
 }
 
 // Collection has authenticated these exact journal rows and their original

@@ -39,7 +39,7 @@ type cliOptions struct {
 	ProvisionalRPCAuthority                                                                                                         string
 	OwnedRPCAuthority                                                                                                               string
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
-	Apply, Detach, ProvisionalResume                                                                                                bool
+	Apply, Detach, ProvisionalResume, PrepareOnly                                                                                   bool
 }
 
 func usage() {
@@ -76,6 +76,7 @@ Common options:
   --platform-config-repo PATH  platform config repository override
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
+  --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
@@ -122,6 +123,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.Manifest, "manifest", "", "")
 	fs.StringVar(&o.RunID, "run-id", "", "")
 	fs.BoolVar(&o.Apply, "apply", false, "")
+	fs.BoolVar(&o.PrepareOnly, "prepare-only", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
@@ -162,6 +164,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if o.Format != "human" && o.Format != "json" {
 		return "", o, errors.New("--format must be human or json")
 	}
+	if err := validateLaunchPreparationOptions(cmd, o); err != nil { return "", o, err }
 	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
 		return "", o, errors.New("--run-id is valid only for public analyze with --manifest")
 	}

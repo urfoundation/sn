@@ -236,7 +236,7 @@ func TestHistoricalFleetCacheWarmCallsStillRecheckDerivedAliases(t *testing.T) {
 	}
 	localValid = false
 	keys, err := restartHistoricalFleetCacheExecutor(fixture.executor).verifyHistoricalFleetGenerationOneCalls(context.Background(), fixture.calls)
-	if err == nil || !strings.Contains(err.Error(), "local evidence changed") || len(keys) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "local evidence changed") || len(keys) != 1 || !keys[carriedVerificationKey(fixture.calls[0].entry)] || keys[carriedVerificationKey(fixture.calls[1].entry)] {
 		t.Fatalf("mutated local alias inherited warm keys=%v err=%v", keys, err)
 	}
 	if localReads != 3 || fixture.operational.contractBatchRequests != 1 || fixture.operational.blockBatchRequests != 3 {
@@ -250,7 +250,7 @@ func TestHistoricalFleetCachePersistsOnlyDualObserverSuccessBeforeLaterFailure(t
 	// this independent JSON-RPC element fails in the very same HTTP batch.
 	fixture.independent.failureBlock = fixture.calls[2].record.IndependentEVMFinalized.Number
 	keys, err := fixture.executor.verifyHistoricalFleetGenerationOneCalls(context.Background(), fixture.calls)
-	if err == nil || !strings.Contains(err.Error(), "independent historical fleet call") || len(keys) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "independent historical fleet call") || len(keys) != 2 || !keys[carriedVerificationKey(fixture.calls[0].entry)] || !keys[carriedVerificationKey(fixture.calls[1].entry)] || keys[carriedVerificationKey(fixture.calls[2].entry)] {
 		t.Fatalf("failed initial audit keys=%v err=%v", keys, err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {

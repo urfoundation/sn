@@ -943,7 +943,27 @@ Use the exact hash from the reviewed plan. A changed config, resolved vault inpu
 policy, release lock, role derivation, source checkout, artifact, runtime fact, or
 persisted plan fails closed. Every apply reruns `doctor` and rechecks finalized
 economic facts against the exact unverified remainder. Docker dependencies and
-all release binaries are preflighted before a transaction-capable executor opens.
+all release binaries are preflighted before any setup action executes.
+
+Before a launch attempt, run the approved command with `--prepare-only --format
+json`, for example `launch --apply --plan-hash 0xREVIEWED_PLAN_HASH --prepare-only
+--format json`, retaining the same config, state and RPC options. After capacity
+and plan admission, preparation collects the complete doctor report, available
+host checks, carried action proofs and runtime inputs in one ordered report.
+Independent failures do not stop later batches; unavailable prerequisites name
+their blocked checks and actions. This mode may prepare local role/deployment
+inputs, build binaries and start managed dependencies. It stops explicitly before
+setup actions or topology launch and never signs or submits a chain transaction.
+Missing upload capacity still refuses before journal ownership or host mutation.
+
+Fix the largest coherent batch of reported errors, then repeat preparation on the
+exact captured candidate until its required checks pass. Full launch/resume
+preparation includes signed state namespaces, evidence references, operator
+origins and reserved upload inputs. Setup defers future launch prerequisites
+when its render receipt is already verified or approved setup dependencies are
+still pending, so an approved repair can converge first. Deferred checks are
+reported and must pass before launch; they do not certify future readiness.
+Transactional action execution retains its existing dependency and failure stops.
 
 ```bash
 # Optional: converge chain/contracts/config without starting services.

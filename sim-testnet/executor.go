@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -55,6 +54,7 @@ type Executor struct {
 	auditAuthorizedConfig     *ResolvedConfig
 	fleetCommitmentHistory    *fleetCommitmentHistoryScope
 	precompileHistoryEvidence *PrecompileConformanceEvidence
+	preparationIncomplete bool
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
@@ -481,6 +481,7 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateLaunchPreparationOptions(cmd, o); err != nil { return err }
 	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
 		return err
 	}
@@ -493,9 +494,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// Planning and retirement need no upload allocation. Every actual setup
 	// or campaign apply must admit it before journals, services or spending.
 	if o.Apply {
-		if _, err := runtimeAttemptUploadBudget(cfg); err != nil {
-			return err
-		}
+		if _, err := runtimeAttemptUploadBudget(cfg); err != nil { return err }
 	}
 	if cmd == "scenario" {
 		names := []string{o.Name}
@@ -578,84 +577,59 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err != nil {
 		return err
 	}
-	liveAdoption, err := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
-	if err != nil {
-		return err
-	}
-	// A live provisional adoption can finish without another transaction.
-	// Authenticate its receipts before deciding whether any apply-time spend
-	// checks remain; campaign and retirement reserves keep their full budgets.
+	report := &launchPreparationReport{Schema: "urnetwork-sim-launch-preparation-v1", Command: cmd, PlanHash: p.PlanHash, PrepareOnly: o.PrepareOnly, Ready: true}
+	report.add("attempt-upload-budget", nil)
+	liveAdoption, liveAdoptionErr := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
+	report.add("provisional-live-topology", liveAdoptionErr)
 	needsDoctor, provisionalHistoryChecked := true, false
 	if liveAdoption != nil {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
-		if err := local.verifyProvisionalActionHistory(ctx); err != nil {
-			return fmt.Errorf("carried plan history preflight: %w", err)
-		}
 		provisionalHistoryChecked = true
-		needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
-		if err != nil {
-			return err
+		if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
+			needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+			if !report.add("provisional-live-spend", err) { needsDoctor = true }
 		}
 	}
 	if needsDoctor {
 		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
-		if err := doctor.Error(); err != nil {
-			return fmt.Errorf("doctor must pass immediately before apply: %w", err)
-		}
+		report.Doctor = &doctor
+		report.add("doctor", doctor.Error())
 	} else {
 		liveAdoption.FullDoctorSkipped = true
-		if err := writeProvisionalLiveTopologyRecord(liveAdoption); err != nil {
-			return err
-		}
+		report.add("provisional-live-doctor-record", writeProvisionalLiveTopologyRecord(liveAdoption))
 		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
 	}
 	var roles *RoleSecrets
-	if liveAdoption != nil {
-		roles, err = loadExistingProvisionalRoles(cfg, stateDir)
-	} else {
-		roles, err = LoadOrWriteRoleSecrets(cfg, stateDir)
-	}
-	if err != nil {
-		return err
-	}
+	if liveAdoption != nil || liveAdoptionErr != nil { roles, err = loadExistingProvisionalRoles(cfg, stateDir) } else { roles, err = LoadOrWriteRoleSecrets(cfg, stateDir) }
+	rolesReady := report.add("role-secrets", err)
 	if !o.ProvisionalResume {
-		if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
-			return err
-		}
+		if rolesReady && liveAdoptionErr == nil { report.add("run-inputs", writeRunInputs(cfg, stateDir, p, roles)) } else { report.blocked("run-inputs", "role-secrets or provisional-live-topology") }
 	}
-	// Finish all reversible host preflight before opening a transaction-capable
-	// executor. In particular, a missing Docker daemon or a broken build must
-	// never be discovered after contracts or registrations have been written.
-	if liveAdoption == nil && requiresManagedDependencies(cmd) {
-		if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
-			return fmt.Errorf("prepare operator config overlays: %w", err)
-		}
-		if err := startDependencies(ctx, cfg); err != nil {
-			return err
-		}
+	// Host operations remain reversible and independent of read-only chain
+	// history. Their failures are collected before the single action gate.
+	if liveAdoption == nil && liveAdoptionErr == nil && requiresManagedDependencies(cmd) {
+		report.add("operator-config-overlays", ensureOperatorConfigOverlays(cfg, stateDir))
+		report.add("managed-dependencies", startDependencies(ctx, cfg))
 	}
 	var bins map[string]string
-	if liveAdoption == nil && requiresReleaseBinaries(cmd) {
+	if liveAdoption == nil && liveAdoptionErr == nil && requiresReleaseBinaries(cmd) {
 		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
-		if err != nil {
-			return err
-		}
+		report.add("release-binaries", err)
 	}
 	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
-		if err := preflightReleaseHost(ctx, stateDir, cfg, bins); err != nil {
-			return fmt.Errorf("release host preflight: %w", err)
-		}
+		if liveAdoptionErr == nil { report.add("release-host", preflightReleaseHost(ctx, stateDir, cfg, bins)) } else { report.blocked("release-host", "provisional-live-topology") }
 	}
-	ex, err := NewExecutor(ctx, cfg, stateDir, p, j, roles)
-	if err != nil {
-		return err
-	}
-	defer ex.Close()
-	if !provisionalHistoryChecked {
-		if err := ex.verifyCarriedActionHistory(ctx); err != nil {
-			return fmt.Errorf("carried plan history preflight: %w", err)
-		}
-	}
+	ex, executorErr := newLaunchPreparationExecutor(ctx, cfg, stateDir, p, j, roles)
+	report.add("execution-readers", executorErr)
+	if ex != nil { defer ex.Close() }
+	if ex == nil { ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, preparationIncomplete: true} }
+	if !provisionalHistoryChecked { report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx)) }
+	// New plans also need their full deployment payload before any action.
+	// A failed carry cannot be bypassed by a previously populated cache.
+	if !rolesReady { report.blocked("contract-deployment-payloads", "role-secrets") } else { report.add("contract-deployment-payloads", ex.ensurePayloads(ctx)) }
+	collectLaunchRuntimePreparation(report, cmd, ex)
+	report.add("preparation-context", ctx.Err())
+	return finishLaunchPreparation(report, func(result *launchPreparationReport, err error) error { return printResult(o.Format, result, err) }, func() error {
 	// Chain/environment setup always stops at the disabled configuration
 	// boundary. LaunchDeployment then starts temporary operator APIs, provisions
 	// their server-assigned client identities, anchors the fleet, and only then
@@ -697,6 +671,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		result["provisional_resume_record"] = cfg.provisionalResume.RecordPath
 	}
 	return printResult(o.Format, result, nil)
+	})
 }
 
 var errPersistedPlanIdentityMismatch = errors.New("persisted setup plan does not match the current release/configuration")
@@ -2758,6 +2733,7 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 	if e.payloads != nil {
 		return nil
 	}
+	if err := e.preparationPayloadReadersError(); err != nil { return err }
 	if e.plan != nil && planUsesContractDeploymentEnvelope(e.plan.Schema) {
 		planned := contractDeploymentIdentity(e.plan.Deployment)
 		p, err := buildDeploymentPayloadsWithRegistrationGeneration(e.cfg, e.roles, planned.InitialNonce, planned.RegistrationRoleGeneration)
@@ -4157,112 +4133,7 @@ func runOrderedConcurrentAudits(count, workers int, audit func(int) error) error
 // or unavailable finalized transaction from being discovered only after new
 // funding has already been submitted.
 func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
-	if e == nil || e.plan == nil || e.journal == nil {
-		return errors.New("plan/journal is unavailable")
-	}
-	if provisionalResumeEnabled(e.cfg) {
-		return e.verifyProvisionalActionHistory(ctx)
-	}
-	if e.plan.ValidatorEvidenceCarry != nil {
-		if _, err := e.authenticateValidatorEvidenceCarry(ctx); err != nil {
-			return fmt.Errorf("validator evidence immutable source history: %w", err)
-		}
-	}
-	audits := make([]carriedActionAudit, 0)
-	for _, action := range e.plan.Actions {
-		entry, ok := e.verifiedActionEntry(action)
-		if !ok && action.ID == "topology.launch" {
-			// The stopped ancestor generation cannot satisfy current liveness, but
-			// its durable receipt remains part of the approved history and must not
-			// disappear or change unnoticed. Authenticate it without adding it to
-			// the live-verification cache; LaunchDeployment will create and verify
-			// the current generation before any dependent action can execute.
-			entry, ok = e.verifiedActionEntryForScope(action, true)
-			if ok && entry.PlanHash != e.plan.PlanHash {
-				if _, err := e.readPersistedPostcondition(entry); err != nil {
-					return fmt.Errorf("action %s: persisted ancestor process receipt: %w", action.ID, err)
-				}
-			}
-			continue
-		}
-		if !ok || entry.PlanHash == e.plan.PlanHash {
-			continue
-		}
-		record, err := e.readPersistedPostcondition(entry)
-		if err != nil {
-			return fmt.Errorf("action %s: persisted postcondition: %w", action.ID, err)
-		}
-		audits = append(audits, carriedActionAudit{action: action, entry: entry, record: record})
-	}
-	// Contract postcondition readers share the immutable payload cache. Resolve
-	// it once before workers start so the cache and deployment manifest are
-	// never initialized concurrently.
-	if len(audits) > 0 && planUsesContractDeploymentEnvelope(e.plan.Schema) {
-		if err := e.ensurePayloads(ctx); err != nil {
-			return fmt.Errorf("prepare carried contract payloads: %w", err)
-		}
-	}
-	fleetHistoryKeys, err := e.verifyCarriedFleetGenerationOneHistory(ctx, audits)
-	if err != nil {
-		return fmt.Errorf("prepare carried fleet history: %w", err)
-	}
-	e.carriedFleetHistoryKeys = fleetHistoryKeys
-	defer func() { e.carriedFleetHistoryKeys = nil }()
-	var sharedEVMHead *ChainHead
-	for _, audit := range audits {
-		if !actionPostStateRequiresEVMCheckpoint(audit.action) {
-			continue
-		}
-		if e.deployer == nil || e.deployer.client == nil {
-			return errors.New("prepare carried EVM checkpoint: EVM postcondition client is unavailable")
-		}
-		head, err := finalizedEVMHead(ctx, e.deployer.client)
-		if err != nil {
-			return fmt.Errorf("prepare carried EVM checkpoint: %w", err)
-		}
-		sharedEVMHead = &head
-		break
-	}
-	var sharedNativeHead *ChainHead
-	for _, audit := range audits {
-		if actionRequiresCurrentPostcondition(audit.action) {
-			continue
-		}
-		if _, transactionErr := e.consumedActionTransaction(audit.action, audit.entry); transactionErr == nil {
-			if e.substrate == nil {
-				return errors.New("prepare carried native checkpoint: Substrate postcondition client is unavailable")
-			}
-			nativeHash, nativeNumber, err := e.substrate.finalizedHeadContext(ctx)
-			if err != nil {
-				return fmt.Errorf("prepare carried native checkpoint: %w", err)
-			}
-			sharedNativeHead = &ChainHead{Number: nativeNumber, Hash: nativeHash.Hex()}
-			break
-		}
-	}
-	var completed atomic.Uint64
-	if err := runOrderedConcurrentAudits(len(audits), carriedActionVerificationWorkers, func(index int) error {
-		audit := audits[index]
-		auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
-		defer cancel()
-		err := e.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEVMHead, sharedNativeHead)
-		count := completed.Add(1)
-		if count%carriedActionProgressInterval == 0 || count == uint64(len(audits)) {
-			fmt.Fprintf(os.Stderr, "sim-testnet: carried action audit %d/%d\n", count, len(audits))
-		}
-		if err != nil {
-			return fmt.Errorf("action %s: %w", audit.action.ID, err)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	verifiedKeys := make(map[string]bool, len(audits))
-	for _, audit := range audits {
-		verifiedKeys[carriedVerificationKey(audit.entry)] = true
-	}
-	e.carriedVerificationKeys = verifiedKeys
-	return nil
+	return e.collectCarriedActionHistory(ctx)
 }
 
 // Bind the in-memory audit cache to the immutable verified journal evidence.

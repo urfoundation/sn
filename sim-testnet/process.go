@@ -444,36 +444,20 @@ func currentSupervisorReady(stateDir string) (bool, error) {
 }
 
 // Recheck the actual requested state filesystem and listeners after local
-// dependencies/builds but before constructing a transaction-capable executor.
+// dependencies/builds but before the setup action gate.
 func preflightReleaseHost(ctx context.Context, stateDir string, cfg *ResolvedConfig, bins map[string]string) error {
+	var failures []error
 	available, err := filesystemFreeBytes(stateDir)
-	if err != nil {
-		return fmt.Errorf("inspect release state filesystem: %w", err)
-	}
-	if err := validateReleaseStateFreeBytes(available); err != nil {
-		return err
-	}
-	if err := validateOperatorConfigOverlays(cfg, stateDir); err != nil {
-		return fmt.Errorf("operator config overlay: %w", err)
-	}
-	ready, err := currentSupervisorReady(stateDir)
-	if err != nil {
-		return err
-	}
-	if ready {
-		return nil
-	}
-	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins)
-	if err != nil {
-		return err
-	}
-	if err := recoverStaleTemporaryProcesses(ctx, stateDir, cfg.Config.Deployment.DeploymentID, selectProvisioningServerSpecs(serverSpecs)); err != nil {
-		return fmt.Errorf("recover interrupted provisioning helpers: %w", err)
-	}
-	if err := validateAvailableListenAddresses(releaseProcessListenAddresses(cfg)); err != nil {
-		return err
-	}
-	return validateAvailablePacketListenAddressesWithBinary(ctx, bins[connectServerBinaryName], releaseProcessPacketListenAddresses(cfg))
+	if err != nil { failures = append(failures, fmt.Errorf("inspect release state filesystem: %w", err)) } else if err := validateReleaseStateFreeBytes(available); err != nil { failures = append(failures, err) }
+	if err := validateOperatorConfigOverlays(cfg, stateDir); err != nil { failures = append(failures, fmt.Errorf("operator config overlay: %w", err)) }
+	ready, readyErr := currentSupervisorReady(stateDir)
+	if readyErr != nil { failures = append(failures, readyErr) }
+	if ready { return errors.Join(failures...) }
+	serverSpecs, specsErr := buildServerSpecs(cfg, stateDir, bins)
+	if specsErr != nil { failures = append(failures, fmt.Errorf("provisioning helper recovery blocked by process specifications: %w", specsErr)) } else if readyErr != nil { failures = append(failures, errors.New("provisioning helper recovery blocked by supervisor identity")) } else if err := recoverStaleTemporaryProcesses(ctx, stateDir, cfg.Config.Deployment.DeploymentID, selectProvisioningServerSpecs(serverSpecs)); err != nil { failures = append(failures, fmt.Errorf("recover interrupted provisioning helpers: %w", err)) }
+	if err := validateAvailableListenAddresses(releaseProcessListenAddresses(cfg)); err != nil { failures = append(failures, err) }
+	if bins[connectServerBinaryName] == "" { failures = append(failures, errors.New("packet listen preflight blocked by connect server binary")) } else if err := validateAvailablePacketListenAddressesWithBinary(ctx, bins[connectServerBinaryName], releaseProcessPacketListenAddresses(cfg)); err != nil { failures = append(failures, err) }
+	return errors.Join(append(failures, ctx.Err())...)
 }
 
 // postTopologyTournamentActions returns the only setup actions which are
@@ -988,18 +972,17 @@ func deploymentManifestLocatorDocument(cfg *ResolvedConfig, manifest *PublicDepl
 
 func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir string) (map[string]string, error) {
 	out := filepath.Join(stateDir, "build")
-	if err := os.MkdirAll(out, 0o700); err != nil {
-		return nil, err
-	}
+	if err := os.MkdirAll(out, 0o700); err != nil { return nil, err }
 	targets := []struct{ name, dir, pkg string }{{"sim-testnet", cfg.Repos.SN, "./sim-testnet"}, {"server-ctl", cfg.Repos.Server, "./bringyourctl"}}
 	result := map[string]string{}
+	var failures []error
 	for _, t := range targets {
 		path := filepath.Join(out, t.name)
 		if t.name == "sim-testnet" && provisionalResumeEnabled(cfg) {
 			// Keep the retained configuration source while running the exact
 			// explicitly admitted provisional image, including its startup fixes.
 			if err := copyProvisionalSimulatorBinary(cfg, path); err != nil {
-				return nil, err
+				failures = append(failures, fmt.Errorf("prepare %s: %w", t.name, err)); continue
 			}
 			result[t.name] = path
 			continue
@@ -1008,30 +991,31 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		cmd.Dir = t.dir
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return nil, fmt.Errorf("build %s: %w: %s", t.name, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword))
+			failures = append(failures, fmt.Errorf("build %s: %w: %s", t.name, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword))); continue
 		}
 		result[t.name] = path
 	}
+	if result["sim-testnet"] == "" { return result, errors.Join(append(failures, errors.New("connect server binary blocked by simulator build"))...) }
 	connectServerBinary := filepath.Join(out, connectServerBinaryName)
 	if err := copyFile(result["sim-testnet"], connectServerBinary, 0o700); err != nil {
-		return nil, fmt.Errorf("prepare private connect server binary: %w", err)
+		return result, errors.Join(append(failures, fmt.Errorf("prepare private connect server binary: %w", err))...)
 	}
 	if err := installConnectBindServiceCapability(ctx, connectServerBinary); err != nil {
-		return nil, err
+		return result, errors.Join(append(failures, err)...)
 	}
 	connectServerHash, err := fileSHA256(connectServerBinary)
 	if err != nil {
-		return nil, err
+		return result, errors.Join(append(failures, err)...)
 	}
 	simulatorHash, err := fileSHA256(result["sim-testnet"])
 	if err != nil {
-		return nil, err
+		return result, errors.Join(append(failures, err)...)
 	}
 	if connectServerHash != simulatorHash {
-		return nil, errors.New("capability-scoped connect binary bytes differ from the release simulator")
+		return result, errors.Join(append(failures, errors.New("capability-scoped connect binary bytes differ from the release simulator"))...)
 	}
 	result[connectServerBinaryName] = connectServerBinary
-	return result, nil
+	return result, errors.Join(failures...)
 }
 
 // startDependencies launches one isolated server/local-compatible PostgreSQL
@@ -1046,15 +1030,16 @@ func startDependencies(ctx context.Context, cfg *ResolvedConfig) error {
 	if err != nil {
 		return err
 	}
+	var failures []error
 	for _, spec := range specs {
 		if err := ensureContainer(ctx, docker, spec); err != nil {
-			return err
+			failures = append(failures, err); continue
 		}
 		if err := waitContainerReady(ctx, docker, spec); err != nil {
-			return err
+			failures = append(failures, err); continue
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // dependencyContainerSpecs mirrors the operational settings in server/local

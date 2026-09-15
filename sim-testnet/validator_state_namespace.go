@@ -83,12 +83,13 @@ func preflightSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string)
 	}
 	// Find protected current or archived authority in every configured validator
 	// before the first reset. Writers must already be stopped; this is not a lock.
+	var failures []error
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
 		if err := preflightSignedAttemptStateNamespace(cfg.Config.Deployment.DeploymentID, stateDir, validatorID, cfg.Config.Topology.Operators); err != nil {
-			return err
+			failures = append(failures, fmt.Errorf("validator %d namespace: %w", validatorID, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // Archives unsigned state only at the original namespace preparation stage.
