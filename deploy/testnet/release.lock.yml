@@ -50,7 +50,7 @@ evm_build:
     validator_evidence_runtime_hash: 0x9a0a8bd024d86b7586986061dec5c644f5c26a9e685385c5044dbf79df799b74
     validator_evidence_storage_layout_hash: sha256:c7b1d4c69d489d880dad1eb8f79de12f6af04f9abfb0bdf7f7f4b60ad045204e
 repositories:
-    connect_go_source_hash: sha256:6ebf5459512953075e1c67ad1bb932cf99c0c653c8cbb180546870795248f895
+    connect_go_source_hash: sha256:c90c53350fcd2f5a8a2cdd131b35fd4de701e3c0477536c0f26accc38fcbce97
     glog_go_source_hash: sha256:b2e6d2d7ee9553e29f800e8a8036cb6e3272841cc9cb79e7408a23ec211acbc1
     goidenticons_go_source_hash: sha256:e335a5bf9b3194faeeab2f1a2e1f11c8c765e3bb6950faa28bf56ad7231ca2f8
     operator_proxy_commit: 448369740c70eb2e642bde9d36f3708fe9ad4b5d
@@ -64,7 +64,7 @@ repositories:
     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
     server_go_source_hash: sha256:a0544518a5712457727f773fd50eda9e9d09a2f81f651483af0edfe335afce7d
     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
-    sn_go_source_hash: sha256:29d647893b1b848819b67d0b4a171d719ea0e245c8cc03c7d008487988dafce6
+    sn_go_source_hash: sha256:b9fe9d253d559c27703e2695685415f83c440e182a39b8f902768a84f85b06f4
     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
     vault_audited_base_commit: 992f69a4ba744dabf43c71401a3f355f05f46428
 dependencies:
