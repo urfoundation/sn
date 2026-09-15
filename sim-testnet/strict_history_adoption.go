@@ -37,6 +37,7 @@ type strictHistoryAdoptionState struct {
 	path, hash string
 	bundle     strictHistoryAdoptionBundle
 	requests   [][]byte
+	capacityCache validatorcomponent.StoppedAttemptLedgerCapacityCache
 }
 
 func validateStrictHistoryAdoptionOptions(command string, options cliOptions) error {

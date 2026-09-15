@@ -86,7 +86,7 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 		}
 		bounds := resolved.Config.ValidatorEvidenceV2[source.ValidatorID-1].Evidence.Bounds
 		operatorDir := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", source.ValidatorID), "state", "operators", fmt.Sprintf("no-%d", source.NoID))
-		capacity, err := validatorcomponent.ReadStoppedAttemptLedgerCapacity(ctx, operatorDir, source.Capacity.Identity, source.Capacity.Coordinator, ed25519.PublicKey(source.Activation.VPK[:]), bounds.Disk, source.Capacity.Head)
+		capacity, err := state.capacityCache.Read(ctx, operatorDir, source.Capacity.Identity, source.Capacity.Coordinator, ed25519.PublicKey(source.Activation.VPK[:]), bounds.Disk, source.Capacity.Head)
 		if err != nil {
 			return err
 		}

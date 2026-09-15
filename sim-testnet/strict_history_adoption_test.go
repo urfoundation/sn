@@ -102,6 +102,25 @@ func TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch(t *testi
 	if err := prepareStrictHistoryAdoption(t.Context(), fixture.cfg, fixture.stateDir, options, revised); err != nil {
 		t.Fatal(err)
 	}
+	admitted := fixture.cfg.strictHistoryAdoption
+	resolvedOwner, err := runtimeEvidenceV2ResolvedConfig(fixture.cfg, fixture.stateDir)
+	if err != nil || resolvedOwner.strictHistoryAdoption != admitted {
+		t.Fatal("render resolution lost the invocation's history and capacity owner", err)
+	}
+	if err := prepareStrictHistoryAdoption(t.Context(), fixture.cfg, fixture.stateDir, options, revised); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.cfg.strictHistoryAdoption == admitted {
+		t.Fatal("a new invocation inherited the previous capacity cache owner")
+	}
+	admitted = fixture.cfg.strictHistoryAdoption
+	originalConfigHash := fixture.cfg.ConfigHash
+	fixture.cfg.ConfigHash = "0x" + strings.Repeat("f", 64)
+	changedConfigErr := prepareStrictHistoryAdoption(t.Context(), fixture.cfg, fixture.stateDir, options, revised)
+	fixture.cfg.ConfigHash = originalConfigHash
+	if changedConfigErr == nil || fixture.cfg.strictHistoryAdoption != admitted {
+		t.Fatal("changed config bypassed admission or replaced its successful owner", changedConfigErr)
+	}
 	before = validatorNamespaceTreeSnapshot(t, fixture.stateDir)
 	if err := prepareSignedAttemptStateNamespaces(fixture.cfg, fixture.stateDir); err != nil {
 		t.Fatal(err)
@@ -172,5 +191,8 @@ func TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch(t *testi
 	options.StrictHistoryAdoptionSHA256 = bytesSHA256(bad)
 	if err := prepareStrictHistoryAdoption(t.Context(), fixture.cfg, fixture.stateDir, options, revised); err == nil {
 		t.Fatal("unknown member authority survived canonical bundle admission")
+	}
+	if fixture.cfg.strictHistoryAdoption != admitted {
+		t.Fatal("failed admission replaced a successful invocation owner")
 	}
 }
