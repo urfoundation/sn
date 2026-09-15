@@ -204,7 +204,8 @@ func readStoppedAttemptLedgerCapacity(ctx context.Context, stateDir string, iden
 		reused = reused && priorVerification.inputSha256 == inputSha256 && priorVerification.contentsSha256 == contentsSha256 && os.SameFile(priorVerification.directory, pinned)
 		hooks = reuse.hooks
 	}
-	store := &attemptRecordStore{db: db, identity: attemptRecordStoreIdentity{Schema: attemptStoreSchema, Identity: identity, Coordinator: coordinator}, vpk: append(ed25519.PublicKey(nil), vpk...), disk: &attemptRecordStoreStorage{hooks: hooks}, bounds: attemptRecordStoreBounds{MaxRecordBytes: limits.MaxRecordBytes, MaxRecordCount: limits.MaxRecordCount, MaxTrailCount: limits.MaxTrailCount, MaxRawRecordBytes: limits.MaxRawRecordBytes, MaxStorageBytes: limits.MaxStorageBytes, MaxStorageFiles: limits.MaxStorageFiles}}
+	store := &attemptRecordStore{db: db, identity: attemptRecordStoreIdentity{Schema: attemptStoreSchema, Identity: identity, Coordinator: coordinator}, vpk: append(ed25519.PublicKey(nil), vpk...), disk: &attemptRecordStoreStorage{path: path, anchor: pinned, root: root, hooks: hooks}, bounds: attemptRecordStoreBounds{MaxRecordBytes: limits.MaxRecordBytes, MaxRecordCount: limits.MaxRecordCount, MaxTrailCount: limits.MaxTrailCount, MaxRawRecordBytes: limits.MaxRawRecordBytes, MaxStorageBytes: limits.MaxStorageBytes, MaxStorageFiles: limits.MaxStorageFiles}}
+	store.disk.fault = store.latchFault
 	raw, err := db.Get([]byte("identity"), nil)
 	var storedIdentity attemptRecordStoreIdentity
 	if err != nil || attemptStoreDecode(raw, &storedIdentity) != nil || storedIdentity != store.identity {

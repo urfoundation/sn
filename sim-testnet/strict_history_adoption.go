@@ -38,6 +38,22 @@ type strictHistoryAdoptionState struct {
 	bundle        strictHistoryAdoptionBundle
 	requests      [][]byte
 	capacityCache validatorcomponent.StoppedAttemptLedgerCapacityCache
+	invocationContext context.Context
+}
+
+// Rendering and handoff retain this invocation even when their legacy entry
+// points supply Background. Canceling either owner stops the underlying reads;
+// cleanup detaches the callback without retaining a worker after admission.
+func (self *strictHistoryAdoptionState) preflightContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	bound, cancel := context.WithCancel(ctx)
+	if self == nil || self.invocationContext == nil {
+		return bound, cancel
+	}
+	stop := context.AfterFunc(self.invocationContext, cancel)
+	if self.invocationContext.Err() != nil {
+		cancel()
+	}
+	return bound, func() { stop(); cancel() }
 }
 
 func validateStrictHistoryAdoptionOptions(command string, options cliOptions) error {
@@ -194,7 +210,7 @@ func prepareStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, stat
 	if bundle.Schema != strictHistoryAdoptionSchema || bundle.DeploymentID != plan.DeploymentID || bundle.ApprovedPlanHash != plan.PlanHash || bundle.FirstNativeEpoch == 0 || len(bundle.Validators) != cfg.Config.Topology.Validators {
 		return errors.New("strict history adoption bundle changed its approved owner or census")
 	}
-	state := &strictHistoryAdoptionState{path: options.StrictHistoryAdoption, hash: options.StrictHistoryAdoptionSHA256, bundle: bundle}
+	state := &strictHistoryAdoptionState{path: options.StrictHistoryAdoption, hash: options.StrictHistoryAdoptionSHA256, bundle: bundle, invocationContext: ctx}
 	for index, value := range bundle.Validators {
 		var request validatorcomponent.ReleaseHistoryAdoptionV2
 		decoder := json.NewDecoder(bytes.NewReader(value))
@@ -226,8 +242,13 @@ func prepareStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, stat
 
 func preflightStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, stateDir string) error {
 	state := cfg.strictHistoryAdoption
-	if state == nil {
+	if state == nil || ctx == nil {
 		return errors.New("strict history adoption invocation owner is absent")
+	}
+	ctx, cancel := state.preflightContext(ctx)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	raw, err := readStrictHistoryAdoptionFile(stateDir, state.path, strictHistoryAdoptionMaximumBytes)
 	if err != nil || bytesSHA256(raw) != state.hash {

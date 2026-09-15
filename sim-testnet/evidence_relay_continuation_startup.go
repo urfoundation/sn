@@ -66,8 +66,8 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 	if err != nil {
 		return err
 	}
-	if head.Number < c.EVMHead.Number || head.Number >= c.EndBlock {
-		return errors.New("relay continuation fixed source-capacity runway has expired")
+	if err := validateEvidenceRelayContinuationRunway(c, head.Number); err != nil {
+		return err
 	}
 	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
 	if err != nil {
@@ -94,5 +94,9 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 			return err
 		}
 	}
-	return nil
+	latest, err := finalizedEVMHead(ctx, client)
+	if err != nil {
+		return err
+	}
+	return validateEvidenceRelayContinuationRunway(c, latest.Number)
 }

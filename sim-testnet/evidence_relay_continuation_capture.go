@@ -110,19 +110,20 @@ func readEvidenceRelayContinuationDebits(ctx context.Context, stateDir string, p
 	owners := map[string]*SetupPlan{}
 	var debits []EvidenceRelayContinuationDebit
 	var retained []validatorcomponent.ValidatorEvidenceTransactionV2Expected
+	maximum := evidenceRelayOriginalSlots
+	if plan.EvidenceRelayContinuation != nil {
+		maximum = evidenceRelayContinuationSlots
+	}
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) || seen[entry.ActionID] {
 			continue
 		}
-		if entry.DeploymentID != plan.DeploymentID || !plan.allowedPlanHashes()[entry.PlanHash] || len(seen) >= int(evidenceRelayOriginalSlots) {
+		if entry.DeploymentID != plan.DeploymentID || !plan.allowedPlanHashes()[entry.PlanHash] || uint64(len(seen)) >= maximum {
 			return nil, nil, errors.New("relay continuation has an unowned or excessive original debit")
 		}
 		owner, record, raw, err := readOwnedEvidenceRelayRequest(ctx, stateDir, plan, entries, entry.ActionID, owners)
 		if err != nil {
 			return nil, nil, err
-		}
-		if owner.EvidenceRelayContinuation != nil {
-			return nil, nil, errors.New("relay continuation cannot replace a prior continuation")
 		}
 		debits = append(debits, EvidenceRelayContinuationDebit{PlanHash: owner.PlanHash, ActionID: entry.ActionID, RequestSHA256: bytesSHA256(raw), AllowanceWei: record.Action.Spend.EVMGasWei})
 		retained = append(retained, record.Evidence)
@@ -135,7 +136,7 @@ func readEvidenceRelayContinuationDebits(ctx context.Context, stateDir string, p
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(files) > 4*int(evidenceRelayOriginalSlots) {
+	if uint64(len(files)) > 4*maximum {
 		return nil, nil, errors.New("relay continuation original request directory exceeds its finite census")
 	}
 	for _, file := range files {
@@ -259,8 +260,11 @@ func (self *Executor) observeEvidenceRelayContinuationNonces(ctx context.Context
 }
 
 func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, endBlock uint64, pin *EvidenceRelayContinuation) (result *SetupPlan, resultErr error) {
-	if ctx == nil || cfg == nil || base == nil || base.EvidenceRelayContinuation != nil || provisionalResumeEnabled(cfg) || endBlock == 0 {
+	if ctx == nil || cfg == nil || base == nil || provisionalResumeEnabled(cfg) || endBlock == 0 {
 		return nil, errors.New("relay continuation requires one explicit strict end and original source approval")
+	}
+	if prior := base.EvidenceRelayContinuation; prior != nil && prior.Schema != evidenceRelayContinuationSchema && prior.Schema != evidenceRelayContinuationRefreshSchema {
+		return nil, errors.New("relay refresh cannot change an older approved fee version")
 	}
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
@@ -275,6 +279,11 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 	entries, err := readJournalEntries(stateDir)
 	if err != nil || len(entries) == 0 {
 		return nil, errors.Join(errors.New("relay continuation requires the original deployment journal"), err)
+	}
+	if base.EvidenceRelayContinuation != nil {
+		if err := validateEvidenceRelayContinuationSource(stateDir, base, entries); err != nil {
+			return nil, err
+		}
 	}
 	journal := &Journal{entries: entries}
 	executor, err := NewExecutor(ctx, cfg, stateDir, base, journal, roles)
@@ -332,6 +341,10 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 		return nil, err
 	}
 	c := EvidenceRelayContinuation{Schema: evidenceRelayContinuationSchema, SourcePlanHash: base.PlanHash, ConfigHash: cfg.ConfigHash, ActivationPlanHash: activationPlan, PreparedSHA256: prepared, CompletedSHA256: completed, JournalHash: entries[len(entries)-1].EntryHash, OriginalReserve: reserve, EVMHead: ChainHead{Number: block, Hash: fmt.Sprintf("0x%x", hash)}, NativeHead: ChainHead{Number: nativeBlock, Hash: nativeHash.Hex()}, SettlementEpoch: oracle.CurrentEpoch, NativeEpoch: nativeEpoch, EndBlock: endBlock}
+	if base.EvidenceRelayContinuation != nil {
+		c.Schema = evidenceRelayContinuationRefreshSchema
+		c.OriginalReserve = base.EvidenceRelayContinuation.OriginalReserve
+	}
 	if pin != nil {
 		c.Schema = pin.Schema
 	}
@@ -405,7 +418,15 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 				return nil, err
 			}
 			operatorDir := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", id), "state", "operators", fmt.Sprintf("no-%d", operator.NoID))
-			capacity, err := validatorcomponent.ReadStoppedAttemptLedgerCapacity(ctx, operatorDir, contextValue.InitialCut.Identity, strings.ToLower(base.Deployment.CoordinatorProxy.Hex()), ed25519.PublicKey(activation.VPK[:]), configured.Evidence.Bounds.Disk)
+			var prefixes []validatorcomponent.AttemptLedgerHead
+			if prior := base.EvidenceRelayContinuation; prior != nil {
+				previous := prior.Sources[len(c.Sources)]
+				if err := checkEvidenceRelayContinuationHistoryPrefix(ctx, configPath, configBytes, request, previous); err != nil {
+					return nil, err
+				}
+				prefixes = append(prefixes, previous.Capacity.Head)
+			}
+			capacity, err := validatorcomponent.ReadStoppedAttemptLedgerCapacity(ctx, operatorDir, contextValue.InitialCut.Identity, strings.ToLower(base.Deployment.CoordinatorProxy.Hex()), ed25519.PublicKey(activation.VPK[:]), configured.Evidence.Bounds.Disk, prefixes...)
 			if err != nil {
 				return nil, err
 			}
