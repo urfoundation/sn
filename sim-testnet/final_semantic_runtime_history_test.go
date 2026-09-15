@@ -93,7 +93,13 @@ func TestFinalSemanticHistoricalRuntimeNativeArchiveRetainsOriginalArtifactAutho
 
 func TestFinalSemanticHistoricalRuntimeLockRetainsExactOriginalProvenance(t *testing.T) {
 	fixture := newValidatorEvidenceHistoricalLockTestFixture(t)
-	lock := fixture.original.ValidatorEvidenceSource.ReleaseLock
+	// Retain the original YAML-domain object. The companion's JSON snapshot
+	// uses json.Number, whose YAML spelling would turn numbers into strings.
+	lock := validatorEvidenceRuntime455TestLock(t)
+	lockHash, err := canonicalHashHex(lock)
+	if err != nil || lockHash != fixture.original.ReleaseLockHash || !finalJSONEqual(lock, fixture.original.ValidatorEvidenceSource.ReleaseLock) {
+		t.Fatalf("original YAML lock does not reproduce approved source: hash=%s error=%v", lockHash, err)
+	}
 	wire, err := yaml.Marshal(lock)
 	if err != nil {
 		t.Fatal(err)

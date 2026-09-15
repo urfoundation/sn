@@ -52,7 +52,7 @@ func newReleaseHistoricalSourceTestFixture(t *testing.T) *releaseHistoricalSourc
 			if args[1] != native.block.Hex() {
 				return errors.New("source schedule changed original block")
 			}
-			return setValidatorRuntimeIdentityTestResult(result, hexutil.Encode(binary.LittleEndian.AppendUint64(nil, 1)))
+			return setReleaseHistoricalTestResult(result, hexutil.Encode(binary.LittleEndian.AppendUint64(nil, 1)))
 		}
 		return original.CallContext(ctx, result, method, args...)
 	}}
@@ -118,6 +118,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeSourceAuthenticatesOriginalSignedBatc
 
 func TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata(t *testing.T) {
 	fixture := newReleaseHistoricalSourceTestFixture(t)
+	metadata, runtime := fixture.native.chain.Meta, fixture.native.chain.Runtime
 	var reads []ReleaseEvidenceV2NativeRead
 	err := CaptureReleaseNativeSourceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.measurement, func(_ context.Context, read ReleaseEvidenceV2NativeRead) error {
 		reads = append(reads, read)
@@ -125,6 +126,9 @@ func TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata(t
 	})
 	if err != nil {
 		t.Fatalf("original455 source capture under458: %v", err)
+	}
+	if fixture.native.chain.Meta != metadata || fixture.native.chain.Runtime != runtime {
+		t.Fatal("historical capture changed current signing owner")
 	}
 	want, err := json.Marshal(fixture.metadataHex)
 	if err != nil {
@@ -134,6 +138,13 @@ func TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata(t
 	for _, read := range reads {
 		if read.Method == "state_getMetadata" {
 			metadataCount++
+			wantParameters, err := json.Marshal([]any{fixture.native.block.Hex()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(read.Parameters, wantParameters) {
+				t.Fatal("capture changed the original metadata block")
+			}
 			if !bytes.Equal(read.Result, want) {
 				t.Fatal("capture replaced original metadata bytes")
 			}
@@ -189,8 +200,12 @@ func TestReleaseEvidenceV2HistoricalRuntimeFinalizedSourceReachesOriginalEventVe
 	}
 	original := fixture.native.chain.API.Client
 	events := 0
+	canonical := fixture.native.block
 	canary := errors.New("original finalized event reader reached")
 	fixture.native.chain.API.Client = &validatorRuntimeIdentityTestClient{callContext: func(ctx context.Context, result any, method string, args ...any) error {
+		if method == "chain_getBlockHash" && len(args) == 1 && args[0] == fixture.native.blockNumber {
+			return setReleaseHistoricalTestResult(result, canonical.Hex())
+		}
 		if method == "chain_getBlock" {
 			if len(args) != 1 || args[0] != fixture.native.block.Hex() {
 				return errors.New("finalized source changed original block")
@@ -212,5 +227,9 @@ func TestReleaseEvidenceV2HistoricalRuntimeFinalizedSourceReachesOriginalEventVe
 	}}
 	if err := authenticateReleaseNativeSourceReferenceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.artifact); !errors.Is(err, canary) || events != 1 {
 		t.Fatalf("finalized original source did not reach event verification: events=%d error=%v", events, err)
+	}
+	canonical[0] ^= 1
+	if err := authenticateReleaseNativeSourceReferenceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.artifact); err == nil || !strings.Contains(err.Error(), "V2 prepared signer lacks actual canonical native schedule/eligibility") || events != 1 {
+		t.Fatalf("substituted native block escaped original schedule authentication: events=%d error=%v", events, err)
 	}
 }

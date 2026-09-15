@@ -61,6 +61,16 @@ func releaseHistoricalTestCurrentArtifact() crv4.RuntimeArtifactIdentity {
 	return crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.RuntimeSpec, TransactionVersion: cfg.TransactionVersion, StateVersion: cfg.StateVersion}, CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash}
 }
 
+// Reproduces the transport's JSON assignment, including nullable storage and
+// the capture reader's bounded custom destination.
+func setReleaseHistoricalTestResult(result any, value any) error {
+	wire, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(wire, result)
+}
+
 func installReleaseHistoricalTestNative(t *testing.T, native *releaseNativeValidatorTestFixture) *string {
 	t.Helper()
 	metadata := releaseHistoricalTestMetadata(t)
@@ -76,9 +86,22 @@ func installReleaseHistoricalTestNative(t *testing.T, native *releaseNativeValid
 				return errors.New("historical metadata changed original block")
 			}
 			native.calls = append(native.calls, method)
-			return setValidatorRuntimeIdentityTestResult(result, metadata)
+			return setReleaseHistoricalTestResult(result, metadata)
 		}
-		return original.CallContext(ctx, result, method, args...)
+		// The original fixture checks every method and argument. Its header
+		// branch owns a typed result; the other branches provide raw JSON.
+		if method == "chain_getHeader" {
+			var header types.Header
+			if err := original.CallContext(ctx, &header, method, args...); err != nil {
+				return err
+			}
+			return setReleaseHistoricalTestResult(result, header)
+		}
+		var wire json.RawMessage
+		if err := original.CallContext(ctx, &wire, method, args...); err != nil {
+			return err
+		}
+		return json.Unmarshal(wire, result)
 	}}
 	return &metadata
 }
@@ -278,7 +301,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeAdoptionChecksExactAppliedRow(t *test
 			if args[1] != native.block.Hex() {
 				return errors.New("applied row changed original block")
 			}
-			return setValidatorRuntimeIdentityTestResult(result, hexutil.Encode(row))
+			return setReleaseHistoricalTestResult(result, hexutil.Encode(row))
 		}
 		return original.CallContext(ctx, result, method, args...)
 	}}
