@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/urfoundation/sn/crv4"
 )
 
 // Supplies fake executables before the host path, retaining actual jq parsing.
@@ -206,18 +208,23 @@ func TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute(t *test
 		t.Fatal(err)
 	}
 	var manifest releaseRuntimeMetadataArtifactManifest
-	if err := decodeStrictJSONBytes(raw, &manifest); err != nil || len(manifest.Artifacts) != 7 {
+	if err := decodeStrictJSONBytes(raw, &manifest); err != nil || len(manifest.Artifacts) != len(crv4.ReviewedRuntimeArtifacts()) {
 		t.Fatalf("artifact fixture manifest is incomplete: %v", err)
 	}
-	observation := manifest.Artifacts[5]
-	endpoint, err := url.Parse(observation.ObservationRpcUrl)
-	if err != nil || endpoint == nil || endpoint.Scheme != "http" || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || !net.ParseIP(endpoint.Hostname()).IsPrivate() || endpoint.Port() == "" || observation.SpecVersion != 458 || observation.ObservationRpcUrl == manifest.SubstrateRPCURL {
-		t.Fatal("runtime458 observation lost its distinct owned-route provenance")
-	}
-	for _, historical := range manifest.Artifacts[:5] {
-		if historical.ObservationRpcUrl != "" {
+	var observation releaseRuntimeMetadataArtifact
+	observations := 0
+	for _, artifact := range manifest.Artifacts {
+		if artifact.SpecVersion == 458 {
+			observation = artifact
+			observations++
+		}
+		if artifact.SpecVersion < 458 && artifact.ObservationRpcUrl != "" {
 			t.Fatal("historical observation provenance was rewritten")
 		}
+	}
+	endpoint, err := url.Parse(observation.ObservationRpcUrl)
+	if observations != 1 || err != nil || endpoint == nil || endpoint.Scheme != "http" || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || !net.ParseIP(endpoint.Hostname()).IsPrivate() || endpoint.Port() == "" || observation.ObservationRpcUrl == manifest.SubstrateRPCURL {
+		t.Fatal("runtime458 observation lost its distinct owned-route provenance")
 	}
 	response, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "result": manifest.GenesisHash})
 	if err != nil {
