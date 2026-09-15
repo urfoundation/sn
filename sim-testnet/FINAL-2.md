@@ -24,7 +24,10 @@ The allowance is published in vault commit
 `9651a13062af2fd25dcd9e98db8c8871d148d114` and adopted by native plan
 `0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea`.
 Its setup preparation passed all nine hard checks and authenticated all
-**3,449 carried actions**. The native renewal preview passed for **202 fleets**
+**3,449 carried actions**. Full native resume preparation subsequently passed
+**all 18 hard checks** at **13:58:20 UTC**, including both validator namespaces,
+host readiness and runtime inputs; the six recorded campaign-state files
+remained unchanged. The native renewal preview passed for **202 fleets**
 and **2,020 new actions**, capped at **13.13 EVM TAO plus 0.606 native TAO**;
 no renewal transaction was submitted by that preview. Existing keeper/oracle
 balances cover those ceilings. Its F388/T419 window is diagnostic only.

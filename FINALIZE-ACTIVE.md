@@ -46,7 +46,7 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 13:45 UTC: the user approved the lifetime
+Latest checkpoint, 2026-09-15 14:00 UTC: the user approved the lifetime
 increase to 205 EVM within 225 total TAO for one fleet renewal capped at
 13.13 EVM plus 0.606 native TAO. Alpha limits remain unchanged. The vault
 setting is published at `9651a13062af2fd25dcd9e98db8c8871d148d114`.
@@ -61,9 +61,11 @@ not be adopted as the final window.
 The approved 6,000-alpha repair finalized in native block 8,009,634. The later
 complete registered-stake census at block 8,010,632 shows a 65.5997247163%
 reserve share, above the 65% target. Do not repeat the repair. Both temporary
-artifact APIs and both RPC proxies stopped and joined cleanly; full strict
-resume preparation is running with a preparatory history request accepted by
-both validators. The soak remains stopped. The full producer has recorded a
+artifact APIs and both RPC proxies stopped and joined cleanly. Full strict
+resume preparation passed all 18 hard checks at 13:58:20 UTC, including both
+validator namespaces, host readiness and runtime inputs. All 1,000 fleet
+records and 3,449 carried actions were authenticated, with unchanged recorded
+campaign state. The soak remains stopped. The full producer has recorded a
 capture-cohort race timeout; Astra is correcting the repeated test-helper work
 while Terra completes every independent phase in both gates. Finish the error
 batch, qualify it, then choose the actual renewal window, final relay end and

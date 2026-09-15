@@ -43,6 +43,11 @@ target and 60% floor, not proof of the future campaign's final reserve share.
   preparation checks passed; all 3,449 carried actions were authenticated.
   Only the approved plan and redacted configuration changed among the six
   recorded campaign-state files. No chain action was dispatched.
+- [resume-preparation.json](resume-preparation.json): complete strict resume
+  preparation passed all 18 hard checks at 13:58:20 UTC, including 1,000 fleet
+  records, all 3,449 carried actions, both validator namespaces and host/runtime
+  prerequisites. All six recorded state hashes, executable and release-lock
+  hashes were unchanged. It stopped before action dispatch or topology startup.
 - [renewal-preview.json](renewal-preview.json): 202 fleets and 2,020 new
   actions fit the approved 13.13 EVM / 0.606 native ceiling. Total native
   planning bound is 211.960236 TAO; EVM maximum 192.2495 plus superseded

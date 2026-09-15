@@ -1,0 +1,133 @@
+{
+  "schema": "urnetwork-sim-launch-preparation-v1",
+  "command": "resume",
+  "plan_hash": "0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea",
+  "ready": true,
+  "prepare_only": true,
+  "stopped_before_actions": true,
+  "body_exit": 0,
+  "outer_exit": 0,
+  "session_joined": true,
+  "started_at": "2026-09-15T13:37:35Z",
+  "finished_at": "2026-09-15T13:58:20Z",
+  "hard_checks": 18,
+  "checks": [
+    {
+      "name": "attempt-upload-budget",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "provisional-live-topology",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "doctor",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "role-secrets",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "run-inputs",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "operator-config-overlays",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "managed-dependencies",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "release-binaries",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "release-host",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "execution-readers",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "carried plan history preflight",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "contract-deployment-payloads",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "signed-attempt-namespaces",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "runtime-evidence-references",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "operator-api-origins",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "runtime-deployment-inputs",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "reserved-attempt-uploads",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "preparation-context",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    }
+  ],
+  "doctor_ready": true,
+  "carried_fleets_authenticated": 1000,
+  "carried_actions_authenticated": 3449,
+  "state_compare_exit": 0,
+  "binary_compare_exit": 0,
+  "lock_compare_exit": 0,
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions": 0
+}
