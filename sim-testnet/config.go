@@ -277,6 +277,7 @@ type PublicManifest struct {
 		TokenSymbol                       string `yaml:"token_symbol"`
 		TokenDecimals                     uint8  `yaml:"token_decimals"`
 		ExpectedRuntimeSpec               uint32 `yaml:"expected_runtime_spec"`
+		ConfigIdentityRuntimeSpec         uint32 `yaml:"config_identity_runtime_spec,omitempty" json:",omitempty"`
 		ExpectedTransactionVersion        uint32 `yaml:"expected_transaction_version"`
 		ExpectedStateVersion              uint8  `yaml:"expected_state_version"`
 		ExpectedBlockSeconds              uint64 `yaml:"expected_block_seconds"`
@@ -497,17 +498,26 @@ func LoadResolved(opts LoadOptions) (*ResolvedConfig, error) {
 	return r, nil
 }
 
-// Bind every non-secret launch manifest which can change setup behavior. The
-// policy and source lock retain their own hashes for independent audit fields.
+// Bind the launch manifests to activation identity. An explicit reviewed
+// runtime migration retains that identity; its pin is separately approved in
+// SetupPlan, while the release lock authenticates the exact current runtime.
 func releaseConfigHash(config *HarnessConfig, public *PublicManifest, hyperparameters *Hyperparameters) (string, error) {
 	if config == nil || public == nil || hyperparameters == nil {
 		return "", errors.New("release configuration manifests are incomplete")
+	}
+	if err := validateRuntimeConfigIdentity(public); err != nil {
+		return "", err
+	}
+	identity := *public
+	if identity.Chain.ConfigIdentityRuntimeSpec != 0 {
+		identity.Chain.ExpectedRuntimeSpec = identity.Chain.ConfigIdentityRuntimeSpec
+		identity.Chain.ConfigIdentityRuntimeSpec = 0
 	}
 	return canonicalHashHex(struct {
 		Config          *HarnessConfig   `json:"config"`
 		Public          *PublicManifest  `json:"public"`
 		Hyperparameters *Hyperparameters `json:"hyperparameters"`
-	}{Config: config, Public: public, Hyperparameters: hyperparameters})
+	}{Config: config, Public: &identity, Hyperparameters: hyperparameters})
 }
 
 func (c *HarnessConfig) Validate() error {
@@ -1196,6 +1206,9 @@ func resolveSecretValue(value string, require bool) (string, error) {
 }
 
 func (r *ResolvedConfig) Validate() error {
+	if err := validateRuntimeConfigIdentity(r.Public); err != nil {
+		return err
+	}
 	if r.Public.SchemaVersion != 1 || r.Public.Profile != releaseProfile || r.Public.Chain.ChainID != testnetChainID || strings.ToLower(r.Public.Chain.GenesisHash) != testnetGenesis {
 		return errors.New("public manifest is not the pinned Bittensor testnet release profile")
 	}

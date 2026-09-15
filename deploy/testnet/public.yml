@@ -8,6 +8,9 @@ chain:
   token_symbol: testTAO
   token_decimals: 9
   expected_runtime_spec: 458
+  # Retain signed runtime455 activation identity; the plan separately approves
+  # this pin and its release lock authenticates the exact current458 runtime.
+  config_identity_runtime_spec: 455
   expected_transaction_version: 1
   expected_state_version: 1
   expected_block_seconds: 12

@@ -127,6 +127,7 @@ func TestRuntime458HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 		historicalCfg, historicalLock, historicalPublic := *cfg, *cfg.Release, *cfg.Public
 		historicalLock.Runtime.SpecVersion, historicalLock.Runtime.CodeHash, historicalLock.Runtime.MetadataHash = artifact.Version.SpecVersion, artifact.CodeHash, artifact.MetadataHash
 		historicalPublic.Chain.ExpectedRuntimeSpec = artifact.Version.SpecVersion
+		historicalPublic.Chain.ConfigIdentityRuntimeSpec = 0
 		historicalCfg.Release, historicalCfg.Public = &historicalLock, &historicalPublic
 		if err := validatePublishedRuntimeIdentity(public, &historicalCfg); err == nil {
 			t.Fatal("mutated historical config bypassed current lock admission")

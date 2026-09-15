@@ -249,10 +249,13 @@ func newValidatorEvidenceCarryConfiguredTestFixture(t *testing.T, historical, pr
 		artifact = validatorEvidenceCarryHistoricalArtifactTest(t, artifact)
 	}
 	lock := testReleaseLockFixture(t)
+	// The source may predate current runtime admission, but must retain one
+	// exact reviewed companion release before any plan or receipt is signed.
+	lock.Runtime = cfg.Release.Runtime
 	lock.EVMBuild["validator_evidence_artifact_hash"] = artifact.FoundryArtifactHash
 	lock.EVMBuild["validator_evidence_runtime_hash"] = artifact.RuntimeBytecodeHash
 	lock.EVMBuild["validator_evidence_storage_layout_hash"] = artifact.StorageLayoutHash
-	if err := validateReleaseLockStatic(lock); err != nil {
+	if err := validateValidatorEvidenceHistoricalReleaseLock(lock); err != nil {
 		t.Fatalf("complete original release prerequisite: %v", err)
 	}
 	cfg.Release, cfg.OperationalRPCMode = lock, rpcModePublicOverride

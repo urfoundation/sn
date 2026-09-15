@@ -96,6 +96,9 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 	if err := validateOwnedRPCPlan(authorizedCfg, p); err != nil {
 		return nil, err
 	}
+	if err := validateRuntimeConfigIdentityPlan(authorizedCfg, p); err != nil {
+		return nil, err
+	}
 	if err := validateExecutionRPCConfiguration(authorizedCfg); err != nil {
 		return nil, fmt.Errorf("execution RPC configuration: %w", err)
 	}
@@ -733,6 +736,9 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	}
 	if p.OwnedRPCAuthority != cfg.ownedRPCAuthority {
 		return nil, errPersistedPlanIdentityMismatch
+	}
+	if err := validateRuntimeConfigIdentityPlan(cfg, p); err != nil {
+		return nil, errors.Join(errPersistedPlanIdentityMismatch, err)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))

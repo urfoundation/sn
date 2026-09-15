@@ -141,6 +141,12 @@ func newCoordinatorRepairCarryFixture(t *testing.T) coordinatorRepairCarryFixtur
 func newCoordinatorRepairCarryPreparedFixture(t *testing.T, prepare func(validatorEvidenceCarryTestFixture)) coordinatorRepairCarryFixture {
 	t.Helper()
 	original := newValidatorEvidenceCarryModeTestFixture(t, false, true)
+	return newCoordinatorRepairCarrySourceFixture(t, original, prepare)
+}
+
+// Sign the repair only after its genuine predecessor approval is complete.
+func newCoordinatorRepairCarrySourceFixture(t *testing.T, original validatorEvidenceCarryTestFixture, prepare func(validatorEvidenceCarryTestFixture)) coordinatorRepairCarryFixture {
+	t.Helper()
 	if prepare != nil {
 		prepare(original)
 	}

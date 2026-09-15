@@ -5,7 +5,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +17,9 @@ import (
 // files. Offline authority reconstruction receives only public bytes; removing
 // all live private input files before its call proves the closed boundary.
 func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t *testing.T) {
-	fixture := newRuntimeEvidenceProvisionV2TestFixture(t)
+	fixture := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
+		cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455
+	})
 	executor := &Executor{cfg: fixture.cfg, plan: fixture.plan, roles: fixture.roles, stateDir: fixture.stateDir}
 	if err := executor.retainRuntimeEvidenceInputsV2(t.Context(), fixture.prepared, fixture.preparedBytes, fixture.completed); err != nil {
 		t.Fatal(err)
@@ -94,28 +95,39 @@ func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t 
 	if err := verify(authority, runtime); err != nil {
 		t.Fatalf("original public renderer replay: %v", err)
 	}
-	for _, change := range []string{"runtime-origin", "template-origin", "original-prepared-pin"} {
-		t.Run(change, func(t *testing.T) {
-			changedAuthority, changedRuntime := bytes.Clone(authority), bytes.Clone(runtime)
-			switch change {
-			case "runtime-origin":
-				changedRuntime = bytes.ReplaceAll(changedRuntime, []byte(fixture.cfg.OperatorAPIOrigins[0]), []byte("https://unapproved-source.example"))
-			case "template-origin":
-				changedAuthority = bytes.ReplaceAll(changedAuthority, []byte(fixture.cfg.OperatorAPIOrigins[0]), []byte("https://unapproved-source.example"))
-			case "original-prepared-pin":
-				var value finalValidatorAuthorityV2
-				if err := json.Unmarshal(changedAuthority, &value); err != nil {
-					t.Fatal(err)
-				}
-				value.Prepared = append(value.Prepared, '\n')
-				changedAuthority, err = json.Marshal(value)
-				if err != nil {
-					t.Fatal(err)
-				}
+	for _, change := range []string{"runtime-origin", "template-origin", "original-prepared-pin", "runtime-identity-pin"} {
+		changedAuthority, changedRuntime := bytes.Clone(authority), bytes.Clone(runtime)
+		switch change {
+		case "runtime-identity-pin":
+			var value finalValidatorAuthorityV2
+			if err := json.Unmarshal(changedAuthority, &value); err != nil {
+				t.Fatalf("%s: %v", change, err)
 			}
-			if err := verify(changedAuthority, changedRuntime); err == nil {
-				t.Fatal(fmt.Sprintf("changed %s redefined source authority", change))
+			// This omitted-pin predecessor reproduces the same ConfigHash,
+			// but cannot replace the current plan's explicit runtime approval.
+			value.Public.Chain.ExpectedRuntimeSpec = 455
+			value.Public.Chain.ConfigIdentityRuntimeSpec = 0
+			changedAuthority, err = json.Marshal(value)
+			if err != nil {
+				t.Fatalf("%s: %v", change, err)
 			}
-		})
+		case "runtime-origin":
+			changedRuntime = bytes.ReplaceAll(changedRuntime, []byte(fixture.cfg.OperatorAPIOrigins[0]), []byte("https://unapproved-source.example"))
+		case "template-origin":
+			changedAuthority = bytes.ReplaceAll(changedAuthority, []byte(fixture.cfg.OperatorAPIOrigins[0]), []byte("https://unapproved-source.example"))
+		case "original-prepared-pin":
+			var value finalValidatorAuthorityV2
+			if err := json.Unmarshal(changedAuthority, &value); err != nil {
+				t.Fatalf("%s: %v", change, err)
+			}
+			value.Prepared = append(value.Prepared, '\n')
+			changedAuthority, err = json.Marshal(value)
+			if err != nil {
+				t.Fatalf("%s: %v", change, err)
+			}
+		}
+		if err := verify(changedAuthority, changedRuntime); err == nil {
+			t.Fatalf("changed %s redefined source authority", change)
+		}
 	}
 }

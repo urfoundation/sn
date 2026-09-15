@@ -82,6 +82,7 @@ type SetupPlan struct {
 	ProductionBurnHalfLifeBlocks uint16                     `json:"production_burn_half_life_blocks,omitempty"`
 	PriorPlanHashes              []string                   `json:"prior_plan_hashes,omitempty"`
 	ConfigHash                   string                     `json:"config_hash"`
+	ConfigIdentityRuntimeSpec    uint32                     `json:"config_identity_runtime_spec,omitempty"`
 	ResolvedInputsHash           string                     `json:"resolved_inputs_hash"`
 	OwnedRPCAuthority            string                     `json:"owned_rpc_authority,omitempty"`
 	PolicyHash                   string                     `json:"policy_hash"`
@@ -871,6 +872,10 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
 	p := &SetupPlan{Schema: currentSetupPlanSchema, Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, MaximumEVMFeePerGasWei: cfg.Config.Budgets.MaximumEVMFeePerGasWei, AlphaTransferMarginBPS: cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS, MinimumSourceRemainingRao: cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, Deployment: payloads.Manifest, CoordinatorUpgrade: payloads.CoordinatorUpgrade, ValidatorEvidence: &evidenceManifest, GeneratedAt: generatedAt.Format(time.RFC3339)}
 	p.OwnedRPCAuthority = cfg.ownedRPCAuthority
+	p.ConfigIdentityRuntimeSpec = cfg.Public.Chain.ConfigIdentityRuntimeSpec
+	if err := validateRuntimeConfigIdentityPlan(cfg, p); err != nil {
+		return nil, err
+	}
 	p.ValidatorEvidenceSource = evidenceSource
 	add := func(a Action) {
 		if actionUsesContractDeployment(a) {
@@ -2009,6 +2014,9 @@ func (p SetupPlan) hash() (string, error) {
 func validatePlanBudget(p *SetupPlan) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
+	}
+	if p.ConfigIdentityRuntimeSpec != 0 && (p.ConfigIdentityRuntimeSpec != 455 || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis) {
+		return errors.New("setup plan runtime configuration identity is not the reviewed testnet predecessor")
 	}
 	if p.OwnedRPCAuthority != "" {
 		if err := validateOwnedRPCAuthority(p.OwnedRPCAuthority); err != nil {

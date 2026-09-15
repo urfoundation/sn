@@ -47,11 +47,25 @@ type validatorEvidenceHistoricalLockTestFixture struct {
 func newValidatorEvidenceHistoricalLockTestFixture(t *testing.T) validatorEvidenceHistoricalLockTestFixture {
 	t.Helper()
 	config := testResolvedConfig(t)
+	config.Public.Chain.ConfigIdentityRuntimeSpec = 455
+	var err error
+	config.ConfigHash, err = releaseConfigHash(config.Config, config.Public, config.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
 	roles, err := derivePublicRoles(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	originalConfig := *config
+	originalPublic := *config.Public
+	originalPublic.Chain.ExpectedRuntimeSpec = 455
+	originalPublic.Chain.ConfigIdentityRuntimeSpec = 0
+	originalConfig.Public = &originalPublic
+	originalConfig.ConfigHash, err = releaseConfigHash(originalConfig.Config, originalConfig.Public, originalConfig.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
 	originalConfig.Release = validatorEvidenceRuntime455TestLock(t)
 	original, err := buildPlan(&originalConfig, testSetupFacts(), roles, time.Unix(1, 0))
 	if err != nil {

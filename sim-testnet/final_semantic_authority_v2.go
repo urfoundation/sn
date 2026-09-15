@@ -155,6 +155,9 @@ func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanti
 		return nil, nil, errors.Join(errors.New("final V2 resolved origins or public authority differ from approval"), err)
 	}
 	resolved := &ResolvedConfig{Config: authority.Config, Public: authority.Public, Hyperparameters: authority.Hyperparameters, Policy: &policy, Release: &releaseLock, ConfigHash: configHash, PolicyHash: policyHash, ChainID: evidence.ChainID, Netuid: evidence.Netuid, OperationalRPCMode: authority.Resolved.OperationalRPCMode}
+	if err := validateRuntimeConfigIdentityPlan(resolved, current); err != nil {
+		return nil, nil, err
+	}
 	if resolved.OperationalRPCMode == rpcModeOwnedNode {
 		resolved.ownedRPCAuthority = current.OwnedRPCAuthority
 		resolved.OperationalSubstrate = authority.Resolved.OperationalSubstrate
