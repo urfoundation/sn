@@ -1,0 +1,33 @@
+{
+  "observed_at": "2026-09-15T13:20:07.641403+00:00",
+  "source_plan": "0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea",
+  "rpc": "http://192.168.1.162:9944",
+  "block_number": 8011346,
+  "block_hash": "0x9857f31e0979fac03123632e7c0ce374084bdc1aa4c45239c474c39ac442ef3f",
+  "observed_epoch": 386,
+  "base_fee_per_gas_wei": 20134283587,
+  "tip_wei": 0,
+  "current_inclusion_price_wei": 20134283587,
+  "proposed_renewal_cap_wei": 25000000000,
+  "cap_covers_current_inclusion": true,
+  "roles": {
+    "keeper": {
+      "balance_wei": "57191313839000000000",
+      "ceiling_with_808_revocations_wei": "12120000000000000000",
+      "margin_with_808_revocations_wei": "45071313839000000000",
+      "ceiling_if_no_revocations_wei": "8080000000000000000",
+      "covers_full_old_renewal_ceiling": true
+    },
+    "commitment-oracle": {
+      "balance_wei": "83909839762000000000",
+      "ceiling_with_808_revocations_wei": "1010000000000000000",
+      "margin_with_808_revocations_wei": "82899839762000000000",
+      "ceiling_if_no_revocations_wei": "1010000000000000000",
+      "covers_full_old_renewal_ceiling": true
+    }
+  },
+  "read_methods": 5,
+  "transactions_submitted": 0,
+  "qualification_execution": false,
+  "limit": "One exact latest-block observation; fresh native renewal planning and apply still verify their own unchanged custody, nonce, liabilities, inclusion window and balances."
+}

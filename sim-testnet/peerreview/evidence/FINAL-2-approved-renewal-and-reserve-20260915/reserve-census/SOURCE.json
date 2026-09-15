@@ -1,0 +1,9 @@
+{
+  "source_directory": "/home/by/urnetwork/temp/sn-infrastructure-release-integration-20260914/post-repair-reserve-census-20260915",
+  "sha256": {
+    "SUMMARY.json": "96fd73c5409076478511d00197595bd4fcf4f20b8bf1664d3e8edf184352ae70",
+    "census.request.json": "395b8635f5c5aae9fc20df6deac5a67d7b963dc2c95cbb3e1f1648fd850dee62",
+    "census.response.json": "3db704434d8a940f179fe76ab4c1da38bc39dd41a0b4dd81f6b72fb45e428364"
+  },
+  "purpose": "fresh full registered-alpha observation during parallel preparation; no transaction or plan adoption"
+}

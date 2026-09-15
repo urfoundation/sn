@@ -1,0 +1,28 @@
+{
+  "schema": "urnetwork-testnet-allowance-user-approval-v1",
+  "recorded_at": "2026-09-15T12:52:41.422340+00:00",
+  "user_approval": [
+    "Allowance increase approved",
+    "Approve 205 EVM / 225 total"
+  ],
+  "approved": true,
+  "approved_limits": {
+    "evm_gas_wei": "205000000000000000000",
+    "tao_rao": "225000000000",
+    "alpha_rao": "37250000000000",
+    "per_repair_alpha_rao": "6000000000000",
+    "registrations": 262,
+    "subnet_creations": 0
+  },
+  "required_renewal_maximum": {
+    "evm_gas_wei": "13130000000000000000",
+    "native_tao_rao": "606000000",
+    "alpha_rao": "0"
+  },
+  "review_sha256": "de40bb4a0eabc4ca99fdac6e2dd57ba3e32bacc13ddd88f919ad25b93af762f2",
+  "proposal_sha256": "342fefef1404aa5809e73457c205bef644c6863ec0d9c59de5e8e52c1eb40cfc",
+  "alpha_repair_already_finalized": true,
+  "no_additional_approval_required_within_these_terms": true,
+  "plan_adopted": false,
+  "renewal_submitted": false
+}

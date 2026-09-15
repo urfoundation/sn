@@ -1,0 +1,32 @@
+{
+  "endpoint": "http://192.168.1.162:9944",
+  "independent_rpc": false,
+  "repair": {
+    "algorithm": "BLAKE2b-256 over exact SCALE extrinsic bytes",
+    "transaction_hash": "0xb6468a8c03886ef4d3c207ba08348b3219267b90d7e569b82d9a81b9da96ebed",
+    "extrinsic_index": 6,
+    "block_extrinsic_count": 7,
+    "canonical_block_inclusion": true,
+    "native_block": 8009634,
+    "native_hash": "0x201b281662dceed0baf5b2d1efae66373867ffa252565417b8c7fb1d4380dbc3",
+    "parent_block": 8009633,
+    "parent_hash": "0x796fe5b2cf7239b51a55ea66f8d4e9566811298f698be696731d2fdbe3799cb9",
+    "source_hotkey": "0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658",
+    "reserve_hotkey": "0x6873c28d2f449235f1a7a30b211880826d04c2ce1a1454ec6e4e499aebd6005e",
+    "source_total_alpha_before_rao": "23280897710393",
+    "source_total_alpha_after_rao": "17280897710393",
+    "source_total_alpha_debit_rao": "6000000000000",
+    "reserve_total_alpha_before_rao": "53001419362021",
+    "reserve_total_alpha_after_rao": "59001419362021",
+    "reserve_total_alpha_credit_rao": "6000000000000",
+    "observed_pair_total_preserved": true
+  },
+  "probe": {
+    "transaction_hash": "0xa53f90989089c770f09624e6ef700a0d5760594aec889a082f499462dbdd68c0",
+    "evm_block": 8009630,
+    "evm_hash": "0x2ebb45543f40ea3b1decb043949d5571b3c5039745513dce91b6b8556fbcb42c",
+    "contract_address": "0x500c8955e0b76848f1f32c0e67c7e0715c1ecf00",
+    "status": 1,
+    "gas_used": 1511354
+  }
+}

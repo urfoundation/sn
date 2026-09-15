@@ -1,0 +1,51 @@
+{
+  "body_exit": 0,
+  "outer_exit": 0,
+  "session_joined": true,
+  "state_compare_exit": 0,
+  "binary_compare_exit": 0,
+  "lock_compare_exit": 0,
+  "finished_at": "2026-09-15T13:27:54Z",
+  "plan_hash": "0xa979aed8c1b0c7017e9204ad804f8a68d430db8abd964db85b53e13a224d20c1",
+  "source_plan_hash": "0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea",
+  "action_count": 5541,
+  "renewal_round_count": 2,
+  "maximum_spend": {
+    "tao_rao": 211960236000,
+    "alpha_rao": 36748306443274,
+    "evm_gas_wei": 192249500000000000000,
+    "registrations": 259,
+    "subnet_creations": 0
+  },
+  "superseded_spend": {
+    "tao_rao": 0,
+    "alpha_rao": 501693556726,
+    "evm_gas_wei": 12750500000000000000,
+    "registrations": 3,
+    "subnet_creations": 0
+  },
+  "limits": {
+    "tao_rao": 225000000000,
+    "alpha_rao": 37250000000000,
+    "evm_gas_wei": 205000000000000000000,
+    "registrations": 262,
+    "subnet_creations": 0
+  },
+  "stdout_sha256": "618889d591a7788938ca4350cb52137f86ac7ccb03bb9677b578b70f5f22728a",
+  "diagnostic_from_epoch": 388,
+  "diagnostic_to_epoch": 419,
+  "do_not_adopt_diagnostic_window": true,
+  "chain_transactions": 0,
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "new_renewal_actions": 2020,
+  "new_renewal_action_spend": {
+    "tao_rao": 606000000,
+    "alpha_rao": 0,
+    "evm_gas_wei": 13130000000000000000,
+    "registrations": 0,
+    "subnet_creations": 0
+  },
+  "reviewed_renewal_bounds_match": true,
+  "fleets": 202
+}

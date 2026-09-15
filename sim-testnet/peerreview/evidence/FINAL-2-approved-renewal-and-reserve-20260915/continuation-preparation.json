@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-09-15T13:15:26.144798+00:00",
+  "body_exit": 0,
+  "outer_exit": 0,
+  "body_finished_at": "2026-09-15T13:05:02Z",
+  "state_compare_exit": 0,
+  "binary_compare_exit": 0,
+  "lock_compare_exit": 0,
+  "diagnostic_plan_hash": "0x62b3a0eb4455a4045be036b734e53f5ed9d78e00d76f695bd9bcec533f542dcb",
+  "diagnostic_end_block": 8019194,
+  "do_not_adopt": true,
+  "source_plan_hash": "0x4c9a9b9b585831c0b302307fc9384d6c140baa3bc93eb38f57543d1fd85a1bc7",
+  "stdout_sha256": "a8bb78946807dce42b596829b646370f0ad8cde74683c81dcd3ebb12f4e8ac27",
+  "action_count": 3521,
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions": 0
+}

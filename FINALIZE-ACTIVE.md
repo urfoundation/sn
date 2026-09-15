@@ -43,10 +43,34 @@ Current work:
    Reuse valid completed evidence; unrun, failed and waived checks are not passes.
 
 Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
-180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
+205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 02:38 UTC: the explicit runtime configuration
+Latest checkpoint, 2026-09-15 13:45 UTC: the user approved the lifetime
+increase to 205 EVM within 225 total TAO for one fleet renewal capped at
+13.13 EVM plus 0.606 native TAO. Alpha limits remain unchanged. The vault
+setting is published at `9651a13062af2fd25dcd9e98db8c8871d148d114`.
+Native plan `0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea`
+is adopted: setup preparation passed all nine hard checks and authenticated
+all 3,449 carried actions, without dispatching an action. The complete renewal
+preview passed for 202 fleets and 2,020 new actions within those ceilings.
+Existing keeper and oracle balances cover that maximum; an extra funding
+transfer is not a prerequisite. Its F388/T419 window is diagnostic and must
+not be adopted as the final window.
+
+The approved 6,000-alpha repair finalized in native block 8,009,634. The later
+complete registered-stake census at block 8,010,632 shows a 65.5997247163%
+reserve share, above the 65% target. Do not repeat the repair. Both temporary
+artifact APIs and both RPC proxies stopped and joined cleanly; full strict
+resume preparation is running with a preparatory history request accepted by
+both validators. The soak remains stopped. The full producer has recorded a
+capture-cohort race timeout; Astra is correcting the repeated test-helper work
+while Terra completes every independent phase in both gates. Finish the error
+batch, qualify it, then choose the actual renewal window, final relay end and
+fresh native history epoch immediately before their native apply/resume steps.
+[Approval, adopted allowance, renewal bounds and on-chain repair evidence](sim-testnet/peerreview/evidence/FINAL-2-approved-renewal-and-reserve-20260915/README.md).
+
+Historical checkpoint, 2026-09-15 02:38 UTC: the explicit runtime configuration
 identity correction is frozen at85c0958. Its normal/race70 matrices each have
 69PASS/oneFAIL; both adjacent50 bodies pass. The sole failed root already
 authenticated the original repair but then planned with a temporary mock RPC

@@ -1,0 +1,26 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "chain_getBlockHash",
+    "params": [
+      8009633
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "chain_getBlockHash",
+    "params": [
+      8009634
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0xa53f90989089c770f09624e6ef700a0d5760594aec889a082f499462dbdd68c0"
+    ]
+  }
+]

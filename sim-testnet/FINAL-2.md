@@ -1,6 +1,43 @@
 # Sim-testnet finalization report 2
 
-**Current status: in progress; `final_acceptance=false`.** At **02:38 UTC on
+**Current status: in progress; `final_acceptance=false`.** The soak remains
+stopped. The approved **6,000-alpha reserve repair has finalized**, and the
+latest retained complete census shows **65.5997247163%** reserve share. The
+user has approved **205 EVM TAO within 225 total TAO** for the required fleet
+renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
+unchanged. Earlier checkpoints below retain their historical approvals and
+failures; they do not describe the current repair or allowance status.
+
+The repair transaction is
+`0xb6468a8c03886ef4d3c207ba08348b3219267b90d7e569b82d9a81b9da96ebed`,
+included at extrinsic index 6 in native block **8,009,634**, hash
+`0x201b281662dceed0baf5b2d1efae66373867ffa252565417b8c7fb1d4380dbc3`.
+Pinned parent/block storage shows exactly **6,000,000,000,000 alpha-rao**
+debited from the source hotkey and credited to the reserve hotkey. The later
+census at native block **8,010,632** includes all **256 registered UIDs**:
+reserve stake **59,254,248,215,327** divided by registered stake
+**90,326,976,937,105 alpha-rao** gives the percentage above. This establishes
+the preparation snapshot's reserve target, not the eventual end-of-run share.
+[Public RPC requests, responses, transaction inclusion and stake arithmetic](peerreview/evidence/FINAL-2-approved-renewal-and-reserve-20260915/README.md).
+
+The allowance is published in vault commit
+`9651a13062af2fd25dcd9e98db8c8871d148d114` and adopted by native plan
+`0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea`.
+Its setup preparation passed all nine hard checks and authenticated all
+**3,449 carried actions**. The native renewal preview passed for **202 fleets**
+and **2,020 new actions**, capped at **13.13 EVM TAO plus 0.606 native TAO**;
+no renewal transaction was submitted by that preview. Existing keeper/oracle
+balances cover those ceilings. Its F388/T419 window is diagnostic only.
+The new producer attempt has recorded a capture-cohort race timeout, and
+the complete gates are still collecting their independent results. Full
+qualification, actual renewal, the complete RC/production campaign, final
+accounting and shutdown remain outstanding. These preparation claims are
+local artifact evidence; all new chain observations use the owned LAN node
+and record **`independent_rpc=false`**.
+
+## Historical checkpoint: September 15, 02:38 UTC
+
+**Historical status: in progress; `final_acceptance=false`.** At **02:38 UTC on
 2026-09-15**, the soak remains stopped and the approved reserve repair is
 unsubmitted. The runtime configuration-identity correction is qualified. No new
 setup plan or transaction has resulted from this local qualification.
@@ -60,7 +97,7 @@ the canonical executable, actual setup, both complete gates and the real
 RC/production soak remain outstanding.
 [Parser and exact lock-render receipts](peerreview/evidence/FINAL-2-runtime-config-identity-20260915/final-lock/RESULT.json).
 
-## Latest native attempt: September 15, 01:26 UTC
+## Historical native attempt: September 15, 01:26 UTC
 
 The runtime455 historical-lock correction is qualified and published at
 `eccfae8a5f4176ccaa6099ce5ce555924057f3d3`. Its next actual setup attempt
@@ -985,7 +1022,7 @@ reproduction of the findings, not an all-check pass.
 | --- | --- | --- |
 | Production cadence was never scheduled | The first run used 300/50/150/5. A `production_cadence` YAML entry does not prove scheduling or activation. | Retain the successful policy-scheduling transaction, effective epoch, finalized policy state showing **360/60/180/6**, and **three consecutive fully observed epochs** under that active policy. The five accelerated epochs remain a separate prerequisite. Pending. |
 | `max_allowed_validators=64`, target ≤56 | The [whitepaper](../WHITEPAPER.md) calls this root-controlled/runtime-dependent. The [compatibility policy](../deploy/testnet/hyperparams.yml) already requires exactly 64. The user has explicitly directed this run to work with the real limit. | **Use 64; reaching 56 is not a testnet prerequisite.** Retain finalized value, actual permits, UID occupancy and 200-head selection evidence from the run. Report the difference from the whitepaper target without claiming ≤56 compliance. No parameter change is needed. |
-| Reserve 61.449%, below 65% target | The historical 60% floor passed; the repair target did not. The old repair is already credited. | The unsubmitted **3,750-alpha** repair became insufficient at the 17:10 UTC snapshot. The user approved replacing it with **one 6,000-alpha repair within 37,250 alpha lifetime**. Attempts stopped before submitting that transfer on the preparation defects retained above; the latest exposed the precompile restore check. Retain the eventual finalized debit/credit and a complete census proving ≥65%, monitor the 60% floor, and report the end-of-run share separately. |
+| Reserve 61.449%, below 65% target | The historical 60% floor passed; the repair target did not. | The approved **6,000-alpha** replacement finalized at native block **8,009,634**, with exact equal debit/credit. The complete 256-UID census at **8,010,632** proves **65.5997247163%**, closing the preparation reserve target. [Pinned on-chain proof](peerreview/evidence/FINAL-2-approved-renewal-and-reserve-20260915/README.md). Monitor the 60% floor during the actual campaign and report its end-of-run share separately; final acceptance remains pending. |
 | Epoch 309 paid despite capturing zero | `RootMissed(308)` carried each operator's funded amount into its own epoch-309 entitlement. | The missing historical transition is reproduced below from both nodes. Every new paid epoch must similarly explain its funding source, carry, payments and remainder per operator. Historical reporting omission closed; fresh-run accounting pending. |
 | Artifact signers differ from registered root signers | A recoverable artifact signature establishes provenance. The coordinator authorizes the root commitment transaction using the epoch's registered `rootSigner`; these are separate checks. | Preserve each recovered artifact signer, committed artifact hash/root, transaction sender and epoch-specific registered root signer. The collector/verifier correction is integrated into candidate `4fda909` and its affected tests passed normally and under race; retained keys and old signatures stay unchanged. Fresh-run evidence remains pending. |
 | Chain verification cannot establish off-chain usage or lifecycle | A committed hash authenticates bytes, not the truth of usage, restart or gate assertions within them. | Label chain-reproduced, independently recomputed, artifact-only, and locally executed evidence separately. Link exact artifacts, executable/source identity, commands, actual exits, process generations and shutdown outcomes. Pending full-run evidence. |

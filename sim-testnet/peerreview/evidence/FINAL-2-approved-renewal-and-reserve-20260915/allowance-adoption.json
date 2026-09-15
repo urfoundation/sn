@@ -1,0 +1,17 @@
+{
+  "body_exit": 0,
+  "outer_exit": 0,
+  "session_joined": true,
+  "ready": true,
+  "hard_checks": 9,
+  "failed_hard_checks": [],
+  "expected_adoption_changed_files": [
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plan.json",
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/config.redacted.yml"
+  ],
+  "carried_actions_authenticated": 3449,
+  "binary_compare_exit": 0,
+  "lock_compare_exit": 0,
+  "chain_transactions": 0,
+  "plan_hash": "0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea"
+}
