@@ -831,7 +831,7 @@ func validateValidatorEvidenceSource(plan *SetupPlan, historical bool) error {
 			return errors.New("fresh validator evidence source differs from the current generated artifact")
 		}
 	} else {
-		if err := validateReleaseLockStatic(source.ReleaseLock); err != nil {
+		if err := validateValidatorEvidenceHistoricalReleaseLock(source.ReleaseLock); err != nil {
 			return fmt.Errorf("validator evidence original release lock: %w", err)
 		}
 		for key, expected := range map[string]string{
