@@ -838,9 +838,13 @@ shortfall without persisting or broadcasting transaction bytes.
   quic-go's release socket requirement. `doctor` fails closed below that floor;
   on Linux set a 16 MiB margin before launch with
   `sudo sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216`.
-- At least 20 GiB free on the simulator state filesystem. Immediately before a
-  launch/resume can construct a chain-capable executor, the harness also binds
-  every required loopback process port and rejects any unrelated or stale listener.
+- Live launch/resume requires at least 20 GiB free on the simulator state
+  filesystem. Budget offline compilation and focused tests separately from
+  their measured footprint and available headroom for running jobs; those
+  bounded jobs may proceed below the live-runtime floor. Recheck that floor
+  before actual launch/resume. Immediately before constructing a chain-capable
+  executor, the harness also binds every required loopback process port and
+  rejects any unrelated or stale listener.
 - Docker with direct permission for the invoking user or passwordless `sudo -n
   docker`. The harness prefers direct access and never opens an interactive sudo
   prompt. One isolated PostgreSQL 18 and Redis 8 pair is created per operator from the exact digests in
