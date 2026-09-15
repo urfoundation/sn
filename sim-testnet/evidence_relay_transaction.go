@@ -168,7 +168,13 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 			}
 		}
 	}
-	receipt, sendErr := self.sendOwnedNonce(ctx, planHash, action, &expected.Journal, new(big.Int), calldata)
+	// This exact authenticated relay may use its approved ceiling when the
+	// usual doubled-base quote exceeds it but current inclusion still fits.
+	signed, sendErr := self.prepareOwnedEVMTransaction(ctx, planHash, action, &expected.Journal, new(big.Int), calldata, expected.MaxFeePerGas)
+	var receipt *types.Receipt
+	if sendErr == nil {
+		receipt, sendErr = self.waitExactTransaction(ctx, planHash, action, signed)
+	}
 	if sendErr != nil {
 		if receipt == nil || receipt.Status != types.ReceiptStatusFailed || ctx.Err() != nil {
 			return nil, sendErr

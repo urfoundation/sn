@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -21,7 +24,7 @@ import (
 func evidenceRelayContinuationTest(t *testing.T) (*runtimeEvidenceProvisionV2TestFixture, *Executor, EvidenceRelayContinuation) {
 	t.Helper()
 	fixture, horizon := newEvidenceRelayHorizonTestFixture(t)
-	if fixture.cfg.Config.Budgets.MaximumEVMFeePerGasWei != 2*evidenceRelayContinuationFee || fixture.cfg.Config.ValidatorEvidenceRelay.GasUnits != evidenceRelayContinuationGas {
+	if fixture.cfg.Config.Budgets.MaximumEVMFeePerGasWei != evidenceRelayOriginalFee || fixture.cfg.Config.ValidatorEvidenceRelay.GasUnits != evidenceRelayContinuationGas {
 		t.Fatal("original relay fixture lost its100gwei/one-million-gas approval")
 	}
 	journal, err := OpenJournal(fixture.stateDir)
@@ -74,7 +77,7 @@ func evidenceRelayContinuationTest(t *testing.T) (*runtimeEvidenceProvisionV2Tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.NewSlots, c.HistoricalLiabilityWei, err = evidenceRelayContinuationNewSlots(reserve.Spend.EVMGasWei, c.Debits)
+	c.NewSlots, c.HistoricalLiabilityWei, err = c.remainingSlots()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +102,7 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 			t.Fatalf("continuation changed an approved spend vector: before=%+v after=%+v error=%v", pair[1], pair[0], err)
 		}
 	}
-	if c.NewSlots != 510 || c.HistoricalLiabilityWei != "100000000000000000" || fixture.cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
+	if c.NewSlots != 1020 || c.HistoricalLiabilityWei != "100000000000000000" || fixture.cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
 		t.Fatal("continuation refunded the old failed debit or raised monetary/source allowances")
 	}
 	if err := writeRunInputs(fixture.cfg, fixture.stateDir, plan, fixture.roles); err != nil {
@@ -138,8 +141,8 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 	}
 	next := evidenceRelayLaunchRequestTest(t, fixture, fixture.prepared.Members[0], fixture.prepared.Epoch+1, false, 0)
 	newAction, newOwner, err := executor.admitOwnedEvidenceRelayAction(t.Context(), next)
-	if err != nil || newOwner != plan.PlanHash || newAction.Spend.EVMGasWei != "50000000000000000" {
-		t.Fatal("new subject did not use the bounded50gwei allowance", err)
+	if err != nil || newOwner != plan.PlanHash || newAction.Spend.EVMGasWei != "25000000000000000" {
+		t.Fatal("new subject did not use the bounded25gwei allowance", err)
 	}
 	raw, err := json.Marshal(plan)
 	if err != nil {
@@ -166,11 +169,121 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 		t.Fatal("later plan revision reset a continued nonce/request owner", err)
 	}
 	entries, maximum, err := executor.evidenceRelayAdmissionEntries()
-	if err != nil || maximum != 510 || len(entries) != 1 || entries[0].PlanHash != revised.PlanHash {
+	if err != nil || maximum != 1020 || len(entries) != 1 || entries[0].PlanHash != revised.PlanHash {
 		t.Fatal("later revision lost aggregate new-subject allocation", err)
 	}
 	if _, err := appendEvidenceRelayContinuationPlan(&revised, c); err == nil {
 		t.Fatal("a second continuation moved the original fixed end")
+	}
+}
+
+func TestEvidenceRelayContinuationVersionsPreserveHistoryAndApprovedFees(t *testing.T) {
+	fixture, _, original := evidenceRelayContinuationTest(t)
+	var hashes []string
+	for _, version := range []struct {
+		schema                string
+		fee, slots, remaining uint64
+	}{
+		{schema: "urnetwork-sim-evidence-relay-continuation-v2", fee: 50_000_000_000, slots: 512, remaining: 510},
+		{schema: evidenceRelayContinuationSchema, fee: 25_000_000_000, slots: 1024, remaining: 1020},
+	} {
+		c := original
+		c.Schema = version.schema
+		var err error
+		c.NewSlots, c.HistoricalLiabilityWei, err = c.remainingSlots()
+		if err != nil || c.NewSlots != version.remaining || c.HistoricalLiabilityWei != "100000000000000000" {
+			t.Fatalf("%s changed original higher-fee liabilities: %v", version.schema, err)
+		}
+		plan, err := appendEvidenceRelayContinuationPlan(fixture.plan, c)
+		if err != nil {
+			t.Fatalf("%s approval failed: %v", version.schema, err)
+		}
+		hashes = append(hashes, plan.PlanHash)
+		reserve, err := exactPlanActionByID(plan, evidenceRelayReserveId)
+		if err != nil || reserve.Parameters["maximum_slots"] != strconv.FormatUint(version.slots, 10) || reserve.Parameters[evmMaximumFeePerGasParameter] != strconv.FormatUint(version.fee, 10) || reserve.Spend != original.OriginalReserve.Spend {
+			t.Fatalf("%s changed approved count, fee or aggregate money: %v", version.schema, err)
+		}
+		revised := *plan
+		revised.Actions = slices.Clone(fixture.plan.Actions)
+		revised.EvidenceRelayContinuation = nil
+		if err := carryEvidenceRelayContinuationRevision(&revised, plan); err != nil || !reflect.DeepEqual(revised.EvidenceRelayContinuation, plan.EvidenceRelayContinuation) {
+			t.Fatalf("%s revision changed approved continuation: %v", version.schema, err)
+		}
+		carried, err := exactPlanActionByID(&revised, evidenceRelayReserveId)
+		if err != nil || !reflect.DeepEqual(carried, reserve) {
+			t.Fatalf("%s revision replaced its reserve: %v", version.schema, err)
+		}
+		if version.slots == 512 {
+			revised.EvidenceRelayContinuation.Schema = evidenceRelayContinuationSchema
+			if err := validateEvidenceRelayContinuationBudget(&revised); err == nil {
+				t.Fatal("existing v2 approval silently acquired v3 fees or slots")
+			}
+		}
+	}
+	if hashes[0] == hashes[1] {
+		t.Fatal("different fee/call approvals have the same plan identity")
+	}
+	// A long stopped interval still reserves every missing closed census.
+	// Only the explicit lower-fee approval can fund this complete history.
+	c := original
+	c.SettlementEpoch += 100
+	c.EndSettlementEpoch += 100
+	required, err := c.requiredSubjects(nil, nil)
+	if err != nil || required <= 512 || required > c.NewSlots+uint64(len(c.Debits)) {
+		t.Fatal("fixture did not retain the full old-plus-future subject census", required, err)
+	}
+	if _, err := appendEvidenceRelayContinuationPlan(fixture.plan, c); err != nil {
+		t.Fatal("same original monetary allowance could not fund the complete retained history", err)
+	}
+	c.Schema = "urnetwork-sim-evidence-relay-continuation-v2"
+	c.NewSlots, c.HistoricalLiabilityWei, err = c.remainingSlots()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := appendEvidenceRelayContinuationPlan(fixture.plan, c); err == nil {
+		t.Fatal("old v2 approval omitted missing historical closed subjects to fit")
+	}
+}
+
+func TestEvidenceRelayContinuationLiabilityDivisionNeverRefundsOrRoundsUp(t *testing.T) {
+	debit := EvidenceRelayContinuationDebit{PlanHash: common.Hash{1}.Hex(), ActionID: evidenceRelayActionPrefix + stringsTrim0x(common.Hash{2}.Hex()), AllowanceWei: "100000000000000000"}
+	for _, sample := range []struct {
+		reserve, liability DecimalUint
+		slots              uint64
+	}{
+		{reserve: "25600000000000000000", liability: "100000000000000000", slots: 1020},
+		{reserve: "25600000000000000000", liability: "100000000000000001", slots: 1019},
+		{reserve: "25600000000000000000", liability: "25599999999999999999", slots: 0},
+		{reserve: "25600000000000000000", liability: "25600000000000000000", slots: 0},
+	} {
+		current := debit
+		current.AllowanceWei = sample.liability
+		c := EvidenceRelayContinuation{Schema: evidenceRelayContinuationSchema, OriginalReserve: Action{Spend: Spend{EVMGasWei: sample.reserve}}, Debits: []EvidenceRelayContinuationDebit{current}}
+		slots, liability, err := c.remainingSlots()
+		if err != nil || slots != sample.slots || liability != sample.liability {
+			t.Fatalf("original liability %s changed or gained a partial slot: slots=%d liability=%s error=%v", sample.liability, slots, liability, err)
+		}
+	}
+	for _, mutate := range []func(*EvidenceRelayContinuation){
+		func(c *EvidenceRelayContinuation) { c.Debits[0].AllowanceWei = "25600000000000000001" },
+		func(c *EvidenceRelayContinuation) { c.Debits = append(c.Debits, c.Debits[0]) },
+		func(c *EvidenceRelayContinuation) { c.Schema = "unapproved-continuation" },
+		func(c *EvidenceRelayContinuation) { c.OriginalReserve.Spend.EVMGasWei = "25725000000000000000" },
+		func(c *EvidenceRelayContinuation) {
+			c.Debits = nil
+			for index := uint64(0); index <= evidenceRelayOriginalSlots; index++ {
+				current := debit
+				current.ActionID = evidenceRelayActionPrefix + stringsTrim0x(common.Hash{byte(index >> 8), byte(index)}.Hex())
+				current.AllowanceWei = "1"
+				c.Debits = append(c.Debits, current)
+			}
+		},
+	} {
+		c := EvidenceRelayContinuation{Schema: evidenceRelayContinuationSchema, OriginalReserve: Action{Spend: Spend{EVMGasWei: "25600000000000000000"}}, Debits: []EvidenceRelayContinuationDebit{debit}}
+		mutate(&c)
+		if _, _, err := c.remainingSlots(); err == nil {
+			t.Fatal("unowned, duplicate or excessive allowance produced new slots")
+		}
 	}
 }
 
@@ -244,7 +357,7 @@ func TestEvidenceRelayContinuationRejectsChangedSourceAndMissingRetainedPublicIn
 		func(v *EvidenceRelayContinuation) { v.SourcePlanHash = common.Hash{0x99}.Hex() },
 		func(v *EvidenceRelayContinuation) { v.EndBlock++ },
 		func(v *EvidenceRelayContinuation) { v.NewSlots++ },
-		func(v *EvidenceRelayContinuation) { v.Debits = nil; v.NewSlots = 512; v.HistoricalLiabilityWei = "0" },
+		func(v *EvidenceRelayContinuation) { v.Debits = nil; v.NewSlots = 1024; v.HistoricalLiabilityWei = "0" },
 		func(v *EvidenceRelayContinuation) {
 			v.Sources[0].CoordinatorStateDir = filepath.Join(fixture.stateDir, "other", "coordinator-state-v2")
 		},

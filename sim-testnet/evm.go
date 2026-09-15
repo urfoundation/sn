@@ -1283,7 +1283,7 @@ func (m *EvmTxManager) Send(ctx context.Context, planHash string, a Action, to *
 // Called only by the account-turn owner, including the evidence relay which
 // binds its exact action nonce before entering this same durable sender.
 func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
-	signed, err := m.prepareOwnedEVMTransaction(ctx, planHash, a, to, value, data)
+	signed, err := m.prepareOwnedEVMTransaction(ctx, planHash, a, to, value, data, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1292,7 +1292,8 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 
 // Preparation persists the exact signature and nonce before any broadcast.
 // The caller owns the account turn; ordinary sends retain it through finality.
-func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Transaction, error) {
+// Only the relay's exact slot/header authentication supplies a nonzero cap.
+func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte, validatedRelayFeeCap uint64) (*types.Transaction, error) {
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".rlp")
 		raw, err := os.ReadFile(rawPath)
@@ -1349,10 +1350,24 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		return nil, err
 	}
 	if !feeCap.IsUint64() || feeCap.Uint64() > maximumFeePerGas {
-		if !isFleetRenewalAction(a) {
+		switch {
+		case isFleetRenewalAction(a):
+			feeCap, err = fleetRenewalQuotedFeeCap(a, header.BaseFee, tip)
+		case validatedRelayFeeCap != 0 && validatedRelayFeeCap == maximumFeePerGas:
+			if tip.Sign() < 0 || (header.BaseFee != nil && header.BaseFee.Sign() < 0) {
+				return nil, errors.New("evidence relay inclusion price is negative")
+			}
+			feeCap = new(big.Int).SetUint64(validatedRelayFeeCap)
+			required := new(big.Int).Set(tip)
+			if header.BaseFee != nil {
+				required.Add(required, header.BaseFee)
+			}
+			if required.Cmp(feeCap) > 0 {
+				return nil, fmt.Errorf("%s current inclusion price %s exceeds approved fee-per-gas ceiling %d", a.ID, required, maximumFeePerGas)
+			}
+		default:
 			return nil, fmt.Errorf("%s live fee cap %s exceeds approved fee-per-gas ceiling %d", a.ID, feeCap, maximumFeePerGas)
 		}
-		feeCap, err = fleetRenewalQuotedFeeCap(a, header.BaseFee, tip)
 		if err != nil {
 			return nil, err
 		}

@@ -692,36 +692,37 @@ func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *test
 	base := *plan
 	for _, mutation := range []struct {
 		name   string
+		want   string
 		change func(*SetupPlan)
 	}{
-		{name: "missing companion", change: func(plan *SetupPlan) { plan.ValidatorEvidence = nil }},
-		{name: "prior deployment", change: func(plan *SetupPlan) {
+		{name: "missing companion", want: "approved validator evidence deployment", change: func(plan *SetupPlan) { plan.ValidatorEvidence = nil }},
+		{name: "prior deployment", want: "does not bind a distinct active implementation", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.PriorDeploymentHash = "0x" + strings.Repeat("91", 32)
 		}},
-		{name: "rebound deployment", change: func(plan *SetupPlan) {
+		{name: "rebound deployment", want: "does not authenticate the rebound deployment", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.ReboundDeploymentHash = "0x" + strings.Repeat("92", 32)
 		}},
-		{name: "release deployment", change: func(plan *SetupPlan) {
+		{name: "release deployment", want: "does not authenticate the release deployment", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.ReleaseDeploymentHash = "0x" + strings.Repeat("93", 32)
 		}},
-		{name: "replacement nonce", change: func(plan *SetupPlan) { plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeNonce-- }},
-		{name: "replacement address", change: func(plan *SetupPlan) {
+		{name: "replacement nonce", want: "invalid replacement-probe boundary", change: func(plan *SetupPlan) { plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeNonce-- }},
+		{name: "replacement address", want: "not the approved deterministic CREATE", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbe = common.HexToAddress("0x1234").Hex()
 		}},
-		{name: "replacement runtime", change: func(plan *SetupPlan) {
+		{name: "replacement runtime", want: "replacement precompile probe identity", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("94", 32)
 		}},
-		{name: "retired runtime", change: func(plan *SetupPlan) {
+		{name: "retired runtime", want: "retired precompile probe does not match", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.RetiredPrecompileProbeHash = "0x" + strings.Repeat("95", 32)
 		}},
-		{name: "probe executable", change: func(plan *SetupPlan) {
+		{name: "probe executable", want: "precompile probe executable", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgradeBaseline.PrecompileProbeExecutableHash = "0x" + strings.Repeat("96", 32)
 		}},
-		{name: "coordinator nonce", change: func(plan *SetupPlan) {
+		{name: "coordinator nonce", want: "invalid repeated-upgrade boundary", change: func(plan *SetupPlan) {
 			plan.CoordinatorUpgrade.DeployerNonce++
 			plan.CoordinatorUpgrade.Implementation = crypto.CreateAddress(payloads.Deployer, plan.CoordinatorUpgrade.DeployerNonce)
 		}},
-		{name: "coordinator runtime", change: func(plan *SetupPlan) { plan.CoordinatorUpgrade.RuntimeCodeHash = "0x" + strings.Repeat("97", 32) }},
+		{name: "coordinator runtime", want: "approved coordinator upgrade does not match", change: func(plan *SetupPlan) { plan.CoordinatorUpgrade.RuntimeCodeHash = "0x" + strings.Repeat("97", 32) }},
 	} {
 		plan := base
 		mutation.change(&plan)
@@ -729,9 +730,9 @@ func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *test
 		if err := saveContractDeployment(mutationDir, legacy); err != nil {
 			t.Fatal(err)
 		}
-		executor := &Executor{cfg: cfg, stateDir: mutationDir, plan: &plan, roles: roles}
-		if err := executor.ensurePayloads(context.Background()); err == nil {
-			t.Errorf("%s v4 mutation was accepted", mutation.name)
+		executor := undeployedBoundaryTestExecutor(t, cfg, mutationDir, &plan, roles)
+		if err := executor.ensurePayloads(context.Background()); err == nil || !strings.Contains(err.Error(), mutation.want) {
+			t.Errorf("%s v4 mutation did not reach its authorization rejection: %v", mutation.name, err)
 		}
 		if executor.payloads != nil {
 			t.Errorf("%s v4 rejection retained unauthenticated payloads", mutation.name)
@@ -751,7 +752,7 @@ func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *test
 }
 
 func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t *testing.T) {
-	cfg, payloads, _, replacement, manifestHash := replacementPrecompileProbeFixture(t)
+	cfg, payloads, _, _, manifestHash := replacementPrecompileProbeFixture(t)
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -815,29 +816,28 @@ func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t 
 	}
 	for _, mutation := range []struct {
 		name   string
+		want   string
 		change func(*CoordinatorUpgradeBaseline)
 	}{
-		{name: "release manifest", change: func(value *CoordinatorUpgradeBaseline) { value.ReleaseDeploymentHash = "0x" + strings.Repeat("81", 32) }},
-		{name: "replacement runtime", change: func(value *CoordinatorUpgradeBaseline) {
+		{name: "release manifest", want: "does not authenticate the release deployment", change: func(value *CoordinatorUpgradeBaseline) { value.ReleaseDeploymentHash = "0x" + strings.Repeat("81", 32) }},
+		{name: "unapproved replacement runtime", want: "invalid retained-probe boundary", change: func(value *CoordinatorUpgradeBaseline) {
 			value.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("82", 32)
 		}},
-		{name: "replacement executable", change: func(value *CoordinatorUpgradeBaseline) {
+		{name: "replacement executable", want: "precompile probe executable", change: func(value *CoordinatorUpgradeBaseline) {
 			value.PrecompileProbeExecutableHash = "0x" + strings.Repeat("83", 32)
 		}},
 	} {
 		plan := base
-		plan.CoordinatorUpgradeBaseline = replacement
-		plan.CoordinatorUpgradeBaseline.PriorDeploymentHash = manifestHash
-		plan.CoordinatorUpgradeBaseline.ReboundDeploymentHash = manifestHash
-		plan.CoordinatorUpgradeBaseline.RetiredPrecompileProbeHash = payloads.Manifest.RuntimeHashes[payloads.Manifest.PrecompileProbe.Hex()]
+		// Change one field of the valid equal-core v3 approval. Substituting
+		// an unrelated v4 fixture would fail its probe boundary first.
 		mutation.change(&plan.CoordinatorUpgradeBaseline)
 		stateDir := t.TempDir()
 		if err := saveContractDeployment(stateDir, payloads.Manifest); err != nil {
 			t.Fatal(err)
 		}
-		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &plan, roles: roles}
-		if err := executor.ensurePayloads(context.Background()); err == nil {
-			t.Errorf("%s mutation was accepted", mutation.name)
+		executor := undeployedBoundaryTestExecutor(t, cfg, stateDir, &plan, roles)
+		if err := executor.ensurePayloads(context.Background()); err == nil || !strings.Contains(err.Error(), mutation.want) {
+			t.Errorf("%s mutation did not reach its authorization rejection: %v", mutation.name, err)
 		}
 		if executor.payloads != nil {
 			t.Errorf("%s rejection retained unauthenticated payloads", mutation.name)
@@ -1350,9 +1350,15 @@ func TestEnsurePayloadsRejectsAnUnapprovedExistingDeploymentWithoutMutation(t *t
 	if err := saveContractDeployment(stateDir, foreign.Manifest); err != nil {
 		t.Fatal(err)
 	}
-	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, roles: roles}
+	executor := undeployedBoundaryTestExecutor(t, cfg, stateDir, plan, roles)
 	if err := executor.ensurePayloads(context.Background()); err == nil || !strings.Contains(err.Error(), "neither active nor approved") {
-		t.Fatalf("unapproved deployment was accepted: %v", err)
+		t.Fatalf("foreign deployment did not reach its authorization rejection: %v", err)
+	}
+	if executor.payloads != nil {
+		t.Fatal("foreign deployment rejection retained unauthenticated payloads")
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "public", "deployments")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("foreign deployment rejection created a deployment archive: %v", err)
 	}
 	unchanged, err := loadContractDeployment(stateDir)
 	if err != nil {

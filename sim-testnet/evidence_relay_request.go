@@ -59,7 +59,14 @@ func evidenceRelayPlanAllowance(plan *SetupPlan, reserve Action) (uint64, uint64
 		amounts[name] = value
 	}
 	gasUnits, feePerGas, maximum := amounts[evmMaximumGasUnitsParameter], amounts[evmMaximumFeePerGasParameter], amounts["maximum_slots"]
-	continued := plan.EvidenceRelayContinuation != nil && gasUnits == evidenceRelayContinuationGas && feePerGas == evidenceRelayContinuationFee && maximum == evidenceRelayContinuationSlots
+	continued := false
+	if c := plan.EvidenceRelayContinuation; c != nil {
+		continuedFee, continuedSlots, err := c.feeTerms()
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		continued = gasUnits == evidenceRelayContinuationGas && feePerGas == continuedFee && maximum == continuedSlots
+	}
 	if gasUnits < 21_000 || feePerGas != plan.MaximumEVMFeePerGasWei && !continued {
 		return 0, 0, 0, errors.New("evidence relay reserve gas or fee ceiling differs")
 	}

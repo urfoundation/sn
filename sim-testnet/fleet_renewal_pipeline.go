@@ -111,7 +111,7 @@ func (m *EvmTxManager) submitFleetRenewal(ctx context.Context, planHash string, 
 		return nil, err
 	}
 	defer release()
-	signed, err := m.prepareOwnedEVMTransaction(ctx, planHash, action, to, value, data)
+	signed, err := m.prepareOwnedEVMTransaction(ctx, planHash, action, to, value, data, 0)
 	if err != nil {
 		return nil, err
 	}

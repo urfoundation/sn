@@ -19,6 +19,103 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// The observed 20.134 gwei base produces a 40.268 gwei quote. Its exact
+// authenticated relay can retain a 25 gwei ceiling, including after restart.
+func TestEvidenceRelayTransactionApprovedFeeCeilingRetainsExactCustody(t *testing.T) {
+	fixture := newEvidenceRelayRpcFixtureWithFees(t, "send-error", 20_134_283_587, 0, 25_000_000_000, 1_000_000)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	result, err := fixture.manager.relayValidatorEvidenceTransaction(ctx, fixture.chain, fixture.planHash, fixture.action, fixture.expected)
+	if err == nil || result != nil || !strings.Contains(err.Error(), "deterministic transport interruption") || fixture.requestCount("eth_sendRawTransaction") != 1 {
+		t.Fatalf("approved current price did not reach the exact durable send: %v", err)
+	}
+	if fixture.transaction.GasFeeCap().Uint64() != 25_000_000_000 || fixture.transaction.GasTipCap().Sign() != 0 || fixture.action.Spend.EVMGasWei != "25000000000000000" {
+		t.Fatal("transport fixture did not exercise the exact approved fee and spend")
+	}
+	fixture.reopen(t)
+	func() {
+		fixture.stateLock.Lock()
+		defer fixture.stateLock.Unlock()
+		fixture.mode, fixture.baseFee, fixture.tip, fixture.effectiveGasPrice = "success", 22_000_000_000, 1_000_000_000, 22_000_000_000
+	}()
+	result, err = fixture.manager.relayValidatorEvidenceTransaction(ctx, fixture.chain, fixture.planHash, fixture.action, fixture.expected)
+	if err != nil || result == nil || result.OwnReceipt == nil || result.Winner == nil || !bytes.Equal(result.Winner.SignedTransaction, fixture.transactionBytes) || result.OwnReceipt.TxHash != fixture.transaction.Hash() {
+		t.Fatalf("approved relay restart changed custody or lost confirmation: %v", err)
+	}
+	if fixture.requestCount("eth_sendRawTransaction") != 2 || fixture.requestCount("pending-nonce") != 1 || fixture.requestCount("eth_estimateGas") != 1 || fixture.requestCount("eth_maxPriorityFeePerGas") != 1 {
+		t.Fatal("approved relay restart reallocated a nonce or requoted its original bytes")
+	}
+}
+
+// Current inclusion, including priority, must fit before estimation, signing
+// or publication. The conservative quote alone is never spending authority.
+func TestEvidenceRelayTransactionApprovedFeeCeilingRejectsInsufficientPrice(t *testing.T) {
+	for _, price := range []struct{ baseFee, tip uint64 }{{baseFee: 25_000_000_001, tip: 0}, {baseFee: 24_000_000_000, tip: 2_000_000_000}, {baseFee: 0, tip: 26_000_000_000}} {
+		fixture := newEvidenceRelayRpcFixtureWithFees(t, "success", price.baseFee, price.tip, 25_000_000_000, 1_000_000)
+		result, err := fixture.manager.relayValidatorEvidenceTransaction(t.Context(), fixture.chain, fixture.planHash, fixture.action, fixture.expected)
+		if err == nil || result != nil || !strings.Contains(err.Error(), "current inclusion price") || fixture.requestCount("eth_maxPriorityFeePerGas") != 1 || fixture.requestCount("eth_estimateGas") != 0 || fixture.requestCount("eth_sendRawTransaction") != 0 {
+			t.Fatalf("inclusion %d+%d escaped exact fee refusal: %v", price.baseFee, price.tip, err)
+		}
+		entries := fixture.manager.journal.Entries()
+		if len(entries) != 1 || entries[0].Stage != StageIntent {
+			t.Fatal("insufficient inclusion price created transaction custody")
+		}
+		if _, err := os.Stat(filepath.Join(fixture.stateDir, "transactions")); !os.IsNotExist(err) {
+			t.Fatalf("insufficient inclusion price persisted signed bytes: %v", err)
+		}
+	}
+}
+
+// Prefixes and self-consistent hashes cannot grant the relay's caller-only
+// fee exception; its exact slot and header must pass the authenticated route.
+func TestEvidenceRelayTransactionApprovedFeeCeilingRejectsUnauthenticatedRoutes(t *testing.T) {
+	for _, fault := range []string{"kind", "slot", "header", "target", "value", "intent", "generic-exact", "generic-relay-prefix", "generic-arbitrary"} {
+		fixture := newEvidenceRelayRpcFixtureWithFees(t, "success", 20_134_283_587, 0, 25_000_000_000, 1_000_000)
+		switch fault {
+		case "kind":
+			fixture.action.Kind = "deployment"
+		case "slot":
+			fixture.action.Parameters["validator_evidence_slot"] = common.Hash{0x99}.Hex()
+		case "header":
+			fixture.action.Parameters["validator_evidence_header_hash"] = common.Hash{0x99}.Hex()
+		case "target":
+			fixture.action.Target = common.Address{0x99}.Hex()
+		case "value":
+			fixture.action.Spend.TAORao = 1
+		case "generic-relay-prefix":
+			fixture.action.ID = "evidence.relay.arbitrary"
+		case "generic-arbitrary":
+			fixture.action.ID = "deployment.arbitrary"
+		}
+		var err error
+		fixture.action.IntentHash, err = actionIntentHash(fixture.action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fault == "intent" {
+			fixture.action.IntentHash = common.Hash{0x99}.Hex()
+		}
+		before := fixture.requestCount("")
+		if strings.HasPrefix(fault, "generic-") {
+			receipt, sendErr := fixture.manager.Send(t.Context(), fixture.planHash, fixture.action, &fixture.expected.Journal, new(big.Int), fixture.calldata)
+			if sendErr == nil || receipt != nil || !strings.Contains(sendErr.Error(), "live fee cap 40268567174 exceeds approved fee-per-gas ceiling 25000000000") {
+				t.Fatalf("%s acquired the authenticated relay exception: %v", fault, sendErr)
+			}
+		} else {
+			result, relayErr := fixture.manager.relayValidatorEvidenceTransaction(t.Context(), fixture.chain, fixture.planHash, fixture.action, fixture.expected)
+			if relayErr == nil || result != nil || fixture.requestCount("") != before {
+				t.Fatalf("%s reached the fee quote before relay authentication: %v", fault, relayErr)
+			}
+		}
+		if fixture.requestCount("eth_estimateGas") != 0 || fixture.requestCount("eth_sendRawTransaction") != 0 || len(fixture.manager.journal.Entries()) != 0 {
+			t.Fatalf("%s created or submitted unauthenticated custody", fault)
+		}
+		if _, err := os.Stat(filepath.Join(fixture.stateDir, "transactions")); !os.IsNotExist(err) {
+			t.Fatalf("%s persisted signed bytes: %v", fault, err)
+		}
+	}
+}
+
 // The first network broadcast is observed only after both original custody
 // records exist. Successful readback exercises actual finality and contract abi.
 func TestEvidenceRelayTransactionFreshSendRetainsExactCustody(t *testing.T) {

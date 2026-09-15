@@ -174,8 +174,8 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./sim-testnet"}, sources: map[string][]string{
 			"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"evidence_deployment*_test.go", "evidence_carry*_test.go", "runtime_evidence*_test.go", "evidence_relay*_test.go", "evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go", "evm_nonce_turn_test.go", "adversary_client_key_batch_test.go"}),
 		}, commands: []string{
-			`go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + releaseGateSimulatorEvidenceOwnerSkip + ` -timeout 10m`,
-			`go test -race ./sim-testnet -run "$simulator_evidence_tests" -count=1` + releaseGateSimulatorEvidenceOwnerSkip + ` -timeout 10m`,
+			`go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + ` -skip "$simulator_evidence_serial_skip_tests"` + ` -timeout 10m`,
+			`go test -race ./sim-testnet -run "$simulator_evidence_tests" -count=1` + ` -skip "$simulator_evidence_serial_skip_tests"` + ` -timeout 10m`,
 		}},
 	}
 	return string(encoded), groups

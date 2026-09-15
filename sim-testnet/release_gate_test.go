@@ -431,12 +431,15 @@ const releaseGateSemanticRuntimeConfigsRoot = "TestFinalSemanticDeploymentBounda
 const releaseGateSemanticBuildArtifactsRoot = "TestFinalSemanticEvidenceBuildRenderAndArtifacts"
 const releaseGateSemanticPoolRegistrationRoot = "TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot"
 const releaseGateSemanticOwnerSkip = " -skip '^(" + releaseGateSemanticPublicScenarioRoot + "|" + releaseGateSemanticFleetProjectionRoot + "|" + releaseGateSemanticRuntimeConfigsRoot + "|" + releaseGateSemanticBuildArtifactsRoot + "|" + releaseGateSemanticPoolRegistrationRoot + ")$'"
+const releaseGateSemanticSerialSkip = ` -skip "$semantic_serial_skip_tests"`
 
-// Bind the existing source census to six finite jobs with the original mode
-// budgets. Full replays cannot consume the ordinary package's clock.
-func verifyReleaseSemanticExecutionOwners(script string, selected []string) error {
+// Bind serial and parallel source cohorts and five complete replay owners to
+// separate finite jobs. Every job keeps the original mode and worker budgets.
+func verifyReleaseSemanticExecutionOwners(script string, selected, parallel []string) error {
 	ownerCounts := map[string]int{}
-	skip := regexp.MustCompile(strings.TrimSuffix(strings.TrimPrefix(releaseGateSemanticOwnerSkip, " -skip '"), "'"))
+	parallelSelector := "^(" + strings.Join(parallel, "|") + ")$"
+	serialSkip := strings.TrimSuffix(strings.TrimPrefix(releaseGateSemanticOwnerSkip, " -skip '"), "'") + "|" + parallelSelector
+	serialSkipPattern := regexp.MustCompile(serialSkip)
 	for _, group := range []struct {
 		phase    string
 		job      string
@@ -444,7 +447,8 @@ func verifyReleaseSemanticExecutionOwners(script string, selected []string) erro
 		selector string
 		skip     string
 	}{
-		{phase: "semantic", job: "semantic", variable: "semantic_integrity_tests", selector: releaseSemanticIntegritySelector, skip: releaseGateSemanticOwnerSkip},
+		{phase: "semantic_serial", job: "semantic-serial", variable: "semantic_integrity_tests", selector: releaseSemanticIntegritySelector, skip: releaseGateSemanticSerialSkip},
+		{phase: "semantic_parallel", job: "semantic-parallel", variable: "semantic_parallel_tests", selector: parallelSelector},
 		{phase: "semantic_public_scenario", job: "semantic-public-scenario", variable: "semantic_public_scenario_tests", selector: "^" + releaseGateSemanticPublicScenarioRoot + "$"},
 		{phase: "semantic_fleet_projection", job: "semantic-fleet-projection", variable: "semantic_fleet_projection_tests", selector: "^" + releaseGateSemanticFleetProjectionRoot + "$"},
 		{phase: "semantic_runtime_configs", job: "semantic-runtime-configs", variable: "semantic_runtime_configs_tests", selector: "^" + releaseGateSemanticRuntimeConfigsRoot + "$"},
@@ -469,7 +473,7 @@ func verifyReleaseSemanticExecutionOwners(script string, selected []string) erro
 			}
 		}
 		expected := []string{`cd "$sn_repo"`, group.variable + "='" + group.selector + "'"}
-		if group.phase == "semantic" {
+		if group.phase == "semantic_serial" {
 			expected = append(expected,
 				`semantic_integrity_census="$sn_repo/sim-testnet/semantic-integrity-tests.txt"`,
 				`semantic_integrity_actual="$(go test ./sim-testnet -list "$semantic_integrity_tests" | sed -n '/^Test/p' | LC_ALL=C sort)"`,
@@ -478,6 +482,7 @@ func verifyReleaseSemanticExecutionOwners(script string, selected []string) erro
 				"exit 1",
 				"fi",
 				`diff -u "$semantic_integrity_census" <(printf '%s\n' "$semantic_integrity_actual")`,
+				"semantic_serial_skip_tests='"+serialSkip+"'",
 			)
 		}
 		expected = append(expected,
@@ -498,12 +503,18 @@ func verifyReleaseSemanticExecutionOwners(script string, selected []string) erro
 		selectedPattern := regexp.MustCompile(selector)
 		count := 0
 		for _, name := range selected {
-			if selectedPattern.MatchString(name) && (group.phase != "semantic" || !skip.MatchString(name)) {
+			if selectedPattern.MatchString(name) && (group.phase != "semantic_serial" || !serialSkipPattern.MatchString(name)) {
 				ownerCounts[name]++
 				count++
 			}
 		}
-		if group.phase != "semantic" && count != 1 || group.phase == "semantic" && count != len(selected)-5 {
+		expectedCount := 1
+		if group.phase == "semantic_serial" {
+			expectedCount = len(selected) - len(parallel) - 5
+		} else if group.phase == "semantic_parallel" {
+			expectedCount = len(parallel)
+		}
+		if count == 0 || count != expectedCount {
 			return fmt.Errorf("semantic %s execution differs from its complete source census", group.phase)
 		}
 	}
@@ -549,6 +560,62 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Trace helpers too: a new indirect full-fixture user must not restore a
+	// long serial prefix before Go releases the parallel roots.
+	declarations := map[string]*ast.FuncDecl{}
+	callees := map[string]map[string]bool{}
+	for _, source := range testSources {
+		parsed, err := parser.ParseFile(token.NewFileSet(), "fixture_test.go", source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Recv != nil || function.Body == nil {
+				continue
+			}
+			name := function.Name.Name
+			declarations[name] = function
+			callees[name] = map[string]bool{}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if ok {
+					if identifier, ok := call.Fun.(*ast.Ident); ok {
+						callees[name][identifier.Name] = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	var parallelRoots []string
+	singleReplay := regexp.MustCompile(strings.TrimSuffix(strings.TrimPrefix(releaseGateSemanticOwnerSkip, " -skip '"), "'"))
+	for _, name := range selectedDeclarations {
+		function := declarations[name]
+		if function == nil || function.Body == nil {
+			t.Fatalf("semantic source declaration %s is unavailable", name)
+		}
+		if singleReplay.MatchString(name) || len(function.Body.List) == 0 {
+			continue
+		}
+		statement, ok := function.Body.List[0].(*ast.ExprStmt)
+		if !ok {
+			continue
+		}
+		call, ok := statement.X.(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			continue
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Parallel" {
+			continue
+		}
+		identifier, ok := selector.X.(*ast.Ident)
+		if ok && identifier.Name == "t" {
+			parallelRoots = append(parallelRoots, name)
+		}
+	}
+	sort.Strings(parallelRoots)
 	censusBytes, err := os.ReadFile("semantic-integrity-tests.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -684,12 +751,20 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 			t.Errorf("producer gate has %d copies of %q, want exactly 1", strings.Count(script, censusCommand), censusCommand)
 		}
 	}
-	if err := verifyReleaseSemanticExecutionOwners(script, selectedDeclarations); err != nil {
+	if err := verifyReleaseSemanticExecutionOwners(script, selectedDeclarations, parallelRoots); err != nil {
 		t.Fatalf("semantic replay lacks exact independently admitted owners: %v", err)
 	}
-	for _, replacement := range []string{"", " -skip '^TestPublicScenarioBundle'", " -skip '^Test'"} {
-		changed := strings.Replace(script, releaseGateSemanticOwnerSkip, replacement, 1)
-		if err := verifyReleaseSemanticExecutionOwners(changed, selectedDeclarations); err == nil {
+	parallelSelector := "^(" + strings.Join(parallelRoots, "|") + ")$"
+	for _, changedRoots := range [][]string{parallelRoots[1:], append(slices.Clone(parallelRoots), parallelRoots[0])} {
+		changedSelector := "^(" + strings.Join(changedRoots, "|") + ")$"
+		changed := strings.Replace(script, "semantic_parallel_tests='"+parallelSelector+"'", "semantic_parallel_tests='"+changedSelector+"'", 1)
+		if err := verifyReleaseSemanticExecutionOwners(changed, selectedDeclarations, parallelRoots); err == nil {
+			t.Fatal("semantic execution accepted an omitted or duplicated parallel root")
+		}
+	}
+	for _, replacement := range []string{"", releaseGateSemanticOwnerSkip, " -skip '^Test'"} {
+		changed := strings.Replace(script, releaseGateSemanticSerialSkip, replacement, 1)
+		if err := verifyReleaseSemanticExecutionOwners(changed, selectedDeclarations, parallelRoots); err == nil {
 			t.Fatal("semantic execution accepted combined or omitted replay owners", replacement)
 		}
 	}
@@ -698,7 +773,8 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 		job      string
 		variable string
 	}{
-		{phase: "semantic", job: "semantic", variable: "semantic_integrity_tests"},
+		{phase: "semantic_serial", job: "semantic-serial", variable: "semantic_integrity_tests"},
+		{phase: "semantic_parallel", job: "semantic-parallel", variable: "semantic_parallel_tests"},
 		{phase: "semantic_public_scenario", job: "semantic-public-scenario", variable: "semantic_public_scenario_tests"},
 		{phase: "semantic_fleet_projection", job: "semantic-fleet-projection", variable: "semantic_fleet_projection_tests"},
 		{phase: "semantic_runtime_configs", job: "semantic-runtime-configs", variable: "semantic_runtime_configs_tests"},
@@ -707,7 +783,7 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	} {
 		start := "release_gate_start " + owner.job + " release_phase_" + owner.phase
 		for _, replacement := range []string{"# " + start, start + "\n" + start, "if false; then\n" + start + "\nfi", "release_phase_unused() {\n" + start + "\n}"} {
-			if err := verifyReleaseSemanticExecutionOwners(strings.Replace(script, start, replacement, 1), selectedDeclarations); err == nil {
+			if err := verifyReleaseSemanticExecutionOwners(strings.Replace(script, start, replacement, 1), selectedDeclarations, parallelRoots); err == nil {
 				t.Fatal("semantic execution accepted altered job admission", replacement)
 			}
 		}
@@ -717,8 +793,8 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 				command, timeout = "go test -race", "25m"
 			}
 			command += ` ./sim-testnet -run "$` + owner.variable + `" -count=1`
-			if owner.phase == "semantic" {
-				command += releaseGateSemanticOwnerSkip
+			if owner.phase == "semantic_serial" {
+				command += releaseGateSemanticSerialSkip
 			}
 			command += " -parallel=4 -timeout " + timeout
 			for _, replacement := range []string{
@@ -730,38 +806,10 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 				if strings.Count(script, command) != 1 {
 					t.Fatal("semantic execution mutation lost its unique command", command)
 				}
-				if err := verifyReleaseSemanticExecutionOwners(strings.Replace(script, command, replacement, 1), selectedDeclarations); err == nil {
+				if err := verifyReleaseSemanticExecutionOwners(strings.Replace(script, command, replacement, 1), selectedDeclarations, parallelRoots); err == nil {
 					t.Fatal("semantic execution accepted altered mode ownership", replacement)
 				}
 			}
-		}
-	}
-	// Trace helpers too: a new indirect full-fixture user must not restore a
-	// long serial prefix before Go releases the parallel roots.
-	declarations := map[string]*ast.FuncDecl{}
-	callees := map[string]map[string]bool{}
-	for _, source := range testSources {
-		parsed, err := parser.ParseFile(token.NewFileSet(), "fixture_test.go", source, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, declaration := range parsed.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Recv != nil || function.Body == nil {
-				continue
-			}
-			name := function.Name.Name
-			declarations[name] = function
-			callees[name] = map[string]bool{}
-			ast.Inspect(function.Body, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if ok {
-					if identifier, ok := call.Fun.(*ast.Ident); ok {
-						callees[name][identifier.Name] = true
-					}
-				}
-				return true
-			})
 		}
 	}
 	wrapper := declarations["runFinalSemanticTestCases"]

@@ -55,6 +55,10 @@ type evidenceRelayRpcFixture struct {
 	mode                  string
 	finalizedBlock        uint64
 	finalizedHash         common.Hash
+	baseFee               uint64
+	tip                   uint64
+	balanceWei            *big.Int
+	effectiveGasPrice     uint64
 	winner                *types.Transaction
 	receipts              map[common.Hash]*types.Receipt
 	requestCounts         map[string]int
@@ -72,6 +76,13 @@ type evidenceRelayRpcRequest struct {
 // Immutable chain identity and genuinely dual-signed evidence are generated
 // before either real client is dialed. Every send must already exist on disk.
 func newEvidenceRelayRpcFixture(t *testing.T, mode string) *evidenceRelayRpcFixture {
+	t.Helper()
+	return newEvidenceRelayRpcFixtureWithFees(t, mode, 49, 2, 100, 100000)
+}
+
+// Fee operands change only serialized transport responses and precomputed
+// signed bytes; sender and verifier still perform their complete real paths.
+func newEvidenceRelayRpcFixtureWithFees(t *testing.T, mode string, baseFee, tip, maximumFeePerGas, maximumGasUnits uint64) *evidenceRelayRpcFixture {
 	t.Helper()
 	hotkey, err := crv4.KeypairFromSeed([32]byte{0x71})
 	if err != nil {
@@ -114,7 +125,7 @@ func newEvidenceRelayRpcFixture(t *testing.T, mode string) *evidenceRelayRpcFixt
 		t.Fatal(err)
 	}
 	journalAddress := common.Address{0x33}
-	unsigned := types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(945), Nonce: 4, GasTipCap: big.NewInt(2), GasFeeCap: big.NewInt(100), Gas: 100000, To: &journalAddress, Value: new(big.Int), Data: calldata})
+	unsigned := types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(945), Nonce: 4, GasTipCap: new(big.Int).SetUint64(tip), GasFeeCap: new(big.Int).SetUint64(maximumFeePerGas), Gas: 100000, To: &journalAddress, Value: new(big.Int), Data: calldata})
 	transaction, err := types.SignTx(unsigned, types.LatestSignerForChainID(big.NewInt(945)), key)
 	if err != nil {
 		t.Fatal(err)
@@ -128,15 +139,15 @@ func newEvidenceRelayRpcFixture(t *testing.T, mode string) *evidenceRelayRpcFixt
 		t.Fatal(err)
 	}
 	code := []byte{0x60, 0x00, 0x00}
-	expected := validatorcomponent.ValidatorEvidenceTransactionV2Expected{Journal: journalAddress, RuntimeHash: [32]byte(crypto.Keccak256Hash(code)), Activation: activation, Window: window, Evidence: evidence, Relayer: crypto.PubkeyToAddress(key.PublicKey), MaxTransactionBytes: 16 * 1024, MaxReceiptLogs: 4, MaxGas: 100000, MaxFeePerGas: 100}
+	expected := validatorcomponent.ValidatorEvidenceTransactionV2Expected{Journal: journalAddress, RuntimeHash: [32]byte(crypto.Keccak256Hash(code)), Activation: activation, Window: window, Evidence: evidence, Relayer: crypto.PubkeyToAddress(key.PublicKey), MaxTransactionBytes: 16 * 1024, MaxReceiptLogs: 4, MaxGas: maximumGasUnits, MaxFeePerGas: maximumFeePerGas}
 	slot, err := header.SlotKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 	action := Action{ID: fmt.Sprintf("evidence.relay.%x", slot), Kind: "evm-transaction", Target: journalAddress.Hex(), Description: "Publish exact immutable evidence", Parameters: map[string]string{
 		"validator_evidence_slot": fmt.Sprintf("0x%x", slot), "validator_evidence_header_hash": fmt.Sprintf("0x%x", digest),
-		evmMaximumGasUnitsParameter: "100000", evmMaximumFeePerGasParameter: "100",
-	}, Spend: Spend{EVMGasWei: DecimalUint("10000000")}}
+		evmMaximumGasUnitsParameter: strconv.FormatUint(maximumGasUnits, 10), evmMaximumFeePerGasParameter: strconv.FormatUint(maximumFeePerGas, 10),
+	}, Spend: Spend{EVMGasWei: DecimalUint(new(big.Int).Mul(new(big.Int).SetUint64(maximumGasUnits), new(big.Int).SetUint64(maximumFeePerGas)).String())}}
 	action.IntentHash, err = actionIntentHash(action)
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +163,11 @@ func newEvidenceRelayRpcFixture(t *testing.T, mode string) *evidenceRelayRpcFixt
 		t.Fatalf("relay fixture state root is not an actual private directory: %v", err)
 	}
 	fixture := &evidenceRelayRpcFixture{expected: expected, action: action, planHash: common.Hash{0x61}.Hex(), stateDir: stateDir, key: key, transaction: transaction, thirdPartyTransaction: thirdPartyTransaction, transactionBytes: raw, calldata: calldata, mode: mode, finalizedBlock: 1200, finalizedHash: common.Hash{0xa1}, responses: map[string][]byte{}, receipts: map[common.Hash]*types.Receipt{}, requestCounts: map[string]int{}}
+	fixture.baseFee, fixture.tip, fixture.effectiveGasPrice = baseFee, tip, baseFee+min(tip, 1)
+	fixture.balanceWei = new(big.Int).Mul(new(big.Int).SetUint64(maximumGasUnits), new(big.Int).SetUint64(maximumFeePerGas))
+	if fixture.balanceWei.Cmp(new(big.Int).SetUint64(1<<32)) < 0 {
+		fixture.balanceWei.SetUint64(1 << 32)
+	}
 	contract := stabi.NewSTValidatorEvidence()
 	contractAbi, err := stabi.STValidatorEvidenceMetaData.ParseABI()
 	if err != nil {
@@ -262,11 +278,11 @@ func (self *evidenceRelayRpcFixture) installPublicationWithLock(mode string) err
 	if winner == self.thirdPartyTransaction {
 		index = 4
 	}
-	receipt := &types.Receipt{Type: winner.Type(), Status: types.ReceiptStatusSuccessful, CumulativeGasUsed: 80000, TxHash: winner.Hash(), GasUsed: 80000, EffectiveGasPrice: big.NewInt(50), BlockHash: common.Hash{0xb1}, BlockNumber: big.NewInt(1201), TransactionIndex: index}
+	receipt := &types.Receipt{Type: winner.Type(), Status: types.ReceiptStatusSuccessful, CumulativeGasUsed: 80000, TxHash: winner.Hash(), GasUsed: 80000, EffectiveGasPrice: new(big.Int).SetUint64(self.effectiveGasPrice), BlockHash: common.Hash{0xb1}, BlockNumber: big.NewInt(1201), TransactionIndex: index}
 	receipt.Logs = []*types.Log{{Address: self.expected.Journal, Topics: []common.Hash{event.ID, common.Hash(slot), common.BigToHash(big.NewInt(2)), common.BigToHash(big.NewInt(7))}, Data: data, BlockNumber: 1201, TxHash: winner.Hash(), TxIndex: index, BlockHash: receipt.BlockHash, Index: 4}}
 	self.receipts[winner.Hash()] = receipt
 	if strings.HasPrefix(mode, "race") {
-		failed := &types.Receipt{Type: self.transaction.Type(), Status: types.ReceiptStatusFailed, CumulativeGasUsed: 80000, TxHash: self.transaction.Hash(), GasUsed: 80000, EffectiveGasPrice: big.NewInt(50), BlockHash: common.Hash{0xb2}, BlockNumber: big.NewInt(1202), TransactionIndex: 3, Logs: []*types.Log{}}
+		failed := &types.Receipt{Type: self.transaction.Type(), Status: types.ReceiptStatusFailed, CumulativeGasUsed: 80000, TxHash: self.transaction.Hash(), GasUsed: 80000, EffectiveGasPrice: new(big.Int).SetUint64(self.effectiveGasPrice), BlockHash: common.Hash{0xb2}, BlockNumber: big.NewInt(1202), TransactionIndex: 3, Logs: []*types.Log{}}
 		switch mode {
 		case "race-cost":
 			failed.EffectiveGasPrice = big.NewInt(101)
@@ -445,7 +461,7 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 				return fail("unexpected numbered block")
 			}
 		}
-		header := &types.Header{Number: new(big.Int).SetUint64(number), Difficulty: new(big.Int), GasLimit: 30000000, Time: number, BaseFee: big.NewInt(49)}
+		header := &types.Header{Number: new(big.Int).SetUint64(number), Difficulty: new(big.Int), GasLimit: 30000000, Time: number, BaseFee: new(big.Int).SetUint64(self.baseFee)}
 		encoded, err := header.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -463,7 +479,7 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 		}
 		return map[string]any{"number": hexutil.EncodeUint64(self.finalizedBlock), "hash": hash}, nil
 	case "eth_maxPriorityFeePerGas":
-		return "0x2", nil
+		return hexutil.EncodeUint64(self.tip), nil
 	case "eth_getBalance", "eth_getTransactionCount":
 		var address common.Address
 		var selector string
@@ -474,7 +490,7 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 			if selector != "latest" {
 				return fail("unexpected balance selector")
 			}
-			return "0x100000000", nil
+			return hexutil.EncodeBig(self.balanceWei), nil
 		}
 		if selector == "pending" {
 			self.pendingNonceReads++

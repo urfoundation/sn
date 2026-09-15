@@ -114,7 +114,7 @@ func readEvidenceRelayContinuationDebits(ctx context.Context, stateDir string, p
 		if !strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) || seen[entry.ActionID] {
 			continue
 		}
-		if entry.DeploymentID != plan.DeploymentID || !plan.allowedPlanHashes()[entry.PlanHash] || len(seen) >= int(evidenceRelayContinuationSlots/2) {
+		if entry.DeploymentID != plan.DeploymentID || !plan.allowedPlanHashes()[entry.PlanHash] || len(seen) >= int(evidenceRelayOriginalSlots) {
 			return nil, nil, errors.New("relay continuation has an unowned or excessive original debit")
 		}
 		owner, record, raw, err := readOwnedEvidenceRelayRequest(ctx, stateDir, plan, entries, entry.ActionID, owners)
@@ -135,7 +135,7 @@ func readEvidenceRelayContinuationDebits(ctx context.Context, stateDir string, p
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(files) > 2*int(evidenceRelayContinuationSlots) {
+	if len(files) > 4*int(evidenceRelayOriginalSlots) {
 		return nil, nil, errors.New("relay continuation original request directory exceeds its finite census")
 	}
 	for _, file := range files {
@@ -225,6 +225,39 @@ func captureEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, 
 	return captureEvidenceRelayContinuationAt(ctx, cfg, stateDir, base, endBlock, nil)
 }
 
+// Every configured mode accounts for the complete retained signer history.
+// Only private-authority mode requires a second independently operated reader.
+func (self *Executor) observeEvidenceRelayContinuationNonces(ctx context.Context, exposure fleetRenewalExposure, block uint64) ([]FleetRenewalNonce, error) {
+	if self == nil || self.cfg == nil || self.keeper == nil || self.keeper.client == nil || self.roles == nil || block == 0 {
+		return nil, errors.New("relay continuation nonce census has no operational reader or finalized block")
+	}
+	if independentRPCRequired(self.cfg) && self.independentEVM == nil {
+		return nil, errors.New("relay continuation nonce census requires the independent reader")
+	}
+	points, err := observeFleetRenewalNonces(ctx, self.keeper, self.roles, block)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFleetRenewalNonceCoverage(self.roles, exposure, points); err != nil {
+		return nil, err
+	}
+	for _, point := range points {
+		if point.Finalized != point.Latest || point.Finalized != point.Pending {
+			return nil, fmt.Errorf("relay continuation role %s still has unfinalized nonce liability", point.Role)
+		}
+		if err := validateFleetRenewalUnusedSignerNonce(exposure, point.Address, point.Pending); err != nil {
+			return nil, err
+		}
+		if independentRPCRequired(self.cfg) {
+			independent, err := self.independentEVM.NonceAt(ctx, point.Address, new(big.Int).SetUint64(block))
+			if err != nil || independent != point.Finalized {
+				return nil, errors.Join(errors.New("relay continuation independent finalized nonce differs"), err)
+			}
+		}
+	}
+	return points, nil
+}
+
 func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, endBlock uint64, pin *EvidenceRelayContinuation) (result *SetupPlan, resultErr error) {
 	if ctx == nil || cfg == nil || base == nil || base.EvidenceRelayContinuation != nil || provisionalResumeEnabled(cfg) || endBlock == 0 {
 		return nil, errors.New("relay continuation requires one explicit strict end and original source approval")
@@ -299,6 +332,9 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 		return nil, err
 	}
 	c := EvidenceRelayContinuation{Schema: evidenceRelayContinuationSchema, SourcePlanHash: base.PlanHash, ConfigHash: cfg.ConfigHash, ActivationPlanHash: activationPlan, PreparedSHA256: prepared, CompletedSHA256: completed, JournalHash: entries[len(entries)-1].EntryHash, OriginalReserve: reserve, EVMHead: ChainHead{Number: block, Hash: fmt.Sprintf("0x%x", hash)}, NativeHead: ChainHead{Number: nativeBlock, Hash: nativeHash.Hex()}, SettlementEpoch: oracle.CurrentEpoch, NativeEpoch: nativeEpoch, EndBlock: endBlock}
+	if pin != nil {
+		c.Schema = pin.Schema
+	}
 	c.RequiredWorkBlocks, err = work.remaining("release-1.0", false)
 	if err != nil {
 		return nil, err
@@ -391,7 +427,7 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return nil, err
 	}
-	c.NewSlots, c.HistoricalLiabilityWei, err = evidenceRelayContinuationNewSlots(reserve.Spend.EVMGasWei, c.Debits)
+	c.NewSlots, c.HistoricalLiabilityWei, err = c.remainingSlots()
 	if err != nil {
 		return nil, err
 	}
@@ -403,27 +439,9 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return nil, err
 	}
-	c.Nonces, err = observeFleetRenewalNonces(ctx, executor.keeper, roles, block)
+	c.Nonces, err = executor.observeEvidenceRelayContinuationNonces(ctx, exposure, block)
 	if err != nil {
 		return nil, err
-	}
-	if err := validateFleetRenewalNonceCoverage(roles, exposure, c.Nonces); err != nil {
-		return nil, err
-	}
-	for _, point := range c.Nonces {
-		if point.Finalized != point.Latest || point.Finalized != point.Pending {
-			return nil, fmt.Errorf("relay continuation role %s still has unfinalized nonce liability", point.Role)
-		}
-		if err := validateFleetRenewalUnusedSignerNonce(exposure, point.Address, point.Pending); err != nil {
-			return nil, err
-		}
-		if executor.independentEVM == nil {
-			return nil, errors.New("relay continuation nonce census requires the independent reader")
-		}
-		independent, err := executor.independentEVM.NonceAt(ctx, point.Address, new(big.Int).SetUint64(block))
-		if err != nil || independent != point.Finalized {
-			return nil, errors.Join(errors.New("relay continuation independent finalized nonce differs"), err)
-		}
 	}
 	admitted := map[string]bool{}
 	for _, entry := range entries {

@@ -55,8 +55,13 @@ If the original evidence relay horizon has elapsed, use the stopped
 approved renewal. It authenticates original activation, all pending public
 subjects, every retained debit and signed transaction, finalized nonces, and
 the complete signed ledger/index prefixes. One explicit plan repartitions the
-same 25.6 TAO allowance from 256 calls at 100 gwei to 512 at 50 gwei, each capped at
-one million gas. Original higher-fee liabilities reduce the new-slot count.
+same 25.6 TAO allowance from 256 calls at 100 gwei to 1,024 at 25 gwei, each capped
+at one million gas. This v3 approval retains every original higher-fee liability;
+each original 100 gwei call consumes four new slots. Existing v2 approvals keep
+their exact 512-call, 50 gwei terms when imported, resumed or revised. An
+authenticated relay can use its approved ceiling when the current base fee plus
+tip fits, even if the usual doubled-base quote is higher. A current inclusion
+price above the ceiling blocks the call within the same allowance.
 It preserves all source storage limits and reserves missing historical closed
 censuses as well as future work. Choose the absolute end only when remaining
 qualification/launch timing is known; retries and later phases cannot move it.

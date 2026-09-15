@@ -73,14 +73,18 @@ func releaseGateSimulatorEvidenceRenderRoots(files []*ast.File) []string {
 // The original prefix census is independent of the new owners. Parse real
 // top-level declarations; fixture strings and another platform's files cannot
 // invent roots that the package would not compile on this gate's host.
-func releaseGateSimulatorEvidenceInventory(t *testing.T) ([]string, []string) {
+func releaseGateSimulatorEvidenceInventory(t *testing.T) ([]string, []string, []string) {
 	t.Helper()
 	paths, err := filepath.Glob("*_test.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var roots []string
+	var parallelRoots []string
 	var files []*ast.File
+	original := regexp.MustCompile(releaseGateSimulatorEvidenceSelector)
+	slow := regexp.MustCompile(releaseGateSimulatorEvidenceSlowSelector)
+	render := regexp.MustCompile(releaseGateSimulatorEvidenceRenderSelector)
 	for _, path := range paths {
 		matched, err := build.Default.MatchFile(".", path)
 		if err != nil {
@@ -98,27 +102,59 @@ func releaseGateSimulatorEvidenceInventory(t *testing.T) ([]string, []string) {
 			function, ok := declaration.(*ast.FuncDecl)
 			if ok && function.Recv == nil && strings.HasPrefix(function.Name.Name, "Test") {
 				roots = append(roots, function.Name.Name)
+				if original.MatchString(function.Name.Name) && !slow.MatchString(function.Name.Name) && !render.MatchString(function.Name.Name) && function.Body != nil && len(function.Body.List) > 0 {
+					statement, ok := function.Body.List[0].(*ast.ExprStmt)
+					if !ok {
+						continue
+					}
+					call, ok := statement.X.(*ast.CallExpr)
+					if !ok {
+						continue
+					}
+					selector, ok := call.Fun.(*ast.SelectorExpr)
+					if !ok || selector.Sel.Name != "Parallel" {
+						continue
+					}
+					owner, ok := selector.X.(*ast.Ident)
+					if ok && owner.Name == "t" && len(call.Args) == 0 {
+						parallelRoots = append(parallelRoots, function.Name.Name)
+					}
+				}
 			}
 		}
 	}
 	slices.Sort(roots)
-	return roots, releaseGateSimulatorEvidenceRenderRoots(files)
+	slices.Sort(parallelRoots)
+	return roots, releaseGateSimulatorEvidenceRenderRoots(files), parallelRoots
 }
 
 // Every original root has exactly one owner in each mode. Exact commands and
 // unconditional admissions also keep the existing Forge/generator dependency,
 // contract package coverage and ten-minute simulator package bounds intact.
-func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoots []string) error {
+func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoots, parallelRoots []string) error {
 	original := regexp.MustCompile(releaseGateSimulatorEvidenceSelector)
 	slow := regexp.MustCompile(releaseGateSimulatorEvidenceSlowSelector)
 	render := regexp.MustCompile(releaseGateSimulatorEvidenceRenderSelector)
+	parallelSelector := "^(" + strings.Join(parallelRoots, "|") + ")$"
+	serialSkip := strings.TrimSuffix(strings.TrimPrefix(releaseGateSimulatorEvidenceOwnerSkip, " -skip '"), ")$'") + "|" + strings.Join(parallelRoots, "|") + ")$"
+	parallelKVs := map[string]bool{}
+	for _, root := range parallelRoots {
+		if !original.MatchString(root) || slow.MatchString(root) || render.MatchString(root) || parallelKVs[root] {
+			return fmt.Errorf("simulator evidence parallel source census differs: %s", root)
+		}
+		parallelKVs[root] = true
+	}
+	if len(parallelRoots) == 0 {
+		return fmt.Errorf("simulator evidence parallel source census is empty")
+	}
 	owners := map[string]int{}
 	ordinaryRootsKVs := map[string]bool{}
 	for _, group := range []struct {
 		phase, job, variable, selector, packages, skip string
 	}{
 		{"solidity", "solidity", "validator_evidence_tests", releaseGateSimulatorEvidenceSelector, "./protocol ./stabi ./sim-testnet/gencontracts", ""},
-		{"evidence_simulator", "evidence-simulator", "simulator_evidence_tests", releaseGateSimulatorEvidenceSelector, "./sim-testnet", releaseGateSimulatorEvidenceOwnerSkip},
+		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", selector: releaseGateSimulatorEvidenceSelector, packages: "./sim-testnet", skip: ` -skip "$simulator_evidence_serial_skip_tests"`},
+		{phase: "evidence_simulator_parallel", job: "evidence-simulator-parallel", variable: "simulator_evidence_parallel_tests", selector: parallelSelector, packages: "./sim-testnet", skip: ""},
 		{"evidence_simulator_slow", "evidence-simulator-slow", "simulator_evidence_slow_tests", releaseGateSimulatorEvidenceSlowSelector, "./sim-testnet", ""},
 		{phase: "evidence_simulator_render", job: "evidence-simulator-render", variable: "simulator_evidence_render_tests", selector: releaseGateSimulatorEvidenceRenderSelector, packages: "./sim-testnet"},
 	} {
@@ -148,6 +184,13 @@ func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoo
 			}
 		}
 		expected = append(expected, group.variable+"='"+group.selector+"'")
+		if group.phase == "evidence_simulator" {
+			expected = append(expected, "simulator_evidence_serial_skip_tests='"+serialSkip+"'")
+			actual, err := releaseConnectPolicySelectorAssignment(script, "simulator_evidence_serial_skip_tests")
+			if err != nil || actual != serialSkip {
+				return fmt.Errorf("simulator evidence serial skip lost its exact parallel complement: %v", err)
+			}
+		}
 		for _, mode := range []string{"", "-race "} {
 			command := "go test " + mode + group.packages + ` -run "$` + group.variable + `" -count=1` + group.skip
 			if group.phase != "solidity" {
@@ -176,12 +219,12 @@ func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoo
 		selected := regexp.MustCompile(group.selector)
 		count := 0
 		for _, root := range roots {
-			if selected.MatchString(root) && (group.skip == "" || !slow.MatchString(root) && !render.MatchString(root)) {
+			if selected.MatchString(root) && (group.skip == "" || !slow.MatchString(root) && !render.MatchString(root) && !parallelKVs[root]) {
 				if !original.MatchString(root) {
 					return fmt.Errorf("simulator evidence owner selected foreign root %s", root)
 				}
 				owners[root]++
-				if group.phase == "evidence_simulator" {
+				if group.phase == "evidence_simulator" || group.phase == "evidence_simulator_parallel" {
 					ordinaryRootsKVs[root] = true
 				}
 				count++
@@ -213,8 +256,8 @@ func TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots, renderRoots := releaseGateSimulatorEvidenceInventory(t)
-	if err := verifyReleaseGateSimulatorEvidencePartition(string(script), roots, renderRoots); err != nil {
+	roots, renderRoots, parallelRoots := releaseGateSimulatorEvidenceInventory(t)
+	if err := verifyReleaseGateSimulatorEvidencePartition(string(script), roots, renderRoots, parallelRoots); err != nil {
 		t.Fatal(err)
 	}
 	count := 0
@@ -224,10 +267,10 @@ func TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly(t *testing
 			count++
 		}
 	}
-	t.Logf("original simulator census: %d roots; ordinary: %d; slow: 2; owned render: 1; one owner per root in normal and race", count, count-3)
+	t.Logf("original simulator census: %d roots; serial: %d; parallel: %d; slow: 2; owned render: 1; one owner per root in normal and race", count, count-3-len(parallelRoots), len(parallelRoots))
 	// An adjacent root, including a suffix of a slow root, remains ordinary.
 	roots = append(roots, "TestEvidenceRelayFutureBoundary", "TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRenderAdjacent")
-	if err := verifyReleaseGateSimulatorEvidencePartition(string(script), roots, renderRoots); err != nil {
+	if err := verifyReleaseGateSimulatorEvidencePartition(string(script), roots, renderRoots, parallelRoots); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -239,17 +282,22 @@ func TestProducerGateStateSelectionRejectsSimulatorEvidencePartitionDrift(t *tes
 		t.Fatal(err)
 	}
 	script := string(encoded)
-	roots, renderRoots := releaseGateSimulatorEvidenceInventory(t)
-	if err := verifyReleaseGateSimulatorEvidencePartition(script, roots, renderRoots); err != nil {
+	roots, renderRoots, parallelRoots := releaseGateSimulatorEvidenceInventory(t)
+	if err := verifyReleaseGateSimulatorEvidencePartition(script, roots, renderRoots, parallelRoots); err != nil {
 		t.Fatal(err)
 	}
-	const normal = `go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + releaseGateSimulatorEvidenceOwnerSkip + ` -timeout 10m`
+	const serialSkipArgument = ` -skip "$simulator_evidence_serial_skip_tests"`
+	const normal = `go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + serialSkipArgument + ` -timeout 10m`
 	const race = `go test -race ./sim-testnet -run "$simulator_evidence_slow_tests" -count=1 -timeout 10m`
 	const start = "release_gate_start evidence-simulator-slow release_phase_evidence_simulator_slow"
 	const renderRace = `go test -race ./sim-testnet -run "$simulator_evidence_render_tests" -count=1 -timeout 10m`
 	const renderStart = "release_gate_start evidence-simulator-render release_phase_evidence_simulator_render"
+	const parallelRace = `go test -race ./sim-testnet -run "$simulator_evidence_parallel_tests" -count=1 -timeout 10m`
+	const parallelStart = "release_gate_start evidence-simulator-parallel release_phase_evidence_simulator_parallel"
+	parallelAssignment := "simulator_evidence_parallel_tests='^(" + strings.Join(parallelRoots, "|") + ")$'"
 	for _, mutation := range []struct{ old, replacement string }{
-		{normal, strings.Replace(normal, releaseGateSimulatorEvidenceOwnerSkip, "", 1)},
+		{normal, strings.Replace(normal, serialSkipArgument, "", 1)},
+		{old: normal, replacement: strings.Replace(normal, serialSkipArgument, releaseGateSimulatorEvidenceOwnerSkip, 1)},
 		{normal, normal + " -skip '^TestEvidenceRelay'"},
 		{normal, normal + "\n  " + normal},
 		{race, "# " + race},
@@ -271,12 +319,21 @@ func TestProducerGateStateSelectionRejectsSimulatorEvidencePartitionDrift(t *tes
 		{old: renderStart, replacement: renderStart + "\n" + renderStart},
 		{old: renderStart, replacement: "if false; then\n" + renderStart + "\nfi"},
 		{old: "simulator_evidence_render_tests='" + releaseGateSimulatorEvidenceRenderSelector + "'", replacement: "simulator_evidence_render_tests='^TestRuntimeEvidence'"},
+		{old: parallelRace, replacement: "# " + parallelRace},
+		{old: parallelRace, replacement: strings.Replace(parallelRace, "-race ", "", 1)},
+		{old: parallelRace, replacement: strings.Replace(parallelRace, "10m", "30m", 1)},
+		{old: parallelRace, replacement: parallelRace + " -skip '^TestRuntimeEvidence'"},
+		{old: parallelStart, replacement: "# " + parallelStart},
+		{old: parallelStart, replacement: parallelStart + "\n" + parallelStart},
+		{old: parallelStart, replacement: "if false; then\n" + parallelStart + "\nfi"},
+		{old: parallelAssignment, replacement: "simulator_evidence_parallel_tests='^(" + strings.Join(parallelRoots[1:], "|") + ")$'"},
+		{old: parallelAssignment, replacement: "simulator_evidence_parallel_tests='^(" + strings.Join(append(slices.Clone(parallelRoots), parallelRoots[0]), "|") + ")$'"},
 	} {
 		if strings.Count(script, mutation.old) != 1 {
 			t.Fatalf("mutation does not identify one boundary: %s", mutation.old)
 		}
 		changed := strings.Replace(script, mutation.old, mutation.replacement, 1)
-		if err := verifyReleaseGateSimulatorEvidencePartition(changed, roots, renderRoots); err == nil {
+		if err := verifyReleaseGateSimulatorEvidencePartition(changed, roots, renderRoots, parallelRoots); err == nil {
 			t.Fatalf("changed evidence execution was accepted: %s", mutation.replacement)
 		}
 	}
@@ -320,13 +377,13 @@ func TestProducerGateStateSelectionRejectsFutureFullLaunchRenderOwner(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots, renderRoots := releaseGateSimulatorEvidenceInventory(t)
-	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, renderRoots); err != nil {
+	roots, renderRoots, parallelRoots := releaseGateSimulatorEvidenceInventory(t)
+	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, renderRoots, parallelRoots); err != nil {
 		t.Fatal(err)
 	}
 	const future = "TestRuntimeEvidenceSyntheticFutureRender"
 	roots = append(roots, future)
-	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, renderRoots); err != nil {
+	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, renderRoots, parallelRoots); err != nil {
 		t.Fatalf("ordinary future evidence root lost coverage: %v", err)
 	}
 	file, err := parser.ParseFile(token.NewFileSet(), "synthetic.go", `package fixture
@@ -336,8 +393,23 @@ func syntheticRenderWrapper() { testRuntimeEvidenceLaunchTemplateRender() }
 	if err != nil {
 		t.Fatal(err)
 	}
-	renderRoots = append(renderRoots, releaseGateSimulatorEvidenceRenderRoots([]*ast.File{file})...)
-	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, renderRoots); err == nil || !strings.Contains(err.Error(), future+" lacks a dedicated evidence owner") {
+	futureRenderRoots := append(slices.Clone(renderRoots), releaseGateSimulatorEvidenceRenderRoots([]*ast.File{file})...)
+	if err := verifyReleaseGateSimulatorEvidencePartition(string(encoded), roots, futureRenderRoots, parallelRoots); err == nil || !strings.Contains(err.Error(), future+" lacks a dedicated evidence owner") {
 		t.Fatalf("future full-launch wrapper regained an ordinary owner: %v", err)
+	}
+	// Declaring the wrapper parallel cannot make its full render workload
+	// ordinary, even when both scheduling selectors are updated exactly.
+	futureParallelRoots := append(slices.Clone(parallelRoots), future)
+	slices.Sort(futureParallelRoots)
+	oldAlternatives := strings.Join(parallelRoots, "|")
+	if strings.Count(string(encoded), oldAlternatives) != 2 {
+		t.Fatal("future parallel control lost its two exact selector operands")
+	}
+	parallelScript := strings.ReplaceAll(string(encoded), oldAlternatives, strings.Join(futureParallelRoots, "|"))
+	if err := verifyReleaseGateSimulatorEvidencePartition(parallelScript, roots, renderRoots, futureParallelRoots); err != nil {
+		t.Fatalf("ordinary future parallel root lost coverage: %v", err)
+	}
+	if err := verifyReleaseGateSimulatorEvidencePartition(parallelScript, roots, futureRenderRoots, futureParallelRoots); err == nil || !strings.Contains(err.Error(), future+" lacks a dedicated evidence owner") {
+		t.Fatalf("future full-launch wrapper regained a parallel owner: %v", err)
 	}
 }
