@@ -54,7 +54,7 @@ type Executor struct {
 	auditAuthorizedConfig     *ResolvedConfig
 	fleetCommitmentHistory    *fleetCommitmentHistoryScope
 	precompileHistoryEvidence *PrecompileConformanceEvidence
-	preparationIncomplete bool
+	preparationIncomplete     bool
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
@@ -481,7 +481,9 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
-	if err := validateLaunchPreparationOptions(cmd, o); err != nil { return err }
+	if err := validateLaunchPreparationOptions(cmd, o); err != nil {
+		return err
+	}
 	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
 		return err
 	}
@@ -494,7 +496,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// Planning and retirement need no upload allocation. Every actual setup
 	// or campaign apply must admit it before journals, services or spending.
 	if o.Apply {
-		if _, err := runtimeAttemptUploadBudget(cfg); err != nil { return err }
+		if _, err := runtimeAttemptUploadBudget(cfg); err != nil {
+			return err
+		}
 	}
 	if cmd == "scenario" {
 		names := []string{o.Name}
@@ -587,7 +591,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		provisionalHistoryChecked = true
 		if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
 			needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
-			if !report.add("provisional-live-spend", err) { needsDoctor = true }
+			if !report.add("provisional-live-spend", err) {
+				needsDoctor = true
+			}
 		}
 	}
 	if needsDoctor {
@@ -600,10 +606,18 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
 	}
 	var roles *RoleSecrets
-	if liveAdoption != nil || liveAdoptionErr != nil { roles, err = loadExistingProvisionalRoles(cfg, stateDir) } else { roles, err = LoadOrWriteRoleSecrets(cfg, stateDir) }
+	if liveAdoption != nil || liveAdoptionErr != nil {
+		roles, err = loadExistingProvisionalRoles(cfg, stateDir)
+	} else {
+		roles, err = LoadOrWriteRoleSecrets(cfg, stateDir)
+	}
 	rolesReady := report.add("role-secrets", err)
 	if !o.ProvisionalResume {
-		if rolesReady && liveAdoptionErr == nil { report.add("run-inputs", writeRunInputs(cfg, stateDir, p, roles)) } else { report.blocked("run-inputs", "role-secrets or provisional-live-topology") }
+		if rolesReady && liveAdoptionErr == nil {
+			report.add("run-inputs", writeRunInputs(cfg, stateDir, p, roles))
+		} else {
+			report.blocked("run-inputs", "role-secrets or provisional-live-topology")
+		}
 	}
 	// Host operations remain reversible and independent of read-only chain
 	// history. Their failures are collected before the single action gate.
@@ -617,60 +631,74 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		report.add("release-binaries", err)
 	}
 	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
-		if liveAdoptionErr == nil { report.add("release-host", preflightReleaseHost(ctx, stateDir, cfg, bins)) } else { report.blocked("release-host", "provisional-live-topology") }
+		if liveAdoptionErr == nil {
+			report.add("release-host", preflightReleaseHost(ctx, stateDir, cfg, bins))
+		} else {
+			report.blocked("release-host", "provisional-live-topology")
+		}
 	}
 	ex, executorErr := newLaunchPreparationExecutor(ctx, cfg, stateDir, p, j, roles)
 	report.add("execution-readers", executorErr)
-	if ex != nil { defer ex.Close() }
-	if ex == nil { ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, preparationIncomplete: true} }
-	if !provisionalHistoryChecked { report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx)) }
+	if ex != nil {
+		defer ex.Close()
+	}
+	if ex == nil {
+		ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, preparationIncomplete: true}
+	}
+	if !provisionalHistoryChecked {
+		report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx))
+	}
 	// New plans also need their full deployment payload before any action.
 	// A failed carry cannot be bypassed by a previously populated cache.
-	if !rolesReady { report.blocked("contract-deployment-payloads", "role-secrets") } else { report.add("contract-deployment-payloads", ex.ensurePayloads(ctx)) }
+	if !rolesReady {
+		report.blocked("contract-deployment-payloads", "role-secrets")
+	} else {
+		report.add("contract-deployment-payloads", ex.ensurePayloads(ctx))
+	}
 	collectLaunchRuntimePreparation(report, cmd, ex)
 	report.add("preparation-context", ctx.Err())
 	return finishLaunchPreparation(report, func(result *launchPreparationReport, err error) error { return printResult(o.Format, result, err) }, func() error {
-	// Chain/environment setup always stops at the disabled configuration
-	// boundary. LaunchDeployment then starts temporary operator APIs, provisions
-	// their server-assigned client identities, anchors the fleet, and only then
-	// starts the persistent topology.
-	limitID := "config.render"
-	if cmd == "scenario" {
-		if o.Name == releaseCandidateCampaignName {
-			return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
+		// Chain/environment setup always stops at the disabled configuration
+		// boundary. LaunchDeployment then starts temporary operator APIs, provisions
+		// their server-assigned client identities, anchors the fleet, and only then
+		// starts the persistent topology.
+		limitID := "config.render"
+		if cmd == "scenario" {
+			if o.Name == releaseCandidateCampaignName {
+				return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
+			}
+			return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
 		}
-		return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
-	}
-	if liveAdoption != nil {
-		if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
-			return err
-		}
-	} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
-		return err
-	}
-	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
-		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
-			return err
-		}
-		if cmd == "launch" {
-			// M0B is a hard gate for every live topology. It deploys and
-			// recovers only the approved dust probe, then publishes signed
-			// evidence before even the smoke scenario can pass.
-			if err := RunScenario(ctx, cfg, stateDir, "precompile-conformance", j, ex); err != nil {
+		if liveAdoption != nil {
+			if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
 				return err
 			}
-			if err := RunScenario(ctx, cfg, stateDir, cfg.Config.Scenarios.Launch, j, ex); err != nil {
+		} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
+			return err
+		}
+		if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
+			if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
 				return err
 			}
+			if cmd == "launch" {
+				// M0B is a hard gate for every live topology. It deploys and
+				// recovers only the approved dust probe, then publishes signed
+				// evidence before even the smoke scenario can pass.
+				if err := RunScenario(ctx, cfg, stateDir, "precompile-conformance", j, ex); err != nil {
+					return err
+				}
+				if err := RunScenario(ctx, cfg, stateDir, cfg.Config.Scenarios.Launch, j, ex); err != nil {
+					return err
+				}
+			}
 		}
-	}
-	result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir) + ownedRPCCommandOption(cfg)}
-	if provisionalResumeEnabled(cfg) {
-		result["provisional"] = true
-		result["final_acceptance"] = false
-		result["provisional_resume_record"] = cfg.provisionalResume.RecordPath
-	}
-	return printResult(o.Format, result, nil)
+		result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir) + ownedRPCCommandOption(cfg)}
+		if provisionalResumeEnabled(cfg) {
+			result["provisional"] = true
+			result["final_acceptance"] = false
+			result["provisional_resume_record"] = cfg.provisionalResume.RecordPath
+		}
+		return printResult(o.Format, result, nil)
 	})
 }
 
@@ -2733,7 +2761,9 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 	if e.payloads != nil {
 		return nil
 	}
-	if err := e.preparationPayloadReadersError(); err != nil { return err }
+	if err := e.preparationPayloadReadersError(); err != nil {
+		return err
+	}
 	if e.plan != nil && planUsesContractDeploymentEnvelope(e.plan.Schema) {
 		planned := contractDeploymentIdentity(e.plan.Deployment)
 		p, err := buildDeploymentPayloadsWithRegistrationGeneration(e.cfg, e.roles, planned.InitialNonce, planned.RegistrationRoleGeneration)

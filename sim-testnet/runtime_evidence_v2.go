@@ -102,29 +102,48 @@ func runtimeEvidenceV2Paths(stateDir string, validatorID int, noID uint64) ([]st
 // mutation. This confirms bytes only, never historical eligibility or finality.
 func preflightRuntimeEvidenceV2(cfg *ResolvedConfig, stateDir string) error {
 	resolved, resolveErr := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
-	if resolveErr != nil { return fmt.Errorf("evidence reference checks blocked by resolved activation inputs: %w", resolveErr) }
+	if resolveErr != nil {
+		return fmt.Errorf("evidence reference checks blocked by resolved activation inputs: %w", resolveErr)
+	}
 	cfg = resolved
-	if cfg == nil || cfg.Config == nil || cfg.Config.Topology.Validators < 1 || cfg.Config.Topology.Operators < 1 || len(cfg.Config.ValidatorEvidenceV2) != cfg.Config.Topology.Validators { return errors.New("runtime rendering requires explicit validator_evidence_v2 for every validator") }
-	if err := validatorpkg.ValidateReleaseEvidenceV2Path(stateDir); err != nil { return err }
+	if cfg == nil || cfg.Config == nil || cfg.Config.Topology.Validators < 1 || cfg.Config.Topology.Operators < 1 || len(cfg.Config.ValidatorEvidenceV2) != cfg.Config.Topology.Validators {
+		return errors.New("runtime rendering requires explicit validator_evidence_v2 for every validator")
+	}
+	if err := validatorpkg.ValidateReleaseEvidenceV2Path(stateDir); err != nil {
+		return err
+	}
 	var failures []error
 	for index, configured := range cfg.Config.ValidatorEvidenceV2 {
-		validatorID := index+1
-		if configured.ValidatorID != uint64(validatorID) { failures = append(failures, fmt.Errorf("validator %d references blocked by non-canonical validator identity", validatorID)); continue }
+		validatorID := index + 1
+		if configured.ValidatorID != uint64(validatorID) {
+			failures = append(failures, fmt.Errorf("validator %d references blocked by non-canonical validator identity", validatorID))
+			continue
+		}
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state")
 		operators := make([]validatorpkg.OperatorConfig, cfg.Config.Topology.Operators)
 		for operator := range operators {
 			state := filepath.Join(root, "operators", fmt.Sprintf("no-%d", operator+1))
-			operators[operator] = validatorpkg.OperatorConfig{NoID: uint64(operator+1), StateDir: state, NetworkJWTFile: filepath.Join(state, "network.jwt"), ClientJWTFile: filepath.Join(state, "client.jwt"), ClientKeySeedFile: filepath.Join(state, "client.key")}
+			operators[operator] = validatorpkg.OperatorConfig{NoID: uint64(operator + 1), StateDir: state, NetworkJWTFile: filepath.Join(state, "network.jwt"), ClientJWTFile: filepath.Join(state, "client.jwt"), ClientKeySeedFile: filepath.Join(state, "client.key")}
 		}
 		// Invalid bounds, role census or overlapping ownership never authorize
 		// a file read. Other independently configured validators still run.
-		if err := configured.Evidence.Validate(operators, root, filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", validatorID))); err != nil { failures = append(failures, fmt.Errorf("validator %d references blocked by evidence configuration: %w", validatorID, err)); continue }
+		if err := configured.Evidence.Validate(operators, root, filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", validatorID))); err != nil {
+			failures = append(failures, fmt.Errorf("validator %d references blocked by evidence configuration: %w", validatorID, err))
+			continue
+		}
 		for _, operator := range configured.Evidence.Operators {
 			paths, replay, seal := runtimeEvidenceV2Paths(stateDir, validatorID, operator.NoID)
-			if operator.ReplayScratchRoot != replay || operator.SealScratchRoot != seal { failures = append(failures, fmt.Errorf("validator %d no_id %d runtime evidence scratch owner differs from its validator/operator pair", validatorID, operator.NoID)) }
+			if operator.ReplayScratchRoot != replay || operator.SealScratchRoot != seal {
+				failures = append(failures, fmt.Errorf("validator %d no_id %d runtime evidence scratch owner differs from its validator/operator pair", validatorID, operator.NoID))
+			}
 			for index, reference := range operator.Files() {
-				if reference.Path != paths[index] { failures = append(failures, fmt.Errorf("validator %d no_id %d evidence reference %d blocked by incorrect role path", validatorID, operator.NoID, index)); continue }
-				if _, err := validatorpkg.ReadReleaseEvidenceV2File(context.Background(), reference, runtimeEvidenceV2ReferenceLimit(configured.Evidence.Bounds, index)); err != nil { failures = append(failures, fmt.Errorf("validator %d no_id %d evidence reference %d: %w", validatorID, operator.NoID, index, err)) }
+				if reference.Path != paths[index] {
+					failures = append(failures, fmt.Errorf("validator %d no_id %d evidence reference %d blocked by incorrect role path", validatorID, operator.NoID, index))
+					continue
+				}
+				if _, err := validatorpkg.ReadReleaseEvidenceV2File(context.Background(), reference, runtimeEvidenceV2ReferenceLimit(configured.Evidence.Bounds, index)); err != nil {
+					failures = append(failures, fmt.Errorf("validator %d no_id %d evidence reference %d: %w", validatorID, operator.NoID, index, err))
+				}
 			}
 		}
 	}

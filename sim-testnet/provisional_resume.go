@@ -162,7 +162,10 @@ func (e *Executor) verifyProvisionalActionHistory(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		if err := ctx.Err(); err != nil { failures = append(failures, fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err)); continue }
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err))
+			continue
+		}
 		if err := e.authenticateProvisionalReceipt(action, entry); err != nil {
 			failures = append(failures, fmt.Errorf("action %s: %w", action.ID, err))
 			continue

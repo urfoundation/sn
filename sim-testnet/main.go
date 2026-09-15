@@ -164,7 +164,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if o.Format != "human" && o.Format != "json" {
 		return "", o, errors.New("--format must be human or json")
 	}
-	if err := validateLaunchPreparationOptions(cmd, o); err != nil { return "", o, err }
+	if err := validateLaunchPreparationOptions(cmd, o); err != nil {
+		return "", o, err
+	}
 	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
 		return "", o, errors.New("--run-id is valid only for public analyze with --manifest")
 	}
