@@ -50,7 +50,22 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 17:48 UTC: producer and aggregate coverage are
+Latest checkpoint, 2026-09-15 20:19 UTC: the renewal completed at 19:09:41,
+with all **1,212 actions** verified across **202 fleets**. The corrected relay
+continuation was adopted at 20:04:13 with zero chain transactions, retaining
+all required work through block **8,021,242**. Final restart history selects
+native epoch **1,477** and is saved with its exact hash. All four temporary
+services stopped and joined cleanly. Actual strict resume is running from
+the retained state, using the admitted c5 executable. Its first attempt
+refused a missing private temporary directory; creating the required
+directories also fixed the adjacent campaign command's preparation. The retry
+started at **20:14:29 UTC**, with no source, approval or plan change.
+Continue directly to `release-candidate` after successful startup; no new
+test suite, preparation gate, renewal or repair is queued. The soak has not
+started and final acceptance remains false.
+[Completed renewal and continuation evidence](sim-testnet/FINAL-2.md).
+
+Previous checkpoint, 2026-09-15 17:48 UTC: producer and aggregate coverage are
 **accepted by composition**. The succession fixture correction at `93f6d35`
 passes its nine affected normal tests and 29 children. The complete capture
 race passes all 378 tests and 140 children in 479.526 seconds, within the

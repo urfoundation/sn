@@ -120,6 +120,13 @@ Retain `-test.v` in every body and confirmation command passed through
 qualify those tests. If the command needs correction, preserve the original
 result and reuse the unchanged binary and source for a fresh execution.
 
+Create each command's private `TMPDIR` and `GOTMPDIR` before execution;
+setting their environment variables does not create them. When a missing
+directory causes a refusal, preserve that attempt, repair the same paths in
+adjacent prepared commands, and retry the affected command with the retained
+binary, plan and history. This operational correction does not require a
+rebuild or a repeated qualification suite.
+
 ### Incremental recovery and acceptance
 
 Resume at the first incomplete or invalidated checkpoint. A failed attempt
