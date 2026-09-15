@@ -22,11 +22,11 @@ import (
 //     fraction of the provider share. There is no reference above which a
 //     larger target buys nothing.
 //   - the connect process budget (connect.SetMemoryBudget). It sizes the
-//     transfer share (an eighth of the budget) of every send sequence the
-//     device wiring does not give its own pool, and the process-scaled
-//     defaults. It used to be left unset because a positive budget switched on
-//     the phone's flow caps in connect's provider NAT profile; those caps are
-//     now the memory target's alone, so the budget costs the provider nothing.
+//     process defaults, including H3's reservation and receive windows. The
+//     pinned transfer defaults retain their bounded per-sequence constants;
+//     SDK device targets supply the provider's explicit transfer pools. A
+//     positive process budget does not select provider flow caps: those are
+//     controlled by the separate provider memory target.
 //   - the Go runtime soft limit (debug.SetMemoryLimit). The runtime holds
 //     roughly three bytes per live byte, so a soft limit equal to the summed
 //     targets makes GC run continuously once live memory reaches a third of
