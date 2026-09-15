@@ -145,16 +145,21 @@ func CaptureReleaseNativeSourceV2(ctx context.Context, native *crv4.Chain, cfg *
 		if hash == "" || seen[hash] {
 			continue
 		}
-		if _, err := canonicalAttemptHex32("native capture block hash", hash, false); err != nil {
+		blockHash, err := canonicalAttemptHex32("native capture block hash", hash, false)
+		if err != nil {
 			return err
 		}
 		seen[hash] = true
+		artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, owned, types.Hash(blockHash), HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
+		if err != nil {
+			return err
+		}
 		var raw string
 		if err := owned.API.Client.CallContext(ctx, &raw, "state_getMetadata", hash); err != nil {
 			return err
 		}
 		_, metadataHash, err := crv4.DecodeRuntimeMetadata(raw)
-		if err != nil || !strings.EqualFold(metadataHash, cfg.RuntimeMetadataHash) {
+		if err != nil || !strings.EqualFold(metadataHash, artifact.MetadataHash) {
 			return errors.Join(errors.New("captured native metadata differs from the reviewed original bytes"), err)
 		}
 	}
@@ -166,7 +171,7 @@ func CaptureReleaseNativeSourceV2(ctx context.Context, native *crv4.Chain, cfg *
 	if err != nil {
 		return err
 	}
-	schedule, err := crv4.ReadValidatorScheduleAtContext(ctx, owned, crv4.ValidatorScheduleQuery{GenesisHash: owned.GenesisHash, BlockHash: hash, BlockNumber: artifact.NativeSnapshotBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, releaseRuntimeIdentityV2(cfg))
+	schedule, err := crv4.ReadValidatorScheduleAtContext(ctx, owned, crv4.ValidatorScheduleQuery{GenesisHash: owned.GenesisHash, BlockHash: hash, BlockNumber: artifact.NativeSnapshotBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
 	if err != nil || !schedule.Stake.MeetsNonSelfStakeAndPermit() || schedule.SubnetEpochIndex != artifact.SubnetEpoch || schedule.Stake.Identity.UID != artifact.SelfUID {
 		return errors.Join(errors.New("compact captured decision lacks actual native schedule/eligibility"), err)
 	}

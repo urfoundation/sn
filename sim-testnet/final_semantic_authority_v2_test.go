@@ -17,8 +17,21 @@ import (
 // files. Offline authority reconstruction receives only public bytes; removing
 // all live private input files before its call proves the closed boundary.
 func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t *testing.T) {
+	finalValidatorAuthorityRuntimeTest(t, false)
+}
+
+func TestFinalValidatorAuthorityV2ReconstructsHistorical455Renderer(t *testing.T) {
+	finalValidatorAuthorityRuntimeTest(t, true)
+}
+
+func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
+	t.Helper()
 	fixture := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
 		cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455
+		if historical {
+			cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455, 0
+			cfg.Release = validatorEvidenceRuntime455TestLock(t)
+		}
 	})
 	executor := &Executor{cfg: fixture.cfg, plan: fixture.plan, roles: fixture.roles, stateDir: fixture.stateDir}
 	if err := executor.retainRuntimeEvidenceInputsV2(t.Context(), fixture.prepared, fixture.preparedBytes, fixture.completed); err != nil {
@@ -107,6 +120,9 @@ func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t 
 			// but cannot replace the current plan's explicit runtime approval.
 			value.Public.Chain.ExpectedRuntimeSpec = 455
 			value.Public.Chain.ConfigIdentityRuntimeSpec = 0
+			if historical {
+				value.Public.Chain.ExpectedRuntimeSpec, value.Public.Chain.ConfigIdentityRuntimeSpec = 458, 455
+			}
 			changedAuthority, err = json.Marshal(value)
 			if err != nil {
 				t.Fatalf("%s: %v", change, err)

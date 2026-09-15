@@ -20,7 +20,7 @@ func (self *finalSemanticArchive) decodeSetupPlan(path string, data []byte) (*Se
 	}
 	decode := self.planDecoder
 	if decode == nil {
-		decode = decodePersistedPlanBytes
+		decode = decodeFinalHistoricalPlanBytes
 	}
 	plan, err := decode(data)
 	if err != nil {

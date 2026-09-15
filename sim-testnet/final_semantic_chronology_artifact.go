@@ -71,7 +71,7 @@ func finalHistoricalCoordinatorArtifactLineage(evidence *FinalSemanticEvidence, 
 		if !found {
 			return nil, nil, nil, fmt.Errorf("historical coordinator predecessor plan %s is absent", planHash)
 		}
-		plan, decodeErr := decodePersistedPlanBytes(data)
+		plan, decodeErr := decodeFinalHistoricalPlanBytes(data)
 		if decodeErr != nil || plan.PlanHash != planHash || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {
 			return nil, nil, nil, stateMismatchError(decodeErr, "historical coordinator predecessor plan %s differs from approved lineage", planHash)
 		}
@@ -493,7 +493,7 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		if !found {
 			return fmt.Errorf("historical coordinator plan artifact %d is not loaded", index)
 		}
-		plan, err := decodePersistedPlanBytes(planData)
+		plan, err := decodeFinalHistoricalPlanBytes(planData)
 		lineagePlan := plans[row.PlanHash]
 		expectedPlanData, lineageErr := finalHistoricalCoordinatorArtifactPlanBytes(evidence, current, lineagePlan, cache)
 		if err != nil || lineageErr != nil || lineagePlan == nil || !bytes.Equal(planData, expectedPlanData) || !strings.EqualFold(plan.PlanHash, row.PlanHash) || !current.allowedPlanHashes()[plan.PlanHash] || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {

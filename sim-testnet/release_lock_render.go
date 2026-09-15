@@ -445,6 +445,12 @@ func canonicalReleaseLockBytes(lock *ReleaseLock) ([]byte, error) {
 	if err := validateReleaseLockStatic(lock); err != nil {
 		return nil, err
 	}
+	return canonicalValidatedReleaseLockBytes(lock)
+}
+
+// Callers admit the appropriate current or original runtime first. Both
+// routes retain identical canonical bytes and lossless round-trip checks.
+func canonicalValidatedReleaseLockBytes(lock *ReleaseLock) ([]byte, error) {
 	encoded, err := yaml.Marshal(lock)
 	if err != nil {
 		return nil, err

@@ -21,10 +21,18 @@ import (
 	validatorcomponent "github.com/urfoundation/sn/validator"
 )
 
+type evidenceRelayNativeReadMode uint8
+
+const (
+	evidenceRelayNativeOriginalSnapshot evidenceRelayNativeReadMode = iota + 1
+	evidenceRelayNativeCurrentHead
+	evidenceRelayNativeCurrentSnapshot
+)
+
 // The original native snapshot and a new finalized native snapshot are read
 // through the existing metadata-qualified hotkey/stake/schedule reader. Evm
 // height is never used to choose a native hash or subnet epoch.
-func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activation protocol.ValidatorEvidenceActivation, current bool) (uint64, error) {
+func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activation protocol.ValidatorEvidenceActivation, mode evidenceRelayNativeReadMode) (uint64, error) {
 	if ctx == nil || self == nil || self.executor == nil || self.executor.substrate == nil || self.executor.substrate.chain == nil || self.executor.cfg == nil || self.executor.cfg.Hyperparameters == nil || self.executor.plan == nil || self.executor.plan.ValidatorEvidence == nil {
 		return 0, errors.New("evidence relay native horizon owner is absent")
 	}
@@ -35,8 +43,11 @@ func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activat
 	if chain.API == nil || chain.API.Client == nil {
 		return 0, errors.New("evidence relay native horizon client is absent")
 	}
+	if mode != evidenceRelayNativeOriginalSnapshot && mode != evidenceRelayNativeCurrentHead && mode != evidenceRelayNativeCurrentSnapshot {
+		return 0, errors.New("evidence relay native horizon mode is invalid")
+	}
 	hash, block := types.Hash(activation.NativeHash), activation.NativeBlock
-	if current {
+	if mode == evidenceRelayNativeCurrentHead {
 		var err error
 		hash, err = crv4.FinalizedHeadContext(ctx, chain)
 		if err != nil {
@@ -52,8 +63,12 @@ func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activat
 	if maximum == 0 || maximum > uint64(^uint16(0)) {
 		return 0, errors.New("evidence relay native census bound differs")
 	}
+	allowed := []crv4.RuntimeArtifactIdentity{self.executor.runtimeEvidenceNativeIdentityV2()}
+	if mode == evidenceRelayNativeOriginalSnapshot {
+		allowed = validatorcomponent.HistoricalReleaseRuntimeArtifacts(allowed[0])
+	}
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, chain, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(self.executor.plan.ValidatorEvidence.GenesisHash), BlockHash: hash, BlockNumber: block,
-		Netuid: self.executor.cfg.Netuid, Hotkey: activation.Hotkey, MaximumSubnetUIDs: uint32(maximum)}, self.executor.runtimeEvidenceNativeIdentityV2())
+		Netuid: self.executor.cfg.Netuid, Hotkey: activation.Hotkey, MaximumSubnetUIDs: uint32(maximum)}, allowed...)
 	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() {
 		return 0, errors.Join(errors.New("evidence relay native horizon lacks independent finalized eligibility/schedule"), err)
 	}
@@ -224,7 +239,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 			return err
 		}
 		nativeAnchor.NativeHash = value
-		nativeEpoch, err := self.readHorizonNative(self.ctx, nativeAnchor, false)
+		nativeEpoch, err := self.readHorizonNative(self.ctx, nativeAnchor, evidenceRelayNativeCurrentSnapshot)
 		if err != nil || nativeEpoch != c.NativeEpoch {
 			return errors.Join(errors.New("relay continuation approved native snapshot changed"), err)
 		}
@@ -238,12 +253,12 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 			return err
 		}
 	}
-	anchorNative, err := self.readHorizonNative(self.ctx, anchor, false)
+	anchorNative, err := self.readHorizonNative(self.ctx, anchor, evidenceRelayNativeOriginalSnapshot)
 	if err != nil {
 		return err
 	}
 	horizon.anchorNativeEpoch = anchorNative
-	currentNative, err := self.readHorizonNative(self.ctx, anchor, true)
+	currentNative, err := self.readHorizonNative(self.ctx, anchor, evidenceRelayNativeCurrentHead)
 	if err != nil {
 		return err
 	}
@@ -308,7 +323,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
-	currentNative, err = self.readHorizonNative(self.ctx, anchor, true)
+	currentNative, err = self.readHorizonNative(self.ctx, anchor, evidenceRelayNativeCurrentHead)
 	if err != nil {
 		return err
 	}
@@ -435,7 +450,7 @@ func (self *evidenceRelayRuntime) checkRemaining(request evidenceRelayRemainingR
 	if err != nil {
 		return err
 	}
-	native, err := self.readHorizonNative(request.ctx, self.sources[0].activations[0], true)
+	native, err := self.readHorizonNative(request.ctx, self.sources[0].activations[0], evidenceRelayNativeCurrentHead)
 	if err != nil {
 		return err
 	}

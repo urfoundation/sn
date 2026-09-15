@@ -110,7 +110,7 @@ func (self *IntentStore) readMeasurementV2(ctx context.Context, custody *release
 	if err != nil {
 		return nil, nil, nil, options, err
 	}
-	if err := authenticatePinnedNativeRuntimeAtContext(ctx, native, &runtime.cfg, preparedHash); err != nil {
+	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, native, &runtime.cfg, preparedHash); err != nil {
 		return nil, nil, nil, options, err
 	}
 	if err := native.ValidatePreparedSourceWeightsContext(ctx, intent.Prepared, verified.Decision.UIDs, verified.Decision.Scores, releaseSubmitOptions(&runtime.cfg)); err != nil {

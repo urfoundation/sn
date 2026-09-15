@@ -97,7 +97,7 @@ func newReleaseEvidenceV2ArchiveOwner(ctx context.Context, options ReleaseEviden
 	if ctx == nil || options.Config == nil || options.ReadSource == nil || options.Hotkey == ([32]byte{}) || options.MaximumBytes == 0 || options.MaximumObjects == 0 || len(options.Sources) == 0 || uint64(len(options.Sources)) > options.MaximumObjects {
 		return nil, errors.New("archive V2 source owner or finite census is absent")
 	}
-	if err := options.Config.Validate(); err != nil {
+	if err := options.Config.ValidateHistorical(); err != nil {
 		return nil, err
 	}
 	if options.Config.ProvisionalDeferClosedNativeInput {

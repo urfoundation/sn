@@ -21,6 +21,8 @@ const (
 	releaseRuntimeStateVersion       = uint8(1)
 	releaseRuntimeCodeHash           = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
 	releaseRuntimeMetadataHash       = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
+	releaseHistoricalRuntimeCodeHash = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
+	releaseHistoricalRuntimeMetadataHash = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
 )
 
 func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
@@ -35,13 +37,54 @@ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
 	return nil
 }
 
+// Archive owners retain their original runtime fields. Only the two reviewed
+// artifacts belong to this historical reader; current admission stays separate.
+func validateReleaseHistoricalNativeRuntimeConfig(cfg *ReleaseConfig) error {
+	if cfg != nil && cfg.RuntimeSpec == 455 && cfg.TransactionVersion == 1 && cfg.StateVersion == 1 &&
+		strings.EqualFold(cfg.RuntimeCodeHash, releaseHistoricalRuntimeCodeHash) && strings.EqualFold(cfg.RuntimeMetadataHash, releaseHistoricalRuntimeMetadataHash) {
+		return nil
+	}
+	return validateReleaseNativeRuntimeConfig(cfg)
+}
+
+// HistoricalReleaseRuntimeArtifacts is restricted to callers replaying an
+// authenticated original block, consent or receipt. The exact current release
+// may read its reviewed predecessor; a different supplied tuple gains no
+// additional authority. Current observations and signing keep their single pin.
+func HistoricalReleaseRuntimeArtifacts(current crv4.RuntimeArtifactIdentity) []crv4.RuntimeArtifactIdentity {
+	allowed := []crv4.RuntimeArtifactIdentity{current}
+	if current.Version != (crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: releaseRuntimeSpecVersion, TransactionVersion: releaseRuntimeTransactionVersion, StateVersion: releaseRuntimeStateVersion}) ||
+		!strings.EqualFold(current.CodeHash, releaseRuntimeCodeHash) || !strings.EqualFold(current.MetadataHash, releaseRuntimeMetadataHash) {
+		return allowed
+	}
+	return append(allowed, crv4.RuntimeArtifactIdentity{
+		Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1},
+		CodeHash: releaseHistoricalRuntimeCodeHash,
+		MetadataHash: releaseHistoricalRuntimeMetadataHash,
+	})
+}
+
 // authenticatePinnedNativeRuntimeAtContext binds a caller-selected finalized
 // block only while its public-RPC reads remain cancellable by that caller.
 func authenticatePinnedNativeRuntimeAtContext(ctx context.Context, chain *crv4.Chain, cfg *ReleaseConfig, finalized types.Hash) error {
+	return authenticateReleaseNativeRuntimeAtContext(ctx, chain, cfg, finalized, false)
+}
+
+// The caller must own a private chain view and independently authenticate the
+// original signed source or receipt. This cannot admit an old signing runtime.
+func authenticateHistoricalNativeRuntimeAtContext(ctx context.Context, chain *crv4.Chain, cfg *ReleaseConfig, finalized types.Hash) error {
+	return authenticateReleaseNativeRuntimeAtContext(ctx, chain, cfg, finalized, true)
+}
+
+func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.Chain, cfg *ReleaseConfig, finalized types.Hash, historical bool) error {
 	if ctx == nil || chain == nil || cfg == nil || finalized == (types.Hash{}) {
 		return errors.New("native runtime identity context is incomplete")
 	}
-	if err := validateReleaseNativeRuntimeConfig(cfg); err != nil {
+	validate := validateReleaseNativeRuntimeConfig
+	if historical {
+		validate = validateReleaseHistoricalNativeRuntimeConfig
+	}
+	if err := validate(cfg); err != nil {
 		return err
 	}
 	expected := crv4.RuntimeArtifactIdentity{
@@ -54,7 +97,11 @@ func authenticatePinnedNativeRuntimeAtContext(ctx context.Context, chain *crv4.C
 		CodeHash:     cfg.RuntimeCodeHash,
 		MetadataHash: cfg.RuntimeMetadataHash,
 	}
-	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, chain, finalized, expected)
+	allowed := []crv4.RuntimeArtifactIdentity{expected}
+	if historical {
+		allowed = HistoricalReleaseRuntimeArtifacts(expected)
+	}
+	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, chain, finalized, allowed...)
 	if err != nil {
 		return fmt.Errorf("native runtime at %s is not the configured node-subtensor/%d/%d/%d artifact: %w", finalized.Hex(), cfg.RuntimeSpec, cfg.TransactionVersion, cfg.StateVersion, err)
 	}

@@ -171,7 +171,7 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err != nil {
 		return nil, err
 	}
-	current, err := decodePersistedPlanBytes(planBytes)
+	current, err := decodeFinalHistoricalPlanBytes(planBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err != nil {
 		return nil, err
 	}
-	source, err := decodePersistedPlanBytes(sourceBytes)
+	source, err := decodeFinalHistoricalPlanBytes(sourceBytes)
 	if err != nil {
 		return nil, err
 	}

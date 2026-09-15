@@ -78,7 +78,7 @@ func newFinalHistoricalCoordinatorSource(archive *finalSemanticArchive, evidence
 	if err != nil {
 		return nil, err
 	}
-	current, err := decodePersistedPlanBytes(currentBytes)
+	current, err := decodeFinalHistoricalPlanBytes(currentBytes)
 	if err != nil || current.Schema != currentSetupPlanSchema || current.PlanHash != evidence.PlanHash || current.DeploymentID != evidence.DeploymentID || current.ChainID != evidence.ChainID || current.Netuid != evidence.Netuid {
 		return nil, stateMismatchError(err, "historical coordinator current plan differs from semantic identity")
 	}
@@ -115,7 +115,7 @@ func newFinalHistoricalCoordinatorSource(archive *finalSemanticArchive, evidence
 	}
 	for _, name := range names {
 		data := archive.files[name]
-		plan, decodeErr := decodePersistedPlanBytes(data)
+		plan, decodeErr := decodeFinalHistoricalPlanBytes(data)
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode historical coordinator plan %s: %w", name, decodeErr)
 		}

@@ -152,6 +152,7 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 		"../validator/release_capture_budget_v2_test.go",
 		"../validator/release_archive*_v2_test.go", "../validator/release_history_adoption*_test.go",
 		"../validator/release_native_observation_v2_test.go",
+		"../validator/release_historical*_test.go",
 	})
 	groups := []releaseEvidenceV2GateGroup{
 		{phase: "settlement", variable: "producer_tests", alternatives: releaseEvidenceV2OldProducerGroups + "|" + releaseEvidenceV2NewProducerGroups, packages: []string{"./validator"}, sources: map[string][]string{"./validator": validator}, commands: []string{

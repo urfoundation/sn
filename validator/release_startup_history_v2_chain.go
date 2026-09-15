@@ -136,7 +136,7 @@ func authenticateReleaseStartupNativeV2ContextWithRetainedHistory(ctx context.Co
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{
 		GenesisHash: types.Hash(initial.Activation.Domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: input.CutNativeBlock,
 		Netuid: initial.Activation.Domain.Netuid, Hotkey: initial.Activation.Hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs,
-	}, runtime)
+	}, HistoricalReleaseRuntimeArtifacts(runtime)...)
 	if err != nil {
 		return err
 	}

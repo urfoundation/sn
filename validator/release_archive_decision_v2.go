@@ -49,7 +49,7 @@ func observeReleaseDecisionLifecycleV2(ctx context.Context, native *crv4.Chain, 
 		if err != nil {
 			return 0, err
 		}
-		actual, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{GenesisHash: native.GenesisHash, BlockHash: block, BlockNumber: number, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, releaseRuntimeIdentityV2(cfg))
+		actual, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{GenesisHash: native.GenesisHash, BlockHash: block, BlockNumber: number, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
 		if err != nil {
 			return 0, err
 		}

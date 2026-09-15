@@ -97,7 +97,7 @@ func (self *ChainClient) AuthenticateReleaseActivationV2Context(ctx context.Cont
 			GenesisHash: types.Hash(expected.Domain.GenesisHash), BlockHash: types.Hash(expected.NativeHash),
 			BlockNumber: expected.NativeBlock, Netuid: expected.Domain.Netuid,
 			UID: authority.ValidatorUID, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs,
-		}, authority.NativeRuntime)
+		}, HistoricalReleaseRuntimeArtifacts(authority.NativeRuntime)...)
 		if nativeErr == nil && (observation.Identity.Hotkey != expected.Hotkey || !observation.MeetsNonSelfStakeAndPermit()) {
 			nativeErr = errors.New("activation historical hotkey lacks the exact native stake/permit authority")
 		}

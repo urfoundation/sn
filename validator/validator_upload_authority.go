@@ -339,7 +339,7 @@ func (self *ChainClient) AuthenticateValidatorUploadActivationContext(ctx contex
 		return result, err
 	}
 	schedule, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(domain.GenesisHash), BlockHash: types.Hash(record.NativeHash),
-		BlockNumber: record.NativeBlock, Netuid: domain.Netuid, Hotkey: record.Hotkey, MaximumSubnetUIDs: deployment.MaximumSubnetUIDs}, deployment.NativeRuntime)
+		BlockNumber: record.NativeBlock, Netuid: domain.Netuid, Hotkey: record.Hotkey, MaximumSubnetUIDs: deployment.MaximumSubnetUIDs}, HistoricalReleaseRuntimeArtifacts(deployment.NativeRuntime)...)
 	if err != nil {
 		return result, err
 	}

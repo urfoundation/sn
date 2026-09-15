@@ -286,7 +286,7 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 	freshNative := anchor
 	freshNative.NativeBlock = nativeBlock
 	freshNative.NativeHash = [32]byte(nativeHash)
-	nativeEpoch, err := runtime.readHorizonNative(ctx, freshNative, false)
+	nativeEpoch, err := runtime.readHorizonNative(ctx, freshNative, evidenceRelayNativeCurrentSnapshot)
 	if err != nil {
 		return nil, err
 	}

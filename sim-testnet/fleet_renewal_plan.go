@@ -278,6 +278,12 @@ func validateFleetRenewalPlan(p *SetupPlan) error {
 }
 
 func appendFleetRenewalPlan(base *SetupPlan, renewal FleetRenewal) (*SetupPlan, error) {
+	return appendFleetRenewalPlanForHistory(base, renewal, false)
+}
+
+// Only closed archive reconstruction retains historical admission across the
+// owned Json copy. Live renewal planning keeps current release validation.
+func appendFleetRenewalPlanForHistory(base *SetupPlan, renewal FleetRenewal, historical bool) (*SetupPlan, error) {
 	raw, err := json.Marshal(base)
 	if err != nil {
 		return nil, err
@@ -286,6 +292,7 @@ func appendFleetRenewalPlan(base *SetupPlan, renewal FleetRenewal) (*SetupPlan, 
 	if err := json.Unmarshal(raw, &plan); err != nil {
 		return nil, err
 	}
+	plan.validatorEvidenceHistorical = historical && base.validatorEvidenceHistorical
 	if renewal.SourcePlanHash != base.PlanHash || renewal.Round != uint64(len(base.FleetRenewals)+1) {
 		return nil, errors.New("renewal does not extend the current plan")
 	}

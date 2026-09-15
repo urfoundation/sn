@@ -668,23 +668,27 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if err != nil {
 		return false, fmt.Errorf("pending steering preparation hash: %w", err)
 	}
-	if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, preparedRuntimeHash); err != nil {
+	historical := *s.native
+	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &historical, s.cfg, preparedRuntimeHash); err != nil {
 		return false, fmt.Errorf("authenticate pending steering preparation runtime at %s: %w", preparedRuntimeHash.Hex(), err)
 	}
 	hash, err := types.NewHashFromHexString(current.Prepared.ExtrinsicHash)
 	if err != nil {
 		return false, fmt.Errorf("pending steering extrinsic hash: %w", err)
 	}
-	receipt, found, err := s.native.FindFinalizedExtrinsic(ctx, hash, current.Prepared.PreparedAtBlock)
+	receipt, found, err := historical.LocateFinalizedExtrinsic(ctx, hash, current.Prepared.PreparedAtBlock)
 	if err != nil {
 		return false, fmt.Errorf("reconcile pending steering finality: %w", err)
 	}
 	if found {
-		if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, receipt.BlockHash); err != nil {
+		if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &historical, s.cfg, receipt.BlockHash); err != nil {
 			return false, fmt.Errorf("authenticate recovered steering finality at %s: %w", receipt.BlockHash.Hex(), err)
 		}
+		if err := historical.VerifyFinalizedExtrinsicContext(ctx, receipt.BlockHash, receipt.ExtrinsicHash); err != nil {
+			return false, err
+		}
 		if current.Prepared.SourceCommitment != nil {
-			if err := s.native.VerifyFinalizedSourceContext(ctx, current.Prepared, receipt); err != nil {
+			if err := historical.VerifyFinalizedSourceContext(ctx, current.Prepared, receipt); err != nil {
 				return false, err
 			}
 		}
@@ -692,6 +696,11 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 			return false, err
 		}
 		return true, nil
+	}
+	// Historical inclusion can close an old intent, but absent inclusion its
+	// original signing runtime must still be the current approved artifact.
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, &historical, s.cfg, preparedRuntimeHash); err != nil {
+		return false, fmt.Errorf("pending steering replay uses a historical signing runtime: %w", err)
 	}
 	if current.SubnetEpoch < nativeState.SubnetEpochIndex {
 		err := fmt.Errorf("unfinalized steering submission expired at subnet epoch %d", current.SubnetEpoch)

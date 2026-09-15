@@ -256,13 +256,17 @@ func replayReleaseActivationHistoryV2(ctx context.Context, encoded []byte, optio
 // Every operator must name the identical full history, even for pristine startup.
 // This does not authenticate EVM ancestry, native-cut generations or disk images.
 func replayReleaseEvidenceV2ActivationHistories(ctx context.Context, cfg *ReleaseConfig, inputs []releaseEvidenceV2ActivationInput, serverKeys map[uint64]map[byte]ed25519.PublicKey) (*AttemptSettlementClosure, error) {
+	return replayReleaseEvidenceV2ActivationHistoriesForArchive(ctx, cfg, inputs, serverKeys, false)
+}
+
+func replayReleaseEvidenceV2ActivationHistoriesForArchive(ctx context.Context, cfg *ReleaseConfig, inputs []releaseEvidenceV2ActivationInput, serverKeys map[uint64]map[byte]ed25519.PublicKey, historical bool) (*AttemptSettlementClosure, error) {
 	if ctx == nil || cfg == nil {
 		return nil, errors.New("activation history bootstrap is absent")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validate(historical); err != nil {
 		return nil, err
 	}
 	if len(inputs) != len(cfg.EvidenceV2.Operators) || len(inputs) == 0 {

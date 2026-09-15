@@ -229,7 +229,7 @@ func (self *Executor) authenticateRuntimeEvidencePreparedV2(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		observation, err := crv4.ReadValidatorScheduleAtContext(ctx, self.substrate.chain, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(self.plan.ValidatorEvidence.GenesisHash), BlockHash: types.Hash(nativeHash), BlockNumber: prepared.Native.Number, Netuid: self.cfg.Netuid, Hotkey: hotkey.PublicKey(), MaximumSubnetUIDs: uint32(hyperparameterUint64(self.cfg.Hyperparameters.OwnerControlled["max_allowed_uids"]))}, self.runtimeEvidenceNativeIdentityV2())
+		observation, err := crv4.ReadValidatorScheduleAtContext(ctx, self.substrate.chain, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(self.plan.ValidatorEvidence.GenesisHash), BlockHash: types.Hash(nativeHash), BlockNumber: prepared.Native.Number, Netuid: self.cfg.Netuid, Hotkey: hotkey.PublicKey(), MaximumSubnetUIDs: uint32(hyperparameterUint64(self.cfg.Hyperparameters.OwnerControlled["max_allowed_uids"]))}, validatorcomponent.HistoricalReleaseRuntimeArtifacts(self.runtimeEvidenceNativeIdentityV2())...)
 		if err != nil || !observation.Stake.MeetsNonSelfStakeAndPermit() || observation.Stake.Identity.UID != member.ValidatorUid {
 			return errors.Join(errors.New("activation preparation native eligibility or historical uid differs"), err)
 		}

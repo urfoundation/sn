@@ -413,7 +413,7 @@ func (a *finalSemanticArchive) buildFleetLifecycle(source *FinalSemanticEvidence
 	if err != nil {
 		return err
 	}
-	plan, err := decodePersistedPlanBytes(planBytes)
+	plan, err := decodeFinalHistoricalPlanBytes(planBytes)
 	if err != nil {
 		return fmt.Errorf("authenticate fleet lifecycle plan: %w", err)
 	}
@@ -1403,7 +1403,7 @@ func decodeFinalFleetLifecycleLineageFiles(evidence *FinalSemanticEvidence, data
 		}
 		files[item.Path] = append([]byte(nil), item.Data...)
 	}
-	plan, err := decodePersistedPlanBytes(files["launch-foundation/plan.json"])
+	plan, err := decodeFinalHistoricalPlanBytes(files["launch-foundation/plan.json"])
 	if err != nil || plan.PlanHash != evidence.PlanHash {
 		return nil, stateMismatchError(err, "fleet lifecycle path authority plan differs")
 	}
@@ -1448,7 +1448,7 @@ func verifyFinalFleetLifecycleArtifactsWithIdentities(evidence *FinalSemanticEvi
 	if err := decodeStrictJSONBytes(files["public/fleet-lifecycle.json"], &state); err != nil || !finalJSONEqual(state, lifecycle.State) {
 		return stateMismatchError(err, "fleet lifecycle terminal state differs from its lineage artifact")
 	}
-	plan, err := decodePersistedPlanBytes(files["launch-foundation/plan.json"])
+	plan, err := decodeFinalHistoricalPlanBytes(files["launch-foundation/plan.json"])
 	if err != nil || plan.PlanHash != evidence.PlanHash || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {
 		return stateMismatchError(err, "fleet lifecycle signed plan differs from semantic identity")
 	}

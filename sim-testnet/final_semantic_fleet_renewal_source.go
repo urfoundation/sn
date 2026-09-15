@@ -303,7 +303,7 @@ func (self *finalFleetGenerationSource) renewalApproval(renewal FleetRenewal) (F
 	if err != nil {
 		return FinalFleetRenewalRoundEvidence{}, nil, err
 	}
-	expected, err := appendFleetRenewalPlan(base, renewal)
+	expected, err := appendFleetRenewalPlanForHistory(base, renewal, true)
 	if err != nil {
 		return FinalFleetRenewalRoundEvidence{}, nil, err
 	}

@@ -226,6 +226,18 @@ func parseHash32(name, value string) ([32]byte, error) {
 }
 
 func (c ReleaseConfig) Validate() error {
+	return c.validate(false)
+}
+
+// ValidateHistorical admits an original config only after an archive caller
+// authenticates its captured bytes. Fresh configuration uses Validate.
+func (self ReleaseConfig) ValidateHistorical() error {
+	return self.validate(true)
+}
+
+// Public archive replay authenticates an original configuration without
+// authorizing it as a current producer or changing its serialized identity.
+func (c ReleaseConfig) validate(historical bool) error {
 	if c.SchemaVersion != ReleaseValidatorSchemaVersion || c.Release != "1.0" {
 		return errors.New("schema_version must be 1 and release must be 1.0")
 	}
@@ -258,7 +270,11 @@ func (c ReleaseConfig) Validate() error {
 	if _, err := parseHash32("runtime_metadata_hash", c.RuntimeMetadataHash); err != nil {
 		return err
 	}
-	if err := validateReleaseNativeRuntimeConfig(&c); err != nil {
+	validateRuntime := validateReleaseNativeRuntimeConfig
+	if historical {
+		validateRuntime = validateReleaseHistoricalNativeRuntimeConfig
+	}
+	if err := validateRuntime(&c); err != nil {
 		return err
 	}
 	configuredPolicyHash, err := parseHash32("policy_hash", c.PolicyHash)

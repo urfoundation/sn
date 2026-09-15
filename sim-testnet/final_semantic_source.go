@@ -229,7 +229,7 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return nil, fmt.Errorf("persist approved setup plan artifact: %w", err)
 	}
-	releaseLockBytes, err := canonicalReleaseLockBytes(cfg.Release)
+	releaseLockBytes, err := canonicalFinalHistoricalReleaseLockBytes(cfg.Release)
 	if err != nil {
 		return nil, fmt.Errorf("canonical approved release lock: %w", err)
 	}

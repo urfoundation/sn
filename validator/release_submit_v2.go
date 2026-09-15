@@ -54,7 +54,7 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 	if err != nil {
 		return err
 	}
-	if err := authenticatePinnedNativeRuntimeAtContext(ctx, &own, cfg, hash); err != nil {
+	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &own, cfg, hash); err != nil {
 		return err
 	}
 	if err := own.ValidatePreparedSource(prepared); err != nil {
@@ -64,7 +64,7 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 	if err != nil {
 		return err
 	}
-	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, &own, crv4.ValidatorScheduleQuery{GenesisHash: own.GenesisHash, BlockHash: hash, BlockNumber: prepared.PreparedAtBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, releaseRuntimeIdentityV2(cfg))
+	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, &own, crv4.ValidatorScheduleQuery{GenesisHash: own.GenesisHash, BlockHash: hash, BlockNumber: prepared.PreparedAtBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
 	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() || observed.SubnetEpochIndex != intent.SubnetEpoch || observed.Stake.Identity.UID != intent.SelfUID {
 		return errors.Join(errors.New("V2 prepared signer lacks actual canonical native schedule/eligibility"), err)
 	}
@@ -79,7 +79,7 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 	if err != nil {
 		return err
 	}
-	if err := authenticatePinnedNativeRuntimeAtContext(ctx, &own, cfg, blockHash); err != nil {
+	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &own, cfg, blockHash); err != nil {
 		return err
 	}
 	return own.VerifyFinalizedSourceContext(ctx, prepared, &crv4.FinalizedExtrinsic{ExtrinsicHash: txHash, BlockHash: blockHash, BlockNumber: intent.FinalizedBlock})
@@ -536,22 +536,23 @@ func (self *ReleaseSteerer) reconcilePendingV2(ctx context.Context, current *Ste
 	if err != nil {
 		return false, fmt.Errorf("pending steering preparation hash: %w", err)
 	}
-	if err := authenticatePinnedNativeRuntimeAtContext(ctx, self.native, self.cfg, preparedRuntimeHash); err != nil {
+	historical := *self.native
+	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &historical, self.cfg, preparedRuntimeHash); err != nil {
 		return false, fmt.Errorf("authenticate pending steering preparation runtime at %s: %w", preparedRuntimeHash.Hex(), err)
 	}
 	hash, err := types.NewHashFromHexString(current.Prepared.ExtrinsicHash)
 	if err != nil {
 		return false, fmt.Errorf("pending steering extrinsic hash: %w", err)
 	}
-	receipt, found, err := self.native.LocateFinalizedExtrinsic(ctx, hash, current.Prepared.PreparedAtBlock)
+	receipt, found, err := historical.LocateFinalizedExtrinsic(ctx, hash, current.Prepared.PreparedAtBlock)
 	if err != nil {
 		return false, fmt.Errorf("reconcile pending steering finality: %w", err)
 	}
 	if found {
-		if err := authenticatePinnedNativeRuntimeAtContext(ctx, self.native, self.cfg, receipt.BlockHash); err != nil {
+		if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &historical, self.cfg, receipt.BlockHash); err != nil {
 			return false, fmt.Errorf("authenticate recovered steering finality at %s: %w", receipt.BlockHash.Hex(), err)
 		}
-		if sourceErr := self.native.VerifyFinalizedSourceContext(ctx, current.Prepared, receipt); sourceErr != nil {
+		if sourceErr := historical.VerifyFinalizedSourceContext(ctx, current.Prepared, receipt); sourceErr != nil {
 			var dispatch *crv4.FinalizedDispatchError
 			if errors.As(sourceErr, &dispatch) {
 				return false, self.intents.markFailedV2(ctx, current.VectorHash, sourceErr)
@@ -562,6 +563,9 @@ func (self *ReleaseSteerer) reconcilePendingV2(ctx context.Context, current *Ste
 			return false, err
 		}
 		return true, nil
+	}
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, &historical, self.cfg, preparedRuntimeHash); err != nil {
+		return false, fmt.Errorf("pending steering replay uses a historical signing runtime: %w", err)
 	}
 	if current.SubnetEpoch < nativeState.SubnetEpochIndex {
 		err := fmt.Errorf("unfinalized steering submission expired at subnet epoch %d", current.SubnetEpoch)

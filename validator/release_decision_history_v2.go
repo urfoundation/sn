@@ -33,7 +33,7 @@ var (
 
 // Native registration/stake and EVM state have separate pinned hashes. The
 // native observation cannot be replaced with a claimed EVM-height identity.
-func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, native *crv4.Chain, query releaseDecisionChainV2Query, schedule crv4.ValidatorScheduleQuery, runtime crv4.RuntimeArtifactIdentity) (result *releaseDecisionChainV2Observation, observed crv4.ValidatorScheduleObservation, resultErr error) {
+func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, native *crv4.Chain, query releaseDecisionChainV2Query, schedule crv4.ValidatorScheduleQuery, runtimes ...crv4.RuntimeArtifactIdentity) (result *releaseDecisionChainV2Observation, observed crv4.ValidatorScheduleObservation, resultErr error) {
 	if ctx == nil || schedule.GenesisHash != types.Hash(query.domain.GenesisHash) || schedule.Netuid != query.domain.Netuid {
 		return nil, observed, errors.New("decision native and EVM deployment authorities differ")
 	}
@@ -61,7 +61,7 @@ func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, nativ
 			result, observed = nil, crv4.ValidatorScheduleObservation{}
 		}
 	}()
-	observed, err = crv4.ReadValidatorScheduleAtContext(ctx, native, schedule, runtime)
+	observed, err = crv4.ReadValidatorScheduleAtContext(ctx, native, schedule, runtimes...)
 	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() {
 		return nil, observed, errors.Join(errors.New("decision native signer lacks real stake/permit authority"), err)
 	}
@@ -158,7 +158,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 		return result, err
 	}
 	observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&self.cfg))
-	observed, schedule, err := readReleaseDecisionV2Context(observationCtx, chain, native, query, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(query.domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: artifact.NativeSnapshotBlock, Netuid: query.domain.Netuid, Hotkey: first.Activation.Hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, runtime)
+	observed, schedule, err := readReleaseDecisionV2Context(observationCtx, chain, native, query, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(query.domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: artifact.NativeSnapshotBlock, Netuid: query.domain.Netuid, Hotkey: first.Activation.Hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(runtime)...)
 	cancel()
 	if err != nil || schedule.SubnetEpochIndex != intent.SubnetEpoch || schedule.Stake.Identity.UID != intent.SelfUID {
 		return result, errors.Join(errors.New("historical decision signer or epoch differs from real chain observations"), err)

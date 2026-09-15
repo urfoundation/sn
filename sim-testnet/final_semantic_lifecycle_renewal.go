@@ -17,11 +17,11 @@ func finalFleetLifecycleRenewalApproval(plan *SetupPlan, files map[string][]byte
 		return nil, nil
 	}
 	renewal := plan.FleetRenewals[plan.FleetLifecycleRenewal.Round-1]
-	source, err := decodePersistedPlanBytes(files["plan-history/"+stringsTrim0x(renewal.SourcePlanHash)+".json"])
+	source, err := decodeFinalHistoricalPlanBytes(files["plan-history/"+stringsTrim0x(renewal.SourcePlanHash)+".json"])
 	if err != nil || source.PlanHash != renewal.SourcePlanHash {
 		return nil, stateMismatchError(err, "lifecycle renewal original plan is unavailable")
 	}
-	approved, err := appendFleetRenewalPlan(source, renewal)
+	approved, err := appendFleetRenewalPlanForHistory(source, renewal, true)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func finalFleetLifecycleRenewalApproval(plan *SetupPlan, files map[string][]byte
 	if approved.PlanHash == plan.PlanHash {
 		path = "launch-foundation/plan.json"
 	}
-	retained, err := decodePersistedPlanBytes(files[path])
+	retained, err := decodeFinalHistoricalPlanBytes(files[path])
 	if err != nil || retained.PlanHash != approved.PlanHash {
 		return nil, stateMismatchError(err, "lifecycle renewal exact approved plan bytes are unavailable")
 	}

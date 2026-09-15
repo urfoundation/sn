@@ -104,7 +104,7 @@ func openReleaseEvidenceV2ArchiveHistory(ctx context.Context, options ReleaseEvi
 			return nil, err
 		}
 	}
-	history.activationHistory, err = replayReleaseEvidenceV2ActivationHistories(ctx, &owner.cfg, archive.inputs, history.keys)
+	history.activationHistory, err = replayReleaseEvidenceV2ActivationHistoriesForArchive(ctx, &owner.cfg, archive.inputs, history.keys, true)
 	if err != nil {
 		return nil, err
 	}

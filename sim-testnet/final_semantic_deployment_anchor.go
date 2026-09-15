@@ -87,7 +87,7 @@ func finalReleaseRuntimeRootsForPlan(plan *SetupPlan, lock *ReleaseLock) ([]Fina
 	if plan == nil || lock == nil || plan.Schema != currentSetupPlanSchema {
 		return nil, errors.New("approved release plan or lock is unavailable")
 	}
-	if err := validateReleaseLockStatic(lock); err != nil {
+	if err := validateValidatorEvidenceHistoricalReleaseLock(lock); err != nil {
 		return nil, fmt.Errorf("validate approved release lock: %w", err)
 	}
 	lockHash, err := canonicalHashHex(lock)
@@ -401,7 +401,7 @@ func verifyFinalReleaseLockArtifact(evidence *FinalSemanticEvidence, plan *Setup
 	if err != nil {
 		return nil, fmt.Errorf("decode approved release lock artifact: %w", err)
 	}
-	canonical, err := canonicalReleaseLockBytes(lock)
+	canonical, err := canonicalFinalHistoricalReleaseLockBytes(lock)
 	if err != nil || !bytes.Equal(canonical, data) {
 		return nil, stateMismatchError(err, "approved release lock artifact is not canonical")
 	}

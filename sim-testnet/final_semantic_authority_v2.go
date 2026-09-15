@@ -251,7 +251,7 @@ func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanti
 	// measurement comparison. Keep the captured YAML unchanged above.
 	runtime.Coordinator = strings.ToLower(runtime.Coordinator)
 	runtime.SettlementVault = strings.ToLower(runtime.SettlementVault)
-	if err := runtime.Validate(); err != nil {
+	if err := runtime.ValidateHistorical(); err != nil {
 		return nil, nil, err
 	}
 	return &runtime, &authority, ctx.Err()
