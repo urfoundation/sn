@@ -133,8 +133,10 @@ and each run's private `tmp` and `gotmp` directories. The reusable Go build
 cache location is `/mnt/data/sn-testnet/gocache`; set `TMPDIR`, `GOTMPDIR`
 and `GOCACHE` explicitly for the new command owner. Confirm `/mnt/data` is
 actually mounted before creating a run so an absent drive cannot silently
-send test data back to the root filesystem. The prepared directories are
-owned by `by` with mode `0700`. Keep active campaign state, admitted binaries
+send test data back to the root filesystem. The private `sn-testnet` parent
+is owned by `by` with mode `0700`. The existing global Go cache was copied
+and checksum-verified there, retaining its metadata; `/home/by/.cache/go-build`
+now links to `/mnt/data/sn-testnet/gocache`. Keep active campaign state, admitted binaries
 and running command captures at their existing paths until their owners join.
 Changing the location of future scratch data does not invalidate completed
 qualification or require rebuilding an already admitted executable.

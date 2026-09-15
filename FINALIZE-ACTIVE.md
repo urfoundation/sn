@@ -65,6 +65,13 @@ test suite, preparation gate, renewal or repair is queued. The soak has not
 started and final acceptance remains false.
 [Completed renewal and continuation evidence](sim-testnet/FINAL-2.md).
 
+Storage relief completed at **20:44:30 UTC**: the existing Go build cache was
+copied to the user-mounted `/mnt/data` volume and verified with no checksum
+or metadata differences before removing the original copy. Its old path is
+preserved by a link. This frees about **56 GiB** on `/`, which now has about
+**78 GiB** available. Active simulator state, binaries and command captures
+remain at their existing paths; startup continues under the same owner.
+
 Previous checkpoint, 2026-09-15 17:48 UTC: producer and aggregate coverage are
 **accepted by composition**. The succession fixture correction at `93f6d35`
 passes its nine affected normal tests and 29 children. The complete capture
