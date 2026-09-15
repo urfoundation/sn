@@ -1,0 +1,117 @@
+=== RUN   TestReleaseLockDecodesCanonicalRuntimeFields
+--- PASS: TestReleaseLockDecodesCanonicalRuntimeFields (0.00s)
+=== RUN   TestReleaseLockRejectsUnknownRuntimeField
+--- PASS: TestReleaseLockRejectsUnknownRuntimeField (0.00s)
+=== RUN   TestValidatorEvidenceFixtureReleaseLockMatchesGeneratedBodies
+--- PASS: TestValidatorEvidenceFixtureReleaseLockMatchesGeneratedBodies (0.08s)
+=== RUN   TestValidatorEvidenceFixtureDeploymentAnchorsBindCompleteSource
+--- PASS: TestValidatorEvidenceFixtureDeploymentAnchorsBindCompleteSource (12.27s)
+=== RUN   TestValidatorEvidenceFixtureDeploymentAnchorsKeepCurrentApprovalAndOwnSources
+--- PASS: TestValidatorEvidenceFixtureDeploymentAnchorsKeepCurrentApprovalAndOwnSources (2.55s)
+=== RUN   TestValidatorEvidenceFixtureCanonicalWireIdentityRefusesDrift
+--- PASS: TestValidatorEvidenceFixtureCanonicalWireIdentityRefusesDrift (3.13s)
+=== RUN   TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+=== PAUSE TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+=== RUN   TestValidatorEvidenceCarryHistoricalActionRecovery
+=== PAUSE TestValidatorEvidenceCarryHistoricalActionRecovery
+=== RUN   TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+=== PAUSE TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== RUN   TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+=== PAUSE TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+=== RUN   TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+=== PAUSE TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+=== RUN   TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+=== PAUSE TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+=== RUN   TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== PAUSE TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== RUN   TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== PAUSE TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== RUN   TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+=== PAUSE TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+=== RUN   TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+=== PAUSE TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+=== RUN   TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+=== PAUSE TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+=== RUN   TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+=== PAUSE TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+=== RUN   TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash
+=== PAUSE TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash
+=== RUN   TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact
+=== PAUSE TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact
+=== RUN   TestPlanCompatibilityFixtureAuthenticatesCompleteOriginalReleaseSource
+=== PAUSE TestPlanCompatibilityFixtureAuthenticatesCompleteOriginalReleaseSource
+=== RUN   TestPlanCompatibilityFixtureProjectsExactHistoricalOwnership
+=== PAUSE TestPlanCompatibilityFixtureProjectsExactHistoricalOwnership
+=== RUN   TestPlanCompatibilityFixtureKeepsCurrentCompanionRelocationClosed
+=== PAUSE TestPlanCompatibilityFixtureKeepsCurrentCompanionRelocationClosed
+=== RUN   TestProducerGateStateSelectionCoversEvidenceV2ContractAndInstallerSources
+=== PAUSE TestProducerGateStateSelectionCoversEvidenceV2ContractAndInstallerSources
+=== RUN   TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly
+=== PAUSE TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly
+=== RUN   TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock
+--- PASS: TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock (0.04s)
+=== RUN   TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection
+--- PASS: TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection (0.08s)
+=== RUN   TestCanonicalReleaseLockRenderingIsStableAndRoundTrips
+--- PASS: TestCanonicalReleaseLockRenderingIsStableAndRoundTrips (0.10s)
+=== RUN   TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference
+--- PASS: TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference (0.13s)
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance
+--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.01s)
+=== RUN   TestRuntime458HistoricalPublicationsRemainEvidenceOnly
+--- PASS: TestRuntime458HistoricalPublicationsRemainEvidenceOnly (0.02s)
+=== RUN   TestRuntime458PublicationsRejectCrossArtifactPairs
+--- PASS: TestRuntime458PublicationsRejectCrossArtifactPairs (0.02s)
+=== RUN   TestRuntime458CurrentLockRejectsOfficialSeedVariant
+--- PASS: TestRuntime458CurrentLockRejectsOfficialSeedVariant (0.00s)
+=== CONT  TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly
+=== CONT  TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact
+=== CONT  TestPlanCompatibilityFixtureProjectsExactHistoricalOwnership
+=== CONT  TestProducerGateStateSelectionCoversEvidenceV2ContractAndInstallerSources
+--- PASS: TestProducerGateStateSelectionCoversEvidenceV2ContractAndInstallerSources (0.71s)
+=== CONT  TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly
+--- PASS: TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact (5.71s)
+=== CONT  TestPlanCompatibilityFixtureKeepsCurrentCompanionRelocationClosed
+=== NAME  TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly
+    release_gate_simulator_evidence_test.go:227: original simulator census: 200 roots; ordinary: 197; slow: 2; owned render: 1; one owner per root in normal and race
+--- PASS: TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly (6.25s)
+=== CONT  TestPlanCompatibilityFixtureAuthenticatesCompleteOriginalReleaseSource
+--- PASS: TestPlanCompatibilityFixtureKeepsCurrentCompanionRelocationClosed (3.18s)
+=== CONT  TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+--- PASS: TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority (3.29s)
+=== CONT  TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime
+--- PASS: TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly (12.32s)
+=== CONT  TestValidatorEvidenceHistoricalLockPreservesStaticControls
+--- PASS: TestValidatorEvidenceHistoricalLockPreservesStaticControls (0.12s)
+=== CONT  TestValidatorEvidenceHistoricalLockRejectsForeignRuntime
+--- PASS: TestPlanCompatibilityFixtureAuthenticatesCompleteOriginalReleaseSource (8.77s)
+=== CONT  TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash
+--- PASS: TestValidatorEvidenceHistoricalLockRejectsForeignRuntime (31.55s)
+=== CONT  TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact
+--- PASS: TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime (53.42s)
+=== CONT  TestValidatorEvidenceHistoricalLockRejectsApprovalDrift
+--- PASS: TestValidatorEvidenceHistoricalLockRejectsApprovalDrift (8.11s)
+=== CONT  TestValidatorEvidenceCarryHistoricalCommitmentRecovery
+--- PASS: TestPlanCompatibilityFixtureProjectsExactHistoricalOwnership (78.27s)
+=== CONT  TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority
+--- PASS: TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority (8.66s)
+=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+--- PASS: TestValidatorEvidenceCarryHistoricalCommitmentRecovery (17.38s)
+=== CONT  TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution
+--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (6.52s)
+=== CONT  TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend
+--- PASS: TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend (13.17s)
+=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+--- PASS: TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution (18.08s)
+=== CONT  TestValidatorEvidenceCarryHistoricalActionRecovery
+--- PASS: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (5.64s)
+--- PASS: TestValidatorEvidenceCarryHistoricalActionRecovery (15.63s)
+--- PASS: TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact (294.55s)
+--- PASS: TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash (322.92s)
+PASS

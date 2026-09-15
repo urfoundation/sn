@@ -1,0 +1,21 @@
+verify tidy Go module: connect
+verify tidy Go module: glog
+verify tidy Go module: goidenticons
+verify tidy Go module: operator-proxy
+verify tidy Go module: proxy
+verify tidy Go module: sdk
+verify tidy Go module: sdk/build
+verify tidy Go module: sdk/cgo
+verify tidy Go module: sdk/js
+verify tidy Go module: server
+verify tidy Go module: sn
+verify tidy Go module: sn/third_party/npipe
+verify tidy Go module: userwireguard
+verify tidy Go module: warp
+verify tidy Go module: xops/echo
+verify tidy Go module: xops/router
+[release gate preflight] source-freeze exit=0; retained /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG/preflights/source-freeze
+[release gate preflight] source-integrity exit=0; retained /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG/preflights/source-integrity
+[release gate preflight] binding-toolchain exit=0; retained /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG/preflights/binding-toolchain
+curl: (28) Failed to connect to raw.githubusercontent.com port 443 after 10001 ms: Timeout was reached
+[release gate preflight] runtime-source exit=28; retained /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG/preflights/runtime-source

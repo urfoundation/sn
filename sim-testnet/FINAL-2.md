@@ -1,5 +1,78 @@
 # Sim-testnet finalization report 2
 
+**Current status: in progress; `final_acceptance=false`.** At **01:15 UTC on
+2026-09-15**, the soak remains stopped and the **6,000-alpha repair remains
+unsubmitted**. The next actual setup preview exposed a historical-evidence
+admission defect in the simulator. It did not change the six recorded campaign
+state files or submit a transaction. The **1,212 finalized renewals**,
+**3,521 action identities**, generation3 custody, original signed probe anchor,
+nonce34 and existing spending approvals remain preserved.
+
+The canonical `c572d993` executable built successfully at **00:19:36 UTC**,
+with an authentic clean Git stamp and matching thirteen-repository observations.
+The actual read-only setup ran at **00:24:42–00:24:56 UTC** and exited **1**:
+`validator evidence original release lock: release lock runtime identity is not
+the reviewed testnet runtime 458 release`. No successor plan was produced.
+The archived validator-evidence lock had already matched its original approval
+hash, but the historical reader then applied the current-runtime validator.
+The retained v12 source archives use the exact reviewed **455** identity;
+current activity uses **458**. This is a simulator compatibility failure, not
+evidence that the node stopped syncing.
+[Build, actual preview and unchanged-state receipts](peerreview/evidence/FINAL-2-native-history-458-20260915/README.md).
+
+The narrow correction is frozen at
+`3ffc1277d1acd1e21b908c3b2cfd37612602e07b`. Archived companion locks admit
+their exact reviewed original455 or current458 provenance and retain the common
+structural/build checks. Current lock rendering, final anchors and new runtime
+authority remain458-only. Seven new deterministic regressions cover the actual
+archive and persisted-plan readers, original payloads/actions/budgets, adjacent
+lineage readers and altered approval/runtime rejection. **All 36 affected tests
+pass normally and with race detection.** Both actual archive/restart readers
+also pass three consecutive normal executions on the same source and binary.
+The normal binary SHA-256 is
+`dc3b2ed96df3cfec634ee481b1d4494b51dff2683230a146c3ae3f17b64046dd`;
+the race binary is
+`dce59c07d098f66c0b99a7a7a5c3a6e397a900fd61c52d900e2d7072f080f740`.
+The final race owner closed at **01:13:12 UTC** with all thirteen source and
+dependency observations and its binary unchanged.
+
+In a separate normal control, restoring only the old production dispatch
+reproduces **both original reader failures**, while the static-validation and
+current-authority controls both pass. Its actual body exits1 with exactly
+2 FAIL/2 PASS; event verification and the enclosing owner exit0. This is an
+expected-failure control, not a passing old implementation. Initial control
+setup attempts referenced the wrong handoff path and omitted the existing
+owner's `capture_root` input; both refusals occurred before compilation and
+are retained. No new test or source correction was needed for those operands.
+The earlier181-root runtime qualification retains its original scope.
+[Affected qualification, confirmations and causal evidence](peerreview/evidence/FINAL-2-native-history-458-20260915/README.md).
+The combined portable bundle contains382 checksum entries; its manifest SHA-256
+is `ff16207e3a05ef65785c32d94896648c765bcb58f1ad2967e236a47363158238`.
+
+The two `c572d993` full-gate attempts also ended before phase admission.
+Both passed source-freeze, source-integrity and binding-toolchain preflights,
+then failed the runtime-source preflight with curl exit **28** while downloading
+upstream source from GitHub. Producer ended at **00:21:09 UTC** and aggregate
+at **00:23:59 UTC**; neither started a test phase or service owner. At **00:31 UTC**,
+the exact failed source URL returned HTTP200 and its bytes matched the pinned
+manifest. Exact local upstream checkouts are prepared for the next primary
+source audits. These observations do not pass the failed gates.
+[Closed preflights and recovered source-fetch evidence](peerreview/evidence/FINAL-2-native-history-458-20260915/README.md).
+
+The existing executable rendered the successor lock read-only at
+**00:54:33–00:54:37 UTC**, with all nineteen repository/library observations
+equal. Its YAML SHA-256 is
+`5b8c412454adfde72f2cf51c682b5ce4b9b335a2095eaafc21bf4e92a153a4ab`.
+Only `repositories.sn_go_source_hash` changes from the previous lock, binding
+the historical-reader correction. All contract, runtime, protocol, node/gateway
+and other dependency fields are equal. The exact lock was integrated at
+`628f29a`; it has not changed the retained campaign plan.
+Coherent publication, a matching canonical executable, both
+complete gates and the real RC/production soak remain required.
+[Successor lock and render receipts](peerreview/evidence/FINAL-2-native-history-458-20260915/final-lock/RESULT.json).
+
+## Historical checkpoint: September 15, 00:09 UTC
+
 **Current status: in progress; `final_acceptance=false`.** At **00:09 UTC on
 2026-09-15**, the soak remains stopped and the approved **6,000-alpha reserve
 repair remains unsubmitted**. All **1,212 finalized renewals**, **3,521 action

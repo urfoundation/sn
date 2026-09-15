@@ -1,0 +1,6 @@
+exit=1
+phase=compile-owner-config-before-compiler
+compiler_started=false
+source_mutated=false
+reason=missing_capture_root_in_config_env
+raw_outer=/home/by/urnetwork/temp/sn-historical-lock-admission-correction-20260915/terra-runtime/qualification-historical-lock-3ffc1277/causal-current-to-original-runtime-admission/normal/compile3-sim-testnet

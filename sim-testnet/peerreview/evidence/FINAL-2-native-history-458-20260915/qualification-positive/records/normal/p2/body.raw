@@ -1,0 +1,9 @@
+=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+--- PASS: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (1.17s)
+--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (1.29s)
+PASS

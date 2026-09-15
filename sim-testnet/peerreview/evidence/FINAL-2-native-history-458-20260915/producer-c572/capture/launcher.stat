@@ -1,0 +1,4 @@
+700 1090 50637079 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/commands/producer-gate.command
+700 1842 50637075 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/capture-producer-gate.sh
+600 3986 50637085 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/meta/source-pair-producer.tsv
+600 20 50637078 /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/meta/gomodcache.path

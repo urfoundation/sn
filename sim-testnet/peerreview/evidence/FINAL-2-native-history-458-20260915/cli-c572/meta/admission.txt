@@ -1,0 +1,6 @@
+workspace=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical
+expected_sn=c572d993de3116a68b1b2875d91a67c05c839e22
+release_lock_sha256=d11b2a41ca6e836f9267088f8899c4fb0faf53b78b3b9ca8804bab589cd63e7b
+expected_xops=42bfe0be2a7a7c51bbda87fb44886424604f509e
+pair_schema=cli-native-six-columns(repo,path,physical,head,status_bytes,status_sha256)
+predecessor_refusal=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/final-cli-c572d993-canonical-r2/capture/outer.exit

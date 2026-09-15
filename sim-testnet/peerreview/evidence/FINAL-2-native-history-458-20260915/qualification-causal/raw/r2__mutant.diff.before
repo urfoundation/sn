@@ -1,0 +1,13 @@
+diff --git a/sim-testnet/evidence_carry.go b/sim-testnet/evidence_carry.go
+index 1e557a3..cd3557a 100644
+--- a/sim-testnet/evidence_carry.go
++++ b/sim-testnet/evidence_carry.go
+@@ -831,7 +831,7 @@ func validateValidatorEvidenceSource(plan *SetupPlan, historical bool) error {
+ 			return errors.New("fresh validator evidence source differs from the current generated artifact")
+ 		}
+ 	} else {
+-		if err := validateValidatorEvidenceHistoricalReleaseLock(source.ReleaseLock); err != nil {
++		if err := validateReleaseLockStatic(source.ReleaseLock); err != nil {
+ 			return fmt.Errorf("validator evidence original release lock: %w", err)
+ 		}
+ 		for key, expected := range map[string]string{

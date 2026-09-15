@@ -1,0 +1,5 @@
+source=3ffc1277d1acd1e21b908c3b2cfd37612602e07b
+mode=normal
+package=github.com/urfoundation/sn/sim-testnet
+expected_cpu=4
+retry=r2_after_prebuild_config_refusal

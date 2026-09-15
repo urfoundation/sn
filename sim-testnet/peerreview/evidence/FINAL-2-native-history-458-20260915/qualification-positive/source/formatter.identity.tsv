@@ -1,0 +1,3 @@
+gofmt_diff_sha256	31b42ca52f86fe5c2fbaec0f1ccad9d119b6350eef64a54481da2cd5de1f2398
+gofmt_diff_check	empty
+formatter_scope	sim-testnet/evidence_carry.go;sim-testnet/release_lock_render.go;sim-testnet/evidence_carry_runtime_history.go;sim-testnet/evidence_carry_runtime_history_test.go

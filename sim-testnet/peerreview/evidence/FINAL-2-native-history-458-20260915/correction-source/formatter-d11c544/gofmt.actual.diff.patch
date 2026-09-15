@@ -1,0 +1,62 @@
+diff --git a/sim-testnet/evidence_carry_runtime_history_test.go b/sim-testnet/evidence_carry_runtime_history_test.go
+index 39814d1..9ec45d1 100644
+--- a/sim-testnet/evidence_carry_runtime_history_test.go
++++ b/sim-testnet/evidence_carry_runtime_history_test.go
+@@ -20,12 +20,12 @@ func validatorEvidenceRuntime455TestLock(t *testing.T) *ReleaseLock {
+ 	lock := testReleaseLockFixture(t)
+ 	lock.Runtime = ReleaseRuntimeLock{
+ 		SourceRepository: "https://github.com/RaoFoundation/subtensor",
+-		SourceRefKind: "commit", SourceRefName: "67dcf7f791dc495064c293f080a0702cb433e51e",
+-		SourceCommit: "67dcf7f791dc495064c293f080a0702cb433e51e",
+-		CodeHash: "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a",
+-		MetadataHash: "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc",
++		SourceRefKind:    "commit", SourceRefName: "67dcf7f791dc495064c293f080a0702cb433e51e",
++		SourceCommit:         "67dcf7f791dc495064c293f080a0702cb433e51e",
++		CodeHash:             "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a",
++		MetadataHash:         "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc",
+ 		CompressedWasmSHA256: "0x232bfc0d65ec2dbe4280b152e23f13879df9692d2286dd08c6ba14483deee00f",
+-		SpecVersion: 455, TransactionVersion: 1, StateVersion: 1,
++		SpecVersion:          455, TransactionVersion: 1, StateVersion: 1,
+ 		Image: "runtime.example/synthetic@sha256:" + strings.Repeat("17", 32),
+ 	}
+ 	return lock
+@@ -34,12 +34,12 @@ func validatorEvidenceRuntime455TestLock(t *testing.T) *ReleaseLock {
+ // Both plans own their source maps and canonical hashes. Synthetic receipt
+ // references exercise persisted admission, not finalized chain authentication.
+ type validatorEvidenceHistoricalLockTestFixture struct {
+-	config *ResolvedConfig
+-	original *SetupPlan
+-	current *SetupPlan
++	config       *ResolvedConfig
++	original     *SetupPlan
++	current      *SetupPlan
+ 	originalWire []byte
+-	currentWire []byte
+-	stateDir string
++	currentWire  []byte
++	stateDir     string
+ }
+ 
+ // The ordinary planner creates each approval before the real carry renderer
+@@ -77,8 +77,8 @@ func newValidatorEvidenceHistoricalLockTestFixture(t *testing.T) validatorEviden
+ 		reference: ValidatorEvidenceCarry{
+ 			Schema: "urnetwork-validator-evidence-carry-v1", SourcePlanHash: original.PlanHash,
+ 			SourceReleaseLockHash: original.ReleaseLockHash,
+-			Creation: receipt(validatorEvidenceDeployActionID, "41", 100),
+-			Anchor: receipt(validatorEvidenceAnchorActionID, "52", 101),
++			Creation:              receipt(validatorEvidenceDeployActionID, "41", 100),
++			Anchor:                receipt(validatorEvidenceAnchorActionID, "52", 101),
+ 		},
+ 	}
+ 	current.PriorPlanHashes = []string{original.PlanHash}
+@@ -234,7 +234,9 @@ func TestValidatorEvidenceHistoricalLockRejectsForeignRuntime(t *testing.T) {
+ 		func(runtime *ReleaseRuntimeLock) { runtime.TransactionVersion = 2 },
+ 		func(runtime *ReleaseRuntimeLock) { runtime.StateVersion = 0 },
+ 		func(runtime *ReleaseRuntimeLock) { runtime.CodeHash = runtime458ReviewedTestLock().Runtime.CodeHash },
+-		func(runtime *ReleaseRuntimeLock) { runtime.MetadataHash = runtime458ReviewedTestLock().Runtime.MetadataHash },
++		func(runtime *ReleaseRuntimeLock) {
++			runtime.MetadataHash = runtime458ReviewedTestLock().Runtime.MetadataHash
++		},
+ 		func(runtime *ReleaseRuntimeLock) { runtime.CompressedWasmSHA256 = "0x" + strings.Repeat("85", 32) },
+ 		func(runtime *ReleaseRuntimeLock) { runtime.UpstreamReleaseCallHash = "0x" + strings.Repeat("96", 32) },
+ 		func(runtime *ReleaseRuntimeLock) { runtime.UpstreamReleaseTimepoint = "123:4" },

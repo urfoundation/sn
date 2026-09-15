@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0915 00:24:42.088172   17329 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0915 00:24:42.088426   17329 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0915 00:24:42.088538   17329 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0915 00:24:42.088574   17329 env.go:67] [env]settings = map[]
+sim-testnet: persisted setup plan: validator evidence original release lock: release lock runtime identity is not the reviewed testnet runtime 458 release

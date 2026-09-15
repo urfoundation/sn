@@ -1,0 +1,12 @@
+{
+  "kind":"final-stamped-sim-testnet-cli-build",
+  "build_exit":0,
+  "repos_before_after_identical":true,
+  "repos_before_sha256":"2ae46d68281f6b1fac29579a2309018728d8c671143aa9ec04c0e3e1cfbc0db8",
+  "repos_after_sha256":"2ae46d68281f6b1fac29579a2309018728d8c671143aa9ec04c0e3e1cfbc0db8",
+  "artifact":{"path":"/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/final-cli-c572d993-canonical-r3/sim-testnet","sha256":"e5375d52e46758c392ba538bcd95a1d1fb6e37eac5e689a2832dbf299c927638","bytes":140668976,"mode":"0700"},
+  "vcs":{"revision":"c572d993de3116a68b1b2875d91a67c05c839e22","trimpath":true,"buildvcs":true,"modified":false},
+  "release_lock_sha256":"d11b2a41ca6e836f9267088f8899c4fb0faf53b78b3b9ca8804bab589cd63e7b",
+  "warm_gocache":"/home/by/urnetwork/temp/sn-carried-fleet-qualification-20260913/runtime/gocache",
+  "gomodcache":"/home/by/go/pkg/mod"
+}

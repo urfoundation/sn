@@ -1,0 +1,5 @@
+exit=1
+phase=setup-before-worktree
+compiler_started=false
+source_mutated=false
+reason=handoff_path_operand_handoff_HANDoFF_md_absent;_root_HANDOFF_md_required

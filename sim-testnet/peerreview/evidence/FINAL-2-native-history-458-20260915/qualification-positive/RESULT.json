@@ -1,0 +1,11 @@
+{
+  "source_head": "3ffc1277d1acd1e21b908c3b2cfd37612602e07b",
+  "source_parent": "d11c544f114ee6acf0a36ad5d639c73c1783bc70",
+  "selector_top_level_roots": 36,
+  "selector_descendants": 0,
+  "normal": {"compile_exit": 0, "outer_exit": 0, "body_exit": 0, "converter_exit": 0, "checker_exit": 0, "top_level_pass": 36, "top_level_fail": 0, "event_lines": 232, "binary_sha256": "dc3b2ed96df3cfec634ee481b1d4494b51dff2683230a146c3ae3f17b64046dd"},
+  "race": {"compile_exit": 0, "outer_exit": 0, "body_exit": 0, "converter_exit": 0, "checker_exit": 0, "top_level_pass": 36, "top_level_fail": 0, "event_lines": 232, "binary_sha256": "dce59c07d098f66c0b99a7a7a5c3a6e397a900fd61c52d900e2d7072f080f740"},
+  "normal_confirmations": {"roots": ["TestValidatorEvidenceHistoricalLockReopensOriginalApproval", "TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"], "p1": "normal36", "p2": "PASS", "p3": "PASS", "binary_sha256": "dc3b2ed96df3cfec634ee481b1d4494b51dff2683230a146c3ae3f17b64046dd"},
+  "fences": {"source_manifests": 13, "repositories_equal": true, "binary_equal": true},
+  "excluded": ["compiler binaries", "cache directories", "independent causal subtree"]
+}

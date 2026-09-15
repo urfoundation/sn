@@ -1,0 +1,5 @@
+exit=1
+phase=portable-seal-before-result
+qualification_replayed=false
+source_mutated=false
+reason=missing_shell_head_operand

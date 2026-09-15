@@ -1,0 +1,64 @@
+{
+  "body": {
+    "binary_exit": 1,
+    "checker_exit": 0,
+    "converter_exit": 0,
+    "events": 37,
+    "outcomes": {
+      "expected_fail": 2,
+      "pass": 2
+    },
+    "outer_exit": 0,
+    "roots": 4,
+    "status": "matched"
+  },
+  "candidate": {
+    "clean_before_after": true,
+    "head": "3ffc1277d1acd1e21b908c3b2cfd37612602e07b",
+    "source_manifest_sha256": "efd6909e087fd042313c762c38a2ed4723cc66d2f820ef83e06d43f0540d6569"
+  },
+  "case": "restore original runtime455 historical validator-evidence admission",
+  "compile": {
+    "binary_copied": false,
+    "binary_sha256": "4130d1c4e143d81da057189b63d78febeec326071deb43caa28908f4623bc4fc",
+    "build_exit": 0,
+    "mode": "normal",
+    "outer_exit": 0
+  },
+  "fences": {
+    "binary_equal_pre_post": true,
+    "candidate_13_repositories_equal": true,
+    "candidate_clean": true,
+    "fixture_cwd_guard": true,
+    "mutant_diff_equal": true,
+    "only_mutant_path": true
+  },
+  "mutation": {
+    "disposable": true,
+    "forward_check": true,
+    "patch": "CAUSAL-current-to-original-runtime-admission.patch",
+    "patch_sha256": "68bccf61243225a19887da541fff2c176eccffc52c7acb5b3615474fa71910be",
+    "path": "sim-testnet/evidence_carry.go",
+    "reverse_check": true,
+    "stable_diff": true
+  },
+  "portable_note": "This bundle copies compact raw command/output/fence records only. It does not copy the binary, source checkout, worktree, caches, or dependencies. MANIFEST.tsv maps each copy to its retained raw capture path and SHA-256.",
+  "raw_capture": "/home/by/urnetwork/temp/sn-historical-lock-admission-correction-20260915/terra-runtime/qualification-historical-lock-3ffc1277/causal-current-to-original-runtime-admission",
+  "retained_precompiler_refusals": [
+    {
+      "compiler_started": false,
+      "path": "setup-v1-preworktree-refusal.status",
+      "reason": "HANDOFF.md path operand"
+    },
+    {
+      "compiler_started": false,
+      "path": "r2/prebuild-v1-refusal.status",
+      "reason": "missing capture_root config operand"
+    }
+  ],
+  "retained_seal_refusal": {
+    "path": "portable-evidence/seal-v1-pre-result-refusal.status",
+    "qualification_replayed": false,
+    "reason": "missing shell head operand"
+  }
+}

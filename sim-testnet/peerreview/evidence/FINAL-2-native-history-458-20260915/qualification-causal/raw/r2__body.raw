@@ -1,0 +1,21 @@
+=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== RUN   TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== PAUSE TestValidatorEvidenceHistoricalLockPreservesStaticControls
+=== RUN   TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== PAUSE TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+=== CONT  TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority
+=== CONT  TestValidatorEvidenceHistoricalLockPreservesStaticControls
+--- PASS: TestValidatorEvidenceHistoricalLockPreservesStaticControls (0.03s)
+--- PASS: TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority (1.13s)
+=== NAME  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry
+    evidence_carry_runtime_history_test.go:142: current approval could not reopen its runtime455 companion: persisted active setup plan: validator evidence original release lock: release lock runtime identity is not the reviewed testnet runtime 458 release
+--- FAIL: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (1.28s)
+=== NAME  TestValidatorEvidenceHistoricalLockReopensOriginalApproval
+    evidence_carry_runtime_history_test.go:116: approved runtime455 archive was refused: persisted setup plan: validator evidence original release lock: release lock runtime identity is not the reviewed testnet runtime 458 release
+--- FAIL: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (1.29s)
+FAIL

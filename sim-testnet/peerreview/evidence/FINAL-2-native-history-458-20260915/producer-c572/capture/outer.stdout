@@ -1,0 +1,21 @@
+[release gate] private state /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG; ready jobs=4; CPUs/job=4
+[release-1.0 producer] source-freeze preflight
+sn	c572d993de3116a68b1b2875d91a67c05c839e22	origin/main	github.com/urfoundation/sn
+server	0f095a639e111f71d231cd6f792a191cbc6b0a69	origin/main	github.com/urnetwork/server
+operator-proxy	448369740c70eb2e642bde9d36f3708fe9ad4b5d	origin/main	github.com/urnetwork/operator-proxy
+connect	2a0f603e8076224fdab4d9f56e5a0a557ed513d9	origin/main	github.com/urnetwork/connect
+sdk	0dc2fb0f6f8a7e484e96bbdde09a690ae108dc8b	origin/main	github.com/urnetwork/sdk
+glog	892ade4a6be396b32ea82a550f243190b5992180	origin/master	github.com/urnetwork/glog
+goidenticons	325750b38314313dc5f44c880ab6f12f6c1ecb3c	origin/main	github.com/urnetwork/goidenticons
+proxy	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f	origin/main	github.com/urnetwork/proxy
+userwireguard	85fb1ca4086fa5dbfcda526bec7a17a894e691b9	origin/master	github.com/urnetwork/userwireguard
+warp	7498864c7cd3605aad3c43eabfab9008ed7f7228	origin/main	github.com/urnetwork/warp
+vault	8b2f481dbe87092d0c1742274712a6f805c1c375	origin/main	github.com/urnetwork/vault
+xops	42bfe0be2a7a7c51bbda87fb44886424604f509e	origin/main	github.com/urnetwork/xops
+config	268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc	origin/main	github.com/urnetwork/config
+[release-1.0 producer] simulator source-integrity preflight
+ok  	github.com/urfoundation/sn/sim-testnet/sourceguard	0.006s
+[release-1.0 producer] generated binding toolchain preflight
+abigen version 1.17.0-stable
+[release-1.0 producer] runtime 454 source attestation
+[release gate] retained private logs/state: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/producer38-c572d993-canonical-r2/tmp/urnetwork-release-gate.Yjc1kSUG

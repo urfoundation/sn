@@ -46,7 +46,37 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 00:09 UTC: the soak remains stopped and the
+Latest checkpoint, 2026-09-15 01:15 UTC: the canonical c572 build passed.
+The actual read-only setup then exited1 at00:24:56 because the historical
+validator-evidence reader applied current458 lock validation to an authentic
+original455 archive. All six campaign-state hashes, binary and lock were
+unchanged; no plan or transaction was produced. Astra's narrow historical
+admission correction is frozen at3ffc1277d1acd1e21b908c3b2cfd37612602e07b.
+Terra's36-root normal and race matrices pass. Both reader/restart roots have
+three consecutive normal passes on the same binary and source. Restoring only
+the old historical dispatch reproduces both failures while both controls pass;
+all source, dependency and binary fences close unchanged. Reuse the
+completed181-root runtime qualification within its recorded scope.
+
+Both c572 full gates closed with transport preflight exit28 before any phase or
+service owner. Their first three preflights passed; GitHub source downloads
+timed out. The exact source fetch recovered at00:31UTC and matched its pinned
+hash. TF has clean exact v454/v455/v458 source overrides for the next primary
+source loops. No source-fetch feature change or extra transport probes are
+needed.
+
+Root reused the c572 executable for the successor lock render, closed0 at
+00:54:37 with19 equal before/after observations. Exact YAML SHA-256 is
+`5b8c412454adfde72f2cf51c682b5ce4b9b335a2095eaafc21bf4e92a153a4ab`,
+included in the qualified successor after integration628f29a. Only SN's production
+Go hash changes; all other fields are equal. Publish this coherent successor
+and retained evidence, build one matching stamped CLI and launch the full
+producer38/aggregate concurrently with16+4CPU and the prepared source overrides.
+Review one actual retained-state setup preview; producer PASS gates apply.
+Soak stopped, repair unsubmitted, all1212 renewals/3521 action identities,
+generation3, original signed probe anchor/nonce34 and approvals preserved.
+
+Historical checkpoint, 2026-09-15 00:09 UTC: the soak remains stopped and the
 6,000-alpha repair remains unsubmitted. Fresh LAN observations at 00:03:15 UTC
 show a synced node, 16 peers, runtime 458/1/1 and finalized block8,007,358.
 Xops main includes both the runtime-pin correction and qualified quota-test

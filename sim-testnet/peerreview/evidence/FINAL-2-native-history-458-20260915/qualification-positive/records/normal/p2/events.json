@@ -1,0 +1,19 @@
+{"Time":"2026-09-15T01:06:40.964739386Z","Action":"start","Package":"github.com/urfoundation/sn/sim-testnet"}
+{"Time":"2026-09-15T01:06:40.964973226Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T01:06:40.964994746Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T01:06:40.965039672Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T01:06:40.965053166Z","Action":"pause","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T01:06:40.965059612Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T01:06:40.965064616Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T01:06:40.965070789Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T01:06:40.965075866Z","Action":"pause","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T01:06:40.965081126Z","Action":"cont","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T01:06:40.965086138Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T01:06:40.965091755Z","Action":"cont","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T01:06:40.965096446Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T01:06:40.965104327Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"--- PASS: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (1.17s)\n"}
+{"Time":"2026-09-15T01:06:40.96511086Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Elapsed":1.17}
+{"Time":"2026-09-15T01:06:40.965119234Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (1.29s)\n"}
+{"Time":"2026-09-15T01:06:40.965124446Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Elapsed":1.29}
+{"Time":"2026-09-15T01:06:40.965129726Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Output":"PASS\n"}
+{"Time":"2026-09-15T01:06:40.965138109Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Elapsed":0}
