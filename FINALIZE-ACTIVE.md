@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-15. The user has requested full finalization and fixes for
+Updated 2026-09-16. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full functional requirements in [FINALIZE.md](FINALIZE.md) govern completion.
 The user's 2026-09-15 instruction requires recovery by patching and retaining
@@ -50,7 +50,22 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 23:52 UTC: runtime460's affected qualification is
+Latest checkpoint, 2026-09-16 02:30 UTC: runtime460 strict resume naturally
+exited 1 at 02:13:45 after its full-work window expired. All 4,672 carried
+checks, configuration verification and migrations completed; temporary
+processes were cleaned up and no soak began. Preserve that failed invocation
+and its verified render. The bounded journal-validation repair passes all
+15 affected roots normally and under race, with two expected failures and
+13 passing controls on the original scan. Retain prior qualification by scope.
+Publish the patch and matched lock/build, adopt one native plan revision,
+refresh the continuation from a late finalized head, then capture history
+with a late first native epoch and resume into the actual campaign.
+The existing fleet leases 393–424 can support this path: a relay capacity
+forecast beyond 424 does not itself require renewal. Actual five/three-epoch
+acceptance guards and all approved economic limits remain unchanged.
+[Startup refusal and journal repair evidence](sim-testnet/peerreview/evidence/FINAL-2-journal-recovery-20260916/README.md).
+
+Previous checkpoint, 2026-09-15 23:52 UTC: runtime460's affected qualification is
 accepted by composition on effective source `7989fa78`: 108 roots per mode
 (13 CRV4, 16 miner, 25 validator, 54 simulator), normally and under race.
 Compatibility controls reproduce 13 expected failures and 11 passing controls.

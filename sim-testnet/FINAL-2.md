@@ -8,6 +8,33 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
+**Runtime-460 startup stopped at 02:13:45 UTC on September 16.** Its 4,672
+carried-action checks finished, configuration rendering was verified and both
+database migrations completed. The native process then refused the expired
+continuation: block **8,015,211** exceeded the full-work start cutoff
+**8,015,205**. It exited 1 naturally and cleaned up all temporary processes;
+the persistent supervisor and soak did not start. The saved plan and prior
+transactions remain intact, with the completed render recorded at journal
+sequence 22,426. These are local execution receipts, not new on-chain acceptance.
+[Actual startup result and retained progress](peerreview/evidence/FINAL-2-journal-recovery-20260916/native-resume/README.md).
+
+Repeated full-journal validation scanned all earlier rows for every row. The
+repair preserves the existing integrity and rejection checks while limiting
+history comparisons to four witnesses per plan/action. All **15 affected
+tests passed normally and under race**; restoring the original scan produces
+exactly **two expected failures and 13 passing compatibility controls**. A
+44,048-row synthetic replay checks the work bound without a timing threshold.
+The syntax-only keyed-field followup preserves the tested behavior. Earlier
+runtime and release qualification is retained by scope.
+[Affected test receipts and source provenance](peerreview/evidence/FINAL-2-journal-recovery-20260916/README.md).
+
+Recovery can refresh the continuation under existing fleet epochs **393–424**.
+Its capacity forecast may extend beyond 424; the actual five accelerated and
+three production acceptance windows must still fit those leases. No additional
+renewal, spending approval or reduction of required work follows from the
+expired preparation window. The new end and first native epoch are selected
+late through the supported native commands.
+
 **The chain advanced to runtime 460 before the revised launch.** The released 459
 executable's plan attempt stopped at 22:38:46 UTC on September 15. A diagnostic
 doctor reproduced four hard failures, all caused by 460-versus-459 admission at
@@ -19,8 +46,8 @@ The 460 artifact observed at block **8,014,242** matches upstream CI source
 passed at 23:07:53 UTC. The source delta fixes share-pool accounting while
 preserving the native interfaces we use; the metadata has one changed byte,
 its runtime-version constant. This admission refusal does not demonstrate an
-ABI break. The affected runtime correction is qualified and awaiting
-deployment; no new live acceptance is claimed. Original runtime histories,
+ABI break. The qualified runtime-460 release was used for the startup attempt
+above; no new live acceptance is claimed. Original runtime histories,
 finalized actions and unchanged completed qualification remain retained.
 [Actual admission failures, pinned 460 provenance and closed probe receipts](peerreview/evidence/FINAL-2-runtime460-20260915/EVIDENCE.md).
 

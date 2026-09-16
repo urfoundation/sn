@@ -1,0 +1,65 @@
+{"Time":"2026-09-16T02:28:22.604269657Z","Action":"start"}
+{"Time":"2026-09-16T02:28:22.886750431Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T02:28:22.88768232Z","Action":"output","Output":"I0916 02:28:22.887624 2932972 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T02:28:22.942344467Z","Action":"run","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery"}
+{"Time":"2026-09-16T02:28:22.942388939Z","Action":"output","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Output":"=== RUN   TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery\n"}
+{"Time":"2026-09-16T02:28:38.117519658Z","Action":"output","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Output":"--- PASS: TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery (15.18s)\n"}
+{"Time":"2026-09-16T02:28:38.121455051Z","Action":"pass","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Elapsed":15.18}
+{"Time":"2026-09-16T02:28:38.121488486Z","Action":"run","Test":"TestJournalHashChainAndExclusiveLock"}
+{"Time":"2026-09-16T02:28:38.121498006Z","Action":"output","Test":"TestJournalHashChainAndExclusiveLock","Output":"=== RUN   TestJournalHashChainAndExclusiveLock\n"}
+{"Time":"2026-09-16T02:28:38.142070601Z","Action":"output","Test":"TestJournalHashChainAndExclusiveLock","Output":"--- PASS: TestJournalHashChainAndExclusiveLock (0.02s)\n"}
+{"Time":"2026-09-16T02:28:38.142126988Z","Action":"pass","Test":"TestJournalHashChainAndExclusiveLock","Elapsed":0.02}
+{"Time":"2026-09-16T02:28:38.14214461Z","Action":"run","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition"}
+{"Time":"2026-09-16T02:28:38.142156283Z","Action":"output","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Output":"=== RUN   TestJournalRejectsUnlinkedOrEscapingPostcondition\n"}
+{"Time":"2026-09-16T02:28:38.146738205Z","Action":"output","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Output":"--- PASS: TestJournalRejectsUnlinkedOrEscapingPostcondition (0.00s)\n"}
+{"Time":"2026-09-16T02:28:38.146872949Z","Action":"pass","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Elapsed":0}
+{"Time":"2026-09-16T02:28:38.14689913Z","Action":"run","Test":"TestJournalMakesVerifiedIntentTerminal"}
+{"Time":"2026-09-16T02:28:38.146911247Z","Action":"output","Test":"TestJournalMakesVerifiedIntentTerminal","Output":"=== RUN   TestJournalMakesVerifiedIntentTerminal\n"}
+{"Time":"2026-09-16T02:28:38.151493991Z","Action":"output","Test":"TestJournalMakesVerifiedIntentTerminal","Output":"--- PASS: TestJournalMakesVerifiedIntentTerminal (0.00s)\n"}
+{"Time":"2026-09-16T02:28:38.151550173Z","Action":"pass","Test":"TestJournalMakesVerifiedIntentTerminal","Elapsed":0}
+{"Time":"2026-09-16T02:28:38.151566234Z","Action":"run","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction"}
+{"Time":"2026-09-16T02:28:38.151577785Z","Action":"output","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Output":"=== RUN   TestJournalRejectsMultipleIntentsForOnePlannedAction\n"}
+{"Time":"2026-09-16T02:28:38.155924785Z","Action":"output","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Output":"--- PASS: TestJournalRejectsMultipleIntentsForOnePlannedAction (0.00s)\n"}
+{"Time":"2026-09-16T02:28:38.155980055Z","Action":"pass","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Elapsed":0}
+{"Time":"2026-09-16T02:28:38.155996532Z","Action":"run","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent"}
+{"Time":"2026-09-16T02:28:38.156056726Z","Action":"output","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Output":"=== RUN   TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent\n"}
+{"Time":"2026-09-16T02:28:38.166055818Z","Action":"output","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Output":"--- PASS: TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent (0.01s)\n"}
+{"Time":"2026-09-16T02:28:38.16613953Z","Action":"pass","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Elapsed":0.01}
+{"Time":"2026-09-16T02:28:38.166157013Z","Action":"run","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan"}
+{"Time":"2026-09-16T02:28:38.166166496Z","Action":"output","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Output":"=== RUN   TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan\n"}
+{"Time":"2026-09-16T02:28:38.178816357Z","Action":"output","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Output":"--- PASS: TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan (0.01s)\n"}
+{"Time":"2026-09-16T02:28:38.179094892Z","Action":"pass","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Elapsed":0.01}
+{"Time":"2026-09-16T02:28:38.179127568Z","Action":"run","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay"}
+{"Time":"2026-09-16T02:28:38.179138387Z","Action":"output","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Output":"=== RUN   TestJournalValidationIndexBoundsAuthenticatedReplay\n"}
+{"Time":"2026-09-16T02:29:00.375219373Z","Action":"output","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Output":"--- PASS: TestJournalValidationIndexBoundsAuthenticatedReplay (22.20s)\n"}
+{"Time":"2026-09-16T02:29:00.37530992Z","Action":"pass","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Elapsed":22.2}
+{"Time":"2026-09-16T02:29:00.375333462Z","Action":"run","Test":"TestJournalValidationIndexBoundsAppendAfterReopen"}
+{"Time":"2026-09-16T02:29:00.375346445Z","Action":"output","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Output":"=== RUN   TestJournalValidationIndexBoundsAppendAfterReopen\n"}
+{"Time":"2026-09-16T02:29:01.726425974Z","Action":"output","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Output":"--- PASS: TestJournalValidationIndexBoundsAppendAfterReopen (1.35s)\n"}
+{"Time":"2026-09-16T02:29:01.726474212Z","Action":"pass","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Elapsed":1.35}
+{"Time":"2026-09-16T02:29:01.726485767Z","Action":"run","Test":"TestJournalValidationIndexPreservesFirstConflict"}
+{"Time":"2026-09-16T02:29:01.726491847Z","Action":"output","Test":"TestJournalValidationIndexPreservesFirstConflict","Output":"=== RUN   TestJournalValidationIndexPreservesFirstConflict\n"}
+{"Time":"2026-09-16T02:29:01.745524784Z","Action":"output","Test":"TestJournalValidationIndexPreservesFirstConflict","Output":"--- PASS: TestJournalValidationIndexPreservesFirstConflict (0.02s)\n"}
+{"Time":"2026-09-16T02:29:01.745550631Z","Action":"pass","Test":"TestJournalValidationIndexPreservesFirstConflict","Elapsed":0.02}
+{"Time":"2026-09-16T02:29:01.745559226Z","Action":"run","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix"}
+{"Time":"2026-09-16T02:29:01.745564885Z","Action":"output","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Output":"=== RUN   TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix\n"}
+{"Time":"2026-09-16T02:29:01.757758119Z","Action":"output","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Output":"--- PASS: TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix (0.01s)\n"}
+{"Time":"2026-09-16T02:29:01.757784143Z","Action":"pass","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Elapsed":0.01}
+{"Time":"2026-09-16T02:29:01.757792687Z","Action":"run","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit"}
+{"Time":"2026-09-16T02:29:01.757798318Z","Action":"output","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Output":"=== RUN   TestJournalValidationIndexRejectsHashAndChainBeforeCommit\n"}
+{"Time":"2026-09-16T02:29:01.761605181Z","Action":"output","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Output":"--- PASS: TestJournalValidationIndexRejectsHashAndChainBeforeCommit (0.00s)\n"}
+{"Time":"2026-09-16T02:29:01.761657647Z","Action":"pass","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Elapsed":0}
+{"Time":"2026-09-16T02:29:01.761666947Z","Action":"run","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit"}
+{"Time":"2026-09-16T02:29:01.761671185Z","Action":"output","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Output":"=== RUN   TestJournalValidationIndexFailedAppendDoesNotCommit\n"}
+{"Time":"2026-09-16T02:29:01.770441825Z","Action":"output","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Output":"--- PASS: TestJournalValidationIndexFailedAppendDoesNotCommit (0.01s)\n"}
+{"Time":"2026-09-16T02:29:01.770474888Z","Action":"pass","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Elapsed":0.01}
+{"Time":"2026-09-16T02:29:01.770482706Z","Action":"run","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable"}
+{"Time":"2026-09-16T02:29:01.770487075Z","Action":"output","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Output":"=== RUN   TestJournalValidationIndexLiteralSnapshotsStayMutable\n"}
+{"Time":"2026-09-16T02:29:01.770591691Z","Action":"output","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Output":"--- PASS: TestJournalValidationIndexLiteralSnapshotsStayMutable (0.00s)\n"}
+{"Time":"2026-09-16T02:29:01.771066246Z","Action":"pass","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Elapsed":0}
+{"Time":"2026-09-16T02:29:01.771089759Z","Action":"run","Test":"TestJournalSummaryUsesLatestActionStage"}
+{"Time":"2026-09-16T02:29:01.771095159Z","Action":"output","Test":"TestJournalSummaryUsesLatestActionStage","Output":"=== RUN   TestJournalSummaryUsesLatestActionStage\n"}
+{"Time":"2026-09-16T02:29:01.771105623Z","Action":"output","Test":"TestJournalSummaryUsesLatestActionStage","Output":"--- PASS: TestJournalSummaryUsesLatestActionStage (0.00s)\n"}
+{"Time":"2026-09-16T02:29:01.777966483Z","Action":"pass","Test":"TestJournalSummaryUsesLatestActionStage","Elapsed":0}
+{"Time":"2026-09-16T02:29:01.778003034Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T02:29:02.839985925Z","Action":"pass","Elapsed":40.236}

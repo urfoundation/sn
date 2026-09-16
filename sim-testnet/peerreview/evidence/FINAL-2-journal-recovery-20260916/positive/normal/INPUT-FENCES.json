@@ -1,0 +1,31 @@
+{
+  "mode": "normal",
+  "source": {
+    "before": "19c980b5297e77ff679206b36df49957016735dc",
+    "after": "19c980b5297e77ff679206b36df49957016735dc",
+    "clean_before": true,
+    "clean_after": true
+  },
+  "selector_sha256_before": "a934d61b22db67fb801266511d46dd9ad706ba0e1f92c01414325bbada97489f",
+  "selector_sha256_after": "a934d61b22db67fb801266511d46dd9ad706ba0e1f92c01414325bbada97489f",
+  "binary_sha256_before": "ef7327658b417c1dcd1c49b1b98a6dfcbfd564f947aba5f66932be7d90db7904",
+  "binary_sha256_after": "ef7327658b417c1dcd1c49b1b98a6dfcbfd564f947aba5f66932be7d90db7904",
+  "compiler": {
+    "build_exit": 0,
+    "outer_exit": 0,
+    "source_fences": true
+  },
+  "census": {
+    "exit": 0,
+    "valid": true
+  },
+  "body": {
+    "exit": 0,
+    "outer_exit": 0,
+    "preflight": true,
+    "terminal_events_valid": true,
+    "fences": true
+  },
+  "dependency_replacements": 11,
+  "test2json_sha256": "f74c7c997742b04fa59307f765ddcefae79c093a1857e9a5cfc2dda5c4e01116"
+}

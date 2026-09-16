@@ -1,0 +1,137 @@
+{
+  "schema": "journal-validation-index-qualification-receipts-v1",
+  "base_commit": "9a1af956ced89307f978f650609ea5838b910c9b",
+  "source": {
+    "authored_commit": "5802bcba852b745601c6c63f1644f6fcbec2e6bc",
+    "formatted_commit": "19c980b5297e77ff679206b36df49957016735dc",
+    "formatter": {
+      "paths": [
+        "sim-testnet/journal.go",
+        "sim-testnet/journal_validation_index_test.go"
+      ],
+      "diff_sha256": "c55777da961845efc374fba715a103693d7f045147d6fca824f8d3e84cf278c2",
+      "clean": true
+    }
+  },
+  "selection": {
+    "package": "./sim-testnet",
+    "selector": "^(TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery|TestJournalHashChainAndExclusiveLock|TestJournalMakesVerifiedIntentTerminal|TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan|TestJournalRejectsMultipleIntentsForOnePlannedAction|TestJournalRejectsUnlinkedOrEscapingPostcondition|TestJournalSummaryUsesLatestActionStage|TestJournalValidationIndexBoundsAppendAfterReopen|TestJournalValidationIndexBoundsAuthenticatedReplay|TestJournalValidationIndexFailedAppendDoesNotCommit|TestJournalValidationIndexLiteralSnapshotsStayMutable|TestJournalValidationIndexPreservesFirstConflict|TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix|TestJournalValidationIndexRejectsHashAndChainBeforeCommit|TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent)$",
+    "root_count_per_mode": 15,
+    "selector_sha256": "aae218a20612c6bb3000de7cb42a62afa986a55e300d418f2205939a65f0f90f",
+    "expected_tests_sha256": "eebcdebabb6c2f68d76d5556d8ee05ee87a7b5d56480da8c5f67a93917668b2c",
+    "representative_replay": {
+      "rows": 44048,
+      "actions": 6000,
+      "stages_per_action": 7,
+      "same_action_retries": 2048,
+      "proof": "Actual prior visits at loadReader <= 4*input rows; each append after reopen <=4. No timing threshold.",
+      "wire": "Synthetic canonical JSON and complete hash chain, no captured native identities."
+    }
+  },
+  "positive": {
+    "expected": "15 PASS per mode",
+    "normal": {
+      "compiler_exit": 0,
+      "census_exit": 0,
+      "body_exit": 0,
+      "outer_exit": 0,
+      "census_valid": true,
+      "events_valid": true,
+      "fences_valid": true,
+      "binary_sha256": "ef7327658b417c1dcd1c49b1b98a6dfcbfd564f947aba5f66932be7d90db7904",
+      "test2json_sha256": "f74c7c997742b04fa59307f765ddcefae79c093a1857e9a5cfc2dda5c4e01116"
+    },
+    "race": {
+      "compiler_exit": 0,
+      "census_exit": 0,
+      "body_exit": 0,
+      "outer_exit": 0,
+      "census_valid": true,
+      "events_valid": true,
+      "fences_valid": true,
+      "binary_sha256": "648f17ebfbf56ad35cc3bb4ed6913e00fad2d96182b8320d4c0ea73095593676",
+      "test2json_sha256": "8afc098932a3b56602d030de82bd5edc64ed802056b265242c2d7de51bf8c629"
+    }
+  },
+  "causal": {
+    "source_commit": "1ea89249eea55e758123c82f44c13847aff08f76",
+    "expected": [
+      {
+        "name": "TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalHashChainAndExclusiveLock",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalMakesVerifiedIntentTerminal",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalRejectsMultipleIntentsForOnePlannedAction",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalRejectsUnlinkedOrEscapingPostcondition",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalSummaryUsesLatestActionStage",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalValidationIndexBoundsAppendAfterReopen",
+        "result": "FAIL"
+      },
+      {
+        "name": "TestJournalValidationIndexBoundsAuthenticatedReplay",
+        "result": "FAIL"
+      },
+      {
+        "name": "TestJournalValidationIndexFailedAppendDoesNotCommit",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalValidationIndexLiteralSnapshotsStayMutable",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalValidationIndexPreservesFirstConflict",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix",
+        "result": "PASS"
+      },
+      {
+        "name": "TestJournalValidationIndexRejectsHashAndChainBeforeCommit",
+        "result": "PASS"
+      },
+      {
+        "name": "TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent",
+        "result": "PASS"
+      }
+    ],
+    "compiler_exit": 0,
+    "census_exit": 0,
+    "body_exit": 1,
+    "outer_exit": 1,
+    "census_valid": true,
+    "terminal_event_map_valid": true,
+    "fences_valid": true,
+    "binary_sha256": "cd3e1b422c9da04536fcf948435fc0325600921ce16d1e36d0af558dfc68cd2d",
+    "test2json_sha256": "821e95b5380e07bdf92e888cdce1f78aa97eeb533dd59d966c60599730c41b90",
+    "observed_result_map_sha256": "52e2291445511e2511e71e4ff03d7bf22be1e5896a268b9838e735e6b0bfca73"
+  },
+  "keyed_table_followup": {
+    "commit": "752ca68c06808b3b0c852e2bbf644ce342b9fe1c",
+    "gofmt_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "receipt_sha256": "4acb3870823788e5b8125ce44200828ddf8cb2a21906af3d40b1c28a637b2310",
+    "semantic_bodies_rerun": false
+  }
+}

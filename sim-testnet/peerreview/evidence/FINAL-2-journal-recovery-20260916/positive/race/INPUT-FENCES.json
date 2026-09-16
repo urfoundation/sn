@@ -1,0 +1,31 @@
+{
+  "mode": "race",
+  "source": {
+    "before": "19c980b5297e77ff679206b36df49957016735dc",
+    "after": "19c980b5297e77ff679206b36df49957016735dc",
+    "clean_before": true,
+    "clean_after": true
+  },
+  "selector_sha256_before": "a934d61b22db67fb801266511d46dd9ad706ba0e1f92c01414325bbada97489f",
+  "selector_sha256_after": "a934d61b22db67fb801266511d46dd9ad706ba0e1f92c01414325bbada97489f",
+  "binary_sha256_before": "648f17ebfbf56ad35cc3bb4ed6913e00fad2d96182b8320d4c0ea73095593676",
+  "binary_sha256_after": "648f17ebfbf56ad35cc3bb4ed6913e00fad2d96182b8320d4c0ea73095593676",
+  "compiler": {
+    "build_exit": 0,
+    "outer_exit": 0,
+    "source_fences": true
+  },
+  "census": {
+    "exit": 0,
+    "valid": true
+  },
+  "body": {
+    "exit": 0,
+    "outer_exit": 0,
+    "preflight": true,
+    "terminal_events_valid": true,
+    "fences": true
+  },
+  "dependency_replacements": 11,
+  "test2json_sha256": "8afc098932a3b56602d030de82bd5edc64ed802056b265242c2d7de51bf8c629"
+}

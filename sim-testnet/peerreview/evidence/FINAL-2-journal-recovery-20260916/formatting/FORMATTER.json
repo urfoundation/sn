@@ -1,0 +1,1 @@
+{"positive_formatted_commit":"19c980b5297e77ff679206b36df49957016735dc","paths":["sim-testnet/journal.go","sim-testnet/journal_validation_index_test.go"],"gofmt_diff_sha256":"c55777da961845efc374fba715a103693d7f045147d6fca824f8d3e84cf278c2","keyed_table_followup_commit":"752ca68c06808b3b0c852e2bbf644ce342b9fe1c","keyed_table_gofmt_diff_bytes":0,"semantic_bodies_rerun":false}

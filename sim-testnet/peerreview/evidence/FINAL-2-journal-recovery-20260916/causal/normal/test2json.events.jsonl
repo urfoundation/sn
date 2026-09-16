@@ -1,0 +1,67 @@
+{"Time":"2026-09-16T02:26:38.599970246Z","Action":"start"}
+{"Time":"2026-09-16T02:26:38.659523995Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T02:26:38.659966722Z","Action":"output","Output":"I0916 02:26:38.659905 2929051 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T02:26:38.671657485Z","Action":"run","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery"}
+{"Time":"2026-09-16T02:26:38.671701196Z","Action":"output","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Output":"=== RUN   TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery\n"}
+{"Time":"2026-09-16T02:26:40.26531046Z","Action":"output","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Output":"--- PASS: TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery (1.59s)\n"}
+{"Time":"2026-09-16T02:26:40.265876864Z","Action":"pass","Test":"TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery","Elapsed":1.59}
+{"Time":"2026-09-16T02:26:40.265908386Z","Action":"run","Test":"TestJournalHashChainAndExclusiveLock"}
+{"Time":"2026-09-16T02:26:40.265918065Z","Action":"output","Test":"TestJournalHashChainAndExclusiveLock","Output":"=== RUN   TestJournalHashChainAndExclusiveLock\n"}
+{"Time":"2026-09-16T02:26:40.280259526Z","Action":"output","Test":"TestJournalHashChainAndExclusiveLock","Output":"--- PASS: TestJournalHashChainAndExclusiveLock (0.01s)\n"}
+{"Time":"2026-09-16T02:26:40.280325926Z","Action":"pass","Test":"TestJournalHashChainAndExclusiveLock","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:40.280342009Z","Action":"run","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition"}
+{"Time":"2026-09-16T02:26:40.280351335Z","Action":"output","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Output":"=== RUN   TestJournalRejectsUnlinkedOrEscapingPostcondition\n"}
+{"Time":"2026-09-16T02:26:40.284164441Z","Action":"output","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Output":"--- PASS: TestJournalRejectsUnlinkedOrEscapingPostcondition (0.00s)\n"}
+{"Time":"2026-09-16T02:26:40.284255507Z","Action":"pass","Test":"TestJournalRejectsUnlinkedOrEscapingPostcondition","Elapsed":0}
+{"Time":"2026-09-16T02:26:40.28427135Z","Action":"run","Test":"TestJournalMakesVerifiedIntentTerminal"}
+{"Time":"2026-09-16T02:26:40.28428074Z","Action":"output","Test":"TestJournalMakesVerifiedIntentTerminal","Output":"=== RUN   TestJournalMakesVerifiedIntentTerminal\n"}
+{"Time":"2026-09-16T02:26:40.287841189Z","Action":"output","Test":"TestJournalMakesVerifiedIntentTerminal","Output":"--- PASS: TestJournalMakesVerifiedIntentTerminal (0.00s)\n"}
+{"Time":"2026-09-16T02:26:40.287885501Z","Action":"pass","Test":"TestJournalMakesVerifiedIntentTerminal","Elapsed":0}
+{"Time":"2026-09-16T02:26:40.28789735Z","Action":"run","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction"}
+{"Time":"2026-09-16T02:26:40.287905801Z","Action":"output","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Output":"=== RUN   TestJournalRejectsMultipleIntentsForOnePlannedAction\n"}
+{"Time":"2026-09-16T02:26:40.291540916Z","Action":"output","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Output":"--- PASS: TestJournalRejectsMultipleIntentsForOnePlannedAction (0.00s)\n"}
+{"Time":"2026-09-16T02:26:40.291585515Z","Action":"pass","Test":"TestJournalRejectsMultipleIntentsForOnePlannedAction","Elapsed":0}
+{"Time":"2026-09-16T02:26:40.291598092Z","Action":"run","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent"}
+{"Time":"2026-09-16T02:26:40.291634856Z","Action":"output","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Output":"=== RUN   TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent\n"}
+{"Time":"2026-09-16T02:26:40.299539908Z","Action":"output","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Output":"--- PASS: TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent (0.01s)\n"}
+{"Time":"2026-09-16T02:26:40.299579523Z","Action":"pass","Test":"TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:40.299591433Z","Action":"run","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan"}
+{"Time":"2026-09-16T02:26:40.299598386Z","Action":"output","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Output":"=== RUN   TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan\n"}
+{"Time":"2026-09-16T02:26:40.309912427Z","Action":"output","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Output":"--- PASS: TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan (0.01s)\n"}
+{"Time":"2026-09-16T02:26:40.309968942Z","Action":"pass","Test":"TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:40.309984718Z","Action":"run","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay"}
+{"Time":"2026-09-16T02:26:40.309994361Z","Action":"output","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Output":"=== RUN   TestJournalValidationIndexBoundsAuthenticatedReplay\n"}
+{"Time":"2026-09-16T02:26:40.944965233Z","Action":"output","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Output":"    journal_validation_index_test.go:102: authenticated replay exceeded four historical comparisons per input row\n"}
+{"Time":"2026-09-16T02:26:40.95665447Z","Action":"output","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Output":"--- FAIL: TestJournalValidationIndexBoundsAuthenticatedReplay (0.65s)\n"}
+{"Time":"2026-09-16T02:26:40.956716004Z","Action":"fail","Test":"TestJournalValidationIndexBoundsAuthenticatedReplay","Elapsed":0.65}
+{"Time":"2026-09-16T02:26:40.956731243Z","Action":"run","Test":"TestJournalValidationIndexBoundsAppendAfterReopen"}
+{"Time":"2026-09-16T02:26:40.956738848Z","Action":"output","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Output":"=== RUN   TestJournalValidationIndexBoundsAppendAfterReopen\n"}
+{"Time":"2026-09-16T02:26:41.313587097Z","Action":"output","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Output":"    journal_validation_index_test.go:138: one append scanned more than four prior witnesses\n"}
+{"Time":"2026-09-16T02:26:41.314313783Z","Action":"output","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Output":"--- FAIL: TestJournalValidationIndexBoundsAppendAfterReopen (0.36s)\n"}
+{"Time":"2026-09-16T02:26:41.314375272Z","Action":"fail","Test":"TestJournalValidationIndexBoundsAppendAfterReopen","Elapsed":0.36}
+{"Time":"2026-09-16T02:26:41.314397279Z","Action":"run","Test":"TestJournalValidationIndexPreservesFirstConflict"}
+{"Time":"2026-09-16T02:26:41.314410065Z","Action":"output","Test":"TestJournalValidationIndexPreservesFirstConflict","Output":"=== RUN   TestJournalValidationIndexPreservesFirstConflict\n"}
+{"Time":"2026-09-16T02:26:41.328205092Z","Action":"output","Test":"TestJournalValidationIndexPreservesFirstConflict","Output":"--- PASS: TestJournalValidationIndexPreservesFirstConflict (0.01s)\n"}
+{"Time":"2026-09-16T02:26:41.328268083Z","Action":"pass","Test":"TestJournalValidationIndexPreservesFirstConflict","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:41.328290386Z","Action":"run","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix"}
+{"Time":"2026-09-16T02:26:41.328306592Z","Action":"output","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Output":"=== RUN   TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix\n"}
+{"Time":"2026-09-16T02:26:41.334595681Z","Action":"output","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Output":"--- PASS: TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix (0.01s)\n"}
+{"Time":"2026-09-16T02:26:41.334654044Z","Action":"pass","Test":"TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:41.334680569Z","Action":"run","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit"}
+{"Time":"2026-09-16T02:26:41.334696619Z","Action":"output","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Output":"=== RUN   TestJournalValidationIndexRejectsHashAndChainBeforeCommit\n"}
+{"Time":"2026-09-16T02:26:41.338724106Z","Action":"output","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Output":"--- PASS: TestJournalValidationIndexRejectsHashAndChainBeforeCommit (0.00s)\n"}
+{"Time":"2026-09-16T02:26:41.338778927Z","Action":"pass","Test":"TestJournalValidationIndexRejectsHashAndChainBeforeCommit","Elapsed":0}
+{"Time":"2026-09-16T02:26:41.338800579Z","Action":"run","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit"}
+{"Time":"2026-09-16T02:26:41.338816092Z","Action":"output","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Output":"=== RUN   TestJournalValidationIndexFailedAppendDoesNotCommit\n"}
+{"Time":"2026-09-16T02:26:41.347764754Z","Action":"output","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Output":"--- PASS: TestJournalValidationIndexFailedAppendDoesNotCommit (0.01s)\n"}
+{"Time":"2026-09-16T02:26:41.347816792Z","Action":"pass","Test":"TestJournalValidationIndexFailedAppendDoesNotCommit","Elapsed":0.01}
+{"Time":"2026-09-16T02:26:41.347837955Z","Action":"run","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable"}
+{"Time":"2026-09-16T02:26:41.347854011Z","Action":"output","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Output":"=== RUN   TestJournalValidationIndexLiteralSnapshotsStayMutable\n"}
+{"Time":"2026-09-16T02:26:41.347875933Z","Action":"output","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Output":"--- PASS: TestJournalValidationIndexLiteralSnapshotsStayMutable (0.00s)\n"}
+{"Time":"2026-09-16T02:26:41.347899582Z","Action":"pass","Test":"TestJournalValidationIndexLiteralSnapshotsStayMutable","Elapsed":0}
+{"Time":"2026-09-16T02:26:41.347917035Z","Action":"run","Test":"TestJournalSummaryUsesLatestActionStage"}
+{"Time":"2026-09-16T02:26:41.347932524Z","Action":"output","Test":"TestJournalSummaryUsesLatestActionStage","Output":"=== RUN   TestJournalSummaryUsesLatestActionStage\n"}
+{"Time":"2026-09-16T02:26:41.347958Z","Action":"output","Test":"TestJournalSummaryUsesLatestActionStage","Output":"--- PASS: TestJournalSummaryUsesLatestActionStage (0.00s)\n"}
+{"Time":"2026-09-16T02:26:41.348752945Z","Action":"pass","Test":"TestJournalSummaryUsesLatestActionStage","Elapsed":0}
+{"Time":"2026-09-16T02:26:41.34879159Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T02:26:41.363172024Z","Action":"fail","Elapsed":2.763}

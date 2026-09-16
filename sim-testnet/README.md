@@ -261,18 +261,35 @@ Retained public-RPC receipts preserve their original assurance labels and bytes.
 Owned continuation authenticates their source plans and original resolved-input
 hashes, then replays their exact historical checkpoints through the current
 owned node. A missing source, changed historical identity, noncanonical block,
-or conflicting state is an error. Already authenticated install/refresh
-receipts are reused only inside the current carried-history invocation; new
-invocations and changed journal rows must authenticate their own inputs.
+or conflicting state is an error. Successful immutable historical proofs can
+be reused across invocations through the authenticated historical-audit cache.
+Each entry binds the executable, exact proof input and its plan, release and
+observer context. Local evidence and fresh canonical/finalized checkpoints
+still authenticate each read; a missing or invalid cache entry is a miss.
+The stopped-ledger capacity cache and carried-action memo remain local to one
+invocation. Journal loading authenticates every row and its hash chain; its
+per-action index bounds historical comparisons without dropping any entries.
 
 After locking the tested release, retain the original configuration and use
-the owned route with `doctor`, then `setup --format json` to emit the current
-plan revision. Review its exact action diff and limits, and apply that revision
-with `setup --apply --plan-hash HASH` and the same config/state/owned-route
-options. Existing revision, receipt and custody checks still apply; a failed
-revision must be resolved before renewal. Once the current plan is admitted,
-use the same owned-route option for renewal planning, exact-plan apply and
-subsequent strict launch. This sequence requires no vault edit or state reset.
+the owned route with `plan --format json` or the existing setup dry-run to
+emit the current plan revision. Review its exact action diff and limits, then
+adopt it once with `setup --apply --plan-hash HASH --prepare-only` and the same
+config/state/owned-route options. Native preparation performs its own doctor
+and carried-history checks; do not add a duplicate doctor or setup invocation.
+Preserve the actual outcome, including a stopped-namespace refusal after the
+reviewed plan was saved. Continuation/history commands require that current
+adopted plan. This sequence requires no vault edit or state reset.
+
+A continuation's end settlement epoch forecasts evidence capacity; it is not
+a minimum campaign duration or a fleet-lease deadline. Keep the full configured
+remaining work and use the native capacity/slot checks when refreshing an
+expired continuation. Separately, the real acceptance baselines must fit five
+accelerated and three production epochs inside the existing fleet leases.
+An evidence forecast beyond the lease end does not alone require another
+renewal. Choose the new end after release revision/adoption, and choose the
+first native epoch after continuation import so preparation does not consume
+those windows prematurely. Actual baseline and final acceptance checks remain
+mandatory.
 
 `fleet-renew` appends a reviewed generation for every existing fleet. Planning
 is read-only and requires an admitted current setup plan, retained client keys,

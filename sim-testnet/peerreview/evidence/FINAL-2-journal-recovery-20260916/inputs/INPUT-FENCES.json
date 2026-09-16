@@ -1,0 +1,105 @@
+{
+  "base_commit": "9a1af956ced89307f978f650609ea5838b910c9b",
+  "authored_commit": "5802bcba852b745601c6c63f1644f6fcbec2e6bc",
+  "formatted_commit": "19c980b5297e77ff679206b36df49957016735dc",
+  "causal_commit": "1ea89249eea55e758123c82f44c13847aff08f76",
+  "keyed_table_followup_commit": "752ca68c06808b3b0c852e2bbf644ce342b9fe1c",
+  "changed_paths": {
+    "sim-testnet/journal.go": "513cc8072ada75690ca80b624afef6b7b8fcbd3564c3d5b07273597f7b79d33f",
+    "sim-testnet/journal_validation_index_test.go": "d9a459b0a06dd0dc72154696721fae33d0367a49931e4ae84a14d0f7ee2168d8"
+  },
+  "proposed_patch_sha256": "db0e8766d291c14ef0abca9c293a81d3fe2b1bc5b5d235aa441eac3fb67c2eee",
+  "causal_original_scan_patch_sha256": "891c32375bedbe1ee82bdc7db974b7557a88a71d35f74f874347796adba21fad",
+  "package": "./sim-testnet",
+  "selector": "^(TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery|TestJournalHashChainAndExclusiveLock|TestJournalMakesVerifiedIntentTerminal|TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan|TestJournalRejectsMultipleIntentsForOnePlannedAction|TestJournalRejectsUnlinkedOrEscapingPostcondition|TestJournalSummaryUsesLatestActionStage|TestJournalValidationIndexBoundsAppendAfterReopen|TestJournalValidationIndexBoundsAuthenticatedReplay|TestJournalValidationIndexFailedAppendDoesNotCommit|TestJournalValidationIndexLiteralSnapshotsStayMutable|TestJournalValidationIndexPreservesFirstConflict|TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix|TestJournalValidationIndexRejectsHashAndChainBeforeCommit|TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent)$",
+  "selected_roots": [
+    "TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery",
+    "TestJournalHashChainAndExclusiveLock",
+    "TestJournalMakesVerifiedIntentTerminal",
+    "TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan",
+    "TestJournalRejectsMultipleIntentsForOnePlannedAction",
+    "TestJournalRejectsUnlinkedOrEscapingPostcondition",
+    "TestJournalSummaryUsesLatestActionStage",
+    "TestJournalValidationIndexBoundsAppendAfterReopen",
+    "TestJournalValidationIndexBoundsAuthenticatedReplay",
+    "TestJournalValidationIndexFailedAppendDoesNotCommit",
+    "TestJournalValidationIndexLiteralSnapshotsStayMutable",
+    "TestJournalValidationIndexPreservesFirstConflict",
+    "TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix",
+    "TestJournalValidationIndexRejectsHashAndChainBeforeCommit",
+    "TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent"
+  ],
+  "selector_sha256": "a934d61b22db67fb801266511d46dd9ad706ba0e1f92c01414325bbada97489f",
+  "expected_tests_sha256": "eebcdebabb6c2f68d76d5556d8ee05ee87a7b5d56480da8c5f67a93917668b2c",
+  "representative_replay": {
+    "rows": 44048,
+    "actions": 6000,
+    "stages_per_action": 7,
+    "same_action_retries": 2048,
+    "proof": "Actual prior visits at loadReader <= 4*input rows; each append after reopen <=4. No timing threshold.",
+    "wire": "Synthetic canonical JSON and complete hash chain, no captured native identities."
+  },
+  "causal_expected": [
+    {
+      "name": "TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalHashChainAndExclusiveLock",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalMakesVerifiedIntentTerminal",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalRejectsMultipleIntentsForOnePlannedAction",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalRejectsUnlinkedOrEscapingPostcondition",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalSummaryUsesLatestActionStage",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalValidationIndexBoundsAppendAfterReopen",
+      "result": "FAIL"
+    },
+    {
+      "name": "TestJournalValidationIndexBoundsAuthenticatedReplay",
+      "result": "FAIL"
+    },
+    {
+      "name": "TestJournalValidationIndexFailedAppendDoesNotCommit",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalValidationIndexLiteralSnapshotsStayMutable",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalValidationIndexPreservesFirstConflict",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix",
+      "result": "PASS"
+    },
+    {
+      "name": "TestJournalValidationIndexRejectsHashAndChainBeforeCommit",
+      "result": "PASS"
+    },
+    {
+      "name": "TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent",
+      "result": "PASS"
+    }
+  ],
+  "dependency_replacements": 11
+}

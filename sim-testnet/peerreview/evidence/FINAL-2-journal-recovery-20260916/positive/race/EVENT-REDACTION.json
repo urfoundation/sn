@@ -1,0 +1,6 @@
+{
+  "original_events": 68,
+  "retained_events": 65,
+  "omitted_local_configuration_probe_events": 3,
+  "semantic_run_pass_fail_events_omitted": 0
+}
