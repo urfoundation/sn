@@ -189,7 +189,9 @@ func TestReleaseTopologyReadinessRetainedHistoryWaitKeepsSafetyGates(t *testing.
 		{name: "provider unhealthy", mutate: func(f *retainedStartupReadinessFixture) { f.supervisor.Processes[0].Healthy = false; f.writeState(t) }, want: "semantic readiness timeout"},
 		{name: "child restarted", mutate: func(f *retainedStartupReadinessFixture) { f.supervisor.Processes[2].Restarts = 1; f.writeState(t) }, want: "restarted 1"},
 		{name: "supervisor replaced", mutate: func(f *retainedStartupReadinessFixture) { f.supervisor.SupervisorStartTimeTicks++; f.writeState(t) }, want: "generation changed"},
-		{name: "blocking log", mutate: func(f *retainedStartupReadinessFixture) { appendProcessLog(t, f.stderrPath, "error: readiness fixture failure\n") }, want: "release-blocking"},
+		{name: "blocking log", mutate: func(f *retainedStartupReadinessFixture) {
+			appendProcessLog(t, f.stderrPath, "error: readiness fixture failure\n")
+		}, want: "release-blocking"},
 		{name: "durable proof corruption", mutate: func(f *retainedStartupReadinessFixture) { appendProcessLog(t, f.paths["validator-2/no-2"], "{\n") }, want: "is malformed"},
 	}
 	for _, test := range tests {
