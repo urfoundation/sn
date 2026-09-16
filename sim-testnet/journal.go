@@ -47,6 +47,8 @@ type JournalEntry struct {
 	PreviousHash      string       `json:"previous_hash,omitempty"`
 	EntryHash         string       `json:"entry_hash"`
 }
+// The authenticated reader and writer own indexed entries. Other callers read
+// detached snapshots; prepopulated literals retain ordinary slice validation.
 type Journal struct {
 	mu           sync.Mutex
 	file         *os.File
@@ -55,6 +57,17 @@ type Journal struct {
 	entries      []JournalEntry
 	lastHash     string
 	deploymentID string
+	validationKVs map[journalActionKey][]JournalEntry
+	validationCount int
+	// Observe actual history comparisons in deterministic work-bound tests.
+	validationHistoryVisit func()
+}
+
+// Validation is scoped by the exact approval and action, never by transaction
+// or intent alone. Read-only literals keep their mutable slice-based history.
+type journalActionKey struct {
+	planHash string
+	actionId string
 }
 
 func OpenJournal(stateDir string) (*Journal, error) {
@@ -110,6 +123,10 @@ func (j *Journal) load() error {
 }
 
 func (j *Journal) loadReader(file *os.File) error {
+	if len(j.entries) == 0 {
+		j.validationKVs = map[journalActionKey][]JournalEntry{}
+		j.validationCount = 0
+	}
 	scan := bufio.NewScanner(file)
 	scan.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scan.Scan() {
@@ -135,6 +152,7 @@ func (j *Journal) loadReader(file *os.File) error {
 		e.EntryHash = want
 		j.entries = append(j.entries, e)
 		j.lastHash = want
+		j.rememberValidationEntry(e)
 	}
 	if err := scan.Err(); err != nil {
 		return err
@@ -196,7 +214,14 @@ func (j *Journal) validateEntry(e JournalEntry) error {
 	default:
 		return fmt.Errorf("unknown journal stage %q", e.Stage)
 	}
-	for _, prior := range j.entries {
+	priors := j.entries
+	if j.validationKVs != nil && j.validationCount == len(j.entries) {
+		priors = j.validationKVs[journalActionKey{planHash: e.PlanHash, actionId: e.ActionID}]
+	}
+	for _, prior := range priors {
+		if j.validationHistoryVisit != nil {
+			j.validationHistoryVisit()
+		}
 		if prior.PlanHash == e.PlanHash && prior.ActionID == e.ActionID && prior.IntentHash != e.IntentHash {
 			return errors.New("one planned action cannot use multiple intent hashes")
 		}
@@ -214,6 +239,32 @@ func (j *Journal) validateEntry(e JournalEntry) error {
 		j.deploymentID = e.DeploymentID
 	}
 	return nil
+}
+
+// Only accepted entries can establish witnesses. The first entry fixes the
+// intent; the first transaction, broadcast and verification cover every other
+// historical constraint. Keep their original order to retain first-error
+// behavior. Even repeated retries of one action retain at most four witnesses.
+func (self *Journal) rememberValidationEntry(entry JournalEntry) {
+	if self.validationKVs == nil {
+		return
+	}
+	if self.validationCount != len(self.entries)-1 {
+		// A caller supplied a different slice instead of an accepted append.
+		self.validationKVs = nil
+		return
+	}
+	key := journalActionKey{planHash: entry.PlanHash, actionId: entry.ActionID}
+	priors := self.validationKVs[key]
+	hasTransaction, hasBroadcast := false, false
+	for _, prior := range priors {
+		hasTransaction = hasTransaction || prior.TransactionHash != ""
+		hasBroadcast = hasBroadcast || prior.Stage == StageBroadcast
+	}
+	if len(priors) == 0 || entry.Stage == StageVerified || (!hasTransaction && entry.TransactionHash != "") || (!hasBroadcast && entry.Stage == StageBroadcast) {
+		self.validationKVs[key] = append(priors, entry)
+	}
+	self.validationCount++
 }
 
 func (j *Journal) Append(e JournalEntry) error {
@@ -245,6 +296,7 @@ func (j *Journal) Append(e JournalEntry) error {
 	}
 	j.entries = append(j.entries, e)
 	j.lastHash = h
+	j.rememberValidationEntry(e)
 	return nil
 }
 func (j *Journal) Entries() []JournalEntry {
