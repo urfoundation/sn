@@ -1,0 +1,30 @@
+{
+  "kind": "read-only-local-attempt-artifact-diagnostic",
+  "source_commit": "541e13cfbe968704fb74c4001506853d2529bfdd",
+  "server_commit": "0f095a639e111f71d231cd6f792a191cbc6b0a69",
+  "artifact": {
+    "kind": "metadata",
+    "sha256": "74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273"
+  },
+  "fetches_per_endpoint": 1,
+  "op1": {
+    "port": 18081,
+    "http_status": 200,
+    "bytes": 157602,
+    "sha256": "74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273",
+    "ttfb_seconds": 0.551058,
+    "total_seconds": 0.683512,
+    "stderr_empty": true
+  },
+  "op2": {
+    "port": 18082,
+    "http_status": 200,
+    "bytes": 157602,
+    "sha256": "74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273",
+    "ttfb_seconds": 0.254236,
+    "total_seconds": 0.386878,
+    "stderr_empty": true
+  },
+  "bodies_byte_identical": true,
+  "source_and_server_fences_unchanged": true
+}

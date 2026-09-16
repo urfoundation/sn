@@ -1,0 +1,8 @@
+http_code=200
+content_type=application/json
+size_download=157602
+time_connect=0.000367
+time_starttransfer=0.551058
+time_total=0.683512
+remote_ip=127.0.0.1
+url_effective=http://127.0.0.1:18081/sn/attempt-artifact?kind=metadata&hash=0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273

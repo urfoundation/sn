@@ -50,7 +50,30 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-16 04:42 UTC: setup/adoption completed successfully
+Latest checkpoint, 2026-09-16 05:00 UTC: both exact-object reads passed through
+the local APIs in under one second, with identical 157,602-byte bodies and the
+expected content hash. Two source reviews found no deterministic defect; the
+original transfer stall remains unproven. A new capture is running under root
+session 46348 from 04:59:42, in `native-recovery-20260916-r2/relay-capture-r2`.
+It retains the qualified build and saved setup plan. Finalized LAN block
+8,016,040 selects END=8,024,100, full-work cutoff=8,016,530, with unchanged
+7,570-block work and 490-block initial preparation margin. Join this exact
+owner and, on success, import its exact output before late history selection,
+strict resume and RC. The soak remains stopped. No timeout, authentication
+rule, spending limit or required campaign work was weakened.
+[Preserved failure and exact-object diagnostics](sim-testnet/peerreview/evidence/FINAL-2-relay-stream-failure-20260916/README.md).
+
+Previous checkpoint, 2026-09-16 04:55 UTC: relay capture exited 1 at 04:48:52
+without emitting a plan. State, binary and release-lock bytes are unchanged.
+Both operator APIs timed out after 30 seconds while streaming the same
+metadata object; the CLI reported incomplete authenticated EOF. Astra is
+diagnosing the stream path and adjacent timeout handling, while Terra checks
+the exact object through both live local APIs. Preserve the failed command and
+successful setup. No continuation was imported, no new epoch selected and no
+transaction submitted. The soak is stopped. Choose the next capture window
+late after the cause is resolved; do not rerun an unchanged failing command.
+
+Previous checkpoint, 2026-09-16 04:42 UTC: setup/adoption completed successfully
 at 04:30:51 with `ready=true`, `prepare_only=true` and
 `stopped_before_actions=true`. All 4,673 carried-action checks completed;
 only the saved plan and redacted configuration changed. No setup transaction

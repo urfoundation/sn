@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Cache-Control: public, immutable, max-age=31536000, no-transform
+Content-Type: application/json
+Etag: "0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273"
+X-Content-Type-Options: nosniff
+Date: Wed, 16 Sep 2026 04:57:07 GMT
+Transfer-Encoding: chunked
+

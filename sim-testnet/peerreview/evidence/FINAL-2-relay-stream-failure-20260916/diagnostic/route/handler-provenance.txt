@@ -1,0 +1,1 @@
+handler requires exactly kind and hash query fields; metadata Content-Type application/json; fixed route deadline 10m but observed operator proxy deadline may be shorter.

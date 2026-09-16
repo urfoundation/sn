@@ -1,0 +1,4 @@
+body_exit=1
+state_compare_exit=0
+binary_compare_exit=0
+lock_compare_exit=0

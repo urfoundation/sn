@@ -34,13 +34,21 @@ is now saved. Setup/adoption completed at **04:30:51 UTC** with
 All **4,673 carried-action checks** completed; only the saved plan and
 redacted configuration changed. The journal and supervisor files are unchanged,
 and no setup transaction was submitted. The launch-runtime-inputs check is
-explicitly deferred to resume. Four temporary artifact helpers are healthy;
-the fresh relay continuation capture is running with end block **8,023,974**
-and full-work start cutoff **8,016,404**. Its import, strict history, managed
-startup and the soak remain pending. These are local preparation results;
-they do not establish new on-chain acceptance.
+explicitly deferred to resume. The subsequent relay capture ran from
+**04:35:04 to 04:48:52 UTC** and exited **1**, with unchanged state, executable
+and lock bytes and no plan output. Both operator APIs timed out after 30
+seconds streaming the same metadata object; the CLI reported incomplete
+authenticated EOF. Both APIs subsequently returned the complete matching
+157,602-byte object in under one second. Source review found no deterministic
+defect; the original stall's underlying cause remains unproven. A new capture
+started at **04:59:42 UTC** with the same qualified build and fresh end block
+**8,024,100**. No timeout or authentication rule changed. No continuation was imported,
+no new native epoch selected and no transaction submitted. Strict history,
+managed startup and the soak remain pending. These are local preparation
+results; they do not establish new on-chain acceptance.
 [Actual refusal and fresh complete census](peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
 [Completed build, software revision and setup receipts](peerreview/evidence/FINAL-2-native-adoption-20260916/README.md).
+[Failed relay capture and paired stream errors](peerreview/evidence/FINAL-2-relay-stream-failure-20260916/README.md).
 
 **Runtime-460 startup stopped at 02:13:45 UTC on September 16.** Its 4,672
 carried-action checks finished, configuration rendering was verified and both

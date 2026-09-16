@@ -1,0 +1,17 @@
+{
+  "requested_at": "2026-09-16T04:56:55Z",
+  "operation": "read-only-local-attempt-artifact-diagnostic",
+  "source_commit": "541e13cfbe968704fb74c4001506853d2529bfdd",
+  "artifact_kind": "metadata",
+  "artifact_hash": "0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273",
+  "endpoints": [
+    "http://127.0.0.1:18081/sn/attempt-artifact?kind=metadata&hash=0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273",
+    "http://127.0.0.1:18082/sn/attempt-artifact?kind=metadata&hash=0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273"
+  ],
+  "fetches_per_endpoint": 1,
+  "connect_timeout_seconds": 3,
+  "maximum_total_seconds": 12,
+  "read_only": true,
+  "chain_rpc": false,
+  "config_or_state_mutation": false
+}

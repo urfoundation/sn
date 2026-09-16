@@ -1,0 +1,4 @@
+W0916 04:48:52.167616 3117839 sn_attempt_artifact_handlers.go:108] [sn-attempt] artifact stream failed: kind=metadata hash=0x74d265dccdbcee7a218e229abd199708e15f0035481cc5ec8d0b55f2bb5ed273 bytes=65536 elapsed=30.002535452s context=context canceled error=context canceled
+context canceled
+context canceled
+I0916 04:49:39.805679 3117839 router_stats.go:159] [127.0.0.1][api][sim1] ++ net concurrent db connections            0.00
