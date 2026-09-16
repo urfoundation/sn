@@ -1,0 +1,35 @@
+# Frozen carried preparation qualification handoff
+
+Candidate `351ece79d9f4dad93888c74c8bdcc699dd4c8dac` (tree `2f4d90295de866a2be89fb9712ba3e8afdc88c04`), clean isolated checkout `/home/by/urnetwork/temp/sn-carried-preparation-index-20260916`, based on `0fd7ffc0f6aaad5a2988427c4acb47e1f79c3819`. Candidate patch SHA-256 `d3495b69ec7719fa6687a049f95068b6bb917d084545ddb497b4fc344387372c`; exact changed-file manifest SHA-256 `b98939c486e5bdcbed2e49145e7f581d4f096ee35588ec81692bee661890f872`. Five files only. Primary, physical deployment, GitHub main, active state and helpers were not changed. No tests/builds were executed by implementation. Terra alone executes qualification.
+
+## Scope and proof
+
+`collectCarriedActionHistory` now collects retained receipts from a single detached journal index. The final second snapshot rejects an append/change before publishing reconciliation keys. Latest original slice position wins across all admitted ancestors and accepted intents; topology still excludes ancestor readiness from current execution. The original `verifiedActionEntryForScope` stays unchanged for execution and other consumers.
+
+The serial receipt-collection phase shares only successfully decoded/authenticated source plans within that call. Every receipt is still read from its canonical path, decoded, identity checked, original RPC assurance/route reconstructed, and exact journal hash checked. A changed route, scope or deployment on a later invocation rebuilds authority. Cancellation discards publication. No Executor/global source cache or cross-command cache exists. The default receipt/RPC identity adapters still read the source afresh for all unrelated callers. Source-file identity is content-addressed and decoded once into a call-local immutable value; an on-disk mutation between invocations must fail.
+
+Fleet collection still authenticates local decoder/receipt evidence before any durable historical-audit cache hit, checks fresh chain checkpoints, and binds cache entries to executable/proof/plan/observer context. Workers, live current postconditions, original immutable carried-history proofs, and durable cache behavior are unchanged. Other semantic verifiers may perform their existing separate journal/source reads; this patch specifically removes the proven initial per-action collection copies and original-public-source decodes. It makes no duration or whole-command O(N) claim.
+
+## Deterministic inputs and expected results
+
+New synthetic collector fixtures use authentic archived v1 approvals, proper action hashes and spend, exact v4 original-public receipts, a generated test-only private route and local budget postconditions. They do not dial a node or send transactions. Full historical decoding is a fixture prerequisite. Both work tests use 64 actions and 64 retained rows. Positive journal work is exactly 2 snapshots / 128 copied rows; source authentication is exactly 1 decode for the one admitted source. Both must retain all 64 exact verification keys.
+
+The six adjacent new roots cover separate admitted source hashes, selection compatibility (including topology, unknown lineage/intents and claimed-sequence disagreement), corrupt source plus corrupt receipt on retry, current route/scope/ancestry changes, explicit append during source reading plus fresh execution validation, and explicit cancellation followed by a new authenticated retry. No timing-based proof, sleeps or live service is involved. Independent postconditions use nonfatal errors so failures are collected together; fatal assertions are fixture prerequisites.
+
+Remaining fixture risk: these new tests have been statically reviewed but never compiled/executed. The v1 archive deliberately avoids unrelated modern contract deployment requirements while exercising the actual same historical-plan decoder and original-public-receipt path. Retain all first-run failures and report actual events, rather than treating static review as a pass.
+
+## Exact qualification selection
+
+`positive-selector.txt` lists exactly 32 top-level roots (8 new plus 24 affected carried/preparation, owned RPC, archived fleet, current/receipt boundaries and durable-cache consumers). `positive-roots.txt` and `manifest.json.selected_roots` provide exact membership. Run each once uncached in normal and race modes; expected 32 PASS in each. Do not restart already passed roots absent a changed consumed input or concrete failure.
+
+`causal-selector.txt` lists exactly the 8 new roots. Clean materialized causal checkout `/home/by/urnetwork/temp/sn-carried-preparation-index-causal-20260916` is commit `57983498878ba1bc9e84dcc4f5502580ccd3d5f6`. It preserves all candidate tests, adapters and reconciliation fences while restoring the actual legacy per-action journal detached-copy/reverse-scan and per-receipt full original-source read through the same counted reader interfaces. Thus instrumentation cannot disappear. `causal.patch` is the complete 19-add/8-remove restoration and has SHA-256 `a0cb151ca0a20a722bab0329167e86f7579fa58c945a589d198f28d85e726004`. Only `sim-testnet/carried_preparation.go` differs from candidate.
+
+Causal normal expected body exit 1: `TestCarriedPreparationJournalReadWorkIsBounded` FAIL with 66 snapshots / 4224 copied rows; `TestCarriedPreparationSourceReadWorkIsBounded` FAIL with 64 full source reads. The other 6 roots PASS. No causal race body is necessary for this deterministic non-concurrent work regression. Restore via the frozen candidate checkout, never by editing an active compiler's source.
+
+## Terra execution contract
+
+Use Go `go1.26.6` and dependency revisions/clean states in `manifest.json.dependencies_clean`. Go module sibling replacements require an isolated workspace with these exact nine siblings. Capture source, dependency and selector fences before/after compilation/body; use existing Terra capture machinery and its established USB workspace if suitable. Recheck `/mnt/data` is `/dev/sdb1` ext4 before creating runtime directories. GOCACHE `/mnt/data/sn-testnet/gocache`.
+
+Suggested capture root `/mnt/data/sn-testnet/qualification/carried-preparation-index-20260916-r1`. Each normal/race/causal compiler and body owns separate pre-created private TMPDIR and GOTMPDIR beneath that root; retain artifacts. The command contract is `go test -c -o <normal-binary> ./sim-testnet` or `go test -race -c -o <race-binary> ./sim-testnet`, then from the matching source's `sim-testnet` package directory invoke the compiled binary through `go tool test2json -p github.com/urnetwork/sn/sim-testnet` with `-test.v -test.count=1 -test.run <exact-selector>`. Use the existing harness's ordinary finite timeout/resource policy, not a new mechanism or gate. Causal normal uses its own compiled binary and 8-root selector.
+
+Formatter provenance: gofmt was run on all five candidate Go files, and separately on the one causal Go file. Both clean commits passed `git diff --check` before commit. No formatter-driven semantic rerun is requested. No release lock, build attestation, setup/launch or plan changes are part of this candidate. Root controls any later integration and supported native recovery.

@@ -1,0 +1,12 @@
+{
+  "kind": "relay-apply-r2-read-only-socket-monitor-seal",
+  "recorded_at": "2026-09-16T05:42:04Z",
+  "sha256sums_sha256": "7ed407173c8a24aca41ac0604ed0fd1a70f6c92a963f9c8b3e12ec51c2f664e1",
+  "result_sha256": "d7816945d395586b34a4b33c665aa1d85c4f3c632dcbae5a7931e342bf6d152b",
+  "transport_summary_sha256": "00cfdcfcce3c985caf2c2e3412155ba2ee54e2d93906ec078ab935c611ba40e8",
+  "verification": {
+    "exit": 0,
+    "entries": 1741,
+    "all_ok": true
+  }
+}

@@ -1,0 +1,7 @@
+positive-server-task-normal	0
+positive-server-task-race	0
+positive-server-taskworker-normal	0
+positive-server-taskworker-race	0
+causal-unfiltered-task-normal	1
+causal-unfiltered-taskworker-normal	1
+causal-unrestricted-taskworker-normal	1

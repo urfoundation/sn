@@ -50,7 +50,74 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-16 05:00 UTC: both exact-object reads passed through
+Latest checkpoint, 2026-09-16: strict resume exited 1 at 06:29:05
+after processing all 4,673 carried-action audits and starting the managed
+topology. Its process-log gate recorded four blocking classes in the new
+generation: each operator taskworker emitted two unclassified errors and one
+warning. Cleanup stopped all 33 managed processes. The saved plan, journal,
+redacted config, public identities, executable and release lock are unchanged;
+the watched supervisor files changed. Preserve this failed invocation and its
+exact generation logs. The release-candidate request was not executed.
+The four classes came from production backend jobs outside this simulator's
+operator workload: geolocation certificate-pin rotation errors and fiat-payment
+warnings for synthetic accounts. The explicit taskworker profile is frozen at
+SN `8e6d56b5` / server `6752a8df`; all 30 affected roots pass normally and
+under race, with seven expected failures/five passes in the controls. Preserve
+the earlier service-census refusals, including a disposable launcher that
+cleaned up before joining its children. Corrected ownership let the unchanged
+binaries complete. The preparation-cost correction now
+qualifies 32 roots normally and under race by composing 30 unaffected passes
+with two fixture-correction passes. Its original two expected failures/six
+passing controls remain retained. Root integrated both exact fixes at
+`dc90e4c`; publication and deployment remain pending. Preparation now removes
+repeated journal scans and historical-plan authentication within one
+collection. The [affected qualification](sim-testnet/peerreview/evidence/FINAL-2-preparation-fixes-20260916/README.md)
+retains the original failed and accepted receipts. All 66 generation log slices are
+retained; root verified the private bundle's 115 sealed entries. See the
+[public failure projection](sim-testnet/peerreview/evidence/FINAL-2-managed-start-failure-20260916/README.md).
+The [read-only lock preview](sim-testnet/peerreview/evidence/FINAL-2-preparation-release-20260916/README.md)
+passed at 07:39:57 UTC. The reviewed candidate changes only SN/server source
+hashes and has SHA-256 `bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc`.
+Publish the complete source/docs/evidence/lock batch, build one matched CLI,
+then use the prepared native recovery commands in
+`/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3`.
+Partial-start reconciliation found four successful operator EVM writes in
+blocks 8,016,488/489/491, confirmed below finalized height 8,016,641 through the
+LAN node. Preserve their retained signed attempts; the production reconciler
+must update its mined/broadcast rows from canonical receipts before retrying.
+The [portable transaction evidence](sim-testnet/peerreview/evidence/FINAL-2-startup-transactions-20260916/README.md)
+records all four calls, logs and the 0.008264277772552846 EVM TAO gas fee. No full gate
+restart or duplicate funding is authorized by this failure. Refresh the time
+window and first native epoch late through the supported continuation path
+after necessary fixes; the soak and full acceptance remain pending.
+
+Previous checkpoint, 2026-09-16 05:48 UTC: continuation import passed at 05:39:02
+using the matching `0fd7ffc0` executable (SHA-256 `d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf`).
+It adopted plan `0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17`
+with zero chain transactions; only the saved plan changed. History capture
+passed at 05:41:45 with all watched bytes unchanged. Finalized native block
+8,016,244 selects first native epoch 1,485, spanning blocks 8,016,371–8,016,731.
+The exact history bundle is retained under the state-owned `history-adoptions/`
+directory with SHA-256 `e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53`.
+All four temporary helpers were joined with exit 0. Strict managed resume
+started at 05:47:36 under root session 97810; join this owner before entering
+the release campaign. END=8,024,100, required work=7,570 and start cutoff=8,016,530
+remain unchanged. Keep publication frozen through dependent native calls.
+The soak and final acceptance remain pending.
+
+Previous checkpoint, 2026-09-16 05:18 UTC: continuation capture passed at 05:14:43
+with unchanged watched state, executable and lock. Root reviewed its complete
+raw diff; all actions, spending, renewals and signed history are unchanged.
+It emitted plan `0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17`.
+Import then failed before mutation because root's report-only publication had
+advanced GitHub main beyond the executable's revision. Physical source is now
+clean at `0fd7ffc0`, with all Go code/modules and release-lock bytes unchanged.
+Terra is building one matching stamped executable. Reuse the captured plan
+and qualification; do not repeat setup/capture. Freeze further publication
+during the attested apply/resume/RC sequence. Soak and final acceptance remain
+pending; the original HTTP timeout and actual import refusal remain recorded.
+
+Previous checkpoint, 2026-09-16 05:00 UTC: both exact-object reads passed through
 the local APIs in under one second, with identical 157,602-byte bodies and the
 expected content hash. Two source reviews found no deterministic defect; the
 original transfer stall remains unproven. A new capture is running under root

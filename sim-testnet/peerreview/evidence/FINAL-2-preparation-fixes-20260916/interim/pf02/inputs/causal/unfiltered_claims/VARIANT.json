@@ -1,0 +1,48 @@
+{
+  "name": "unfiltered_claims",
+  "repository": "server",
+  "mutation": "In task/task.go, remove only the conditional claimPredicate/queryArgs extension. Keep the new settings field and every test. This restores the original unfiltered claim query.",
+  "packages": [
+    {
+      "package": "./task",
+      "expected_fail": [
+        "TestTaskClaimProfilePreservesExcludedBacklog",
+        "TestTaskClaimProfileScopesPostRetries"
+      ],
+      "expected_pass": [
+        "TestTaskClaimProfilePreservesVersionedAliases",
+        "TestTaskClaimProfileDefaultKeepsUnknownTargetRetry"
+      ],
+      "roots": [
+        "TestTaskClaimProfilePreservesExcludedBacklog",
+        "TestTaskClaimProfileScopesPostRetries",
+        "TestTaskClaimProfilePreservesVersionedAliases",
+        "TestTaskClaimProfileDefaultKeepsUnknownTargetRetry"
+      ],
+      "selector": "^(TestTaskClaimProfilePreservesExcludedBacklog|TestTaskClaimProfileScopesPostRetries|TestTaskClaimProfilePreservesVersionedAliases|TestTaskClaimProfileDefaultKeepsUnknownTargetRetry)$",
+      "expected_root_count": 4,
+      "expected_body_exit": 1
+    },
+    {
+      "package": "./taskworker",
+      "expected_fail": [
+        "TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks"
+      ],
+      "expected_pass": [],
+      "roots": [
+        "TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks"
+      ],
+      "selector": "^(TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks)$",
+      "expected_root_count": 1,
+      "expected_body_exit": 1
+    }
+  ],
+  "workspace": "/home/by/urnetwork/temp/sn-taskworker-profile-20260916/causal/unfiltered_claims/workspace",
+  "commit": "731d127b608ce2317cacd3cf1a80d6a8da5a4362",
+  "parent": "6752a8df246c0ee7e1c5a38cbd26b1e849b702ca",
+  "clean": true,
+  "sibling_targets": "SIBLINGS.tsv",
+  "changed_patch": "mutation.patch",
+  "unchanged_test_fixtures": true,
+  "mode": "normal"
+}

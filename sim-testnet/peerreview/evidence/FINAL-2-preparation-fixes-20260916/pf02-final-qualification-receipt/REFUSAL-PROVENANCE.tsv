@@ -1,0 +1,4 @@
+refusal\tcapture\treason\tselected_test_started\tservice_setup\tservice_cleanup
+initial-local-task-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/server-task/body/normal\tshared local launcher unselected\tfalse\tNA\tNA
+initial-local-causal-task\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/causal/unfiltered-claims-task/body/normal\tshared local launcher unselected\tfalse\tNA\tNA
+portable-owner-topology\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/portable-server-retry\tgate owner waited on non-child PIDs and cleaned private service before censuses\tfalse\t0\t0

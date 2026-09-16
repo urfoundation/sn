@@ -1,0 +1,19 @@
+{
+  "requested_at": "2026-09-16T05:46:56Z",
+  "command": "resume",
+  "apply": true,
+  "detach": true,
+  "source_revision": "0fd7ffc0f6aaad5a2988427c4acb47e1f79c3819",
+  "binary": "/mnt/data/sn-testnet/qualification/doc-restamp-physical-cli-20260916-r1/sim-testnet",
+  "binary_sha256": "d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf",
+  "release_lock_sha256": "d703afe97a7f3299b3d4e43b7feed0d90e330b161384a9f5d8d33541266945b2",
+  "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "strict_history_adoption": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/history-adoptions/e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53/bundle.json",
+  "strict_history_adoption_sha256": "sha256:e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53",
+  "first_native_epoch": 1485,
+  "scope": "Resume the adopted continuation with retained authenticated validator history and approved actions, limits and progress.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "limits_unchanged": true,
+  "temporary_helpers_must_be_joined_before_execution": true
+}

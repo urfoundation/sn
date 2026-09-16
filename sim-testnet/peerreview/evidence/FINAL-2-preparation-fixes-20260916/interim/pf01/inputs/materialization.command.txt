@@ -1,0 +1,1 @@
+git worktree add --detach <owned USB workspace>/sn <frozen commit>; sibling replacement links resolve to exact /home/by/urnetwork revisions

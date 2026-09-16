@@ -1,0 +1,19 @@
+{
+  "requested_at": "2026-09-16T05:22:37Z",
+  "command": "relay-continuation",
+  "apply": true,
+  "source_revision": "0fd7ffc0f6aaad5a2988427c4acb47e1f79c3819",
+  "binary_sha256": "d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf",
+  "release_lock_sha256": "d703afe97a7f3299b3d4e43b7feed0d90e330b161384a9f5d8d33541266945b2",
+  "relay_continuation_plan": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/stdout.json",
+  "relay_continuation_plan_file_sha256": "6e22b2f4b68af32809aa5de999a25458e52251fb23f763096399c7e8a9ff984a",
+  "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "source_plan_hash": "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+  "relay_end_block": 8024100,
+  "required_work_blocks": 7570,
+  "scope": "Adopt only the exact captured continuation after native source, signature, public payload and nonce reauthentication. Preserve existing actions, custody, spending, renewals and evidence.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false,
+  "recovery_reason": "Prior import stopped before mutation on mutable-main attestation after report-only publication. This matching doc-revision executable has identical qualified Go source, modules and release lock. Reuse exact successful captured plan bytes under all native import checks."
+}

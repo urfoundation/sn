@@ -1,0 +1,4 @@
+TestTaskClaimProfilePreservesExcludedBacklog	FAIL
+TestTaskClaimProfilePreservesVersionedAliases	PASS
+TestTaskClaimProfileScopesPostRetries	FAIL
+TestTaskClaimProfileDefaultKeepsUnknownTargetRetry	PASS

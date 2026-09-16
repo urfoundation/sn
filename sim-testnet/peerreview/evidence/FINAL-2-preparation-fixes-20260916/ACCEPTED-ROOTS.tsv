@@ -1,0 +1,125 @@
+scope	mode	test	outcome	capture
+PF-01	normal	TestCarriedActionAuditCacheAvoidsSecondLiveVerificationPass	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedActionAuditCacheCannotBypassCurrentOrDifferentEvidence	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchPreparationUsesExactArchivedPlan	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchSourceRejectsLineageAndIdentityDrift	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction	PASS	interim/pf01/fixture-correction/body/normal
+PF-01	normal	TestCarriedPreparationAuthenticatesEachSourcePlan	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCanceledSourceReadRequiresFreshRetry	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCancellationNamesEveryBlockedAction	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCollectsFailuresAndKeepsOnlyVerifiedKeys	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationDeploymentEnvelopeBlocksMissingPayloadReader	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationIndexPreservesJournalSelection	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationJournalAppendInvalidatesScope	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationJournalReadWorkIsBounded	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationPartialReadersKeepIndependentLocalProofs	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationReadOnlyBatchesRetainAllFailures	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationRetryReauthenticatesSourceAndReceipts	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationRetryRechecksScopeAndAuthority	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationSourceReadWorkIsBounded	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestCarriedTopologyAuthenticatesReceiptWithoutRequiringStoppedProcessLiveness	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestHistoricalAuditCacheCancellationNeverPublishesSuccess	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestHistoricalAuditCacheInvalidatesChangedIdentity	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheCannotBypassSuccessorOrCurrentStateChecks	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheRechecksLocalDecoderEvidenceAndSourceReceipts	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints	PASS	interim/pf01/fixture-correction/body/normal
+PF-01	normal	TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestOwnedRPCHistoryNativeReplayCannotBorrowOneReader	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestOwnedRPCHistoryReplaysOriginalFundingThroughOwnedNode	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestProvisionalPreparationCollectsEveryRetainedReceiptFailure	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestVerifyCarriedActionHistoryLeavesOnlyUnverifiedFleetBatchAtExecutionBoundary	PASS	interim/pf01/positive/body/normal
+PF-01	normal	TestVerifyCarriedActionHistorySeedsAllFortyFleetBatchCacheKeys	PASS	interim/pf01/positive/body/normal
+PF-01	race	TestCarriedActionAuditCacheAvoidsSecondLiveVerificationPass	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedActionAuditCacheCannotBypassCurrentOrDifferentEvidence	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchPreparationUsesExactArchivedPlan	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchSourceRejectsLineageAndIdentityDrift	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction	PASS	interim/pf01/fixture-correction/body/race
+PF-01	race	TestCarriedPreparationAuthenticatesEachSourcePlan	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCanceledSourceReadRequiresFreshRetry	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCancellationNamesEveryBlockedAction	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCollectsFailuresAndKeepsOnlyVerifiedKeys	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationDeploymentEnvelopeBlocksMissingPayloadReader	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationIndexPreservesJournalSelection	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationJournalAppendInvalidatesScope	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationJournalReadWorkIsBounded	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationPartialReadersKeepIndependentLocalProofs	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationReadOnlyBatchesRetainAllFailures	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationRetryReauthenticatesSourceAndReceipts	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationRetryRechecksScopeAndAuthority	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedPreparationSourceReadWorkIsBounded	PASS	interim/pf01/positive/body/race
+PF-01	race	TestCarriedTopologyAuthenticatesReceiptWithoutRequiringStoppedProcessLiveness	PASS	interim/pf01/positive/body/race
+PF-01	race	TestHistoricalAuditCacheCancellationNeverPublishesSuccess	PASS	interim/pf01/positive/body/race
+PF-01	race	TestHistoricalAuditCacheInvalidatesChangedIdentity	PASS	interim/pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheCannotBypassSuccessorOrCurrentStateChecks	PASS	interim/pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheRechecksLocalDecoderEvidenceAndSourceReceipts	PASS	interim/pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints	PASS	interim/pf01/fixture-correction/body/race
+PF-01	race	TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts	PASS	interim/pf01/positive/body/race
+PF-01	race	TestOwnedRPCHistoryNativeReplayCannotBorrowOneReader	PASS	interim/pf01/positive/body/race
+PF-01	race	TestOwnedRPCHistoryReplaysOriginalFundingThroughOwnedNode	PASS	interim/pf01/positive/body/race
+PF-01	race	TestProvisionalPreparationCollectsEveryRetainedReceiptFailure	PASS	interim/pf01/positive/body/race
+PF-01	race	TestVerifyCarriedActionHistoryLeavesOnlyUnverifiedFleetBatchAtExecutionBoundary	PASS	interim/pf01/positive/body/race
+PF-01	race	TestVerifyCarriedActionHistorySeedsAllFortyFleetBatchCacheKeys	PASS	interim/pf01/positive/body/race
+PF-02 SN	normal	TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestRunMainServerModulesConfineTLSFallbackToConnectLoopback	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestRunMainTaskworkerRequiresExplicitSubnetProfile	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestServerTaskworkerProfileSurvivesSupervisorSerialization	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	normal	TestSupervisorRestartsOncePublishesReadyAndStopsChildren	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN	race	TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestRunMainServerModulesConfineTLSFallbackToConnectLoopback	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestRunMainTaskworkerRequiresExplicitSubnetProfile	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestServerTaskworkerProfileSurvivesSupervisorSerialization	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN	race	TestSupervisorRestartsOncePublishesReadyAndStopsChildren	PASS	interim/pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 server-task	normal	TestRunPostOrphanedFinishedTaskCompletes	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskClaimProfileDefaultKeepsUnknownTargetRetry	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskClaimProfilePreservesExcludedBacklog	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskClaimProfilePreservesVersionedAliases	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskClaimProfileScopesPostRetries	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskLeaseExpiryRequiresOwnerSessionLoss	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskWorkerDrainCancelsStragglerAndHandsBackClaim	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	normal	TestTaskWorkerDrainCompletedTaskStillPosts	PASS	pf02-server-final/positive/server-task/body/normal
+PF-02 server-task	race	TestRunPostOrphanedFinishedTaskCompletes	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskClaimProfileDefaultKeepsUnknownTargetRetry	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskClaimProfilePreservesExcludedBacklog	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskClaimProfilePreservesVersionedAliases	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskClaimProfileScopesPostRetries	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskLeaseExpiryRequiresOwnerSessionLoss	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskWorkerDrainCancelsStragglerAndHandsBackClaim	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-task	race	TestTaskWorkerDrainCompletedTaskStillPosts	PASS	pf02-server-final/positive/server-task/body/race
+PF-02 server-taskworker	normal	TestInitTasksArmsTheExtenderChains	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestInitTasksReapsProviderEgressChainsWhileDisabled	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestInitTasksReapsRemovedTargets	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestInitTasksReapsVerificationChainsWhileDisabled	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestRemovedTaskTargetsAreNotRegistered	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestRunFlushesMetricsAfterFinalTaskHandback	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestRunRejectedTaskworkerPreservesStatusWithoutPublishingMetrics	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestRunRejectsInvalidInputsBeforeEnvironmentAccess	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestSubnetOperatorWorkloadKeepsRequiredTargets	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestSubnetOperatorWorkloadPreservesProductionDefault	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestSubnetOperatorWorkloadRejectsUnknownProfile	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	normal	TestSubnetOperatorWorkloadSchedulesOnlyItsDomain	PASS	pf02-server-final/positive/server-taskworker/body/normal
+PF-02 server-taskworker	race	TestInitTasksArmsTheExtenderChains	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestInitTasksReapsProviderEgressChainsWhileDisabled	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestInitTasksReapsRemovedTargets	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestInitTasksReapsVerificationChainsWhileDisabled	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestRemovedTaskTargetsAreNotRegistered	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestRunFlushesMetricsAfterFinalTaskHandback	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestRunRejectedTaskworkerPreservesStatusWithoutPublishingMetrics	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestRunRejectsInvalidInputsBeforeEnvironmentAccess	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestSubnetOperatorWorkloadKeepsRequiredTargets	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestSubnetOperatorWorkloadPreservesProductionDefault	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestSubnetOperatorWorkloadRejectsUnknownProfile	PASS	pf02-server-final/positive/server-taskworker/body/race
+PF-02 server-taskworker	race	TestSubnetOperatorWorkloadSchedulesOnlyItsDomain	PASS	pf02-server-final/positive/server-taskworker/body/race

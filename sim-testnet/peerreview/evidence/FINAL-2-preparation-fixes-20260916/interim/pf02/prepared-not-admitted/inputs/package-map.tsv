@@ -1,0 +1,3 @@
+server	./task	server-task
+server	./taskworker	server-taskworker
+sn	./sim-testnet	sn-sim-testnet

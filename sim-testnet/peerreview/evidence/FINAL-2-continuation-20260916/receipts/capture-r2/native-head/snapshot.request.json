@@ -1,0 +1,18 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "chain_getHeader",
+    "params": [
+      "0x7741f215e7e89ec470a3177ef92826392ae0acae61b86c7006ebdacf7c8510c3"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "state_getRuntimeVersion",
+    "params": [
+      "0x7741f215e7e89ec470a3177ef92826392ae0acae61b86c7006ebdacf7c8510c3"
+    ]
+  }
+]

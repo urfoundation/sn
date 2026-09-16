@@ -1,0 +1,106 @@
+{
+  "schema": "urnetwork-sim-process-log-gate-v1",
+  "classifier": "urnetwork-sim-process-log-classifier-v2",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "manifest_hash": "0xed50e33624aaf5cf540ab40b8557fcea1d184414157ae3636a8e33d19074b0f5",
+  "generated_at": "2026-09-16T06:28:13.10245008Z",
+  "updated_at": "2026-09-16T06:28:53.288449177Z",
+  "supervisor_pid": 3277521,
+  "supervisor_start_time_ticks": 182643729,
+  "cursor_count": 66,
+  "blocking_finding_count": 4,
+  "classes": [
+    {
+      "class": "error",
+      "finding_records": 2,
+      "total_count": 4,
+      "all_blocking": true,
+      "dispositions": [
+        "unexplained"
+      ],
+      "roles": [
+        "operator-taskworker"
+      ],
+      "streams": [
+        "stderr"
+      ]
+    },
+    {
+      "class": "warning",
+      "finding_records": 2,
+      "total_count": 2,
+      "all_blocking": true,
+      "dispositions": [
+        "unexplained"
+      ],
+      "roles": [
+        "operator-taskworker"
+      ],
+      "streams": [
+        "stderr"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "class": "error",
+      "count": 2,
+      "blocking": true,
+      "disposition": "unexplained",
+      "process_id": "operator-1-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "first_offset": 25499474,
+      "last_offset": 25499786,
+      "first_line_sha256": "1e01ae8d3ab5631a8a5cb4e1f5e073351df5590c8ae61e66f19c17b58aa8b8f1",
+      "last_line_sha256": "416239395ce745758de185194645dc24511778551d2a618449b8683287d29299",
+      "first_observed_at": "2026-09-16T06:28:53.288449177Z",
+      "last_observed_at": "2026-09-16T06:28:53.288449177Z"
+    },
+    {
+      "class": "warning",
+      "count": 1,
+      "blocking": true,
+      "disposition": "unexplained",
+      "process_id": "operator-1-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "first_offset": 25504846,
+      "last_offset": 25504846,
+      "first_line_sha256": "5f296086e7862de01c5a1da93a5b17cc6f2dd3629d44461ab8a99935bcfd53bb",
+      "last_line_sha256": "5f296086e7862de01c5a1da93a5b17cc6f2dd3629d44461ab8a99935bcfd53bb",
+      "first_observed_at": "2026-09-16T06:28:53.288449177Z",
+      "last_observed_at": "2026-09-16T06:28:53.288449177Z"
+    },
+    {
+      "class": "error",
+      "count": 2,
+      "blocking": true,
+      "disposition": "unexplained",
+      "process_id": "operator-2-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "first_offset": 25668951,
+      "last_offset": 25669263,
+      "first_line_sha256": "233015e7d3529b78fe6cd19ff79e289e9db1a53345164f0b870cd0736a8453db",
+      "last_line_sha256": "4a310f52f5db450d714a6c58230ecd99e6cd617bec0581e9bc6f76d2376307ef",
+      "first_observed_at": "2026-09-16T06:28:53.288449177Z",
+      "last_observed_at": "2026-09-16T06:28:53.288449177Z"
+    },
+    {
+      "class": "warning",
+      "count": 1,
+      "blocking": true,
+      "disposition": "unexplained",
+      "process_id": "operator-2-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "first_offset": 25676562,
+      "last_offset": 25676562,
+      "first_line_sha256": "499c2fbca165579df4c5e3d830e164c5467719ed42661eaac113ed4396b30a63",
+      "last_line_sha256": "499c2fbca165579df4c5e3d830e164c5467719ed42661eaac113ed4396b30a63",
+      "first_observed_at": "2026-09-16T06:28:53.288449177Z",
+      "last_observed_at": "2026-09-16T06:28:53.288449177Z"
+    }
+  ]
+}

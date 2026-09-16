@@ -1,0 +1,63 @@
+--- /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/predecessor.tokens.txt	2026-09-16 05:15:02.535013564 +0000
++++ /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/continuation.tokens.txt	2026-09-16 05:15:06.779855674 +0000
+@@ -151,7 +151,8 @@
+ "0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1",
+ "0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30",
+ "0x3f88ccd424dabd6670523522d6f56300940272311d6e70162ad48f76c24a7d2d",
+-"0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799"]
++"0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799",
++"0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86"]
+ ,
+ "config_hash":"0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+ "config_identity_runtime_spec":455,
+@@ -713,12 +714,12 @@
+ ,
+ "evidence_relay_continuation":{
+ "schema":"urnetwork-sim-evidence-relay-continuation-v4",
+-"source_plan_hash":"0x3f88ccd424dabd6670523522d6f56300940272311d6e70162ad48f76c24a7d2d",
++"source_plan_hash":"0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+ "config_hash":"0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+ "activation_plan_hash":"0x76d0386164e7019aa0c5a9ea2b9540705a5a3e492ea7b55e06856a399b1d9f8d",
+ "prepared_sha256":"sha256:d3b5fe069b9789b8549f99ced57d461c4c5fe84380cc1945b43f9b9421d3d9d0",
+ "completed_sha256":"sha256:fc79f95fd6ebf3f6795931ab2b22a29bd74643f9e490fee74f6c113d460cfb4e",
+-"journal_hash":"0xb2c2be0e0f60bedba42a29d2e86c53cddb2c6105ade5c629b4bae896a22c78c0",
++"journal_hash":"0x9a579ba52c58b2020c4089d5d8310d8afe3007159cc9f3248568d68d15d7f539",
+ "original_reserve":{
+ "id":"campaign.evidence-relay-reserve",
+ "kind":"budget-reserve",
+@@ -1160,18 +1161,18 @@
+ "intent_hash":"0x4cbaa608087e900c70d6cdcaff521293e3923b040863aec34421bca45ff2b7e5"}
+ ,
+ "evm_head":{
+-"number":8014730,
+-"hash":"0x74856fb739651344d286848b03d7d12c89f39d922a9ec8ec5bd71feb34d53921"}
++"number":8016047,
++"hash":"0x3b41452d02932ca719c42f750c4274f672b9839737778792b6b0ebf0940a30db"}
+ ,
+ "native_head":{
+-"number":8014730,
+-"hash":"0x16eaf079f433b401fc3eca81be8a697ef14083679ae96034b2a1429dbcee2438"}
++"number":8016047,
++"hash":"0x65e3d74b7ca982e5c1114c7b3ba15776d40a006c4f1e2f1b1e984632547536a2"}
+ ,
+-"settlement_epoch":397,
+-"native_epoch":1480,
+-"end_block":8022775,
+-"end_settlement_epoch":424,
+-"end_native_epoch":1503,
++"settlement_epoch":402,
++"native_epoch":1484,
++"end_block":8024100,
++"end_settlement_epoch":429,
++"end_native_epoch":1507,
+ "required_work_blocks":7570,
+ "historical_liability_wei":0,
+ "new_slots":1024,
+@@ -377364,6 +377365,6 @@
+ "registrations":262,
+ "subnet_creations":0}
+ ,
+-"plan_hash":"0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
++"plan_hash":"0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+ "generated_at":"2026-09-16T04:09:03Z"}
+ 

@@ -1,0 +1,14 @@
+90295d1c61e6fa30e554ddd32ab11b32c8429009ff32c2fa092d6dddf0cb9280  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/HANDOFF.md
+62675f9c6edba6f4aa00750b5bb15b734327822087e36d4b2f926f0641c338a2  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/dependencies.tsv
+090998569348d82484f4f9d3a2e9462a7535784abc52d72f8de52a8b909c3657  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/expected-outcomes.tsv
+77308be48ecef93c5dff8965e672e55aab5b80eb520da7fd22e66f4b0958d6f3  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/expected-tests.txt
+d54af3c4dfdcd44022ae91831a34f4b79dc072b620e3f0e079ac1b2e6b7fa990  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/manifest.json
+1a6b6cd809c6fe91a7f2b160bcb4690fff61c2c1d0200a788646d7e816c55b46  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/inputs/selector.txt
+7f2466e9f1e496bcf9bd985dd251167ece6a8ed2ca83423ae4ca7326b6386a71  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/compile/command.sh
+541dcd4ece48dd3fb54693efe5e8adc247fdf194790b69247f0c969f1cfa51c2  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/compile/command.sh
+dd575aab41c7b65daafff3d23c14d11fa4cf40f9ccc9d9833d583ee3edc4bc42  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/compile/launcher.sh
+2222520470d59795426b5eb921fe4a156a8c545812d1cdba6be82d0de8865552  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/compile/launcher.sh
+fb07825505e6296ff608e6327bdcc025ba208c39f200a7086b9beb5a003e081a  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/body/command.sh
+d95aa06151f58e8e71357b8761bbd05f6ae1fc148efd2eb66b322c6174f4149c  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/body/command.sh
+719bc58d5eddf1ca5d4708c80fc527b790ccaeeb87ff0010eed36555d8e909de  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/body/launcher.sh
+669775dd0f9fdd27de563c8824eeee6876247613fda5ab32f36d375fb863ee9e  /mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/body/launcher.sh

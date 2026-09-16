@@ -1,0 +1,17 @@
+12c5e90d85f569537b0f0efc852b28ff38bef3c1423a53bfa114ff2fa6c90aa3  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/HANDOFF.md
+24d40dc75129d9c2b31ab61dcd340d966e8f1f10be7e2a3c576a3bd56f0ac4b5  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/affected-test-selection.json
+a5c864335304ffe81990b93f4a05f495f7eff58ca1f84d891aa0b0c68ad9c5fe  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/causal-variant-plan.tsv
+3b5dccbbc7a866f2735aa33e84688d49e4038ca662dc38bbc2095136ee526aed  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/package-map.tsv
+221ab14dfdc442c387425f05c847ea16f2998cc771efb11788bda7937dc95fa0  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/server.changed-paths.sha256
+534e742235dc63b452cfa0f02f6f10bfe24eae2e2b62c5798cbcf6ff67f9c0bf  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/server.patch
+d28dedaac06c054b41ab991fb8917a05e3046cc8e9bd42a3c531925546f3f6d9  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/sn.changed-paths.sha256
+e7941d24e8eb9d6b51e96a281acd7d204e37d76aacc4b2e594464d43984ca1f9  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/inputs/sn.patch
+3a1be1710ba9abcdeec418cdcad684bd1649e7a9d38bc622d4387400adf51a96  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-task/selector.txt
+53e281058b77ef4c6d7c891fbaea18620953d3d4701deb359d6ee9e9da53715f  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-taskworker/selector.txt
+2033020356489ca23a8369a20f9153ae5aad7c9f47cc6335f5f11bb63fc71d25  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/sn-sim-testnet/selector.txt
+aaf6d9a484fbe67b335c0e458f3ed311fd4072afa9e8299fcf0cdda604a08909  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-task/expected-tests.txt
+fe45600c52a475c810424832a7aa2dbad85c4eeeaa29d7b9a0682a6a25dadc56  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-taskworker/expected-tests.txt
+aab2041a99542016f2296cb9211d2ca358b8acd16414b0c0c72a52d0446743c4  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/sn-sim-testnet/expected-tests.txt
+907e6c9610bc2c50dfab850551c4b73d2547a3e9f01bd878781e541817aaa85b  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-task/expected-outcomes.tsv
+f3678e2cdcb9515b2d857e336e491ac765b6b861addf8d41b823a7cd0c535727  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/server-taskworker/expected-outcomes.tsv
+f38c62d1216f999b3710d33195e799aa533dc2ac6eabc3a211e30384e541445e  /mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/positive/sn-sim-testnet/expected-outcomes.tsv

@@ -1,0 +1,35 @@
+{
+  "name": "unrestricted_profile_initialization",
+  "repository": "server",
+  "mutation": "In workload_profile.go, admit both validated profiles to the former unconditional production branch in InitTasksForProfile and addProfileTargets. Do not change claim filtering or task bodies.",
+  "packages": [
+    {
+      "package": "./taskworker",
+      "expected_fail": [
+        "TestSubnetOperatorWorkloadKeepsRequiredTargets",
+        "TestSubnetOperatorWorkloadSchedulesOnlyItsDomain"
+      ],
+      "expected_pass": [
+        "TestSubnetOperatorWorkloadRejectsUnknownProfile",
+        "TestSubnetOperatorWorkloadPreservesProductionDefault"
+      ],
+      "roots": [
+        "TestSubnetOperatorWorkloadKeepsRequiredTargets",
+        "TestSubnetOperatorWorkloadSchedulesOnlyItsDomain",
+        "TestSubnetOperatorWorkloadRejectsUnknownProfile",
+        "TestSubnetOperatorWorkloadPreservesProductionDefault"
+      ],
+      "selector": "^(TestSubnetOperatorWorkloadKeepsRequiredTargets|TestSubnetOperatorWorkloadSchedulesOnlyItsDomain|TestSubnetOperatorWorkloadRejectsUnknownProfile|TestSubnetOperatorWorkloadPreservesProductionDefault)$",
+      "expected_root_count": 4,
+      "expected_body_exit": 1
+    }
+  ],
+  "workspace": "/home/by/urnetwork/temp/sn-taskworker-profile-20260916/causal/unrestricted_profile_initialization/workspace",
+  "commit": "04306dbb81b463404a9b780da23d6fe428521b8f",
+  "parent": "6752a8df246c0ee7e1c5a38cbd26b1e849b702ca",
+  "clean": true,
+  "sibling_targets": "SIBLINGS.tsv",
+  "changed_patch": "mutation.patch",
+  "unchanged_test_fixtures": true,
+  "mode": "normal"
+}

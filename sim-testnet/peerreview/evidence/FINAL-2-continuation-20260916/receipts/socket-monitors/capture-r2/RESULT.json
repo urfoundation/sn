@@ -1,0 +1,27 @@
+{
+  "kind": "read-only-relay-owner-socket-monitor",
+  "owner": {
+    "pid": 3153434,
+    "start_ticks": 182112190
+  },
+  "termination_reason": "owner-exited",
+  "monitor_exit": 0,
+  "total_samples": 123,
+  "socket_samples": 27,
+  "first_socket_sample": {
+    "id": "00097",
+    "timestamp": "2026-09-16T05:12:30Z"
+  },
+  "last_socket_sample": {
+    "id": "00123",
+    "timestamp": "2026-09-16T05:14:43Z"
+  },
+  "nonzero_receive_or_send_queue_lines": 0,
+  "max_lastrcv_ms": 12144,
+  "max_lastack_ms": 12144,
+  "observed_socket_states": [
+    "ESTAB"
+  ],
+  "http_requests_made_by_monitor": 0,
+  "packet_payloads_captured": false
+}

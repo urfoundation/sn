@@ -1,0 +1,14 @@
+[
+  {"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9"]},
+  {"jsonrpc":"2.0","id":2,"method":"eth_getTransactionReceipt","params":["0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8"]},
+  {"jsonrpc":"2.0","id":3,"method":"eth_getTransactionReceipt","params":["0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df"]},
+  {"jsonrpc":"2.0","id":4,"method":"eth_getTransactionReceipt","params":["0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8"]},
+  {"jsonrpc":"2.0","id":5,"method":"eth_getTransactionByHash","params":["0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9"]},
+  {"jsonrpc":"2.0","id":6,"method":"eth_getTransactionByHash","params":["0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8"]},
+  {"jsonrpc":"2.0","id":7,"method":"eth_getTransactionByHash","params":["0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df"]},
+  {"jsonrpc":"2.0","id":8,"method":"eth_getTransactionByHash","params":["0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8"]},
+  {"jsonrpc":"2.0","id":9,"method":"eth_getBlockByNumber","params":["finalized",false]},
+  {"jsonrpc":"2.0","id":10,"method":"chain_getFinalizedHead","params":[]},
+  {"jsonrpc":"2.0","id":11,"method":"eth_chainId","params":[]},
+  {"jsonrpc":"2.0","id":12,"method":"chain_getBlockHash","params":[0]}
+]

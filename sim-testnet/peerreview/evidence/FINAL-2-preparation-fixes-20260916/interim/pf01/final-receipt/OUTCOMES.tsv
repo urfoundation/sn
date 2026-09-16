@@ -1,0 +1,8 @@
+scope\tmode\tpass\tfail\tbody_exit\touter_exit\tjoin_exit\tevents_valid\tfences_valid\tsource_commit
+original-positive\tnormal\t31\t1\t1\t127\t127\tfalse\ttrue\t351ece79d9f4dad93888c74c8bdcc699dd4c8dac
+original-positive\trace\t31\t1\t1\t127\t127\tfalse\ttrue\t351ece79d9f4dad93888c74c8bdcc699dd4c8dac
+fixture-correction\tnormal\t2\t0\t0\t0\t0\ttrue\ttrue\td52028de6864f7b1c48381fcb7652361d2520932
+fixture-correction\trace\t2\t0\t0\t0\t0\ttrue\ttrue\td52028de6864f7b1c48381fcb7652361d2520932
+causal\tnormal\t6\t2\t1\t1\t1\ttrue\ttrue\t57983498878ba1bc9e84dcc4f5502580ccd3d5f6
+accepted-positive-composition\tnormal\t32\t0\t0\t0\t0\ttrue\ttrue\td52028de6864f7b1c48381fcb7652361d2520932
+accepted-positive-composition\trace\t32\t0\t0\t0\t0\ttrue\ttrue\td52028de6864f7b1c48381fcb7652361d2520932

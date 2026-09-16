@@ -1,0 +1,3 @@
+TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy	FAIL
+TestServerTaskworkerProfileSurvivesSupervisorSerialization	FAIL
+TestRunMainTaskworkerRequiresExplicitSubnetProfile	PASS

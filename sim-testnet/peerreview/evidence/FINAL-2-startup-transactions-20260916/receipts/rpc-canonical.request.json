@@ -1,0 +1,12 @@
+[
+  {"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["0x7a5268",false]},
+  {"jsonrpc":"2.0","id":2,"method":"eth_getBlockByNumber","params":["0x7a5269",false]},
+  {"jsonrpc":"2.0","id":3,"method":"eth_getBlockByNumber","params":["0x7a526b",false]},
+  {"jsonrpc":"2.0","id":4,"method":"chain_getHeader","params":["0x7ee9498db1d26737986ceca77279f9de6a1a41c6780556e6a7d75421b64663fb"]},
+  {"jsonrpc":"2.0","id":5,"method":"eth_getBlockByNumber","params":["0x7a5301",false]},
+  {"jsonrpc":"2.0","id":6,"method":"state_getRuntimeVersion","params":["0x7ee9498db1d26737986ceca77279f9de6a1a41c6780556e6a7d75421b64663fb"]},
+  {"jsonrpc":"2.0","id":7,"method":"eth_getTransactionCount","params":["0xd6f9165c4cc35ce380ea1eff3c518407173af60a","0x7a5301"]},
+  {"jsonrpc":"2.0","id":8,"method":"eth_getTransactionCount","params":["0x5c278cf6693ce582adea0241034d810d8933b3eb","0x7a5301"]},
+  {"jsonrpc":"2.0","id":9,"method":"eth_getTransactionCount","params":["0xd6f9165c4cc35ce380ea1eff3c518407173af60a","pending"]},
+  {"jsonrpc":"2.0","id":10,"method":"eth_getTransactionCount","params":["0x5c278cf6693ce582adea0241034d810d8933b3eb","pending"]}
+]

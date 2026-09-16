@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-09-16T06:38:50Z",
+  "supervisor_pid": 3277521,
+  "expected_supervisor_start_ticks": "182643729",
+  "supervisor_pid_live": false,
+  "actual_supervisor_start_ticks": "",
+  "process_count": 33,
+  "pid_zero_count": 33,
+  "healthy_false_count": 33,
+  "nonzero_processes": [],
+  "pending_owner": false,
+  "check_scope": "Read-only supervisor-state and exact recorded supervisor PID check; no process control performed."
+}

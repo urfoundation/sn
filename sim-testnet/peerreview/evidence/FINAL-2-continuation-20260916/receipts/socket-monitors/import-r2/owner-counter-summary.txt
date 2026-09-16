@@ -1,0 +1,12 @@
+kind=relay-apply-r2-owner-counter-summary
+first_sample=00001 timestamp=2026-09-16T05:24:31Z
+first_utime_ticks=9728
+first_stime_ticks=261
+first_rchar=295210175
+first_syscr=33431
+last_sample=00171 timestamp=2026-09-16T05:38:57Z
+last_utime_ticks=89317
+last_stime_ticks=1204
+last_rchar=3855468133
+last_syscr=1358988
+termination=owner-exited

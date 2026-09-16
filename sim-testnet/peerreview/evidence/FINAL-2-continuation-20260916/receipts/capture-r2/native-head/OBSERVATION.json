@@ -1,0 +1,19 @@
+{
+  "observed_at": "2026-09-16T04:59:25Z",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "finalized_native_hash": "0x7741f215e7e89ec470a3177ef92826392ae0acae61b86c7006ebdacf7c8510c3",
+  "finalized_native_height": 8016040,
+  "runtime": {
+    "specVersion": 460,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "relay_end_block": 8024100,
+  "full_work_start_cutoff": 8016530,
+  "selected_span_blocks": 8060,
+  "full_required_work_blocks": 7570,
+  "preparation_margin_blocks": 490,
+  "retained_source_maximum_span_blocks": 8065,
+  "first_native_epoch": "not selected; choose after import"
+}

@@ -1,0 +1,63 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "chain_getHeader",
+    "params": [
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "state_getRuntimeVersion",
+    "params": [
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "state_getStorage",
+    "params": [
+      "0x658faa385070e074c85bf6b568cf055590010c37124c14146041452f9ffba0df0902",
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "state_getStorage",
+    "params": [
+      "0x658faa385070e074c85bf6b568cf05553328b142e30b57e47a52648ba110e3a70902",
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "state_getStorage",
+    "params": [
+      "0x658faa385070e074c85bf6b568cf05554f101d7a30ae31c7ab3099206c5ae12b0902",
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "state_getStorage",
+    "params": [
+      "0x658faa385070e074c85bf6b568cf05557641384bb339f3758acddfd7053d33170902",
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "state_getStorage",
+    "params": [
+      "0x658faa385070e074c85bf6b568cf055563f934e48e59bf9413de427605faa0240902",
+      "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916"
+    ]
+  }
+]

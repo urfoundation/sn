@@ -1,0 +1,16 @@
+kind=relay-apply-r2-read-only-transport-summary
+owner_pid=3185381
+owner_start_ticks=182251287
+owner_executable_sha256=d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf
+monitor_start=2026-09-16T05:24:30Z
+monitor_end=2026-09-16T05:39:02Z
+sample_count=171
+socket_first_sample=00146 timestamp=2026-09-16T05:36:50Z
+socket_last_sample=00171 timestamp=2026-09-16T05:38:57Z
+connection_records=52
+max_lastack_ms=12781
+max_lastrcv_ms=12781
+nonzero_queue_records=0
+port=127.0.0.1:18081 first_sample=00146 first_timestamp=2026-09-16T05:36:50Z first_bytes_received=59194 final_sample=00171 final_timestamp=2026-09-16T05:38:57Z final_bytes_received=16377640
+port=127.0.0.1:18082 first_sample=00146 first_timestamp=2026-09-16T05:36:50Z first_bytes_received=59194 final_sample=00171 final_timestamp=2026-09-16T05:38:57Z final_bytes_received=16377640
+interpretation=all captured client connection records had zero receive and send queues; each helper reached 16377640 received bytes before owner exit; maximum captured socket inactivity was below 30 seconds

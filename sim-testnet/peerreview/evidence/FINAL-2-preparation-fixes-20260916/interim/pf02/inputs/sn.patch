@@ -1,0 +1,165 @@
+diff --git a/sim-testnet/main.go b/sim-testnet/main.go
+index b26f4df..ac84744 100644
+--- a/sim-testnet/main.go
++++ b/sim-testnet/main.go
+@@ -346,12 +346,13 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
+ 		component := args[0]
+ 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
+ 		var port, count, batchSize int
+-		var tlsDefaultHost string
++		var tlsDefaultHost, workloadProfile string
+ 		var directH3Loopback bool
+ 		fs.IntVar(&port, "port", 0, "")
+ 		fs.IntVar(&count, "count", 8, "")
+ 		fs.IntVar(&batchSize, "batch_size", 4, "")
+ 		fs.StringVar(&tlsDefaultHost, "tls-default-host", "", "")
++		fs.StringVar(&workloadProfile, "workload-profile", "", "")
+ 		fs.BoolVar(&directH3Loopback, "direct-h3-loopback", false, "")
+ 		if err := fs.Parse(args[1:]); err != nil {
+ 			return err
+@@ -359,6 +360,12 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
+ 		if port == 0 || fs.NArg() != 0 {
+ 			return fmt.Errorf("invalid internal %s invocation", component)
+ 		}
++		if component != "__server_taskworker" && workloadProfile != "" {
++			return errors.New("workload profile is restricted to the taskworker module")
++		}
++		if component == "__server_taskworker" && servertaskworker.WorkloadProfile(workloadProfile) != servertaskworker.WorkloadProfileSubnetOperator {
++			return errors.New("simulator taskworker requires the subnet-operator workload profile")
++		}
+ 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+ 		defer cancel()
+ 		if component == "__server_api" {
+@@ -380,7 +387,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
+ 		if tlsDefaultHost != "" || directH3Loopback {
+ 			return errors.New("taskworker module cannot set Connect transport options")
+ 		}
+-		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
++		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize, WorkloadProfile: servertaskworker.WorkloadProfile(workloadProfile)})
+ 	}
+ 	if len(args) > 0 && args[0] == "__server_cleanup_contracts" {
+ 		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+diff --git a/sim-testnet/main_test.go b/sim-testnet/main_test.go
+index 435b4ed..ec9ca9e 100644
+--- a/sim-testnet/main_test.go
++++ b/sim-testnet/main_test.go
+@@ -303,8 +303,8 @@ func TestRunMainServerModulesConfineTLSFallbackToConnectLoopback(t *testing.T) {
+ 		{"__server_connect", "--port=19081", "--tls-default-host=127.0.1.1"},
+ 		{"__server_api", "--port=18081", "--tls-default-host=127.0.1.1"},
+ 		{"__server_api", "--port=18081", "--direct-h3-loopback"},
+-		{"__server_taskworker", "--port=20081", "--tls-default-host=127.0.1.1"},
+-		{"__server_taskworker", "--port=20081", "--direct-h3-loopback"},
++		{"__server_taskworker", "--port=20081", "--workload-profile=subnet-operator", "--tls-default-host=127.0.1.1"},
++		{"__server_taskworker", "--port=20081", "--workload-profile=subnet-operator", "--direct-h3-loopback"},
+ 	} {
+ 		if err := runMain(invalid); err == nil {
+ 			t.Errorf("invalid internal server invocation accepted: %q", invalid)
+diff --git a/sim-testnet/process.go b/sim-testnet/process.go
+index 0cdbb6b..2aeb54b 100644
+--- a/sim-testnet/process.go
++++ b/sim-testnet/process.go
+@@ -1506,6 +1506,9 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
+ 			if svc.role == "connect" {
+ 				args = append(args, "--tls-default-host="+listenIP, "--direct-h3-loopback")
+ 			}
++			if svc.role == "taskworker" {
++				args = append(args, "--workload-profile=subnet-operator")
++			}
+ 			spec := ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5}
+ 			if svc.role == "connect" {
+ 				spec.H3ProbeAddress = net.JoinHostPort(listenIP, "443")
+diff --git a/sim-testnet/process_test.go b/sim-testnet/process_test.go
+index 7f42acf..bd3bc8a 100644
+--- a/sim-testnet/process_test.go
++++ b/sim-testnet/process_test.go
+@@ -1741,7 +1741,7 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
+ 			if _, ok := spec.Env[servercontroller.VerifySimulationAssignmentFilterFileEnv]; ok {
+ 				t.Fatalf("%s received API-only validator-view fault authority", spec.ID)
+ 			}
+-			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_taskworker" {
++			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 3 || spec.Args[0] != "__server_taskworker" || spec.Args[2] != "--workload-profile=subnet-operator" {
+ 				t.Fatalf("%s bypasses the production taskworker module runner: %+v", spec.ID, spec)
+ 			}
+ 		}
+diff --git a/sim-testnet/taskworker_profile_test.go b/sim-testnet/taskworker_profile_test.go
+new file mode 100644
+index 0000000..99f8139
+--- /dev/null
++++ b/sim-testnet/taskworker_profile_test.go
+@@ -0,0 +1,76 @@
++package main
++
++import (
++	"encoding/json"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++// TestServerTaskworkerProfileSurvivesSupervisorSerialization binds the workload
++// to both operator specs persisted and reused by the existing restart loop.
++func TestServerTaskworkerProfileSurvivesSupervisorSerialization(t *testing.T) {
++	cfg := testResolvedConfig(t)
++	cfg.Config.Topology.Operators = 2
++	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
++		"sim-testnet": "/fixture/sim-testnet",
++		connectServerBinaryName: "/fixture/sim-testnet-connect",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	encoded, err := json.Marshal(SupervisorFile{Specs: specs})
++	if err != nil {
++		t.Fatal(err)
++	}
++	var persisted SupervisorFile
++	if err := json.Unmarshal(encoded, &persisted); err != nil {
++		t.Fatal(err)
++	}
++	workers := 0
++	for i, spec := range persisted.Specs {
++		if !reflect.DeepEqual(spec.Args, specs[i].Args) {
++			t.Fatalf("restart specification changed arguments for %s", spec.ID)
++		}
++		profileCount := 0
++		for _, arg := range spec.Args {
++			if strings.HasPrefix(arg, "--workload-profile=") {
++				if arg != "--workload-profile=subnet-operator" {
++					t.Fatalf("unexpected workload profile for %s: %q", spec.ID, arg)
++				}
++				profileCount++
++			}
++		}
++		if spec.Role == "operator-taskworker" {
++			workers++
++			if profileCount != 1 || spec.RestartLimit < 1 || spec.Args[0] != "__server_taskworker" {
++				t.Fatalf("operator taskworker lost explicit production-module workload scope: %+v", spec)
++			}
++		} else if profileCount != 0 {
++			t.Fatalf("taskworker-only workload scope leaked to %s", spec.ID)
++		}
++	}
++	if workers != 2 {
++		t.Fatalf("profile was not bound to both operators: %d", workers)
++	}
++}
++
++// TestRunMainTaskworkerRequiresExplicitSubnetProfile rejects old or misspelled
++// restart invocations before any environment access, and confines the option.
++func TestRunMainTaskworkerRequiresExplicitSubnetProfile(t *testing.T) {
++	for _, args := range [][]string{
++		{"__server_taskworker", "--port=20081"},
++		{"__server_taskworker", "--port=20081", "--workload-profile=unknown-fixture"},
++		{"__server_api", "--port=18081", "--workload-profile=subnet-operator"},
++		{"__server_connect", "--port=19081", "--workload-profile=subnet-operator"},
++	} {
++		if err := runMain(args); err == nil || !strings.Contains(err.Error(), "profile") {
++			t.Errorf("unscoped or misplaced taskworker profile was accepted: %v error=%v", args, err)
++		}
++	}
++	// Reach production RunOptions validation without starting any service.
++	err := runMain([]string{"__server_taskworker", "--port=20081", "--workload-profile=subnet-operator", "--count=0"})
++	if err == nil || !strings.Contains(err.Error(), "taskworker count") {
++		t.Fatalf("valid explicit profile did not reach the production runner: %v", err)
++	}
++}

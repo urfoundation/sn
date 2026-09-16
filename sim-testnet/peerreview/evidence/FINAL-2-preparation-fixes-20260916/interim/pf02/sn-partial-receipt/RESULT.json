@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-09-16T07:32:56Z",
+  "formatted_selection_sha256": "79302f31a5d4033729686d90110d1e9039ab664d519f2ff724cd54538c503af5",
+  "capture_references": "/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/sn-partial-receipt/CAPTURE-REFS.tsv",
+  "raw_artifact_digests": "/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/sn-partial-receipt/RAW-ARTIFACTS.sha256",
+  "positive": {
+    "normal": {
+      "pass": 9
+    },
+    "race": {
+      "pass": 9
+    }
+  },
+  "causal_unbound_specs": {
+    "pass": 1,
+    "expected_fail": 2
+  },
+  "server_scope": {
+    "status": "pending_disposable_environment_retry",
+    "included": false
+  },
+  "compiled_binaries_included": false
+}

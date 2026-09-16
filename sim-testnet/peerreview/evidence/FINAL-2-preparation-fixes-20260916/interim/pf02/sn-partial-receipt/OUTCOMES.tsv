@@ -1,0 +1,4 @@
+scope\tmode\tpass\tfail\tbody_exit\touter_exit\tjoin_exit\tevents_valid\tfences_valid\tsource_commit
+positive\tnormal\t9\t0\t0\t0\t0\ttrue\ttrue\t8e6d56b5a40c897a91ce80b94439239ce29de4ef
+positive\trace\t9\t0\t0\t0\t0\ttrue\ttrue\t8e6d56b5a40c897a91ce80b94439239ce29de4ef
+causal-unbound-specs\tnormal\t1\t2\t1\t1\t1\ttrue\ttrue\te6e657900a6f14927537736d7a9912bf81992995

@@ -1,0 +1,24 @@
+diff --git a/sim-testnet/fleet_history_batch_test.go b/sim-testnet/fleet_history_batch_test.go
+index 7ffb504..2957308 100644
+--- a/sim-testnet/fleet_history_batch_test.go
++++ b/sim-testnet/fleet_history_batch_test.go
+@@ -397,9 +397,18 @@ func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
+ 			t.Fatal(err)
+ 		}
+ 	}
++	// This assertion needs a second cold proof. The first call populated the
++	// durable cache; warm reuse is covered separately with fresh checkpoints.
++	cachePath := stateDir + "/" + historicalAuditCacheDirectoryName
++	if entries, err := os.ReadDir(cachePath); err != nil || len(entries) == 0 {
++		t.Fatalf("first verification did not populate the fixture cache: entries=%d err=%v", len(entries), err)
++	}
++	if err := os.RemoveAll(cachePath); err != nil {
++		t.Fatal(err)
++	}
+ 	keys, err = executor.verifyCarriedFleetGenerationOneHistory(t.Context(), collected)
+ 	if err != nil || len(keys) != 1 || !keys[key] || rpcFixture.httpRequests != 6 || rpcFixture.blockBatchRequests != 2 || rpcFixture.contractBatchRequests != 2 {
+-		t.Fatalf("collected source receipts did not retain complete fresh RPC verification: keys=%v err=%v requests=%d/%d/%d", keys, err, rpcFixture.httpRequests, rpcFixture.blockBatchRequests, rpcFixture.contractBatchRequests)
++		t.Errorf("collected source receipts did not retain complete fresh RPC verification: keys=%v err=%v requests=%d/%d/%d", keys, err, rpcFixture.httpRequests, rpcFixture.blockBatchRequests, rpcFixture.contractBatchRequests)
+ 	}
+ 	if _, err := executor.verifyCarriedFleetGenerationOneHistory(t.Context(), []carriedActionAudit{audit}); err == nil {
+ 		t.Fatal("another invocation reused source receipts that it had not authenticated")

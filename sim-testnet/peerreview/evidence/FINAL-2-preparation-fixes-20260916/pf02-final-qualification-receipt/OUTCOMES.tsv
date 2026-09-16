@@ -1,0 +1,14 @@
+scope\tmode\tpass\tfail\tbody_exit\touter_exit\tjoin_exit\tevents_valid\tfences_valid\tsource_commit
+positive-server-task\tnormal\t8\t0\t0\t0\t0\ttrue\ttrue\t6752a8df246c0ee7e1c5a38cbd26b1e849b702ca
+positive-server-task\trace\t8\t0\t0\t0\t0\ttrue\ttrue\t6752a8df246c0ee7e1c5a38cbd26b1e849b702ca
+positive-server-taskworker\tnormal\t13\t0\t0\t0\t0\ttrue\ttrue\t6752a8df246c0ee7e1c5a38cbd26b1e849b702ca
+positive-server-taskworker\trace\t13\t0\t0\t0\t0\ttrue\ttrue\t6752a8df246c0ee7e1c5a38cbd26b1e849b702ca
+positive-sn\tnormal\t9\t0\t0\t0\t0\ttrue\ttrue\t8e6d56b5a40c897a91ce80b94439239ce29de4ef
+positive-sn\trace\t9\t0\t0\t0\t0\ttrue\ttrue\t8e6d56b5a40c897a91ce80b94439239ce29de4ef
+causal-unfiltered-task\tnormal\t2\t2\t1\t1\t1\ttrue\ttrue\t731d127b608ce2317cacd3cf1a80d6a8da5a4362
+causal-unfiltered-taskworker\tnormal\t0\t1\t1\t1\t1\ttrue\ttrue\t731d127b608ce2317cacd3cf1a80d6a8da5a4362
+causal-unrestricted-taskworker\tnormal\t2\t2\t1\t1\t1\ttrue\ttrue\t04306dbb81b463404a9b780da23d6fe428521b8f
+causal-unbound-sn\tnormal\t1\t2\t1\t1\t1\ttrue\ttrue\te6e657900a6f14927537736d7a9912bf81992995
+positive-composed\tnormal\t30\t0\t0\t0\t0\ttrue\ttrue\tmulti-source
+positive-composed\trace\t30\t0\t0\t0\t0\ttrue\ttrue\tmulti-source
+causal-composed\tnormal\t5\t7\t1\t1\t1\ttrue\ttrue\tmulti-source

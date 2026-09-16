@@ -1,0 +1,7 @@
+{
+  "chain_transactions": 0,
+  "command": "relay-continuation",
+  "end_block": 8024100,
+  "plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "status": "adopted"
+}

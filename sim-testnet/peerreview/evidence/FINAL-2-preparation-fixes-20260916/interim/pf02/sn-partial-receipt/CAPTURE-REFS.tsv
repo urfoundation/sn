@@ -1,0 +1,6 @@
+positive-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/body/normal
+positive-normal-compiler\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/compile/normal
+positive-race\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/body/race
+positive-race-compiler\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/compile/race
+causal-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/causal/unbound-operator-specs-sim-testnet/body/normal
+causal-normal-compiler\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/causal/unbound-operator-specs-sim-testnet/compile/normal

@@ -1,0 +1,154 @@
+{
+  "schema": "urnetwork-affected-test-selection-v1",
+  "task": "PF-02 taskworker workload profile",
+  "prepared_by": "Astra; no formatter/build/test execution",
+  "workspace": "/home/by/urnetwork/temp/sn-taskworker-profile-20260916/workspace",
+  "sources": {
+    "server": {
+      "base": "0f095a639e111f71d231cd6f792a191cbc6b0a69",
+      "commit": "e212069e44b748cf9d8b1c5dfc4abf00129acb33",
+      "clean": true
+    },
+    "sn": {
+      "base": "0fd7ffc0f6aaad5a2988427c4acb47e1f79c3819",
+      "commit": "2ee84e98c29f7ab03b15c8166c2cee3caf450052",
+      "clean": true
+    }
+  },
+  "modes": [
+    "normal",
+    "race"
+  ],
+  "expected_per_mode": 30,
+  "packages": [
+    {
+      "repository": "server",
+      "package": "./task",
+      "roots": [
+        "TestTaskClaimProfilePreservesExcludedBacklog",
+        "TestTaskClaimProfilePreservesVersionedAliases",
+        "TestTaskClaimProfileScopesPostRetries",
+        "TestTaskClaimProfileDefaultKeepsUnknownTargetRetry",
+        "TestTaskLeaseExpiryRequiresOwnerSessionLoss",
+        "TestTaskWorkerDrainCancelsStragglerAndHandsBackClaim",
+        "TestTaskWorkerDrainCompletedTaskStillPosts",
+        "TestRunPostOrphanedFinishedTaskCompletes"
+      ],
+      "selector": "^(TestTaskClaimProfilePreservesExcludedBacklog|TestTaskClaimProfilePreservesVersionedAliases|TestTaskClaimProfileScopesPostRetries|TestTaskClaimProfileDefaultKeepsUnknownTargetRetry|TestTaskLeaseExpiryRequiresOwnerSessionLoss|TestTaskWorkerDrainCancelsStragglerAndHandsBackClaim|TestTaskWorkerDrainCompletedTaskStillPosts|TestRunPostOrphanedFinishedTaskCompletes)$",
+      "expected_outcome": "PASS",
+      "expected_root_count": 8
+    },
+    {
+      "repository": "server",
+      "package": "./taskworker",
+      "roots": [
+        "TestSubnetOperatorWorkloadRejectsUnknownProfile",
+        "TestSubnetOperatorWorkloadKeepsRequiredTargets",
+        "TestSubnetOperatorWorkloadSchedulesOnlyItsDomain",
+        "TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks",
+        "TestSubnetOperatorWorkloadPreservesProductionDefault",
+        "TestRunRejectsInvalidInputsBeforeEnvironmentAccess",
+        "TestRunRejectedTaskworkerPreservesStatusWithoutPublishingMetrics",
+        "TestRunFlushesMetricsAfterFinalTaskHandback",
+        "TestInitTasksReapsVerificationChainsWhileDisabled",
+        "TestInitTasksReapsProviderEgressChainsWhileDisabled",
+        "TestInitTasksReapsRemovedTargets",
+        "TestRemovedTaskTargetsAreNotRegistered",
+        "TestInitTasksArmsTheExtenderChains"
+      ],
+      "selector": "^(TestSubnetOperatorWorkloadRejectsUnknownProfile|TestSubnetOperatorWorkloadKeepsRequiredTargets|TestSubnetOperatorWorkloadSchedulesOnlyItsDomain|TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks|TestSubnetOperatorWorkloadPreservesProductionDefault|TestRunRejectsInvalidInputsBeforeEnvironmentAccess|TestRunRejectedTaskworkerPreservesStatusWithoutPublishingMetrics|TestRunFlushesMetricsAfterFinalTaskHandback|TestInitTasksReapsVerificationChainsWhileDisabled|TestInitTasksReapsProviderEgressChainsWhileDisabled|TestInitTasksReapsRemovedTargets|TestRemovedTaskTargetsAreNotRegistered|TestInitTasksArmsTheExtenderChains)$",
+      "expected_outcome": "PASS",
+      "expected_root_count": 13
+    },
+    {
+      "repository": "sn",
+      "package": "./sim-testnet",
+      "roots": [
+        "TestServerTaskworkerProfileSurvivesSupervisorSerialization",
+        "TestRunMainTaskworkerRequiresExplicitSubnetProfile",
+        "TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy",
+        "TestRunMainServerModulesConfineTLSFallbackToConnectLoopback",
+        "TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential",
+        "TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential",
+        "TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift",
+        "TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise",
+        "TestSupervisorRestartsOncePublishesReadyAndStopsChildren"
+      ],
+      "selector": "^(TestServerTaskworkerProfileSurvivesSupervisorSerialization|TestRunMainTaskworkerRequiresExplicitSubnetProfile|TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy|TestRunMainServerModulesConfineTLSFallbackToConnectLoopback|TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential|TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential|TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift|TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise|TestSupervisorRestartsOncePublishesReadyAndStopsChildren)$",
+      "expected_outcome": "PASS",
+      "expected_root_count": 9
+    }
+  ],
+  "causal": {
+    "mode": "normal",
+    "materialization": "Astra will create clean variants from the formatter descendant before causal compiler admission.",
+    "variants": [
+      {
+        "name": "unfiltered_claims",
+        "repository": "server",
+        "mutation": "In task/task.go, remove only the conditional claimPredicate/queryArgs extension. Keep the new settings field and every test. This restores the original unfiltered claim query.",
+        "packages": [
+          {
+            "package": "./task",
+            "expected_fail": [
+              "TestTaskClaimProfilePreservesExcludedBacklog",
+              "TestTaskClaimProfileScopesPostRetries"
+            ],
+            "expected_pass": [
+              "TestTaskClaimProfilePreservesVersionedAliases",
+              "TestTaskClaimProfileDefaultKeepsUnknownTargetRetry"
+            ]
+          },
+          {
+            "package": "./taskworker",
+            "expected_fail": [
+              "TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks"
+            ],
+            "expected_pass": []
+          }
+        ]
+      },
+      {
+        "name": "unrestricted_profile_initialization",
+        "repository": "server",
+        "mutation": "In workload_profile.go, admit both validated profiles to the former unconditional production branch in InitTasksForProfile and addProfileTargets. Do not change claim filtering or task bodies.",
+        "packages": [
+          {
+            "package": "./taskworker",
+            "expected_fail": [
+              "TestSubnetOperatorWorkloadKeepsRequiredTargets",
+              "TestSubnetOperatorWorkloadSchedulesOnlyItsDomain"
+            ],
+            "expected_pass": [
+              "TestSubnetOperatorWorkloadRejectsUnknownProfile",
+              "TestSubnetOperatorWorkloadPreservesProductionDefault"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "unbound_operator_specs",
+        "repository": "sn",
+        "mutation": "Remove only buildServerSpecs' taskworker workload-profile argument block. Keep strict CLI parsing and profile library.",
+        "packages": [
+          {
+            "package": "./sim-testnet",
+            "expected_fail": [
+              "TestServerTaskworkerProfileSurvivesSupervisorSerialization",
+              "TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy"
+            ],
+            "expected_pass": [
+              "TestRunMainTaskworkerRequiresExplicitSubnetProfile"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "constraints": [
+    "Terra owns formatter, all compilers and test bodies.",
+    "No live chain/RPC/API calls or native state/process mutations.",
+    "Use isolated private test services, tmp and gotmp; do not use operator deployment databases.",
+    "No full producer gates or unrelated qualification reruns."
+  ]
+}

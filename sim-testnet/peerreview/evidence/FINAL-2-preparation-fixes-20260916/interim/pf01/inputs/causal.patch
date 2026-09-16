@@ -1,0 +1,55 @@
+diff --git a/sim-testnet/carried_preparation.go b/sim-testnet/carried_preparation.go
+index d57e3aa..78e5e80 100644
+--- a/sim-testnet/carried_preparation.go
++++ b/sim-testnet/carried_preparation.go
+@@ -31,21 +31,32 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
+ 		return self.verifyProvisionalActionHistory(ctx)
+ 	}
+ 	entries := readEntries()
+-	verified := newCarriedPreparationIndex(self.plan, entries)
+-	sourcePlanKVs := map[string]*SetupPlan{}
++	// Causal control: restore the original per-action detached snapshot and
++	// reverse scan through the same counted production reader boundary.
++	findVerified := func(action Action, includeAncestorTopology bool) (JournalEntry, bool) {
++		allowedPlans := self.plan.allowedPlanHashes()
++		currentEntries := readEntries()
++		for index := len(currentEntries) - 1; index >= 0; index-- {
++			entry := currentEntries[index]
++			if !includeAncestorTopology && action.ID == "topology.launch" && entry.PlanHash != self.plan.PlanHash {
++				continue
++			}
++			if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) && entry.Stage == StageVerified {
++				return entry, true
++			}
++		}
++		return JournalEntry{}, false
++	}
+ 	readPostcondition := func(entry JournalEntry) (*ActionPostcondition, error) {
+ 		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
+ 			if err := ctx.Err(); err != nil {
+ 				return nil, err
+ 			}
+-			if source := sourcePlanKVs[hash]; source != nil {
+-				return source, nil
+-			}
++			// Causal control: fully authenticate the original source for every receipt.
+ 			source, err := readSource(stateDir, hash)
+ 			if err = errors.Join(err, ctx.Err()); err != nil {
+ 				return nil, err
+ 			}
+-			sourcePlanKVs[hash] = source
+ 			return source, nil
+ 		})
+ 	}
+@@ -65,9 +76,9 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
+ 	audits := make([]carriedActionAudit, 0)
+ 	for index, action := range self.plan.Actions {
+ 		actionIndexes[action.ID] = index
+-		entry, ok := verified.find(action, false)
++		entry, ok := findVerified(action, false)
+ 		if !ok && action.ID == "topology.launch" {
+-			entry, ok = verified.find(action, true)
++			entry, ok = findVerified(action, true)
+ 			if ok && entry.PlanHash != self.plan.PlanHash {
+ 				if _, err := readPostcondition(entry); err != nil {
+ 					actionErrors[index] = fmt.Errorf("action %s: persisted ancestor process receipt: %w", action.ID, err)

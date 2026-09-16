@@ -1,0 +1,18 @@
+{
+  "requested_at": "2026-09-16T04:59:41Z",
+  "command": "relay-continuation",
+  "apply": false,
+  "source_revision": "541e13cfbe968704fb74c4001506853d2529bfdd",
+  "binary_sha256": "45455c69687d88287a200979ee914677bf0f39e000274e7fc5fb618339c0fc8a",
+  "release_lock_sha256": "d703afe97a7f3299b3d4e43b7feed0d90e330b161384a9f5d8d33541266945b2",
+  "approved_plan_hash": "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+  "relay_end_block": 8024100,
+  "head_observation": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/native-head/OBSERVATION.json",
+  "full_required_work_blocks": 7570,
+  "scope": "Capture supported continuation with a fresh window under the retained source capacity. Preserve signed history, original custody, approved limits, completed repairs/funding and existing fleet epochs 393–424. The continuation forecast does not authorize another renewal.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false,
+  "recovery_reason": "Prior capture failed on an incomplete 30-second HTTP metadata read. Both exact-object API diagnostics now return the complete matching body in under one second; source review found no deterministic defect. Preserve prior failed evidence; retry with unchanged qualified binary and fresh window.",
+  "diagnostic_evidence": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-artifact-read-20260916-r1/RESULT.json"
+}

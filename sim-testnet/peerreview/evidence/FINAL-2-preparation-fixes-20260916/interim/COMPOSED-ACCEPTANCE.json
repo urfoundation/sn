@@ -1,0 +1,38 @@
+{
+  "scope": "closed PF-01 and PF-02 SN partial receipts; server qualification pending",
+  "pf01": {
+    "accepted_roots_per_mode": 32,
+    "modes": [
+      "normal",
+      "race"
+    ],
+    "retained_original_pass_per_mode": 30,
+    "confirmation_pass_per_mode": 2,
+    "original_failures_preserved": true,
+    "causal": {
+      "expected_fail": 2,
+      "pass": 6
+    }
+  },
+  "pf02": {
+    "sn_accepted_roots_per_mode": 9,
+    "modes": [
+      "normal",
+      "race"
+    ],
+    "sn_causal": {
+      "expected_fail": 2,
+      "pass": 1
+    },
+    "server": {
+      "accepted_roots": 0,
+      "selected_bodies_started": 0,
+      "initial_census_refusals": 2,
+      "portable_owner_census_refusals": 7,
+      "qualification_pending": true
+    }
+  },
+  "reconstruction": "Top-level terminal events were reconstructed from copied raw test2json, exact expected membership and before/after source/dependency/binary/selector fences. No test or compiler was run during packaging.",
+  "invocations": "INVOCATIONS.tsv",
+  "accepted_membership": "ACCEPTED-ROOTS.tsv"
+}

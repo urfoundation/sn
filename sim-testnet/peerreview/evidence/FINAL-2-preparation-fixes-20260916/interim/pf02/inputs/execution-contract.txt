@@ -1,0 +1,1 @@
+go1.26.6; GOMAXPROCS=4; GOFLAGS=-mod=readonly; -p=1; GOPROXY=off; GOSUMDB=off; GOTOOLCHAIN=local; GOCACHE=/mnt/data/sn-testnet/gocache; server bodies source test-env.sh with WARP_ENV=local and disposable DB/Redis test isolation; no operator production database.

@@ -1,0 +1,1 @@
+go1.26.6; GOMAXPROCS=4; GOFLAGS=-mod=readonly; -p=1; GOPROXY=off; GOSUMDB=off; GOTOOLCHAIN=local; GOCACHE=/mnt/data/sn-testnet/gocache; finite timeout=600s

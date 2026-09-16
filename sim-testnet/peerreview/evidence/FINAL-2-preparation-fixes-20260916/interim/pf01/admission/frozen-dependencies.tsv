@@ -1,0 +1,9 @@
+connect	d159f4656270b8da7bf815a54ae282adfb87f4b2	d159f4656270b8da7bf815a54ae282adfb87f4b2	0	/home/by/urnetwork/connect	/home/by/urnetwork/connect
+server	93bc8c592797da0335f4201c5027a2b52906790e	93bc8c592797da0335f4201c5027a2b52906790e	0	/home/by/urnetwork/server	/home/by/urnetwork/server
+warp	7498864c7cd3605aad3c43eabfab9008ed7f7228	7498864c7cd3605aad3c43eabfab9008ed7f7228	0	/home/by/urnetwork/warp	/home/by/urnetwork/warp
+operator-proxy	448369740c70eb2e642bde9d36f3708fe9ad4b5d	448369740c70eb2e642bde9d36f3708fe9ad4b5d	0	/home/by/urnetwork/operator-proxy	/home/by/urnetwork/operator-proxy
+proxy	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f	0	/home/by/urnetwork/proxy	/home/by/urnetwork/proxy
+userwireguard	85fb1ca4086fa5dbfcda526bec7a17a894e691b9	85fb1ca4086fa5dbfcda526bec7a17a894e691b9	0	/home/by/urnetwork/userwireguard	/home/by/urnetwork/userwireguard
+sdk	0dc2fb0f6f8a7e484e96bbdde09a690ae108dc8b	0dc2fb0f6f8a7e484e96bbdde09a690ae108dc8b	0	/home/by/urnetwork/sdk	/home/by/urnetwork/sdk
+glog	892ade4a6be396b32ea82a550f243190b5992180	892ade4a6be396b32ea82a550f243190b5992180	0	/home/by/urnetwork/glog	/home/by/urnetwork/glog
+goidenticons	325750b38314313dc5f44c880ab6f12f6c1ecb3c	325750b38314313dc5f44c880ab6f12f6c1ecb3c	0	/home/by/urnetwork/goidenticons	/home/by/urnetwork/goidenticons

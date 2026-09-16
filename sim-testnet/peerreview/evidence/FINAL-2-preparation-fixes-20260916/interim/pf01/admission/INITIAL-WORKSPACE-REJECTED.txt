@@ -1,0 +1,1 @@
+Initial workspace/candidate and workspace/causal were never compiled or run. A capture-wide chmod changed tracked executable mode bits; those worktrees are rejected. Fresh workspace-frozen sources below are the sole admitted compiler inputs.

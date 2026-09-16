@@ -1,0 +1,8 @@
+label	causal
+path	/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/workspace/causal/sn
+head	57983498878ba1bc9e84dcc4f5502580ccd3d5f6
+tree	131aa6f2b85ebc7b633f5f3e6cd15b71a3503c53
+status_lines	0
+go_version	go version go1.26.6 linux/amd64
+go_mod	c703461ed6d15c0119423b94dc3a6e543c71935fee0559213a3fabd68063b9b0
+go_sum	177b50d84935a29c36b1771816478bf3c97ac28c99bcb22be4922ad9ba1106a3

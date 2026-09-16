@@ -1,0 +1,1 @@
+Prepared by path-substitution from closed PF-01 positive normal/race harnesses; only capture paths, expected source commit, and two-root input paths differ.

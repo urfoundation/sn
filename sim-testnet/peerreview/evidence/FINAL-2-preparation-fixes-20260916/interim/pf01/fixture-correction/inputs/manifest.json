@@ -1,0 +1,21 @@
+{
+  "commit": "d52028de6864f7b1c48381fcb7652361d2520932",
+  "base": "351ece79d9f4dad93888c74c8bdcc699dd4c8dac",
+  "tree": "ae04062798abdc6f9ee35b6c6be36449f5f773a7",
+  "source": "/home/by/urnetwork/temp/sn-carried-preparation-fixture-20260916",
+  "clean": true,
+  "patch_sha256": "29cced2f72cad66d819ca7a9d7af00facf4d530756015825c7525474dd94ab83",
+  "changed_files": {
+    "sim-testnet/fleet_history_batch_test.go": "1520f93a7ec5429b2fd013dcc6a3ec2006980cd3c2755ec443a09e4772e332b8"
+  },
+  "selected_roots": [
+    "TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction",
+    "TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints"
+  ],
+  "selector": "^(TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction|TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints)$",
+  "formatter": "gofmt on the one changed Go file; git diff --check passed before commit",
+  "prior_handoff": "/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/HANDOFF.md",
+  "prior_manifest_sha256": "d72d923d8ac264c14b7364ab8623b9604eee1155f5084b38a82a29c60a09a9cb",
+  "new_shared_fixture_or_production_changes": false,
+  "implementation_executed_tests_or_builds": false
+}

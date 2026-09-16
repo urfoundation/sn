@@ -1,0 +1,38 @@
+{
+  "schema": "urnetwork-sim-strict-history-adoption-v2",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "source_plan_hash": "0x76d0386164e7019aa0c5a9ea2b9540705a5a3e492ea7b55e06856a399b1d9f8d",
+  "prepared_sha256": "sha256:d3b5fe069b9789b8549f99ced57d461c4c5fe84380cc1945b43f9b9421d3d9d0",
+  "completed_sha256": "sha256:fc79f95fd6ebf3f6795931ab2b22a29bd74643f9e490fee74f6c113d460cfb4e",
+  "first_native_epoch": 1485,
+  "validators": [
+    {
+      "schema": "urnetwork-validator-history-adoption-v2",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "validator_id": 1,
+      "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+      "source_plan_hash": "0x76d0386164e7019aa0c5a9ea2b9540705a5a3e492ea7b55e06856a399b1d9f8d",
+      "config_sha256": "sha256:433b973c61bbca2c58a13fb9d52256eb6d7c6514bf328478c5ebcb1b1a67868b",
+      "coordinator_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2",
+      "intent_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "intent_prefix_count": 0,
+      "last_native_epoch": 0,
+      "first_native_epoch": 1485
+    },
+    {
+      "schema": "urnetwork-validator-history-adoption-v2",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "validator_id": 2,
+      "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+      "source_plan_hash": "0x76d0386164e7019aa0c5a9ea2b9540705a5a3e492ea7b55e06856a399b1d9f8d",
+      "config_sha256": "sha256:42567877a4bf8663f44401e056b9f047dc47f471a2e2da8e1468e4101ec31239",
+      "coordinator_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2",
+      "intent_prefix_sha256": "sha256:0de9867f8c0b699954e9ef25c66759b0390214ddaf8313d9ca7f42df63e27727",
+      "intent_prefix_count": 3,
+      "last_native_epoch": 1405,
+      "last_artifact_hash": "sha256:47613a71616ee4cc63546b147257744ec6d10a1ef2a3dbe56abf5d4d3eaacf9c",
+      "first_native_epoch": 1485
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+d908c7ee73fceaf909741d877cb4269fc22bc76c17e643ba25f3dc866a1c961e  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/command.sh
+197c55248a17c7cf55a66c89342cb8f10ee95fcea168a0e5cd2b0bb65914577f  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.pid
+3976b3c44989945b5e6a4dcf0067630964f640c63805e2ffeeca97e1e031ac78  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.start-ticks
+4a5d2c47c0550b3abe560edbd1c37505ed2a6349f4d3ea00c9230c9fc181c807  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.identity.ps
+2ef5c22c4aebbb4d33563803cb59054c936356fca1892b942684e350e563b1a3  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.exe
+7ebaf12c5c5f6ead2f6452dd3baec5f1dc06c62c2ab1901366218bbbead8b2b5  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.exe.stat
+899944174145d5e9d1c7877b326257f7bb3c77fecb6b9a67331e1a5d68d50f8a  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.exe.sha256.expected
+351c104d078381c63f0708eaf529098512972205c0c65eaa1fd05599e260376e  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/owner.exe.sha256.actual
+4871ecef3c8e298d36cb85983629fe286487cbefaebeea13a894cf7fa058b544  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/meta/scope.txt
+00cfdcfcce3c985caf2c2e3412155ba2ee54e2d93906ec078ab935c611ba40e8  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/analysis/transport-summary.txt
+0af6b92fe2154e58578e3a8ef14848b78a4ff9957038c5e4989430a3dc87528d  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/analysis/owner-counter-summary.txt
+d7816945d395586b34a4b33c665aa1d85c4f3c632dcbae5a7931e342bf6d152b  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1/RESULT.json

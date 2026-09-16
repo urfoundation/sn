@@ -1,0 +1,1 @@
+Prepared only: await Astra’s frozen formatted SN/server descendants and causal variants. No formatter, compiler, test, database, service, RPC, source edit, or production input was executed from this capture.

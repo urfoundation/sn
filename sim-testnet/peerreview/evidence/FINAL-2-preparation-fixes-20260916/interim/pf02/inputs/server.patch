@@ -1,0 +1,789 @@
+diff --git a/task/claim_profile_test.go b/task/claim_profile_test.go
+new file mode 100644
+index 00000000..a6137772
+--- /dev/null
++++ b/task/claim_profile_test.go
+@@ -0,0 +1,201 @@
++package task
++
++// These fixtures exercise the actual PostgreSQL claim and dispatch boundary.
++
++import (
++	"context"
++	"errors"
++	"reflect"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/urnetwork/server"
++	"github.com/urnetwork/server/session"
++)
++
++type claimProfileArgs struct{}
++type claimProfileResult struct{}
++
++// claimProfileAllowed and claimProfileExcluded give persisted rows distinct
++// canonical names; claimProfileTarget supplies observable, local-only bodies.
++func claimProfileAllowed(_ *claimProfileArgs, _ *session.ClientSession) (*claimProfileResult, error) {
++	return &claimProfileResult{}, nil
++}
++
++func claimProfileExcluded(_ *claimProfileArgs, _ *session.ClientSession) (*claimProfileResult, error) {
++	return &claimProfileResult{}, nil
++}
++
++type claimProfileTarget struct {
++	Target
++	runs atomic.Int32
++	posts atomic.Int32
++	failPosts bool
++}
++
++// Run counts actual dispatch and supplies the same post hook as a retry.
++func (self *claimProfileTarget) Run(ctx context.Context, _ *Task) (any, func(server.PgTx) error, error) {
++	self.runs.Add(1)
++	return &claimProfileResult{}, func(tx server.PgTx) error {
++		return self.RunPost(ctx, nil, tx)
++	}, nil
++}
++
++// RunPost can deliberately leave a durable retry for another worker generation.
++func (self *claimProfileTarget) RunPost(_ context.Context, _ *FinishedTask, _ server.PgTx) error {
++	self.posts.Add(1)
++	if self.failPosts {
++		return errors.New("synthetic post retry")
++	}
++	return nil
++}
++
++// TestTaskClaimProfilePreservesExcludedBacklog proves filtering occurs before
++// the candidate cap and that restarting a scoped worker does not mutate losers.
++func TestTaskClaimProfilePreservesExcludedBacklog(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		excludedIds := []server.Id{}
++		for range 130 {
++			excludedIds = append(excludedIds, ScheduleTask(claimProfileExcluded, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-2*time.Hour))))
++		}
++		before := GetTasks(ctx, excludedIds...)
++		for range 2 {
++			allowedId := ScheduleTask(claimProfileAllowed, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-time.Hour)))
++			settings := DefaultTaskWorkerSettings()
++			settings.ClaimRegisteredTargetsOnly = true
++			worker := NewTaskWorker(ctx, settings)
++			target := &claimProfileTarget{Target: NewTaskTarget(claimProfileAllowed)}
++			worker.AddTargets(target)
++			finished, retried, postRetried, err := worker.EvalTasks(1)
++			worker.Close()
++			if err != nil || len(finished) != 1 || finished[0] != allowedId || len(retried)+len(postRetried) != 0 || target.runs.Load() != 1 {
++				t.Fatalf("allowed work starved behind excluded backlog: finished=%v retries=%v/%v runs=%d error=%v", finished, retried, postRetried, target.runs.Load(), err)
++			}
++			if after := GetTasks(ctx, excludedIds...); !reflect.DeepEqual(before, after) {
++				t.Fatal("scoped claim changed a retained excluded row")
++			}
++		}
++	})
++}
++
++// TestTaskClaimProfilePreservesVersionedAliases checks claim and dispatch use
++// the same canonicalization for retained rows from older module versions.
++func TestTaskClaimProfilePreservesVersionedAliases(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		settings := DefaultTaskWorkerSettings()
++		settings.ClaimRegisteredTargetsOnly = true
++		worker := NewTaskWorker(ctx, settings)
++		defer worker.Close()
++		const legacyName = "fixture.example/tasks.LegacyAllowed"
++		target := &claimProfileTarget{Target: NewTaskTarget(claimProfileAllowed, legacyName)}
++		worker.AddTargets(target)
++		for _, storedName := range []string{legacyName, strings.Replace(target.TargetFunctionName(), "/server/", "/server/v37/", 1)} {
++			taskId := ScheduleTask(claimProfileAllowed, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-time.Hour)))
++			server.Tx(ctx, func(tx server.PgTx) {
++				_, err := tx.Exec(ctx, `UPDATE pending_task SET function_name = $2 WHERE task_id = $1`, taskId, storedName)
++				server.Raise(err)
++			})
++		}
++		finished, retried, postRetried, err := worker.EvalTasks(2)
++		if err != nil || len(finished) != 2 || len(retried)+len(postRetried) != 0 || target.runs.Load() != 2 {
++			t.Fatalf("retained aliases failed claim/dispatch: finished=%v retries=%v/%v runs=%d error=%v", finished, retried, postRetried, target.runs.Load(), err)
++		}
++	})
++}
++
++// TestTaskClaimProfileScopesPostRetries preserves excluded, malformed and
++// orphaned wrappers without letting them block a permitted deferred post.
++func TestTaskClaimProfileScopesPostRetries(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		production := NewTaskWorkerWithDefaults(ctx)
++		defer production.Close()
++		allowed := &claimProfileTarget{Target: NewTaskTarget(claimProfileAllowed), failPosts: true}
++		excluded := &claimProfileTarget{Target: NewTaskTarget(claimProfileExcluded), failPosts: true}
++		production.AddTargets(allowed, excluded)
++		allowedId := ScheduleTask(claimProfileAllowed, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-time.Hour)))
++		excludedId := ScheduleTask(claimProfileExcluded, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-time.Hour)))
++		finished, retried, postRetried, err := production.EvalTasks(2)
++		if err != nil || len(finished)+len(retried) != 0 || len(postRetried) != 2 {
++			t.Fatalf("could not create retained post retries: %v/%v/%v %v", finished, retried, postRetried, err)
++		}
++		allowed.failPosts = false
++		excluded.failPosts = false
++		retainedIds := []server.Id{}
++		var allowedPostId server.Id
++		for _, pending := range GetTasks(ctx, ListPendingTasks(ctx)...) {
++			if strings.Contains(pending.ArgsJson, allowedId.String()) {
++				allowedPostId = pending.TaskId
++			} else {
++				retainedIds = append(retainedIds, pending.TaskId)
++			}
++		}
++		malformedArgs := []string{`{invalid`, `{"task_id":"not-an-id"}`, `{"task_id":"\u0000"}`}
++		for i := range 130 {
++			postId := ScheduleTask(production.RunPost, &RunPostArgs{TaskId: server.NewId()}, clientSession, RunAt(server.NowUtc().Add(-2*time.Hour)))
++			retainedIds = append(retainedIds, postId)
++			if i%4 < len(malformedArgs) {
++				server.Tx(ctx, func(tx server.PgTx) {
++					_, err := tx.Exec(ctx, `UPDATE pending_task SET args_json = $2 WHERE task_id = $1`, postId, malformedArgs[i%4])
++					server.Raise(err)
++				})
++			}
++		}
++		if allowedPostId == (server.Id{}) || len(retainedIds) != 131 {
++			t.Fatal("fixture lost the allowed or excluded deferred post")
++		}
++		server.Tx(ctx, func(tx server.PgTx) {
++			_, err := tx.Exec(ctx, `UPDATE pending_task SET run_at = $1, claim_time = $1, release_time = $1`, server.NowUtc().Add(-2*time.Hour))
++			server.Raise(err)
++			_, err = tx.Exec(ctx, `UPDATE pending_task SET run_at = $2 WHERE task_id = $1`, allowedPostId, server.NowUtc().Add(-time.Hour))
++			server.Raise(err)
++		})
++		before := GetTasks(ctx, retainedIds...)
++		settings := DefaultTaskWorkerSettings()
++		settings.ClaimRegisteredTargetsOnly = true
++		worker := NewTaskWorker(ctx, settings)
++		defer worker.Close()
++		worker.AddTargets(allowed)
++		finished, retried, postRetried, err = worker.EvalTasks(1)
++		if err != nil || len(finished) != 1 || finished[0] != allowedPostId || len(retried)+len(postRetried) != 0 || allowed.posts.Load() != 2 || excluded.posts.Load() != 1 {
++			t.Fatalf("deferred posts crossed workload boundary: %v/%v/%v posts=%d/%d error=%v", finished, retried, postRetried, allowed.posts.Load(), excluded.posts.Load(), err)
++		}
++		if after := GetTasks(ctx, retainedIds...); !reflect.DeepEqual(before, after) {
++			t.Fatal("scoped post claim changed a retained excluded/malformed/orphaned row")
++		}
++		completed := GetFinishedTasks(ctx, allowedId, excludedId)
++		if !completed[allowedId].PostCompleted || completed[excludedId].PostCompleted {
++			t.Fatal("post completion changed the wrong original task")
++		}
++	})
++}
++
++// TestTaskClaimProfileDefaultKeepsUnknownTargetRetry preserves rolling-deploy
++// behavior when the opt-in registered-target claim boundary is absent.
++func TestTaskClaimProfileDefaultKeepsUnknownTargetRetry(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		unknownId := ScheduleTask(claimProfileExcluded, &claimProfileArgs{}, clientSession, RunAt(server.NowUtc().Add(-time.Hour)))
++		worker := NewTaskWorkerWithDefaults(ctx)
++		defer worker.Close()
++		finished, retried, postRetried, err := worker.EvalTasks(1)
++		if err != nil || len(finished)+len(postRetried) != 0 || len(retried) != 1 || retried[0] != unknownId {
++			t.Fatalf("ordinary production unknown-target behavior changed: %v/%v/%v %v", finished, retried, postRetried, err)
++		}
++		if pending := GetTasks(ctx, unknownId)[unknownId]; pending == nil || pending.RescheduleErrorCount != 1 || !strings.Contains(pending.RescheduleError, ErrTargetNotFound.Error()) {
++			t.Fatal("ordinary worker did not retain the unknown-target retry")
++		}
++	})
++}
+diff --git a/task/task.go b/task/task.go
+index 89716d3b..3e965695 100644
+--- a/task/task.go
++++ b/task/task.go
+@@ -1334,6 +1334,10 @@ type TaskWorkerSettings struct {
+ 	BatchSize              int
+ 	RetryTimeoutAfterError time.Duration
+ 	PollTimeout            time.Duration
++	// ClaimRegisteredTargetsOnly leaves other workloads' pending rows untouched.
++	// Filtering precedes the candidate limit, including the owner of a RunPost
++	// retry, so an unrelated backlog cannot starve registered work.
++	ClaimRegisteredTargetsOnly bool
+ 	// how long `Drain` waits for in-flight tasks to finish naturally before
+ 	// canceling their contexts
+ 	DrainFinishTimeout time.Duration
+@@ -1715,6 +1719,34 @@ func (self *TaskWorker) takeTasks(n int) (
+ 
+ 	nowBlock := server.NowUtc().Unix() / BlockSizeSeconds
+ 	candidateLimit := n + 64
++	claimPredicate := ""
++	queryArgs := []any{nowBlock, candidateLimit}
++	if self.settings.ClaimRegisteredTargetsOnly {
++		functionNames := make([]string, 0, len(self.targets))
++		for functionName := range self.targets {
++			functionNames = append(functionNames, functionName)
++		}
++		// Match the same version-normalized aliases as dispatch. RunPost is a
++		// wrapper: admitting its name alone would execute excluded post hooks.
++		// Invalid or orphaned wrappers stay available to the ordinary worker;
++		// they cannot poison this profile's queue or consume its candidate limit.
++		claimPredicate = `
++			AND CASE WHEN regexp_replace(function_name, '/v[0-9]+', '', 'g') = $4 THEN
++				EXISTS (
++					SELECT 1 FROM finished_task
++					WHERE finished_task.task_id = CASE
++						WHEN pg_input_is_valid(pending_task.args_json, 'jsonb')
++						THEN CASE WHEN (pending_task.args_json::jsonb ->> 'task_id') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
++							THEN (pending_task.args_json::jsonb ->> 'task_id')::uuid
++						END
++					END
++					AND regexp_replace(finished_task.function_name, '/v[0-9]+', '', 'g') = ANY($3)
++				)
++			ELSE regexp_replace(function_name, '/v[0-9]+', '', 'g') = ANY($3)
++			END
++		`
++		queryArgs = append(queryArgs, functionNames, functionName(self.RunPost))
++	}
+ 	result, err := tx.Query(
+ 		self.ctx,
+ 		`
+@@ -1724,12 +1756,12 @@ func (self *TaskWorker) takeTasks(n int) (
+ 				run_max_time_seconds
+ 			FROM pending_task
+ 			WHERE available_block <= $1
++		`+claimPredicate+`
+ 			ORDER BY available_block, run_priority DESC, run_max_time_seconds DESC
+ 			LIMIT $2
+ 			FOR UPDATE SKIP LOCKED
+ 		`,
+-		nowBlock,
+-		candidateLimit,
++		queryArgs...,
+ 	)
+ 	if err != nil {
+ 		return nil, nil, err
+diff --git a/taskworker/WORKLOADS.md b/taskworker/WORKLOADS.md
+new file mode 100644
+index 00000000..74df228d
+--- /dev/null
++++ b/taskworker/WORKLOADS.md
+@@ -0,0 +1,72 @@
++# Taskworker workload profiles
++
++The ordinary production `RunOptions` zero value and the existing `InitTasks`,
++`InitTaskWorker`, and `InitTaskWorkerWithSettings` entry points retain the complete
++production workload. `WorkloadProfileSubnetOperator` (`subnet-operator`) is an
++explicit workload selection used by sim-testnet's two operator workers. It shares
++production readiness, execution, post hooks, advisory claims, drain, retry and
++finalization behavior. It changes neither task outcomes nor log severity.
++
++The profile schedules and registers the task definitions in
++`subnetOperatorTasks`. Canonical names and all legacy aliases come from the
++ordinary registry. Definitions with no startup schedule are still registered:
++the ST parent schedules epoch work; API/controller flows enqueue
++`model.RemoveNetworkClientsTask`. Every queue claim applies the registry filter
++before the candidate limit. This also covers excluded jobs enqueued independently
++by API/controller flows after startup, without changing those flows or deleting
++their pending rows. Restarting applies the same selection.
++
++`RunPost` needs its own boundary because its name does not identify the original
++workload. A scoped claim joins the referenced finished task and admits only a
++registered original target. Malformed and orphaned wrappers remain untouched for
++an ordinary worker; permitted wrappers still use the existing post executor.
++The query uses PostgreSQL's validated JSON input check (available in PostgreSQL
++16 and later; the simulator already pins PostgreSQL 18). Ordinary workers retain
++the original claim query and unknown-target retry behavior.
++
++## Required task dependencies
++
++| Task family | Why the operator profile keeps it |
++| --- | --- |
++| `StSyncChain`, `StEpochClose`, `StCommitRoot`, `StDeposit`, `StFinalizePoke` | Contract epoch/event mirror, payout root, operator commit/deposit and finalization. Every parent/child and post retry remains available. |
++| `SweepVerifyTrails`, `RollupVerifyProviderStats`, `RemoveOldVerifyProviderStats`, `RefreshVerifyProxyEgress` | Full `/verify` trail lifecycle, provider statistics, and proxy egress index refresh. |
++| `RollupSearchProviderStats`, `RemoveOldSearchProviderStats` | Provider search evidence and retention. |
++| `CloseExpiredContracts`, `SweepOrphanContractData`, `RemoveCompletedContracts`, `ReconcileNetEscrow` | Transfer finalization, contract retention, and escrow reconciliation. |
++| `CloseExpiredNetworkClientHandlers`, `RemoveDisconnectedNetworkClients`, `SweepOrphanNetworkClientData`, `RemoveNetworkClientsTask` | Connection lifecycle and API-enqueued client removal. |
++| `BackfillInitialTransferBalance`, `RefreshFreeTransferBalances`, `RebuildPointsLeaderboard` | Transfer grants and accounting-derived provider/account state. |
++| `IndexSearchLocations`, `WarmNetworkGetProviderLocations`, `UpdateClientLocations`, `UpdateClientScores`, `RemoveExpiredProviderEgressLocations` | Local provider discovery, location/score indices and egress expiry. |
++| `RollupClientReliabilityStats`, `UpdateReliabilities`, `RemoveOldClientReliabilityStats`, `RemoveOldClientLocationReliabilities`, `RemoveOldNetworkReliabilityWindow`, `RemoveOldProvideKeyChanges`, `UpdateClientReliabilityScores`, `UpdateNetworkReliabilityWindow` | Existing reliability maintenance, including registered legacy tasks whose current schedules are inert. |
++| `ExportStats`, `ExportProvidersMap`, `BackfillClock`, `SweepProviderAuditEvents`, `RollupTransferAuditEvents`, `RemoveOldAuditNetworkEvents`, `RemoveOldAuditEvents` | Evidence/statistics export, usage clock reconciliation, audit rollups and retention. |
++| `RemoveExpiredAuthCodes`, `RemoveExpiredAuthAttempts`, `RemoveExpiredWalletAuthChallenges`, `RemoveExpiredWalletNonces`, `RemoveExpiredBulkClientRemovalQuota` | Authentication and client-removal resource maintenance. |
++| `TaskCleanup`, `DbMaintenance` | Existing terminal task retention and database maintenance. The profile does not introduce a purge of excluded pending work. |
++
++API artifact publication, immutable attempt history, admission, and relay stream
++readers do not execute through the task registry and are unchanged. Stats
++collection, queue metrics and stream retention still start through the ordinary
++taskworker runtime.
++
++## Excluded workloads
++
++Retail payout/advancement, subscription renewal, store reconciliation, payment
++intent cleanup, wallet population, pro/referral grants, product-update and
++onboarding/email campaigns are separate customer workloads. The ST task family
++above performs subnet settlement independently of retail `Payout` and
++`controller.AdvancePayment`; excluding the latter does not disable ST payments.
++
++Public geolocation pin refresh, `ProberBootstrap`, `ProviderEgressProbe`,
++`ExtenderProbe`, `ExtenderPublish`, and web analytics are separate external
++discovery/analytics workloads. Simulator
++`renderOperatorProviderEgressProbeIsolation` already authenticates an
++`enabled: false` provider probe configuration and removes its ingest credential;
++its bounded miner/validator scenarios supply provider traffic. Simulator
++`operatorSimulationSiteSettings` supplies location metadata for those peers.
++Geolocation pin reads serve `/network/geolocation-source-pins` for
++operator-proxy's independent prober (`ingest/pins.go`); `/verify` does not read
++that table. `RefreshVerifyProxyEgress`, the verification index maintenance that
++the campaign does need, remains enabled and registered.
++
++The profile also leaves obsolete/no-op location-lookup targets and removed
++targets to ordinary production workers/cleanup. Neither startup nor claims
++delete their retained pending rows. The simulator must not use this profile for
++a campaign that intends to exercise retail payments or the external prober;
++those require their own explicit workload scope.
+diff --git a/taskworker/run.go b/taskworker/run.go
+index 22760081..5d16e0b5 100644
+--- a/taskworker/run.go
++++ b/taskworker/run.go
+@@ -55,6 +55,7 @@ type RunOptions struct {
+ 	Port      int
+ 	Count     int
+ 	BatchSize int
++	WorkloadProfile WorkloadProfile
+ }
+ 
+ func (self RunOptions) Validate() error {
+@@ -67,7 +68,7 @@ func (self RunOptions) Validate() error {
+ 	if self.BatchSize < 1 || self.BatchSize > 1_024 {
+ 		return fmt.Errorf("taskworker batch size %d is outside [1,1024]", self.BatchSize)
+ 	}
+-	return nil
++	return self.WorkloadProfile.Validate()
+ }
+ 
+ // Run serves the production taskworker module until ctx is canceled. It keeps
+@@ -97,10 +98,11 @@ type taskworkerRuntime interface {
+ // and execution loops after readiness has admitted this process.
+ func startTaskworkerRuntime(ctx context.Context, cancel context.CancelFunc, options RunOptions) taskworkerRuntime {
+ 	controller.StartStatsCollector(ctx)
+-	InitTasks(ctx)
++	server.Raise(InitTasksForProfile(ctx, options.WorkloadProfile))
+ 	settings := task.DefaultTaskWorkerSettings()
+ 	settings.BatchSize = options.BatchSize
+-	worker := InitTaskWorkerWithSettings(ctx, settings)
++	worker, err := InitTaskWorkerForProfile(ctx, settings, options.WorkloadProfile)
++	server.Raise(err)
+ 	task.StartQueueMetrics(ctx)
+ 	for range options.Count {
+ 		go server.HandleError(func() {
+diff --git a/taskworker/taskworker.go b/taskworker/taskworker.go
+index bde38fb4..8cdfb721 100644
+--- a/taskworker/taskworker.go
++++ b/taskworker/taskworker.go
+@@ -139,14 +139,24 @@ func InitTaskWorker(ctx context.Context) *task.TaskWorker {
+ // registered. One TaskWorker can be shared with many goroutines calling
+ // EvalTasks. Passing nil uses the defaults.
+ func InitTaskWorkerWithSettings(ctx context.Context, settings *task.TaskWorkerSettings) *task.TaskWorker {
++	return initTaskWorkerWithSettings(ctx, settings, WorkloadProfileProduction)
++}
++
++// initTaskWorkerWithSettings selects targets before the worker can claim rows.
++func initTaskWorkerWithSettings(ctx context.Context, settings *task.TaskWorkerSettings, profile WorkloadProfile) *task.TaskWorker {
+ 	if settings == nil {
+ 		settings = task.DefaultTaskWorkerSettings()
+ 	}
++	if profile == WorkloadProfileSubnetOperator {
++		profileSettings := *settings
++		profileSettings.ClaimRegisteredTargetsOnly = true
++		settings = &profileSettings
++	}
+ 	taskWorker := task.NewTaskWorker(ctx, settings)
+ 
+ 	// 2024.11.15 migration from "bringyour.com" to new package
+ 
+-	taskWorker.AddTargets(
++	addProfileTargets(taskWorker, profile,
+ 		task.NewTaskTargetWithPost(
+ 			task.TaskCleanup,
+ 			task.TaskCleanupPost,
+diff --git a/taskworker/workload_profile.go b/taskworker/workload_profile.go
+new file mode 100644
+index 00000000..f69d7c21
+--- /dev/null
++++ b/taskworker/workload_profile.go
+@@ -0,0 +1,165 @@
++package taskworker
++
++// Workload profiles constrain a worker's scheduling and claims without changing
++// task implementations or deleting rows owned by another workload.
++
++import (
++	"context"
++	"fmt"
++	"time"
++
++	"github.com/urnetwork/server"
++	"github.com/urnetwork/server/controller"
++	"github.com/urnetwork/server/model"
++	"github.com/urnetwork/server/session"
++	"github.com/urnetwork/server/stats"
++	"github.com/urnetwork/server/task"
++	"github.com/urnetwork/server/taskworker/work"
++)
++
++// WorkloadProfile selects an explicit task set. The zero value retains the
++// complete production scheduler, registry, and unknown-target retry behavior.
++type WorkloadProfile string
++
++const (
++	WorkloadProfileProduction WorkloadProfile = ""
++	WorkloadProfileSubnetOperator WorkloadProfile = "subnet-operator"
++)
++
++// Validate rejects misspelled profiles before startup can access the environment.
++func (self WorkloadProfile) Validate() error {
++	switch self {
++	case WorkloadProfileProduction, WorkloadProfileSubnetOperator:
++		return nil
++	default:
++		return fmt.Errorf("unknown taskworker workload profile %q", self)
++	}
++}
++
++// InitTasksForProfile arms only the chosen workload. A subnet operator leaves
++// retained retail, external probing, and removed-target rows untouched; its
++// claim filter also covers jobs independently enqueued by API/controller calls.
++func InitTasksForProfile(ctx context.Context, profile WorkloadProfile) error {
++	if err := profile.Validate(); err != nil {
++		return err
++	}
++	if profile == WorkloadProfileProduction {
++		InitTasks(ctx)
++		return nil
++	}
++	server.Tx(ctx, func(tx server.PgTx) {
++		clientSession := session.NewLocalClientSession(ctx, "0.0.0.0:0", nil)
++		defer clientSession.Cancel()
++		for _, definition := range subnetOperatorTasks() {
++			if definition.schedule != nil {
++				definition.schedule(clientSession, tx)
++			}
++		}
++	})
++	stats.ApplyStreamRetention(ctx)
++	return nil
++}
++
++// InitTaskWorkerForProfile preserves the production dispatch and finalization
++// machinery while selecting the registry and an opt-in queue claim boundary.
++func InitTaskWorkerForProfile(ctx context.Context, settings *task.TaskWorkerSettings, profile WorkloadProfile) (*task.TaskWorker, error) {
++	if err := profile.Validate(); err != nil {
++		return nil, err
++	}
++	return initTaskWorkerWithSettings(ctx, settings, profile), nil
++}
++
++// addProfileTargets preserves canonical names, post hooks and legacy aliases
++// from the production registry for every admitted target.
++func addProfileTargets(worker *task.TaskWorker, profile WorkloadProfile, targets ...task.Target) {
++	if profile == WorkloadProfileProduction {
++		worker.AddTargets(targets...)
++		return
++	}
++	allowedFunctionNames := map[string]bool{}
++	for _, definition := range subnetOperatorTasks() {
++		allowedFunctionNames[definition.target.TargetFunctionName()] = true
++	}
++	for _, target := range targets {
++		if allowedFunctionNames[target.TargetFunctionName()] {
++			worker.AddTargets(target)
++		}
++	}
++}
++
++// subnetOperatorTask couples startup scheduling to claim/dispatch admission.
++// A nil schedule denotes API-enqueued or parent-enqueued work, not a disabled
++// task. Post retries are additionally scoped to this registry by task's claim.
++type subnetOperatorTask struct {
++	target task.Target
++	schedule func(*session.ClientSession, server.PgTx)
++}
++
++// subnetOperatorTasks covers the operator's transfer, provider, verification,
++// settlement and evidence lifecycle. Retail billing/subscriptions/onboarding,
++// public geolocation/prober/extender discovery, and web analytics are separate
++// workloads. Existing simulator fixtures provide provider locations and proxy
++// identities; verification's proxy-egress refresh remains active below.
++func subnetOperatorTasks() []subnetOperatorTask {
++	return []subnetOperatorTask{
++		{target: task.NewTaskTarget(work.ExportStats), schedule: work.ScheduleExportStats},
++		{target: task.NewTaskTarget(work.ExportProvidersMap), schedule: work.ScheduleExportProvidersMap},
++		{target: task.NewTaskTarget(work.BackfillClock), schedule: func(clientSession *session.ClientSession, tx server.PgTx) {
++			work.ScheduleBackfillClock(clientSession, tx, server.NowUtc())
++		}},
++		{target: task.NewTaskTarget(work.RemoveExpiredAuthCodes), schedule: work.ScheduleRemoveExpiredAuthCodes},
++		{target: task.NewTaskTarget(work.CloseExpiredContracts), schedule: func(clientSession *session.ClientSession, tx server.PgTx) {
++			for i := range work.DefaultCloseExpiredContractsBlockSize {
++				work.ScheduleCloseExpiredContracts(clientSession, tx, i, false)
++			}
++		}},
++		{target: task.NewTaskTarget(work.CloseExpiredNetworkClientHandlers), schedule: work.ScheduleCloseExpiredNetworkClientHandlers},
++		{target: task.NewTaskTarget(work.RemoveDisconnectedNetworkClients), schedule: work.ScheduleRemoveDisconnectedNetworkClients},
++		{target: task.NewTaskTarget(work.SweepOrphanNetworkClientData), schedule: work.ScheduleSweepOrphanNetworkClientData},
++		{target: task.NewTaskTarget(model.RemoveNetworkClientsTask)},
++		{target: task.NewTaskTarget(work.SweepOrphanContractData), schedule: work.ScheduleSweepOrphanContractData},
++		{target: task.NewTaskTarget(task.TaskCleanup), schedule: task.ScheduleTaskCleanup},
++		{target: task.NewTaskTarget(work.BackfillInitialTransferBalance), schedule: work.ScheduleBackfillInitialTransferBalance},
++		{target: task.NewTaskTarget(work.IndexSearchLocations), schedule: work.ScheduleIndexSearchLocations},
++		{target: task.NewTaskTarget(controller.RefreshFreeTransferBalances), schedule: controller.ScheduleRefreshFreeTransferBalances},
++		{target: task.NewTaskTarget(controller.RebuildPointsLeaderboard), schedule: controller.ScheduleRebuildPointsLeaderboard},
++		{target: task.NewTaskTarget(work.RemoveCompletedContracts), schedule: work.ScheduleRemoveCompletedContracts},
++		{target: task.NewTaskTarget(work.ReconcileNetEscrow), schedule: work.ScheduleReconcileNetEscrow},
++		{target: task.NewTaskTarget(work.DbMaintenance), schedule: func(clientSession *session.ClientSession, tx server.PgTx) {
++			work.ScheduleDbMaintenance(clientSession, tx, 0)
++		}},
++		{target: task.NewTaskTarget(work.WarmNetworkGetProviderLocations), schedule: work.ScheduleWarmNetworkGetProviderLocations},
++		{target: task.NewTaskTarget(work.RemoveExpiredAuthAttempts), schedule: work.ScheduleRemoveExpiredAuthAttempts},
++		{target: task.NewTaskTarget(work.RemoveExpiredWalletAuthChallenges), schedule: work.ScheduleRemoveExpiredWalletAuthChallenges},
++		{target: task.NewTaskTarget(work.RemoveExpiredWalletNonces), schedule: work.ScheduleRemoveExpiredWalletNonces},
++		{target: task.NewTaskTarget(work.RemoveExpiredProviderEgressLocations), schedule: work.ScheduleRemoveExpiredProviderEgressLocations},
++		{target: task.NewTaskTarget(work.RemoveExpiredBulkClientRemovalQuota), schedule: work.ScheduleRemoveExpiredBulkClientRemovalQuota},
++		{target: task.NewTaskTarget(work.RemoveOldAuditNetworkEvents), schedule: work.ScheduleRemoveOldAuditNetworkEvents},
++		{target: task.NewTaskTarget(work.RemoveOldAuditEvents), schedule: work.ScheduleRemoveOldAuditEvents},
++		{target: task.NewTaskTarget(work.SweepProviderAuditEvents), schedule: work.ScheduleSweepProviderAuditEvents},
++		{target: task.NewTaskTarget(work.RollupTransferAuditEvents), schedule: work.ScheduleRollupTransferAuditEvents},
++		{target: task.NewTaskTarget(work.RemoveOldClientReliabilityStats), schedule: work.ScheduleRemoveOldClientReliabilityStats},
++		{target: task.NewTaskTarget(work.RollupClientReliabilityStats), schedule: work.ScheduleRollupClientReliabilityStats},
++		{target: task.NewTaskTarget(work.UpdateClientReliabilityScores), schedule: work.ScheduleUpdateClientReliabilityScores},
++		{target: task.NewTaskTarget(work.RemoveOldProvideKeyChanges), schedule: work.ScheduleRemoveOldProvideKeyChanges},
++		{target: task.NewTaskTarget(work.UpdateNetworkReliabilityWindow), schedule: work.ScheduleUpdateNetworkReliabilityWindow},
++		{target: task.NewTaskTarget(work.RemoveOldClientLocationReliabilities), schedule: work.ScheduleRemoveOldClientLocationReliabilities},
++		{target: task.NewTaskTarget(work.UpdateClientScores), schedule: work.ScheduleUpdateClientScores},
++		{target: task.NewTaskTarget(work.RemoveOldNetworkReliabilityWindow), schedule: work.ScheduleRemoveOldNetworkReliabilityWindow},
++		{target: task.NewTaskTarget(work.UpdateClientLocations), schedule: work.ScheduleUpdateClientLocations},
++		{target: task.NewTaskTarget(work.UpdateReliabilities), schedule: func(clientSession *session.ClientSession, tx server.PgTx) {
++			work.ScheduleUpdateReliabilities(clientSession, tx, server.NowUtc().Add(-1*time.Hour))
++		}},
++		{target: task.NewTaskTarget(work.SweepVerifyTrails), schedule: work.ScheduleSweepVerifyTrails},
++		{target: task.NewTaskTarget(work.RollupVerifyProviderStats), schedule: work.ScheduleRollupVerifyProviderStats},
++		{target: task.NewTaskTarget(work.RemoveOldVerifyProviderStats), schedule: work.ScheduleRemoveOldVerifyProviderStats},
++		{target: task.NewTaskTarget(work.RefreshVerifyProxyEgress), schedule: work.ScheduleRefreshVerifyProxyEgress},
++		{target: task.NewTaskTarget(work.RollupSearchProviderStats), schedule: work.ScheduleRollupSearchProviderStats},
++		{target: task.NewTaskTarget(work.RemoveOldSearchProviderStats), schedule: work.ScheduleRemoveOldSearchProviderStats},
++		{target: task.NewTaskTarget(work.StSyncChain), schedule: work.ScheduleStSyncChain},
++		{target: task.NewTaskTarget(work.StEpochClose)},
++		{target: task.NewTaskTarget(work.StCommitRoot)},
++		{target: task.NewTaskTarget(work.StDeposit)},
++		{target: task.NewTaskTarget(work.StFinalizePoke)},
++	}
++}
+diff --git a/taskworker/workload_profile_test.go b/taskworker/workload_profile_test.go
+new file mode 100644
+index 00000000..17f92d92
+--- /dev/null
++++ b/taskworker/workload_profile_test.go
+@@ -0,0 +1,197 @@
++package taskworker
++
++import (
++	"context"
++	"reflect"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/urnetwork/server"
++	"github.com/urnetwork/server/controller"
++	"github.com/urnetwork/server/model"
++	"github.com/urnetwork/server/session"
++	"github.com/urnetwork/server/task"
++	"github.com/urnetwork/server/taskworker/work"
++)
++
++// TestSubnetOperatorWorkloadRejectsUnknownProfile covers every public entry
++// before any database, vault, or listener access can occur.
++func TestSubnetOperatorWorkloadRejectsUnknownProfile(t *testing.T) {
++	ctx := context.Background()
++	profile := WorkloadProfile("unknown-fixture")
++	if err := Run(ctx, RunOptions{Port: 1, Count: 1, BatchSize: 1, WorkloadProfile: profile}); err == nil || !strings.Contains(err.Error(), "unknown taskworker workload profile") {
++		t.Fatalf("runner accepted unknown profile: %v", err)
++	}
++	if err := InitTasksForProfile(ctx, profile); err == nil {
++		t.Fatal("scheduler accepted unknown profile")
++	}
++	if worker, err := InitTaskWorkerForProfile(ctx, nil, profile); err == nil || worker != nil {
++		t.Fatal("registry accepted unknown profile")
++	}
++}
++
++// TestSubnetOperatorWorkloadKeepsRequiredTargets protects both dynamic API
++// work and all settlement/verification chains, including their legacy aliases.
++func TestSubnetOperatorWorkloadKeepsRequiredTargets(t *testing.T) {
++	settings := task.DefaultTaskWorkerSettings()
++	worker, err := InitTaskWorkerForProfile(context.Background(), settings, WorkloadProfileSubnetOperator)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer worker.Close()
++	if settings.ClaimRegisteredTargetsOnly {
++		t.Fatal("profile mutated caller-owned settings used by ordinary workers")
++	}
++	for _, target := range []task.Target{
++		task.NewTaskTarget(work.StSyncChain), task.NewTaskTarget(work.StEpochClose),
++		task.NewTaskTarget(work.StCommitRoot), task.NewTaskTarget(work.StDeposit),
++		task.NewTaskTarget(work.StFinalizePoke), task.NewTaskTarget(work.SweepVerifyTrails),
++		task.NewTaskTarget(work.RollupVerifyProviderStats), task.NewTaskTarget(work.RemoveOldVerifyProviderStats),
++		task.NewTaskTarget(work.RefreshVerifyProxyEgress), task.NewTaskTarget(work.CloseExpiredContracts),
++		task.NewTaskTarget(work.ReconcileNetEscrow), task.NewTaskTarget(model.RemoveNetworkClientsTask),
++		task.NewTaskTarget(work.DbMaintenance), task.NewTaskTarget(work.BackfillClock),
++		task.NewTaskTarget(work.UpdateClientLocations), task.NewTaskTarget(work.UpdateClientScores),
++		task.NewTaskTarget(work.RollupTransferAuditEvents), task.NewTaskTarget(work.ExportStats),
++	} {
++		if !worker.HasTarget(target.TargetFunctionName()) {
++			t.Errorf("subnet operator lost required target %s", target.TargetFunctionName())
++		}
++	}
++	for _, legacyName := range []string{"main.TaskCleanup", "bringyour.com/service/taskworker/work.CloseExpiredContracts"} {
++		if !worker.HasTarget(legacyName) {
++			t.Errorf("subnet operator lost retained alias %s", legacyName)
++		}
++	}
++	for _, target := range []task.Target{
++		task.NewTaskTarget(work.Payout), task.NewTaskTarget(work.ProcessPendingPayouts),
++		task.NewTaskTarget(controller.AdvancePayment), task.NewTaskTarget(controller.PlaySubscriptionRenewal),
++		task.NewTaskTarget(controller.OnboardingCampaignStep), task.NewTaskTarget(work.PaymentReconcile),
++		task.NewTaskTarget(work.RefreshGeolocationSourcePins), task.NewTaskTarget(work.ProberBootstrap),
++		task.NewTaskTarget(work.ProviderEgressProbe), task.NewTaskTarget(work.ExtenderProbe),
++		task.NewTaskTarget(work.ExtenderPublish), task.NewTaskTarget(work.WebSearchAnalytics),
++	} {
++		if worker.HasTarget(target.TargetFunctionName()) {
++			t.Errorf("subnet operator admitted unrelated workload %s", target.TargetFunctionName())
++		}
++	}
++}
++
++// TestSubnetOperatorWorkloadSchedulesOnlyItsDomain retains the two actual
++// incident task types and an old removed target, with no delete/re-arm on init.
++func TestSubnetOperatorWorkloadSchedulesOnlyItsDomain(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		controller.SetStConfig(&controller.StConfig{Enabled: true})
++		defer controller.SetStConfig(nil)
++		controller.SetVerifySettings(model.DefaultVerifySettings())
++		defer controller.SetVerifySettings(nil)
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		retainedIds := []server.Id{
++			task.ScheduleTask(work.Payout, &work.SchedulePayoutArgs{}, clientSession, task.RunOnce("payout"), task.RunAt(server.NowUtc().Add(24*time.Hour))),
++			task.ScheduleTask(work.RefreshGeolocationSourcePins, &work.RefreshGeolocationSourcePinsArgs{}, clientSession, task.RunOnce("refresh_geolocation_source_pins"), task.RunAt(server.NowUtc().Add(24*time.Hour))),
++			task.ScheduleTask(orphanSeedTask, &orphanSeedArgs{}, clientSession),
++		}
++		server.Tx(ctx, func(tx server.PgTx) {
++			_, err := tx.Exec(ctx, `UPDATE pending_task SET function_name = $2 WHERE task_id = $1`, retainedIds[2], removedTaskTargets[0])
++			server.Raise(err)
++		})
++		before := task.GetTasks(ctx, retainedIds...)
++		worker, err := InitTaskWorkerForProfile(ctx, nil, WorkloadProfileSubnetOperator)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer worker.Close()
++		for range 2 {
++			if err := InitTasksForProfile(ctx, WorkloadProfileSubnetOperator); err != nil {
++				t.Fatal(err)
++			}
++			if after := task.GetTasks(ctx, retainedIds...); !reflect.DeepEqual(before, after) {
++				t.Fatal("profile init deleted, re-armed, or changed an excluded retained row")
++			}
++			seeded := map[string]bool{}
++			for taskId, pending := range task.GetTasks(ctx, task.ListPendingTasks(ctx)...) {
++				if _, retained := before[taskId]; retained {
++					continue
++				}
++				if !worker.HasTarget(pending.FunctionName) {
++					t.Errorf("profile seeded unregistered workload %s", pending.FunctionName)
++				}
++				seeded[pending.FunctionName] = true
++			}
++			for _, target := range []task.Target{
++				task.NewTaskTarget(work.StSyncChain), task.NewTaskTarget(work.SweepVerifyTrails),
++				task.NewTaskTarget(work.RollupVerifyProviderStats), task.NewTaskTarget(work.RefreshVerifyProxyEgress),
++				task.NewTaskTarget(work.CloseExpiredContracts), task.NewTaskTarget(work.DbMaintenance),
++				task.NewTaskTarget(work.ExportStats), task.NewTaskTarget(work.UpdateClientLocations),
++			} {
++				if !seeded[target.TargetFunctionName()] {
++					t.Errorf("profile failed to seed required workload %s", target.TargetFunctionName())
++				}
++			}
++		}
++	})
++}
++
++// TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks uses the actual
++// incident task names and an actual local cleanup body; no external job runs.
++func TestSubnetOperatorWorkloadClaimsPastRetainedAndApiTasks(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		clientSession := session.NewLocalClientSession(ctx, "192.0.2.1:1", nil)
++		defer clientSession.Cancel()
++		retainedIds := []server.Id{}
++		for range 70 {
++			retainedIds = append(retainedIds,
++				task.ScheduleTask(work.Payout, &work.SchedulePayoutArgs{}, clientSession, task.RunAt(server.NowUtc().Add(-2*time.Hour))),
++				task.ScheduleTask(work.RefreshGeolocationSourcePins, &work.RefreshGeolocationSourcePinsArgs{}, clientSession, task.RunAt(server.NowUtc().Add(-2*time.Hour))),
++			)
++		}
++		worker, err := InitTaskWorkerForProfile(ctx, nil, WorkloadProfileSubnetOperator)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer worker.Close()
++		// This is an independent controller-style enqueue after worker init;
++		// startup scheduling alone cannot prevent its execution.
++		retainedIds = append(retainedIds, task.ScheduleTask(controller.AdvancePayment, &controller.AdvancePaymentArgs{}, clientSession, task.RunAt(server.NowUtc().Add(-2*time.Hour))))
++		before := task.GetTasks(ctx, retainedIds...)
++		allowedId := task.ScheduleTask(work.RemoveExpiredWalletNonces, &work.RemoveExpiredWalletNoncesArgs{}, clientSession, task.RunAt(server.NowUtc().Add(-time.Hour)))
++		finished, retried, postRetried, err := worker.EvalTasks(1)
++		if err != nil || len(finished) != 1 || finished[0] != allowedId || len(retried)+len(postRetried) != 0 {
++			t.Fatalf("required operator work did not pass retained retail/pin backlog: %v/%v/%v %v", finished, retried, postRetried, err)
++		}
++		if after := task.GetTasks(ctx, retainedIds...); !reflect.DeepEqual(before, after) {
++			t.Fatal("operator worker mutated retained or independently enqueued excluded work")
++		}
++	})
++}
++
++// TestSubnetOperatorWorkloadPreservesProductionDefault keeps the ordinary
++// public constructors and zero-value profile on the complete production set.
++func TestSubnetOperatorWorkloadPreservesProductionDefault(t *testing.T) {
++	server.DefaultTestEnv().Run(t, func(t testing.TB) {
++		ctx := context.Background()
++		controller.SetStConfig(&controller.StConfig{Enabled: false})
++		defer controller.SetStConfig(nil)
++		worker := InitTaskWorker(ctx)
++		defer worker.Close()
++		if err := InitTasksForProfile(ctx, WorkloadProfileProduction); err != nil {
++			t.Fatal(err)
++		}
++		seeded := map[string]bool{}
++		for _, pending := range task.GetTasks(ctx, task.ListPendingTasks(ctx)...) {
++			seeded[pending.FunctionName] = true
++		}
++		for _, target := range []task.Target{task.NewTaskTarget(work.Payout), task.NewTaskTarget(work.RefreshGeolocationSourcePins), task.NewTaskTarget(work.StSyncChain)} {
++			name := target.TargetFunctionName()
++			if !worker.HasTarget(name) || !seeded[name] {
++				t.Errorf("ordinary production default lost scheduled/registered task %s", name)
++			}
++		}
++		if !worker.HasTarget(task.NewTaskTarget(controller.AdvancePayment).TargetFunctionName()) {
++			t.Fatal("ordinary production default lost controller-enqueued retail payments")
++		}
++	})
++}

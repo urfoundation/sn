@@ -1,0 +1,4 @@
+TestSubnetOperatorWorkloadKeepsRequiredTargets	FAIL
+TestSubnetOperatorWorkloadPreservesProductionDefault	PASS
+TestSubnetOperatorWorkloadRejectsUnknownProfile	PASS
+TestSubnetOperatorWorkloadSchedulesOnlyItsDomain	FAIL

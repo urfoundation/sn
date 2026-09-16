@@ -1,0 +1,10 @@
+original-normal-body\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/normal/body
+original-normal-compiler\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/compile/normal
+original-race-body\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/race/body
+original-race-compiler\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/compile/race
+causal-body\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/causal/normal/body
+causal-compiler\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/causal/compile/normal
+fixture-correction-normal-body\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/body
+fixture-correction-normal-compiler\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/compile
+fixture-correction-race-body\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/body
+fixture-correction-race-compiler\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/compile

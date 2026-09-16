@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-09-16T07:32:27Z",
+  "capture_references": "/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/final-receipt/CAPTURE-REFS.tsv",
+  "raw_artifact_digests": "/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/final-receipt/RAW-ARTIFACTS.sha256",
+  "accepted_positive": {
+    "normal": {
+      "retained_unaffected_pass": 30,
+      "fixture_correction_pass": 2,
+      "total_pass": 32
+    },
+    "race": {
+      "retained_unaffected_pass": 30,
+      "fixture_correction_pass": 2,
+      "total_pass": 32
+    }
+  },
+  "original_failure_provenance": {
+    "normal": {
+      "pass": 31,
+      "fail": 1,
+      "preserved": true
+    },
+    "race": {
+      "pass": 31,
+      "fail": 1,
+      "preserved": true
+    }
+  },
+  "causal": {
+    "pass": 6,
+    "expected_fail": 2,
+    "preserved": true
+  },
+  "compiled_binaries_included": false
+}

@@ -1,0 +1,53 @@
+{
+  "scope": "closed complete PF-01 and PF-02 focused qualification; merge publication checks and native launch are separate",
+  "pf01": {
+    "accepted_roots_per_mode": 32,
+    "modes": [
+      "normal",
+      "race"
+    ],
+    "retained_original_pass_per_mode": 30,
+    "confirmation_pass_per_mode": 2,
+    "original_failures_preserved": true,
+    "causal": {
+      "expected_fail": 2,
+      "pass": 6
+    }
+  },
+  "pf02": {
+    "accepted_roots_per_mode": 30,
+    "sn_roots_per_mode": 9,
+    "server_task_roots_per_mode": 8,
+    "server_taskworker_roots_per_mode": 13,
+    "modes": [
+      "normal",
+      "race"
+    ],
+    "causal": {
+      "expected_fail": 7,
+      "pass": 5,
+      "sn": {
+        "expected_fail": 2,
+        "pass": 1
+      },
+      "server": {
+        "expected_fail": 5,
+        "pass": 4
+      }
+    },
+    "server_owner": {
+      "setup_exit": 0,
+      "cleanup_exit": 0,
+      "outer_exit": 1,
+      "meaning": "expected causal failures aggregate to owner exit 1; all individual maps and fences valid"
+    },
+    "preserved_non_admitted_attempts": {
+      "initial_census_refusals": 2,
+      "portable_owner_census_refusals": 7
+    }
+  },
+  "interim_manifest_sha256": "cbdc670db18b265745bbe0162e76967d18b265a3b5c625c6de563155773365fb",
+  "reconstruction": "Raw top-level terminal events, exact expected membership, actual closed exits and source/dependency/binary/selector before/after fences. No tests or builds were run during packaging.",
+  "invocations": "INVOCATIONS.tsv",
+  "accepted_membership": "ACCEPTED-ROOTS.tsv"
+}

@@ -1,0 +1,42 @@
+{
+  "kind": "relay-apply-r2-read-only-socket-monitor",
+  "recorded_at": "2026-09-16T05:42:04Z",
+  "capture": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-apply-r2-socket-monitor-20260916-r1",
+  "owner": {
+    "pid": "3185381",
+    "start_ticks": "182251287",
+    "executable_sha256": "d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf",
+    "identity_changed": false
+  },
+  "monitor": {
+    "interval_seconds": 5,
+    "maximum_seconds": 1200,
+    "started_at": "2026-09-16T05:24:30Z",
+    "finished_at": "2026-09-16T05:39:02Z",
+    "sample_count": 171,
+    "outer_exit": 0,
+    "launcher_join_exit": 0,
+    "termination_reason": "owner-exited"
+  },
+  "scope": {
+    "http_requests": false,
+    "packet_capture": false,
+    "signals": false,
+    "tests": false,
+    "source_edits": false
+  },
+  "transport": {
+    "socket_window": {
+      "first": "00146 timestamp=2026-09-16T05:36:50Z",
+      "last": "00171 timestamp=2026-09-16T05:38:57Z"
+    },
+    "ports": [
+      18081,
+      18082
+    ],
+    "bytes_received_per_api": 16377640,
+    "all_captured_recv_send_queues_zero": true,
+    "max_lastrcv_or_lastack_ms": 12781,
+    "thirty_second_stall_observed": false
+  }
+}

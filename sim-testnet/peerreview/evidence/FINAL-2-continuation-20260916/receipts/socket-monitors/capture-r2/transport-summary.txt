@@ -1,0 +1,23 @@
+first_sample=00097
+first_timestamp=2026-09-16T05:12:30Z
+last_sample=00123
+last_timestamp=2026-09-16T05:14:43Z
+socket_snapshot_count=27
+nonzero_queue_lines=0
+max_lastrcv_ms=12144
+max_lastack_ms=12144
+
+state_counts:
+ESTAB	54
+
+first_metrics:
+ESTAB 0      0          127.0.0.1:65322    127.0.0.1:18082 users:(("sim-testnet",pid=3153434,fd=8))
+	 cubic wscale:9,9 rto:201 rtt:0.104/0.055 ato:40 mss:32768 pmtu:65535 rcvmss:3516 advmss:65483 cwnd:10 bytes_sent:4851 bytes_acked:4852 bytes_received:56348 segs_out:24 segs_in:42 data_segs_out:21 data_segs_in:20 send 25206153846bps lastsnd:90 lastrcv:96 lastack:90 pacing_rate 50231185624bps delivery_rate 9039448272bps delivered:22 app_limited busy:1ms rcv_space:65495 rcv_ssthresh:100508 minrtt:0.029 snd_wnd:65536
+ESTAB 0      0          127.0.0.1:32652    127.0.0.1:18081 users:(("sim-testnet",pid=3153434,fd=9))
+	 cubic wscale:9,9 rto:201 rtt:0.109/0.063 ato:40 mss:32768 pmtu:65535 rcvmss:3516 advmss:65483 cwnd:10 bytes_sent:4851 bytes_acked:4852 bytes_received:56348 segs_out:24 segs_in:42 data_segs_out:21 data_segs_in:20 send 24049908257bps lastsnd:94 lastrcv:100 lastack:94 pacing_rate 47880182648bps delivery_rate 14563555552bps delivered:22 app_limited rcv_space:65495 rcv_ssthresh:100508 minrtt:0.018 snd_wnd:65536       
+
+last_metrics:
+ESTAB 0      0          127.0.0.1:65322    127.0.0.1:18082 users:(("sim-testnet",pid=3153434,fd=8))
+	 cubic wscale:9,9 rto:201 rtt:0.064/0.01 ato:40 mss:65483 pmtu:65535 rcvmss:28969 advmss:65483 cwnd:10 bytes_sent:105105 bytes_acked:105106 bytes_received:16377640 segs_out:986 segs_in:1935 data_segs_out:455 data_segs_in:1479 send 81853750000bps lastsnd:12395 lastrcv:12140 lastack:12140 pacing_rate 163388382064bps delivery_rate 22776695648bps delivered:456 app_limited busy:47ms rcv_rtt:4607.16 rcv_space:1155775 rcv_ssthresh:6068811 minrtt:0.023 snd_wnd:1191936
+ESTAB 0      0          127.0.0.1:32652    127.0.0.1:18081 users:(("sim-testnet",pid=3153434,fd=9))
+	 cubic wscale:9,9 rto:201 rtt:0.06/0.009 ato:40 mss:65483 pmtu:65535 rcvmss:28969 advmss:65483 cwnd:10 bytes_sent:105105 bytes_acked:105106 bytes_received:16377640 segs_out:988 segs_in:1935 data_segs_out:455 data_segs_in:1479 send 87310666667bps lastsnd:12399 lastrcv:12144 lastack:12144 pacing_rate 174621333328bps delivery_rate 29103555552bps delivered:456 app_limited busy:33ms rcv_rtt:4606.81 rcv_space:1157777 rcv_ssthresh:6068811 minrtt:0.018 snd_wnd:1191936

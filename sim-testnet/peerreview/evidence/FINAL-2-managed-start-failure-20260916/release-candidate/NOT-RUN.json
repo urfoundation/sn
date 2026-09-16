@@ -1,0 +1,8 @@
+{
+  "recorded_at": "2026-09-16T06:34:45Z",
+  "status": "not_run",
+  "reason": "Required managed startup failed at the process-log gate at 2026-09-16T06:29:05Z; strict-resume body, outer and joined exits were 1.",
+  "request_retained": true,
+  "successor_requires": "Resolve the collected startup failures, qualify only affected scope, and bind the current approved release, continuation and history after recovery.",
+  "transactions_submitted_by_this_unrun_command": 0
+}

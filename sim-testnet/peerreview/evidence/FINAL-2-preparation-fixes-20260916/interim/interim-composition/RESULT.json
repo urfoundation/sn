@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-09-16T07:26:16Z",
+  "raw_capture_references": "/mnt/data/sn-testnet/qualification/pf01-pf02-composition-20260916-r1/CAPTURE-REFS.tsv",
+  "pf01": {
+    "original_source_commit": "351ece79d9f4dad93888c74c8bdcc699dd4c8dac",
+    "correction_source_commit": "d52028de6864f7b1c48381fcb7652361d2520932",
+    "causal_source_commit": "57983498878ba1bc9e84dcc4f5502580ccd3d5f6",
+    "positive": {
+      "normal": {
+        "accepted_pass": 32,
+        "composition": {
+          "retained_unaffected_pass": 30,
+          "fixture_correction_pass": 2
+        },
+        "original_failure_preserved": true
+      },
+      "race": {
+        "accepted_pass": 32,
+        "composition": {
+          "retained_unaffected_pass": 30,
+          "fixture_correction_pass": 2
+        },
+        "original_failure_preserved": true
+      }
+    },
+    "causal": {
+      "pass": 6,
+      "expected_fail": 2,
+      "events_valid": true,
+      "fences_valid": true
+    }
+  },
+  "pf02": {
+    "formatted_selection_sha256": "79302f31a5d4033729686d90110d1e9039ab664d519f2ff724cd54538c503af5",
+    "sn_positive": {
+      "source_commit": "8e6d56b5a40c897a91ce80b94439239ce29de4ef",
+      "normal": {
+        "pass": 9
+      },
+      "race": {
+        "pass": 9
+      }
+    },
+    "sn_causal": {
+      "source_commit": "e6e657900a6f14927537736d7a9912bf81992995",
+      "pass": 1,
+      "expected_fail": 2,
+      "events_valid": true,
+      "fences_valid": true
+    },
+    "server": {
+      "status": "blocked_test_environment_preflight",
+      "selected_test_bodies_started": 0,
+      "raw_captures_preserved": true
+    }
+  }
+}

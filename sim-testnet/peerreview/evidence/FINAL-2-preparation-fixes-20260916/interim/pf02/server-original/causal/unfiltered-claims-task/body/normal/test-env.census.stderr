@@ -1,0 +1,2 @@
+run-local state: local launcher lock has no readable owner: /tmp/urnetwork-server-run-local.lock
+test environment: launcher-managed local services are not ready; remove legacy aliases only after verifying their owner, then start ./local/run-local.sh and wait for 'Local environment is up'

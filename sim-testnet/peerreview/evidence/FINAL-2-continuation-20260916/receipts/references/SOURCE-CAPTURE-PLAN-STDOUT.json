@@ -1,0 +1,15 @@
+{
+  "kind": "source-capture-plan-stdout-reference",
+  "copied": false,
+  "reason": "large source capture plan bytes remain in the private local capture; complete raw diff and review are bundled",
+  "source_capture_stdout": {
+    "path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/stdout.json",
+    "sha256": "6e22b2f4b68af32809aa5de999a25458e52251fb23f763096399c7e8a9ff984a",
+    "bytes": 11302225
+  },
+  "predecessor_plan": {
+    "path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/relay-capture-r2/predecessor.plan.json",
+    "sha256": "cda04411358b7e65208a39147d810cec9ea6c245e4f05db99896e0856d27cdb8",
+    "bytes": 11302156
+  }
+}

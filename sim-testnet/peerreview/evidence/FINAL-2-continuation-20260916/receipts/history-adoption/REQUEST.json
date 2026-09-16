@@ -1,0 +1,15 @@
+{
+  "requested_at": "2026-09-16T05:41:19Z",
+  "command": "history-adoption",
+  "apply": false,
+  "source_revision": "0fd7ffc0f6aaad5a2988427c4acb47e1f79c3819",
+  "binary_sha256": "d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf",
+  "release_lock_sha256": "d703afe97a7f3299b3d4e43b7feed0d90e330b161384a9f5d8d33541266945b2",
+  "approved_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "first_native_epoch": 1485,
+  "native_schedule_observation": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2/history-adoption/native-schedule/OBSERVATION.json",
+  "scope": "Capture exact strict history for the newly adopted continuation, retaining original signed history and all progress. Both validators first new decision and prepared snapshots must occur in the selected epoch.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false
+}

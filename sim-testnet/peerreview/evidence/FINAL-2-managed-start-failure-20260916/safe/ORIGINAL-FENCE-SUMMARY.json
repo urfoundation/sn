@@ -1,0 +1,15 @@
+{
+  "kind": "strict-resume-original-receipt-fence-summary",
+  "source_result_status": "body_exit=1;state_compare_exit=1;binary_compare_exit=0;lock_compare_exit=0;",
+  "state_diff_exit": 1,
+  "changed_watched_paths": [
+    ""
+  ],
+  "state_before_record_sha256": "8b5ddf60080db2c8e0a2ee6eaa265386949fd78bead146fde17d9b023617aae8",
+  "state_after_record_sha256": "5c7ea124398bfa066939a63d065c9d64c1866a6983f1d7592aa2dc833864f807",
+  "binary_before_record_sha256": "351c104d078381c63f0708eaf529098512972205c0c65eaa1fd05599e260376e",
+  "binary_after_record_sha256": "351c104d078381c63f0708eaf529098512972205c0c65eaa1fd05599e260376e",
+  "lock_before_record_sha256": "6e3bfb02ec143aa161927fcd0db7b7d762a721ec76fb099d823a7ccac5d81da0",
+  "lock_after_record_sha256": "6e3bfb02ec143aa161927fcd0db7b7d762a721ec76fb099d823a7ccac5d81da0",
+  "note": "This is a comparison of the original receipt files, not a fresh live-state check."
+}

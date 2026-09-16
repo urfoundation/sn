@@ -42,13 +42,95 @@ authenticated EOF. Both APIs subsequently returned the complete matching
 157,602-byte object in under one second. Source review found no deterministic
 defect; the original stall's underlying cause remains unproven. A new capture
 started at **04:59:42 UTC** with the same qualified build and fresh end block
-**8,024,100**. No timeout or authentication rule changed. No continuation was imported,
-no new native epoch selected and no transaction submitted. Strict history,
-managed startup and the soak remain pending. These are local preparation
+**8,024,100**, and passed at **05:14:43 UTC** with unchanged watched state,
+executable and lock. The complete raw diff preserves all actions, spending,
+renewals and signed history. No timeout or authentication rule changed.
+Import then exited **1 at 05:15:55 UTC**, before mutation: root's report-only
+publication advanced GitHub main beyond the executable's revision. The physical
+checkout now matches `0fd7ffc0`; all Go source, modules and release-lock bytes
+are unchanged. The matched executable, SHA-256
+`d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf`,
+built successfully at **05:21:25 UTC**. Reusing the exact captured plan,
+import passed at **05:39:02 UTC**, adopting
+`0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17`
+with **zero chain transactions**. Only the saved plan changed; the journal,
+supervisor files, redacted config and public identities are unchanged.
+Strict history capture passed at **05:41:45 UTC** with all watched bytes
+unchanged. At finalized native block **8,016,244**, the actual schedule selects
+first native epoch **1,485**, blocks **8,016,371–8,016,731**. The exact bundle's
+SHA-256 is `e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53`.
+The four temporary helpers shut down and were joined with exit 0; managed
+resume started at **05:47:36 UTC** and exited **1 at 06:29:05 UTC**. It processed
+all **4,673 carried-action audits**, rendered runtime inputs and started the
+managed topology. At **06:28:53 UTC**, the process-log gate recorded **four
+blocking classes** in the new generation: each of the two operator taskworkers
+emitted **two unclassified errors and one warning**. Cleanup stopped all **33
+managed processes**. Plan, journal, redacted config, public identity, executable
+and lock bytes are unchanged; the watched supervisor files changed. Unchanged
+deployment-journal bytes alone do not establish that every background actor
+made zero transactions. Read-only reconciliation subsequently found **four new
+operator EVM transactions** in the retained databases. LAN receipts at 06:59 UTC
+show all four succeeded in canonical blocks **8,016,488**, **8,016,489** and
+**8,016,491**, below finalized height **8,016,641**. The hashes are
+`0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9`,
+`0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8`,
+`0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df`,
+and `0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8`.
+Both signers have finalized and pending nonce 107. Their retained database
+states include one mined and two broadcast entries; normal reconciliation must
+retain those exact signed attempts and learn their finalized outcome.
+The [startup transaction evidence](peerreview/evidence/FINAL-2-startup-transactions-20260916/README.md)
+preserves the read-only SQL projection and original LAN RPC requests/responses.
+The first two transactions call `finalizeOperatorEpoch(316,1)` and
+`finalizeOperatorEpoch(316,2)`, each producing `RootMissed(316,noId,0)` and an
+uncommitted-root finalization. The last two call `deferMissedEmission(402,2)`
+and `deferMissedEmission(317,2)`, recording zero-funded missed boundaries while
+leaving stake for a later timely capture. They create no payout root and do
+not capture a multi-epoch stake delta. Their total actual gas fee is
+**0.008264277772552846 EVM TAO**. These startup transactions do not establish
+a completed campaign epoch; `independent_rpc=false`.
+The prepared release-candidate command was **not run**. The taskworker failures
+come from the full production backend workload: geolocation certificate-pin
+rotation errors and fiat-payment warnings for synthetic accounts. An explicit
+operator workload profile is implemented in frozen SN `8e6d56b5` and server
+`6752a8df`, including retained queue and post-hook handling. All **30 affected
+roots pass normally and under race**: nine simulator, eight server task and
+13 taskworker roots. The complete controls reproduce **seven expected failures
+and five passes**. Initial service censuses refused before tests; a subsequent
+disposable-service launcher cleaned up before joining its children. Those
+refusals are preserved. Corrected process ownership allowed the same compiled
+binaries to complete all selected bodies. Service setup and cleanup each exited
+zero; the enclosing owner exited one because it aggregates the expected control
+failures. Accepted composition is recorded separately from that raw exit.
+The preparation-cost candidate `351ece79` now qualifies **32 roots per mode**:
+30 retained unaffected passes plus two passing roots on fixture correction
+`d52028de`, normally and under race. The original 31-pass/one-failure runs and
+the control's two expected failures/six passes remain retained. The exact
+production and fixture changes are integrated locally, with both fixes composed
+at `dc90e4c`. The
+[qualification evidence](peerreview/evidence/FINAL-2-preparation-fixes-20260916/README.md)
+preserves the original failures, raw test events and exact reuse mapping.
+Neither fix is deployed or claimed operationally complete.
+The read-only release-lock preview passed at **07:39:57 UTC**, with unchanged
+deployment state and no transaction. The installed candidate changes only the
+SN and server Go source hashes; runtime, contracts, dependencies and all other
+lock fields remain unchanged. The lock SHA-256 is
+`bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc`.
+Publication, the matched executable and native recovery retain their own
+pending results. [Exact release-lock receipt](peerreview/evidence/FINAL-2-preparation-release-20260916/README.md).
+Startup and the soak remain pending; no passing readiness or campaign result
+is claimed. Root verified all 115 entries in the private failure bundle;
+the [public failure projection](peerreview/evidence/FINAL-2-managed-start-failure-20260916/README.md)
+retains exact counts, line hashes, original byte comparisons and terminal exits.
+The capture/import/startup receipts are retained locally in
+`/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2`; publication
+will be batched with the qualified code and lock before the next matching
+release build. These are local preparation
 results; they do not establish new on-chain acceptance.
 [Actual refusal and fresh complete census](peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
 [Completed build, software revision and setup receipts](peerreview/evidence/FINAL-2-native-adoption-20260916/README.md).
 [Failed relay capture and paired stream errors](peerreview/evidence/FINAL-2-relay-stream-failure-20260916/README.md).
+[Successful continuation and history adoption](peerreview/evidence/FINAL-2-continuation-20260916/README.md).
 
 **Runtime-460 startup stopped at 02:13:45 UTC on September 16.** Its 4,672
 carried-action checks finished, configuration rendering was verified and both

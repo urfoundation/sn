@@ -1,0 +1,12 @@
+{
+  "kind": "doc-revision-restamp-capture-seal",
+  "recorded_at": "2026-09-16T05:22:57Z",
+  "sha256sums_sha256": "654db1fdf4070a07c30cc3aa40954f4b31fd0dff6188146e258e26e7c1ec9583",
+  "final_read_only_fence_sha256": "2153724d161dca292da2e863b1a95b87c60639ed4864c582bcf5c4ad3586621c",
+  "artifact_sha256": "d50a4612ed4bd34838bd4a5b24f91b79e5b3d1ff55f76198178c26a76234dfbf",
+  "verification": {
+    "exit": 0,
+    "entries": 49,
+    "all_ok": true
+  }
+}

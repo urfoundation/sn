@@ -1,0 +1,1 @@
+Fresh PF-02 portable service retry after a reviewed owner-topology refusal. Uses original compiled binaries, selectors, and source/dependency fences. Direct waitable service-owner children must all join before owned-service cleanup. The first portable retry remains immutable history.

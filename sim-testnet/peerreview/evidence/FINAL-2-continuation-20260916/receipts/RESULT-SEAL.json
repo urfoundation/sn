@@ -1,0 +1,12 @@
+{
+  "kind": "native-continuation-public-receipt-preparation-seal",
+  "created_at": "2026-09-16T06:01:56Z",
+  "sha256sums_sha256": "5784ea6375e40f58291f2eda6b2794ad7518a9a472444cd811cc5cdb90cecf0c",
+  "result_sha256": "fa6f4b8288b17c35c92f66672bbb6959733c1fc41b56a2fb324576d500ebe0cb",
+  "bundle_inputs_sha256": "d84772b9e9994bb022a2a9ea7d2faba8fd06725a4852919c8d507877aa58881e",
+  "verification": {
+    "exit": 0,
+    "entries": 107,
+    "all_ok": true
+  }
+}

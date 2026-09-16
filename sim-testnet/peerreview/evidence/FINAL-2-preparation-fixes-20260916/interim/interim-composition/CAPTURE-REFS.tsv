@@ -1,0 +1,10 @@
+pf01-original-normal\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/normal/body
+pf01-original-race\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/positive/race/body
+pf01-causal\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/causal/normal/body
+pf01-fixture-correction-normal\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/body
+pf01-fixture-correction-race\t/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/body
+pf02-sn-positive-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/body/normal
+pf02-sn-positive-race\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/sn-sim-testnet/body/race
+pf02-sn-causal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/causal/unbound-operator-specs-sim-testnet/body/normal
+pf02-server-env-blocked-positive-task-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/positive/server-task/body/normal
+pf02-server-env-blocked-causal-task-normal\t/mnt/data/sn-testnet/qualification/taskworker-profile-20260916-r1/terra/final/causal/unfiltered-claims-task/body/normal

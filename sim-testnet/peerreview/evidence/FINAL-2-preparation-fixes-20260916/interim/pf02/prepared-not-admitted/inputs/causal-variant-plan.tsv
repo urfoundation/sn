@@ -1,0 +1,3 @@
+unfiltered_claims	server	./task,./taskworker
+unrestricted_profile_initialization	server	./taskworker
+unbound_operator_specs	sn	./sim-testnet

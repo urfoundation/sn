@@ -1,0 +1,27 @@
+{
+  "observed_at": "2026-09-16T05:41:19Z",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "finalized_native_hash": "0x8a6fc72a5d6a2dcf405a90e104203c3755f12197d8699da2bf3a543e763a6916",
+  "finalized_native_height": 8016244,
+  "runtime": {
+    "specVersion": 460,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "last_epoch_block": 8016011,
+  "pending_epoch_at": 0,
+  "subnet_epoch_index": 1484,
+  "tempo": 360,
+  "blocks_since_last_step": 233,
+  "first_native_epoch": 1485,
+  "first_native_epoch_start": 8016371,
+  "first_native_epoch_end": 8016731,
+  "blocks_until_start": 127,
+  "blocks_until_end": 487,
+  "relay_end_block": 8024100,
+  "full_required_work_blocks": 7570,
+  "full_work_start_cutoff": 8016530,
+  "blocks_until_full_work_cutoff": 286,
+  "selection": "Next native epoch is later than all retained source histories and leaves time for local history capture plus startup and first decision/prepared snapshots. Start RC immediately after managed health; do not wait for epoch opening."
+}

@@ -1,0 +1,22 @@
+diff --git a/taskworker/workload_profile.go b/taskworker/workload_profile.go
+index d83afe42..8c9182a3 100644
+--- a/taskworker/workload_profile.go
++++ b/taskworker/workload_profile.go
+@@ -43,7 +43,7 @@ func InitTasksForProfile(ctx context.Context, profile WorkloadProfile) error {
+ 	if err := profile.Validate(); err != nil {
+ 		return err
+ 	}
+-	if profile == WorkloadProfileProduction {
++	if profile == WorkloadProfileProduction || profile == WorkloadProfileSubnetOperator {
+ 		InitTasks(ctx)
+ 		return nil
+ 	}
+@@ -72,7 +72,7 @@ func InitTaskWorkerForProfile(ctx context.Context, settings *task.TaskWorkerSett
+ // addProfileTargets preserves canonical names, post hooks and legacy aliases
+ // from the production registry for every admitted target.
+ func addProfileTargets(worker *task.TaskWorker, profile WorkloadProfile, targets ...task.Target) {
+-	if profile == WorkloadProfileProduction {
++	if profile == WorkloadProfileProduction || profile == WorkloadProfileSubnetOperator {
+ 		worker.AddTargets(targets...)
+ 		return
+ 	}

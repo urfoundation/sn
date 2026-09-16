@@ -1,0 +1,83 @@
+scope	mode	test	outcome	capture
+PF-01	normal	TestCarriedActionAuditCacheAvoidsSecondLiveVerificationPass	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedActionAuditCacheCannotBypassCurrentOrDifferentEvidence	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchPreparationUsesExactArchivedPlan	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetBatchSourceRejectsLineageAndIdentityDrift	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction	PASS	pf01/fixture-correction/body/normal
+PF-01	normal	TestCarriedPreparationAuthenticatesEachSourcePlan	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCanceledSourceReadRequiresFreshRetry	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCancellationNamesEveryBlockedAction	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationCollectsFailuresAndKeepsOnlyVerifiedKeys	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationDeploymentEnvelopeBlocksMissingPayloadReader	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationIndexPreservesJournalSelection	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationJournalAppendInvalidatesScope	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationJournalReadWorkIsBounded	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationPartialReadersKeepIndependentLocalProofs	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationReadOnlyBatchesRetainAllFailures	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationRetryReauthenticatesSourceAndReceipts	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationRetryRechecksScopeAndAuthority	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedPreparationSourceReadWorkIsBounded	PASS	pf01/positive/body/normal
+PF-01	normal	TestCarriedTopologyAuthenticatesReceiptWithoutRequiringStoppedProcessLiveness	PASS	pf01/positive/body/normal
+PF-01	normal	TestHistoricalAuditCacheCancellationNeverPublishesSuccess	PASS	pf01/positive/body/normal
+PF-01	normal	TestHistoricalAuditCacheInvalidatesChangedIdentity	PASS	pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheCannotBypassSuccessorOrCurrentStateChecks	PASS	pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheRechecksLocalDecoderEvidenceAndSourceReceipts	PASS	pf01/positive/body/normal
+PF-01	normal	TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints	PASS	pf01/fixture-correction/body/normal
+PF-01	normal	TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts	PASS	pf01/positive/body/normal
+PF-01	normal	TestOwnedRPCHistoryNativeReplayCannotBorrowOneReader	PASS	pf01/positive/body/normal
+PF-01	normal	TestOwnedRPCHistoryReplaysOriginalFundingThroughOwnedNode	PASS	pf01/positive/body/normal
+PF-01	normal	TestProvisionalPreparationCollectsEveryRetainedReceiptFailure	PASS	pf01/positive/body/normal
+PF-01	normal	TestVerifyCarriedActionHistoryLeavesOnlyUnverifiedFleetBatchAtExecutionBoundary	PASS	pf01/positive/body/normal
+PF-01	normal	TestVerifyCarriedActionHistorySeedsAllFortyFleetBatchCacheKeys	PASS	pf01/positive/body/normal
+PF-01	race	TestCarriedActionAuditCacheAvoidsSecondLiveVerificationPass	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedActionAuditCacheCannotBypassCurrentOrDifferentEvidence	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchPreparationUsesExactArchivedPlan	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedFleetBatchSourceRejectsLineageAndIdentityDrift	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction	PASS	pf01/fixture-correction/body/race
+PF-01	race	TestCarriedPreparationAuthenticatesEachSourcePlan	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCanceledSourceReadRequiresFreshRetry	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCancellationNamesEveryBlockedAction	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationCollectsFailuresAndKeepsOnlyVerifiedKeys	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationDeploymentEnvelopeBlocksMissingPayloadReader	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationIndexPreservesJournalSelection	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationJournalAppendInvalidatesScope	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationJournalReadWorkIsBounded	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationPartialReadersKeepIndependentLocalProofs	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationReadOnlyBatchesRetainAllFailures	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationRetryReauthenticatesSourceAndReceipts	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationRetryRechecksScopeAndAuthority	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedPreparationSourceReadWorkIsBounded	PASS	pf01/positive/body/race
+PF-01	race	TestCarriedTopologyAuthenticatesReceiptWithoutRequiringStoppedProcessLiveness	PASS	pf01/positive/body/race
+PF-01	race	TestHistoricalAuditCacheCancellationNeverPublishesSuccess	PASS	pf01/positive/body/race
+PF-01	race	TestHistoricalAuditCacheInvalidatesChangedIdentity	PASS	pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheCannotBypassSuccessorOrCurrentStateChecks	PASS	pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheRechecksLocalDecoderEvidenceAndSourceReceipts	PASS	pf01/positive/body/race
+PF-01	race	TestHistoricalFleetCacheReusesAcrossExecutorsWithBatchedFreshCheckpoints	PASS	pf01/fixture-correction/body/race
+PF-01	race	TestOwnedRPCHistoryAuthenticatesOriginalApprovalWithoutRelabelingReceipts	PASS	pf01/positive/body/race
+PF-01	race	TestOwnedRPCHistoryNativeReplayCannotBorrowOneReader	PASS	pf01/positive/body/race
+PF-01	race	TestOwnedRPCHistoryReplaysOriginalFundingThroughOwnedNode	PASS	pf01/positive/body/race
+PF-01	race	TestProvisionalPreparationCollectsEveryRetainedReceiptFailure	PASS	pf01/positive/body/race
+PF-01	race	TestVerifyCarriedActionHistoryLeavesOnlyUnverifiedFleetBatchAtExecutionBoundary	PASS	pf01/positive/body/race
+PF-01	race	TestVerifyCarriedActionHistorySeedsAllFortyFleetBatchCacheKeys	PASS	pf01/positive/body/race
+PF-02 SN partial	normal	TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestRunMainServerModulesConfineTLSFallbackToConnectLoopback	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestRunMainTaskworkerRequiresExplicitSubnetProfile	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestServerTaskworkerProfileSurvivesSupervisorSerialization	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	normal	TestSupervisorRestartsOncePublishesReadyAndStopsChildren	PASS	pf02/sn/positive/sn-sim-testnet/body/normal
+PF-02 SN partial	race	TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestRunMainServerModulesConfineTLSFallbackToConnectLoopback	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestRunMainTaskworkerRequiresExplicitSubnetProfile	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestServerTaskworkerProfileSurvivesSupervisorSerialization	PASS	pf02/sn/positive/sn-sim-testnet/body/race
+PF-02 SN partial	race	TestSupervisorRestartsOncePublishesReadyAndStopsChildren	PASS	pf02/sn/positive/sn-sim-testnet/body/race

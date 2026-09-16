@@ -1,0 +1,7 @@
+Original relay failure provenance is retained in the existing committed bundle:
+  sim-testnet/peerreview/evidence/FINAL-2-relay-stream-failure-20260916/
+
+Related prior compact native adoption convention and capture-hash reference:
+  sim-testnet/peerreview/evidence/FINAL-2-native-adoption-20260916/
+
+This local receipt bundle does not duplicate the original failure body or assert its cause. The successful retries establish their own recorded outcomes only; they do not prove whether the original HTTP stall arose in artifact storage, transport, or consumer processing.

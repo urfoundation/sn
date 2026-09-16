@@ -2,14 +2,22 @@
 
 Updated 2026-09-16. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
-Subtensor runtime upgrades. All implementation items below are planned;
-no completed implementation or qualification is claimed.
+Subtensor runtime upgrades. Implementation and qualification remain incomplete;
+no completed fix is claimed.
 
 For each item, record its implementation commit and relevant test or operational
 evidence before marking it done. Add newly discovered adjacent issues here.
+Use `Planned`, `In progress`, `Blocked` and `Done` consistently. Keep each ID
+stable, and record the concrete blocker and next action for blocked work.
+The completion-evidence column below states the required result; it is not a
+claim that the result has been achieved. Add links to actual receipts as work
+closes, including the source revision and release containing the fix.
+For each implementation update, record the remaining action, the affected
+checks and any earlier results being reused. Passing tests alone does not mark
+a fix done when its required deployment or operational evidence is still pending.
 The active testnet finalization continues independently.
 
-## Runtime-upgrade fix tracker
+## Prelaunch fix tracker
 
 | ID | Fix | Depends on | Owner | Status | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -21,11 +29,90 @@ The active testnet finalization continues independently.
 | RT-06 | Preserve historical proof reuse and make metadata-cache capacity independent of catalog length | RT-01, RT-02 | Astra | Planned | Older proofs remain correctly authenticated; eviction, restart and additional runtime versions retain valid progress. |
 | RT-07 | Suspend only operations affected by an unsupported change and expose an actionable reason | RT-02, RT-04 | Astra | Planned | Independent services continue where their dependencies permit; recovery resumes from saved progress. |
 | RT-08 | Qualify upgrade handling and record the mainnet-readiness evidence | RT-01 through RT-07 | Terra | Planned | Affected normal/race tests and a controlled upgrade during an active integration campaign pass with unchanged approvals and reconciled transactions. |
+| RL-01 | Bind launch attestation to an explicitly approved immutable release and its complete input manifest | — | Astra | Planned | Publishing documentation or advancing main does not invalidate an approved unchanged deployment; changed executable, source, policy, contracts or dependencies still require the appropriate new approval. |
+| PF-01 | Reuse an immutable journal index and authenticated historical plans within one reconciliation | — | Astra | In progress | Deterministic work-count tests bound journal indexing by entries and plan authentication by distinct sources, while each receipt retains its own identity and postcondition checks. |
+| PF-02 | Give simulator operator taskworkers an explicit workload profile, including retained queue handling | — | Astra | In progress | Required subnet/operator tasks run for both operators; excluded queued tasks and post hooks remain untouched; production defaults and restart behavior pass affected tests and managed startup. |
+
+Prioritize PF-01 and PF-02 for the current testnet recovery. RT-01 through RT-08
+form the subsequent runtime-resilience workstream required before mainnet
+launch; RL-01 can proceed independently. Link the bootstrap implementation and
+launch sequence from [MAINNET.md](../mainnet/MAINNET.md) rather than maintaining
+a second launch plan here.
 
 RT-01 and RT-02 can proceed in parallel. After those foundations, cache/history,
 transaction handling and operation-specific admission can progress independently
 where their inputs are stable. An external manually reviewed artifact catalog
 may be an interim aid; it does not complete RT-04's automatic-upgrade requirement.
+
+RL-01 follows an actual 2026-09-16 launch interruption: the qualified executable
+was built at `541e13cf`, then publishing reports advanced main to `0fd7ffc0`.
+All Go source, modules and release-lock bytes were identical, but
+[executable attestation](../sim-testnet/executable_attestation.go) required the
+running executable, checkout, fetched ref and current GitHub main to share the
+same commit. Import correctly enforced that current rule and stopped before
+mutation. The immediate recovery is a matching build and publication freeze.
+The proposed replacement must authenticate a complete approved release;
+matching only Go files is insufficient. Add deterministic controls for
+documentation-only publication, unrelated later releases, unauthorized input
+drift, revoked releases and restart from the retained approved release.
+This proposed change is not an additional gate for the current testnet run.
+
+PF-01 follows source review during the 2026-09-16 managed startup.
+[Carried-action preparation](../sim-testnet/carried_preparation.go) looks up each
+action through a full journal copy and scan. The
+[historical RPC identity check](../sim-testnet/owned_rpc_history.go) also rereads
+and authenticates the same archived plan for each original public receipt.
+These repeated costs remain after the separate journal-loading repair. Live
+process counters establish ongoing work, not attribution of all startup time
+to either path. That invocation later failed its taskworker log gate, recorded
+separately under PF-02. The isolated correction is frozen at
+`351ece79d9f4dad93888c74c8bdcc699dd4c8dac`; release publication and deployment
+remain pending. Its [qualification handoff](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/HANDOFF.md)
+specifies 32 affected roots normally and under race, plus eight causal controls.
+The initial normal and race runs each passed 31 roots and exposed one existing
+cold-cache fixture mismatch. Fixture correction
+`d52028de6864f7b1c48381fcb7652361d2520932` then passed the changed test and its
+adjacent warm-cache control in both modes. Their recorded body, outer and join
+exits are zero, with valid event sets and unchanged input checks. Retain the
+other 30 passing roots per mode and the original causal result of two expected
+failures and six passes. The [correction handoff](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/fixture-correction/HANDOFF.md)
+defines that reuse; [normal evidence](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/normal/body)
+and [race evidence](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/terra/fixture-correction/race/body)
+remain local qualification records. The candidate keeps both indexes local to
+one invocation and leaves durable audit-cache authority intact.
+
+Capture a consistent journal snapshot and index its applicable witnesses once.
+Authenticate each distinct historical plan once into an immutable object scoped
+to that reconciliation and its authority inputs. Keep per-receipt checks and
+fresh operational observations. Add deterministic controls for multiple source
+plans, ancestry, changed authority, appended journal entries, corrupt evidence,
+cancellation and retry; measure operation counts rather than elapsed time.
+Do not let reuse hide new state or turn a failed check into a passing result.
+
+PF-02 follows the actual managed-start failure at 06:29:05 UTC on 2026-09-16.
+Both operator taskworkers scheduled the full production backend workload.
+Each emitted two geolocation certificate-pin rotation errors and one fiat
+payment warning for a synthetic account without user authentication. These
+six lines produced four blocking process-log classes. All 33 managed processes
+then stopped; the release campaign did not start. See the retained chronology
+in [FINAL-2.md](../sim-testnet/FINAL-2.md).
+
+Add an explicit subnet-operator workload profile at the
+[taskworker entry point](../../server/taskworker/run.go), retaining all tasks
+required for operator service and subnet settlement. Restrict initial scheduling
+and queue claims, including deferred post hooks; excluding a new schedule alone
+does not handle unrelated jobs left in the retained database. Filter before
+the claim limit so excluded rows cannot starve required work. Preserve those
+rows, the ordinary production default, certificate checks and the process-log
+gate. Bind the profile into both operators' launch and restart specifications.
+Qualify scheduling, dispatch, retained queues, post hooks and defaults with
+deterministic tests, then verify actual managed startup. Frozen SN `8e6d56b5`
+and server `6752a8df` pass all 30 affected roots normally and under race, with
+seven expected failures/five passes in the controls. The
+[qualification evidence](../sim-testnet/peerreview/evidence/FINAL-2-preparation-fixes-20260916/README.md)
+preserves the pre-test service refusals as well as successful bodies. Both
+PF-01 and PF-02 are integrated locally at `dc90e4c`; publication and actual
+managed startup remain pending, so these items remain in progress.
 
 ## Runtime-upgrade compatibility proposal
 
@@ -195,8 +282,9 @@ Add deterministic synthetic tests following [CODESTYLE.md](../../connect/CODESTY
 - Artifact eviction, RPC outage/reconnect and process restart retain valid
   progress and cannot turn stale or failed evidence into a passing result.
 
-Astra diagnoses and implements; Terra runs affected tests normally and under
-race. The final integration exercise upgrades a controlled runtime while the
+Astra (`gpt-6-astra`, effort `max`) diagnoses and implements; Terra
+(`gpt-5.6-terra`, effort `max`) runs affected tests normally and under race.
+The final integration exercise upgrades a controlled runtime while the
 subnet is active and demonstrates continued required observations, reconciled
 transactions and unchanged approvals. This architecture work is not an extra
 preparation gate for the currently running testnet recovery.

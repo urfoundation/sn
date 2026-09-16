@@ -1,0 +1,7 @@
+./gate-service-owner.sh: line 50: wait: pid 3416346 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416353 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416366 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416387 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416434 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416506 is not a child of this shell
+./gate-service-owner.sh: line 50: wait: pid 3416634 is not a child of this shell
