@@ -1,0 +1,2 @@
+Non-admitted precompiler setup only. No compiler process or test body started.
+The first launcher-generator shell invocation stopped under `set -u` while a single `local` declaration expanded `$mode` before assigning it. Inputs, source worktrees, dependencies and selectors remained unchanged. Corrected scripts use separate local assignments and explicit absolute binary outputs.

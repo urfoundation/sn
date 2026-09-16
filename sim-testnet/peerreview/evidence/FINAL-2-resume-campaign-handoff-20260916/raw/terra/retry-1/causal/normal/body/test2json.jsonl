@@ -1,0 +1,38 @@
+{"Time":"2026-09-16T11:17:40.918352992Z","Action":"start"}
+{"Time":"2026-09-16T11:17:40.918569399Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T11:17:40.918591261Z","Action":"output","Output":"I0916 11:17:40.825108 3809672 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T11:17:40.918606568Z","Action":"output","Output":"I0916 11:17:40.825433 3809672 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T11:17:40.918612402Z","Action":"output","Output":"I0916 11:17:40.825547 3809672 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T11:17:40.91861748Z","Action":"output","Output":"I0916 11:17:40.825585 3809672 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T11:17:40.918630761Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites"}
+{"Time":"2026-09-16T11:17:40.918635719Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Output":"=== RUN   TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites\n"}
+{"Time":"2026-09-16T11:17:40.91864745Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Output":"    strict_resume_campaign_test.go:30: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.91866167Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.918667562Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918673632Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation"}
+{"Time":"2026-09-16T11:17:40.918678114Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Output":"=== RUN   TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation\n"}
+{"Time":"2026-09-16T11:17:40.91869011Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Output":"    strict_resume_campaign_test.go:93: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.918697003Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.918702569Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918707077Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete"}
+{"Time":"2026-09-16T11:17:40.918711419Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Output":"=== RUN   TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete\n"}
+{"Time":"2026-09-16T11:17:40.918716567Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Output":"    strict_resume_campaign_test.go:112: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.918722577Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.918727906Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918732286Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation"}
+{"Time":"2026-09-16T11:17:40.918736525Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Output":"=== RUN   TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation\n"}
+{"Time":"2026-09-16T11:17:40.918741613Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Output":"    strict_resume_campaign_test.go:167: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.918756474Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.91876296Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918767676Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner"}
+{"Time":"2026-09-16T11:17:40.91877211Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Output":"=== RUN   TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner\n"}
+{"Time":"2026-09-16T11:17:40.918777474Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Output":"    strict_resume_campaign_test.go:236: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.918783509Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.918788877Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918793152Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates"}
+{"Time":"2026-09-16T11:17:40.918797489Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Output":"=== RUN   TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates\n"}
+{"Time":"2026-09-16T11:17:40.918802696Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Output":"    strict_resume_campaign_test.go:266: open ../deploy/testnet/policy-v1.yml: no such file or directory\n"}
+{"Time":"2026-09-16T11:17:40.918808654Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Output":"--- FAIL: TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates (0.00s)\n"}
+{"Time":"2026-09-16T11:17:40.918813548Z","Action":"fail","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Elapsed":0}
+{"Time":"2026-09-16T11:17:40.918818169Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T11:17:40.918825673Z","Action":"fail","Elapsed":0}

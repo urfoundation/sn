@@ -1,0 +1,41 @@
+{
+  "sn_source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "server_source_revision": "006e71b997db503604c4ef6bb0c2683dc0d984cd",
+  "decoder": {
+    "path": "/home/by/.foundry/bin/cast",
+    "version": "1.7.1",
+    "commit": "4072e48705af9d93e3c0f6e29e93b5e9a40caed8",
+    "sha256": "ccd95a4607ca3ebfcb88bb90e7235cdb7f0564f5f1afa17478d5fccabbb222cb",
+    "argv": [
+      "cast",
+      "decode-transaction",
+      "--json",
+      "-j1"
+    ],
+    "signed_input_transport": "stdin; raw bytes never printed in result projections"
+  },
+  "database_command_template": [
+    "docker",
+    "exec",
+    "-i",
+    "<operator postgres container>",
+    "sh",
+    "-c",
+    "exec psql -q -X -A -t -v ON_ERROR_STOP=1 -U \"${POSTGRES_USER:-postgres}\" -d bringyour"
+  ],
+  "sql_input": "READ-ONLY-CENSUS.sql",
+  "scope": "All intents and all attempts in both retained operator DBs; no status/time predicate. Each signed row is then required to match the approved deployment, chain, genesis and role set.",
+  "validation": [
+    "signed transaction hash equals persisted attempt hash",
+    "chain ID is 945 and genesis is the approved chain genesis",
+    "recovered signer equals stored sender and an approved role address",
+    "nonce, gas limit and fee cap equal durable DB attempt fields",
+    "execution recipient equals intended recipient; value is zero",
+    "cancellation recipient equals sender, value is zero, input is empty and gas limit is 21000",
+    "complete exact-byte matching against existing transaction RLP files and both approved fleet-renewal evidence sets",
+    "all 13 role nonce observations compared at finalized/latest/pending",
+    "four missing signed candidates bind to the already finalized canonical transaction and receipt observations"
+  ],
+  "evidence_boundary": "Original 230-row signed exports and four RLP candidates remain private; their immutable SHA256 references are in PRIVATE-ARTIFACTS.sha256. The safe projection does not include raw signed bytes or calldata.",
+  "restoration_ownership": "Root separately owns restore/ and the active-state create-only restoration. That directory is intentionally excluded from this census seal."
+}

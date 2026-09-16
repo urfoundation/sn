@@ -1,0 +1,18 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 10:15:04.834113 3688799 env.go:770] [env]try /srv/warp/config, [settings.yml]
+I0916 10:15:04.834383 3688799 env.go:770] [env]try /srv/warp/site, [settings.yml]
+I0916 10:15:04.834439 3688799 env.go:67] [env]settings = map[]
+sim-testnet: release V2 semantic startup: startup origin 1 complete terminal replay: compact settlement no_id 2 replay: context canceled
+terminated signal received
+terminated signal received
+attempt stream HTTP body closed before complete authenticated EOF
+terminated signal received
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled

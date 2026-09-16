@@ -1,0 +1,3 @@
+Prepared only. Expected SN commit: aeda6abbd2dc0abc92bb0f60975cf89b509e8017
+Expected release lock SHA-256: bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc
+Physical server is still 6752a8df at preparation time. Wait for root to publish merge006e71b, fast-forward physical server, and confirm final source/dependency snapshot before writing meta/source-pair-final.tsv or launching.

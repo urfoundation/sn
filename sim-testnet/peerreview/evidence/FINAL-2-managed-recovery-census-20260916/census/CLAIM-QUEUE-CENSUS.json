@@ -1,0 +1,68 @@
+{
+  "startup_started_at": "2026-09-16T09:41:17Z",
+  "startup_finished_at": "2026-09-16T10:20:25Z",
+  "counts": {
+    "queues": 1000,
+    "entries": 378000,
+    "status:retry": 244560,
+    "entries_updated_since_start": 283272,
+    "status:no-claim": 44129,
+    "status:finalized": 2000,
+    "status:pending": 87311
+  },
+  "queue_files_modified_since_start": 1000,
+  "maximum_entry_updated_at": "2026-09-16T10:20:14.450753757Z",
+  "signed_entries": [
+    {
+      "path": "runtime/miner-10/claims/claim-queue.json",
+      "entry_key": "297",
+      "tx_hash": "0x8b560246985b20853aa7135c73206f1aa36efff51ab7da2b195c234dd2a45326",
+      "status": "finalized",
+      "attempts": 1,
+      "raw_signed_bytes": 400,
+      "raw_signed_sha256": "dc7b33289797f2a7d4d76ae437fa9cdcbbed26c8456843fdae91e7c416e8fd2f",
+      "created_at": null,
+      "updated_at": "2026-09-11T21:17:14.288478086Z",
+      "finalized_block": 7984930
+    },
+    {
+      "path": "runtime/miner-190/claims/claim-queue.json",
+      "entry_key": "296",
+      "tx_hash": "0x9c500ee607fc5aabf7b4e3cd630d9906bf9f2e7a29426fef651e506991ebe5cd",
+      "status": "finalized",
+      "attempts": 1,
+      "raw_signed_bytes": 400,
+      "raw_signed_sha256": "31524ebe629f4ab6402f6d515a09efd2235b23dbcca47d9eabf934ad576b43cd",
+      "created_at": null,
+      "updated_at": "2026-09-11T20:17:17.007231128Z",
+      "finalized_block": 7984630
+    },
+    {
+      "path": "runtime/miner-203/claims/claim-queue.json",
+      "entry_key": "296",
+      "tx_hash": "0x4323416dbccfebea8c52ce955404ed0a1039369252573b90760808f96b46e900",
+      "status": "finalized",
+      "attempts": 1,
+      "raw_signed_bytes": 400,
+      "raw_signed_sha256": "f9d2cf9c3a6a5dc50725493fc3a6a2e491244624e5993f7a845e935d116efd25",
+      "created_at": null,
+      "updated_at": "2026-09-11T20:17:16.373465375Z",
+      "finalized_block": 7984630
+    },
+    {
+      "path": "runtime/miner-916/claims/claim-queue.json",
+      "entry_key": "297",
+      "tx_hash": "0x0fcf1c13b019ef4e42e771fb8894330be28b1fe920f4631d45a4f59f594e74fd",
+      "status": "finalized",
+      "attempts": 1,
+      "raw_signed_bytes": 400,
+      "raw_signed_sha256": "27b9006dd604427f517877ad30cf0789993f4d4532c0e5f45b655385a5c23017",
+      "created_at": null,
+      "updated_at": "2026-09-11T21:17:15.429274214Z",
+      "finalized_block": 7984930
+    }
+  ],
+  "updated_entries_with_hash_bytes_or_nonzero_attempts": [],
+  "no_signed_bytes_copied": true,
+  "comparison_limit": "No complete pre-start claim queue byte manifest exists; signed-hash/attempt fields and timestamps are inspected across the complete current queue census, with the original four retained signed entries compared to the approved transaction store."
+}

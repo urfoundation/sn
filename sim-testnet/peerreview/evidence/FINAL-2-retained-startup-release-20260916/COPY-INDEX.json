@@ -1,0 +1,195 @@
+{
+  "schema": "closed-read-only-release-lock-public-copy-v1",
+  "source_capture": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1",
+  "copied_utc": "2026-09-16T11:11:45.139148+00:00",
+  "scope": "Closed read-only release-lock renderer only",
+  "tool_session": 84281,
+  "source_commit": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "body_exit": 0,
+  "outer_exit": 0,
+  "join_exit": 0,
+  "independently_checked_byte_change": {
+    "line": 67,
+    "field": "repositories.sn_go_source_hash",
+    "prior": "sha256:2ac35d3ed59965e06ba68c5c756139c7b77c43bc11d0c5ec3ba93dc5f0823c20",
+    "candidate": "sha256:b4d79718f2e227882fd965d048f3a0cb71ffcac1e88deb82d7d2c0ac0062d96a"
+  },
+  "all_other_lock_lines_exact": true,
+  "candidate_installed_at_capture_close": false,
+  "all_state_binary_lock_source_fences_equal": true,
+  "omitted": [
+    "Existing 140902712-byte executable (identity retained by raw before/after SHA256 receipts)",
+    "Private vault/config contents, secrets, service data and deployment plan/journal contents were never copied",
+    "Preparation-only template/handoff documents, which are not completion evidence"
+  ],
+  "raw_receipt_copies": [
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/REQUEST.json",
+      "public_path": "renderer/REQUEST.json",
+      "bytes": 1146,
+      "sha256": "9950dfc7ee7d1e9121e97c5402877d9e9748401a515d62915f771ba817f46a89"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/ROOT-REVIEW.json",
+      "public_path": "renderer/ROOT-REVIEW.json",
+      "bytes": 496,
+      "sha256": "5a06f80bbe59f73d3d135148e046f59458cbe321a6480b3f20b511b3318934d6"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/command.sh",
+      "public_path": "renderer/command.sh",
+      "bytes": 6213,
+      "sha256": "291fe007d936a75a1670ac35ccf363b4f36078e319ead05609e9e49af8d97d0e"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/command.inputs.sha256",
+      "public_path": "renderer/command.inputs.sha256",
+      "bytes": 346,
+      "sha256": "ebb7a9dcd024d926e92c5607304b6a767b2b46e7bb0e4ca474df50fc97535e40"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/original.lock.yml",
+      "public_path": "renderer/original.lock.yml",
+      "bytes": 5886,
+      "sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/stdout.yml",
+      "public_path": "renderer/stdout.yml",
+      "bytes": 5886,
+      "sha256": "42a48da4d4fd267c496b8558cd9838f68b3f5e4117a9e681352129069df2df22"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/stderr",
+      "public_path": "renderer/stderr",
+      "bytes": 417,
+      "sha256": "afb5664bac2607b76921db7c60de599c48653c02c995c511284ce9e2ac56a7ea"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/renderer-inputs.diff",
+      "public_path": "renderer/renderer-inputs.diff",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/review.diff",
+      "public_path": "renderer/review.diff",
+      "bytes": 686,
+      "sha256": "b178c05bb916c4fbf09a0f97cc62c54f6ef5385ec00922463b23555d8aca841b"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/result.status",
+      "public_path": "renderer/result.status",
+      "bytes": 97,
+      "sha256": "cc8f01f810dca8f61e7848281d2378fff26c20f2ab1ebf81222198a3eba68a8b"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/body.started-at",
+      "public_path": "renderer/body.started-at",
+      "bytes": 21,
+      "sha256": "4d98abd3625c41b29c6cdf76b813f0f5f4d8f9a40aa8a644d30085547a8d0fdb"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/body.finished-at",
+      "public_path": "renderer/body.finished-at",
+      "bytes": 21,
+      "sha256": "7b71fbfb5949adba0d4c294d18e4835dbcb9b706a85d20da4d7336bea9810e7d"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/body.exit",
+      "public_path": "renderer/body.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/outer.pid",
+      "public_path": "renderer/outer.pid",
+      "bytes": 8,
+      "sha256": "d28e9f7bbf70c9757a639f9dc746cd6c849c9385e5a88fa49bfe3d6046654b1e"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/outer.started-at",
+      "public_path": "renderer/outer.started-at",
+      "bytes": 21,
+      "sha256": "c5df36a0e8630700bfc6733a5d67e79ee72a22b2444f5ccf7ccfd62385ead4b8"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/outer.finished-at",
+      "public_path": "renderer/outer.finished-at",
+      "bytes": 21,
+      "sha256": "db0bc321d5c9650a7b1bdd6a0e1529e5b012ba2cf88706cc1c840c808228fe00"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/outer.exit",
+      "public_path": "renderer/outer.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/join.session",
+      "public_path": "renderer/join.session",
+      "bytes": 6,
+      "sha256": "53799e8a5fdc40768f668dfd52414db39d8234c3353cdac6f644abdd705ed0b0"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/join.finished-at",
+      "public_path": "renderer/join.finished-at",
+      "bytes": 33,
+      "sha256": "8220e6e065f0d51ea6fc04a4412b86052cfe0321831eae92816bcb0c829d830c"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/join.exit",
+      "public_path": "renderer/join.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/state.before.sha256",
+      "public_path": "renderer/state.before.sha256",
+      "bytes": 921,
+      "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/state.after.sha256",
+      "public_path": "renderer/state.after.sha256",
+      "bytes": 921,
+      "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/binary.before.sha256",
+      "public_path": "renderer/binary.before.sha256",
+      "bytes": 159,
+      "sha256": "f2d22d7122e72c594809ba805763b4716be2dde9f34a36c6af8176a11d7576ab"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/binary.after.sha256",
+      "public_path": "renderer/binary.after.sha256",
+      "bytes": 159,
+      "sha256": "f2d22d7122e72c594809ba805763b4716be2dde9f34a36c6af8176a11d7576ab"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/lock.before.sha256",
+      "public_path": "renderer/lock.before.sha256",
+      "bytes": 98,
+      "sha256": "0b2834b9d9a6184ba0a04b5740555ce87ad6349dd6e29054eb058edfe4db64cf"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/lock.after.sha256",
+      "public_path": "renderer/lock.after.sha256",
+      "bytes": 98,
+      "sha256": "0b2834b9d9a6184ba0a04b5740555ce87ad6349dd6e29054eb058edfe4db64cf"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/source.before.commit",
+      "public_path": "renderer/source.before.commit",
+      "bytes": 41,
+      "sha256": "0ae9c1194c94abc5427db521b28bf2eabb711a8cf10a315fbc0bfd3e28601daa"
+    },
+    {
+      "capture_path": "/mnt/data/sn-testnet/qualification/retained-readiness-handoff-release-lock-preview-20260916-r1/source.after.commit",
+      "public_path": "renderer/source.after.commit",
+      "bytes": 41,
+      "sha256": "0ae9c1194c94abc5427db521b28bf2eabb711a8cf10a315fbc0bfd3e28601daa"
+    }
+  ]
+}

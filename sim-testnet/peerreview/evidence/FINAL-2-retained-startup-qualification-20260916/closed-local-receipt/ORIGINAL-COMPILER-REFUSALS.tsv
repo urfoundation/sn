@@ -1,0 +1,5 @@
+lane	mode	build_exit	outer_exit	fence_after	literal_artifact_sha256	receipt_path
+positive	normal	0	126	false	ae37c67b6b9f3405f78f111bb8b6f1aa46e0cfb9719e56594509c5d5c15a829e	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/normal
+positive	race	0	126	false	f34ba1060397968e60166520a57b50f9f1fabdd5f3cfcd2bcc20994e1d86d8b1	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/race
+route-only-timeout	normal	0	126	false	256e4b62e83ae75d542cb86af935a370bdae535d6304fcec3e75dda1fae65880	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/route-only-timeout/compile/normal
+cancellation-after-snapshot	normal	0	126	false	ac0ebd250bdcb0dfbb94ff85d263030ee5f0cb1c173238089cbddb6bdd50eff3	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/cancellation-after-snapshot/compile/normal

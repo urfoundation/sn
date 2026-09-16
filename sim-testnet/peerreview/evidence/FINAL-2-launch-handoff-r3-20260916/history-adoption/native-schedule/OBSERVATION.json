@@ -1,0 +1,27 @@
+{
+  "observed_at": "2026-09-16T09:36:23Z",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "finalized_native_hash": "0x8063f2b0c26bf7846d6e9731187a74c1a8b4ec389eb54c7322222cf861868dcb",
+  "finalized_native_height": 8017425,
+  "runtime": {
+    "specVersion": 460,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "last_epoch_block": 8017091,
+  "pending_epoch_at": 0,
+  "subnet_epoch_index": 1487,
+  "tempo": 360,
+  "blocks_since_last_step": 334,
+  "current_native_epoch_end": 8017451,
+  "next_native_epoch_start": 8017451,
+  "next_native_epoch_end": 8017811,
+  "blocks_until_current_epoch_end": 26,
+  "blocks_until_next_epoch_end": 386,
+  "relay_end_block": 8025298,
+  "full_required_work_blocks": 7570,
+  "full_work_start_cutoff": 8017728,
+  "blocks_until_full_work_cutoff": 303,
+  "first_native_epoch": null
+}

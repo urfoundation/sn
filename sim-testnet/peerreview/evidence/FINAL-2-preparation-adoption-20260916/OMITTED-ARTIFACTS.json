@@ -1,0 +1,38 @@
+[
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/plan-revision/prior-plan.json",
+    "sha256": "6e22b2f4b68af32809aa5de999a25458e52251fb23f763096399c7e8a9ff984a",
+    "bytes": 11302225,
+    "reason": "complete large plan or original single-line diff; exact small lossless diff and review included"
+  },
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/plan-revision/raw-plan.diff",
+    "sha256": "b244dc4276d5468420514e11e544227d919fea5989048b1ce42c781b22eaeed2",
+    "bytes": 22604641,
+    "reason": "complete large plan or original single-line diff; exact small lossless diff and review included"
+  },
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/plan-revision/stdout.json",
+    "sha256": "f335a6eee7d889b72b2900e10ee3960fa5c6240073e463f72fc7a54b36e857a7",
+    "bytes": 11302294,
+    "reason": "complete large plan or original single-line diff; exact small lossless diff and review included"
+  },
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/plan-revision/lossless-review/prior.pretty.json",
+    "sha256": "5b86536822ebd5556b5d7665a1b96e853bf925546712c39a4a27d7fa98efd61d",
+    "bytes": 16078608,
+    "reason": "complete large lossless pretty plan; renderer token checks and exact small diff included"
+  },
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/plan-revision/lossless-review/proposed.pretty.json",
+    "sha256": "1587a1d0f63425e04114a3d3d9befa1f3d708e2f8beb12aa1fde8f5c3879896d",
+    "bytes": 16078682,
+    "reason": "complete large lossless pretty plan; renderer token checks and exact small diff included"
+  },
+  {
+    "original_capture_path": "/mnt/data/sn-testnet/qualification/pf01-pf02-physical-cli-final-lock-20260916-r1/sim-testnet",
+    "sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+    "bytes": 140902712,
+    "reason": "compiled executable excluded; captured CLI artifact digest and native before/after binary fences agree"
+  }
+]

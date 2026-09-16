@@ -1,0 +1,207 @@
+{
+  "chain_id": 945,
+  "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "all_14_inclusion_hashes_canonical": true,
+  "finalized_evm_height": 8017664,
+  "finalized_evm_hash": "0xb8c448ac6aeae9a2b21bd310ca745bceef304b7b4732a74dc398ab360576abcb",
+  "native_finalized_height": 8017664,
+  "native_finalized_hash": "0x14c71da14dba2fc38925d301fb2bf2f47c35103145e1042924f1eb2c3f2081c6",
+  "role_nonces": [
+    {
+      "role": "commitment-oracle",
+      "address": "0x0422ac5e1ea3997d2a06f8268d4834380609738c",
+      "approved": {
+        "finalized": 473,
+        "latest": 473,
+        "pending": 473
+      },
+      "current": {
+        "finalized": 473,
+        "latest": 473,
+        "pending": 473
+      },
+      "changed": false
+    },
+    {
+      "role": "deployer",
+      "address": "0x782c9f3e4d8cff39ef3029c523849b167c780d2f",
+      "approved": {
+        "finalized": 35,
+        "latest": 35,
+        "pending": 35
+      },
+      "current": {
+        "finalized": 35,
+        "latest": 35,
+        "pending": 35
+      },
+      "changed": false
+    },
+    {
+      "role": "guardian",
+      "address": "0x8e5ff11ceb04c9798a7a0bf4020742714ff71015",
+      "approved": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "current": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "changed": false
+    },
+    {
+      "role": "keeper",
+      "address": "0x337571184a5cb8a5c29381c48437e889f11d657e",
+      "approved": {
+        "finalized": 1736,
+        "latest": 1736,
+        "pending": 1736
+      },
+      "current": {
+        "finalized": 1736,
+        "latest": 1736,
+        "pending": 1736
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-1-artifact",
+      "address": "0xd255a91442f8c4f72513bcf6a211dd7d4ae3bcdc",
+      "approved": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "current": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-1-claim-relayer",
+      "address": "0x44ecbce1538ddc01bc523f4b7a213ffebd01f459",
+      "approved": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "current": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-1-deposit",
+      "address": "0x2ec9c5d23e81ea1f287b9fcdd2dc209a2e2355dc",
+      "approved": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "current": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-1-root",
+      "address": "0xd6f9165c4cc35ce380ea1eff3c518407173af60a",
+      "approved": {
+        "finalized": 107,
+        "latest": 107,
+        "pending": 107
+      },
+      "current": {
+        "finalized": 115,
+        "latest": 115,
+        "pending": 115
+      },
+      "changed": true
+    },
+    {
+      "role": "operator-2-artifact",
+      "address": "0xbe37b9d50617dd03082df18700b2d8ca7bed95a9",
+      "approved": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "current": {
+        "finalized": 0,
+        "latest": 0,
+        "pending": 0
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-2-claim-relayer",
+      "address": "0x67887f6e7680b2c7e15ab373badeffd94bd58647",
+      "approved": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "current": {
+        "finalized": 10,
+        "latest": 10,
+        "pending": 10
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-2-deposit",
+      "address": "0xbdf57da6b8f73cd67f38e76d0d8471e9f9998ac0",
+      "approved": {
+        "finalized": 8,
+        "latest": 8,
+        "pending": 8
+      },
+      "current": {
+        "finalized": 8,
+        "latest": 8,
+        "pending": 8
+      },
+      "changed": false
+    },
+    {
+      "role": "operator-2-root",
+      "address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "approved": {
+        "finalized": 107,
+        "latest": 107,
+        "pending": 107
+      },
+      "current": {
+        "finalized": 113,
+        "latest": 113,
+        "pending": 113
+      },
+      "changed": true
+    },
+    {
+      "role": "testnet-owner",
+      "address": "0x415b7508f93e9fef6989010dbd41db95f4563d95",
+      "approved": {
+        "finalized": 20,
+        "latest": 20,
+        "pending": 20
+      },
+      "current": {
+        "finalized": 20,
+        "latest": 20,
+        "pending": 20
+      },
+      "changed": false
+    }
+  ]
+}

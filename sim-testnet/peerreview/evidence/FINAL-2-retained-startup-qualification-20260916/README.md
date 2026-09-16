@@ -1,0 +1,11 @@
+# Retained-startup readiness: closed focused qualification
+
+This bundle records the closed qualification of the narrow retained-history startup readiness correction. It accepts the exact 11 selected `./sim-testnet` roots in both normal and race modes from formatted source `8270992eb8fb2b1599a29271ec44426379007306`. Each positive body exited 0 with 11 PASS, a complete compiled census, terminal package PASS, valid events, and source/dependency/binary/selector after-fences.
+
+The two normal-only causal sources retain one restored predicate or ordering each. `route-only-timeout` produced exactly the expected failure of `TestReleaseTopologyReadinessRetainedHistoryWarmupIsRouteIndependent` and 10 PASS. `cancellation-after-snapshot` produced exactly the expected failure of `TestReleaseTopologyReadinessRetainedHistoryWaitCancellationPrecedesAdmission` and 10 PASS. Each causal body, outer owner, and launcher join exited 1 because the intended failure is part of the selector.
+
+Four initial compiler attempts built successfully but were non-admitted: a command-quoting error created a literal untracked `$capture/` output directory, so their outer and join exits were 126 and no body was started. The compiler artifact hashes were recorded before the untracked outputs were removed from disposable isolated worktrees. That cleanup mistake and its exact records are preserved in `original-refusals/`; the corrected compilers reproduced every recorded artifact byte hash before any body ran.
+
+`closed-local-receipt/` is copied byte-for-byte from the closed Terra receipt and retains raw capture references, scalar exits, terminal event maps, fences, and artifact hashes. It contains no executable binary. This public projection omits binaries, private test output and log bodies, temporary directories, caches, and worktrees while retaining their paths, byte counts, and hashes where required for review. Packaging ran no compiler or test.
+
+Run `sha256sum -c SEAL.sha256` and `sha256sum -c SHA256SUMS` in this directory. The copied inner receipt digest files retain their original USB-path scope; `INNER-RECEIPT-CONTENT-VERIFY.tsv` independently confirms the copied manifest bytes against those recorded digests.

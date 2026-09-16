@@ -1,0 +1,20 @@
+{
+  "source_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "signed_attempts": 230,
+  "signed_attempts_by_operator": {
+    "1": 116,
+    "2": 114
+  },
+  "retained_census_matches": 226,
+  "missing_census_count": 4,
+  "missing_by_role": {
+    "operator-1-root": 1,
+    "operator-2-root": 3
+  },
+  "unsigned_intents": 2,
+  "missing_maximum_gas_plus_value_wei": "25635775234311880",
+  "all_signed_attempts_validated": true,
+  "active_state_writes": 0,
+  "full_private_export_path": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/private/all-original-db-signed-transactions.private.json",
+  "missing_private_rlp_directory": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/private/missing-rlp"
+}

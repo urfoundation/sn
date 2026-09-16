@@ -1,0 +1,10 @@
+fb00e919a79d4a1c8eb9ada705f273205d1d0c855c4586297361f37e7bdb7d80  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/sim-testnet/main.go
+4520e3af835db0a640f7256fb0cec1d166e2231ab30581de70f050ab3624367f  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/sim-testnet/executor.go
+94c83694bfdc9b913346164adabf4a9f4fef07e3803d14e41c0fe99c9b85c3c9  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/sim-testnet/strict_resume_campaign.go
+2e7cb093439a7219b6a739b8cee659d53d8e8d2de5d488fefc43ef9a155c19b0  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/sim-testnet/strict_resume_campaign_test.go
+c703461ed6d15c0119423b94dc3a6e543c71935fee0559213a3fabd68063b9b0  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/go.mod
+177b50d84935a29c36b1771816478bf3c97ac28c99bcb22be4922ad9ba1106a3  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn/go.sum
+6171e6fdc423a3d15a88116e926c28e9f2126cffe3e48ce954744533f9f8d787  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/inputs/selection.json
+114092d4eac30c4537d15db17c26934820dd8f5e12973508099094140af4183d  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/inputs/selector.txt
+79e1c5be90d3ad4503ec62fb7a93b8fd07712b6f4906cc805b4f4399e189b3b4  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/inputs/expected-tests.txt
+acadecef9b700c8705fc96fe64d399b7ffb8fe03c96f01f2d73dd141b15a3a47  /mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/inputs/expected-outcomes.txt

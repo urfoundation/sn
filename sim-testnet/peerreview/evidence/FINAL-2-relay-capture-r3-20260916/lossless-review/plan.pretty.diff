@@ -1,0 +1,137 @@
+--- prior.pretty.json
++++ proposed.pretty.json
+@@ -153,7 +153,8 @@
+     "0x3f88ccd424dabd6670523522d6f56300940272311d6e70162ad48f76c24a7d2d",
+     "0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799",
+     "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+-    "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17"
++    "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
++    "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876"
+   ],
+   "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+   "config_identity_runtime_spec": 455,
+@@ -715,7 +716,7 @@
+   },
+   "evidence_relay_continuation": {
+     "schema": "urnetwork-sim-evidence-relay-continuation-v4",
+-    "source_plan_hash": "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
++    "source_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+     "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+     "activation_plan_hash": "0x76d0386164e7019aa0c5a9ea2b9540705a5a3e492ea7b55e06856a399b1d9f8d",
+     "prepared_sha256": "sha256:d3b5fe069b9789b8549f99ced57d461c4c5fe84380cc1945b43f9b9421d3d9d0",
+@@ -1162,18 +1163,18 @@
+       "intent_hash": "0x4cbaa608087e900c70d6cdcaff521293e3923b040863aec34421bca45ff2b7e5"
+     },
+     "evm_head": {
+-      "number": 8016047,
+-      "hash": "0x3b41452d02932ca719c42f750c4274f672b9839737778792b6b0ebf0940a30db"
++      "number": 8017249,
++      "hash": "0xfd79b651683353f2c2985431c444c8b30eba0ad2061737ff21bbd2f514163801"
+     },
+     "native_head": {
+-      "number": 8016047,
+-      "hash": "0x65e3d74b7ca982e5c1114c7b3ba15776d40a006c4f1e2f1b1e984632547536a2"
+-    },
+-    "settlement_epoch": 402,
+-    "native_epoch": 1484,
+-    "end_block": 8024100,
+-    "end_settlement_epoch": 429,
+-    "end_native_epoch": 1507,
++      "number": 8017249,
++      "hash": "0x6ae2cce3bb952f81219e3fb2a316ae1b88e2f7565cdac99db97a58cfa7e61deb"
++    },
++    "settlement_epoch": 406,
++    "native_epoch": 1487,
++    "end_block": 8025298,
++    "end_settlement_epoch": 433,
++    "end_native_epoch": 1510,
+     "required_work_blocks": 7570,
+     "historical_liability_wei": 0,
+     "new_slots": 1024,
+@@ -1531,9 +1532,9 @@
+             "record_bytes": 698568804,
+             "trail_count": 16958
+           },
+-          "storage_bytes": 283301268,
+-          "storage_files": 139,
+-          "file_metadata_sha256": "sha256:0211dedb2dbbea6db683700e5e606a01f6789edbd746fcd1978c354c2cae0ce5"
++          "storage_bytes": 281139022,
++          "storage_files": 140,
++          "file_metadata_sha256": "sha256:8d6aaac8cbcb3b2024f470903c0fc703957bc9052632aa046125637ffdc1f4a9"
+         }
+       },
+       {
+@@ -1889,9 +1890,9 @@
+             "record_bytes": 690311041,
+             "trail_count": 16788
+           },
+-          "storage_bytes": 278174508,
+-          "storage_files": 137,
+-          "file_metadata_sha256": "sha256:544e46d8d40f61e1acbf65b9c25ac14257914a77f89481a9bcb9475efcfc96b1"
++          "storage_bytes": 278046706,
++          "storage_files": 138,
++          "file_metadata_sha256": "sha256:63e5752679d127bffa0313f1df901f9289ba0321597b8c5c5fbb4c059c603dd3"
+         }
+       },
+       {
+@@ -2249,7 +2250,7 @@
+           },
+           "storage_bytes": 198787797,
+           "storage_files": 100,
+-          "file_metadata_sha256": "sha256:0d44c95244b18c2ee979a2ed14b382d6723578987998d9e9c3dba0175dd1ea62"
++          "file_metadata_sha256": "sha256:ab7a201ec6e1e9a63eddd92c45a9202521e35b58a4e6c6292f7dc9fa94f6662e"
+         }
+       },
+       {
+@@ -2607,7 +2608,7 @@
+           },
+           "storage_bytes": 199216969,
+           "storage_files": 100,
+-          "file_metadata_sha256": "sha256:5b0bc488a6e2fb30c4f856acac277bad5e8e446951005fb5816ccdbae17ef770"
++          "file_metadata_sha256": "sha256:b28f025bc0547ff811d3200fc78ba4f3a8ac8f47a4962ef11f5553451d7d355a"
+         }
+       }
+     ],
+@@ -139349,9 +139350,9 @@
+       {
+         "role": "operator-1-root",
+         "address": "0xd6f9165c4cc35ce380ea1eff3c518407173af60a",
+-        "finalized": 106,
+-        "latest": 106,
+-        "pending": 106
++        "finalized": 107,
++        "latest": 107,
++        "pending": 107
+       },
+       {
+         "role": "operator-2-artifact",
+@@ -139377,9 +139378,9 @@
+       {
+         "role": "operator-2-root",
+         "address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+-        "finalized": 104,
+-        "latest": 104,
+-        "pending": 104
++        "finalized": 107,
++        "latest": 107,
++        "pending": 107
+       },
+       {
+         "role": "testnet-owner",
+@@ -139389,7 +139390,7 @@
+         "pending": 20
+       }
+     ],
+-    "transactions_sha256": "sha256:78910dff315a8c5255a2c1859941d15dc763c6033a4a3f71cc294d3174436b6e"
++    "transactions_sha256": "sha256:0ee805b329c6ae9799e8c9180a8c5dc5df7697a216a3df6ffd7bc9ce9fc66d15"
+   },
+   "superseded_deployments": [
+     {
+@@ -377366,6 +377367,6 @@
+     "registrations": 262,
+     "subnet_creations": 0
+   },
+-  "plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
++  "plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+   "generated_at": "2026-09-16T08:13:28Z"
+ }

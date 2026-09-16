@@ -1,0 +1,23 @@
+{
+  "operation": "restore-original-operator-signed-history",
+  "source_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4",
+  "source_directory": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/private/missing-rlp",
+  "reviewed_signed_attempts": 230,
+  "already_retained_exact_matches": 226,
+  "restored_files": 4,
+  "restored_bytes_per_file": 178,
+  "create_only": true,
+  "chain_transactions": 0,
+  "journal_mutation": false,
+  "database_mutation": false,
+  "new_spending_authority": false,
+  "maximum_envelopes_wei": "25635775234311880",
+  "authorization_scope": "Restore exact original signed bytes for the four already-finalized partial-start operator transactions into the existing collector's supported canonical RLP store. Existing user authorization covers incremental recovery and unchanged approved actions/limits. This does not create or resend an action, rewrite status or journal history, or authorize a renewal.",
+  "transaction_hashes": [
+    "0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8",
+    "0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df",
+    "0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9",
+    "0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8"
+  ]
+}

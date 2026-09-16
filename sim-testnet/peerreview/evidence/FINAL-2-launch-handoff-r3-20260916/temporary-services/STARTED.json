@@ -1,0 +1,47 @@
+{
+  "time": "2026-09-16T08:31:36Z",
+  "source_commit": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "cli_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "release_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "services": [
+    {
+      "name": "subtensor-evm-egress",
+      "pid": 3527769,
+      "startticks": 183368942,
+      "readiness": {
+        "endpoint": "/healthz",
+        "http": 204
+      }
+    },
+    {
+      "name": "subtensor-rpc-proxy",
+      "pid": 3527795,
+      "startticks": 183368968,
+      "readiness": {
+        "endpoint": "/healthz",
+        "http": 204
+      }
+    },
+    {
+      "name": "operator-1-api",
+      "pid": 3527805,
+      "startticks": 183368994,
+      "readiness": {
+        "endpoint": "/status",
+        "http": 200,
+        "body_bytes": 139
+      }
+    },
+    {
+      "name": "operator-2-api",
+      "pid": 3527809,
+      "startticks": 183368995,
+      "readiness": {
+        "endpoint": "/status",
+        "http": 200,
+        "body_bytes": 139
+      }
+    }
+  ],
+  "helper_health_is_final_acceptance": false
+}

@@ -1,0 +1,16 @@
+{
+  "name": "cancellation-after-snapshot",
+  "positive_commit": "8270992eb8fb2b1599a29271ec44426379007306",
+  "commit": "71e02d52d4295fffe959c29952dd587be093f828",
+  "source": "/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/cancellation-after-snapshot/workspace/sn",
+  "changed_paths_from_positive": ["sim-testnet/process.go"],
+  "restoration_patch_sha256": "61e1ed51e619f1b9ee6ed1ae54ff2be2c28e720acf14adf15d0314b522a824e5",
+  "test_sha256": "8091bf5d65a4a6736602df4b47b13525deb6ba6acfe045ddd4022e48e8d052ee",
+  "selection_path": "../selection.json",
+  "mode": "normal",
+  "expected_fail": ["TestReleaseTopologyReadinessRetainedHistoryWaitCancellationPrecedesAdmission"],
+  "expected_failure_substring": "already canceled=true: waits=0 err=<nil>",
+  "expected_other_roots_pass": 10,
+  "expected_body_exit": 1,
+  "restoration": "Only remove the new pre-read and loop cancellation checks and restore nil at successful readiness; retain the fixed history timeout and identical tests."
+}

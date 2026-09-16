@@ -1,0 +1,3 @@
+2026-09-16T09:39:45Z receipt preflight initially addressed field 22 rather than field 2 in owner-identity.tsv.
+It exited before writing a valid identity row and before executing teardown-witness.sh.
+No helper signal was dispatched.

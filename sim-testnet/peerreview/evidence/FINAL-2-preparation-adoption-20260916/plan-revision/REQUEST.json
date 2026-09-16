@@ -1,0 +1,21 @@
+{
+  "command": "native plan revision, read only",
+  "source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "binary_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "release_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "retained_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "scope": "Revise release identity for qualified bounded carried preparation and explicit operator taskworker workload. Preserve all 4733 actions, original custody, approvals, finalized repair/funding/renewals, four startup transactions and signed history. Review the complete emitted plan diff before adoption.",
+  "limits": {
+    "evm_tao": 205,
+    "total_tao": 225,
+    "lifetime_alpha": 37250,
+    "per_repair_alpha": 6000,
+    "registrations": 262,
+    "new_subnets": 0
+  },
+  "fleet_validity_retained": [393, 424],
+  "full_required_work_blocks": 7570,
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_submission_authorized_by_this_request": false
+}

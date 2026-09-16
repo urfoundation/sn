@@ -1,0 +1,18 @@
+[
+  {
+    "validator_id": 1,
+    "changed_files": 117,
+    "session_credential_files_refreshed": 6,
+    "ledger_database_storage_files_modified": 111,
+    "coordinator_intents_or_measurement_preparation_modified": 0,
+    "interpretation": "Session credential refresh and ledger database reopen/compaction; these filesystem changes do not establish new signed proof or validator decisions. Original files are preserved; source capacity must be re-observed on the next native continuation."
+  },
+  {
+    "validator_id": 2,
+    "changed_files": 12,
+    "session_credential_files_refreshed": 6,
+    "ledger_database_storage_files_modified": 6,
+    "coordinator_intents_or_measurement_preparation_modified": 0,
+    "interpretation": "Session credential refresh and ledger database reopen/compaction; these filesystem changes do not establish new signed proof or validator decisions. Original files are preserved; source capacity must be re-observed on the next native continuation."
+  }
+]

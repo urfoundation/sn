@@ -1,0 +1,3 @@
+expected TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner=PASS, observed=FAIL
+expected TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites=PASS, observed=FAIL
+expected TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation=PASS, observed=FAIL

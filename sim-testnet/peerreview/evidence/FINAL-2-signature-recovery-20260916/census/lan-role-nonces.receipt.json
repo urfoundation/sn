@@ -1,0 +1,8 @@
+{
+  "endpoint": "http://192.168.1.162:9944",
+  "started_at": "2026-09-16T08:54:27.396938+00:00",
+  "finished_at": "2026-09-16T08:54:27.402296+00:00",
+  "read_only": true,
+  "request_sha256": "3de2a551a93778b96f5bd58e88c1f6c0dfaf4bd68bc92e12e9ff7057ffee6839",
+  "response_sha256": "4562081356ffbc08953a1b258f8d499146bce91892473ba1f1245823bcbd64aa"
+}

@@ -1,0 +1,21 @@
+{
+  "requested_at": "2026-09-16T09:19:31Z",
+  "command": "relay-continuation",
+  "apply": true,
+  "source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "binary_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "release_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "relay_continuation_plan": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r3/stdout.json",
+  "relay_continuation_plan_file_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "source_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "relay_end_block": 8025298,
+  "required_work_blocks": 7570,
+  "review": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r3/root-exact-comparison.json",
+  "review_sha256": "d17c0d74569cac4beedeeade8d44687bb606697c4b15f1882059456fa1ef1a62",
+  "review_scope": "Root inspected all27 exact differences with integer-preserving comparison; Astra independent comparison agrees. All4733 actions, limits, spending, both renewals, custody/config/policy and retained signed ledger history unchanged. Original four finalized signatures are accounted for. Source capacity observations and continuation window refreshed.",
+  "scope": "Adopt only the exact captured continuation through native signature, source, public payload, nonce and liability authentication. No new funding or renewal. Preserve historical approvals and completed work.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false
+}

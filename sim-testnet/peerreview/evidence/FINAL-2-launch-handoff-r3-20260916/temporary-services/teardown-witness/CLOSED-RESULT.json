@@ -1,0 +1,10 @@
+{
+  "closed_at": "2026-09-16T09:41:38Z",
+  "teardown_owner": {
+    "pid": 3626604,
+    "startticks": 183793743,
+    "join_exit": 0
+  },
+  "helper_terminal_exit_status": "unavailable: original helper launch parents had exited",
+  "result": "terminated-observed"
+}

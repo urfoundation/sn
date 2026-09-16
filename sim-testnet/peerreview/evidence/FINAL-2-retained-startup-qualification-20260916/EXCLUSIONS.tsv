@@ -1,0 +1,5 @@
+path_or_class	reason
+compiled_test_binaries	Omitted; their SHA-256 values are retained in BINARY-REPRODUCTION.tsv, OUTCOMES.tsv, and closed-local-receipt/.
+private_test_output_and_raw_logs	Omitted; closed-local-receipt/RAW-CAPTURE-INDEX.tsv retains their original paths, byte counts, and SHA-256 values without copying content.
+private_tmp_gotmp_and_gocache	Omitted; not needed to reconstruct selection, outcomes, fences, or artifact identities.
+source_worktrees_and_dependency_worktrees	Omitted; commits, clean source fences, dependency fence hashes, and original paths remain in closed-local-receipt/.

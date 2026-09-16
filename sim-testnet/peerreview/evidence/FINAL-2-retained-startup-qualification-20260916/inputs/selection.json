@@ -1,0 +1,30 @@
+{
+  "schema": "urnetwork-affected-qualification-selection-v1",
+  "base_commit": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "implementation_commit_before_formatting": "52d0cb48427dac9a264b81a564f12e0a9008d6fe",
+  "source_path": "/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/workspace/sn",
+  "changed_paths": ["sim-testnet/process.go", "sim-testnet/retained_startup_readiness_test.go"],
+  "package": "./sim-testnet",
+  "modes": ["normal", "race"],
+  "selector": "^Test(ReleaseTopologyReadiness(RetainedHistory(WarmupIsRouteIndependent|WaitKeepsProofDeadline|WaitCancellationPrecedesAdmission|WaitKeepsSafetyGates)|RequiresFreshProofsAndRejectsRestart)|CompletedReleaseProofCount(IgnoresOnlyTrailingFragment|RejectsDurableCorruption)|PostTopologyTournamentGate(RequiresFreshPostTournamentProof|PropagatesBoundaryFailure)|SupervisorStartupPublicRPCWavesRetainCompleteReadiness|ProcessLogGateRejectsSupervisorGenerationChange)$",
+  "expected_roots": [
+    "TestReleaseTopologyReadinessRetainedHistoryWarmupIsRouteIndependent",
+    "TestReleaseTopologyReadinessRetainedHistoryWaitKeepsProofDeadline",
+    "TestReleaseTopologyReadinessRetainedHistoryWaitCancellationPrecedesAdmission",
+    "TestReleaseTopologyReadinessRetainedHistoryWaitKeepsSafetyGates",
+    "TestReleaseTopologyReadinessRequiresFreshProofsAndRejectsRestart",
+    "TestCompletedReleaseProofCountIgnoresOnlyTrailingFragment",
+    "TestCompletedReleaseProofCountRejectsDurableCorruption",
+    "TestPostTopologyTournamentGateRequiresFreshPostTournamentProof",
+    "TestPostTopologyTournamentGatePropagatesBoundaryFailure",
+    "TestSupervisorStartupPublicRPCWavesRetainCompleteReadiness",
+    "TestProcessLogGateRejectsSupervisorGenerationChange"
+  ],
+  "positive_expected": {"pass": 11, "fail": 0, "skip": 0},
+  "causal_variants_after_formatted_source": [
+    {"name": "route_only_timeout", "mode": "normal", "restoration": "Restore only the old public-override-only predicate in releaseTopologyStartupReadinessTimeout.", "expected_fail": ["TestReleaseTopologyReadinessRetainedHistoryWarmupIsRouteIndependent"], "expected_pass": 10, "expected_body_exit": 1},
+    {"name": "cancellation_after_snapshot", "mode": "normal", "restoration": "Remove only the new pre-read/loop ctx.Err guards and restore ready return nil inside waitReleaseTopologyReadyWithClock.", "expected_fail": ["TestReleaseTopologyReadinessRetainedHistoryWaitCancellationPrecedesAdmission"], "expected_pass": 10, "expected_body_exit": 1}
+  ],
+  "qualification_limit": "Deterministic policy and adjacent safety coverage; the actual retained-history managed startup remains the representative workload qualification. No synthetic test claims thirty minutes is sufficient for that live history.",
+  "unchanged_scope": "No validator replay, metadata, EVM/native signing, approvals, relay capacity, campaign epoch, public source, log classification or provider wave changes. Existing full-gate and unaffected package receipts are reused."
+}

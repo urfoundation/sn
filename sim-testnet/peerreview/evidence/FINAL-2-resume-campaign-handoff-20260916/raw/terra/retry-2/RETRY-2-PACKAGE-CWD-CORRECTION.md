@@ -1,0 +1,3 @@
+The retry-1 bodies are preserved. Their binaries and source/dependency/binary fences are valid, but execution from the repository root made existing simulator fixtures resolve `../deploy/testnet/policy-v1.yml` outside the selected source. The corrected bodies execute the same admitted binaries from `<selected-source>/sim-testnet`, matching `go test` package working-directory behavior. No compilation, source, dependency, or retained passing root is repeated.
+
+Positive normal retains the four retry-1 PASS roots and reruns only the ten roots that failed from the incorrect working directory. The causal selector reruns its exact six roots. Positive race will rerun its full fourteen roots only after the still-live race compiler closes.

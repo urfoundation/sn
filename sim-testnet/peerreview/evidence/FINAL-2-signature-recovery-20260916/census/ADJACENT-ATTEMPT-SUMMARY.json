@@ -1,0 +1,90 @@
+{
+  "scope": "All st_transaction_intent rows LEFT JOIN every st_transaction_attempt row, both retained operator DBs; no status or time filter. Counts describe the read-only snapshot before root restoration.",
+  "roles": [
+    {
+      "role": "operator-1-deposit",
+      "signed_attempts": 7,
+      "unique_nonces": 7,
+      "minimum_nonce": 3,
+      "maximum_nonce": 9,
+      "multiple_signed_attempt_nonces": {},
+      "kinds": {
+        "cancellation": 2,
+        "execution": 5
+      },
+      "attempt_statuses": {
+        "canceled": 2,
+        "finalized": 5
+      },
+      "missing_original_census_hashes": []
+    },
+    {
+      "role": "operator-1-root",
+      "signed_attempts": 109,
+      "unique_nonces": 107,
+      "minimum_nonce": 0,
+      "maximum_nonce": 106,
+      "multiple_signed_attempt_nonces": {
+        "0": 2,
+        "37": 2
+      },
+      "kinds": {
+        "execution": 108,
+        "cancellation": 1
+      },
+      "attempt_statuses": {
+        "finalized": 105,
+        "broadcast": 1,
+        "replaced": 1,
+        "canceled": 1,
+        "mined": 1
+      },
+      "missing_original_census_hashes": [
+        "0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9"
+      ]
+    },
+    {
+      "role": "operator-2-deposit",
+      "signed_attempts": 7,
+      "unique_nonces": 7,
+      "minimum_nonce": 1,
+      "maximum_nonce": 7,
+      "multiple_signed_attempt_nonces": {},
+      "kinds": {
+        "cancellation": 2,
+        "execution": 5
+      },
+      "attempt_statuses": {
+        "canceled": 2,
+        "finalized": 5
+      },
+      "missing_original_census_hashes": []
+    },
+    {
+      "role": "operator-2-root",
+      "signed_attempts": 107,
+      "unique_nonces": 107,
+      "minimum_nonce": 0,
+      "maximum_nonce": 106,
+      "multiple_signed_attempt_nonces": {},
+      "kinds": {
+        "execution": 106,
+        "cancellation": 1
+      },
+      "attempt_statuses": {
+        "finalized": 104,
+        "canceled": 1,
+        "broadcast": 2
+      },
+      "missing_original_census_hashes": [
+        "0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8",
+        "0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df",
+        "0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8"
+      ]
+    }
+  ],
+  "total_signed_attempts": 230,
+  "total_cancellation_attempts": 6,
+  "unsigned_intent_count": 2,
+  "all_other_role_nonce_observations": "ROLE-NONCE-COMPARISON.json"
+}

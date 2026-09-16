@@ -1,0 +1,22 @@
+{
+  "operation": "restore exact retained signatures by exclusive creation",
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "candidate_count": 14,
+  "existing_rlp_count": 2272,
+  "source_inputs_sha256": {
+    "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/RESTORATION-CANDIDATES.json": "a651207f8399b697a724797a8867677a9280e4202afee4cb7bd91ee9267b1cbb",
+    "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/CANDIDATES.sha256": "11332e87a38bca346dde07663f043ce7e550e886ec719f805f89e95955b5a107",
+    "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/CANONICAL-RECONCILIATION.json": "03528f94c3391f3994478379e214ba6d24e62d17c031efefd84043cb3b1e7ebe",
+    "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/COMPLETE-UNION-DELTA.json": "4ceb4c5a68f36c74bbe10eae989ba9b9a07f8e889550889a8a38f502445f3ce1",
+    "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/EXACT-PRIVATE-EXPORT-RECEIPTS.json": "81f67b6a989d6d3f28b59ff69c57030d515424980ef164539d22cb026ee8e69c"
+  },
+  "effect": "copy original already-finalized signed bytes to supported collector; no broadcast, signing, DB-status, journal or approval mutation",
+  "unchanged_limits": {
+    "evm_tao": "205",
+    "total_tao": "225",
+    "alpha_lifetime": "37250",
+    "alpha_per_repair": "6000",
+    "registrations": 262,
+    "subnet_creations": 0
+  }
+}

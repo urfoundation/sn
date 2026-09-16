@@ -1,0 +1,299 @@
+{
+  "source_operator": 2,
+  "prior_rows": 115,
+  "current_rows": 121,
+  "prior_signed_attempts": 114,
+  "current_signed_attempts": 120,
+  "added_rows": [
+    {
+      "intent_id": "01a0a9b6-5cec-fee1-0739-5c5fc64677a5",
+      "intent_key": "st:v2:e3f7c1bcb7d9b795b5fa52d6492dcc40a6b262035137e7efe8dcf1f5dbeed709:0",
+      "logical_key": "st:v2:e3f7c1bcb7d9b795b5fa52d6492dcc40a6b262035137e7efe8dcf1f5dbeed709",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 107,
+      "intent_status": "finalized",
+      "current_tx_hash": "0xfa08bd40792856914fe333e534ac3fdde5f7d7916db6c07747993fbf1b1b0bb9",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:14:55.980577",
+      "intent_updated_at": "2026-09-16T10:15:27.148686",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0xfa08bd40792856914fe333e534ac3fdde5f7d7916db6c07747993fbf1b1b0bb9",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "cad16b2ca60ba5d36abf51713498798d68cd772d0df9eadbb5bfefddc55a765d",
+      "gas_limit": 149348,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017621,
+      "inclusion_hash": "0x012663d3b11fcda0553a4c6095fac4929a3b36c9218efcc6b3343372346a261d",
+      "finalized_block": 8017621,
+      "finalized_hash": "0x012663d3b11fcda0553a4c6095fac4929a3b36c9218efcc6b3343372346a261d",
+      "attempt_created_at": "2026-09-16T10:14:56.021381",
+      "attempt_updated_at": "2026-09-16T10:15:27.148686"
+    },
+    {
+      "intent_id": "01a0a9b6-5d74-ca10-0df9-71b532db8e57",
+      "intent_key": "st:v2:e08ca426aa13ca924f427be52316a57eba325b86cc29a8cbd9fb34b28a29a16f:0",
+      "logical_key": "st:v2:e08ca426aa13ca924f427be52316a57eba325b86cc29a8cbd9fb34b28a29a16f",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 108,
+      "intent_status": "finalized",
+      "current_tx_hash": "0x22b58e43ca511467a7f93543a588728f6d40e7d826d8eea32146ec4825d45c37",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:14:56.11625",
+      "intent_updated_at": "2026-09-16T10:15:27.208352",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0x22b58e43ca511467a7f93543a588728f6d40e7d826d8eea32146ec4825d45c37",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "63761172ffb12d71fb07425fe4294a5d76bf824add78124a87778abd04d09040",
+      "gas_limit": 149348,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017621,
+      "inclusion_hash": "0x012663d3b11fcda0553a4c6095fac4929a3b36c9218efcc6b3343372346a261d",
+      "finalized_block": 8017621,
+      "finalized_hash": "0x012663d3b11fcda0553a4c6095fac4929a3b36c9218efcc6b3343372346a261d",
+      "attempt_created_at": "2026-09-16T10:14:56.662214",
+      "attempt_updated_at": "2026-09-16T10:15:27.208352"
+    },
+    {
+      "intent_id": "01a0a9b6-d704-e617-adf8-f99348da069d",
+      "intent_key": "st:v2:e65351ee74fba25566b1160ac9897eaf242c3ef2dbd17882ac8635956061fe3c:0",
+      "logical_key": "st:v2:e65351ee74fba25566b1160ac9897eaf242c3ef2dbd17882ac8635956061fe3c",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 109,
+      "intent_status": "finalized",
+      "current_tx_hash": "0x79b329e62d369064b46c56cb8b13c2853ccab16deccefd52064bcb7ecf306939",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:15:27.236135",
+      "intent_updated_at": "2026-09-16T10:16:03.384444",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0x79b329e62d369064b46c56cb8b13c2853ccab16deccefd52064bcb7ecf306939",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "c98ab031676c29ab28ebe39e6e1ce79ed4197297ee88f7ae445f01a44f1eda2b",
+      "gas_limit": 168962,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017624,
+      "inclusion_hash": "0x0a306401d8b546160437aa8b82f3df566a754e0c32edea51c27d387b7d5a0662",
+      "finalized_block": 8017624,
+      "finalized_hash": "0x0a306401d8b546160437aa8b82f3df566a754e0c32edea51c27d387b7d5a0662",
+      "attempt_created_at": "2026-09-16T10:15:27.271583",
+      "attempt_updated_at": "2026-09-16T10:16:03.384444"
+    },
+    {
+      "intent_id": "01a0a9b6-dd26-5ba2-e2ab-21e2b18bbc7f",
+      "intent_key": "st:v2:588656d1bc6d089032026ec04c1278a76f3759296d1cfe3feba3e1569b1b7f07:0",
+      "logical_key": "st:v2:588656d1bc6d089032026ec04c1278a76f3759296d1cfe3feba3e1569b1b7f07",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 110,
+      "intent_status": "finalized",
+      "current_tx_hash": "0xa316152e3aba405dfb5762337ca94f610ce27d9d9cb01b282f99ae1adf877d20",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:15:28.806873",
+      "intent_updated_at": "2026-09-16T10:16:02.958777",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0xa316152e3aba405dfb5762337ca94f610ce27d9d9cb01b282f99ae1adf877d20",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "c4030492acc338feac03510a943f0c5ed2d8e4d0584d3c293c5af574887a1b5a",
+      "gas_limit": 168962,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017624,
+      "inclusion_hash": "0x0a306401d8b546160437aa8b82f3df566a754e0c32edea51c27d387b7d5a0662",
+      "finalized_block": 8017624,
+      "finalized_hash": "0x0a306401d8b546160437aa8b82f3df566a754e0c32edea51c27d387b7d5a0662",
+      "attempt_created_at": "2026-09-16T10:15:28.851906",
+      "attempt_updated_at": "2026-09-16T10:16:02.958777"
+    },
+    {
+      "intent_id": "01a0a9b7-6852-da8c-cae5-4be53c94b679",
+      "intent_key": "st:v2:5459da31450124d6f1973c7a79b7367bfc69850e7ddc1bf128e1517c14d6c002:0",
+      "logical_key": "st:v2:5459da31450124d6f1973c7a79b7367bfc69850e7ddc1bf128e1517c14d6c002",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 111,
+      "intent_status": "finalized",
+      "current_tx_hash": "0xe090676b83cb4320e0016f333f2a210aafb1ea979e1555e310b1fc1b122ef075",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:16:04.434565",
+      "intent_updated_at": "2026-09-16T10:16:40.584078",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0xe090676b83cb4320e0016f333f2a210aafb1ea979e1555e310b1fc1b122ef075",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "6f9fca7ff87775a8c71e40a086740ed74ccc4b51d7c814785430064d13b61ce2",
+      "gas_limit": 168962,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017627,
+      "inclusion_hash": "0x72eee4027a74d6761a8a6995e5864073a6ead1bc511d7a150a99ee88e341932d",
+      "finalized_block": 8017627,
+      "finalized_hash": "0x72eee4027a74d6761a8a6995e5864073a6ead1bc511d7a150a99ee88e341932d",
+      "attempt_created_at": "2026-09-16T10:16:04.48347",
+      "attempt_updated_at": "2026-09-16T10:16:40.584078"
+    },
+    {
+      "intent_id": "01a0a9b7-f655-4f11-e102-2078fb7c2993",
+      "intent_key": "st:v2:bf00a56f5a6c3a0537005e6739fc82ed719b5cbd7754ec9e2a0da694765a26f8:0",
+      "logical_key": "st:v2:bf00a56f5a6c3a0537005e6739fc82ed719b5cbd7754ec9e2a0da694765a26f8",
+      "generation": 0,
+      "profile": "testnet",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "deployment_key": "945:0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "chain_id": 945,
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 112,
+      "intent_status": "finalized",
+      "current_tx_hash": "0xf0ec2de8004b85ab20b3745287f05030d4bd4d070c9a34141b9c1c6a26b5db91",
+      "attempt_count": 1,
+      "intent_created_at": "2026-09-16T10:16:40.789849",
+      "intent_updated_at": "2026-09-16T10:17:14.927726",
+      "attempt": 1,
+      "kind": "execution",
+      "tx_hash": "0xf0ec2de8004b85ab20b3745287f05030d4bd4d070c9a34141b9c1c6a26b5db91",
+      "attempt_status": "finalized",
+      "signed_byte_count": 178,
+      "raw_transaction_sha256": "3adb1c5b41029aeb15cf709b673650be46aaa11006c86fd4f083979b65dda816",
+      "gas_limit": 168962,
+      "gas_price": null,
+      "gas_tip_cap": "0",
+      "gas_fee_cap": "40268567174",
+      "inclusion_block": 8017630,
+      "inclusion_hash": "0x6671a8c5a5e22f6f434a1f2e54ef9178f82057afb2dfd9971ee230937b8398b4",
+      "finalized_block": 8017630,
+      "finalized_hash": "0x6671a8c5a5e22f6f434a1f2e54ef9178f82057afb2dfd9971ee230937b8398b4",
+      "attempt_created_at": "2026-09-16T10:16:40.817283",
+      "attempt_updated_at": "2026-09-16T10:17:14.927726"
+    }
+  ],
+  "removed_rows": [],
+  "changed_rows": [
+    {
+      "intent_id": "01a0a8e7-61cb-07e7-963d-a5346e0eb508",
+      "attempt": 1,
+      "changes": {
+        "intent_updated_at": {
+          "prior": "2026-09-16T06:28:51.365043",
+          "current": "2026-09-16T10:14:55.947452"
+        },
+        "inclusion_hash": {
+          "prior": null,
+          "current": "0x4d1936206c41d92cfc9ac9506308e502e502d1553aa683d92e8e3b3832e484f1"
+        },
+        "attempt_updated_at": {
+          "prior": "2026-09-16T06:28:51.365043",
+          "current": "2026-09-16T10:14:55.947452"
+        },
+        "attempt_status": {
+          "prior": "broadcast",
+          "current": "finalized"
+        },
+        "finalized_hash": {
+          "prior": null,
+          "current": "0xea73b32f003384929a6e41b36883a4669de7bc8b6e3990aba437ff3ee18c124e"
+        },
+        "inclusion_block": {
+          "prior": null,
+          "current": 8016491
+        },
+        "intent_status": {
+          "prior": "broadcast",
+          "current": "finalized"
+        },
+        "finalized_block": {
+          "prior": null,
+          "current": 8017618
+        }
+      }
+    },
+    {
+      "intent_id": "01a0a8e7-60df-699f-de52-610d5055fda4",
+      "attempt": 1,
+      "changes": {
+        "intent_updated_at": {
+          "prior": "2026-09-16T06:28:51.13564",
+          "current": "2026-09-16T10:14:55.877537"
+        },
+        "inclusion_hash": {
+          "prior": null,
+          "current": "0x4d1936206c41d92cfc9ac9506308e502e502d1553aa683d92e8e3b3832e484f1"
+        },
+        "attempt_updated_at": {
+          "prior": "2026-09-16T06:28:51.13564",
+          "current": "2026-09-16T10:14:55.877537"
+        },
+        "attempt_status": {
+          "prior": "broadcast",
+          "current": "finalized"
+        },
+        "finalized_hash": {
+          "prior": null,
+          "current": "0xea73b32f003384929a6e41b36883a4669de7bc8b6e3990aba437ff3ee18c124e"
+        },
+        "inclusion_block": {
+          "prior": null,
+          "current": 8016491
+        },
+        "intent_status": {
+          "prior": "broadcast",
+          "current": "finalized"
+        },
+        "finalized_block": {
+          "prior": null,
+          "current": 8017618
+        }
+      }
+    }
+  ],
+  "projection_only_field_excluded": "source_operator"
+}

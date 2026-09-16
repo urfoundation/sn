@@ -1,0 +1,44 @@
+{"Time":"2026-09-16T11:20:54.133214912Z","Action":"start"}
+{"Time":"2026-09-16T11:20:54.133400928Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T11:20:54.133424131Z","Action":"output","Output":"I0916 11:20:54.049061 3816390 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T11:20:54.133440385Z","Action":"output","Output":"I0916 11:20:54.049234 3816390 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T11:20:54.133446655Z","Action":"output","Output":"I0916 11:20:54.049288 3816390 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T11:20:54.13345218Z","Action":"output","Output":"I0916 11:20:54.049305 3816390 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T11:20:54.133467792Z","Action":"run","Test":"TestCompletedCampaignStillRequiresBothSemanticAnalyzers"}
+{"Time":"2026-09-16T11:20:54.133473549Z","Action":"output","Test":"TestCompletedCampaignStillRequiresBothSemanticAnalyzers","Output":"=== RUN   TestCompletedCampaignStillRequiresBothSemanticAnalyzers\n"}
+{"Time":"2026-09-16T11:20:56.856143788Z","Action":"output","Test":"TestCompletedCampaignStillRequiresBothSemanticAnalyzers","Output":"--- PASS: TestCompletedCampaignStillRequiresBothSemanticAnalyzers (2.80s)\n"}
+{"Time":"2026-09-16T11:20:56.856436541Z","Action":"pass","Test":"TestCompletedCampaignStillRequiresBothSemanticAnalyzers","Elapsed":2.8}
+{"Time":"2026-09-16T11:20:56.85648341Z","Action":"run","Test":"TestCampaignParentCancellationJoinsSemanticAnalyzer"}
+{"Time":"2026-09-16T11:20:56.856508663Z","Action":"output","Test":"TestCampaignParentCancellationJoinsSemanticAnalyzer","Output":"=== RUN   TestCampaignParentCancellationJoinsSemanticAnalyzer\n"}
+{"Time":"2026-09-16T11:20:57.935628322Z","Action":"output","Test":"TestCampaignParentCancellationJoinsSemanticAnalyzer","Output":"--- PASS: TestCampaignParentCancellationJoinsSemanticAnalyzer (1.08s)\n"}
+{"Time":"2026-09-16T11:20:57.935720727Z","Action":"pass","Test":"TestCampaignParentCancellationJoinsSemanticAnalyzer","Elapsed":1.08}
+{"Time":"2026-09-16T11:20:57.935738437Z","Action":"run","Test":"TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder"}
+{"Time":"2026-09-16T11:20:57.935747326Z","Action":"output","Test":"TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder","Output":"=== RUN   TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder\n"}
+{"Time":"2026-09-16T11:21:00.255851849Z","Action":"output","Test":"TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder","Output":"--- PASS: TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder (2.32s)\n"}
+{"Time":"2026-09-16T11:21:00.255984726Z","Action":"pass","Test":"TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder","Elapsed":2.32}
+{"Time":"2026-09-16T11:21:00.256171747Z","Action":"run","Test":"TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult"}
+{"Time":"2026-09-16T11:21:00.256187509Z","Action":"output","Test":"TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult","Output":"=== RUN   TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult\n"}
+{"Time":"2026-09-16T11:21:00.306449133Z","Action":"output","Test":"TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult","Output":"--- PASS: TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult (0.05s)\n"}
+{"Time":"2026-09-16T11:21:00.307433553Z","Action":"pass","Test":"TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult","Elapsed":0.05}
+{"Time":"2026-09-16T11:21:00.30747967Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites"}
+{"Time":"2026-09-16T11:21:00.307490978Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Output":"=== RUN   TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites\n"}
+{"Time":"2026-09-16T11:21:00.311485773Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Output":"--- PASS: TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites (0.00s)\n"}
+{"Time":"2026-09-16T11:21:00.311542103Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites","Elapsed":0}
+{"Time":"2026-09-16T11:21:00.311576991Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation"}
+{"Time":"2026-09-16T11:21:00.311586774Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Output":"=== RUN   TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation\n"}
+{"Time":"2026-09-16T11:21:00.33743567Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Output":"--- PASS: TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation (0.03s)\n"}
+{"Time":"2026-09-16T11:21:00.337574113Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation","Elapsed":0.03}
+{"Time":"2026-09-16T11:21:00.337610835Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete"}
+{"Time":"2026-09-16T11:21:00.337621604Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Output":"=== RUN   TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete\n"}
+{"Time":"2026-09-16T11:21:00.343053961Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Output":"--- PASS: TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete (0.01s)\n"}
+{"Time":"2026-09-16T11:21:00.343105738Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete","Elapsed":0.01}
+{"Time":"2026-09-16T11:21:00.343138967Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner"}
+{"Time":"2026-09-16T11:21:00.343149243Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Output":"=== RUN   TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner\n"}
+{"Time":"2026-09-16T11:21:00.401957883Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Output":"--- PASS: TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner (0.06s)\n"}
+{"Time":"2026-09-16T11:21:00.402011841Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner","Elapsed":0.06}
+{"Time":"2026-09-16T11:21:00.402097417Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates"}
+{"Time":"2026-09-16T11:21:00.402109167Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Output":"=== RUN   TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates\n"}
+{"Time":"2026-09-16T11:21:02.784262245Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Output":"--- PASS: TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates (2.38s)\n"}
+{"Time":"2026-09-16T11:21:02.784318175Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates","Elapsed":2.38}
+{"Time":"2026-09-16T11:21:02.784336219Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T11:21:02.791110946Z","Action":"pass","Elapsed":8.658}

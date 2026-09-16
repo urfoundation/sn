@@ -1,0 +1,117 @@
+{
+  "status": "closed qualification; raw results and disjoint composition confirmed by Terra and independent root review",
+  "positive_source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "causal_source": "2e6a8e435d4d3c49a9e5dc06e7093ce6870dcee0",
+  "normal": {
+    "accepted_root_count": 14,
+    "parts": [
+      {
+        "path": "terra/retry-1/positive/normal/body",
+        "retained_pass_roots": [
+          "TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor",
+          "TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure",
+          "TestLaunchPreparationOnlyStopsCleanApprovedPass",
+          "TestParseCLIReleaseCommandsAndWriteGuardFlags"
+        ],
+        "observed_all_outcomes": {
+          "TestCampaignParentCancellationJoinsSemanticAnalyzer": "FAIL",
+          "TestCompletedCampaignStillRequiresBothSemanticAnalyzers": "FAIL",
+          "TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor": "PASS",
+          "TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure": "PASS",
+          "TestLaunchPreparationOnlyStopsCleanApprovedPass": "PASS",
+          "TestParseCLIReleaseCommandsAndWriteGuardFlags": "PASS",
+          "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult": "FAIL",
+          "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder": "FAIL",
+          "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "FAIL",
+          "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "FAIL",
+          "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "FAIL",
+          "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "FAIL",
+          "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "FAIL",
+          "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "FAIL"
+        },
+        "raw_body_exit": 1,
+        "validated_wrapper_body_exit": 125,
+        "outer_exit": 125,
+        "join_exit": 125
+      },
+      {
+        "path": "terra/retry-2/positive/normal/body",
+        "retained_pass_roots": [
+          "TestCampaignParentCancellationJoinsSemanticAnalyzer",
+          "TestCompletedCampaignStillRequiresBothSemanticAnalyzers",
+          "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult",
+          "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder",
+          "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation",
+          "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites",
+          "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates",
+          "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner",
+          "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete"
+        ],
+        "observed_all_outcomes": {
+          "TestCampaignParentCancellationJoinsSemanticAnalyzer": "PASS",
+          "TestCompletedCampaignStillRequiresBothSemanticAnalyzers": "PASS",
+          "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult": "PASS",
+          "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder": "PASS",
+          "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "PASS",
+          "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "PASS",
+          "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "PASS",
+          "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "PASS",
+          "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "PASS"
+        },
+        "raw_body_exit": 0,
+        "validated_wrapper_body_exit": 125,
+        "outer_exit": 125,
+        "join_exit": 125
+      },
+      {
+        "path": "terra/retry-3/positive/normal/body",
+        "retained_pass_roots": [
+          "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation"
+        ],
+        "observed_all_outcomes": {
+          "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "PASS"
+        },
+        "raw_body_exit": 0,
+        "validated_wrapper_body_exit": 0,
+        "outer_exit": 0,
+        "join_exit": 0
+      }
+    ]
+  },
+  "race": {
+    "accepted_root_count": 14,
+    "path": "terra/retry-3/positive/race/body",
+    "outcomes": {
+      "TestCampaignParentCancellationJoinsSemanticAnalyzer": "PASS",
+      "TestCompletedCampaignStillRequiresBothSemanticAnalyzers": "PASS",
+      "TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor": "PASS",
+      "TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure": "PASS",
+      "TestLaunchPreparationOnlyStopsCleanApprovedPass": "PASS",
+      "TestParseCLIReleaseCommandsAndWriteGuardFlags": "PASS",
+      "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult": "PASS",
+      "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder": "PASS",
+      "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "PASS",
+      "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "PASS",
+      "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "PASS",
+      "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "PASS",
+      "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "PASS",
+      "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "PASS"
+    }
+  },
+  "causal": {
+    "expected_failures": 3,
+    "passes": 3,
+    "path": "terra/retry-2/causal/normal/body",
+    "outcomes": {
+      "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "PASS",
+      "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "PASS",
+      "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "FAIL",
+      "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "PASS",
+      "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "FAIL",
+      "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "FAIL"
+    }
+  },
+  "existing_failed_invocations_preserved": true,
+  "no_repeated_project_test_or_build": true,
+  "root_review_sha256": "91702800af1ab25b943bc170c862b9bf9116c82511ec0118426cb8f9d90330b4"
+}

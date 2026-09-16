@@ -1,0 +1,60 @@
+--- prior-plan.json (lossless pretty)
++++ stdout.json (lossless pretty)
+@@ -1,7 +1,7 @@
+ {
+   "schema": "urnetwork-sim-plan-v12",
+   "release": "1.0",
+-  "release_lock_hash": "0x361b0c70b3d5a651aeafeb031980a84e902ac3e606474627c3a89049220465bf",
++  "release_lock_hash": "0x1024ab9042b0e0053b438b0aa4f0b0bd4e8d0172cce558a94dab3ec1728baef7",
+   "deployment_id": "ur-subnet-testnet-v1",
+   "chain_id": 945,
+   "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+@@ -14,11 +14,11 @@
+     "burn_half_life_blocks": 1,
+     "burn_increase_mult_q64": "23242897532874035200",
+     "alpha_source_hotkey": "0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658",
+-    "alpha_available_rao": 55561436992549,
+-    "alpha_transferable_rao": 55561436992549,
++    "alpha_available_rao": 55834140895655,
++    "alpha_transferable_rao": 55834140895655,
+     "alpha_source_stored_lock_rao": 0,
+     "alpha_source_collateral_rao": 0,
+-    "wallet_netuid_alpha_rao": 55561436992549,
++    "wallet_netuid_alpha_rao": 55834140895655,
+     "wallet_netuid_collateral_rao": 0,
+     "existing_uid_count": 2,
+     "subnet_owner_hotkey": "0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658",
+@@ -51,10 +51,10 @@
+     "probe_tao_rao": 20000000,
+     "wallet_free_tao_rao": 246066964201,
+     "deployer_nonce": 13,
+-    "finalized_block": 8015788,
+-    "finalized_block_hash": "0xc9860c92b43e7bb7345066b3dfca12d5e738c622e39f48af9df7c61106b07920",
+-    "evm_finalized_block": 8015788,
+-    "evm_finalized_block_hash": "0xfffbabe7a146bb06ad3d21e8847b9fbddaef2831e8ececb28b8c889969422e40"
++    "finalized_block": 8016946,
++    "finalized_block_hash": "0x300b0290933b9a6b145e3c6cc7b580e60333e3354af5ed3dff85215d10b0f83b",
++    "evm_finalized_block": 8016946,
++    "evm_finalized_block_hash": "0x62f099cff193d05b578656110ba1471e472f4a3cfe24065c54aad16664d3099b"
+   },
+   "registration_burn_limit_rao": 1000000,
+   "native_transaction_fee_limit_rao": 3000000,
+@@ -152,7 +152,8 @@
+     "0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30",
+     "0x3f88ccd424dabd6670523522d6f56300940272311d6e70162ad48f76c24a7d2d",
+     "0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799",
+-    "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86"
++    "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
++    "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17"
+   ],
+   "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+   "config_identity_runtime_spec": 455,
+@@ -377365,6 +377366,6 @@
+     "registrations": 262,
+     "subnet_creations": 0
+   },
+-  "plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+-  "generated_at": "2026-09-16T04:09:03Z"
++  "plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
++  "generated_at": "2026-09-16T08:00:35Z"
+ }

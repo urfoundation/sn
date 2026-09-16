@@ -1,0 +1,5 @@
+a2ff1b4336836c33bf1497903ca9364893220860dc09eb8d60b8d933478079d9  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/OWNER-STATUS.json
+557a81ec798c4eb4b4fad27803ff85a7fb2fcd9560812b7fbaba6138dad07a4f  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/operator-1-api/owner-identity.tsv
+9393319272ec4def6b2916d87df8ec5affd51912dbc3ed755f312732a2ed0cbe  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/operator-2-api/owner-identity.tsv
+3bb219f0708944e1a64e931573e5c34edd62f6ab682a0ec90d1ea23cf0878831  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/subtensor-evm-egress/owner-identity.tsv
+774192b4ec42c210bc7a6511f62e4e81c93f8af804e4241a1cee0507d6d90d52  /mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/subtensor-rpc-proxy/owner-identity.tsv

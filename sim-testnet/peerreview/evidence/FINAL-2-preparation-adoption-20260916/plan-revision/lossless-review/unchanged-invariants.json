@@ -1,0 +1,207 @@
+{
+  "prior_plan_hash": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+  "proposed_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "semantic_difference_count": 11,
+  "all_actions_equal": true,
+  "action_count": 4733,
+  "limits_equal": true,
+  "limits": {
+    "tao_rao": 225000000000,
+    "alpha_rao": 37250000000000,
+    "evm_gas_wei": 205000000000000000000,
+    "registrations": 262,
+    "subnet_creations": 0
+  },
+  "maximum_spend": {
+    "tao_rao": 211960236000,
+    "alpha_rao": 36748306443274,
+    "evm_gas_wei": 192249500000000000000,
+    "registrations": 259,
+    "subnet_creations": 0
+  },
+  "superseded_spend": {
+    "tao_rao": 0,
+    "alpha_rao": 501693556726,
+    "evm_gas_wei": 12750500000000000000,
+    "registrations": 3,
+    "subnet_creations": 0
+  },
+  "repair_limit_parameters": [
+    {
+      "path": "/actions/750/parameters/cumulative_alpha_limit_rao",
+      "value": "22000000000000"
+    },
+    {
+      "path": "/actions/750/parameters/maximum_reserve_repair_tranche_rao",
+      "value": "3000000000000"
+    },
+    {
+      "path": "/actions/751/parameters/cumulative_alpha_limit_rao",
+      "value": "22250000000000"
+    },
+    {
+      "path": "/actions/751/parameters/maximum_reserve_repair_tranche_rao",
+      "value": "3000000000000"
+    },
+    {
+      "path": "/actions/752/parameters/cumulative_alpha_limit_rao",
+      "value": "25250000000000"
+    },
+    {
+      "path": "/actions/752/parameters/maximum_reserve_repair_tranche_rao",
+      "value": "3000000000000"
+    },
+    {
+      "path": "/actions/753/parameters/cumulative_alpha_limit_rao",
+      "value": "31250000000000"
+    },
+    {
+      "path": "/actions/753/parameters/maximum_reserve_repair_tranche_rao",
+      "value": "6000000000000"
+    },
+    {
+      "path": "/actions/754/parameters/cumulative_alpha_limit_rao",
+      "value": "37250000000000"
+    },
+    {
+      "path": "/actions/754/parameters/maximum_reserve_repair_tranche_rao",
+      "value": "6000000000000"
+    }
+  ],
+  "fleet_renewals_equal": true,
+  "fleet_renewals": [
+    {
+      "round": 1,
+      "valid_from_epoch": 359,
+      "valid_to_epoch": 390,
+      "source_plan_hash": "0x08ffaa10bb1647ea2f5b7dba5a57358b7e8e05a09d47a6ff8bddedd91b2966a1"
+    },
+    {
+      "round": 2,
+      "valid_from_epoch": 393,
+      "valid_to_epoch": 424,
+      "source_plan_hash": "0x922e280318f33cb20f5b15082bb6329890e9d8778f1effabf8baae521a57f4ea"
+    }
+  ],
+  "continuation_equal": true,
+  "continuation": {
+    "end_block": 8024100,
+    "required_work_blocks": 7570,
+    "new_slots": 1024,
+    "end_settlement_epoch": 429,
+    "end_native_epoch": 1507,
+    "transactions_sha256": "sha256:78910dff315a8c5255a2c1859941d15dc763c6033a4a3f71cc294d3174436b6e"
+  },
+  "unchanged_top_level_fields": {
+    "schema": {
+      "sha256_of_exact_integer_canonical_json": "30df584fc9749802b1b43bd13a1c37ef1dde5eb44b447a4948f69115d97c3315"
+    },
+    "release": {
+      "sha256_of_exact_integer_canonical_json": "a51162aeeb057ca4e3df627977231de20b581f0d0d418ca3a111bc0e408ac6cc"
+    },
+    "deployment_id": {
+      "sha256_of_exact_integer_canonical_json": "a9cfb6baf1b0543b4269cae2d9a38030d618490cd8dbac1ded2dd42ac5da2fee"
+    },
+    "chain_id": {
+      "sha256_of_exact_integer_canonical_json": "828bb918957379a792e06807bcd291daf3c1efaa51325f32d2fc7e3280f1b983"
+    },
+    "genesis_hash": {
+      "sha256_of_exact_integer_canonical_json": "86102cc51c210d14fd4570b3a198edecc15587eb8cd52c9182bb3ad3b38e1e78"
+    },
+    "netuid": {
+      "sha256_of_exact_integer_canonical_json": "72933e3b31f0070af6478edc3becf96e1ee59917620e8c509cf0e6b360e29c02"
+    },
+    "owner": {
+      "sha256_of_exact_integer_canonical_json": "39ff35420a26346e3e98eccb13dbd6ebcfe11918cec7002636ad4568cc15678b"
+    },
+    "registration_burn_limit_rao": {
+      "sha256_of_exact_integer_canonical_json": "6cce36d9f8a9e151b100234af75cca89d55bcb94c153f51847debdf1f39cae45"
+    },
+    "native_transaction_fee_limit_rao": {
+      "sha256_of_exact_integer_canonical_json": "5973b7b8afbd2cbe7aeaa193eed5fe09e5fa0389765b72ab7cde1c70e2e803ed"
+    },
+    "maximum_evm_fee_per_gas_wei": {
+      "sha256_of_exact_integer_canonical_json": "11a1162b984fef626ecc27c659a8b0eead5248ca867a6a87bea72f8a8706109d"
+    },
+    "alpha_transfer_margin_bps": {
+      "sha256_of_exact_integer_canonical_json": "40510175845988f13f6162ed8526f0b09f73384467fa855e1e79b44a56562a58"
+    },
+    "minimum_source_remaining_alpha_rao": {
+      "sha256_of_exact_integer_canonical_json": "95ea80e60e6ae14fa90dd54e6cfd08aff6a917be3c0aed6a290d6200815d53a2"
+    },
+    "bootstrap_burn_half_life_blocks": {
+      "sha256_of_exact_integer_canonical_json": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    "production_burn_half_life_blocks": {
+      "sha256_of_exact_integer_canonical_json": "838f461c2fa673cec73e6eecdafa88b127802d6cb0a61c53175197a122cb645a"
+    },
+    "config_hash": {
+      "sha256_of_exact_integer_canonical_json": "dfda1485a99b431cb49bc6ed83ea972588a813be7178225c1a1a1647f5c99fbd"
+    },
+    "config_identity_runtime_spec": {
+      "sha256_of_exact_integer_canonical_json": "f626051bc94422f26f4b774a2bca105e122df36a2f32f51bd7ee470daa620b0b"
+    },
+    "resolved_inputs_hash": {
+      "sha256_of_exact_integer_canonical_json": "9f690d25b331053280a3556456acf3540ec9c1f6bbec7d7d2425ab3a56e7c618"
+    },
+    "owned_rpc_authority": {
+      "sha256_of_exact_integer_canonical_json": "3b13799737fd75da54047e174b533d8de38f226e9376e8104f0578e5eb43eff1"
+    },
+    "policy_hash": {
+      "sha256_of_exact_integer_canonical_json": "b4f4f62a0da61c6cf4d5ef085266aa8562611877d8efac276333d677ef95efd0"
+    },
+    "roles": {
+      "sha256_of_exact_integer_canonical_json": "11c16a68e1a9c2f935b4e4428d6f0ada2797f37bd1540fbfa953721b18f4627d"
+    },
+    "deployment": {
+      "sha256_of_exact_integer_canonical_json": "492472ccdd5df9a796a7d3a030f398b6ff4634407cee4b51ba6b9c54cd537802"
+    },
+    "coordinator_upgrade": {
+      "sha256_of_exact_integer_canonical_json": "4902eebe13d3d41eb46a011418dc41b822c77e01110158e566503676155b54fa"
+    },
+    "coordinator_upgrade_baseline": {
+      "sha256_of_exact_integer_canonical_json": "1bb5eb9f3724088f0ec127fc57f8599777dbff9b118225043de22c5dc5df7ab1"
+    },
+    "coordinator_repair_carry": {
+      "sha256_of_exact_integer_canonical_json": "acaee9316859ed6d07a57fb53b7b171eb7f1f2c8444e74159fec20e8e33ee417"
+    },
+    "precompile_probe_successor": {
+      "sha256_of_exact_integer_canonical_json": "8f8380d827864adb6e7deafdcdf91dc63b841ed374a46f62c9f5ae4d50715162"
+    },
+    "validator_evidence": {
+      "sha256_of_exact_integer_canonical_json": "bd7f996519b0a082303f5e7b13f28a034dcc5f184f9ccc6cb58ed5642cac1ec4"
+    },
+    "validator_evidence_source": {
+      "sha256_of_exact_integer_canonical_json": "18802a10de273ecd14d391d12bac9f711b0a1d2db98285c0722f5cc802e5d747"
+    },
+    "validator_evidence_carry": {
+      "sha256_of_exact_integer_canonical_json": "62c8d9a8ff9df42a20ae5b5342affa8cdb93c98c4bfd0fcfce9450ac8400418a"
+    },
+    "evidence_relay_continuation": {
+      "sha256_of_exact_integer_canonical_json": "ace2a63c2b281b00cef299f54e4946e34e98308e7e7f74feeca0ba8c963a27e4"
+    },
+    "superseded_deployments": {
+      "sha256_of_exact_integer_canonical_json": "6e981a3e633a6c008395ed09132fd2b310fb5e5a62c461375541634e72a94d72"
+    },
+    "actions": {
+      "sha256_of_exact_integer_canonical_json": "58713c30fcbfa9f1c6cd98b8d823f297c164d15842a51ca29add27859e293da4"
+    },
+    "fleet_renewals": {
+      "sha256_of_exact_integer_canonical_json": "5f0f0468329cba9aad475ba599a0d1ecb39743ec58c4b40cc860b1856bff90b6"
+    },
+    "fleet_lifecycle_renewal": {
+      "sha256_of_exact_integer_canonical_json": "4626602efa3635d9284809d8b6678a3c023313bc99a25a9743560cef2b98eaa0"
+    },
+    "maximum_spend": {
+      "sha256_of_exact_integer_canonical_json": "627ab762100701462c3d3c8360abb3f125b1aab38e78aeca6be0e0d0108e6d00"
+    },
+    "superseded_spend": {
+      "sha256_of_exact_integer_canonical_json": "ff5d791b3e0076a2cf7dacb113eadfbcfefd0ed5e78fa505452f8e88c8f07a31"
+    },
+    "limits": {
+      "sha256_of_exact_integer_canonical_json": "93b87ee9879014a47ca52cdeb80158baddf1dedefefa38fc925238797c505d0e"
+    }
+  },
+  "all_existing_prior_plan_hashes_preserved_in_order": true,
+  "one_added_ancestor_is_prior_plan": true
+}

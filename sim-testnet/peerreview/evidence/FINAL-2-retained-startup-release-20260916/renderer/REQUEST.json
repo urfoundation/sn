@@ -1,0 +1,17 @@
+{
+  "operation": "release-lock-preview",
+  "status": "bound for this read-only invocation",
+  "read_only": true,
+  "source_path": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn",
+  "source_commit": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "server_commit": "6752a8df246c0ee7e1c5a38cbd26b1e849b702ca",
+  "cli_path": "/mnt/data/sn-testnet/qualification/pf01-pf02-physical-cli-final-lock-20260916-r1/sim-testnet",
+  "cli_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "existing_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "native_vault_commit": "fb1c124b7a681ef0bc08a5b6930e694bffe28bc7",
+  "platform_config_commit": "b5a7b4d8438e80ebc4e8529ba00a872495717109",
+  "reviewed_runtime_spec": 460,
+  "prior_cli_scope": "Read-only renderer, schema and compiled artifact input identity are checked against aeda. main/executor handoff dispatch changes do not run on this old CLI release-lock route. Native complete clean repository observations remain mandatory.",
+  "chain_transactions_authorized_by_this_command": false,
+  "apply": false
+}

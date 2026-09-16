@@ -1,0 +1,30 @@
+{
+  "requested_at": "2026-09-16T09:39:21Z",
+  "command": "resume",
+  "apply": true,
+  "detach": true,
+  "source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "binary_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "release_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "strict_history_adoption": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/history-adoptions/native-1488-f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9.json",
+  "strict_history_adoption_sha256": "sha256:f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9",
+  "first_native_epoch": 1488,
+  "scope": "Resume the retained33-process topology with exact adopted continuation/history and qualified PF01/PF02 release. Preserve all completed actions, approvals, repair, renewals and signed attempts; production reconciliation adopts the four original finalized operator attempts. No duplicate funding, new renewal or replacement logical action is authorized.",
+  "approved_limits": {
+    "evm_tao": "205",
+    "total_tao": "225",
+    "alpha_lifetime": "37250",
+    "alpha_per_repair": "6000",
+    "registrations": 262,
+    "subnet_creations": 0
+  },
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": "Existing approved setup/campaign actions and managed operator reconciliation only",
+  "preconditions": [
+    "Root joined exact import and history captures with exit0",
+    "Terra witnessed shutdown of all4temporaryhelpers; inspect exact PID/startticks and listener-closure receipt before launching resume"
+  ],
+  "next_command": "Terra executes prepared release-candidate immediately after healthy strict resume; all required five accelerated plus three fully observed production epochs remain required."
+}

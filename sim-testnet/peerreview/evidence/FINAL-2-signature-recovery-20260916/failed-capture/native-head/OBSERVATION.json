@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-09-16T08:27:57Z",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "finalized_native_hash": "0xce94336b3893ca585fb0123d385e9ad30199fe87ec262eacc8bdbb18a5ec7806",
+  "finalized_native_height": 8017083,
+  "runtime": {
+    "specVersion": 460,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "relay_end_block": 8025143,
+  "full_work_start_cutoff": 8017573,
+  "selected_span_blocks": 8060,
+  "full_required_work_blocks": 7570,
+  "preparation_margin_blocks": 490,
+  "retained_source_maximum_span_blocks": 8065,
+  "first_native_epoch": "not selected; choose after import",
+  "authority": "Late LAN observation used to choose request operands; native continuation capacity and identity admission remain authoritative."
+}

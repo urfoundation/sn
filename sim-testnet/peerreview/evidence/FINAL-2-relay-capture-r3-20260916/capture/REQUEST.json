@@ -1,0 +1,21 @@
+{
+  "requested_at": "2026-09-16T09:00:02Z",
+  "command": "relay-continuation",
+  "apply": false,
+  "source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "binary": "/mnt/data/sn-testnet/qualification/pf01-pf02-physical-cli-final-lock-20260916-r1/sim-testnet",
+  "binary_sha256": "8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b",
+  "release_lock_sha256": "bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "approved_plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "relay_end_block": 8025298,
+  "head_observation": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r3/native-head/OBSERVATION.json",
+  "full_required_work_blocks": 7570,
+  "scope": "Capture supported continuation with a fresh window under the retained source capacity. Preserve signed history, original custody, approved limits, completed repairs and funding, both renewals, and the four finalized partial-start operator attempts. The forecast does not authorize another renewal.",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false,
+  "recovery_reason": "Full both-operator census verified230 signed attempts:226 already retained and4 missing. Root restored exact four finalized original RLPs create-only at08:57:55, with existing records and plan/journal/config/supervisor/identities unchanged. Reuse successful setup and qualified release; capture fresh continuation.",
+  "restoration_receipt": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/restore",
+  "restored_signed_attempts": 4,
+  "complete_operator_signed_attempt_census": 230
+}

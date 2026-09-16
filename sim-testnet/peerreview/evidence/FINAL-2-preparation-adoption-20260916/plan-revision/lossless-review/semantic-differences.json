@@ -1,0 +1,67 @@
+[
+  {
+    "path": "/generated_at",
+    "kind": "changed",
+    "prior": "2026-09-16T04:09:03Z",
+    "proposed": "2026-09-16T08:00:35Z"
+  },
+  {
+    "path": "/live_facts/alpha_available_rao",
+    "kind": "changed",
+    "prior": 55561436992549,
+    "proposed": 55834140895655
+  },
+  {
+    "path": "/live_facts/alpha_transferable_rao",
+    "kind": "changed",
+    "prior": 55561436992549,
+    "proposed": 55834140895655
+  },
+  {
+    "path": "/live_facts/evm_finalized_block",
+    "kind": "changed",
+    "prior": 8015788,
+    "proposed": 8016946
+  },
+  {
+    "path": "/live_facts/evm_finalized_block_hash",
+    "kind": "changed",
+    "prior": "0xfffbabe7a146bb06ad3d21e8847b9fbddaef2831e8ececb28b8c889969422e40",
+    "proposed": "0x62f099cff193d05b578656110ba1471e472f4a3cfe24065c54aad16664d3099b"
+  },
+  {
+    "path": "/live_facts/finalized_block",
+    "kind": "changed",
+    "prior": 8015788,
+    "proposed": 8016946
+  },
+  {
+    "path": "/live_facts/finalized_block_hash",
+    "kind": "changed",
+    "prior": "0xc9860c92b43e7bb7345066b3dfca12d5e738c622e39f48af9df7c61106b07920",
+    "proposed": "0x300b0290933b9a6b145e3c6cc7b580e60333e3354af5ed3dff85215d10b0f83b"
+  },
+  {
+    "path": "/live_facts/wallet_netuid_alpha_rao",
+    "kind": "changed",
+    "prior": 55561436992549,
+    "proposed": 55834140895655
+  },
+  {
+    "path": "/plan_hash",
+    "kind": "changed",
+    "prior": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17",
+    "proposed": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876"
+  },
+  {
+    "path": "/prior_plan_hashes/89",
+    "kind": "added",
+    "proposed": "0xb7fd2eb5030f73b424b3449d21302e6b3d17cd85142f4ca61b18aa1e0c2b5b17"
+  },
+  {
+    "path": "/release_lock_hash",
+    "kind": "changed",
+    "prior": "0x361b0c70b3d5a651aeafeb031980a84e902ac3e606474627c3a89049220465bf",
+    "proposed": "0x1024ab9042b0e0053b438b0aa4f0b0bd4e8d0172cce558a94dab3ec1728baef7"
+  }
+]

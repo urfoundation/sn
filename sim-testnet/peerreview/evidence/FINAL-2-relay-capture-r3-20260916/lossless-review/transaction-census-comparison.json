@@ -1,0 +1,24 @@
+{
+  "method": "Exact canonical hash-key ordering of the same three native collector sources. Original byte SHA256 binds known transaction hashes from canonical RLP filenames and the previously decoded DB census; 16 older renewal-only unique signatures were locally decoded and chain/signer-checked with cast. No signed bytes or calldata exported.",
+  "source_input_counts": {
+    "transaction_files": 2272,
+    "queue_signed_attempts": 4,
+    "renewal_evidence_entries": 492,
+    "extra_unique_renewal_signatures_locally_decoded": 16
+  },
+  "unique_transaction_count": 2518,
+  "prior_unique_transaction_count": 2514,
+  "new_transactions_sha256": "sha256:0ee805b329c6ae9799e8c9180a8c5dc5df7697a216a3df6ffd7bc9ce9fc66d15",
+  "prior_transactions_sha256_without_exact_four": "sha256:78910dff315a8c5255a2c1859941d15dc763c6033a4a3f71cc294d3174436b6e",
+  "new_and_prior_native_plan_digest_matches": true,
+  "added_hashes": [
+    "0x50cc7f2745b22052f91a3ce124f18fcbbe0fb0d297f59a9f3f9d2bd33e702dd8",
+    "0x62a2464cf084c69c81040d1374abcc20c8a99bb34e4788bd6e8b34cbe804d1df",
+    "0xa62a69f38c314fce4efdc6cf9084ae5a2efa7178faca0ba25b0c63bd8e5368d9",
+    "0xe95f3f78dad211d12ced0583a47d9af610b9699d68ab08f73b2fc5c3b7acabd8"
+  ],
+  "removed_hashes": [],
+  "maximum_added_gas_plus_value_wei": "25635775234311880",
+  "actual_finalized_fees_wei": "8264277772552846",
+  "source_census_receipt": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/CANONICAL-RECEIPT-BINDINGS.json"
+}

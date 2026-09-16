@@ -1,0 +1,71 @@
+{
+  "schema": "urnetwork-retained-startup-readiness-public-receipt-v1",
+  "scope": "closed focused retained-startup readiness qualification",
+  "positive": {
+    "source_commit": "8270992eb8fb2b1599a29271ec44426379007306",
+    "modes": {
+      "normal": {
+        "pass": 11,
+        "fail": 0,
+        "body_exit": 0,
+        "outer_exit": 0,
+        "join_exit": 0,
+        "binary_sha256": "ae37c67b6b9f3405f78f111bb8b6f1aa46e0cfb9719e56594509c5d5c15a829e"
+      },
+      "race": {
+        "pass": 11,
+        "fail": 0,
+        "body_exit": 0,
+        "outer_exit": 0,
+        "join_exit": 0,
+        "binary_sha256": "f34ba1060397968e60166520a57b50f9f1fabdd5f3cfcd2bcc20994e1d86d8b1"
+      }
+    }
+  },
+  "causal": {
+    "route_only_timeout": {
+      "source_commit": "843993c4f5539d64a4654eb6ab0266195bef649d",
+      "restoration_patch_sha256": "b0fcdbf1eb08abd52a63f36e48e09075123194c8553135ff16720be88382c3cb",
+      "pass": 10,
+      "expected_fail": 1,
+      "body_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1,
+      "binary_sha256": "256e4b62e83ae75d542cb86af935a370bdae535d6304fcec3e75dda1fae65880"
+    },
+    "cancellation_after_snapshot": {
+      "source_commit": "71e02d52d4295fffe959c29952dd587be093f828",
+      "restoration_patch_sha256": "61e1ed51e619f1b9ee6ed1ae54ff2be2c28e720acf14adf15d0314b522a824e5",
+      "pass": 10,
+      "expected_fail": 1,
+      "body_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1,
+      "binary_sha256": "ac0ebd250bdcb0dfbb94ff85d263030ee5f0cb1c173238089cbddb6bdd50eff3"
+    }
+  },
+  "selector": {
+    "selection_sha256": "08f9f52c8d9ae8fc5164b75f832f1f286f8cc2d77595979d95d10640ad0b5788",
+    "selector_sha256": "85e51985566f332f5d19e3ef84e29706fcdac6011035f4cf662da5c0ff2a96a9",
+    "selected_roots": 11
+  },
+  "original_non_admitted_compilers": {
+    "count": 4,
+    "build_exit": 0,
+    "outer_exit": 126,
+    "join_exit": 126,
+    "body_started": false,
+    "literal_output_path_quoting_error": true,
+    "cleanup_mistake_preserved": true
+  },
+  "corrected_binary_reproduction": true,
+  "inner_closed_receipt": {
+    "final_manifest_sha256": "6a5c4fd746ec556185046e9d2d9b083ea176f97ce0e13d975e32832cea083704",
+    "result_sha256": "320f96e527fc104e29ba5d5345506da8a4b8b281ac501af87683290e19108659"
+  },
+  "packaging": {
+    "compiled_binaries_copied": false,
+    "private_material_copied": false,
+    "compiler_or_test_rerun": false
+  }
+}

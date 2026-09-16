@@ -1,0 +1,5 @@
+lane	mode	source_commit	expected_body_exit	observed_body_exit	observed_outer_exit	observed_join_exit	expected_roots	observed_roots	package_terminal	events_valid	fences_after	binary_sha256	compiler_outer_exit
+positive	normal	8270992eb8fb2b1599a29271ec44426379007306	0	0	0	0	11	11	github.com/urnetwork/sn/sim-testnet	PASS;	true	true	ae37c67b6b9f3405f78f111bb8b6f1aa46e0cfb9719e56594509c5d5c15a829e	0
+positive	race	8270992eb8fb2b1599a29271ec44426379007306	0	0	0	0	11	11	github.com/urnetwork/sn/sim-testnet	PASS;	true	true	f34ba1060397968e60166520a57b50f9f1fabdd5f3cfcd2bcc20994e1d86d8b1	0
+route-only-timeout	normal	843993c4f5539d64a4654eb6ab0266195bef649d	1	1	1	1	11	11	github.com/urnetwork/sn/sim-testnet	FAIL;	true	true	256e4b62e83ae75d542cb86af935a370bdae535d6304fcec3e75dda1fae65880	0
+cancellation-after-snapshot	normal	71e02d52d4295fffe959c29952dd587be093f828	1	1	1	1	11	11	github.com/urnetwork/sn/sim-testnet	FAIL;	true	true	ac0ebd250bdcb0dfbb94ff85d263030ee5f0cb1c173238089cbddb6bdd50eff3	0

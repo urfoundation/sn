@@ -1,0 +1,43 @@
+{
+  "schema": "urnetwork-launch-handoff-package-omissions-v1",
+  "closed_source_directory": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3",
+  "omitted_closed_streams": [
+    {
+      "relative_original_path": "relay-apply-r2/stderr",
+      "bytes": 417,
+      "sha256": "77d7cc7232d9b5cc847c0b87a10a7b197a9ac384523cb36c08813737ea46facd",
+      "copied": false,
+      "reason": "CLI log payload excluded; command results, terminal exits, timestamps, and integrity receipts are included."
+    },
+    {
+      "relative_original_path": "history-adoption/stderr",
+      "bytes": 417,
+      "sha256": "5b2dfe216acbb35fdda4a5c317ad482b2dc9913374d761f5d881bed0ad497cb1",
+      "copied": false,
+      "reason": "CLI log payload excluded; the complete history bundle, terminal exits, timestamps, and integrity receipts are included."
+    }
+  ],
+  "omitted_plan": {
+    "closed_original_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r3/stdout.json",
+    "bytes": 11302363,
+    "sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+    "copied": false,
+    "prior_verified_receipt": "../FINAL-2-relay-capture-r3-20260916/OMISSIONS.json",
+    "reason": "Large plan retained locally; its exact import binding and closed saved-plan digest are included."
+  },
+  "closed_teardown_payload_files": 25,
+  "closed_teardown_payload_files_omitted": 0,
+  "empty_owner_streams_included": [
+    "temporary-services/teardown-witness/owner.stdout.private.log",
+    "temporary-services/teardown-witness/owner.stderr.private.log"
+  ],
+  "omitted_material": [
+    "Raw signed transactions, private keys, credentials, calldata, private database exports, and configuration payloads",
+    "All temporary helper service logs, health payloads, vault files, executable bytes, and temporary directories",
+    "Live saved plan and history files; only their closed binding and digest receipts are used",
+    "Strict-resume session 92055 and all of its files except the explicitly closed PRELAUNCH-WITNESS.json",
+    "Release-candidate execution and all later or active operations"
+  ],
+  "strict_resume_or_release_candidate_inspected_or_sealed": false,
+  "closed_prelaunch_witness_exception": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/PRELAUNCH-WITNESS.json"
+}

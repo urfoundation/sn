@@ -1,0 +1,12 @@
+{"Time":"2026-09-16T11:23:18.658595454Z","Action":"start"}
+{"Time":"2026-09-16T11:23:18.658831237Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T11:23:18.658851664Z","Action":"output","Output":"I0916 11:23:18.561995 3821065 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T11:23:18.658865127Z","Action":"output","Output":"I0916 11:23:18.562164 3821065 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T11:23:18.658870666Z","Action":"output","Output":"I0916 11:23:18.562221 3821065 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T11:23:18.65887559Z","Action":"output","Output":"I0916 11:23:18.562248 3821065 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T11:23:18.658893456Z","Action":"run","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation"}
+{"Time":"2026-09-16T11:23:18.658898677Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Output":"=== RUN   TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation\n"}
+{"Time":"2026-09-16T11:23:18.658912784Z","Action":"output","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Output":"--- PASS: TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation (0.02s)\n"}
+{"Time":"2026-09-16T11:23:18.65891806Z","Action":"pass","Test":"TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation","Elapsed":0.02}
+{"Time":"2026-09-16T11:23:18.658926073Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T11:23:18.658933338Z","Action":"pass","Elapsed":0}

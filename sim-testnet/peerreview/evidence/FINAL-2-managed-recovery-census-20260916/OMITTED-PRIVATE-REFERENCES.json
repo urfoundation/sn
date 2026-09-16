@@ -1,0 +1,87 @@
+[
+  {
+    "sha256": "ebb65c85ac17396c75146f2cbf62bc964a208433bc857200b83db6a6090a5294",
+    "source_relative_path": "private/missing-rlp/1c6fb2a5e5c513f3354950193f11659734d33204d8e822f581586f6db9884ded.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "d5e088d52b2cf3270cdcd1a6054ea9a8d048f3f7a5739c459669a63a08ac5c2c",
+    "source_relative_path": "private/missing-rlp/2253d74e3580dbb868a579d348291f88bfeaa4cd4aa7bd2619464b8b4034d2f4.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "63761172ffb12d71fb07425fe4294a5d76bf824add78124a87778abd04d09040",
+    "source_relative_path": "private/missing-rlp/22b58e43ca511467a7f93543a588728f6d40e7d826d8eea32146ec4825d45c37.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "3a1270035fde30c9c5fcd4c017c938d04b613e35b48b1edcf317f819cdd5d049",
+    "source_relative_path": "private/missing-rlp/4c4045c0e6c1ef4cc6ec6b13a2d14ecc4338a8e522a8e46f38569ada09b29ea9.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "4d774b671791e4cd7d0728b1adb647a09b844c981899e88f4978a307cb6112a9",
+    "source_relative_path": "private/missing-rlp/52494886358027cb84897bcc6f93ea25fd5c9a14ae53506b55075a57ca2451c7.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "c98ab031676c29ab28ebe39e6e1ce79ed4197297ee88f7ae445f01a44f1eda2b",
+    "source_relative_path": "private/missing-rlp/79b329e62d369064b46c56cb8b13c2853ccab16deccefd52064bcb7ecf306939.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "31795e3345f7c2d1f43d98908be3fd2bc344a799dcc2431565e09242cf81843f",
+    "source_relative_path": "private/missing-rlp/9e3a59f5687c864a7ef37311d2919cff3e74c2f8a03981c9821abd63e32d75f2.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "c4030492acc338feac03510a943f0c5ed2d8e4d0584d3c293c5af574887a1b5a",
+    "source_relative_path": "private/missing-rlp/a316152e3aba405dfb5762337ca94f610ce27d9d9cb01b282f99ae1adf877d20.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "c4279fc6dd11d8d5058cb79c9a343c2ee6c8eab7fc6d840b6ff1c1949434ddbf",
+    "source_relative_path": "private/missing-rlp/b10a0ccfac140b6dc9d9c2d25ef108644033cb19bd165184c2496eab3bdf158c.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "95247f98366dfa9acde61494c281952d525488bd444591ea8d9000b221860acb",
+    "source_relative_path": "private/missing-rlp/b15f541d82f5c682971de984e46be9f1030954232a09cc7a0c81c252f0e09bfa.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "22ca52a071e8d610335e5f8520a5678fc070beeb733aa22f15ae7236c6c43ca1",
+    "source_relative_path": "private/missing-rlp/d271e867c3940f32df46ba97e26026c9e286b23bae67212c7fa3e7457c37b2f8.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "6f9fca7ff87775a8c71e40a086740ed74ccc4b51d7c814785430064d13b61ce2",
+    "source_relative_path": "private/missing-rlp/e090676b83cb4320e0016f333f2a210aafb1ea979e1555e310b1fc1b122ef075.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "3adb1c5b41029aeb15cf709b673650be46aaa11006c86fd4f083979b65dda816",
+    "source_relative_path": "private/missing-rlp/f0ec2de8004b85ab20b3745287f05030d4bd4d070c9a34141b9c1c6a26b5db91.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "cad16b2ca60ba5d36abf51713498798d68cd772d0df9eadbb5bfefddc55a765d",
+    "source_relative_path": "private/missing-rlp/fa08bd40792856914fe333e534ac3fdde5f7d7916db6c07747993fbf1b1b0bb9.rlp",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "b9776659191181f1b08008058fe76780fd1d145d3ae6f840370b3bdc2bc29cca",
+    "source_relative_path": "private/operator-1.new-original-attempts.private.jsonl",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "d7bcd1b021bfad55d684a89fa0440eb573036aafd9e1badfce2e28e652b606d5",
+    "source_relative_path": "private/operator-2.new-original-attempts.private.jsonl",
+    "reason": "Private original material; hash reference only, payload excluded"
+  },
+  {
+    "sha256": "af0155c179c4420220ca22055667f975768524db3be70ec4ed1e1ebf5fc62db2",
+    "source_relative_path": "VALIDATOR-STATE-METADATA.json",
+    "reason": "Private original material; hash reference only, payload excluded"
+  }
+]

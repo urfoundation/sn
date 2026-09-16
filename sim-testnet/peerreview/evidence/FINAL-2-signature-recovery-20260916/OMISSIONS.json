@@ -1,0 +1,24 @@
+{
+  "schema": "urnetwork-signature-recovery-package-omissions-v1",
+  "private_signature_payloads": {
+    "source_directory": "/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1/private",
+    "digests": "census/PRIVATE-ARTIFACTS.sha256",
+    "copied": false,
+    "reason": "Original signed transaction exports and four RLP candidates remain private."
+  },
+  "omitted_prior_plan": {
+    "path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r2/prior-plan.json",
+    "sha256": "438ecc8621a26c945180d5027c8bbfb734a82733d4f30c84017b4e122a3c8bd9",
+    "bytes": 11302294,
+    "copied": false,
+    "reason": "Large exact source plan retained locally; approval identity and watched-file digest are packaged."
+  },
+  "omitted_material": [
+    "Raw signed transaction bytes, signature components and calldata",
+    "Private database exports, credentials and configuration payloads",
+    "Executable and active deployment state; only their closed recorded hashes are copied",
+    "Failure native-head raw request/response files; the closed observation summary is copied",
+    "Temporary directories and every running or later capture, including relay-capture-r3"
+  ],
+  "canonical_receipts": "CANONICAL-LINKS.json"
+}

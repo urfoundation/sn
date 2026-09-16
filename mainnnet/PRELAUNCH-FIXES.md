@@ -32,8 +32,10 @@ The active testnet finalization continues independently.
 | RL-01 | Bind launch attestation to an explicitly approved immutable release and its complete input manifest | — | Astra | Planned | Publishing documentation or advancing main does not invalidate an approved unchanged deployment; changed executable, source, policy, contracts or dependencies still require the appropriate new approval. |
 | PF-01 | Reuse an immutable journal index and authenticated historical plans within one reconciliation | — | Astra | In progress | Deterministic work-count tests bound journal indexing by entries and plan authentication by distinct sources, while each receipt retains its own identity and postcondition checks. |
 | PF-02 | Give simulator operator taskworkers an explicit workload profile, including retained queue handling | — | Astra | In progress | Required subnet/operator tasks run for both operators; excluded queued tasks and post hooks remain untouched; production defaults and restart behavior pass affected tests and managed startup. |
+| PF-03 | Include every retained operator signature in recovery and renewal accounting | — | Astra | Planned | Recovery discovers original, replacement and cancellation attempts across both operator databases and existing evidence stores, reconciles canonical receipts, and resumes without manual signature copying or duplicate actions. |
+| PF-04 | Diagnose validator warmup and support bounded, resumable semantic startup | — | Astra | In progress | Retained validators produce fresh proofs through both operators; startup exposes the pending criterion, uses a justified warmup budget, and preserves valid recovery progress without counting stale proofs as acceptance. |
 
-Prioritize PF-01 and PF-02 for the current testnet recovery. RT-01 through RT-08
+Prioritize PF-01, PF-02 and PF-04 for the current testnet recovery. RT-01 through RT-08
 form the subsequent runtime-resilience workstream required before mainnet
 launch; RL-01 can proceed independently. Link the bootstrap implementation and
 launch sequence from [MAINNET.md](../mainnet/MAINNET.md) rather than maintaining
@@ -43,6 +45,23 @@ RT-01 and RT-02 can proceed in parallel. After those foundations, cache/history,
 transaction handling and operation-specific admission can progress independently
 where their inputs are stable. An external manually reviewed artifact catalog
 may be an interim aid; it does not complete RT-04's automatic-upgrade requirement.
+
+The mainnet implementation order is:
+
+1. Protect signing, historical interpretation and recovery first: RT-01,
+   RT-02, RT-03 and PF-03. These establish the shared interfaces and preserve
+   ownership of transactions across upgrades or interrupted startup.
+2. Remove routine restart requirements: RT-04 through RT-07. Work on RL-01
+   independently, and finish the remaining operational verification for PF-01
+   and PF-02 using the current testnet run.
+3. Complete RT-08 against the composed release, reusing unaffected results.
+   Batch independent failures, fix their causes and adjacent paths, and rerun
+   the affected checks. An interruption does not erase completed observations.
+
+For each update, attach the implementation commit, affected checks, preserved
+results, deployment evidence and next action to its stable ID. A new issue only
+blocks operations that depend on it. Keep future mainnet work out of the active
+testnet launch path unless that run exposes a concrete dependency.
 
 RL-01 follows an actual 2026-09-16 launch interruption: the qualified executable
 was built at `541e13cf`, then publishing reports advanced main to `0fd7ffc0`.
@@ -66,8 +85,9 @@ These repeated costs remain after the separate journal-loading repair. Live
 process counters establish ongoing work, not attribution of all startup time
 to either path. That invocation later failed its taskworker log gate, recorded
 separately under PF-02. The isolated correction is frozen at
-`351ece79d9f4dad93888c74c8bdcc699dd4c8dac`; release publication and deployment
-remain pending. Its [qualification handoff](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/HANDOFF.md)
+`351ece79d9f4dad93888c74c8bdcc699dd4c8dac`; it is now published in SN release
+`aeda6abbd2dc0abc92bb0f60975cf89b509e8017`. Verification during managed startup
+remains pending. Its [qualification handoff](/mnt/data/sn-testnet/qualification/carried-preparation-index-candidate-20260916-r1/HANDOFF.md)
 specifies 32 affected roots normally and under race, plus eight causal controls.
 The initial normal and race runs each passed 31 roots and exposed one existing
 cold-cache fixture mismatch. Fixture correction
@@ -111,8 +131,95 @@ and server `6752a8df` pass all 30 affected roots normally and under race, with
 seven expected failures/five passes in the controls. The
 [qualification evidence](../sim-testnet/peerreview/evidence/FINAL-2-preparation-fixes-20260916/README.md)
 preserves the pre-test service refusals as well as successful bodies. Both
-PF-01 and PF-02 are integrated locally at `dc90e4c`; publication and actual
-managed startup remain pending, so these items remain in progress.
+PF-01 and PF-02 are published in SN release `aeda6abbd2dc0abc92bb0f60975cf89b509e8017`;
+server publication is `006e71b997db503604c4ef6bb0c2683dc0d984cd`, preserving the
+qualified server commit `6752a8df246c0ee7e1c5a38cbd26b1e849b702ca` used by the
+release. The matched executable has been built. Actual managed startup remains
+pending, so both items remain in progress. Reuse the completed affected tests;
+the remaining verification is operational startup and continuation of the
+retained campaign.
+
+PF-03 follows the continuation capture failure at 08:46:41 UTC on 2026-09-16:
+operator-1-root nonce 106 had no signature in the collector's retained sources.
+The complete census of both operator databases found 230 signed attempts,
+including replacements and cancellations. Of those, 226 were already retained;
+four original signed transactions were absent from the simulator's transaction
+store. All four had successful canonical receipts, documented in the
+[partial-start transaction evidence](../sim-testnet/peerreview/evidence/FINAL-2-startup-transactions-20260916/README.md).
+The [sealed census and recovery evidence](../sim-testnet/peerreview/evidence/FINAL-2-signature-recovery-20260916/README.md)
+records the complete comparison. At 08:57:55, create-only restoration added the
+four original signatures while preserving all 2,268 existing RLP files and
+the six watched state files. That operational repair submitted no transaction;
+automatic collection remains proposed.
+
+Unify the signature census used by continuation, renewal and recovery. Read
+every signed attempt independently of its database status, deduplicate exact
+hashes, and validate chain, recovered sender, nonce, destination, value and gas
+envelope. Preserve distinct same-nonce replacements and cancellations, their
+fee liabilities and original evidence. Unsigned intents are a separate class.
+Retaining a signature does not authorize broadcasting it. Reconcile receipts
+and nonce state before the owning production component retries an action;
+missing evidence is not a reason to create a new logical action or rewrite
+database status manually.
+
+Use synthetic fixtures to reproduce the missing-store failure and cover both
+operators, stale database statuses, multiple signatures for one nonce,
+cancellations, malformed or conflicting records, partial export, idempotent
+restart and an uncertain submission. Require complete nonce coverage, unchanged
+spend limits and no duplicate execution. The current qualified collector's
+supported restoration path remains available during implementation; replacing
+it is not a prerequisite for the active testnet continuation.
+
+PF-04 follows the managed resume that ran 09:41:17–10:20:25 UTC on
+2026-09-16. All 1,000 fleet checks and 4,673 carried-action checks completed.
+The new generation reached 33 healthy processes with no restarts, but none of
+the four validator/operator proof domains acquired a fresh completed trail.
+The owned-node semantic readiness budget was five minutes. The command exited
+one with `release topology semantic readiness timeout: every validator must
+complete a fresh verified trail through every operator`, then stopped all
+33 processes. The process-log gate recorded no findings through 10:20:10.
+The saved plan, journal, configuration, public identities, executable and
+release lock remained unchanged; the campaign did not start.
+
+The [closed failure evidence](../sim-testnet/peerreview/evidence/FINAL-2-managed-readiness-20260916/README.md)
+preserves all three failed exits and the watched-state comparison. Subsequent
+shutdown diagnostics place both validators inside retained settlement-history
+replay when the parent cancelled them. The current deadline depends on RPC
+route, although that authenticated replay is needed with either route.
+The bounded warmup correction is qualified at
+`8270992eb8fb2b1599a29271ec44426379007306`. It gives
+retained strict-history startup the existing 30-minute budget on every RPC
+route. Adjacent review also found that an already-cancelled invocation could
+admit an already-ready snapshot; the correction checks cancellation before
+admission. All eleven affected roots pass normally and under race; separate
+causal variants reproduce exactly one intended failure each, with the other
+ten roots passing. The correction is integrated locally; deployment and actual
+managed startup remain pending. That startup must demonstrate that the budget
+suffices for this retained history.
+The [closed qualification](../sim-testnet/peerreview/evidence/FINAL-2-retained-startup-qualification-20260916/README.md)
+retains the affected results and original compiler-capture failures separately.
+
+The timing review also identified a duplicate preparation pass between strict
+resume and the separate campaign command. The explicit same-owner handoff,
+`resume --then-release-candidate`, is qualified and integrated at
+`e109ac35c5ea5ff5006040c2987118e99627e863`. It preserves all campaign checks and
+the completed readiness results; failed or cancelled startup cannot enter the
+campaign. All 14 affected roots pass normally and under race, with three
+intended failures and three passes in the causal control. The
+[qualification](../sim-testnet/peerreview/evidence/FINAL-2-resume-campaign-handoff-20260916/README.md)
+retains original harness failures and identifies reused passing results.
+The matching release and actual managed campaign remain pending, so PF-04
+is still in progress.
+
+Make the warmup requirement and pending proof domains
+observable, and distinguish recoverable incomplete startup from invalid
+evidence. Assess the supported recovery path for retaining useful live work;
+preserve signer ownership, approved budgets and authenticated history.
+Add deterministic controls for delayed initialization, an actual initialization
+failure, cancellation, partial domain progress, restart and stale proofs.
+Fresh proofs from every required domain remain necessary for readiness, and
+fully observed epochs remain necessary for final acceptance. Neither a larger
+timeout nor healthy process endpoints alone closes this item.
 
 ## Runtime-upgrade compatibility proposal
 

@@ -1,0 +1,15 @@
+{
+  "observed_at": "2026-09-16T09:41:15Z",
+  "helper_pids_absent": [
+    3527769,
+    3527795,
+    3527805,
+    3527809
+  ],
+  "recorded_identity_and_signal_dispatch_verified": true,
+  "listener_snapshot": "State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess\n",
+  "helper_exit_codes": "unavailable; no fabricated joined0",
+  "teardown_result": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/temporary-services/teardown-witness/RESULT.json",
+  "teardown_owner_exit": 0,
+  "saved_plan_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48"
+}

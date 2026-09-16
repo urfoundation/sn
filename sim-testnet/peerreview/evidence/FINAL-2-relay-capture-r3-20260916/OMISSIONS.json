@@ -1,0 +1,46 @@
+{
+  "schema": "urnetwork-relay-capture-package-omissions-v1",
+  "closed_source_directory": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/relay-capture-r3",
+  "large_payloads": [
+    {
+      "relative_original_path": "prior-plan.json",
+      "bytes": 11302294,
+      "sha256": "438ecc8621a26c945180d5027c8bbfb734a82733d4f30c84017b4e122a3c8bd9",
+      "copied": false,
+      "reason": "Large predecessor plan remains local; its exact hash, identity, complete diff, and unchanged invariants are included."
+    },
+    {
+      "relative_original_path": "stdout.json",
+      "bytes": 11302363,
+      "sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+      "copied": false,
+      "reason": "Large exact emitted successor remains local; its exact hash, identity, complete diff, and unchanged invariants are included."
+    },
+    {
+      "relative_original_path": "lossless-review/prior.pretty.json",
+      "bytes": 16078682,
+      "sha256": "b8a86dd6ca2b7443f1b791b7b4a4269eae574ce1ea582f16ad648371da03ed7e",
+      "copied": false,
+      "reason": "Large lossless predecessor rendering remains local; its unchanged original manifest entry and rendering receipt are included."
+    },
+    {
+      "relative_original_path": "lossless-review/proposed.pretty.json",
+      "bytes": 16078756,
+      "sha256": "39b3d146caa168e9e0b526e5a70e2eb04dceb2bb990629c0caedc82ef0e49c86",
+      "copied": false,
+      "reason": "Large lossless successor rendering remains local; its unchanged original manifest entry and rendering receipt are included."
+    }
+  ],
+  "large_payload_total_bytes": 54762095,
+  "complete_original_review_manifest": "lossless-review/SHA256SUMS",
+  "complete_original_review_manifest_sha256": "81879a0c23542ea26870ae3ea59548148b132f0eabb3a5e07edca8f4e6c40c39",
+  "included_review_payload_manifest": "lossless-review/INCLUDED-REVIEW.sha256",
+  "omitted_material": [
+    "Raw signed transaction bytes, signature components, and calldata",
+    "Private database exports, credentials, configuration payloads, executable bytes, and deployment state",
+    "Native-head raw request/response receipts; the closed observation summary is included",
+    "Capture tmp/gotmp directories",
+    "Active import session 30705 and relay-apply-r2, all later operations, and their live files"
+  ],
+  "active_import_inspected_or_sealed": false
+}

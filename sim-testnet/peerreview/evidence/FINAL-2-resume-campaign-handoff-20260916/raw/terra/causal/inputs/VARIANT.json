@@ -1,0 +1,62 @@
+{
+  "schema": "urnetwork-causal-source-variant-v1",
+  "name": "resume_without_campaign_handoff",
+  "positive_commit": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "commit": "2e6a8e435d4d3c49a9e5dc06e7093ce6870dcee0",
+  "source_path": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/resume-without-campaign-handoff/workspace/sn",
+  "changed_paths": [
+    "sim-testnet/strict_resume_campaign.go"
+  ],
+  "restoration": "Remove only the campaign dispatch from runStrictResumeCampaign, modeling the old standalone resume completion boundary. Keep all request/owner/cancellation checks and tests unchanged.",
+  "package": "./sim-testnet",
+  "mode": "normal",
+  "selector": "^(TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites|TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation|TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete|TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation|TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner|TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates)$",
+  "expected_roots": [
+    "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites",
+    "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation",
+    "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete",
+    "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation",
+    "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner",
+    "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates"
+  ],
+  "expected_outcomes": {
+    "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "PASS",
+    "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "PASS",
+    "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "FAIL",
+    "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "FAIL",
+    "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "PASS",
+    "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "FAIL"
+  },
+  "expected_body_exit": 1,
+  "expected": {
+    "pass": 3,
+    "fail": 3,
+    "skip": 0
+  },
+  "expected_failure_literals": {
+    "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "combined completion lost its handoff",
+    "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "campaign failed: launch=1 campaign=0",
+    "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "campaign evidence failure was bypassed"
+  },
+  "source_hashes": {
+    "sim-testnet/strict_resume_campaign.go": "ba79d130ff11d5b7a1cc1d4039513df90868d015fbadf3483fe9cd077b2717c7",
+    "sim-testnet/strict_resume_campaign_test.go": "2e7cb093439a7219b6a739b8cee659d53d8e8d2de5d488fefc43ef9a155c19b0"
+  },
+  "tmp_dir": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/resume-without-campaign-handoff/tmp",
+  "gotmp_dir": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/resume-without-campaign-handoff/gotmp",
+  "sibling_parent": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical",
+  "sibling_replacements": [
+    "connect",
+    "server",
+    "warp",
+    "operator-proxy",
+    "proxy",
+    "userwireguard",
+    "sdk",
+    "glog",
+    "goidenticons",
+    "config",
+    "vault"
+  ],
+  "claim": "The tests reject the old resume-only completion boundary when the explicitly requested full campaign is not entered. This does not claim live performance or live acceptance."
+}

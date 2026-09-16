@@ -1,0 +1,34 @@
+{
+  "renderer": "Python standard json decoder/encoder with arbitrary-precision ints, rejecting non-integer numeric tokens and duplicate keys; every original numeric token compared exactly after render",
+  "inputs": [
+    {
+      "input": "prior-plan.json",
+      "input_sha256": "6e22b2f4b68af32809aa5de999a25458e52251fb23f763096399c7e8a9ff984a",
+      "output": "prior.pretty.json",
+      "output_sha256": "5b86536822ebd5556b5d7665a1b96e853bf925546712c39a4a27d7fa98efd61d",
+      "integer_token_count": 171382,
+      "integer_tokens_over_2pow53": 1881,
+      "all_integer_lexemes_preserved": true,
+      "all_non_whitespace_tokens_identical": true,
+      "semantic_roundtrip_equal": true,
+      "duplicate_keys": false,
+      "non_integer_numbers": false
+    },
+    {
+      "input": "stdout.json",
+      "input_sha256": "f335a6eee7d889b72b2900e10ee3960fa5c6240073e463f72fc7a54b36e857a7",
+      "output": "proposed.pretty.json",
+      "output_sha256": "1587a1d0f63425e04114a3d3d9befa1f3d708e2f8beb12aa1fde8f5c3879896d",
+      "integer_token_count": 171382,
+      "integer_tokens_over_2pow53": 1881,
+      "all_integer_lexemes_preserved": true,
+      "all_non_whitespace_tokens_identical": true,
+      "semantic_roundtrip_equal": true,
+      "duplicate_keys": false,
+      "non_integer_numbers": false
+    }
+  ],
+  "semantic_difference_count": 11,
+  "pretty_diff_lines": 60,
+  "pretty_diff_bytes": 2930
+}

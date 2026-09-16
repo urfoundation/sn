@@ -1,0 +1,391 @@
+{
+  "schema": "urnetwork-sim-launch-preparation-v1",
+  "command": "setup",
+  "plan_hash": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+  "prepare_only": true,
+  "stopped_before_actions": true,
+  "ready": true,
+  "doctor": {
+    "schema": "urnetwork-sim-doctor-v1",
+    "generated_at": "2026-09-16T08:15:25Z",
+    "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+    "policy_hash": "0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277",
+    "ready": true,
+    "checks": [
+      {
+        "name": "artifact-store/minio-live",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "artifact-store/server-blob",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "config/independent-rpcs",
+        "ok": false,
+        "hard": false
+      },
+      {
+        "name": "config/operational-rpcs",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "config/operator-resource-sources",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "docker/daemon",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "host/default-state-disk",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "host/linux-amd64",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "host/udp-buffer-limits",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "release-lock",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "repository/operator-proxy",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "repository/platform-config",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "repository/server",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "repository/sn",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "repository/vault",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/evm-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/evm-operational-eth_getLogs",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/evm-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/evm-public-eth_getLogs",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/operational-eth_getLogs",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/substrate-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/substrate-operational-readiness",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "rpc/substrate-physical-independence",
+        "ok": false,
+        "hard": false
+      },
+      {
+        "name": "rpc/substrate-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/code-hash-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/code-hash-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/compatibility-gates-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/compatibility-gates-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/evm-finality",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/evm-finality-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/evm-historical-state",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/metadata-hash-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/metadata-hash-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/metadata-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/metadata-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-metagraph-neuron",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-metagraph-neuron-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-signatures",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-signatures-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-staking",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/precompile-staking-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/release-call-shapes-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "runtime/release-call-shapes-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "state/deployment-lineage",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/activation-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/activation-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/owner-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/owner-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/uid-capacity-operational",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "subnet/uid-capacity-public",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "supervisor/systemd-user",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/docker",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/getcap",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/git",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/go",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/setcap",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "tool/sudo",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "vault/budgets",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "vault/governance",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "vault/netuid",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "vault/wallet",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "wallet/finalized-alpha-source",
+        "ok": true,
+        "hard": true
+      },
+      {
+        "name": "wallet/setup-budget-and-balance",
+        "ok": true,
+        "hard": true
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "attempt-upload-budget",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "provisional-live-topology",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "doctor",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "role-secrets",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "run-inputs",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "execution-readers",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "carried plan history preflight",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "contract-deployment-payloads",
+      "ok": true,
+      "hard": true
+    },
+    {
+      "name": "launch-runtime-inputs",
+      "ok": false,
+      "hard": false
+    },
+    {
+      "name": "preparation-context",
+      "ok": true,
+      "hard": true
+    }
+  ],
+  "launch_runtime_inputs_deferral": "deferred to launch/resume: config.render is already verified; future namespace/adoption authority does not block approved setup repair",
+  "projection": {
+    "original_stdout_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/setup-revision/stdout.json",
+    "original_stdout_sha256": "44cb581fa556f1cff63bb3e60118e255da8a17669a32a85fff944c16380f5e9b",
+    "original_stdout_bytes": 20925,
+    "fields_omitted": "all doctor detail strings and all preparation detail strings except the explicit launch-runtime-inputs deferral; no private runtime/config values copied"
+  }
+}

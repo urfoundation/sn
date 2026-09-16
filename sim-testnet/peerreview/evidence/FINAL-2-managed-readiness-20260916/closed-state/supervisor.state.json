@@ -1,0 +1,340 @@
+{
+  "schema": "urnetwork-sim-supervisor-state-v1",
+  "updated_at": "2026-09-16T10:20:25.123330899Z",
+  "supervisor_pid": 3676320,
+  "supervisor_start_time_ticks": 184001647,
+  "manifest_hash": "0xe945dd691a00ee8fd09fed5a2ed74d550cb67250f2ca8bb3e17ca6c80903a073",
+  "contract_cleanup_cutoff": "2026-09-16T10:14:40.021191049Z",
+  "processes": [
+    {
+      "id": "claim-relayer-1",
+      "role": "claim-relayer",
+      "identity": "no:1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "claim-relayer-2",
+      "role": "claim-relayer",
+      "identity": "no:2",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-1",
+      "role": "miner-swarm",
+      "identity": "miners:1-50",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-10",
+      "role": "miner-swarm",
+      "identity": "miners:451-500",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-11",
+      "role": "miner-swarm",
+      "identity": "miners:501-550",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-12",
+      "role": "miner-swarm",
+      "identity": "miners:551-600",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-13",
+      "role": "miner-swarm",
+      "identity": "miners:601-650",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-14",
+      "role": "miner-swarm",
+      "identity": "miners:651-700",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-15",
+      "role": "miner-swarm",
+      "identity": "miners:701-750",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-16",
+      "role": "miner-swarm",
+      "identity": "miners:751-800",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-17",
+      "role": "miner-swarm",
+      "identity": "miners:801-850",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-18",
+      "role": "miner-swarm",
+      "identity": "miners:851-900",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-19",
+      "role": "miner-swarm",
+      "identity": "miners:901-950",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-2",
+      "role": "miner-swarm",
+      "identity": "miners:51-100",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-20",
+      "role": "miner-swarm",
+      "identity": "miners:951-1000",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-3",
+      "role": "miner-swarm",
+      "identity": "miners:101-150",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-4",
+      "role": "miner-swarm",
+      "identity": "miners:151-200",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-5",
+      "role": "miner-swarm",
+      "identity": "miners:201-250",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-6",
+      "role": "miner-swarm",
+      "identity": "miners:251-300",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-7",
+      "role": "miner-swarm",
+      "identity": "miners:301-350",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-8",
+      "role": "miner-swarm",
+      "identity": "miners:351-400",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "miner-swarm-9",
+      "role": "miner-swarm",
+      "identity": "miners:401-450",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:41Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-1-api",
+      "role": "operator-api",
+      "identity": "no:1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-1-connect",
+      "role": "operator-connect",
+      "identity": "no:1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-1-taskworker",
+      "role": "operator-taskworker",
+      "identity": "no:1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-2-api",
+      "role": "operator-api",
+      "identity": "no:2",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-2-connect",
+      "role": "operator-connect",
+      "identity": "no:2",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "operator-2-taskworker",
+      "role": "operator-taskworker",
+      "identity": "no:2",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "subtensor-evm-egress",
+      "role": "dependency-rpc-proxy",
+      "identity": "operational-evm-egress",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "subtensor-rpc-proxy",
+      "role": "dependency-rpc-proxy",
+      "identity": "operational-evm-rpc",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "subtensor-substrate-rpc-proxy",
+      "role": "dependency-rpc-proxy",
+      "identity": "operational-substrate-rpc",
+      "pid": 0,
+      "started_at": "2026-09-16T10:14:40Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "validator-1",
+      "role": "validator",
+      "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "validator-2",
+      "role": "validator",
+      "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "restarts": 0,
+      "healthy": false,
+      "exit_error": "supervisor stopped"
+    }
+  ]
+}

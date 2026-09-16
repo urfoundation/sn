@@ -1,0 +1,14 @@
+reference	original_capture_path
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/race
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/route-only-timeout/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/cancellation-after-snapshot/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/literal-output-path-recovery
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/compile/race
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/normal/body
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/race/body
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/route-only-timeout/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/route-only-timeout/normal/body
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/cancellation-after-snapshot/compile/normal
+raw-capture	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/cancellation-after-snapshot/normal/body

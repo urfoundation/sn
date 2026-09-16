@@ -1,0 +1,48 @@
+{
+  "observed_at": "2026-09-16T08:38:04Z",
+  "launch_mechanism": "transient shell backgrounded exec setsid --wait ./launcher.sh; command.sh execs the helper",
+  "services": [
+    {
+      "name": "subtensor-evm-egress",
+      "pid": 3527769,
+      "startticks": "183368942",
+      "ppid": 1,
+      "pgid": 3527769,
+      "sid": 3527769,
+      "comm": "sim-testnet",
+      "waitable_parent": false
+    },
+    {
+      "name": "subtensor-rpc-proxy",
+      "pid": 3527795,
+      "startticks": "183368968",
+      "ppid": 1,
+      "pgid": 3527795,
+      "sid": 3527795,
+      "comm": "sim-testnet",
+      "waitable_parent": false
+    },
+    {
+      "name": "operator-1-api",
+      "pid": 3527805,
+      "startticks": "183368994",
+      "ppid": 1,
+      "pgid": 3527805,
+      "sid": 3527805,
+      "comm": "sim-testnet",
+      "waitable_parent": false
+    },
+    {
+      "name": "operator-2-api",
+      "pid": 3527809,
+      "startticks": "183368995",
+      "ppid": 1,
+      "pgid": 3527809,
+      "sid": 3527809,
+      "comm": "sim-testnet",
+      "waitable_parent": false
+    }
+  ],
+  "terminal_exit_status_available": false,
+  "termination_evidence": "No wait(2) exit status is available after the transient launcher shell exits. On authorized stop, retain pre-signal PID/startticks identity, record signal-dispatch status, then poll /proc/PID and kill -0 until absence while checking no replacement PID has a different startticks; also record listener closure. Signal success or PID disappearance alone is not represented as exit 0."
+}

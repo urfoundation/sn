@@ -1,0 +1,6 @@
+The initial derived receipt renderer treated a two-line positive artifact hash
+file as a scalar. It aborted before RESULT.json or any manifest/seal existed.
+This affected only derived TSV rendering; raw compiler/body receipts, source
+inputs, binaries and tests were not changed. The original partial TSVs are
+preserved with `.attempt1` names. The corrected renderer extracts one named
+hash per lane and emits a scalar package terminal state.

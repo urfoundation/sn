@@ -1,0 +1,13 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 10:15:04.822902 3688801 env.go:770] [env]try /srv/warp/config, [settings.yml]
+I0916 10:15:04.823141 3688801 env.go:770] [env]try /srv/warp/site, [settings.yml]
+I0916 10:15:04.823189 3688801 env.go:67] [env]settings = map[]
+sim-testnet: release V2 semantic startup: startup no_id 1 origin 1 ordinary replay: Get "http://127.0.0.1:18082/sn/attempt-artifact?hash=0xab64da38a3105527ac3656c0e1ff0055ee998ef054f01cc39d0bb32637943efb&kind=metadata": terminated signal received
+terminated signal received
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled
+context canceled

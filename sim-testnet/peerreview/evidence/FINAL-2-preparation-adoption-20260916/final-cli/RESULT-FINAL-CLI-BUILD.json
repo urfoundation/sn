@@ -1,0 +1,12 @@
+{
+  "kind":"final-stamped-sim-testnet-cli-build",
+  "build_exit":0,
+  "repos_before_after_identical":true,
+  "repos_before_sha256":"1c8662e6f02045286633fe518d064b44640791fabbe88d3c387534cb1044a61f",
+  "repos_after_sha256":"1c8662e6f02045286633fe518d064b44640791fabbe88d3c387534cb1044a61f",
+  "artifact":{"path":"/mnt/data/sn-testnet/qualification/pf01-pf02-physical-cli-final-lock-20260916-r1/sim-testnet","sha256":"8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b","bytes":140902712,"mode":"0700"},
+  "vcs":{"revision":"aeda6abbd2dc0abc92bb0f60975cf89b509e8017","trimpath":true,"buildvcs":true,"modified":false},
+  "release_lock_sha256":"bf417189d4c0a62f8116606f84f9c5509b3afe2dab611429c9b781998b3198fc",
+  "warm_gocache":"/home/by/urnetwork/temp/sn-carried-fleet-qualification-20260913/runtime/gocache",
+  "gomodcache":"/home/by/go/pkg/mod"
+}

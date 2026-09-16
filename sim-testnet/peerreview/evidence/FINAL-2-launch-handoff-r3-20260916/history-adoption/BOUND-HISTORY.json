@@ -1,0 +1,9 @@
+{
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "first_native_epoch": 1488,
+  "history_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/history-adoptions/native-1488-f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9.json",
+  "history_sha256": "sha256:f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9",
+  "bytes": 2201,
+  "original_capture": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/history-adoption/stdout.json",
+  "original_intent_prefixes_unchanged": true
+}

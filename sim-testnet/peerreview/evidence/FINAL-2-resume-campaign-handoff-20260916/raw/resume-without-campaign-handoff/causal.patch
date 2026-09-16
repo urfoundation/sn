@@ -1,0 +1,15 @@
+diff --git a/sim-testnet/strict_resume_campaign.go b/sim-testnet/strict_resume_campaign.go
+index 0759e43..e578451 100644
+--- a/sim-testnet/strict_resume_campaign.go
++++ b/sim-testnet/strict_resume_campaign.go
+@@ -58,9 +58,7 @@ func runStrictResumeCampaign(ctx context.Context, options cliOptions, executor *
+ 	if executor.cfg != cfg || executor.plan != plan || executor.journal != journal || executor.roles != roles || executor.stateDir != stateDir || executor.preparationIncomplete || cfg.strictHistoryAdoption != adoption || provisionalResumeEnabled(cfg) || plan.PlanHash != options.PlanHash || adoption.bundle.ApprovedPlanHash != plan.PlanHash || adoption.path != options.StrictHistoryAdoption || adoption.hash != options.StrictHistoryAdoptionSHA256 {
+ 		return nil, errors.New("strict resume campaign writer or approval changed during startup")
+ 	}
+-	if err := campaign(ctx, cfg, stateDir, journal, executor, roles, runScenarioCampaignAttempt); err != nil {
+-		return nil, err
+-	}
++	// Causal control: stop at the former standalone resume completion boundary.
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}

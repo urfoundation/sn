@@ -1,0 +1,16 @@
+{
+  "name": "route-only-timeout",
+  "positive_commit": "8270992eb8fb2b1599a29271ec44426379007306",
+  "commit": "843993c4f5539d64a4654eb6ab0266195bef649d",
+  "source": "/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/route-only-timeout/workspace/sn",
+  "changed_paths_from_positive": ["sim-testnet/process.go"],
+  "restoration_patch_sha256": "b0fcdbf1eb08abd52a63f36e48e09075123194c8553135ff16720be88382c3cb",
+  "test_sha256": "8091bf5d65a4a6736602df4b47b13525deb6ba6acfe045ddd4022e48e8d052ee",
+  "selection_path": "../selection.json",
+  "mode": "normal",
+  "expected_fail": ["TestReleaseTopologyReadinessRetainedHistoryWarmupIsRouteIndependent"],
+  "expected_failure_substring": "retained route \"owned-node\" canceled before the first complete fresh proofs",
+  "expected_other_roots_pass": 10,
+  "expected_body_exit": 1,
+  "restoration": "Only remove the strictHistoryAdoption condition from the startup timeout selector; retain the new clock seam, all safety logic and identical tests."
+}

@@ -1,0 +1,11 @@
+--- original.lock.yml
++++ stdout.yml
+@@ -64,7 +64,7 @@
+     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
+     server_go_source_hash: sha256:ee3f1007b006fe19ce21e1927f070fd29a2879bb839efdeed7eaf4d86f418a2f
+     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
+-    sn_go_source_hash: sha256:2ac35d3ed59965e06ba68c5c756139c7b77c43bc11d0c5ec3ba93dc5f0823c20
++    sn_go_source_hash: sha256:b4d79718f2e227882fd965d048f3a0cb71ffcac1e88deb82d7d2c0ac0062d96a
+     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
+     vault_audited_base_commit: 992f69a4ba744dabf43c71401a3f355f05f46428
+ dependencies:

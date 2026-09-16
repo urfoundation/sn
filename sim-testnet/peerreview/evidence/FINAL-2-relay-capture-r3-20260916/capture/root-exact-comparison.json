@@ -1,0 +1,139 @@
+{
+  "differences": [
+    {
+      "path": "/evidence_relay_continuation/end_block",
+      "old": 8024100,
+      "new": 8025298
+    },
+    {
+      "path": "/evidence_relay_continuation/end_native_epoch",
+      "old": 1507,
+      "new": 1510
+    },
+    {
+      "path": "/evidence_relay_continuation/end_settlement_epoch",
+      "old": 429,
+      "new": 433
+    },
+    {
+      "path": "/evidence_relay_continuation/evm_head/hash",
+      "old": "0x3b41452d02932ca719c42f750c4274f672b9839737778792b6b0ebf0940a30db",
+      "new": "0xfd79b651683353f2c2985431c444c8b30eba0ad2061737ff21bbd2f514163801"
+    },
+    {
+      "path": "/evidence_relay_continuation/evm_head/number",
+      "old": 8016047,
+      "new": 8017249
+    },
+    {
+      "path": "/evidence_relay_continuation/native_epoch",
+      "old": 1484,
+      "new": 1487
+    },
+    {
+      "path": "/evidence_relay_continuation/native_head/hash",
+      "old": "0x65e3d74b7ca982e5c1114c7b3ba15776d40a006c4f1e2f1b1e984632547536a2",
+      "new": "0x6ae2cce3bb952f81219e3fb2a316ae1b88e2f7565cdac99db97a58cfa7e61deb"
+    },
+    {
+      "path": "/evidence_relay_continuation/native_head/number",
+      "old": 8016047,
+      "new": 8017249
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/7/finalized",
+      "old": 106,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/7/latest",
+      "old": 106,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/7/pending",
+      "old": 106,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/11/finalized",
+      "old": 104,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/11/latest",
+      "old": 104,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/nonces/11/pending",
+      "old": 104,
+      "new": 107
+    },
+    {
+      "path": "/evidence_relay_continuation/settlement_epoch",
+      "old": 402,
+      "new": 406
+    },
+    {
+      "path": "/evidence_relay_continuation/source_plan_hash",
+      "old": "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+      "new": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876"
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/0/capacity/file_metadata_sha256",
+      "old": "sha256:0211dedb2dbbea6db683700e5e606a01f6789edbd746fcd1978c354c2cae0ce5",
+      "new": "sha256:8d6aaac8cbcb3b2024f470903c0fc703957bc9052632aa046125637ffdc1f4a9"
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/0/capacity/storage_bytes",
+      "old": 283301268,
+      "new": 281139022
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/0/capacity/storage_files",
+      "old": 139,
+      "new": 140
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/1/capacity/file_metadata_sha256",
+      "old": "sha256:544e46d8d40f61e1acbf65b9c25ac14257914a77f89481a9bcb9475efcfc96b1",
+      "new": "sha256:63e5752679d127bffa0313f1df901f9289ba0321597b8c5c5fbb4c059c603dd3"
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/1/capacity/storage_bytes",
+      "old": 278174508,
+      "new": 278046706
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/1/capacity/storage_files",
+      "old": 137,
+      "new": 138
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/2/capacity/file_metadata_sha256",
+      "old": "sha256:0d44c95244b18c2ee979a2ed14b382d6723578987998d9e9c3dba0175dd1ea62",
+      "new": "sha256:ab7a201ec6e1e9a63eddd92c45a9202521e35b58a4e6c6292f7dc9fa94f6662e"
+    },
+    {
+      "path": "/evidence_relay_continuation/sources/3/capacity/file_metadata_sha256",
+      "old": "sha256:5b0bc488a6e2fb30c4f856acac277bad5e8e446951005fb5816ccdbae17ef770",
+      "new": "sha256:b28f025bc0547ff811d3200fc78ba4f3a8ac8f47a4962ef11f5553451d7d355a"
+    },
+    {
+      "path": "/evidence_relay_continuation/transactions_sha256",
+      "old": "sha256:78910dff315a8c5255a2c1859941d15dc763c6033a4a3f71cc294d3174436b6e",
+      "new": "sha256:0ee805b329c6ae9799e8c9180a8c5dc5df7697a216a3df6ffd7bc9ce9fc66d15"
+    },
+    {
+      "path": "/plan_hash",
+      "old": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876",
+      "new": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37"
+    },
+    {
+      "path": "/prior_plan_hashes/90",
+      "added": "0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876"
+    }
+  ],
+  "count": 27
+}

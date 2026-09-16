@@ -50,7 +50,124 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-16: strict resume exited 1 at 06:29:05
+Latest recovery checkpoint, 2026-09-16: strict managed resume 92055 failed its
+five-minute owned-node semantic-readiness wait at 10:20:25. Body/outer/join exits
+are 1. All 1,000 fleet and 4,673 carried-action checks completed; the new generation
+reached 33 healthy processes with zero restarts, but all four fresh proof domains
+remained pending. Both validators were still replaying retained settlement
+history when cancellation reached them. Cleanup stopped all 33 processes. The
+last process-log scan at 10:20:10 had no findings; no later log scan is claimed.
+Only watched supervisor manifest/state changed; plan, journal, config, public
+identities, executable and lock are unchanged. RC remains unexecuted. The narrow
+startup correction is qualified below; its deployment remains pending. Reuse
+completed qualification. Reconciliation confirmed all 14 new
+operator attempts have canonical status-1 receipts; actual fees total
+0.029033073172513564 EVM TAO. Both validator prefixes are unchanged and no
+N1488 decision/preparation occurred. Root restored only the 14 original signed
+RLPs at 10:35:53, preserving all 2,272 originals and all six watched files,
+with no broadcast or DB/journal mutation. The complete collector union is now
+2,532 signatures. The separate closed capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/signature-restoration`.
+Terra qualified candidate `8270992e`: all 11 affected roots pass in normal/race;
+each causal variant has exactly one intended failure and ten passes. Root
+checked raw events, membership, exits and unchanged inputs, then fast-forwarded
+primary to that commit. The retained strict startup allowance is 30 minutes
+across RPC routes; fresh-proof and all other readiness gates remain. Physical
+deployment still uses the `aeda6abb` executable. The explicit handoff from strict
+resume into the full campaign is now qualified and integrated at `e109ac35`.
+All 14 affected roots pass normally and under race; the causal control produces
+exactly three intended failures and three passes. Normal acceptance composes
+four retained passes, nine corrected-capture passes and one previously omitted
+root; every failed invocation remains recorded. The earlier 11 readiness roots
+are reused. Terra will own the combined native command, which retains all full
+campaign checks and avoids a second preparation pass. The
+[closed orchestration qualification](sim-testnet/peerreview/evidence/FINAL-2-resume-campaign-handoff-20260916/README.md)
+records the source, composition and original harness errors.
+The [read-only release-lock preview](sim-testnet/peerreview/evidence/FINAL-2-retained-startup-release-20260916/README.md)
+passed under root session 84281; only the SN source hash changes. Its exact
+candidate lock, SHA-256
+`42a48da4d4fd267c496b8558cd9838f68b3f5e4117a9e681352129069df2df22`, is installed
+in the primary checkout. Matching publication/build and native adoption remain
+pending. R4 native wrappers and four temporary RPC/API helpers are prepared but
+unexecuted; no new plan is adopted yet. Original compiler bodies that wrote literal `$capture/` outputs
+exited zero, while their wrappers exited 126; corrected builds reproduced the
+same hashes. The original failures and premature cleanup inventories remain.
+The [closed startup qualification](sim-testnet/peerreview/evidence/FINAL-2-retained-startup-qualification-20260916/README.md)
+contains 70 verified payloads with manifest SHA-256
+`f4c67339990c97bc2cac866bc049074291b6f869891d01a86361e06ce6fd4577`.
+The [closed failure evidence](sim-testnet/peerreview/evidence/FINAL-2-managed-readiness-20260916/README.md)
+has 27 verified payloads and seal
+`81fd7d5c8140fa02bb58184cdb562906ad7386dcd33a078316f40d42a3a2bc2d`.
+
+Previous checkpoint, 2026-09-16 09:41 UTC: both preparation fixes, their evidence
+and the release lock are published at `aeda6abbd2dc0abc92bb0f60975cf89b509e8017`.
+The matched executable built successfully with SHA-256
+`8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b`.
+Physical server remains the qualified `6752a8df`; publication merge `006e71b9`
+preserves that commit. Native read-only planning passed at 08:02:31 with all
+watched state, binary and lock bytes unchanged. Root reviewed the complete
+lossless diff: all 4,733 actions, limits, spending, renewals, continuation,
+custody, config and policy remain unchanged. The successor is
+`0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876`.
+Prepare-only setup/adoption ran 08:12:47–08:27:00 and passed, with root session
+49000 joined zero. All 4,673 carried-action checks completed; only the saved
+plan and redacted config changed. All nine hard preparation checks passed;
+launch-runtime-inputs remains explicitly deferred to resume. All four temporary
+helpers passed readiness; proxy readiness uses `/healthz` and API readiness uses
+`/status`. Initial API probes at the wrong path are retained as diagnostics.
+A finalized LAN observation at 08:27:57, block 8,017,083,
+selects continuation END=8,025,143 and full-work start cutoff=8,017,573, preserving
+the required 7,570 blocks of work. Continuation capture ran 08:31:32–08:46:41
+under root session 52913 and exited one: the nonce census could not find
+operator-1-root nonce 106 in its retained signed-transaction sources. It emitted
+no plan; state, binary and lock hashes are unchanged. The transaction is one
+of the four already finalized partial-start writes documented below. The complete
+census of both operator databases verified all 230 signed attempts, including
+replacements and cancellations: 226 were already retained and exactly four were
+missing. At 08:57:55, create-only restoration added their original 178-byte RLPs
+while preserving all 2,268 existing RLP files and the six watched state files.
+No transaction, journal/DB-status change, additional authority or source rebuild
+was needed. The sealed census is at
+`/mnt/data/sn-testnet/qualification/operator-signed-attempt-census-20260916-r1`;
+root's separate `restore/` receipt records the additions. A fresh finalized LAN
+observation at 08:58:59, block 8,017,238, selects END=8,025,298 and full-work cutoff
+8,017,728. The fresh capture ran 09:00:03–09:15:28 under root session 35694 and
+passed with unchanged state, binary and lock hashes. Its successor plan is
+`0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37`,
+captured in `relay-capture-r3` using `relay-end-restored.env`. The complete
+review found exactly 27 changed paths, confined to continuation window/source
+observations, restored-transaction census/nonces, plan identity and ancestry.
+All 4,733 actions, limits, spending, renewals, custody/config/policy and retained
+signed ledger history remain unchanged. Exact import ran 09:19:38–09:35:50 under
+root session 30705 and passed, reporting zero chain transactions. Only the
+watched saved plan changed; its bytes equal the captured successor exactly.
+A finalized LAN observation at 09:36:23, block 8,017,425, selects first native
+epoch 1,488, spanning blocks 8,017,451 through 8,017,810. It leaves 386 blocks
+for startup/first decisions and 303 until the full-work cutoff. History capture
+passed at 09:37:28 with all watched state unchanged and both original validator
+intent prefixes preserved. Its exact 2,201-byte bundle is stored privately under
+`history-adoptions/native-1488-f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9.json`.
+The [closed signature recovery evidence](sim-testnet/peerreview/evidence/FINAL-2-signature-recovery-20260916/README.md)
+preserves the failed capture, all-attempt census and restoration separately.
+Terra stopped all four helpers at 09:40:08. Exact PID/start-time and process/listener
+observations prove termination; their terminal exit codes are unavailable.
+The teardown owner joined zero. Two pre-signal launcher/preflight errors and the
+original invalid receipt manifest remain preserved with a corrected closed seal.
+Root independently checked process absence and port closure, then started strict
+managed resume at 09:41:17 under session 92055. The release-candidate request is
+bound to the same final plan and waits for healthy resume before Terra executes it.
+The [closed launch handoff evidence](sim-testnet/peerreview/evidence/FINAL-2-launch-handoff-r3-20260916/README.md)
+preserves import, history selection and helper teardown. Its 93-file manifest,
+and the [capture/review package](sim-testnet/peerreview/evidence/FINAL-2-relay-capture-r3-20260916/README.md),
+were independently checked by root; neither claims a startup or campaign outcome.
+Captures are in `/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3`.
+The [completed build and plan-review receipts](sim-testnet/peerreview/evidence/FINAL-2-preparation-adoption-20260916/README.md)
+preserve their exact results and lossless comparison; setup has its separate
+terminal receipt under the native capture above.
+Keep publication frozen during these dependent commands. The soak remains
+stopped, and actual managed-startup verification of both fixes is pending.
+
+Previous checkpoint, 2026-09-16: strict resume exited 1 at 06:29:05
 after processing all 4,673 carried-action audits and starting the managed
 topology. Its process-log gate recorded four blocking classes in the new
 generation: each operator taskworker emitted two unclassified errors and one
@@ -99,7 +216,10 @@ passed at 05:41:45 with all watched bytes unchanged. Finalized native block
 8,016,244 selects first native epoch 1,485, spanning blocks 8,016,371–8,016,731.
 The exact history bundle is retained under the state-owned `history-adoptions/`
 directory with SHA-256 `e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53`.
-All four temporary helpers were joined with exit 0. Strict managed resume
+All four temporary helper tool sessions were recorded as joined with exit 0
+in the r2 `temporary-services/STOPPED.json`, with their original PIDs absent.
+Separate raw helper-join results are not in the portable continuation bundle.
+Strict managed resume
 started at 05:47:36 under root session 97810; join this owner before entering
 the release campaign. END=8,024,100, required work=7,570 and start cutoff=8,016,530
 remain unchanged. Keep publication frozen through dependent native calls.

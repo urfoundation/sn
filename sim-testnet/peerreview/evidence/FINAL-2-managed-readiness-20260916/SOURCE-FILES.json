@@ -1,0 +1,146 @@
+[
+  {
+    "path": "strict-resume/REQUEST.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/REQUEST.json",
+    "bytes": 1968,
+    "sha256": "e59437bf18fdd9a1bce9945ebf3ea83f9e44a2c382a2f743927512a1d8da2d59"
+  },
+  {
+    "path": "strict-resume/PRELAUNCH-WITNESS.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/PRELAUNCH-WITNESS.json",
+    "bytes": 591,
+    "sha256": "72351b9cf060c75b1350c315ce917fef90860b761dba6b086261c85a8c90d62c"
+  },
+  {
+    "path": "strict-resume/command.sh",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/command.sh",
+    "bytes": 4920,
+    "sha256": "7c31aee06b1188a8e84e24728f94e3b0f7e437e26e489e2178f235bbb9acc3c8"
+  },
+  {
+    "path": "strict-resume/command.inputs.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/command.inputs.sha256",
+    "bytes": 310,
+    "sha256": "6764db504e0f0d83dbb68e733603cbab907d6b7ffa84ad2569668571cf676bc9"
+  },
+  {
+    "path": "strict-resume/body.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/body.started-at",
+    "bytes": 21,
+    "sha256": "6a5afad5b77a7ac7b8ea13635f251394ef34a9c5bfe17ea0c7d797d08a305272"
+  },
+  {
+    "path": "strict-resume/body.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/body.finished-at",
+    "bytes": 21,
+    "sha256": "97057e84dcef25cf5c29398db1a34e37c8521fb04ee316f416c0b82ba8207c73"
+  },
+  {
+    "path": "strict-resume/body.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/body.exit",
+    "bytes": 2,
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+  },
+  {
+    "path": "strict-resume/outer.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/outer.started-at",
+    "bytes": 21,
+    "sha256": "3e169c84cce8503984fe5b6e2cea33ed76ca9648f2d602c83d3d3e862250feb2"
+  },
+  {
+    "path": "strict-resume/outer.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/outer.finished-at",
+    "bytes": 21,
+    "sha256": "d85e9cd6b281ad0494da42d60b5df3dc36cbb92823a67078143c186e23968cd2"
+  },
+  {
+    "path": "strict-resume/outer.pid",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/outer.pid",
+    "bytes": 8,
+    "sha256": "24bd0ba4d71789901a4d20f360139950f28a71bdee13f7d0437a73a329517f84"
+  },
+  {
+    "path": "strict-resume/outer.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/outer.exit",
+    "bytes": 2,
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+  },
+  {
+    "path": "strict-resume/join.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/join.exit",
+    "bytes": 2,
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+  },
+  {
+    "path": "strict-resume/joined-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/joined-at",
+    "bytes": 33,
+    "sha256": "bb785a65a42c2f3f54974946d0c6b93efc2de76c1ea6f68080c8df3fd0306a7e"
+  },
+  {
+    "path": "strict-resume/result.status",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/result.status",
+    "bytes": 75,
+    "sha256": "eedfb1fbe2ed634f4d4d707c0ddb2828eb3133e0660d0f5da3b108e2875e6d79"
+  },
+  {
+    "path": "strict-resume/stdout.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "strict-resume/stderr",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/stderr",
+    "bytes": 4786,
+    "sha256": "e4966e57d77cb95a4a569fd483b3c0da86d82f11fc7328d45adde2bd0662304f"
+  },
+  {
+    "path": "strict-resume/state.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/state.before.sha256",
+    "bytes": 921,
+    "sha256": "96c14de259572d0eb735d06944bbb10a673ae6c416326d2625ed7d2a96009241"
+  },
+  {
+    "path": "strict-resume/state.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/state.after.sha256",
+    "bytes": 921,
+    "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69"
+  },
+  {
+    "path": "strict-resume/binary.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/binary.before.sha256",
+    "bytes": 159,
+    "sha256": "f2d22d7122e72c594809ba805763b4716be2dde9f34a36c6af8176a11d7576ab"
+  },
+  {
+    "path": "strict-resume/binary.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/binary.after.sha256",
+    "bytes": 159,
+    "sha256": "f2d22d7122e72c594809ba805763b4716be2dde9f34a36c6af8176a11d7576ab"
+  },
+  {
+    "path": "strict-resume/lock.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/lock.before.sha256",
+    "bytes": 98,
+    "sha256": "0b2834b9d9a6184ba0a04b5740555ce87ad6349dd6e29054eb058edfe4db64cf"
+  },
+  {
+    "path": "strict-resume/lock.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/strict-resume/lock.after.sha256",
+    "bytes": 98,
+    "sha256": "0b2834b9d9a6184ba0a04b5740555ce87ad6349dd6e29054eb058edfe4db64cf"
+  },
+  {
+    "path": "closed-state/supervisor.state.json",
+    "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+    "bytes": 8829,
+    "sha256": "32bfa99f8dc356b302f0985bffbcfc3e1173094754b231882940acabafb54ac7"
+  },
+  {
+    "path": "closed-state/process-log-gate.json",
+    "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/process-log-gate.json",
+    "bytes": 31765,
+    "sha256": "ea56adefa925edf6ac010e58c539e9d852f3282f5890267f1f4cc3af530313d8"
+  }
+]

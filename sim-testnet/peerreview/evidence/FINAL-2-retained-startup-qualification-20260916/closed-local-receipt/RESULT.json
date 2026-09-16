@@ -1,0 +1,12 @@
+{
+  "schema": "urnetwork-retained-startup-readiness-qualification-v1",
+  "formatted_positive_commit": "8270992eb8fb2b1599a29271ec44426379007306",
+  "route_causal_commit": "843993c4f5539d64a4654eb6ab0266195bef649d",
+  "cancellation_causal_commit": "71e02d52d4295fffe959c29952dd587be093f828",
+  "selection_sha256": "08f9f52c8d9ae8fc5164b75f832f1f286f8cc2d77595979d95d10640ad0b5788",
+  "selector_sha256": "85e51985566f332f5d19e3ef84e29706fcdac6011035f4cf662da5c0ff2a96a9",
+  "composition_sha256": "e9bb83fc5ca4b5d117bfcd1fe95b60e515e8efdc7dd9a7a6c09fc49456df83a5",
+  "result": "positive_normal_pass11_positive_race_pass11_route_causal_fail1_pass10_cancellation_causal_fail1_pass10",
+  "original_compiler_refusals_preserved": true,
+  "corrected_binary_reproduction": true
+}

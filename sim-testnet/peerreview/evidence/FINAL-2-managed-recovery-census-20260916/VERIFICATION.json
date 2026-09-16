@@ -1,0 +1,74 @@
+{
+  "original_safe_census_payloads": 35,
+  "original_restoration_payloads": 16,
+  "original_cause_payloads": 6,
+  "copied_original_files_including_manifests_and_seals": 63,
+  "all_original_copies_byte_identical": true,
+  "all_three_original_payload_manifests_and_seals_verified": true,
+  "original_seals": {
+    "census": "b9070c8ee744b2cfc54d8d24ba8baa38144a3f4aadd1306300b1edc0e5c9da18",
+    "restoration": "de3e77ec83fa8b3abc929492a33c23c97f2e8d3896a97c951c4db340ed9f1c95",
+    "cause": "e63178a2240adc3033f771c5f34f20b44bb55f1c2d3fa5c691ab95275bdab0cc"
+  },
+  "restoration": {
+    "before_files": 2272,
+    "after_files": 2286,
+    "added_files": 14,
+    "all_prior_names_and_hashes_unchanged": true,
+    "added_names_exactly_match_result": true,
+    "added_names_exactly_match_candidates": true,
+    "all_added_hashes_match_original_candidates": true,
+    "watched_file_count": 6,
+    "watched_hash_receipts_byte_equal": true,
+    "body_exit": 0,
+    "joined_exit": 0,
+    "root_owner_session_id": 44035,
+    "restored_bytes": 2492,
+    "chain_transactions": 0,
+    "new_signatures_created": 0,
+    "journal_mutation": false,
+    "database_mutation": false
+  },
+  "startup_transactions": {
+    "newly_signed_operator_attempts": 14,
+    "all_14_inclusions_canonical": true,
+    "finalized_evm_height": 8017664,
+    "native_finalized_height": 8017664,
+    "complete_operator_signed_attempts": 244,
+    "original_complete_transaction_union": 2518,
+    "restored_complete_transaction_union": 2532,
+    "changed_nonce_roles": [
+      {
+        "role": "operator-1-root",
+        "current": {
+          "finalized": 115,
+          "latest": 115,
+          "pending": 115
+        }
+      },
+      {
+        "role": "operator-2-root",
+        "current": {
+          "finalized": 113,
+          "latest": 113,
+          "pending": 113
+        }
+      }
+    ],
+    "unchanged_nonce_role_count": 11,
+    "new_signed_claim_entries": 0,
+    "no_new_payout_roots": true
+  },
+  "privacy_checks": {
+    "private_artifacts_are_hash_references_only": true,
+    "safe_rpc_projections_exclude_transaction_input_and_signature_fields": true,
+    "safe_native_projection_excludes_consensus_digest": true,
+    "exact_validator_stderr_slices_reviewed_safe": true,
+    "active_native_files_excluded": true
+  },
+  "limitations": [
+    "No pre-start complete claim-queue byte baseline exists; the claim result uses the complete durable-field/timestamp census.",
+    "The unchanged coordinator history does not imply unchanged LevelDB storage or session credentials.",
+    "The readiness correction is not qualified by this evidence package; actual representative retained replay and campaign acceptance remain separate."
+  ]
+}

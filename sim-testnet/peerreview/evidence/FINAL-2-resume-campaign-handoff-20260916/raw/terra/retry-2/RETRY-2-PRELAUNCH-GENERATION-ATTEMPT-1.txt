@@ -1,0 +1,1 @@
+No body process started. The first retry-2 body-script generation used a sed delimiter that also occurred in the literal shell `||` expression, so generation stopped before creating a launcher. The correction changes only that local text substitution; the captured retry-1 bodies, selected source, binaries, selectors and inputs remain unchanged.

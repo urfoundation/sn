@@ -1,0 +1,64 @@
+{
+  "schema": "urnetwork-affected-qualification-selection-v1",
+  "base_commit": "8270992eb8fb2b1599a29271ec44426379007306",
+  "implementation_commit_before_formatting": "9ce20e9d11f06851783fdc904802d3565ab077ca",
+  "source_path": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/workspace/sn",
+  "changed_paths": [
+    "sim-testnet/main.go",
+    "sim-testnet/executor.go",
+    "sim-testnet/strict_resume_campaign.go",
+    "sim-testnet/strict_resume_campaign_test.go"
+  ],
+  "package": "./sim-testnet",
+  "modes": [
+    "normal",
+    "race"
+  ],
+  "selector": "^(TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites|TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation|TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete|TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation|TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner|TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates|TestParseCLIReleaseCommandsAndWriteGuardFlags|TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure|TestLaunchPreparationOnlyStopsCleanApprovedPass|TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor|TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult|TestCompletedCampaignStillRequiresBothSemanticAnalyzers|TestCampaignParentCancellationJoinsSemanticAnalyzer|TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder)$",
+  "expected_roots": [
+    "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites",
+    "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation",
+    "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete",
+    "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation",
+    "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner",
+    "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates",
+    "TestParseCLIReleaseCommandsAndWriteGuardFlags",
+    "TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure",
+    "TestLaunchPreparationOnlyStopsCleanApprovedPass",
+    "TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor",
+    "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult",
+    "TestCompletedCampaignStillRequiresBothSemanticAnalyzers",
+    "TestCampaignParentCancellationJoinsSemanticAnalyzer",
+    "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder"
+  ],
+  "positive_expected": {
+    "pass": 14,
+    "fail": 0,
+    "skip": 0
+  },
+  "causal_variants_after_formatted_source": [
+    {
+      "name": "resume_without_campaign_handoff",
+      "mode": "normal",
+      "restoration": "Remove only the campaign dispatch from runStrictResumeCampaign, modeling the old standalone resume completion boundary. Keep all request/owner/cancellation checks and tests unchanged.",
+      "selector": "^(TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites|TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation|TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete|TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation|TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner|TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates)$",
+      "expected_roots": [
+        "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites",
+        "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation",
+        "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete",
+        "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation",
+        "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner",
+        "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates"
+      ],
+      "expected_fail": [
+        "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete",
+        "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation",
+        "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates"
+      ],
+      "expected_pass": 3,
+      "expected_body_exit": 1
+    }
+  ],
+  "unchanged_scope": "Reuse the already qualified 11 readiness roots on base 8270992, all journal/transaction/runtime tests and full release gates. No campaign phase, archive analyzer, native/EVM signing, accounting, relay horizon, fault/adversary, configured five-plus-three acceptance or process cleanup implementation changes.",
+  "qualification_limit": "Deterministic command and same-owner handoff controls. The actual combined native resume and full campaign remain required; this test result does not establish adequate live horizon or campaign acceptance."
+}

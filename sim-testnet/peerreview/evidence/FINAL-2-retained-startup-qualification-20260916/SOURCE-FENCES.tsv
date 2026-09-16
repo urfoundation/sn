@@ -1,0 +1,4 @@
+lane	source	head	status_lines	diff_check_lines
+positive	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/workspace/sn	8270992eb8fb2b1599a29271ec44426379007306	0	0
+route-only-timeout	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/route-only-timeout/workspace/sn	843993c4f5539d64a4654eb6ab0266195bef649d	0	0
+cancellation-after-snapshot	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/cancellation-after-snapshot/workspace/sn	71e02d52d4295fffe959c29952dd587be093f828	0	0

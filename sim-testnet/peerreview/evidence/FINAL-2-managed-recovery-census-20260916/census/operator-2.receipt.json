@@ -1,0 +1,14 @@
+{
+  "container": "ur-subnet-testnet-v1-pg-2",
+  "database": "bringyour",
+  "read_only": true,
+  "no_mutable_status_or_time_filter": true,
+  "raw_signed_bytes_never_selected": true,
+  "started_at": "2026-09-16T10:22:26.345900+00:00",
+  "finished_at": "2026-09-16T10:22:26.531585+00:00",
+  "exit": 0,
+  "rows": 121,
+  "signed_attempt_rows": 120,
+  "census_sha256": "5548cd2dc4d958465994823fd1af6498ce676b3c6b51724d3346444f9fc0a635",
+  "sql_sha256": "f8fb26f6b14cb48eef441fb625cf3e40dc2b8b41e06ed507c941e43ad7cd3031"
+}

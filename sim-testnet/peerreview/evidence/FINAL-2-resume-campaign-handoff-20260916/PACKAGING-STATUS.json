@@ -1,0 +1,117 @@
+{
+  "schema": "focused-qualification-public-staging-v1",
+  "status": "CLOSED: all contributing owners joined; qualification established by copied raw receipts and root review",
+  "staged_utc": "2026-09-16T11:24:53.036026+00:00",
+  "positive_source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "causal_source": "2e6a8e435d4d3c49a9e5dc06e7093ce6870dcee0",
+  "closed_owners_copied": [
+    {
+      "path": "terra/positive/compile/normal",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1
+    },
+    {
+      "path": "terra/positive/compile/race",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1
+    },
+    {
+      "path": "terra/causal/compile/normal",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1
+    },
+    {
+      "path": "terra/retry-1/positive/compile/normal",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 0,
+      "outer_exit": 0,
+      "join_exit": 0
+    },
+    {
+      "path": "terra/retry-1/positive/compile/race",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 0,
+      "outer_exit": 0,
+      "join_exit": 0
+    },
+    {
+      "path": "terra/retry-1/causal/compile/normal",
+      "primary_exit_field": "build.exit",
+      "primary_exit": 0,
+      "outer_exit": 0,
+      "join_exit": 0
+    },
+    {
+      "path": "terra/retry-1/positive/normal/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 125,
+      "outer_exit": 125,
+      "join_exit": 125
+    },
+    {
+      "path": "terra/retry-1/causal/normal/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 125,
+      "outer_exit": 125,
+      "join_exit": 125
+    },
+    {
+      "path": "terra/retry-2/positive/normal/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 125,
+      "outer_exit": 125,
+      "join_exit": 125
+    },
+    {
+      "path": "terra/retry-2/causal/normal/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 1,
+      "outer_exit": 1,
+      "join_exit": 1
+    },
+    {
+      "path": "terra/retry-3/positive/normal/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 0,
+      "outer_exit": 0,
+      "join_exit": 0
+    },
+    {
+      "path": "terra/retry-3/positive/race/body",
+      "primary_exit_field": "body.exit",
+      "primary_exit": 0,
+      "outer_exit": 0,
+      "join_exit": 0
+    }
+  ],
+  "omitted_binary_refs": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-1/positive/compile/normal/sim-testnet.normal.test",
+      "bytes": 161399088,
+      "reason": "compiled binary omitted; existing binary.sha256 and binary before/after receipts are copied"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-1/positive/compile/race/sim-testnet.race.test",
+      "bytes": 212361296,
+      "reason": "compiled binary omitted; existing binary.sha256 and binary before/after receipts are copied"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-1/causal/compile/normal/sim-testnet.normal.test",
+      "bytes": 161445192,
+      "reason": "compiled binary omitted; existing binary.sha256 and binary before/after receipts are copied"
+    }
+  ],
+  "closed_utc": "2026-09-16T11:28:59.739914+00:00",
+  "accepted_final_composition": {
+    "normal": "14 PASS = 4 retained retry-1 + 9 retained retry-2 + 1 retry-3",
+    "race": "14 PASS from retry-3",
+    "causal": "3 expected FAIL / 3 PASS from retry-2; body/outer/join1"
+  },
+  "compact_owner_receipt": "No separate future receipt is represented; the seal binds the closed raw owners, explicit retained-root mapping and independent root review."
+}

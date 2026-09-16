@@ -1,0 +1,5 @@
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL TIME ZONE 'UTC';
+SET LOCAL statement_timeout='30s';
+SELECT row_to_json(q) FROM (SELECT i.intent_id,i.generation,i.profile,i.deployment_id,i.deployment_key,i.chain_id,i.genesis_hash,i.from_address,i.to_address,i.nonce,a.attempt,a.kind,a.tx_hash,a.gas_limit,a.gas_price,a.gas_tip_cap,a.gas_fee_cap,encode(a.raw_transaction,'hex') AS private_raw_transaction_hex FROM st_transaction_intent i JOIN st_transaction_attempt a ON a.intent_id=i.intent_id WHERE a.tx_hash IN ('0xb10a0ccfac140b6dc9d9c2d25ef108644033cb19bd165184c2496eab3bdf158c','0xb15f541d82f5c682971de984e46be9f1030954232a09cc7a0c81c252f0e09bfa','0x4c4045c0e6c1ef4cc6ec6b13a2d14ecc4338a8e522a8e46f38569ada09b29ea9','0x52494886358027cb84897bcc6f93ea25fd5c9a14ae53506b55075a57ca2451c7','0x2253d74e3580dbb868a579d348291f88bfeaa4cd4aa7bd2619464b8b4034d2f4','0xd271e867c3940f32df46ba97e26026c9e286b23bae67212c7fa3e7457c37b2f8','0x1c6fb2a5e5c513f3354950193f11659734d33204d8e822f581586f6db9884ded','0x9e3a59f5687c864a7ef37311d2919cff3e74c2f8a03981c9821abd63e32d75f2') ORDER BY i.nonce,a.attempt) q;
+COMMIT;

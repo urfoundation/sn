@@ -1,0 +1,25 @@
+{
+  "sn_source_revision": "aeda6abbd2dc0abc92bb0f60975cf89b509e8017",
+  "files": [
+    {
+      "path": "evm/src/STCoordinator.sol",
+      "sha256": "e7c5a292a04ea9c7e9c354699416bf4184d20b4f2bb54facad48f1fb6384c6ea"
+    },
+    {
+      "path": "evm/src/STSettlementVault.sol",
+      "sha256": "e8dde91fc40d1c8923bf96b5a01644a014f8951e618cc2072c354494f1c3f2b8"
+    },
+    {
+      "path": "sim-testnet/evidence_relay_continuation_capture.go",
+      "sha256": "ff940309d1e20920052fa5c2a87b785501f25f3682f6f13bd567b204ef81fa33"
+    },
+    {
+      "path": "sim-testnet/fleet_renewal_budget.go",
+      "sha256": "162061660017822b62880781a9b6903504e344e866ba1dc33d077a7f4c9a64fa"
+    },
+    {
+      "path": "validator/release_history_adoption_v2.go",
+      "sha256": "57828d8bb578810897b88f0d94c485a8293450060eaa2a9072744fc5ad4b6255"
+    }
+  ]
+}

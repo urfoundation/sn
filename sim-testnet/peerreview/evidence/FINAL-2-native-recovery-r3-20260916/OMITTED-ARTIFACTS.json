@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/setup-revision/stdout.json",
+    "sha256": "44cb581fa556f1cff63bb3e60118e255da8a17669a32a85fff944c16380f5e9b",
+    "bytes": 20925,
+    "reason": "Full result detail/config values are omitted; RESULT-SAFE.json preserves result flags, check names and outcomes, and explicit deferral."
+  },
+  {
+    "path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/setup-revision/stderr",
+    "sha256": "e71ee50da161fac04e7b299d5656b263a1d5a8161be4d3d943e9e13cbd2e87fb",
+    "bytes": 4652,
+    "reason": "Only exact allowlisted carried-audit progress lines are copied; original initialization/runtime text is omitted."
+  }
+]

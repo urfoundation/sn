@@ -1,0 +1,12 @@
+{
+  "endpoint": "http://192.168.1.162:9944",
+  "started_at": "2026-09-16T10:24:08.159848+00:00",
+  "finished_at": "2026-09-16T10:24:08.260211+00:00",
+  "request_count": 33,
+  "new_attempt_count": 14,
+  "raw_response_sha256": "8e7886c26e68481d0b0b9b823e80be237ccf58d42ecb181c714c564934f44bec",
+  "raw_response_bytes": 43312,
+  "raw_response_not_persisted": true,
+  "safe_response_omits_transaction_input_and_signature_fields": true,
+  "read_only": true
+}

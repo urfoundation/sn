@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-09-16T10:23:50.425655+00:00",
+  "scope": "closed command and state receipts only; no new RPC or acceptance execution",
+  "body_exit": 1,
+  "outer_exit": 1,
+  "join_exit": 1,
+  "supervisor_pid": 3676320,
+  "supervisor_start_time_ticks": 184001647,
+  "all_33_children_reported_stopped": true,
+  "child_restarts": 0,
+  "process_log_findings_through": "2026-09-16T10:20:10.219804503Z",
+  "process_log_findings": [],
+  "watched_state": [
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plan.json",
+      "before_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+      "after_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+      "changed": false,
+      "actual_matches_after": true
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/journal.jsonl",
+      "before_sha256": "92adbc53f96c87286b8c22d0f34fdf3663d9d5cca1ed24de3e4bfd8aeee25346",
+      "after_sha256": "92adbc53f96c87286b8c22d0f34fdf3663d9d5cca1ed24de3e4bfd8aeee25346",
+      "changed": false,
+      "actual_matches_after": true
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+      "before_sha256": "b5aeb5b34dad4eb1dcf1a57277fc4ede9718e555c4fb8c27bdf342714b6460c0",
+      "after_sha256": "32bfa99f8dc356b302f0985bffbcfc3e1173094754b231882940acabafb54ac7",
+      "changed": true,
+      "actual_matches_after": true
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.json",
+      "before_sha256": "5f61195085a9d489833e222d490d4e08d79890a3772c8f92bf7a84fa260201f6",
+      "after_sha256": "f2899cb60b63fd3b48902887fde54ca0a233619b81877a517e88f8c2dd08e1ee",
+      "changed": true,
+      "actual_matches_after": true
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/config.redacted.yml",
+      "before_sha256": "709ab520621069a3ae8300cabe390556cb4c9e48698f81582e1628fda8d12909",
+      "after_sha256": "709ab520621069a3ae8300cabe390556cb4c9e48698f81582e1628fda8d12909",
+      "changed": false,
+      "actual_matches_after": true
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/public/identities.json",
+      "before_sha256": "6b6cde3d8949dab03487c2094488cf9f898bb0eec82299cb4260c38fb6517db3",
+      "after_sha256": "6b6cde3d8949dab03487c2094488cf9f898bb0eec82299cb4260c38fb6517db3",
+      "changed": false,
+      "actual_matches_after": true
+    }
+  ],
+  "binary_unchanged": true,
+  "release_lock_unchanged": true,
+  "campaign_started": false,
+  "final_acceptance": false,
+  "chain_writes": "separate reconciliation pending; unchanged simulator journal does not imply no operator transactions"
+}

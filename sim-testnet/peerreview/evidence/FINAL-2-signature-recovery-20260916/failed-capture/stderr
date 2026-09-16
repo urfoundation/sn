@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 08:31:32.419142 3531819 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0916 08:31:32.419455 3531819 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0916 08:31:32.419573 3531819 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0916 08:31:32.419613 3531819 env.go:67] [env]settings = map[]
+sim-testnet: renewal gas accounting is incomplete: role operator-1-root nonce 106 has no retained signed transaction

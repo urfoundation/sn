@@ -1,0 +1,105 @@
+{
+  "source_bundle_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/history-adoptions/native-1488-f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9.json",
+  "source_bundle_sha256": "f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9",
+  "approved_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "first_native_epoch": 1488,
+  "prepared_sha256": "sha256:d3b5fe069b9789b8549f99ced57d461c4c5fe84380cc1945b43f9b9421d3d9d0",
+  "completed_sha256": "sha256:fc79f95fd6ebf3f6795931ab2b22a29bd74643f9e490fee74f6c113d460cfb4e",
+  "validator_histories": [
+    {
+      "validator_id": 1,
+      "coordinator_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2",
+      "intent_file_exists": false,
+      "intent_file_bytes": 0,
+      "intent_file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "approved_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "approved_prefix_exactly_unchanged": true,
+      "intent_count": 0,
+      "approved_prefix_count": 0,
+      "first_native_epoch_request": 1488,
+      "new_entries_for_first_native_epoch": 0,
+      "intent_projection": [],
+      "coordinator_file_category_counts": {
+        "artifact-http-observations": 32,
+        "client-key-observations": 750,
+        "evidence-publications": 47,
+        "settlement-closures-v2": 47,
+        "measurements": 146
+      },
+      "files_modified_since_start": []
+    },
+    {
+      "validator_id": 2,
+      "coordinator_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2",
+      "intent_file_exists": true,
+      "intent_file_bytes": 23486,
+      "intent_file_sha256": "0de9867f8c0b699954e9ef25c66759b0390214ddaf8313d9ca7f42df63e27727",
+      "approved_prefix_sha256": "sha256:0de9867f8c0b699954e9ef25c66759b0390214ddaf8313d9ca7f42df63e27727",
+      "approved_prefix_exactly_unchanged": true,
+      "intent_count": 3,
+      "approved_prefix_count": 3,
+      "first_native_epoch_request": 1488,
+      "new_entries_for_first_native_epoch": 0,
+      "intent_projection": [
+        {
+          "subnet_epoch": 1401,
+          "settlement_epoch": 302,
+          "status": "applied",
+          "measurement_artifact_hash": "sha256:6c15911231eeee183437b660a814d7931e36e3b918125a10007dfcd6fa4d5368",
+          "vector_hash": "0x289a2223c7b892fa12ec248d491dab96280435dda41fc929dbedc52de4e891db",
+          "created_at": "2026-09-12T01:26:48.735952697Z",
+          "updated_at": "2026-09-12T02:31:53.557539776Z",
+          "extrinsic_hash": "0xd8e13d9efb88d5a7b82abf67bae05a0923803c19b3ce6fa4dea52c6645a0fe43",
+          "finalized_block": 7986181,
+          "finalized_block_hash": "0x74f6073ac4f1fd43551237a21909eced3a7a69e3fb1f5a3cf73c7f12f65a8902",
+          "reveal_block": 7986491,
+          "application_block": 7986499,
+          "application_block_hash": "0xc0f934be1096762eea85fc121f1c381011a26e045ff9ec6ff26ce9e3c22e694b"
+        },
+        {
+          "subnet_epoch": 1404,
+          "settlement_epoch": 306,
+          "status": "applied",
+          "measurement_artifact_hash": "sha256:d92fef4cd48b55e156862dd3bf1ddf29468d943f5081c92fc44a530c76de16eb",
+          "vector_hash": "0x37c6eb7f176029c3258ba24fa2acbae089617a2d9c6babec5bebbd2d81e73233",
+          "created_at": "2026-09-12T05:12:49.775245359Z",
+          "updated_at": "2026-09-12T06:13:18.26288928Z",
+          "extrinsic_hash": "0xe58e4563e7a965baae577136a39933dafc3b67e2d29d7cab81b724772977526f",
+          "finalized_block": 7987311,
+          "finalized_block_hash": "0xaecc6a2ca7c93415923622512d2407c11aedbc098fc3007c2b37551de3bda78f",
+          "reveal_block": 7987571,
+          "application_block": 7987601,
+          "application_block_hash": "0xde5db784894d846de13bc8ada9fe76fc5e58cc31574e24fdd8adca2610e83f1a"
+        },
+        {
+          "subnet_epoch": 1405,
+          "settlement_epoch": 307,
+          "status": "applied",
+          "measurement_artifact_hash": "sha256:47613a71616ee4cc63546b147257744ec6d10a1ef2a3dbe56abf5d4d3eaacf9c",
+          "vector_hash": "0xb43cdb440e4e6946f2e4f1625c5c0914a32b6ab6ec82bdfc2da2b4148cdf4ca2",
+          "created_at": "2026-09-12T06:45:19.22978302Z",
+          "updated_at": "2026-09-12T07:52:17.835909643Z",
+          "extrinsic_hash": "0x5e0da9793f3d430ab32d8e202ca0c3c0e1b6c10d82a81d716fd3728b384d66fb",
+          "finalized_block": 7987774,
+          "finalized_block_hash": "0xb30e815261b9f719e299aaf2b9ec75b022730462ed33cf992f037dc0d0384fab",
+          "reveal_block": 7987931,
+          "application_block": 7988052,
+          "application_block_hash": "0x188cb56a3ba368c81137941fb561c372b9f591b221e4dab3de76c39813b42de2"
+        }
+      ],
+      "coordinator_file_category_counts": {
+        "steering-intents.json": 1,
+        "head-ema.json": 1,
+        "artifact-http-observations": 6,
+        "client-key-observations": 290,
+        "evidence-deposit-audits": 3,
+        "evidence-publications": 41,
+        "settlement-closures-v2": 41,
+        "measurements": 67,
+        "evidence-deposit-audit-prepared": 3
+      },
+      "files_modified_since_start": []
+    }
+  ],
+  "scope": "Exact complete steering-intent-file equality against the approved pre-start prefix; metadata-only inventory of other coordinator files, hashing only files modified since startup. No repeated historical cryptographic replay and no signed content copied."
+}

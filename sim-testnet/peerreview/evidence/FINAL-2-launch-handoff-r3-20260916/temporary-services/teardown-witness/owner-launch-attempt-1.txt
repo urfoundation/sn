@@ -1,0 +1,3 @@
+2026-09-16T09:39:30Z attempt-1 did not exec teardown-witness.sh.
+Cause: wrapper redirection to teardown-witness/owner.{stdout,stderr}.private.log occurred before the script-created directory existed.
+No helper signal was dispatched; no helper exit result exists for this attempt.

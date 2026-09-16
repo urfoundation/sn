@@ -1,0 +1,110 @@
+{
+  "qualified_source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+  "normal_accepted_roots": {
+    "TestLaunchPreparationGateRetainsDoctorDetailAndNeverSubmitsOnFailure": "retry-1/positive/normal/body",
+    "TestLaunchPreparationOnlyStopsCleanApprovedPass": "retry-1/positive/normal/body",
+    "TestParseCLIReleaseCommandsAndWriteGuardFlags": "retry-1/positive/normal/body",
+    "TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor": "retry-1/positive/normal/body",
+    "TestCompletedCampaignStillRequiresBothSemanticAnalyzers": "retry-2/positive/normal/body",
+    "TestCampaignParentCancellationJoinsSemanticAnalyzer": "retry-2/positive/normal/body",
+    "TestReleaseCandidateCampaignRunsBothMissingPhasesInOrder": "retry-2/positive/normal/body",
+    "TestReleaseCandidateCampaignDoesNotCrossUnsignedReleaseResult": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates": "retry-2/positive/normal/body",
+    "TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation": "retry-3/positive/normal/body"
+  },
+  "normal_accepted": 14,
+  "race_accepted": 14,
+  "causal_expected_failures": 3,
+  "causal_passes": 3,
+  "original_failed_invocations_retained": true,
+  "readiness_11_results_reused": true,
+  "captures": [
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-1/positive/normal/body",
+      "source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+      "root_counts": {
+        "FAIL": 10,
+        "PASS": 4
+      },
+      "package_terminal": "fail",
+      "actual_and_wrapper_exits": {
+        "body.exit.raw": "1",
+        "body.exit": "125",
+        "outer.exit": "125",
+        "launcher.join.exit": "125"
+      },
+      "raw_events_sha256": "a74ae099adcafbfd55c101a1e0350279e0710755a647f573c7e4d54066a20ae7",
+      "source_dependency_binary_unchanged": true
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-2/positive/normal/body",
+      "source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+      "root_counts": {
+        "PASS": 9
+      },
+      "package_terminal": "pass",
+      "actual_and_wrapper_exits": {
+        "body.exit.raw": "0",
+        "body.exit": "125",
+        "outer.exit": "125",
+        "launcher.join.exit": "125"
+      },
+      "raw_events_sha256": "0b48f8fd871ac9a244a65b8296d5fa89c3186b88945a6f6fa6db3e8b202f6acc",
+      "source_dependency_binary_unchanged": true
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-3/positive/normal/body",
+      "source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+      "root_counts": {
+        "PASS": 1
+      },
+      "package_terminal": "pass",
+      "actual_and_wrapper_exits": {
+        "body.exit.raw": "0",
+        "body.exit": "0",
+        "outer.exit": "0",
+        "launcher.join.exit": "0"
+      },
+      "raw_events_sha256": "a13b1c42104331ca3a19ff7f03ad53588c926ffb9b633f8e1f94b8a0b9ab9003",
+      "source_dependency_binary_unchanged": true
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-3/positive/race/body",
+      "source": "e109ac35c5ea5ff5006040c2987118e99627e863",
+      "root_counts": {
+        "PASS": 14
+      },
+      "package_terminal": "pass",
+      "actual_and_wrapper_exits": {
+        "body.exit.raw": "0",
+        "body.exit": "0",
+        "outer.exit": "0",
+        "launcher.join.exit": "0"
+      },
+      "raw_events_sha256": "646bee7ec6808f004b6156be1881ec6f918ec7584f05c76e6c61adbb8cd6a9c6",
+      "source_dependency_binary_unchanged": true
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/resume-campaign-handoff-20260916-r1/terra/retry-2/causal/normal/body",
+      "source": "2e6a8e435d4d3c49a9e5dc06e7093ce6870dcee0",
+      "root_counts": {
+        "PASS": 3,
+        "FAIL": 3
+      },
+      "package_terminal": "fail",
+      "actual_and_wrapper_exits": {
+        "body.exit.raw": "1",
+        "body.exit": "1",
+        "outer.exit": "1",
+        "launcher.join.exit": "1"
+      },
+      "raw_events_sha256": "381c2693dfd391759489d866057736524570538324b8a2e8284e2a604370f161",
+      "source_dependency_binary_unchanged": true
+    }
+  ],
+  "live_campaign_acceptance": false
+}

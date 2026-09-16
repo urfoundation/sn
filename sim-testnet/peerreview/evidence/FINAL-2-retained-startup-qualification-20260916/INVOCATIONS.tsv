@@ -1,0 +1,9 @@
+invocation	kind	mode	root_count	body_started	body_exit	outer_exit	launcher_join_exit	fences_after	meaning	original_capture_path
+positive-normal-original	non_admitted_compiler	normal	0	false	-	126	126	false	literal_output_path_quoting_error	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/normal
+positive-race-original	non_admitted_compiler	race	0	false	-	126	126	false	literal_output_path_quoting_error	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/positive/compile/race
+route-only-timeout-original	non_admitted_compiler	normal	0	false	-	126	126	false	literal_output_path_quoting_error	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/route-only-timeout/compile/normal
+cancellation-after-snapshot-original	non_admitted_compiler	normal	0	false	-	126	126	false	literal_output_path_quoting_error	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/causal/cancellation-after-snapshot/compile/normal
+positive-normal-retry	accepted_positive_body	normal	11	true	0	0	0	true	all_selected_roots_pass	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/normal/body
+positive-race-retry	accepted_positive_body	race	11	true	0	0	0	true	all_selected_roots_pass	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/positive/race/body
+route-only-timeout-retry	expected_causal_body	normal	11	true	1	1	1	true	exactly_one_expected_causal_failure	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/route-only-timeout/normal/body
+cancellation-after-snapshot-retry	expected_causal_body	normal	11	true	1	1	1	true	exactly_one_expected_causal_failure	/mnt/data/sn-testnet/qualification/retained-startup-readiness-20260916-r1/terra/retry-1/causal/cancellation-after-snapshot/normal/body

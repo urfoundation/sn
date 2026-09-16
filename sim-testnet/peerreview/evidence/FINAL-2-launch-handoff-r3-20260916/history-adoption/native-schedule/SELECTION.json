@@ -1,0 +1,10 @@
+{
+  "selected_at": "2026-09-16T09:37:01Z",
+  "first_native_epoch": 1488,
+  "first_native_epoch_start": 8017451,
+  "first_native_epoch_end_exclusive": 8017811,
+  "observation": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/history-adoption/native-schedule/OBSERVATION.json",
+  "reason": "Current epoch1487 has only26 blocks left. Select immediately next1488, leaving386 blocks for startup and both first decision/preparation snapshots; do not wait for its opening to resume or start RC. Preserve exact full-work cutoff8017728,303 blocks after observation.",
+  "both_decision_and_prepared_snapshots_must_be_in_selected_epoch": true,
+  "retained_last_native_epoch": 1405
+}

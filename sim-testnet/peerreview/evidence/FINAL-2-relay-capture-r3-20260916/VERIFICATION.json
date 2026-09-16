@@ -1,0 +1,40 @@
+{
+  "schema": "urnetwork-relay-capture-package-verification-v1",
+  "verified_at": "2026-09-16T09:35:30Z",
+  "scope": "Offline checksum and closed-record comparisons only; no test, build, RPC, active-state access or mutation, process action, or import inspection.",
+  "copied_original_files": 31,
+  "all_copied_files_byte_identical_to_closed_originals": true,
+  "capture": {
+    "body_exit": 0,
+    "outer_exit": 0,
+    "join_exit": 0,
+    "watched_state_files": 6,
+    "state_digest_files_identical": true,
+    "binary_digest_files_identical": true,
+    "release_lock_digest_files_identical": true,
+    "original_request_and_command_digests_verified": true
+  },
+  "review": {
+    "original_manifest_entries": 9,
+    "original_manifest_sha256": "81879a0c23542ea26870ae3ea59548148b132f0eabb3a5e07edca8f4e6c40c39",
+    "all_nine_original_payload_digests_verified": true,
+    "original_manifest_and_seal_copied_byte_exact": true,
+    "included_payloads": 7,
+    "omitted_rendered_plans": 2,
+    "complete_diff_lines": 137,
+    "complete_diff_bytes": 5290,
+    "semantic_differences": 27,
+    "independent_root_comparison_matches_all_semantic_differences": true,
+    "lossless_rendering_receipt_preserved": true,
+    "review_not_reexecuted": true,
+    "plans_not_reserialized_during_packaging": true
+  },
+  "omitted_large_payloads": {
+    "count": 4,
+    "bytes": 54762095,
+    "all_original_hashes_and_sizes_verified": true
+  },
+  "related_signature_recovery_manifest_sha256": "6de047c2f850023e8236fadd10b7e4dc85a147e5dee236005fb7b24aed2cd10b",
+  "private_payloads_copied": false,
+  "active_import_inspected_or_sealed": false
+}

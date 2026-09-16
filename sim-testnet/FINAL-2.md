@@ -10,7 +10,185 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
-**The software plan revision stopped at 02:48:30 UTC on September 16.**
+**Latest recovery checkpoint, September 16:** strict managed resume
+session **92055** failed at **10:20:25 UTC**, with body, outer and joined exits
+all **one**. All **1,000 fleet checks** and **4,673 carried-action checks**
+completed. The new supervisor, PID 3676320/start ticks 184001647, reached
+33 healthy processes with zero restarts, but the four validator/operator proof
+domains did not produce fresh completed trails before the five-minute owned-node
+semantic-readiness deadline. The exact error was `release topology semantic
+readiness timeout: every validator must complete a fresh verified trail through
+every operator`. Cleanup stopped all 33 processes. The last process-log gate
+scan, at 10:20:10, had no findings; later shutdown logs are separate evidence.
+The plan, simulator journal, configuration, public identities, executable and
+release lock are unchanged. The release-candidate campaign did not start.
+The [closed failure receipts](peerreview/evidence/FINAL-2-managed-readiness-20260916/README.md)
+retain the actual failed result and changed supervisor state. Root verified all
+27 manifest payloads; the seal is
+`81fd7d5c8140fa02bb58184cdb562906ad7386dcd33a078316f40d42a3a2bc2d`.
+The validators' shutdown diagnostics place both inside retained settlement-history
+replay when the parent cancelled them. The bounded startup correction is
+qualified below; completed historical checks remain retained.
+The complete operator census found **14 new signed attempts** during this
+generation, all with canonical status-1 receipts below native/EVM finalized
+block **8,017,664**. They comprise six emission deferrals and eight missed-root
+finalizations, with no payout root created. Their actual fees total
+**0.029033073172513564 EVM TAO**; maximum signed envelopes total
+**0.090515040996642416 EVM TAO**. The original validator histories are unchanged:
+zero intents for validator 1 and three for validator 2, ending at native epoch
+1,405. No new decision or preparation for epoch 1,488 occurred.
+At **10:35:53 UTC**, root restored the 14 original 178-byte signatures by
+exclusive creation, preserving all 2,272 existing RLP files and all six watched
+state files. The recovery submitted no transaction and changed no database or
+journal status. Body and joined exits are zero. The complete retained transaction
+union now contains **2,532** signatures; all previous 2,518 remain intact.
+The closed census is in `managed-readiness-recovery-census-20260916-r1`, with
+35 verified safe payloads and manifest SHA-256
+`b9070c8ee744b2cfc54d8d24ba8baa38144a3f4aadd1306300b1edc0e5c9da18`.
+The separate restoration capture is
+`native-recovery-20260916-r4/signature-restoration`, with 16 sealed payloads and
+manifest SHA-256 `de3e77ec83fa8b3abc929492a33c23c97f2e8d3896a97c951c4db340ed9f1c95`.
+Both paths are under `/mnt/data/sn-testnet/qualification`. The
+[portable census, restoration and cause evidence](peerreview/evidence/FINAL-2-managed-recovery-census-20260916/README.md)
+preserves all original manifests and exact safe copies. Root verified its
+67 payloads and manifest SHA-256
+`6425b3cfdf0d6fd993a81aeacd73931d8c299982da08d9ede9bd9124a6f4cbcb`.
+
+The narrow startup correction is frozen at
+`8270992eb8fb2b1599a29271ec44426379007306`: retained strict-history startup gets
+the existing 30-minute allowance on every RPC route, and cancellation is checked
+before readiness admission. Fresh-proof, health, generation, restart and log
+requirements remain active. Terra's 11 affected roots pass normally and under
+race, with body, outer and joined exits zero. Each of two causal variants
+reproduces exactly its pinned failure with the other ten roots passing.
+Root independently checked the event streams, selected compiled membership,
+exits and unchanged inputs, then fast-forwarded primary to this qualified
+revision. Physical deployment and the active executable remain on `aeda6abb`;
+the patched managed startup has not run.
+The [closed startup qualification](peerreview/evidence/FINAL-2-retained-startup-qualification-20260916/README.md)
+preserves the successful results, causal controls and earlier compiler refusals.
+Root verified all 70 payloads; manifest SHA-256 is
+`f4c67339990c97bc2cac866bc049074291b6f869891d01a86361e06ce6fd4577`.
+
+The four initial compiler bodies exited zero but their wrappers exited 126:
+a generated literal `$capture/` output path created untracked artifacts inside
+the isolated sources. Those binaries were mistakenly cleaned up before reuse;
+the corrected builds reproduced their exact hashes and passed all input checks.
+The original refusals and cleanup inventories remain recorded. No test body
+ran from the refused captures. The harness now explicitly preserves artifacts
+before cleanup and permits separately evidenced reuse after capture-only errors.
+
+The continuation timing review identified repeated preparation between strict
+resume and the separate campaign command. The maximum supported fresh span is
+8,065 blocks, leaving 495 above the unchanged 7,570-block campaign allowance.
+Measured prior overhead leaves 32m49s for retained replay, campaign preparation
+and handoffs combined. This is a timing estimate, not proof of completion or
+authority to reduce required observations. A narrow explicit same-owner handoff
+from successful strict resume into the full release-candidate campaign is now
+qualified at `e109ac35c5ea5ff5006040c2987118e99627e863` and integrated locally.
+It retains all campaign checks and the completed readiness tests. All 14 new
+or adjacent affected roots pass normally and under race. Normal acceptance
+composes four retained passes, nine corrected-capture passes and one omitted
+root; the causal control reproduces exactly three intended failures and three
+passes. Root independently checked raw events, unique root membership, actual
+exits and unchanged source/dependency/binary inputs. The
+[closed handoff qualification](peerreview/evidence/FINAL-2-resume-campaign-handoff-20260916/README.md)
+preserves the original launcher-generation, compiler-directory, fixture-directory
+and selector errors separately. No production source change was needed for
+those capture errors, and valid binaries and passing roots were reused.
+
+The [read-only lock preview](peerreview/evidence/FINAL-2-retained-startup-release-20260916/README.md)
+ran **11:09:05–11:09:07 UTC**, with root session 84281 body/outer/join exits zero.
+All watched state, executable, installed lock and source fences remained
+unchanged. Its exact candidate changes only the SN source hash and has SHA-256
+`42a48da4d4fd267c496b8558cd9838f68b3f5e4117a9e681352129069df2df22`.
+Those bytes are now installed in the primary checkout. Matching publication,
+build, plan adoption and the actual combined campaign remain pending.
+
+**Earlier recovery checkpoint, September 16 at 09:41 UTC:** both preparation
+fixes and their evidence are published in SN release
+`aeda6abbd2dc0abc92bb0f60975cf89b509e8017`. The matching executable has SHA-256
+`8fc61a65cd0524413a7ba70c61bcdb15962fa87ad7ab347b653abb27f8913f0b`;
+its build exited zero with unchanged source inputs. The native read-only plan
+revision passed at **08:02:31 UTC**. The complete lossless diff preserves all
+**4,733 actions**, approved limits, spending, both renewals, continuation,
+custody, config and policy. Changes are limited to release/plan identity,
+ancestry, generation time and fresh finalized head/balance observations.
+The proposed plan is
+`0x49ddbc495a51c7c089ed5838299d6d65fb40cfb9b35be3ee38cd4ca1de7aa876`.
+The [completed build and plan-review evidence](peerreview/evidence/FINAL-2-preparation-adoption-20260916/README.md)
+contains exact raw receipts and the full lossless diff; root verified its manifest.
+Prepare-only setup/adoption ran **08:12:47–08:27:00 UTC** and exited **zero**,
+with `ready=true`, `prepare_only=true` and `stopped_before_actions=true`.
+All **4,673 carried-action checks** completed. Only the saved plan and redacted
+configuration changed; journal, supervisor, public identities, executable and
+lock hashes are unchanged. All nine hard preparation checks passed;
+launch-runtime-inputs is explicitly deferred to resume. Its capture is in
+`/mnt/data/sn-testnet/qualification/native-recovery-20260916-r3/setup-revision`.
+The four temporary helpers passed readiness. The APIs returned 200 at `/status`;
+their initial incorrect `/healthz` probes are retained as diagnostics. These
+helpers were orphaned processes, so shutdown was witnessed through exact
+PID/start-time and listener observations; terminal exit codes are unavailable.
+A fresh finalized LAN observation at
+**08:27:57 UTC**, native block **8,017,083** with runtime **460/1/1**, selects
+continuation end **8,025,143** and full-work start cutoff **8,017,573**. The
+required work remains **7,570 blocks**. Continuation capture ran
+**08:31:32–08:46:41 UTC** under root session 52913 and exited **one**, without
+emitting a plan. The exact error is `renewal gas accounting is incomplete: role
+operator-1-root nonce 106 has no retained signed transaction`. Captured state,
+executable and release-lock hashes are unchanged. That transaction is among the
+four previously confirmed partial-start writes. The complete census of both
+operator databases verified **230 signed attempts**, including replacements and
+cancellations: 226 were already retained and exactly four were missing.
+Create-only restoration completed at **08:57:55 UTC**, adding four original
+178-byte RLPs while preserving all 2,268 existing files and the six watched
+state files. No transaction was submitted and neither journal nor database
+status was changed. The [portable signature recovery evidence](peerreview/evidence/FINAL-2-signature-recovery-20260916/README.md)
+retains the closed failure, sealed census and separate restoration receipt.
+The four known maximum envelopes total **0.025635775234311880 EVM TAO**, while
+their previously confirmed actual fees total **0.008264277772552846 EVM TAO**.
+A fresh finalized LAN observation at **08:58:59 UTC**, native block **8,017,238**,
+selects continuation end **8,025,298** and full-work start cutoff **8,017,728**.
+The retry ran **09:00:03–09:15:28 UTC** under root session 35694 in
+`native-recovery-20260916-r3/relay-capture-r3` and exited **zero**. All six watched
+state files, executable and lock remain unchanged. The emitted successor is
+`0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37`;
+its exact output SHA-256 is
+`e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48`.
+Root's complete comparison found exactly **27 changed paths**, confined to the
+continuation window/source observations, restored-transaction census/nonces,
+plan identity and ancestry. Astra's independent token-preserving comparison
+agrees; all actions, limits, spending, renewals, custody/config/policy and signed
+ledger history are unchanged. The [portable capture and complete review](peerreview/evidence/FINAL-2-relay-capture-r3-20260916/README.md)
+retain the original receipts and all 27 changes, with large-file omissions hashed.
+Exact import ran **09:19:38–09:35:50 UTC** under root session 30705 and passed,
+reporting **zero chain transactions**. Only the watched plan changed; its saved
+bytes equal the captured successor exactly.
+
+The finalized LAN schedule at **09:36:23 UTC**, block **8,017,425**, selects first
+native epoch **1,488**, spanning **8,017,451–8,017,810**. At selection, 386 blocks
+remain through that epoch and 303 until the full-work start cutoff. History
+capture ran **09:37:02–09:37:28 UTC**, exit zero, with all watched state unchanged
+and both original validator intent prefixes preserved. Its exact 2,201-byte
+bundle is retained under the state-owned `history-adoptions/` directory with
+SHA-256 `f2a7e1a24fc02cb9fbc3ee85af757b5795982ec42731f2b9fd34564485c479c9`.
+Temporary-helper teardown completed at **09:40:08 UTC**: exact identities were
+checked before signals, all four processes disappeared and all six listener
+ports closed. The teardown owner joined zero; helper exit codes are unavailable.
+Two pre-signal wrapper/preflight failures and the original self-referential
+manifest are retained separately from the corrected closed receipt manifest.
+Root independently rechecked process absence and closed ports, then launched
+strict managed resume at **09:41:17 UTC**, session **92055**. Its later semantic
+readiness failure is recorded above. The release campaign remains unexecuted.
+The [closed launch handoff evidence](peerreview/evidence/FINAL-2-launch-handoff-r3-20260916/README.md)
+contains import, complete history/schedule records and witnessed helper teardown.
+Root verified all 93 manifest entries; its seal is
+`be4fcaaf28ff19df7c9834a680f4abab605d1256daedfdbd20301ab5abe4abc3`.
+It excludes the running managed resume and the unstarted campaign.
+Reuse the completed
+affected qualification below; no new full preparation test cycle is required.
+
+**Earlier recovery: the software plan revision stopped at 02:48:30 UTC on September 16.**
 The qualified journal patch and matching executable are ready, but the native
 planner requested another 471,808,849-alpha-rao repair when revising the
 software identity. Current and superseded liabilities already consume the
@@ -59,7 +237,9 @@ Strict history capture passed at **05:41:45 UTC** with all watched bytes
 unchanged. At finalized native block **8,016,244**, the actual schedule selects
 first native epoch **1,485**, blocks **8,016,371–8,016,731**. The exact bundle's
 SHA-256 is `e556044d5cf4b584856df3dc7c0a199a582ce14130f5818c09190ac54673eb53`.
-The four temporary helpers shut down and were joined with exit 0; managed
+The four temporary helper tool sessions were recorded as joined with exit 0
+in the r2 `temporary-services/STOPPED.json`, with their original PIDs absent.
+Separate raw helper-join results are not in the portable continuation bundle. Managed
 resume started at **05:47:36 UTC** and exited **1 at 06:29:05 UTC**. It processed
 all **4,673 carried-action audits**, rendered runtime inputs and started the
 managed topology. At **06:28:53 UTC**, the process-log gate recorded **four

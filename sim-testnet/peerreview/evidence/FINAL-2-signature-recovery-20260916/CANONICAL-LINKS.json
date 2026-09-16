@@ -1,0 +1,30 @@
+{
+  "copied": false,
+  "reason": "Closed canonical request/response payloads are linked from the existing startup reconciliation; this package copies only the safe bindings and digests.",
+  "source_artifacts": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/partial-start-reconciliation-20260916-r1/rpc-receipts.request.json",
+      "sha256": "c8b00a63a74a59e93bfbd424a2d4f1ce27ea92367b183c3e808dbcca6dc653d6",
+      "bytes": 1459,
+      "repository_relative_path": "../FINAL-2-startup-transactions-20260916/receipts/rpc-receipts.request.json"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/partial-start-reconciliation-20260916-r1/rpc-receipts.response.json",
+      "sha256": "8d8becc88fbf11ebdb591d41d1fe7a7585666aa37c5898a090e6d7fba9e97a65",
+      "bytes": 12928,
+      "repository_relative_path": "../FINAL-2-startup-transactions-20260916/receipts/rpc-receipts.response.json"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/partial-start-reconciliation-20260916-r1/rpc-canonical.request.json",
+      "sha256": "801a6d5c5f02ae4ad210dc1316536bc98870e21ae4d99ee071c84f6a6ff270d2",
+      "bytes": 1152,
+      "repository_relative_path": "../FINAL-2-startup-transactions-20260916/receipts/rpc-canonical.request.json"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/partial-start-reconciliation-20260916-r1/rpc-canonical.response.json",
+      "sha256": "ffda4e5781d1c93550cf86b8869c38f25e329b9bebc1258e0366d81f9df813b0",
+      "bytes": 7808,
+      "repository_relative_path": "../FINAL-2-startup-transactions-20260916/receipts/rpc-canonical.response.json"
+    }
+  ]
+}

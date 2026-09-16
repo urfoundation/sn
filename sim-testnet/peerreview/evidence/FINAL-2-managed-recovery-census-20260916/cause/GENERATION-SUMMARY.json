@@ -1,0 +1,27 @@
+{
+  "schema": "urnetwork-sim-supervisor-state-v1",
+  "manifest_hash": "0xe945dd691a00ee8fd09fed5a2ed74d550cb67250f2ca8bb3e17ca6c80903a073",
+  "supervisor_pid": 3676320,
+  "supervisor_start_time_ticks": 184001647,
+  "updated_at": "2026-09-16T10:20:25.123330899Z",
+  "processes": [
+    {
+      "id": "validator-1",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "healthy": false,
+      "restarts": 0,
+      "role": "validator",
+      "exit_error": "supervisor stopped"
+    },
+    {
+      "id": "validator-2",
+      "pid": 0,
+      "started_at": "2026-09-16T10:15:04Z",
+      "healthy": false,
+      "restarts": 0,
+      "role": "validator",
+      "exit_error": "supervisor stopped"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+path	reason
+FINAL-MANIFEST.tsv	self-referential manifest excluded from its own content set
+FINAL-MANIFEST.sha256	separate final digest excluded from the content set

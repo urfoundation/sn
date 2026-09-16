@@ -1,0 +1,36 @@
+{
+  "renderer": "Python standard JSON with arbitrary-precision ints; rejects floats/constants/duplicate keys; exact full non-whitespace token sequence equality after formatting",
+  "inputs": [
+    {
+      "input": "prior-plan.json",
+      "input_bytes": 11302294,
+      "input_sha256": "438ecc8621a26c945180d5027c8bbfb734a82733d4f30c84017b4e122a3c8bd9",
+      "output": "prior.pretty.json",
+      "output_sha256": "b8a86dd6ca2b7443f1b791b7b4a4269eae574ce1ea582f16ad648371da03ed7e",
+      "integer_token_count": 171382,
+      "integer_tokens_over_2pow53": 1881,
+      "all_integer_lexemes_preserved": true,
+      "all_non_whitespace_tokens_identical": true,
+      "semantic_roundtrip_equal": true,
+      "duplicate_keys": false,
+      "non_integer_numbers": false
+    },
+    {
+      "input": "stdout.json",
+      "input_bytes": 11302363,
+      "input_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+      "output": "proposed.pretty.json",
+      "output_sha256": "39b3d146caa168e9e0b526e5a70e2eb04dceb2bb990629c0caedc82ef0e49c86",
+      "integer_token_count": 171382,
+      "integer_tokens_over_2pow53": 1881,
+      "all_integer_lexemes_preserved": true,
+      "all_non_whitespace_tokens_identical": true,
+      "semantic_roundtrip_equal": true,
+      "duplicate_keys": false,
+      "non_integer_numbers": false
+    }
+  ],
+  "semantic_difference_count": 27,
+  "pretty_diff_lines": 137,
+  "pretty_diff_bytes": 5290
+}

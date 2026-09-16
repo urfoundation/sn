@@ -1,0 +1,42 @@
+[
+  {
+    "source_operator": 1,
+    "started_at": "2026-09-16T10:30:20.405788+00:00",
+    "finished_at": "2026-09-16T10:30:20.609444+00:00",
+    "exit": 0,
+    "read_only": true,
+    "exact_hash_filter": [
+      "0xb10a0ccfac140b6dc9d9c2d25ef108644033cb19bd165184c2496eab3bdf158c",
+      "0xb15f541d82f5c682971de984e46be9f1030954232a09cc7a0c81c252f0e09bfa",
+      "0x4c4045c0e6c1ef4cc6ec6b13a2d14ecc4338a8e522a8e46f38569ada09b29ea9",
+      "0x52494886358027cb84897bcc6f93ea25fd5c9a14ae53506b55075a57ca2451c7",
+      "0x2253d74e3580dbb868a579d348291f88bfeaa4cd4aa7bd2619464b8b4034d2f4",
+      "0xd271e867c3940f32df46ba97e26026c9e286b23bae67212c7fa3e7457c37b2f8",
+      "0x1c6fb2a5e5c513f3354950193f11659734d33204d8e822f581586f6db9884ded",
+      "0x9e3a59f5687c864a7ef37311d2919cff3e74c2f8a03981c9821abd63e32d75f2"
+    ],
+    "rows": 8,
+    "sql_sha256": "879475ee2208bc390bba3be6890536b98124232d38b8986eda908e1eb49499c2",
+    "private_source_path": "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/private/operator-1.new-original-attempts.private.jsonl",
+    "private_source_sha256": "b9776659191181f1b08008058fe76780fd1d145d3ae6f840370b3bdc2bc29cca"
+  },
+  {
+    "source_operator": 2,
+    "started_at": "2026-09-16T10:30:20.609838+00:00",
+    "finished_at": "2026-09-16T10:30:20.823182+00:00",
+    "exit": 0,
+    "read_only": true,
+    "exact_hash_filter": [
+      "0xfa08bd40792856914fe333e534ac3fdde5f7d7916db6c07747993fbf1b1b0bb9",
+      "0x22b58e43ca511467a7f93543a588728f6d40e7d826d8eea32146ec4825d45c37",
+      "0x79b329e62d369064b46c56cb8b13c2853ccab16deccefd52064bcb7ecf306939",
+      "0xa316152e3aba405dfb5762337ca94f610ce27d9d9cb01b282f99ae1adf877d20",
+      "0xe090676b83cb4320e0016f333f2a210aafb1ea979e1555e310b1fc1b122ef075",
+      "0xf0ec2de8004b85ab20b3745287f05030d4bd4d070c9a34141b9c1c6a26b5db91"
+    ],
+    "rows": 6,
+    "sql_sha256": "5932fdd6917da69aa13b398ffc050872a4864348e3df3f2c48798b71d3f8bc0e",
+    "private_source_path": "/mnt/data/sn-testnet/qualification/managed-readiness-recovery-census-20260916-r1/private/operator-2.new-original-attempts.private.jsonl",
+    "private_source_sha256": "d7bcd1b021bfad55d684a89fa0440eb573036aafd9e1badfce2e28e652b606d5"
+  }
+]

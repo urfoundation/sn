@@ -439,6 +439,23 @@ descendants; composing those adapters is a prerequisite, not an optional
 fallback to unowned subprocesses. It does not run either full release gate or
 launch a live campaign by itself.
 
+Use resolved absolute output paths outside every source checkout. Check those
+paths before starting a compiler; a quoted literal such as `$capture` is not
+an expanded capture directory. If a wrapper or output-path error occurs after
+a successful compile, preserve the binary before cleanup. Retain the original
+failed invocation, then verify its source/dependency inputs, compiler outcome,
+build metadata and binary hash. A correctly attributed binary may be moved
+byte-for-byte and admitted in a separate corrected receipt. Recompile when the
+artifact or its required provenance is unavailable; a capture-only error does
+not by itself invalidate unchanged compiled source or completed test bodies.
+Inspect cleanup targets against the ownership record before deleting them.
+Record compilation and execution working directories explicitly. Compile from
+the module root with the package argument, then run a compiled test binary from
+that package's directory, matching `go test` behavior. For `./sim-testnet`, these
+are the SN root and `SN_ROOT/sim-testnet` respectively. A corrected body working
+directory reuses its valid binary; retain earlier passing roots and rerun the
+affected failures with a separately recorded invocation.
+
 To repair a checker-only refusal, the same Go tool can replay the immutable
 original inputs without another test or converter run:
 
@@ -1255,6 +1272,27 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
   --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 ```
+
+For a stopped deployment with an authenticated strict-history adoption, use
+one owner for resume and the full campaign:
+
+```bash
+"$SIM_TESTNET_BINARY" resume --then-release-candidate \
+  --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
+  --apply --plan-hash 0xREVIEWED_PLAN_HASH --detach \
+  --strict-history-adoption "$STRICT_HISTORY_ADOPTION" \
+  --strict-history-adoption-sha256 "$STRICT_HISTORY_ADOPTION_SHA256"
+```
+
+Retain the deployment's repository and RPC options. `--detach` applies to the
+managed supervisor; this command remains active until the campaign returns.
+It holds the same journal writer and prepared executor through startup and both
+campaign phases, avoiding a second launch-preparation pass. Failed or cancelled
+startup cannot enter the campaign. All phase, archive, horizon, live-evidence
+and semantic acceptance checks remain required. Do not start a separate
+`scenario --name release-candidate` while the combined command owns the writer.
+The opt-in is incompatible with preparation-only or provisional operation.
 
 `release-candidate` is a resumable orchestration name, not a weaker scenario.
 It runs `release-1.0`, independently reloads and authenticates the signed result,

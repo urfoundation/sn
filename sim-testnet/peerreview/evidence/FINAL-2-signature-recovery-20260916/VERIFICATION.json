@@ -1,0 +1,38 @@
+{
+  "schema": "urnetwork-signature-recovery-package-verification-v1",
+  "verified_at": "2026-09-16T09:14:32Z",
+  "scope": "Offline checksum and closed-record comparisons only; no test, build, RPC, active-state mutation or process operation.",
+  "copied_original_files": 58,
+  "all_copied_files_byte_identical_to_closed_originals": true,
+  "census_payload_files": 22,
+  "census_manifest_sha256": "4301631acb4268862a19273e35a8aadf442f1748b06e9fed0940737769737700",
+  "census_original_and_packaged_manifests_verified": true,
+  "failed_capture": {
+    "body_exit": 1,
+    "outer_exit": 1,
+    "stdout_bytes": 0,
+    "state_unchanged": true,
+    "binary_unchanged": true,
+    "release_lock_unchanged": true
+  },
+  "restoration": {
+    "body_exit": 0,
+    "original_rlp_files": 2268,
+    "final_rlp_files": 2272,
+    "only_four_reviewed_candidate_hashes_added": true,
+    "removed_or_changed_original_files": 0,
+    "watched_state_files": 6,
+    "watched_state_hashes_unchanged": true,
+    "failure_poststate_equals_restoration_prestate": true,
+    "chain_transactions": 0,
+    "journal_mutation": false,
+    "database_mutation": false
+  },
+  "canonical_links": {
+    "closed_originals": 4,
+    "existing_repository_copies": 4,
+    "all_match_bound_digests": true
+  },
+  "excluded_private_payloads_not_copied": true,
+  "active_capture_included": false
+}
