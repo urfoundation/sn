@@ -1,0 +1,9 @@
+3703e49d154cd7b34dfde9619486cffb15b2fba967b7777d946dabd223fc1fb2  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/capture-final-cli-build.sh
+8a0831cf1e016f0712a0a525c684c74941c60267685e3114f43ad416f712a8f8  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/commands/final-cli-build.command
+c353b0e717b3fda11d72687568c793ebd95f6bdc8a72bf1e716333e3b1f0526b  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/commands/capture-source-pair.command
+a0c1491c6309e63f0b220f9162c7c023c729fc41b7191117633826f3e358cc2d  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/launch-final-cli-build.sh
+f214db4983d35b728f4bba3e812945232671991169ba89b696cf4d15348be700  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/meta/source-pair-final.tsv
+085a59089b6b17b1458ea1978014a63b839ebdd9779a93c604f6705377d0aaa2  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/meta/native-overrides.before.tsv
+25694114bfdeed5a262f7489d46358cdbbd3cf5b9bb86ee496786d5859724fc2  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/meta/expected.sn.commit
+16d46ee68fff422dd2f52620fb82a9816a6ac1dd340894e396767b4384e1f313  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/meta/expected.release.lock.sha256
+058fc41f36af1ff69115b2bd237ebf769e90628e64a58c9dc171751384ffef72  /mnt/data/sn-testnet/qualification/reserve-software-physical-cli-final-lock-20260916-r1/meta/go.version.pre.txt

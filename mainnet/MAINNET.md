@@ -1,5 +1,10 @@
 # Mainnet bootstrap program design
 
+Track required prelaunch corrections in
+[PRELAUNCH-FIXES.md](../mainnnet/PRELAUNCH-FIXES.md). Its first workstream replaces
+the version-by-version runtime migration requirement below with automatic
+compatible-upgrade handling. Those fixes are proposed and remain unimplemented.
+
 Status: design only, 2026-09-14. This document specifies a future Go entry point at `mainnet/main.go`; that program does not exist yet. No mainnet transaction, node query, deployment, UID removal, or validator startup was performed for this design.
 
 The design is based on SN commit `a59294e98ea02d05125015ae02cf32f2c0059c8a`. The separately running testnet campaign remains the prerequisite for promotion. Its successful local checks alone do not establish mainnet readiness or completion of `FINAL-2.md`.

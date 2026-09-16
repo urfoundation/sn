@@ -50,7 +50,35 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-16 03:54 UTC: the exact software-only reserve
+Latest checkpoint, 2026-09-16 04:42 UTC: setup/adoption completed successfully
+at 04:30:51 with `ready=true`, `prepare_only=true` and
+`stopped_before_actions=true`. All 4,673 carried-action checks completed;
+only the saved plan and redacted configuration changed. No setup transaction
+was submitted. The launch-runtime-inputs check is explicitly deferred to
+resume. Four temporary artifact helpers are healthy. The existing relay
+capture owner (root session 6586) is processing retained signed history with
+END=8,023,974, selected from finalized LAN block 8,015,914. The full-work
+start cutoff is 8,016,404; native capacity admission still controls the actual
+request. Join that owner, import its exact output, select the first native
+epoch late and capture history, then join the helpers and resume directly into
+the campaign. The soak is still stopped. Captures and prepared commands are
+in `/mnt/data/sn-testnet/qualification/native-recovery-20260916-r2`.
+
+Previous checkpoint, 2026-09-16 04:16 UTC: the reserve-preserving release and lock
+are published at 541e13cf, and its matched CLI built with all fences passing.
+The native plan retry exited 0 at 04:06:54; all watched state, binary and lock
+bytes were unchanged. Root reviewed the full byte-preserving diff: all 4,733
+actions, limits, spending, renewals and continuation are unchanged. The new
+plan is 0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86.
+Setup has saved that revision and is still checking retained history under
+root session 55890; no new journal entries are observed. Join its actual result,
+retain any stopped-namespace refusal, then continue directly through temporary
+helpers, late continuation capture/import, late native-history adoption,
+strict resume and RC. Do not run another setup or doctor. The operational
+capture is /mnt/data/sn-testnet/qualification/native-recovery-20260916-r2.
+No new continuation end or first native epoch is selected yet; the soak is stopped.
+
+Previous checkpoint, 2026-09-16 03:54 UTC: the exact software-only reserve
 correction is qualified with 28 affected roots normally and under race. Root
 checked both exact accepted sets against raw terminal events. The original
 planner produces three expected failures and three passing controls; failed

@@ -23,8 +23,24 @@ Qualification passes **28 affected roots per mode**, normally and under race,
 by composing retained results with three corrected test roots. The original
 planner reproduces **three expected failures and three passing controls**.
 Failed fixture invocations remain recorded with their actual exits. The
-matching release build and native adoption are next; the soak is still stopped.
+matching release is published at `541e13cfbe968704fb74c4001506853d2529bfdd`;
+its executable SHA-256 is
+`45455c69687d88287a200979ee914677bf0f39e000274e7fc5fb618339c0fc8a`.
+The native retry passed at **04:06:54 UTC**, preserving all **4,733 actions**,
+limits, spending and renewals without adding a reserve repair. The new plan
+`0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86`
+is now saved. Setup/adoption completed at **04:30:51 UTC** with
+`ready=true`, `prepare_only=true` and `stopped_before_actions=true`.
+All **4,673 carried-action checks** completed; only the saved plan and
+redacted configuration changed. The journal and supervisor files are unchanged,
+and no setup transaction was submitted. The launch-runtime-inputs check is
+explicitly deferred to resume. Four temporary artifact helpers are healthy;
+the fresh relay continuation capture is running with end block **8,023,974**
+and full-work start cutoff **8,016,404**. Its import, strict history, managed
+startup and the soak remain pending. These are local preparation results;
+they do not establish new on-chain acceptance.
 [Actual refusal and fresh complete census](peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
+[Completed build, software revision and setup receipts](peerreview/evidence/FINAL-2-native-adoption-20260916/README.md).
 
 **Runtime-460 startup stopped at 02:13:45 UTC on September 16.** Its 4,672
 carried-action checks finished, configuration rendering was verified and both

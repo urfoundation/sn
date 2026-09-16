@@ -1,0 +1,13 @@
+{
+  "source_commit": "541e13cfbe968704fb74c4001506853d2529bfdd",
+  "release_lock_sha256": "d703afe97a7f3299b3d4e43b7feed0d90e330b161384a9f5d8d33541266945b2",
+  "artifact_sha256": "45455c69687d88287a200979ee914677bf0f39e000274e7fc5fb618339c0fc8a",
+  "repo_before_sha256": "f214db4983d35b728f4bba3e812945232671991169ba89b696cf4d15348be700",
+  "repo_after_sha256": "f214db4983d35b728f4bba3e812945232671991169ba89b696cf4d15348be700",
+  "build_exit": 0,
+  "outer_exit": 0,
+  "launcher_join_exit": 0,
+  "source_clean": true,
+  "origin_matches": true,
+  "native_overrides_unchanged": true
+}

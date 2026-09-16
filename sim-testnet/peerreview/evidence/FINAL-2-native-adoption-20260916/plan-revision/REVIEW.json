@@ -1,0 +1,23 @@
+{
+  "reviewed_at": "2026-09-16T04:08:24Z",
+  "plan_hash": "0x0d24a3f1dfc8ea5bc6a2f59c80a7580a761d9e3410dd4833bda3843304ce6f86",
+  "predecessor_plan_hash": "0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799",
+  "actual_plan_exit": 0,
+  "read_only_state_binary_lock_unchanged": true,
+  "comparison": "Raw JSON token layout only; quoted strings and numeric tokens preserved byte-for-byte. Full diff reviewed.",
+  "changed_fields": [
+    "release_lock_hash",
+    "live_facts advancing alpha observations",
+    "live_facts finalized block/hash observations",
+    "prior_plan_hashes append exact predecessor",
+    "plan_hash",
+    "generated_at"
+  ],
+  "unchanged_existing_actions": 4733,
+  "limits_and_maximum_spend_unchanged": true,
+  "superseded_spend_unchanged": true,
+  "both_renewals_unchanged": true,
+  "continuation_unchanged": true,
+  "no_new_repair": true,
+  "independent_rpc": false
+}
