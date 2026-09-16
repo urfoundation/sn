@@ -35,9 +35,9 @@ func TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites(t *testing.T) {
 		t.Fatalf("combined command was not admitted: command=%s options=%+v err=%v", command, parsed, err)
 	}
 	for _, test := range []struct {
-		name string
+		name    string
 		command string
-		mutate func(*cliOptions)
+		mutate  func(*cliOptions)
 	}{
 		{name: "standalone scenario", command: "scenario"},
 		{name: "launch", command: "launch"},
@@ -56,9 +56,13 @@ func TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites(t *testing.T) {
 		{name: "partial scenario", mutate: func(o *cliOptions) { o.Name = "epoch" }},
 	} {
 		candidate := options
-		if test.mutate != nil { test.mutate(&candidate) }
+		if test.mutate != nil {
+			test.mutate(&candidate)
+		}
 		command := test.command
-		if command == "" { command = "resume" }
+		if command == "" {
+			command = "resume"
+		}
 		if err := runMutation(context.Background(), command, nil, "", candidate); err == nil || !strings.Contains(err.Error(), "--then-release-candidate") {
 			t.Fatalf("%s reached mutation preparation: %v", test.name, err)
 		}
@@ -79,9 +83,9 @@ func TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites(t *testing.T) {
 // A bad second phase must fail before even opening the missing plan or writer.
 func TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name   string
 		mutate func(*HarnessConfig)
-		want string
+		want   string
 	}{
 		{name: "release", mutate: func(cfg *HarnessConfig) { cfg.Scenarios.ShortEpochs = 0 }, want: "short_epochs"},
 		{name: "production", mutate: func(cfg *HarnessConfig) { cfg.Scenarios.ProductionEpochs = 2 }, want: "three complete"},
@@ -147,10 +151,10 @@ func TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete(t *testi
 func TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation(t *testing.T) {
 	failure := errors.New("synthetic owned phase failure")
 	for _, test := range []struct {
-		name string
-		cancelAt string
-		failAt string
-		wantLaunch int
+		name         string
+		cancelAt     string
+		failAt       string
+		wantLaunch   int
 		wantCampaign int
 	}{
 		{name: "already canceled", cancelAt: "before", wantLaunch: 0, wantCampaign: 0},
@@ -161,26 +165,42 @@ func TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation(t *testing.T)
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
 		executor, options := strictResumeCampaignTestWriter(t, ctx)
-		if test.cancelAt == "before" { cancel() }
+		if test.cancelAt == "before" {
+			cancel()
+		}
 		launchCalls, campaignCalls := 0, 0
 		result, err := runStrictResumeCampaign(ctx, options, executor, nil,
 			func(gotCtx context.Context, _ *ResolvedConfig, _ string, _ *SetupPlan, _ *RoleSecrets, _ *Executor, _ map[string]string, _ bool) error {
 				launchCalls++
-				if gotCtx != ctx { t.Fatal("startup detached from parent cancellation") }
-				if test.cancelAt == "launch" { cancel() }
-				if test.failAt == "launch" { return failure }
+				if gotCtx != ctx {
+					t.Fatal("startup detached from parent cancellation")
+				}
+				if test.cancelAt == "launch" {
+					cancel()
+				}
+				if test.failAt == "launch" {
+					return failure
+				}
 				return nil
 			},
 			func(gotCtx context.Context, _ *ResolvedConfig, _ string, _ *Journal, _ *Executor, _ *RoleSecrets, _ scenarioCampaignRunner) error {
 				campaignCalls++
-				if gotCtx != ctx { t.Fatal("campaign detached from parent cancellation") }
-				if test.cancelAt == "campaign" { cancel() }
-				if test.failAt == "campaign" { return failure }
+				if gotCtx != ctx {
+					t.Fatal("campaign detached from parent cancellation")
+				}
+				if test.cancelAt == "campaign" {
+					cancel()
+				}
+				if test.failAt == "campaign" {
+					return failure
+				}
 				return nil
 			})
 		cancel()
 		want := error(context.Canceled)
-		if test.failAt != "" { want = failure }
+		if test.failAt != "" {
+			want = failure
+		}
 		if !errors.Is(err, want) || result != nil || launchCalls != test.wantLaunch || campaignCalls != test.wantCampaign {
 			t.Fatalf("%s: launch=%d campaign=%d result=%v err=%v", test.name, launchCalls, campaignCalls, result, err)
 		}
@@ -191,17 +211,21 @@ func TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation(t *testing.T)
 // provisional or differently approved owner before or during startup.
 func TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name         string
 		duringLaunch bool
-		mutate func(*Executor)
+		mutate       func(*Executor)
 	}{
 		{name: "incomplete preparation", mutate: func(e *Executor) { e.preparationIncomplete = true }},
 		{name: "missing adoption", mutate: func(e *Executor) { e.cfg.strictHistoryAdoption = nil }},
-		{name: "provisional owner", mutate: func(e *Executor) { e.cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{}} }},
+		{name: "provisional owner", mutate: func(e *Executor) {
+			e.cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{}}
+		}},
 		{name: "changed request", mutate: func(e *Executor) { e.cfg.strictHistoryAdoption.path += ".other" }},
 		{name: "changed request hash", mutate: func(e *Executor) { e.cfg.strictHistoryAdoption.hash = "sha256:" + strings.Repeat("32", 32) }},
 		{name: "changed approved plan", mutate: func(e *Executor) { e.plan.PlanHash = "0x" + strings.Repeat("33", 32) }},
-		{name: "changed request approval", mutate: func(e *Executor) { e.cfg.strictHistoryAdoption.bundle.ApprovedPlanHash = "0x" + strings.Repeat("33", 32) }},
+		{name: "changed request approval", mutate: func(e *Executor) {
+			e.cfg.strictHistoryAdoption.bundle.ApprovedPlanHash = "0x" + strings.Repeat("33", 32)
+		}},
 		{name: "journal replaced during startup", duringLaunch: true, mutate: func(e *Executor) { e.journal = &Journal{} }},
 		{name: "plan replaced during startup", duringLaunch: true, mutate: func(e *Executor) { copy := *e.plan; e.plan = &copy }},
 		{name: "roles replaced during startup", duringLaunch: true, mutate: func(e *Executor) { e.roles = &RoleSecrets{} }},
@@ -210,7 +234,9 @@ func TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner(t *testing.T) 
 		{name: "request hash changed during startup", duringLaunch: true, mutate: func(e *Executor) { e.cfg.strictHistoryAdoption.hash = "sha256:" + strings.Repeat("32", 32) }},
 	} {
 		executor, options := strictResumeCampaignTestWriter(t, context.Background())
-		if !test.duringLaunch { test.mutate(executor) }
+		if !test.duringLaunch {
+			test.mutate(executor)
+		}
 		launchCalls, campaignCalls := 0, 0
 		result, err := runStrictResumeCampaign(context.Background(), options, executor, nil,
 			func(context.Context, *ResolvedConfig, string, *SetupPlan, *RoleSecrets, *Executor, map[string]string, bool) error {
@@ -218,9 +244,14 @@ func TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner(t *testing.T) 
 				test.mutate(executor)
 				return nil
 			},
-			func(context.Context, *ResolvedConfig, string, *Journal, *Executor, *RoleSecrets, scenarioCampaignRunner) error { campaignCalls++; return nil })
+			func(context.Context, *ResolvedConfig, string, *Journal, *Executor, *RoleSecrets, scenarioCampaignRunner) error {
+				campaignCalls++
+				return nil
+			})
 		wantLaunch := 0
-		if test.duringLaunch { wantLaunch = 1 }
+		if test.duringLaunch {
+			wantLaunch = 1
+		}
 		if err == nil || result != nil || launchCalls != wantLaunch || campaignCalls != 0 {
 			t.Fatalf("%s: launch=%d campaign=%d result=%v err=%v", test.name, launchCalls, campaignCalls, result, err)
 		}
@@ -241,16 +272,24 @@ func TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates(t *testing.T) {
 			writeScenarioCampaignFixture(t, executor.cfg, executor.stateDir, "production-soak", 32, 36)
 		} else {
 			executor.roles, err = BuildRoleSecrets(executor.cfg)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		failure := errors.New("required campaign evidence is unavailable")
 		result, err := runStrictResumeCampaign(ctx, options, executor, nil,
-			func(context.Context, *ResolvedConfig, string, *SetupPlan, *RoleSecrets, *Executor, map[string]string, bool) error { return nil },
+			func(context.Context, *ResolvedConfig, string, *SetupPlan, *RoleSecrets, *Executor, map[string]string, bool) error {
+				return nil
+			},
 			func(ctx context.Context, cfg *ResolvedConfig, stateDir string, journal *Journal, executor *Executor, roles *RoleSecrets, _ scenarioCampaignRunner) error {
 				return runReleaseCandidateCampaignWithAnalyzer(ctx, cfg, stateDir, journal, executor, roles,
-					func(context.Context, *ResolvedConfig, string, string, *Journal, *Executor, *scenarioCampaignAttempt) error { return errors.New("unexpected live phase dispatch") },
+					func(context.Context, *ResolvedConfig, string, string, *Journal, *Executor, *scenarioCampaignAttempt) error {
+						return errors.New("unexpected live phase dispatch")
+					},
 					func(context.Context, *ResolvedConfig, string) error { return failure },
-					func(context.Context, *ResolvedConfig, string, string, *RoleSecrets, *ScenarioResult) error { return failure })
+					func(context.Context, *ResolvedConfig, string, string, *RoleSecrets, *ScenarioResult) error {
+						return failure
+					})
 			})
 		if !errors.Is(err, failure) || result != nil {
 			t.Fatalf("completed=%t: campaign evidence failure was bypassed: result=%v err=%v", completed, result, err)

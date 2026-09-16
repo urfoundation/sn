@@ -38,7 +38,7 @@ type cliOptions struct {
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
 	OwnedRPCAuthority                                                                                                               string
-	ThenReleaseCandidate                                                                                                           bool
+	ThenReleaseCandidate                                                                                                            bool
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume, PrepareOnly                                                                                   bool
 }
