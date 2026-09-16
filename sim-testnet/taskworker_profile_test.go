@@ -13,7 +13,7 @@ func TestServerTaskworkerProfileSurvivesSupervisorSerialization(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Config.Topology.Operators = 2
 	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
-		"sim-testnet": "/fixture/sim-testnet",
+		"sim-testnet":           "/fixture/sim-testnet",
 		connectServerBinaryName: "/fixture/sim-testnet-connect",
 	})
 	if err != nil {
