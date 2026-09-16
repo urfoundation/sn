@@ -13,6 +13,12 @@ func ownedRPCUpgradesHistoricalAssurance(cfg *ResolvedConfig, record *ActionPost
 }
 
 func historicalPostconditionRPCIdentity(stateDir string, cfg *ResolvedConfig, scope *SetupPlan, record *ActionPostcondition) error {
+	return historicalPostconditionRpcIdentityWithSource(stateDir, cfg, scope, record, readValidatorEvidenceHistoricalPlan)
+}
+
+// Receipt and route checks run on every call. A read-only reconciliation may
+// supply its own already authenticated, invocation-local source-plan reader.
+func historicalPostconditionRpcIdentityWithSource(stateDir string, cfg *ResolvedConfig, scope *SetupPlan, record *ActionPostcondition, readSource func(string, string) (*SetupPlan, error)) error {
 	if cfg == nil || cfg.Config == nil || scope == nil || record == nil {
 		return errors.New("historical RPC assurance context is incomplete")
 	}
@@ -33,11 +39,14 @@ func historicalPostconditionRPCIdentity(stateDir string, cfg *ResolvedConfig, sc
 	if err := validateExecutionRPCConfiguration(&canonical); err != nil {
 		return err
 	}
-	source, err := readValidatorEvidenceHistoricalPlan(stateDir, record.PlanHash)
+	if readSource == nil {
+		return errors.New("historical RPC original plan reader is unavailable")
+	}
+	source, err := readSource(stateDir, record.PlanHash)
 	if err != nil {
 		return fmt.Errorf("historical RPC original plan: %w", err)
 	}
-	if source.PlanHash != record.PlanHash || source.DeploymentID != scope.DeploymentID || source.DeploymentID != cfg.Config.Deployment.DeploymentID || source.ChainID != cfg.ChainID || source.GenesisHash != testnetGenesis || source.Netuid != cfg.Netuid || source.Owner != cfg.WalletPublic || source.OwnedRPCAuthority != "" {
+	if source == nil || source.PlanHash != record.PlanHash || source.DeploymentID != scope.DeploymentID || source.DeploymentID != cfg.Config.Deployment.DeploymentID || source.ChainID != cfg.ChainID || source.GenesisHash != testnetGenesis || source.Netuid != cfg.Netuid || source.Owner != cfg.WalletPublic || source.OwnedRPCAuthority != "" {
 		return errors.New("historical RPC source is not the same deployment's original public approval")
 	}
 	// The source's own immutable input hash authenticates its original route.

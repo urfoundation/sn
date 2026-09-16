@@ -563,6 +563,12 @@ func (e *Executor) persistActionPostcondition(record *ActionPostcondition) (stri
 // resolving a receipt by action ID, because revised plans may contain the same
 // action and intent while retaining distinct historical checkpoints.
 func (e *Executor) readPersistedPostcondition(entry JournalEntry) (*ActionPostcondition, error) {
+	return e.readPersistedPostconditionWithSource(entry, readValidatorEvidenceHistoricalPlan)
+}
+
+// Only immutable source-plan decoding may be shared by a reconciliation.
+// The receipt file, exact journal hash and original RPC labels remain fresh.
+func (self *Executor) readPersistedPostconditionWithSource(entry JournalEntry, readSource func(string, string) (*SetupPlan, error)) (*ActionPostcondition, error) {
 	if entry.PostconditionPath == "" {
 		return nil, errors.New("verified journal entry has no postcondition path")
 	}
@@ -571,7 +577,7 @@ func (e *Executor) readPersistedPostcondition(entry JournalEntry) (*ActionPostco
 	if (err != nil || entry.PostconditionPath != wantPath) && (legacyErr != nil || entry.PostconditionPath != legacyPath) {
 		return nil, fmt.Errorf("postcondition path %q is not canonical", entry.PostconditionPath)
 	}
-	b, err := os.ReadFile(filepath.Join(e.stateDir, filepath.FromSlash(entry.PostconditionPath)))
+	b, err := os.ReadFile(filepath.Join(self.stateDir, filepath.FromSlash(entry.PostconditionPath)))
 	if err != nil {
 		return nil, err
 	}
@@ -579,10 +585,10 @@ func (e *Executor) readPersistedPostcondition(entry JournalEntry) (*ActionPostco
 	if err != nil {
 		return nil, err
 	}
-	if (record.Schema != "urnetwork-sim-action-postcondition-v1" && record.Schema != "urnetwork-sim-action-postcondition-v2" && record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
+	if (record.Schema != "urnetwork-sim-action-postcondition-v1" && record.Schema != "urnetwork-sim-action-postcondition-v2" && record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") || record.DeploymentID != self.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !self.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
 		return nil, errors.New("persisted action postcondition identity mismatch")
 	}
-	if err := historicalPostconditionRPCIdentity(e.stateDir, e.cfg, e.plan, record); err != nil {
+	if err := historicalPostconditionRpcIdentityWithSource(self.stateDir, self.cfg, self.plan, record, readSource); err != nil {
 		return nil, err
 	}
 	if record.Schema == "urnetwork-sim-action-postcondition-v2" && (record.EVMHashDomain != "ethereum" || record.IndependentEVMHashDomain != "ethereum") {

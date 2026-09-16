@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 )
@@ -16,9 +17,37 @@ func (self *Executor) collectCarriedActionHistory(ctx context.Context) error {
 	if ctx == nil || self == nil || self.plan == nil || self.journal == nil {
 		return errors.New("plan/journal or preparation context is unavailable")
 	}
+	return self.collectCarriedActionHistoryWithReaders(ctx, self.journal.Entries, readValidatorEvidenceHistoricalPlan)
+}
+
+// One detached journal snapshot and source-plan set belong to this read-only
+// reconciliation. Tests count these real reads without replacing verifiers.
+func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) error {
+	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || readEntries == nil || readSource == nil {
+		return errors.New("plan/journal or preparation reader is unavailable")
+	}
 	self.carriedVerificationKeys = nil
 	if provisionalResumeEnabled(self.cfg) {
 		return self.verifyProvisionalActionHistory(ctx)
+	}
+	entries := readEntries()
+	verified := newCarriedPreparationIndex(self.plan, entries)
+	sourcePlanKVs := map[string]*SetupPlan{}
+	readPostcondition := func(entry JournalEntry) (*ActionPostcondition, error) {
+		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if source := sourcePlanKVs[hash]; source != nil {
+				return source, nil
+			}
+			source, err := readSource(stateDir, hash)
+			if err = errors.Join(err, ctx.Err()); err != nil {
+				return nil, err
+			}
+			sourcePlanKVs[hash] = source
+			return source, nil
+		})
 	}
 	var stages []error
 	var carryErr error
@@ -36,11 +65,11 @@ func (self *Executor) collectCarriedActionHistory(ctx context.Context) error {
 	audits := make([]carriedActionAudit, 0)
 	for index, action := range self.plan.Actions {
 		actionIndexes[action.ID] = index
-		entry, ok := self.verifiedActionEntry(action)
+		entry, ok := verified.find(action, false)
 		if !ok && action.ID == "topology.launch" {
-			entry, ok = self.verifiedActionEntryForScope(action, true)
+			entry, ok = verified.find(action, true)
 			if ok && entry.PlanHash != self.plan.PlanHash {
-				if _, err := self.readPersistedPostcondition(entry); err != nil {
+				if _, err := readPostcondition(entry); err != nil {
 					actionErrors[index] = fmt.Errorf("action %s: persisted ancestor process receipt: %w", action.ID, err)
 				}
 			}
@@ -53,7 +82,7 @@ func (self *Executor) collectCarriedActionHistory(ctx context.Context) error {
 			actionErrors[index] = fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err)
 			continue
 		}
-		record, err := self.readPersistedPostcondition(entry)
+		record, err := readPostcondition(entry)
 		if err != nil {
 			actionErrors[index] = fmt.Errorf("action %s: persisted postcondition: %w", action.ID, err)
 			continue
@@ -212,8 +241,14 @@ func (self *Executor) collectCarriedActionHistory(ctx context.Context) error {
 			verifiedKeys[carriedVerificationKey(audit.entry)] = true
 		}
 	}
-	self.carriedVerificationKeys = verifiedKeys
-	return errors.Join(append(stages, actionErrors...)...)
+	// No action may inherit a partial or superseded reconciliation. Ordinary
+	// execution still resolves the current journal before using any exact key.
+	if !slices.Equal(entries, readEntries()) {
+		stages = append(stages, errors.New("carried preparation journal changed during reconciliation"))
+	} else if ctx.Err() == nil {
+		self.carriedVerificationKeys = verifiedKeys
+	}
+	return errors.Join(errors.Join(append(stages, actionErrors...)...), ctx.Err())
 }
 
 // These local/native checks do not dereference derived topology secrets.
