@@ -235,7 +235,7 @@ func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *te
 }
 
 func TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding(t *testing.T) {
-	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":460,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
+	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":461,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
 	version, err := decodeRuntimeVersionIdentity(raw)
 	if err != nil {
 		t.Fatalf("authoritative runtime version was not decoded: %v", err)
