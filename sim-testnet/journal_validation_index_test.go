@@ -244,9 +244,9 @@ func TestJournalValidationIndexPreservesFirstConflict(t *testing.T) {
 // that rejected row must never become a witness for a later valid continuation.
 func TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix(t *testing.T) {
 	for _, change := range []struct {
-		name string
+		name   string
 		mutate func(*JournalEntry)
-		want string
+		want   string
 	}{
 		{"identity", func(e *JournalEntry) { e.IntentHash = "" }, "journal entry identity is incomplete"},
 		{"deployment", func(e *JournalEntry) { e.DeploymentID = "other-deployment" }, "does not match"},
@@ -261,7 +261,10 @@ func TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix(t *testing.T) {
 		{"included", func(e *JournalEntry) { e.Stage = StageIncluded }, "included entry is incomplete"},
 		{"finalized", func(e *JournalEntry) { e.Stage = StageFinalized }, "finalized entry is incomplete"},
 		{"verification", func(e *JournalEntry) { *e = journalIndexTestEntry(StageVerified); e.PostconditionHash = "" }, "no postcondition hash/path"},
-		{"verification path", func(e *JournalEntry) { *e = journalIndexTestEntry(StageVerified); e.PostconditionPath = "../other.json" }, "noncanonical postcondition path"},
+		{"verification path", func(e *JournalEntry) {
+			*e = journalIndexTestEntry(StageVerified)
+			e.PostconditionPath = "../other.json"
+		}, "noncanonical postcondition path"},
 	} {
 		bad := journalIndexTestEntry(StageBroadcast)
 		change.mutate(&bad)

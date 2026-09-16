@@ -47,17 +47,18 @@ type JournalEntry struct {
 	PreviousHash      string       `json:"previous_hash,omitempty"`
 	EntryHash         string       `json:"entry_hash"`
 }
+
 // The authenticated reader and writer own indexed entries. Other callers read
 // detached snapshots; prepopulated literals retain ordinary slice validation.
 type Journal struct {
-	mu           sync.Mutex
-	file         *os.File
-	lock         *os.File
-	path         string
-	entries      []JournalEntry
-	lastHash     string
-	deploymentID string
-	validationKVs map[journalActionKey][]JournalEntry
+	mu              sync.Mutex
+	file            *os.File
+	lock            *os.File
+	path            string
+	entries         []JournalEntry
+	lastHash        string
+	deploymentID    string
+	validationKVs   map[journalActionKey][]JournalEntry
 	validationCount int
 	// Observe actual history comparisons in deterministic work-bound tests.
 	validationHistoryVisit func()
