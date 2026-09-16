@@ -481,6 +481,9 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateStrictResumeCampaignOptions(cmd, o); err != nil {
+		return err
+	}
 	if err := validateLaunchPreparationOptions(cmd, o); err != nil {
 		return err
 	}
@@ -500,9 +503,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return err
 		}
 	}
-	if cmd == "scenario" {
+	if cmd == "scenario" || o.ThenReleaseCandidate {
 		names := []string{o.Name}
-		if o.Name == releaseCandidateCampaignName {
+		if o.Name == releaseCandidateCampaignName || o.ThenReleaseCandidate {
 			names = []string{"release-1.0", "production-soak"}
 		}
 		for _, name := range names {
@@ -675,6 +678,13 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
 			return err
+		}
+		if o.ThenReleaseCandidate {
+			result, err := runStrictResumeCampaign(ctx, o, ex, bins, LaunchDeployment, runReleaseCandidateCampaign)
+			if err != nil {
+				return err
+			}
+			return printResult(o.Format, result, nil)
 		}
 		if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
 			if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {

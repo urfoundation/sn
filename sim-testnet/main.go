@@ -38,6 +38,7 @@ type cliOptions struct {
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
 	OwnedRPCAuthority                                                                                                               string
+	ThenReleaseCandidate                                                                                                           bool
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume, PrepareOnly                                                                                   bool
 }
@@ -82,6 +83,7 @@ Common options:
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
   --relay-continuation-plan PATH  exact saved continuation plan for adoption
   --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
+  --then-release-candidate  strict detached resume continues the full campaign under the same writer; returns only after the campaign
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
   --owned-rpc-authority HOST:PORT  strict plan-bound owned private IPv4 route; owned RPC has no request ceiling
   --provisional-observation-timeout DURATION  scenario --name epoch --provisional-resume only; 0 keeps the default, maximum 6h
@@ -125,6 +127,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.PrepareOnly, "prepare-only", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
+	fs.BoolVar(&o.ThenReleaseCandidate, "then-release-candidate", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
 	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
@@ -165,6 +168,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, errors.New("--format must be human or json")
 	}
 	if err := validateLaunchPreparationOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateStrictResumeCampaignOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
