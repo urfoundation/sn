@@ -377,6 +377,7 @@ func TestFleetRuntime460Retains458EvidenceWithoutCurrentAuthority(t *testing.T) 
 		t.Fatalf("explicit historical artifact lost exact metadata decoding: %v", err)
 	}
 }
+
 // The old metadata remains exactly decodable, but cannot authorize a current
 // fleet operation or replace an existing signing binding.
 func TestFleetRuntime461Retains460EvidenceWithoutCurrentAuthority(t *testing.T) {

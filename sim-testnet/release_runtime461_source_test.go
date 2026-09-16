@@ -17,32 +17,54 @@ import (
 // new root basket and migration paths explain the actual upstream change.
 func TestRuntime461SourceAttestationPreservesReviewed460Scope(t *testing.T) {
 	raw, err := os.ReadFile("../docs/spec/runtime-v461-source.sha256")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	digest := sha256.Sum256(raw)
-	if hex.EncodeToString(digest[:]) != "9c5a558924993e796449198c081e62d165b36c1d7d853cc9a72d604e625ec8d5" { t.Fatal("runtime461 exact source scope changed") }
+	if hex.EncodeToString(digest[:]) != "9c5a558924993e796449198c081e62d165b36c1d7d853cc9a72d604e625ec8d5" {
+		t.Fatal("runtime461 exact source scope changed")
+	}
 	paths := map[string]string{}
 	for _, row := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		fields := strings.Fields(row)
-		if len(fields) != 2 || paths[fields[1]] != "" { t.Fatal("runtime461 source rows are malformed or duplicated") }
+		if len(fields) != 2 || paths[fields[1]] != "" {
+			t.Fatal("runtime461 source rows are malformed or duplicated")
+		}
 		paths[fields[1]] = fields[0]
 	}
-	if len(paths) != 94 { t.Fatal("runtime461 lost reviewed source scope") }
+	if len(paths) != 94 {
+		t.Fatal("runtime461 lost reviewed source scope")
+	}
 	prior, err := os.ReadFile("../docs/spec/runtime-v460-source.sha256")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	unchanged := 0
 	for _, row := range strings.Split(strings.TrimSpace(string(prior)), "\n") {
 		fields := strings.Fields(row)
-		if paths[fields[1]] == "" { t.Fatal("runtime461 omitted prior reviewed source") }
-		if paths[fields[1]] == fields[0] { unchanged++ }
+		if paths[fields[1]] == "" {
+			t.Fatal("runtime461 omitted prior reviewed source")
+		}
+		if paths[fields[1]] == fields[0] {
+			unchanged++
+		}
 	}
-	if unchanged != 53 { t.Fatal("runtime461 delta differs from reviewed53 unchanged/18 changed predecessors") }
+	if unchanged != 53 {
+		t.Fatal("runtime461 delta differs from reviewed53 unchanged/18 changed predecessors")
+	}
 	for _, path := range []string{"common/src/proxy.rs", "pallets/subtensor/src/staking/basket_trade.rs", "pallets/subtensor/src/staking/basket_flush.rs", "pallets/subtensor/src/staking/basket_views.rs", "pallets/subtensor/src/migrations/migrate_remove_root_weights.rs", "pallets/subtensor/src/rpc_info/basket_info.rs", "pallets/subtensor/src/macros/events.rs"} {
-		if paths[path] == "" { t.Fatalf("runtime461 omitted changed dependency %s", path) }
+		if paths[path] == "" {
+			t.Fatalf("runtime461 omitted changed dependency %s", path)
+		}
 	}
 	checker, err := os.ReadFile("../scripts/check-runtime-v454-source.sh")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, required := range []string{"for current_spec in 455 458 459 460 461", "runtime-v461-source.sha256", "current_commit=\"7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b\"", "expected_current_files=94", "SUBTENSOR_RUNTIME461_SOURCE", "expected_metadata_files=27"} {
-		if !strings.Contains(string(checker), required) { t.Fatalf("runtime461 source checker omits %s", required) }
+		if !strings.Contains(string(checker), required) {
+			t.Fatalf("runtime461 source checker omits %s", required)
+		}
 	}
 }
 
