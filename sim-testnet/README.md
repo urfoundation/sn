@@ -165,6 +165,7 @@ package/mode. A new failure reopens its affected scope, not the whole campaign.
 | Test or fixture correction | Run changed tests and affected shared-fixture consumers; rerun the failed integration phase when relevant. Retain other phase receipts. |
 | Launcher, selector, capture path or result-checker correction | Repair the refused stage; reuse unchanged builds and completed bodies. Replay retained raw results when they suffice, and verify membership if selection changed. |
 | Production code or dependency change | Build affected executables; test changed behavior and affected integrations. Reuse phases whose code, inputs and assumptions are unchanged. |
+| On-chain runtime upgrade | Record the new version, code and metadata at one finalized block; review the changed interfaces and behavior we consume. Refresh current signing and reviewed artifact admission through the supported release path. Retain historical artifacts, finalized actions and unaffected qualification. A new runtime number alone does not establish an ABI break or invalidate prior work. |
 | Expired epoch, fee observation or other time-sensitive prerequisite | Refresh that observation and its dependent plan/window through the supported revision path. Retain immutable history and completed actions. |
 | Stopped continuation horizon exceeds source capacity | Fit the end block to the tightest retained trail, record, byte, file and relay-slot limits while keeping the full required work and capture/import/startup margin. Correct the refused operand and retry that step; retain the completed renewal and existing approvals. |
 | Disk, port, service or transient RPC refusal before submission | Repair the failed operational prerequisite and retry the same approved command in a fresh capture. Retain valid tests, preparation and state; reconcile any uncertain submission before retrying. |
@@ -225,6 +226,15 @@ an incomplete epoch complete. Existing plan-hash and `--apply` boundaries remain
 Choose the next command from the unresolved coverage or runtime checkpoint;
 do not restart setup, re-fund, redeploy contracts or reset the reserve solely
 because a test, observer, process, network connection or agent failed.
+
+Native signatures bind their original runtime version. Reconcile an uncertain
+submission before deciding to rebuild and re-sign it for a successor runtime;
+never relabel old signed bytes. Authenticate historical receipts against the
+runtime at their own block, independently of the current signing runtime.
+The current executable embeds its reviewed runtime authority, so adding a
+runtime still requires an affected release build. This is a harness admission
+constraint, not evidence that the chain's calls became incompatible. It does
+not justify repeating unaffected tests or discarding an adopted checkpoint.
 
 If an assigned agent loses execution capacity, inspect any already-started
 host process through its PID and output before deciding it stopped. A missing

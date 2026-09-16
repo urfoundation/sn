@@ -1,0 +1,7 @@
+{
+  "kind": "runtime460-positive-portable-result-json-correction",
+  "original_invalid_result_sha256": "f32b3d4707b6b1ce68c91b3b3efcd3f8b5367bce29e2ecc8a703defef1ad8884",
+  "corrected_result_sha256": "85de573b693e3b8ea3dd801c13e4cc48b76848fe8b2ce6b0011928e77d537ffe",
+  "accepted_root_map_sha256": "73f2cd77bc5f76b92a39f457dd87f793d5ec79a08a24df4127aa03a2207de9b4",
+  "correction": "maps.accepted_root_map_sha256 now hashes exactly ACCEPTED-ROOT-MAP.tsv"
+}

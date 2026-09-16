@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "mode": "normal",
+  "selection": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-selection.json",
+  "original_native_capture": {
+    "source_commit": "62ff658759606c15d979d36ffc8f415f463454b6",
+    "body_exit": 1,
+    "qualification_exit": 127,
+    "raw_observed": {"fail": 5, "pass": 3},
+    "retained_expected": {"fail": 4, "pass": 3},
+    "unexpected_test": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant"
+  },
+  "replacement": {
+    "source_commit": "b2ea4f83a3931780137bccb612dbe78a71dbd864",
+    "parent_commit": "62ff658759606c15d979d36ffc8f415f463454b6",
+    "changed_path": "crv4/source_commitment_runtime460_test.go",
+    "changed_file_sha256": "ebe20b2004d9d989cfa8504fd7fce13c2a40cfa0c9edbfac85a682f8ce2cfb2f",
+    "selector": "^TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant$",
+    "body_exit": 0,
+    "qualification_exit": 0,
+    "pass": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant"
+  },
+  "composed_expected_outcomes": {"fail": 13, "pass": 11},
+  "original_qualifying_receipts": 8,
+  "original_native_qualification_is_preserved": true
+}

@@ -1,0 +1,1 @@
+cohort=former_current_archive_authority package=sim-testnet mode=normal expected_commit=58a80118679f561fd78ab05cbddfb2a2c7a94152 source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/workspace/sn

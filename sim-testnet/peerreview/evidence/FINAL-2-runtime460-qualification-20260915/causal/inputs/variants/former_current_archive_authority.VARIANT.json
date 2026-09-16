@@ -1,0 +1,33 @@
+{
+  "name": "former_current_archive_authority",
+  "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "restore_files": [
+    "sim-testnet/evidence_carry_runtime_history.go"
+  ],
+  "tests": [
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime460Archived459LockRetainsExactProvenance",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./sim-testnet": "^(TestRuntime460Archived459LockRetainsExactProvenance|TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval|TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift)$"
+  },
+  "source_commit": "58a80118679f561fd78ab05cbddfb2a2c7a94152",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/gotmp",
+  "source_clean": true,
+  "executed": false
+}

@@ -1,0 +1,17 @@
+{"Time":"2026-09-15T23:35:46.455096668Z","Action":"start"}
+{"Time":"2026-09-15T23:35:46.500152084Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:35:46.500339908Z","Action":"output","Output":"I0915 23:35:46.500163 2666293 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:35:46.500426751Z","Action":"output","Output":"I0915 23:35:46.500396 2666293 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:35:46.500494266Z","Action":"output","Output":"I0915 23:35:46.500471 2666293 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:35:46.500510178Z","Action":"output","Output":"I0915 23:35:46.500494 2666293 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:35:46.503103778Z","Action":"run","Test":"TestFleetRuntimeArtifactMatchesReviewedMetadataManifest"}
+{"Time":"2026-09-15T23:35:46.503132334Z","Action":"output","Test":"TestFleetRuntimeArtifactMatchesReviewedMetadataManifest","Output":"=== RUN   TestFleetRuntimeArtifactMatchesReviewedMetadataManifest\n"}
+{"Time":"2026-09-15T23:35:46.514579752Z","Action":"output","Test":"TestFleetRuntimeArtifactMatchesReviewedMetadataManifest","Output":"    fleet_runtime_458_test.go:229: fleet artifact {Version:{SpecName:node-subtensor SpecVersion:459 TransactionVersion:1 StateVersion:1} CodeHash:0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b MetadataHash:0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef} does not match reviewed metadata manifest {Version:{SpecName:node-subtensor SpecVersion:460 TransactionVersion:1 StateVersion:1} CodeHash:0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d MetadataHash:0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c}\n"}
+{"Time":"2026-09-15T23:35:46.514682095Z","Action":"output","Test":"TestFleetRuntimeArtifactMatchesReviewedMetadataManifest","Output":"--- FAIL: TestFleetRuntimeArtifactMatchesReviewedMetadataManifest (0.01s)\n"}
+{"Time":"2026-09-15T23:35:46.514729803Z","Action":"fail","Test":"TestFleetRuntimeArtifactMatchesReviewedMetadataManifest","Elapsed":0.01}
+{"Time":"2026-09-15T23:35:46.514748018Z","Action":"run","Test":"TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation"}
+{"Time":"2026-09-15T23:35:46.514760039Z","Action":"output","Test":"TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation","Output":"=== RUN   TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation\n"}
+{"Time":"2026-09-15T23:35:46.514771339Z","Action":"output","Test":"TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation","Output":"--- PASS: TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation (0.00s)\n"}
+{"Time":"2026-09-15T23:35:46.514797947Z","Action":"pass","Test":"TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation","Elapsed":0}
+{"Time":"2026-09-15T23:35:46.514805738Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:35:46.517801589Z","Action":"fail","Elapsed":0.063}

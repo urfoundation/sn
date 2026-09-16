@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "repaired_source_commit": "0127b7ee08d1cd77262a6dd28b606e2cfee33e6b",
+  "normal_package_binaries": 9,
+  "root_executions": 24,
+  "variants": [
+    {
+      "name": "catalog_predecessor_omission",
+      "mutation": {
+        "path": "crv4/reviewed_runtime.go",
+        "description": "Remove only the immutable reviewedRuntimeArtifacts row whose explicit SpecVersion is459; retain current460 constants, all other rows, public manifest and fixtures."
+      },
+      "tests": [
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./validator",
+          "name": "TestReleaseRuntime460PreservesEachOriginalCompanionDomain",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./validator",
+          "name": "TestReleaseRuntime460RequiresExactReviewedArtifact",
+          "expected": "PASS"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime460Archived459LockRetainsExactProvenance",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./crv4": "^(TestRuntimeArtifactMetadataCatalogPreservesExactManifest)$",
+        "./validator": "^(TestReleaseRuntime460PreservesEachOriginalCompanionDomain|TestReleaseRuntime460RequiresExactReviewedArtifact)$",
+        "./sim-testnet": "^(TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain|TestRuntime460Archived459LockRetainsExactProvenance)$"
+      },
+      "source_commit": "d09ad52c76e064512f7bc428c1c20818a1293bbc",
+      "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/workspace/sn",
+      "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/tmp",
+      "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/gotmp",
+      "source_clean": true,
+      "executed": false
+    },
+    {
+      "name": "current_artifact_admission",
+      "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+      "restore_files": [
+        "miner/fleet_runtime.go",
+        "validator/runtime_identity.go",
+        "sim-testnet/release_lock.go"
+      ],
+      "tests": [
+        {
+          "package": "./miner",
+          "name": "TestFleetRuntimeArtifactMatchesReviewedMetadataManifest",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./miner",
+          "name": "TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation",
+          "expected": "PASS"
+        },
+        {
+          "package": "./validator",
+          "name": "TestReleaseRuntime460RequiresExactReviewedArtifact",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./validator",
+          "name": "TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc",
+          "expected": "PASS"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./miner": "^(TestFleetRuntimeArtifactMatchesReviewedMetadataManifest|TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation)$",
+        "./validator": "^(TestReleaseRuntime460RequiresExactReviewedArtifact|TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc)$",
+        "./sim-testnet": "^(TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal|TestRuntime458CanonicalLockRetainsHistoricalProvenance)$"
+      },
+      "source_commit": "d216a9311e64df7c6e23d5eef45de353d7294b8d",
+      "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/workspace/sn",
+      "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/tmp",
+      "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/gotmp",
+      "source_clean": true,
+      "executed": false
+    },
+    {
+      "name": "former_current_archive_authority",
+      "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+      "restore_files": [
+        "sim-testnet/evidence_carry_runtime_history.go"
+      ],
+      "tests": [
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime460Archived459LockRetainsExactProvenance",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./sim-testnet": "^(TestRuntime460Archived459LockRetainsExactProvenance|TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval|TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift)$"
+      },
+      "source_commit": "58a80118679f561fd78ab05cbddfb2a2c7a94152",
+      "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/workspace/sn",
+      "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/tmp",
+      "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/former_current_archive_authority/gotmp",
+      "source_clean": true,
+      "executed": false
+    },
+    {
+      "name": "native_encoding_stake_and_capacity",
+      "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+      "restore_files": [
+        "crv4/source_commitment.go",
+        "crv4/validator_stake.go",
+        "crv4/runtime_identity.go"
+      ],
+      "tests": [
+        {
+          "package": "./crv4",
+          "name": "TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataValidatorScheduleRuntime460",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant",
+          "expected": "PASS"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity",
+          "expected": "PASS"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataCacheIsHardBounded",
+          "expected": "PASS"
+        },
+        {
+          "package": "./crv4",
+          "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./crv4": "^(TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain|TestRuntimeArtifactMetadataValidatorScheduleRuntime460|TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory|TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity|TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant|TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity|TestRuntimeArtifactMetadataCacheIsHardBounded|TestRuntimeArtifactMetadataCatalogPreservesExactManifest)$"
+      },
+      "source_commit": "62ff658759606c15d979d36ffc8f415f463454b6",
+      "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/workspace/sn",
+      "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/tmp",
+      "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/gotmp",
+      "source_clean": true,
+      "executed": false
+    },
+    {
+      "name": "original_configuration_identity",
+      "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+      "restore_files": [
+        "sim-testnet/runtime_config_identity.go"
+      ],
+      "tests": [
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime459ConfigHashPreserves455And458Domains",
+          "expected": "FAIL"
+        },
+        {
+          "package": "./sim-testnet",
+          "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./sim-testnet": "^(TestRuntime459ConfigHashPreserves455And458Domains|TestRuntime458CanonicalLockRetainsHistoricalProvenance)$"
+      },
+      "source_commit": "4c25223b3c9a28f84cc6a03b98200da21378e684",
+      "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/workspace/sn",
+      "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/tmp",
+      "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/gotmp",
+      "source_clean": true,
+      "executed": false
+    }
+  ]
+}

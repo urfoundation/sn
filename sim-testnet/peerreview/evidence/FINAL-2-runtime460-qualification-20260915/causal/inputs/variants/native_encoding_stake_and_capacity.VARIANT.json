@@ -1,0 +1,60 @@
+{
+  "name": "native_encoding_stake_and_capacity",
+  "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "restore_files": [
+    "crv4/source_commitment.go",
+    "crv4/validator_stake.go",
+    "crv4/runtime_identity.go"
+  ],
+  "tests": [
+    {
+      "package": "./crv4",
+      "name": "TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataValidatorScheduleRuntime460",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant",
+      "expected": "PASS"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity",
+      "expected": "PASS"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataCacheIsHardBounded",
+      "expected": "PASS"
+    },
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./crv4": "^(TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain|TestRuntimeArtifactMetadataValidatorScheduleRuntime460|TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory|TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity|TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant|TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity|TestRuntimeArtifactMetadataCacheIsHardBounded|TestRuntimeArtifactMetadataCatalogPreservesExactManifest)$"
+  },
+  "source_commit": "62ff658759606c15d979d36ffc8f415f463454b6",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/gotmp",
+  "source_clean": true,
+  "executed": false
+}

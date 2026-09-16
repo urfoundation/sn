@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0915 22:42:11.733866 2576053 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0915 22:42:11.734263 2576053 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0915 22:42:11.734388 2576053 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0915 22:42:11.734426 2576053 env.go:67] [env]settings = map[]
+sim-testnet: doctor hard failures: rpc/substrate-operational, rpc/substrate-operational-readiness, rpc/substrate-public, wallet/finalized-alpha-source

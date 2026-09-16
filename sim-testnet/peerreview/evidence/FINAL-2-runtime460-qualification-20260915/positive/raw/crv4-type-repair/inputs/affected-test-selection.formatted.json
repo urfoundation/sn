@@ -1,0 +1,471 @@
+{
+  "schema_version": 1,
+  "source_commit": "0127b7ee08d1cd77262a6dd28b606e2cfee33e6b",
+  "authored_source_commit": "2d1184fe90f632e39ec35e67b11917a3ef3e355e",
+  "formatting": "Terra formatted 9 of 38 changed Go files; clean formatter-only descendant.",
+  "base_commit": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "source_only": true,
+  "execution": "Terra normal and race once per selected root; compile each affected package/mode once, corroborate exact compiled membership.",
+  "packages": [
+    {
+      "package": "./crv4",
+      "count": 13,
+      "selector": "^(TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory|TestRuntimeArtifactMetadataCacheIsHardBounded|TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity|TestRuntimeArtifactMetadataCatalogPreservesExactManifest|TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks|TestRuntimeArtifactMetadataValidatorScheduleRuntime460|TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity|TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity|TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains|TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant|TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains|TestSourceCommitmentRuntime460RejectsRetainedSignatureRelabeling|TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain)$",
+      "tests": [
+        {
+          "path": "crv4/reviewed_runtime_test.go",
+          "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest"
+        },
+        {
+          "path": "crv4/runtime_identity_capacity_test.go",
+          "name": "TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory"
+        },
+        {
+          "path": "crv4/runtime_identity_test.go",
+          "name": "TestRuntimeArtifactMetadataCacheIsHardBounded"
+        },
+        {
+          "path": "crv4/runtime_identity_test.go",
+          "name": "TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity"
+        },
+        {
+          "path": "crv4/runtime_identity_test.go",
+          "name": "TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks"
+        },
+        {
+          "path": "crv4/source_commitment_runtime459_test.go",
+          "name": "TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains"
+        },
+        {
+          "path": "crv4/source_commitment_runtime460_test.go",
+          "name": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant"
+        },
+        {
+          "path": "crv4/source_commitment_runtime460_test.go",
+          "name": "TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains"
+        },
+        {
+          "path": "crv4/source_commitment_runtime460_test.go",
+          "name": "TestSourceCommitmentRuntime460RejectsRetainedSignatureRelabeling"
+        },
+        {
+          "path": "crv4/source_commitment_runtime460_test.go",
+          "name": "TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain"
+        },
+        {
+          "path": "crv4/validator_stake_runtime459_test.go",
+          "name": "TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity"
+        },
+        {
+          "path": "crv4/validator_stake_runtime460_test.go",
+          "name": "TestRuntimeArtifactMetadataValidatorScheduleRuntime460"
+        },
+        {
+          "path": "crv4/validator_stake_runtime460_test.go",
+          "name": "TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity"
+        }
+      ]
+    },
+    {
+      "package": "./miner",
+      "count": 16,
+      "selector": "^(TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation|TestBindFleetRuntimeUsesAuthenticatedCurrentArtifact|TestDialFleetNativeContextBindsDeadlineThroughRuntimeAuthentication|TestDialFleetNativeContextClampsEndpointDeadlineToParent|TestDialFleetNativeContextFailsOverAfterSlowEndpointDeadline|TestFleetFinalizedRuntime460AuthenticatesIndependentExactHeads|TestFleetFinalizedRuntime460RejectsPrecedingSpecWithReviewedBytes|TestFleetFinalizedRuntimeGateRejectsFormerSpecOnlyPin|TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority|TestFleetRuntime460RejectsReceiptRuntimeDriftAfterCurrentAuthentication|TestFleetRuntime460Retains458EvidenceWithoutCurrentAuthority|TestFleetRuntimeArtifactAuthenticationSharesMetadataAcrossConcurrentHeads|TestFleetRuntimeArtifactMatchesReleaseManifests|TestFleetRuntimeArtifactMatchesReviewedMetadataManifest|TestFleetRuntimeAuthenticationRejectsAdjacentArtifactDrift|TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift)$",
+      "tests": [
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetFinalizedRuntime460AuthenticatesIndependentExactHeads"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetFinalizedRuntime460RejectsPrecedingSpecWithReviewedBytes"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetRuntime460RejectsReceiptRuntimeDriftAfterCurrentAuthentication"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetRuntime460Retains458EvidenceWithoutCurrentAuthority"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetRuntimeArtifactMatchesReviewedMetadataManifest"
+        },
+        {
+          "path": "miner/fleet_runtime_458_test.go",
+          "name": "TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestBindFleetRuntimeUsesAuthenticatedCurrentArtifact"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestDialFleetNativeContextBindsDeadlineThroughRuntimeAuthentication"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestDialFleetNativeContextClampsEndpointDeadlineToParent"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestDialFleetNativeContextFailsOverAfterSlowEndpointDeadline"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestFleetFinalizedRuntimeGateRejectsFormerSpecOnlyPin"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestFleetRuntimeArtifactAuthenticationSharesMetadataAcrossConcurrentHeads"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestFleetRuntimeArtifactMatchesReleaseManifests"
+        },
+        {
+          "path": "miner/fleet_runtime_test.go",
+          "name": "TestFleetRuntimeAuthenticationRejectsAdjacentArtifactDrift"
+        }
+      ]
+    },
+    {
+      "package": "./sim-testnet",
+      "count": 54,
+      "selector": "^(TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair|TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions|TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership|TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution|TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin|TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire|TestProducerGatePinsExactBlockRuntimeClientRegressions|TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions|TestProducerGatePinsSemanticIntegrityRegressions|TestProducerGateStateSelectionCoversNativeSourceCommitmentJob|TestPublishedManifestBindsCompleteRuntimeIdentity|TestReleaseConfigHashBindsPublicAndHyperparameterManifests|TestReleaseGatesAttestPinnedRuntime454RustSource|TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain|TestReleaseLockDecodesCanonicalRuntimeFields|TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection|TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock|TestResolvedConfigBindsAllRuntimeVersions|TestResolvedConfigPinsReviewedRuntimeArtifactIdentity|TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly|TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute|TestRuntime458ArtifactRpcPreservesExactResponse|TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses|TestRuntime458CanonicalLockRetainsHistoricalProvenance|TestRuntime458HistoricalLockRejectsOfficialSeedVariant|TestRuntime458HistoryAllowlistReachesArtifactReader|TestRuntime458PublicationsRejectCrossArtifactPairs|TestRuntime458SourceAttestationIncludesExactCompatibilityDelta|TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift|TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory|TestRuntime459ConfigHashPreserves455And458Domains|TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval|TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies|TestRuntime460Archived459LockRetainsExactProvenance|TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal|TestRuntime460HistoricalPublicationsRemainEvidenceOnly|TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval|TestRuntime460SourceAttestationPreservesReviewed459Scope|TestRuntimeCodeHashValidationIsExact|TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval|TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460|TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads|TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation|TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks|TestRuntimeMetadataHashValidationIsExact|TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding|TestRuntimeVersionIdentityRejectsAdjacentDrift|TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority|TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority|TestValidatorEvidenceHistoricalLockPreservesStaticControls|TestValidatorEvidenceHistoricalLockRejectsApprovalDrift|TestValidatorEvidenceHistoricalLockRejectsForeignRuntime|TestValidatorEvidenceHistoricalLockReopensOriginalApproval|TestValidatorEvidenceHistoricalLockRestartsCurrentCarry)$",
+      "tests": [
+        {
+          "path": "sim-testnet/config_test.go",
+          "name": "TestPublishedManifestBindsCompleteRuntimeIdentity"
+        },
+        {
+          "path": "sim-testnet/config_test.go",
+          "name": "TestReleaseConfigHashBindsPublicAndHyperparameterManifests"
+        },
+        {
+          "path": "sim-testnet/config_test.go",
+          "name": "TestReleaseLockDecodesCanonicalRuntimeFields"
+        },
+        {
+          "path": "sim-testnet/config_test.go",
+          "name": "TestResolvedConfigBindsAllRuntimeVersions"
+        },
+        {
+          "path": "sim-testnet/config_test.go",
+          "name": "TestResolvedConfigPinsReviewedRuntimeArtifactIdentity"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestRuntimeCodeHashValidationIsExact"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestRuntimeMetadataHashValidationIsExact"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding"
+        },
+        {
+          "path": "sim-testnet/doctor_test.go",
+          "name": "TestRuntimeVersionIdentityRejectsAdjacentDrift"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockPreservesStaticControls"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockRejectsApprovalDrift"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockRejectsForeignRuntime"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockReopensOriginalApproval"
+        },
+        {
+          "path": "sim-testnet/evidence_carry_runtime_history_test.go",
+          "name": "TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"
+        },
+        {
+          "path": "sim-testnet/release_gate_launch_source_test.go",
+          "name": "TestProducerGateStateSelectionCoversNativeSourceCommitmentJob"
+        },
+        {
+          "path": "sim-testnet/release_gate_test.go",
+          "name": "TestProducerGatePinsExactBlockRuntimeClientRegressions"
+        },
+        {
+          "path": "sim-testnet/release_gate_test.go",
+          "name": "TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions"
+        },
+        {
+          "path": "sim-testnet/release_gate_test.go",
+          "name": "TestProducerGatePinsSemanticIntegrityRegressions"
+        },
+        {
+          "path": "sim-testnet/release_gate_test.go",
+          "name": "TestReleaseGatesAttestPinnedRuntime454RustSource"
+        },
+        {
+          "path": "sim-testnet/release_lock_render_test.go",
+          "name": "TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection"
+        },
+        {
+          "path": "sim-testnet/release_lock_render_test.go",
+          "name": "TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock"
+        },
+        {
+          "path": "sim-testnet/release_runtime458_source_test.go",
+          "name": "TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute"
+        },
+        {
+          "path": "sim-testnet/release_runtime458_source_test.go",
+          "name": "TestRuntime458ArtifactRpcPreservesExactResponse"
+        },
+        {
+          "path": "sim-testnet/release_runtime458_source_test.go",
+          "name": "TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses"
+        },
+        {
+          "path": "sim-testnet/release_runtime458_source_test.go",
+          "name": "TestRuntime458SourceAttestationIncludesExactCompatibilityDelta"
+        },
+        {
+          "path": "sim-testnet/release_runtime459_source_test.go",
+          "name": "TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory"
+        },
+        {
+          "path": "sim-testnet/release_runtime459_source_test.go",
+          "name": "TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies"
+        },
+        {
+          "path": "sim-testnet/release_runtime460_source_test.go",
+          "name": "TestRuntime460SourceAttestationPreservesReviewed459Scope"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"
+        },
+        {
+          "path": "sim-testnet/runtime_config_identity_test.go",
+          "name": "TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"
+        },
+        {
+          "path": "sim-testnet/runtime_evidence_historical_runtime_test.go",
+          "name": "TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval"
+        },
+        {
+          "path": "sim-testnet/runtime_evidence_historical_runtime_test.go",
+          "name": "TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460"
+        },
+        {
+          "path": "sim-testnet/runtime_evidence_historical_runtime_test.go",
+          "name": "TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads"
+        },
+        {
+          "path": "sim-testnet/runtime_evidence_historical_runtime_test.go",
+          "name": "TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation"
+        },
+        {
+          "path": "sim-testnet/runtime_evidence_historical_runtime_test.go",
+          "name": "TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime458HistoricalLockRejectsOfficialSeedVariant"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime458HistoryAllowlistReachesArtifactReader"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime458PublicationsRejectCrossArtifactPairs"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_458_test.go",
+          "name": "TestRuntime460HistoricalPublicationsRemainEvidenceOnly"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_459_test.go",
+          "name": "TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_459_test.go",
+          "name": "TestRuntime459ConfigHashPreserves455And458Domains"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_459_test.go",
+          "name": "TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_460_test.go",
+          "name": "TestRuntime460Archived459LockRetainsExactProvenance"
+        },
+        {
+          "path": "sim-testnet/runtime_identity_460_test.go",
+          "name": "TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval"
+        }
+      ]
+    },
+    {
+      "package": "./validator",
+      "count": 25,
+      "selector": "^(TestAuthenticatePinnedNativeRuntimeAtContextCancelsPublicRPC|TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift|TestReleaseEvidenceV2HistoricalRuntimeActivationAuthenticatesOriginalConsent|TestReleaseEvidenceV2HistoricalRuntimeActivationRejectsChangedAuthority|TestReleaseEvidenceV2HistoricalRuntimeAdoptionChecksExactAppliedRow|TestReleaseEvidenceV2HistoricalRuntimeArchiveRejectsChangedOriginalConfig|TestReleaseEvidenceV2HistoricalRuntimeArchiveReplaysOriginalConfig|TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata|TestReleaseEvidenceV2HistoricalRuntimeDecisionRetainsOriginalSources|TestReleaseEvidenceV2HistoricalRuntimeFinalizedSourceReachesOriginalEventVerifier|TestReleaseEvidenceV2HistoricalRuntimeKeepsFreshSigningCurrent|TestReleaseEvidenceV2HistoricalRuntimeLegacyReconcilePersistsExactReceipt|TestReleaseEvidenceV2HistoricalRuntimeLegacyReconcileRejectsDispatchFailure|TestReleaseEvidenceV2HistoricalRuntimePendingLegacyRefusesNewSubmission|TestReleaseEvidenceV2HistoricalRuntimePendingSignedV2RefusesNewSubmission|TestReleaseEvidenceV2HistoricalRuntimePendingV2RefusesNewSubmission|TestReleaseEvidenceV2HistoricalRuntimeSelectionPreservesExplicitAuthority|TestReleaseEvidenceV2HistoricalRuntimeSignedReconcileAuthenticatesReceiptBeforePublication|TestReleaseEvidenceV2HistoricalRuntimeSourceAuthenticatesOriginalSignedBatch|TestReleaseEvidenceV2HistoricalRuntimeStartupChecksOriginalSchedule|TestReleaseRuntime459RetainsBothOriginalCompanionDomains|TestReleaseRuntime460AuthenticatesOriginal458BlockWithoutCurrentAuthority|TestReleaseRuntime460PreservesEachOriginalCompanionDomain|TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc|TestReleaseRuntime460RequiresExactReviewedArtifact)$",
+      "tests": [
+        {
+          "path": "validator/release_historical_reconcile_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeLegacyReconcilePersistsExactReceipt"
+        },
+        {
+          "path": "validator/release_historical_reconcile_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeLegacyReconcileRejectsDispatchFailure"
+        },
+        {
+          "path": "validator/release_historical_reconcile_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeSignedReconcileAuthenticatesReceiptBeforePublication"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeActivationAuthenticatesOriginalConsent"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeActivationRejectsChangedAuthority"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeAdoptionChecksExactAppliedRow"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeArchiveRejectsChangedOriginalConfig"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeArchiveReplaysOriginalConfig"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeDecisionRetainsOriginalSources"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeKeepsFreshSigningCurrent"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimePendingLegacyRefusesNewSubmission"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimePendingV2RefusesNewSubmission"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeSelectionPreservesExplicitAuthority"
+        },
+        {
+          "path": "validator/release_historical_runtime_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeStartupChecksOriginalSchedule"
+        },
+        {
+          "path": "validator/release_historical_source_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata"
+        },
+        {
+          "path": "validator/release_historical_source_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeFinalizedSourceReachesOriginalEventVerifier"
+        },
+        {
+          "path": "validator/release_historical_source_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimePendingSignedV2RefusesNewSubmission"
+        },
+        {
+          "path": "validator/release_historical_source_test.go",
+          "name": "TestReleaseEvidenceV2HistoricalRuntimeSourceAuthenticatesOriginalSignedBatch"
+        },
+        {
+          "path": "validator/runtime_identity_458_test.go",
+          "name": "TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc"
+        },
+        {
+          "path": "validator/runtime_identity_458_test.go",
+          "name": "TestReleaseRuntime460RequiresExactReviewedArtifact"
+        },
+        {
+          "path": "validator/runtime_identity_459_test.go",
+          "name": "TestReleaseRuntime459RetainsBothOriginalCompanionDomains"
+        },
+        {
+          "path": "validator/runtime_identity_459_test.go",
+          "name": "TestReleaseRuntime460AuthenticatesOriginal458BlockWithoutCurrentAuthority"
+        },
+        {
+          "path": "validator/runtime_identity_460_test.go",
+          "name": "TestReleaseRuntime460PreservesEachOriginalCompanionDomain"
+        },
+        {
+          "path": "validator/runtime_identity_test.go",
+          "name": "TestAuthenticatePinnedNativeRuntimeAtContextCancelsPublicRPC"
+        },
+        {
+          "path": "validator/runtime_identity_test.go",
+          "name": "TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift"
+        }
+      ]
+    }
+  ]
+}

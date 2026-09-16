@@ -1,0 +1,1 @@
+timeout --foreground --kill-after=15s 120s validator.test -test.list=anchored-selector | sort -u

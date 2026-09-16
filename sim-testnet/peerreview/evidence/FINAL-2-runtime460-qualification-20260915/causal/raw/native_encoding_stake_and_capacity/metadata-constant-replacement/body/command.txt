@@ -1,0 +1,1 @@
+go tool test2json exact causal expected-failure selection; package cwd; USB-private tmp/gotmp; offline

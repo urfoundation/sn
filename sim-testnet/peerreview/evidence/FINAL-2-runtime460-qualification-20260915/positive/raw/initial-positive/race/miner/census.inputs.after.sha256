@@ -1,0 +1,3 @@
+d9d764103d8c6f3ed5c02e7191cd4ff85942cf287d640e8bf77f9865ffb197c2  /mnt/data/sn-testnet/qualification/runtime460-affected-matrix-20260915-r1/terra/selectors/miner.selector
+2b0760ec870102b2d2ebd4463cc9eb30f3e665ca1462169fda449351ce0acdc9  /mnt/data/sn-testnet/qualification/runtime460-affected-matrix-20260915-r1/terra/selectors/miner.expected-tests.txt
+7855e032ac555f54ed06f67163a923b383673c09a1ca0fc9bae8b80e15a191f0  /mnt/data/sn-testnet/qualification/runtime460-affected-matrix-20260915-r1/terra/compile/miner-race/miner.race.test

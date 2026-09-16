@@ -1,0 +1,1 @@
+cohort=catalog_predecessor_omission package=crv4 mode=normal expected_commit=ec2a30367c2b66245319ef36365a07d6984a1702 source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission-crv4-type-repair/workspace/sn

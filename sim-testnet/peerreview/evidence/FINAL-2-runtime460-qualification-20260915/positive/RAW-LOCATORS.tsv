@@ -1,0 +1,5 @@
+label	original_capture	portable_copy	source_commit	scope
+initial-positive	/mnt/data/sn-testnet/qualification/runtime460-affected-matrix-20260915-r1/terra	raw/initial-positive	0127b7ee08d1cd77262a6dd28b606e2cfee33e6b	108 selected roots/mode; initial compiler/body receipts
+crv4-type-repair	/mnt/data/sn-testnet/qualification/runtime460-crv4-type-repair-20260915-r1/terra	raw/crv4-type-repair	27eecfdf49cf90593de4a0e5ff905af8657c5d94	CRV4 13-root type-repair receipt
+four-root-retry	/mnt/data/sn-testnet/qualification/runtime460-failed-root-retry-20260915-r1/terra	raw/four-root-retry	7989fa78faae81b82138c79e43dded16aad449dc	four failed roots/mode replacement receipt
+offline-probe	/mnt/data/sn-testnet/qualification/runtime460-terra-offline-probe-20260915-r1	raw/offline-probe	n/a	exact-Wasm metadata probe

@@ -1,0 +1,28 @@
+{
+  "name": "original_configuration_identity",
+  "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "restore_files": [
+    "sim-testnet/runtime_config_identity.go"
+  ],
+  "tests": [
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime459ConfigHashPreserves455And458Domains",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./sim-testnet": "^(TestRuntime459ConfigHashPreserves455And458Domains|TestRuntime458CanonicalLockRetainsHistoricalProvenance)$"
+  },
+  "source_commit": "4c25223b3c9a28f84cc6a03b98200da21378e684",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/gotmp",
+  "source_clean": true,
+  "executed": false
+}

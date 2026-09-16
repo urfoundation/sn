@@ -1,0 +1,6 @@
+# github.com/urfoundation/sn/crv4 [github.com/urfoundation/sn/crv4.test]
+crv4/runtime_identity_test.go:419:35: invalid operation: offset <= maximumRuntimeMetadataArtifactsPerChain + 1 (mismatched types byte and int)
+crv4/runtime_identity_test.go:426:16: invalid operation: offset <= maximumRuntimeMetadataArtifactsPerChain (mismatched types byte and int)
+crv4/runtime_identity_test.go:429:15: invalid operation: offset > maximumRuntimeMetadataArtifactsPerChain (mismatched types byte and int)
+crv4/runtime_identity_test.go:434:35: invalid operation: offset <= maximumRuntimeMetadataArtifactsPerChain (mismatched types byte and int)
+crv4/runtime_identity_test.go:441:29: invalid operation: metadataCalls.Load() != maximumRuntimeMetadataArtifactsPerChain (mismatched types int64 and int)

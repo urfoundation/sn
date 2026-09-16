@@ -1,0 +1,11 @@
+connect	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/connect
+server	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/server
+warp	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/warp
+operator-proxy	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/operator-proxy
+proxy	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/proxy
+userwireguard	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/userwireguard
+sdk	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/sdk
+glog	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/glog
+goidenticons	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/goidenticons
+vault	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/vault
+config	/mnt/data/sn-testnet/qualification/startup-recovery-batch-20260915-r2/workspace/config

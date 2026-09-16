@@ -1,0 +1,7 @@
+{"Time":"2026-09-15T23:45:36.970849598Z","Action":"start"}
+{"Time":"2026-09-15T23:45:36.999678822Z","Action":"run","Test":"TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant"}
+{"Time":"2026-09-15T23:45:36.999758254Z","Action":"output","Test":"TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant","Output":"=== RUN   TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant\n"}
+{"Time":"2026-09-15T23:45:38.913643052Z","Action":"output","Test":"TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant","Output":"--- PASS: TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant (1.91s)\n"}
+{"Time":"2026-09-15T23:45:38.91444756Z","Action":"pass","Test":"TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant","Elapsed":1.91}
+{"Time":"2026-09-15T23:45:38.914490383Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-15T23:45:39.921182641Z","Action":"pass","Elapsed":2.95}

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "native_encoding_metadata_constant_control_repair",
+  "source_commit": "b2ea4f83a3931780137bccb612dbe78a71dbd864",
+  "parent_commit": "62ff658759606c15d979d36ffc8f415f463454b6",
+  "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "restore_files": [
+    "crv4/source_commitment.go",
+    "crv4/validator_stake.go",
+    "crv4/runtime_identity.go"
+  ],
+  "changed_files": [
+    "crv4/source_commitment_runtime460_test.go"
+  ],
+  "changed_file_sha256": "ebe20b2004d9d989cfa8504fd7fce13c2a40cfa0c9edbfac85a682f8ce2cfb2f",
+  "tests": [
+    {
+      "package": "./crv4",
+      "name": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./crv4": "^TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant$"
+  },
+  "expected_body_exit": 0,
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding-metadata-constant-repair/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding-metadata-constant-repair/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding-metadata-constant-repair/gotmp",
+  "source_clean": true,
+  "executed": false,
+  "retain_original_capture": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/native_encoding_stake_and_capacity/crv4",
+  "reuse": "The other seven original native causal root outcomes remain valid. This one corrected control supersedes only its failed prior test-body implementation. No classifier change."
+}

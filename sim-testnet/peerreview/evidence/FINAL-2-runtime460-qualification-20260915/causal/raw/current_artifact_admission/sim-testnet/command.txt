@@ -1,0 +1,1 @@
+cohort=current_artifact_admission package=sim-testnet mode=normal expected_commit=d216a9311e64df7c6e23d5eef45de353d7294b8d source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/workspace/sn

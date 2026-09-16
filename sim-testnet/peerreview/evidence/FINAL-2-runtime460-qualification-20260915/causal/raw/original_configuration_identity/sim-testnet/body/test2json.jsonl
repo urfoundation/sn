@@ -1,0 +1,17 @@
+{"Time":"2026-09-15T23:38:07.320372024Z","Action":"start"}
+{"Time":"2026-09-15T23:38:07.395612845Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:38:07.395710171Z","Action":"output","Output":"I0915 23:38:07.395507 2674650 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:07.395807644Z","Action":"output","Output":"I0915 23:38:07.395762 2674650 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:07.39587966Z","Action":"output","Output":"I0915 23:38:07.395853 2674650 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:07.395908024Z","Action":"output","Output":"I0915 23:38:07.395882 2674650 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:38:07.408667987Z","Action":"run","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance"}
+{"Time":"2026-09-15T23:38:07.408697421Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance\n"}
+{"Time":"2026-09-15T23:38:07.410685839Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:38:07.410745603Z","Action":"pass","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:38:07.410760737Z","Action":"run","Test":"TestRuntime459ConfigHashPreserves455And458Domains"}
+{"Time":"2026-09-15T23:38:07.410769337Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"=== RUN   TestRuntime459ConfigHashPreserves455And458Domains\n"}
+{"Time":"2026-09-15T23:38:07.412331019Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"    runtime_identity_459_test.go:34: runtime460 changed original activation identity or input bytes: runtime configuration identity is not the explicit reviewed 455-to-458/459 transitions\n"}
+{"Time":"2026-09-15T23:38:07.412408094Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"--- FAIL: TestRuntime459ConfigHashPreserves455And458Domains (0.00s)\n"}
+{"Time":"2026-09-15T23:38:07.412421706Z","Action":"fail","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Elapsed":0}
+{"Time":"2026-09-15T23:38:07.412429249Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:38:07.418413442Z","Action":"fail","Elapsed":0.098}

@@ -1,0 +1,1 @@
+cohort=original_configuration_identity package=sim-testnet mode=normal expected_commit=4c25223b3c9a28f84cc6a03b98200da21378e684 source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/original_configuration_identity/workspace/sn

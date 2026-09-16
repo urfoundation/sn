@@ -1,0 +1,144 @@
+{
+  "extraction": true,
+  "raw_source": "runtime460-20260915-r1/upstream-records/459-to-460.json",
+  "raw_source_sha256": "68bb6d53ffe81cb5c0d1c0ee26ad5dfe6fd4f52dba62b205d7b9fd330bdd8033",
+  "url": "https://api.github.com/repos/RaoFoundation/subtensor/compare/70378404b56c12a85bc8cd163aca2f32cf4d1b80...8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+  "html_url": "https://github.com/RaoFoundation/subtensor/compare/70378404b56c12a85bc8cd163aca2f32cf4d1b80...8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+  "status": "ahead",
+  "ahead_by": 5,
+  "behind_by": 0,
+  "total_commits": 5,
+  "base_commit": {
+    "sha": "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
+    "html_url": "https://github.com/RaoFoundation/subtensor/commit/70378404b56c12a85bc8cd163aca2f32cf4d1b80"
+  },
+  "commits": [
+    {
+      "sha": "1ac417488e0dce3cbd43d2d16c0271f6aa7c611b",
+      "html_url": "https://github.com/RaoFoundation/subtensor/commit/1ac417488e0dce3cbd43d2d16c0271f6aa7c611b",
+      "subject": "fix(subtensor): start a share-pool epoch when a pool opens so pre-upgrade leftovers are retired"
+    },
+    {
+      "sha": "09325bfab318e57bc3c22670be0155b904b182e8",
+      "html_url": "https://github.com/RaoFoundation/subtensor/commit/09325bfab318e57bc3c22670be0155b904b182e8",
+      "subject": "chore(runtime): bump spec_version to 460"
+    },
+    {
+      "sha": "4a8ba4edd69f395f9ceea53e50334679db169da2",
+      "html_url": "https://github.com/RaoFoundation/subtensor/commit/4a8ba4edd69f395f9ceea53e50334679db169da2",
+      "subject": "fix(subtensor): start a share-pool epoch on both denominator transitions"
+    },
+    {
+      "sha": "6ccd294cf162ac090a699a42a3c73e7c73d67800",
+      "html_url": "https://github.com/RaoFoundation/subtensor/commit/6ccd294cf162ac090a699a42a3c73e7c73d67800",
+      "subject": "chore(sdk): regenerate runtime metadata bindings for spec 460"
+    },
+    {
+      "sha": "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+      "html_url": "https://github.com/RaoFoundation/subtensor/commit/8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+      "subject": "Merge pull request #3164 from RaoFoundation/fix/sharepool-epoch-on-open"
+    }
+  ],
+  "files": [
+    {
+      "filename": "pallets/subtensor/src/staking/stake_utils.rs",
+      "status": "modified",
+      "additions": 11,
+      "deletions": 8,
+      "changes": 19,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Fstaking%2Fstake_utils.rs",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Fstaking%2Fstake_utils.rs",
+      "patch": "@@ -1713,18 +1713,21 @@ impl<T: Config> SharePoolDataOperations<AlphaShareKey<T>>\n             TotalHotkeyShares::<T>::remove(&self.hotkey, self.netuid);\n         }\n \n+        // Both denominator transitions start a new epoch, so every share row written\n+        // before the transition reads as absent. Closing retires the leftovers at once (a\n+        // dividend can give a closed pool value again before anyone re-opens it); opening\n+        // also retires rows left by pools that were drained before epochs existed. Rows\n+        // cannot be enumerated per pool, so they are retired lazily instead of deleted.\n+        if previous.is_zero() != update.is_zero() {\n+            AlphaSharePoolEpoch::<T>::mutate(&self.hotkey, self.netuid, |epoch| {\n+                *epoch = epoch.saturating_add(1);\n+            });\n+        }\n+\n         if !update.is_zero() {\n             TotalHotkeySharesV2::<T>::insert(&self.hotkey, self.netuid, update);\n         } else {\n             TotalHotkeySharesV2::<T>::remove(&self.hotkey, self.netuid);\n-            if !previous.is_zero() {\n-                // The pool is closed. Move to a new epoch so every share row written so far\n-                // reads as absent; rows cannot be enumerated per pool, so they are retired\n-                // lazily instead of deleted.\n-                AlphaSharePoolEpoch::<T>::mutate(&self.hotkey, self.netuid, |epoch| {\n-                    *epoch = epoch.saturating_add(1);\n-                });\n-            }\n         }\n     }\n }"
+    },
+    {
+      "filename": "pallets/subtensor/src/tests/destroy_alpha_tests.rs",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 2,
+      "changes": 7,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Ftests%2Fdestroy_alpha_tests.rs",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Ftests%2Fdestroy_alpha_tests.rs",
+      "patch": null
+    },
+    {
+      "filename": "pallets/subtensor/src/tests/staking.rs",
+      "status": "modified",
+      "additions": 87,
+      "deletions": 1,
+      "changes": 88,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Ftests%2Fstaking.rs",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/pallets%2Fsubtensor%2Fsrc%2Ftests%2Fstaking.rs",
+      "patch": null
+    },
+    {
+      "filename": "primitives/share-pool/src/lib.rs",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 2,
+      "changes": 5,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/primitives%2Fshare-pool%2Fsrc%2Flib.rs",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/primitives%2Fshare-pool%2Fsrc%2Flib.rs",
+      "patch": "@@ -523,8 +523,9 @@ where\n         let shared_value: u64 = self.state_ops.get_shared_value();\n         let denominator: SafeFloat = self.state_ops.get_denominator();\n \n-        // Then, update this key's share\n-        if denominator.mantissa == 0 {\n+        // A pool with no denominator, or with shares but no value, is (re)opened by a\n+        // deposit and always accepts it; otherwise the deposit must buy at least one share.\n+        if denominator.mantissa == 0 || (update > 0 && shared_value == 0) {\n             true\n         } else {\n             // There are already keys in the pool, set or update this key"
+    },
+    {
+      "filename": "runtime/src/lib.rs",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/runtime%2Fsrc%2Flib.rs",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/runtime%2Fsrc%2Flib.rs",
+      "patch": "@@ -235,7 +235,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {\n     //   `spec_version`, and `authoring_version` are the same between Wasm and native.\n     // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use\n     //   the compatible custom types.\n-    spec_version: 459,\n+    spec_version: 460,\n     impl_version: 1,\n     apis: RUNTIME_API_VERSIONS,\n     transaction_version: 1,"
+    },
+    {
+      "filename": "sdk/python/bittensor/_generated/calls.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fcalls.py",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fcalls.py",
+      "patch": "@@ -1,7 +1,7 @@\n \"\"\"Generated from runtime metadata by codegen. DO NOT EDIT BY HAND.\n \n Regenerate with: python -m codegen <ws-endpoint>\n-Spec version: 459\n+Spec version: 460\n \"\"\"\n from typing import Any, NamedTuple\n "
+    },
+    {
+      "filename": "sdk/python/bittensor/_generated/constants.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fconstants.py",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fconstants.py",
+      "patch": "@@ -1,7 +1,7 @@\n \"\"\"Generated from runtime metadata by codegen. DO NOT EDIT BY HAND.\n \n Regenerate with: python -m codegen <ws-endpoint>\n-Spec version: 459\n+Spec version: 460\n \n Pallet constant descriptors: unpack into substrate.constant.\n \"\"\""
+    },
+    {
+      "filename": "sdk/python/bittensor/_generated/errors.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Ferrors.py",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Ferrors.py",
+      "patch": "@@ -1,7 +1,7 @@\n \"\"\"Generated from runtime metadata by codegen. DO NOT EDIT BY HAND.\n \n Regenerate with: python -m codegen <ws-endpoint>\n-Spec version: 459\n+Spec version: 460\n \"\"\"\n from dataclasses import dataclass\n "
+    },
+    {
+      "filename": "sdk/python/bittensor/_generated/runtime_apis.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fruntime_apis.py",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fruntime_apis.py",
+      "patch": "@@ -1,7 +1,7 @@\n \"\"\"Generated from runtime metadata by codegen. DO NOT EDIT BY HAND.\n \n Regenerate with: python -m codegen <ws-endpoint>\n-Spec version: 459\n+Spec version: 460\n \n Runtime API method descriptors: unpack into substrate.runtime_call.\n \"\"\""
+    },
+    {
+      "filename": "sdk/python/bittensor/_generated/storage.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/RaoFoundation/subtensor/blob/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fstorage.py",
+      "raw_url": "https://github.com/RaoFoundation/subtensor/raw/8d5f20ec1a5e5d90295d43046dacdefc54aaed06/sdk%2Fpython%2Fbittensor%2F_generated%2Fstorage.py",
+      "patch": "@@ -1,7 +1,7 @@\n \"\"\"Generated from runtime metadata by codegen. DO NOT EDIT BY HAND.\n \n Regenerate with: python -m codegen <ws-endpoint>\n-Spec version: 459\n+Spec version: 460\n \n Storage item descriptors: unpack into substrate.query/query_map. Each carries its VALUE's type identity (value_type_ident) so normalization can key on the runtime's own type names without a node round-trip.\n \"\"\""
+    }
+  ]
+}

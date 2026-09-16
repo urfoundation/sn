@@ -1,0 +1,25 @@
+{
+  "name": "catalog_predecessor_omission",
+  "mutation": {
+    "path": "crv4/reviewed_runtime.go",
+    "description": "Remove only the immutable reviewedRuntimeArtifacts row whose explicit SpecVersion is459; retain current460 constants, all other rows, public manifest and fixtures."
+  },
+  "tests": [
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+      "expected": "FAIL"
+    }
+  ],
+  "selectors": {
+    "./crv4": "^(TestRuntimeArtifactMetadataCatalogPreservesExactManifest)$"
+  },
+  "source_commit": "ec2a30367c2b66245319ef36365a07d6984a1702",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission-crv4-type-repair/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission-crv4-type-repair/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission-crv4-type-repair/gotmp",
+  "source_clean": true,
+  "executed": false,
+  "type_repair_commit": "27eecfdf49cf90593de4a0e5ff905af8657c5d94",
+  "retained_original_causal_commit": "d09ad52c76e064512f7bc428c1c20818a1293bbc"
+}

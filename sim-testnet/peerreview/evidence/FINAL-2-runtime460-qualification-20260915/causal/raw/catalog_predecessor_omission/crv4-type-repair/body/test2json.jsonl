@@ -1,0 +1,8 @@
+{"Time":"2026-09-15T23:34:17.828782817Z","Action":"start"}
+{"Time":"2026-09-15T23:34:17.834219562Z","Action":"run","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest"}
+{"Time":"2026-09-15T23:34:17.83431348Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"=== RUN   TestRuntimeArtifactMetadataCatalogPreservesExactManifest\n"}
+{"Time":"2026-09-15T23:34:17.834503898Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"    reviewed_runtime_test.go:32: catalog lost an exact retained artifact\n"}
+{"Time":"2026-09-15T23:34:17.83454001Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"--- FAIL: TestRuntimeArtifactMetadataCatalogPreservesExactManifest (0.00s)\n"}
+{"Time":"2026-09-15T23:34:17.834595525Z","Action":"fail","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Elapsed":0}
+{"Time":"2026-09-15T23:34:17.834612666Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:34:17.835204098Z","Action":"fail","Elapsed":0.006}

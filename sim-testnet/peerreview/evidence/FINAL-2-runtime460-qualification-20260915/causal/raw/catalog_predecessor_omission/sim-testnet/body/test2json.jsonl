@@ -1,0 +1,17 @@
+{"Time":"2026-09-15T23:37:55.573171927Z","Action":"start"}
+{"Time":"2026-09-15T23:37:55.628102603Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:37:55.628208208Z","Action":"output","Output":"I0915 23:37:55.627986 2673516 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:55.62832119Z","Action":"output","Output":"I0915 23:37:55.628284 2673516 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:55.628389989Z","Action":"output","Output":"I0915 23:37:55.628365 2673516 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:55.62842688Z","Action":"output","Output":"I0915 23:37:55.628392 2673516 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:37:55.642490215Z","Action":"run","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain"}
+{"Time":"2026-09-15T23:37:55.642554472Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"=== RUN   TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain\n"}
+{"Time":"2026-09-15T23:37:55.647930407Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"    doctor_test.go:664: history artifacts=7, want 8\n"}
+{"Time":"2026-09-15T23:37:55.648007619Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"--- FAIL: TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain (0.01s)\n"}
+{"Time":"2026-09-15T23:37:55.649154601Z","Action":"fail","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Elapsed":0.01}
+{"Time":"2026-09-15T23:37:55.649205086Z","Action":"run","Test":"TestRuntime460Archived459LockRetainsExactProvenance"}
+{"Time":"2026-09-15T23:37:55.649216779Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"=== RUN   TestRuntime460Archived459LockRetainsExactProvenance\n"}
+{"Time":"2026-09-15T23:37:55.652942827Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"--- PASS: TestRuntime460Archived459LockRetainsExactProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:37:55.653097167Z","Action":"pass","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:37:55.653142153Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:37:55.659485018Z","Action":"fail","Elapsed":0.086}

@@ -1,0 +1,22 @@
+{"Time":"2026-09-15T23:38:02.767778618Z","Action":"start"}
+{"Time":"2026-09-15T23:38:02.824078783Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:38:02.824176338Z","Action":"output","Output":"I0915 23:38:02.824001 2674177 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:02.824235989Z","Action":"output","Output":"I0915 23:38:02.824211 2674177 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:02.824290743Z","Action":"output","Output":"I0915 23:38:02.824269 2674177 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:38:02.824299893Z","Action":"output","Output":"I0915 23:38:02.824288 2674177 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:38:02.833399039Z","Action":"run","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift"}
+{"Time":"2026-09-15T23:38:02.833434706Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"=== RUN   TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift\n"}
+{"Time":"2026-09-15T23:38:02.835352245Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"--- PASS: TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift (0.00s)\n"}
+{"Time":"2026-09-15T23:38:02.835374553Z","Action":"pass","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Elapsed":0}
+{"Time":"2026-09-15T23:38:02.835382436Z","Action":"run","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-15T23:38:02.835386626Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-15T23:38:03.993190631Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"    runtime_identity_460_test.go:30: runtime460 cannot reopen original459 companion: persisted active setup plan: validator evidence original release lock: validator evidence archived runtime version is not a reviewed companion release\n"}
+{"Time":"2026-09-15T23:38:03.994045501Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"--- FAIL: TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval (1.16s)\n"}
+{"Time":"2026-09-15T23:38:03.99406822Z","Action":"fail","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Elapsed":1.16}
+{"Time":"2026-09-15T23:38:03.994077713Z","Action":"run","Test":"TestRuntime460Archived459LockRetainsExactProvenance"}
+{"Time":"2026-09-15T23:38:03.994082032Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"=== RUN   TestRuntime460Archived459LockRetainsExactProvenance\n"}
+{"Time":"2026-09-15T23:38:03.995573165Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"    runtime_identity_460_test.go:54: validator evidence archived runtime version is not a reviewed companion release\n"}
+{"Time":"2026-09-15T23:38:03.995597535Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"--- FAIL: TestRuntime460Archived459LockRetainsExactProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:38:03.995628913Z","Action":"fail","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:38:03.995640923Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:38:04.007166409Z","Action":"fail","Elapsed":1.2389999999999999}

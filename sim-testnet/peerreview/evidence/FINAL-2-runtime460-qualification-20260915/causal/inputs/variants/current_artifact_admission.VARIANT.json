@@ -1,0 +1,52 @@
+{
+  "name": "current_artifact_admission",
+  "restore_from": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "restore_files": [
+    "miner/fleet_runtime.go",
+    "validator/runtime_identity.go",
+    "sim-testnet/release_lock.go"
+  ],
+  "tests": [
+    {
+      "package": "./miner",
+      "name": "TestFleetRuntimeArtifactMatchesReviewedMetadataManifest",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./miner",
+      "name": "TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation",
+      "expected": "PASS"
+    },
+    {
+      "package": "./validator",
+      "name": "TestReleaseRuntime460RequiresExactReviewedArtifact",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./validator",
+      "name": "TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc",
+      "expected": "PASS"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./miner": "^(TestFleetRuntimeArtifactMatchesReviewedMetadataManifest|TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation)$",
+    "./validator": "^(TestReleaseRuntime460RequiresExactReviewedArtifact|TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc)$",
+    "./sim-testnet": "^(TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal|TestRuntime458CanonicalLockRetainsHistoricalProvenance)$"
+  },
+  "source_commit": "d216a9311e64df7c6e23d5eef45de353d7294b8d",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/gotmp",
+  "source_clean": true,
+  "executed": false
+}

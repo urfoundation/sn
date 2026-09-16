@@ -1,0 +1,16 @@
+{"Time":"2026-09-15T23:47:43.569856228Z","Action":"start"}
+{"Time":"2026-09-15T23:47:43.623625077Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:47:43.623760314Z","Action":"output","Output":"I0915 23:47:43.623553 2695686 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:43.623861439Z","Action":"output","Output":"I0915 23:47:43.623830 2695686 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:43.623943056Z","Action":"output","Output":"I0915 23:47:43.623918 2695686 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:43.623970567Z","Action":"output","Output":"I0915 23:47:43.623946 2695686 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:47:43.636498871Z","Action":"run","Test":"TestProducerGatePinsSemanticIntegrityRegressions"}
+{"Time":"2026-09-15T23:47:43.63657234Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"=== RUN   TestProducerGatePinsSemanticIntegrityRegressions\n"}
+{"Time":"2026-09-15T23:47:52.502545673Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"--- PASS: TestProducerGatePinsSemanticIntegrityRegressions (8.87s)\n"}
+{"Time":"2026-09-15T23:47:52.502684782Z","Action":"pass","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Elapsed":8.87}
+{"Time":"2026-09-15T23:47:52.502704628Z","Action":"run","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute"}
+{"Time":"2026-09-15T23:47:52.502713974Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute\n"}
+{"Time":"2026-09-15T23:47:52.611595011Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"--- PASS: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.11s)\n"}
+{"Time":"2026-09-15T23:47:52.611699691Z","Action":"pass","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Elapsed":0.11}
+{"Time":"2026-09-15T23:47:52.611715796Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-15T23:47:52.62435496Z","Action":"pass","Elapsed":9.055}

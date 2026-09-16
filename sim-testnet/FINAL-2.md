@@ -8,6 +8,33 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
+**The chain advanced to runtime 460 before the revised launch.** The released 459
+executable's plan attempt stopped at 22:38:46 UTC on September 15. A diagnostic
+doctor reproduced four hard failures, all caused by 460-versus-459 admission at
+the same finalized block. Both commands exited 1; their watched state, binary
+and lock bytes remained unchanged. No new plan was emitted or adopted.
+
+The 460 artifact observed at block **8,014,242** matches upstream CI source
+`8d5f20ec1a5e5d90295d43046dacdefc54aaed06`. The existing offline Wasm verifier
+passed at 23:07:53 UTC. The source delta fixes share-pool accounting while
+preserving the native interfaces we use; the metadata has one changed byte,
+its runtime-version constant. This admission refusal does not demonstrate an
+ABI break. The affected runtime correction is qualified and awaiting
+deployment; no new live acceptance is claimed. Original runtime histories,
+finalized actions and unchanged completed qualification remain retained.
+[Actual admission failures, pinned 460 provenance and closed probe receipts](peerreview/evidence/FINAL-2-runtime460-20260915/EVIDENCE.md).
+
+Runtime460 qualification completed on effective source `7989fa78`:
+**108 selected roots per mode**, normally and under race (13 CRV4, 16 miner,
+25 validator, 54 simulator), plus **13 expected failures and 11 passing
+compatibility controls**. Acceptance composes unchanged passing results with
+four corrected tests per mode and one corrected compatibility control. The
+original compiler, fixture and control failures remain preserved with their
+actual exits. Root checked exact positive root membership against the selected
+tests. The fixes preserve all native progress and do not establish live soak
+acceptance.
+[Runtime460 test composition and raw receipts](peerreview/evidence/FINAL-2-runtime460-qualification-20260915/README.md).
+
 **Runtime 459 source and artifact review is complete.** The pinned LAN code at
 block 8,013,770 is byte-identical to the upstream CI artifact built from commit
 `70378404b56c12a85bc8cd163aca2f32cf4d1b80`. The retained offline probe reproduced
@@ -23,7 +50,8 @@ including 21 CRV4, 13 miner, 45 validator and 75 simulator roots. The six
 compatibility-control binaries produced their exact **12 expected failures
 and 6 passing controls**. The original failed runs remain failed; three
 test-only corrections required only their affected replacement checks.
-Release adoption is pending; this does not establish live acceptance.
+The qualified 459 release was published; its native plan admission then refused
+the chain's new runtime 460, as described above. This does not establish live acceptance.
 [Pinned runtime observations, upstream linkage and offline probe](peerreview/evidence/FINAL-2-runtime459-20260915/README.md).
 [Exact test composition, raw outcomes and preserved failures](peerreview/evidence/FINAL-2-startup-recovery-qualification-20260915/README.md).
 

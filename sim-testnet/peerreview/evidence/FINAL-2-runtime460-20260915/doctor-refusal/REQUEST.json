@@ -1,0 +1,12 @@
+{
+  "requested_at": "2026-09-15T22:42:10Z",
+  "operation": "doctor",
+  "read_only": true,
+  "reason": "Collect underlying details for all four hard failures from the actual plan revision, without repeating tests or modifying state",
+  "source_commit": "36d30938eec57ff6681f78e58118df1dd5483502",
+  "cli_sha256": "cb2625868d4a5898686c60d210047cabc276a03f8bafc98db25a666871499678",
+  "release_lock_sha256": "9ff601fcd65176fc84dda5907d4e1ffa658f267ae4e97e72b4822a7928b9fba0",
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized_by_this_command": false
+}

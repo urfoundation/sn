@@ -1,0 +1,1 @@
+cohort=native_encoding_stake_and_capacity package=crv4 mode=normal expected_commit=62ff658759606c15d979d36ffc8f415f463454b6 source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/native_encoding_stake_and_capacity/workspace/sn

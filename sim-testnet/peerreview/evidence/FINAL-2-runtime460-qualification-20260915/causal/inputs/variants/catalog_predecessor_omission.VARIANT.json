@@ -1,0 +1,45 @@
+{
+  "name": "catalog_predecessor_omission",
+  "mutation": {
+    "path": "crv4/reviewed_runtime.go",
+    "description": "Remove only the immutable reviewedRuntimeArtifacts row whose explicit SpecVersion is459; retain current460 constants, all other rows, public manifest and fixtures."
+  },
+  "tests": [
+    {
+      "package": "./crv4",
+      "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./validator",
+      "name": "TestReleaseRuntime460PreservesEachOriginalCompanionDomain",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain",
+      "expected": "FAIL"
+    },
+    {
+      "package": "./validator",
+      "name": "TestReleaseRuntime460RequiresExactReviewedArtifact",
+      "expected": "PASS"
+    },
+    {
+      "package": "./sim-testnet",
+      "name": "TestRuntime460Archived459LockRetainsExactProvenance",
+      "expected": "PASS"
+    }
+  ],
+  "selectors": {
+    "./crv4": "^(TestRuntimeArtifactMetadataCatalogPreservesExactManifest)$",
+    "./validator": "^(TestReleaseRuntime460PreservesEachOriginalCompanionDomain|TestReleaseRuntime460RequiresExactReviewedArtifact)$",
+    "./sim-testnet": "^(TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain|TestRuntime460Archived459LockRetainsExactProvenance)$"
+  },
+  "source_commit": "d09ad52c76e064512f7bc428c1c20818a1293bbc",
+  "workspace": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/workspace/sn",
+  "tmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/tmp",
+  "gotmpdir": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/gotmp",
+  "source_clean": true,
+  "executed": false
+}

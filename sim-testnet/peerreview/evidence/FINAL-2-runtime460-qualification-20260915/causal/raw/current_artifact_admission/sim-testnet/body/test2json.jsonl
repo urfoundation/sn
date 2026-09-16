@@ -1,0 +1,17 @@
+{"Time":"2026-09-15T23:37:35.068236341Z","Action":"start"}
+{"Time":"2026-09-15T23:37:35.124166489Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:37:35.124255216Z","Action":"output","Output":"I0915 23:37:35.124072 2671974 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:35.124321215Z","Action":"output","Output":"I0915 23:37:35.124289 2671974 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:35.124390028Z","Action":"output","Output":"I0915 23:37:35.124366 2671974 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:37:35.124404886Z","Action":"output","Output":"I0915 23:37:35.124390 2671974 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:37:35.139291496Z","Action":"run","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-15T23:37:35.139317135Z","Action":"output","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-15T23:37:35.139450945Z","Action":"output","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Output":"    runtime_identity_458_test.go:51: release lock runtime identity is not the reviewed testnet runtime 459 release\n"}
+{"Time":"2026-09-15T23:37:35.13948452Z","Action":"output","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- FAIL: TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-15T23:37:35.139561521Z","Action":"fail","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-15T23:37:35.139576357Z","Action":"run","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance"}
+{"Time":"2026-09-15T23:37:35.139583736Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance\n"}
+{"Time":"2026-09-15T23:37:35.141568033Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:37:35.141616079Z","Action":"pass","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:37:35.14162532Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:37:35.146165571Z","Action":"fail","Elapsed":0.078}

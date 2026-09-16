@@ -1,0 +1,12 @@
+{"Time":"2026-09-15T23:47:09.874801272Z","Action":"start"}
+{"Time":"2026-09-15T23:47:10.176240538Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:47:10.176443335Z","Action":"output","Output":"I0915 23:47:10.176261 2694741 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:10.176605005Z","Action":"output","Output":"I0915 23:47:10.176555 2694741 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:10.176772337Z","Action":"output","Output":"I0915 23:47:10.176728 2694741 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:47:10.176869487Z","Action":"output","Output":"I0915 23:47:10.176790 2694741 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:47:10.185147998Z","Action":"run","Test":"TestFleetRuntimeArtifactMatchesReleaseManifests"}
+{"Time":"2026-09-15T23:47:10.185183704Z","Action":"output","Test":"TestFleetRuntimeArtifactMatchesReleaseManifests","Output":"=== RUN   TestFleetRuntimeArtifactMatchesReleaseManifests\n"}
+{"Time":"2026-09-15T23:47:10.20087287Z","Action":"output","Test":"TestFleetRuntimeArtifactMatchesReleaseManifests","Output":"--- PASS: TestFleetRuntimeArtifactMatchesReleaseManifests (0.02s)\n"}
+{"Time":"2026-09-15T23:47:10.201092292Z","Action":"pass","Test":"TestFleetRuntimeArtifactMatchesReleaseManifests","Elapsed":0.02}
+{"Time":"2026-09-15T23:47:10.201111133Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-15T23:47:11.20838949Z","Action":"pass","Elapsed":1.334}

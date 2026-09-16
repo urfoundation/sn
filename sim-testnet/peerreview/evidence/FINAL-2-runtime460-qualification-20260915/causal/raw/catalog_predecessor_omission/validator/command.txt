@@ -1,0 +1,1 @@
+cohort=catalog_predecessor_omission package=validator mode=normal expected_commit=d09ad52c76e064512f7bc428c1c20818a1293bbc source=/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/catalog_predecessor_omission/workspace/sn

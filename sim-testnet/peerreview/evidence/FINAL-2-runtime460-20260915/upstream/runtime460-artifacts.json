@@ -1,0 +1,25 @@
+{
+  "total_count": 1,
+  "artifacts": [
+    {
+      "id": 10420673699,
+      "node_id": "MDg6QXJ0aWZhY3QxMDQyMDY3MzY5OQ==",
+      "name": "runtime-460",
+      "size_in_bytes": 2526508,
+      "url": "https://api.github.com/repos/RaoFoundation/subtensor/actions/artifacts/10420673699",
+      "archive_download_url": "https://api.github.com/repos/RaoFoundation/subtensor/actions/artifacts/10420673699/zip",
+      "expired": false,
+      "digest": "sha256:4c00445deb37516aa9bde60a87d65a461721a864ab342a88a5ffed72e4068cca",
+      "created_at": "2026-09-15T22:14:56Z",
+      "updated_at": "2026-09-15T22:14:56Z",
+      "expires_at": "2026-12-14T22:04:51Z",
+      "workflow_run": {
+        "id": 35029090314,
+        "repository_id": 608683796,
+        "head_repository_id": 608683796,
+        "head_branch": "main",
+        "head_sha": "8d5f20ec1a5e5d90295d43046dacdefc54aaed06"
+      }
+    }
+  ]
+}

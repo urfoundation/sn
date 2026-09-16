@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "purpose": "runtime460 native causal replacement for one test-only fixture correction",
+  "supersedes_only": {
+    "capture": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/native_encoding_stake_and_capacity/crv4",
+    "test": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant",
+    "retained_raw_outcomes": "four expected failures and three expected passes"
+  },
+  "cohorts": [
+    {
+      "name": "native_encoding_metadata_constant_control_repair",
+      "tests": [
+        {
+          "package": "./crv4",
+          "name": "TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant",
+          "expected": "PASS"
+        }
+      ],
+      "selectors": {
+        "./crv4": "^TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant$"
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{"Time":"2026-09-15T23:35:51.331733178Z","Action":"start"}
+{"Time":"2026-09-15T23:35:51.350998412Z","Action":"run","Test":"TestReleaseRuntime460RequiresExactReviewedArtifact"}
+{"Time":"2026-09-15T23:35:51.351123334Z","Action":"output","Test":"TestReleaseRuntime460RequiresExactReviewedArtifact","Output":"=== RUN   TestReleaseRuntime460RequiresExactReviewedArtifact\n"}
+{"Time":"2026-09-15T23:35:51.351274452Z","Action":"output","Test":"TestReleaseRuntime460RequiresExactReviewedArtifact","Output":"    runtime_identity_458_test.go:38: release 1.0 native runtime is not the reviewed node-subtensor/459/1/1 artifact\n"}
+{"Time":"2026-09-15T23:35:51.351459572Z","Action":"output","Test":"TestReleaseRuntime460RequiresExactReviewedArtifact","Output":"--- FAIL: TestReleaseRuntime460RequiresExactReviewedArtifact (0.00s)\n"}
+{"Time":"2026-09-15T23:35:51.351484985Z","Action":"fail","Test":"TestReleaseRuntime460RequiresExactReviewedArtifact","Elapsed":0}
+{"Time":"2026-09-15T23:35:51.351509471Z","Action":"run","Test":"TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc"}
+{"Time":"2026-09-15T23:35:51.351525533Z","Action":"output","Test":"TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc","Output":"=== RUN   TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc\n"}
+{"Time":"2026-09-15T23:35:51.351553059Z","Action":"output","Test":"TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc","Output":"--- PASS: TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc (0.00s)\n"}
+{"Time":"2026-09-15T23:35:51.351571042Z","Action":"pass","Test":"TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc","Elapsed":0}
+{"Time":"2026-09-15T23:35:51.351587321Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:35:51.354534448Z","Action":"fail","Elapsed":0.023}

@@ -1,0 +1,61 @@
+diff --git a/crv4/source_commitment_runtime460_test.go b/crv4/source_commitment_runtime460_test.go
+index 46ed52c..0580a37 100644
+--- a/crv4/source_commitment_runtime460_test.go
++++ b/crv4/source_commitment_runtime460_test.go
+@@ -12,6 +12,7 @@ import (
+ 	"reflect"
+ 	"testing"
+ 
++	"github.com/centrifuge/go-substrate-rpc-client/v4/scale"
+ 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+ 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
+ 	"golang.org/x/crypto/blake2b"
+@@ -20,6 +21,33 @@ import (
+ // The actual decoded metadata changes only System.Version's spec constant;
+ // calls, storage layouts, signed extensions and all other constants retain459.
+ func TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant(t *testing.T) {
++	// SDK cacb431 encodes this exact field order, including the final system
++	// version byte. The RPC client's RuntimeVersion has a different SCALE layout.
++	type runtimeVersion struct {
++		SpecName         string
++		ImplName         string
++		AuthoringVersion uint32
++		SpecVersion      uint32
++		ImplVersion      uint32
++		Apis             []struct {
++			Id      [8]byte
++			Version uint32
++		}
++		TransactionVersion uint32
++		SystemVersion      uint8
++	}
++	decodeVersion := func(raw []byte) runtimeVersion {
++		t.Helper()
++		input := bytes.NewReader(raw)
++		var version runtimeVersion
++		if err := scale.NewDecoder(input).Decode(&version); err != nil {
++			t.Fatal(err)
++		}
++		if input.Len() != 0 {
++			t.Fatal("runtime version constant has trailing bytes")
++		}
++		return version
++	}
+ 	prior, current := sourceRuntime459TestChain(t), sourceRuntime460TestChain(t)
+ 	var priorValue []byte
+ 	for _, pallet := range prior.Meta.AsMetadataV14.Pallets {
+@@ -60,13 +88,7 @@ func TestSourceCommitmentRuntime460MetadataChangesOnlySpecConstant(t *testing.T)
+ 			if differences != 1 {
+ 				t.Fatal("runtime version constant did not retain every non-spec byte")
+ 			}
+-			var oldVersion, newVersion types.RuntimeVersion
+-			if err := codec.Decode(priorValue, &oldVersion); err != nil {
+-				t.Fatal(err)
+-			}
+-			if err := codec.Decode(constant.Value, &newVersion); err != nil {
+-				t.Fatal(err)
+-			}
++			oldVersion, newVersion := decodeVersion(priorValue), decodeVersion(constant.Value)
+ 			if oldVersion.SpecVersion != 459 || newVersion.SpecVersion != 460 {
+ 				t.Fatal("metadata spec constant differs")
+ 			}

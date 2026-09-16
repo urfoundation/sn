@@ -1,0 +1,6 @@
+{
+  "original_result_sha256": "f32b3d4707b6b1ce68c91b3b3efcd3f8b5367bce29e2ecc8a703defef1ad8884",
+  "original_manifest_result_sha256": "f32b3d4707b6b1ce68c91b3b3efcd3f8b5367bce29e2ecc8a703defef1ad8884",
+  "preserved": true,
+  "reason": "The original RESULT.json embedded all lines from an aggregate checksum file in maps.accepted_root_map_sha256, making it invalid JSON. Raw receipt files were unchanged."
+}

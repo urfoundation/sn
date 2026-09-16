@@ -50,7 +50,39 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 22:23 UTC: the startup recovery batch is qualified
+Latest checkpoint, 2026-09-15 23:52 UTC: runtime460's affected qualification is
+accepted by composition on effective source `7989fa78`: 108 roots per mode
+(13 CRV4, 16 miner, 25 validator, 54 simulator), normally and under race.
+Compatibility controls reproduce 13 expected failures and 11 passing controls.
+Original compiler and fixture failures remain preserved; only the four failed
+roots per mode and one affected causal control reran. Root checked the exact
+passing root unions against the affected selection. Publish the qualified
+source, render and publish its release lock, build the matching executable,
+then revise the saved plan and refresh its continuation/history before native
+resume and the real release-candidate campaign. The soak remains stopped;
+renewal, funding, approvals and unaffected qualification remain retained.
+[Affected qualification and raw receipts](sim-testnet/peerreview/evidence/FINAL-2-runtime460-qualification-20260915/README.md).
+
+Previous checkpoint, 2026-09-15 23:13 UTC: the released 459 executable at
+`36d3093` could not revise the saved plan because the owned chain had advanced
+to 460. The plan attempt and diagnostic doctor joined with exit 1, with all watched state,
+binary and lock bytes unchanged. All four doctor hard failures identify the
+same 460-versus-459 admission mismatch. No intermediate 459 plan was adopted;
+the next qualified release can revise the retained plan directly.
+
+Runtime 460's pinned LAN Wasm equals the authoritative upstream CI artifact.
+The existing exact-Wasm probe passed at 23:07:53 with all exits 0 and unchanged
+inputs. The 459-to-460 source delta fixes share-pool accounting and preserves
+our native call layouts; metadata differs only in its spec-version constant.
+The catalog, current signing and historical replay correction was prepared
+for the affected qualification now completed above. Retain the completed recovery qualification
+below and all 1,212 renewal actions. The 23:05 pinned settlement epoch 396 still
+supports the full proposed continuation under existing 393–424 leases. END and the first native
+epoch remain unchosen until their required late capture. No new funding or
+renewal is part of this recovery, and the soak remains stopped.
+[Runtime460 artifact, compatibility and closed probe receipts](sim-testnet/peerreview/evidence/FINAL-2-runtime460-20260915/EVIDENCE.md).
+
+Previous checkpoint, 2026-09-15 22:23 UTC: the startup recovery batch is qualified
 on effective source `53b0e950` by composition: 154 affected roots normally and
 under race (21 CRV4, 13 miner, 45 validator, 75 simulator). Six compatibility
 control binaries reproduce exactly 12 expected failures and 6 passing controls.

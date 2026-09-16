@@ -1,0 +1,917 @@
+{"Time":"2026-09-15T23:36:07.004018797Z","Action":"start"}
+{"Time":"2026-09-15T23:36:07.071128267Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T23:36:07.071241164Z","Action":"output","Output":"I0915 23:36:07.071082 2668523 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T23:36:07.071359142Z","Action":"output","Output":"I0915 23:36:07.071324 2668523 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T23:36:07.071434892Z","Action":"output","Output":"I0915 23:36:07.071405 2668523 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T23:36:07.07144893Z","Action":"output","Output":"I0915 23:36:07.071434 2668523 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T23:36:07.084639293Z","Action":"run","Test":"TestReleaseLockDecodesCanonicalRuntimeFields"}
+{"Time":"2026-09-15T23:36:07.084675218Z","Action":"output","Test":"TestReleaseLockDecodesCanonicalRuntimeFields","Output":"=== RUN   TestReleaseLockDecodesCanonicalRuntimeFields\n"}
+{"Time":"2026-09-15T23:36:07.085703979Z","Action":"output","Test":"TestReleaseLockDecodesCanonicalRuntimeFields","Output":"--- PASS: TestReleaseLockDecodesCanonicalRuntimeFields (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.085784464Z","Action":"pass","Test":"TestReleaseLockDecodesCanonicalRuntimeFields","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.085797151Z","Action":"run","Test":"TestResolvedConfigBindsAllRuntimeVersions"}
+{"Time":"2026-09-15T23:36:07.085803648Z","Action":"output","Test":"TestResolvedConfigBindsAllRuntimeVersions","Output":"=== RUN   TestResolvedConfigBindsAllRuntimeVersions\n"}
+{"Time":"2026-09-15T23:36:07.105872743Z","Action":"output","Test":"TestResolvedConfigBindsAllRuntimeVersions","Output":"--- PASS: TestResolvedConfigBindsAllRuntimeVersions (0.02s)\n"}
+{"Time":"2026-09-15T23:36:07.105941041Z","Action":"pass","Test":"TestResolvedConfigBindsAllRuntimeVersions","Elapsed":0.02}
+{"Time":"2026-09-15T23:36:07.105956665Z","Action":"run","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity"}
+{"Time":"2026-09-15T23:36:07.105966947Z","Action":"output","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Output":"=== RUN   TestResolvedConfigPinsReviewedRuntimeArtifactIdentity\n"}
+{"Time":"2026-09-15T23:36:07.121214542Z","Action":"output","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Output":"--- PASS: TestResolvedConfigPinsReviewedRuntimeArtifactIdentity (0.02s)\n"}
+{"Time":"2026-09-15T23:36:07.121359745Z","Action":"pass","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Elapsed":0.02}
+{"Time":"2026-09-15T23:36:07.121372995Z","Action":"run","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity"}
+{"Time":"2026-09-15T23:36:07.121380067Z","Action":"output","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Output":"=== RUN   TestPublishedManifestBindsCompleteRuntimeIdentity\n"}
+{"Time":"2026-09-15T23:36:07.124313727Z","Action":"output","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Output":"--- PASS: TestPublishedManifestBindsCompleteRuntimeIdentity (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.124336958Z","Action":"pass","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.124345674Z","Action":"run","Test":"TestReleaseConfigHashBindsPublicAndHyperparameterManifests"}
+{"Time":"2026-09-15T23:36:07.124369924Z","Action":"output","Test":"TestReleaseConfigHashBindsPublicAndHyperparameterManifests","Output":"=== RUN   TestReleaseConfigHashBindsPublicAndHyperparameterManifests\n"}
+{"Time":"2026-09-15T23:36:07.127809253Z","Action":"output","Test":"TestReleaseConfigHashBindsPublicAndHyperparameterManifests","Output":"--- PASS: TestReleaseConfigHashBindsPublicAndHyperparameterManifests (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.127881808Z","Action":"pass","Test":"TestReleaseConfigHashBindsPublicAndHyperparameterManifests","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.127894018Z","Action":"run","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding"}
+{"Time":"2026-09-15T23:36:07.127923082Z","Action":"output","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Output":"=== RUN   TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding\n"}
+{"Time":"2026-09-15T23:36:07.127998791Z","Action":"output","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Output":"--- PASS: TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.128053741Z","Action":"pass","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.128075522Z","Action":"run","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift"}
+{"Time":"2026-09-15T23:36:07.128106253Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Output":"=== RUN   TestRuntimeVersionIdentityRejectsAdjacentDrift\n"}
+{"Time":"2026-09-15T23:36:07.128145903Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Output":"--- PASS: TestRuntimeVersionIdentityRejectsAdjacentDrift (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.128197089Z","Action":"pass","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.128211579Z","Action":"run","Test":"TestRuntimeCodeHashValidationIsExact"}
+{"Time":"2026-09-15T23:36:07.128222308Z","Action":"output","Test":"TestRuntimeCodeHashValidationIsExact","Output":"=== RUN   TestRuntimeCodeHashValidationIsExact\n"}
+{"Time":"2026-09-15T23:36:07.128290526Z","Action":"output","Test":"TestRuntimeCodeHashValidationIsExact","Output":"--- PASS: TestRuntimeCodeHashValidationIsExact (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.12831225Z","Action":"pass","Test":"TestRuntimeCodeHashValidationIsExact","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.128323943Z","Action":"run","Test":"TestRuntimeMetadataHashValidationIsExact"}
+{"Time":"2026-09-15T23:36:07.128334414Z","Action":"output","Test":"TestRuntimeMetadataHashValidationIsExact","Output":"=== RUN   TestRuntimeMetadataHashValidationIsExact\n"}
+{"Time":"2026-09-15T23:36:07.128352362Z","Action":"output","Test":"TestRuntimeMetadataHashValidationIsExact","Output":"--- PASS: TestRuntimeMetadataHashValidationIsExact (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.128381341Z","Action":"pass","Test":"TestRuntimeMetadataHashValidationIsExact","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.128393502Z","Action":"run","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly"}
+{"Time":"2026-09-15T23:36:07.128404246Z","Action":"output","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Output":"=== RUN   TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly\n"}
+{"Time":"2026-09-15T23:36:07.128422534Z","Action":"output","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Output":"--- PASS: TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.128439181Z","Action":"pass","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.128451033Z","Action":"run","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain"}
+{"Time":"2026-09-15T23:36:07.128463244Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"=== RUN   TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain\n"}
+{"Time":"2026-09-15T23:36:07.131432717Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"--- PASS: TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain (0.00s)\n"}
+{"Time":"2026-09-15T23:36:07.131481813Z","Action":"pass","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Elapsed":0}
+{"Time":"2026-09-15T23:36:07.131510277Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T23:36:07.131518674Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== RUN   TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:07.131540739Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:07.131550699Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T23:36:07.13158301Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T23:36:07.131593342Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T23:36:07.131606488Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T23:36:07.131614424Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T23:36:07.131622588Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority"}
+{"Time":"2026-09-15T23:36:07.131630138Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority","Output":"=== RUN   TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority\n"}
+{"Time":"2026-09-15T23:36:07.131639321Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority\n"}
+{"Time":"2026-09-15T23:36:07.131647573Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority"}
+{"Time":"2026-09-15T23:36:07.131658306Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift"}
+{"Time":"2026-09-15T23:36:07.131666119Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift","Output":"=== RUN   TestValidatorEvidenceHistoricalLockRejectsApprovalDrift\n"}
+{"Time":"2026-09-15T23:36:07.131675629Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockRejectsApprovalDrift\n"}
+{"Time":"2026-09-15T23:36:07.131683148Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift"}
+{"Time":"2026-09-15T23:36:07.131691066Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime"}
+{"Time":"2026-09-15T23:36:07.131698398Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime","Output":"=== RUN   TestValidatorEvidenceHistoricalLockRejectsForeignRuntime\n"}
+{"Time":"2026-09-15T23:36:07.131710163Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockRejectsForeignRuntime\n"}
+{"Time":"2026-09-15T23:36:07.131718416Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime"}
+{"Time":"2026-09-15T23:36:07.131726345Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls"}
+{"Time":"2026-09-15T23:36:07.131733749Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls","Output":"=== RUN   TestValidatorEvidenceHistoricalLockPreservesStaticControls\n"}
+{"Time":"2026-09-15T23:36:07.131743458Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockPreservesStaticControls\n"}
+{"Time":"2026-09-15T23:36:07.13175108Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls"}
+{"Time":"2026-09-15T23:36:07.131758825Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority"}
+{"Time":"2026-09-15T23:36:07.13176618Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority","Output":"=== RUN   TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority\n"}
+{"Time":"2026-09-15T23:36:07.131777802Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority\n"}
+{"Time":"2026-09-15T23:36:07.131794234Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority"}
+{"Time":"2026-09-15T23:36:07.1328744Z","Action":"run","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob"}
+{"Time":"2026-09-15T23:36:07.132890143Z","Action":"output","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob","Output":"=== RUN   TestProducerGateStateSelectionCoversNativeSourceCommitmentJob\n"}
+{"Time":"2026-09-15T23:36:07.132901272Z","Action":"output","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob","Output":"=== PAUSE TestProducerGateStateSelectionCoversNativeSourceCommitmentJob\n"}
+{"Time":"2026-09-15T23:36:07.132908332Z","Action":"pause","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob"}
+{"Time":"2026-09-15T23:36:07.133004751Z","Action":"run","Test":"TestProducerGatePinsExactBlockRuntimeClientRegressions"}
+{"Time":"2026-09-15T23:36:07.133015154Z","Action":"output","Test":"TestProducerGatePinsExactBlockRuntimeClientRegressions","Output":"=== RUN   TestProducerGatePinsExactBlockRuntimeClientRegressions\n"}
+{"Time":"2026-09-15T23:36:07.151962516Z","Action":"output","Test":"TestProducerGatePinsExactBlockRuntimeClientRegressions","Output":"--- PASS: TestProducerGatePinsExactBlockRuntimeClientRegressions (0.02s)\n"}
+{"Time":"2026-09-15T23:36:07.15200309Z","Action":"pass","Test":"TestProducerGatePinsExactBlockRuntimeClientRegressions","Elapsed":0.02}
+{"Time":"2026-09-15T23:36:07.152016829Z","Action":"run","Test":"TestProducerGatePinsSemanticIntegrityRegressions"}
+{"Time":"2026-09-15T23:36:07.152026134Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"=== RUN   TestProducerGatePinsSemanticIntegrityRegressions\n"}
+{"Time":"2026-09-15T23:36:08.132331252Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"    release_gate_test.go:628: semantic-integrity census entry 307 is \"TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain\", want \"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain\"\n"}
+{"Time":"2026-09-15T23:36:08.13290113Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"    release_gate_test.go:629: semantic-integrity census differs from the exact selected declarations\n"}
+{"Time":"2026-09-15T23:36:08.1329308Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        recorded:\n"}
+{"Time":"2026-09-15T23:36:08.132947405Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalAttemptFixtureLedgerMatchesDurableProductionWire\n"}
+{"Time":"2026-09-15T23:36:08.132963722Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalClaimPaymentLedgerRejectsDuplicateReceipt\n"}
+{"Time":"2026-09-15T23:36:08.13297881Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalClaimPaymentLedgerRejectsMissingPayment\n"}
+{"Time":"2026-09-15T23:36:08.132993624Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalCollectedCoordinatorBaselinesRequireInitializerLog\n"}
+{"Time":"2026-09-15T23:36:08.133008206Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalCollectorIncludesCompletedSettlementTail\n"}
+{"Time":"2026-09-15T23:36:08.133022717Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalEVMLogQueryRangesRespectOfficialInclusiveLimit\n"}
+{"Time":"2026-09-15T23:36:08.133079366Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAcceptsExactTwoGenerationTopology\n"}
+{"Time":"2026-09-15T23:36:08.133097994Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAcceptsHistoricalRuntimeAndRequiresCurrentRefreshRoots\n"}
+{"Time":"2026-09-15T23:36:08.133137364Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAllCarriedArtifactsSkipEmptyBatchPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.133154813Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactDeriverRejectsAbsentOrSubstitutedBytes\n"}
+{"Time":"2026-09-15T23:36:08.133169289Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactEventsRejectsReceiptSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133184289Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactFilesRejectsUnsafeOrUnorderedSources\n"}
+{"Time":"2026-09-15T23:36:08.133228118Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationDecodesExactReceiptEventFields\n"}
+{"Time":"2026-09-15T23:36:08.133247463Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInitialPartitionRejectsOmissionDuplicateAndUnexplainedMixed\n"}
+{"Time":"2026-09-15T23:36:08.133263717Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInstalledPublicWriteRejectsWrongTargetCalldataOrEmitter\n"}
+{"Time":"2026-09-15T23:36:08.133278785Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInstalledReceiptTopologyRejectsOmissionDuplicateAndWrongEmitter\n"}
+{"Time":"2026-09-15T23:36:08.133293279Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsCurrentBatchTargetSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133308304Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsInstalledBatchReceiptCalldataOrPostconditionSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133352622Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsMissingOrCorruptGenerationOne\n"}
+{"Time":"2026-09-15T23:36:08.133370719Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsPartialOrSubstitutedPublicWrite\n"}
+{"Time":"2026-09-15T23:36:08.133385367Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsReceiptEventFieldOrTopicSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133400558Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsReorderedBatchPartition\n"}
+{"Time":"2026-09-15T23:36:08.133415072Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsSubstitutedBatchReceiptCalldataEventOrPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.133429391Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsTerminalGenerationThree\n"}
+{"Time":"2026-09-15T23:36:08.133443385Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsWriteHeadRuntimeSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133458368Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes\n"}
+{"Time":"2026-09-15T23:36:08.133472184Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors\n"}
+{"Time":"2026-09-15T23:36:08.133500949Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges\n"}
+{"Time":"2026-09-15T23:36:08.13351752Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries\n"}
+{"Time":"2026-09-15T23:36:08.133531922Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay\n"}
+{"Time":"2026-09-15T23:36:08.133546322Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationWriteEmitterGraphUsesDistinctHistoricalBatcher\n"}
+{"Time":"2026-09-15T23:36:08.133560512Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions\n"}
+{"Time":"2026-09-15T23:36:08.133574872Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.133590248Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecycleSchedulesBindIndependentEVMDeadline\n"}
+{"Time":"2026-09-15T23:36:08.133604007Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalCaptureOwnsExactSignedEnvelope\n"}
+{"Time":"2026-09-15T23:36:08.13361795Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLifecycleJoinsExactGenerationAndSource\n"}
+{"Time":"2026-09-15T23:36:08.133632476Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLifecyclePathsUseApprovedTakeoverAndSuccessor\n"}
+{"Time":"2026-09-15T23:36:08.133646606Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation\n"}
+{"Time":"2026-09-15T23:36:08.133660826Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalPublicReplayAndArchiveRejectSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.133674862Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalSourceRequiresExactArchivedApprovalAndSignatures\n"}
+{"Time":"2026-09-15T23:36:08.133714409Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeApplicationRejectsOldStateAndUIDReassignment\n"}
+{"Time":"2026-09-15T23:36:08.133731506Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeApplicationRejectsReusedCycleLineage\n"}
+{"Time":"2026-09-15T23:36:08.133746023Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCallEvidenceDerivesReviewedWireIdentity\n"}
+{"Time":"2026-09-15T23:36:08.133760591Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCommitRejectsSuccessfulRemarkContainingCiphertext\n"}
+{"Time":"2026-09-15T23:36:08.133775936Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2ApplicationSeparatesNewerCommitFromAppliedRow\n"}
+{"Time":"2026-09-15T23:36:08.133791126Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2CountsSharedPayoutOnceAndRetainsEverySettlement\n"}
+{"Time":"2026-09-15T23:36:08.133805815Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2RejectsMissingStaleAndConflictingHistory\n"}
+{"Time":"2026-09-15T23:36:08.1338932Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2ReproducesOnlyImmutableCheckpointState\n"}
+{"Time":"2026-09-15T23:36:08.133915442Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2RetryNeedsActualTargetCommit\n"}
+{"Time":"2026-09-15T23:36:08.13395207Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2UsesActualIntervalsAcrossIndependentClocks\n"}
+{"Time":"2026-09-15T23:36:08.133968009Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsBindEmissionAndRelevantStakeMutations\n"}
+{"Time":"2026-09-15T23:36:08.13398322Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsCoverAdjacentStakeMutationClasses\n"}
+{"Time":"2026-09-15T23:36:08.133998202Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsRejectAmbiguityAndRedirectedAutoStake\n"}
+{"Time":"2026-09-15T23:36:08.134013502Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutProvesExactRuntimeCausality\n"}
+{"Time":"2026-09-15T23:36:08.134028213Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutPublicReplayRejectsTampering\n"}
+{"Time":"2026-09-15T23:36:08.134102195Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsDivergentValidatorBoundary\n"}
+{"Time":"2026-09-15T23:36:08.134168899Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsIncompleteOrAmbiguousUIDSet\n"}
+{"Time":"2026-09-15T23:36:08.134185802Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsManualStakeInflation\n"}
+{"Time":"2026-09-15T23:36:08.134201868Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsPollingApplicationAsPayoutBoundary\n"}
+{"Time":"2026-09-15T23:36:08.134217698Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsServerVectorSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.13423347Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsStaleStorageChannels\n"}
+{"Time":"2026-09-15T23:36:08.134249133Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsZeroWeightStakeInflation\n"}
+{"Time":"2026-09-15T23:36:08.134264783Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEvidenceCycleAliasesMustKeepOneIdentity\n"}
+{"Time":"2026-09-15T23:36:08.134280865Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeExtrinsicIdentityRejectsCallAndSignerSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.134297331Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeIntentSourceBindsPreparedLifecycle\n"}
+{"Time":"2026-09-15T23:36:08.134313428Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeOperationEventsRejectSubstitutionAndAmbiguity\n"}
+{"Time":"2026-09-15T23:36:08.134329344Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeParentHeadRejectsSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.13434512Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRegistrationSourceBindsPlanJournalAndPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.134379229Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs\n"}
+{"Time":"2026-09-15T23:36:08.134399295Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardRejectsHotkeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.134415801Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardRequiresExplicitWellFormedStake\n"}
+{"Time":"2026-09-15T23:36:08.13443266Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2CancellationJoinsHistoricalBatch\n"}
+{"Time":"2026-09-15T23:36:08.134449279Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2HonorsRPCContextAndSharedConnectionOwnership\n"}
+{"Time":"2026-09-15T23:36:08.134489355Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2ReadsExactHistoricalVectorsAndUIDStake\n"}
+{"Time":"2026-09-15T23:36:08.134509681Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourceDecodesEachPlanOnce\n"}
+{"Time":"2026-09-15T23:36:08.134526087Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseAuthenticatesChangedValidBytes\n"}
+{"Time":"2026-09-15T23:36:08.134542496Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseDoesNotCacheFailure\n"}
+{"Time":"2026-09-15T23:36:08.134559022Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseIsArchiveLocal\n"}
+{"Time":"2026-09-15T23:36:08.134575805Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseRejectsChangedBytes\n"}
+{"Time":"2026-09-15T23:36:08.134592204Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseRejectsRehashedBudget\n"}
+{"Time":"2026-09-15T23:36:08.134608667Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactAcceptsAuthenticatedProviderDomain\n"}
+{"Time":"2026-09-15T23:36:08.134624723Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactAllowsPayoutColdkeyReuseAcrossOperators\n"}
+{"Time":"2026-09-15T23:36:08.134640669Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactCollectorUsesRetainedSigner\n"}
+{"Time":"2026-09-15T23:36:08.134657392Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactConfiguredRoleCensusRejectsSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.13472008Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactFixtureUsesCanonicalPayoutIdentities\n"}
+{"Time":"2026-09-15T23:36:08.134743836Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsAuthenticatedProviderOmission\n"}
+{"Time":"2026-09-15T23:36:08.134760865Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsDuplicatePayoutColdkey\n"}
+{"Time":"2026-09-15T23:36:08.134777475Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsInvalidTopologyPayoutIdentities\n"}
+{"Time":"2026-09-15T23:36:08.134793764Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsMalformedAndExtraRows\n"}
+{"Time":"2026-09-15T23:36:08.134825649Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsOperatorSnapshotDomainSwap\n"}
+{"Time":"2026-09-15T23:36:08.134843776Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsPayeeSwap\n"}
+{"Time":"2026-09-15T23:36:08.134860262Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsProviderCensusCommitmentSwap\n"}
+{"Time":"2026-09-15T23:36:08.134876054Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsReliabilityAMinSwap\n"}
+{"Time":"2026-09-15T23:36:08.134891417Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsResignedCrossOperatorProvider\n"}
+{"Time":"2026-09-15T23:36:08.13490741Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsResignedProviderOmissionAgainstSignedMeasurement\n"}
+{"Time":"2026-09-15T23:36:08.134923289Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsSignedBoundarySwap\n"}
+{"Time":"2026-09-15T23:36:08.134938519Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactSeparatesProvenanceFromRootAuthorization\n"}
+{"Time":"2026-09-15T23:36:08.134954232Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactSignedAuditProvenanceBindsAllDecisionSources\n"}
+{"Time":"2026-09-15T23:36:08.134969998Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership\n"}
+{"Time":"2026-09-15T23:36:08.13498545Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript\n"}
+{"Time":"2026-09-15T23:36:08.13500109Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins\n"}
+{"Time":"2026-09-15T23:36:08.135017189Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicFleetAuditFailsClosedOnMissingOrTamperedSummary\n"}
+{"Time":"2026-09-15T23:36:08.135061948Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicFleetAuditSealsExactReplayScope\n"}
+{"Time":"2026-09-15T23:36:08.135093597Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicNativePayoutAuditSealsExactScope\n"}
+{"Time":"2026-09-15T23:36:08.135192097Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2BoundsRejectPartialReadResults\n"}
+{"Time":"2026-09-15T23:36:08.135215062Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2CancelsAndJoinsActiveTransport\n"}
+{"Time":"2026-09-15T23:36:08.135230962Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority\n"}
+{"Time":"2026-09-15T23:36:08.135246325Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2KeepsNativeClockAndNullStorage\n"}
+{"Time":"2026-09-15T23:36:08.135288043Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicState\n"}
+{"Time":"2026-09-15T23:36:08.135306059Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2RefusesWritesUnpinnedAndConflictingReads\n"}
+{"Time":"2026-09-15T23:36:08.135338558Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2RetainsRealBatchesAndCanonicalHeads\n"}
+{"Time":"2026-09-15T23:36:08.135356884Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticArtifactDeploymentAdmissionPrecedesSignedReplay\n"}
+{"Time":"2026-09-15T23:36:08.135373307Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent\n"}
+{"Time":"2026-09-15T23:36:08.135389493Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderArchiveRetentionRejectsHistoricalFloorAsCurrentRelease\n"}
+{"Time":"2026-09-15T23:36:08.135405172Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderAttributesPriorCurrentAndVerifyKeyRestarts\n"}
+{"Time":"2026-09-15T23:36:08.135420242Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderBindsCompleteClosedCallInputs\n"}
+{"Time":"2026-09-15T23:36:08.135435908Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery\n"}
+{"Time":"2026-09-15T23:36:08.135452224Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderChecksEveryRecoveryObservationHead\n"}
+{"Time":"2026-09-15T23:36:08.135468147Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration\n"}
+{"Time":"2026-09-15T23:36:08.135524211Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead\n"}
+{"Time":"2026-09-15T23:36:08.135542744Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts\n"}
+{"Time":"2026-09-15T23:36:08.13555895Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent\n"}
+{"Time":"2026-09-15T23:36:08.13557461Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix\n"}
+{"Time":"2026-09-15T23:36:08.135590179Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDerivesNativeStartFromSealedAppliedIntents\n"}
+{"Time":"2026-09-15T23:36:08.135605869Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderFailureCreatesNoLooseOutputs\n"}
+{"Time":"2026-09-15T23:36:08.135621595Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderProjectsDeterministicNativeRewardSnapshots\n"}
+{"Time":"2026-09-15T23:36:08.135637837Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRecoversPriorNativeTerminalFromBoundClosedBundle\n"}
+{"Time":"2026-09-15T23:36:08.135652934Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.135690152Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus\n"}
+{"Time":"2026-09-15T23:36:08.135724254Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsMissingTamperedAndDuplicateRestartEvidence\n"}
+{"Time":"2026-09-15T23:36:08.13574179Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsOwnerStakeSubstitutionAndExternalDelegation\n"}
+{"Time":"2026-09-15T23:36:08.135757617Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt\n"}
+{"Time":"2026-09-15T23:36:08.135773329Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt\n"}
+{"Time":"2026-09-15T23:36:08.135789075Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderUsesCleanAnomalyLedgerStatus\n"}
+{"Time":"2026-09-15T23:36:08.135804668Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderUsesSelfContainedCopiedPriorLiveChain\n"}
+{"Time":"2026-09-15T23:36:08.135820398Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesDecodeEachByteOnce\n"}
+{"Time":"2026-09-15T23:36:08.135836184Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesJoinEveryRecord\n"}
+{"Time":"2026-09-15T23:36:08.13585143Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesKeepDocumentAndDepthBounds\n"}
+{"Time":"2026-09-15T23:36:08.135867156Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesOwnDecodedInput\n"}
+{"Time":"2026-09-15T23:36:08.135882549Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesPreserveJSONValues\n"}
+{"Time":"2026-09-15T23:36:08.135897705Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors\n"}
+{"Time":"2026-09-15T23:36:08.135913528Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorRuntimeAuditRejectsHistoricalUpgradeBack\n"}
+{"Time":"2026-09-15T23:36:08.1359286Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeChunkBindsTransactionIndex\n"}
+{"Time":"2026-09-15T23:36:08.13594393Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeRangeChunksCoverOfficialLimit\n"}
+{"Time":"2026-09-15T23:36:08.135959769Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeTranscriptRejectsIncompleteChunks\n"}
+{"Time":"2026-09-15T23:36:08.135976342Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCycleConvictionAuditIncludesEpochIncrement\n"}
+{"Time":"2026-09-15T23:36:08.135992192Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCycleConvictionAuditRejectsSwappedEpochIncrement\n"}
+{"Time":"2026-09-15T23:36:08.136007701Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentArtifactRejectsIgnoredRuntimeMap\n"}
+{"Time":"2026-09-15T23:36:08.13602288Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryExecutorPersistsCrashRecovery\n"}
+{"Time":"2026-09-15T23:36:08.136071722Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryMigratesLegacyStateIdempotently\n"}
+{"Time":"2026-09-15T23:36:08.136120749Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRecoversCrashWithoutSavedObservation\n"}
+{"Time":"2026-09-15T23:36:08.136136545Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsForeignSignedCreateEnvelopes\n"}
+{"Time":"2026-09-15T23:36:08.13615025Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery\n"}
+{"Time":"2026-09-15T23:36:08.136163964Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsMissingForeignAndConflictingEvidence\n"}
+{"Time":"2026-09-15T23:36:08.136177659Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders\n"}
+{"Time":"2026-09-15T23:36:08.136190956Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundarySeparatesProxyHistoryFromReleaseGraph\n"}
+{"Time":"2026-09-15T23:36:08.136204491Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsLegacySchemaAndPlanLockSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.13621837Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact\n"}
+{"Time":"2026-09-15T23:36:08.136233485Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsMutuallyConsistentSubstitutedRuntime\n"}
+{"Time":"2026-09-15T23:36:08.136246769Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsRootCardinalityAndAliasMutations\n"}
+{"Time":"2026-09-15T23:36:08.136259749Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash\n"}
+{"Time":"2026-09-15T23:36:08.136272503Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsWrongUpgradeAddressAndHash\n"}
+{"Time":"2026-09-15T23:36:08.136285428Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDishonestDepositDecisionsAndPublicReplay\n"}
+{"Time":"2026-09-15T23:36:08.136298382Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDishonestDepositReceiptPayloadIsMandatoryAndOrdered\n"}
+{"Time":"2026-09-15T23:36:08.136334738Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEpochDepositUsesSettlementEpochNotSourceEpoch\n"}
+{"Time":"2026-09-15T23:36:08.136349673Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEvidenceBuildRenderAndArtifacts\n"}
+{"Time":"2026-09-15T23:36:08.13636271Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEvidenceFailsClosed\n"}
+{"Time":"2026-09-15T23:36:08.136376169Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation\n"}
+{"Time":"2026-09-15T23:36:08.136389234Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureChainCasesJoinAllFailuresAndCancellation\n"}
+{"Time":"2026-09-15T23:36:08.136403584Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureChainCasesKeepExactCensusAndPrivateReaders\n"}
+{"Time":"2026-09-15T23:36:08.136437163Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureClosedProofsReuseExactSuccessorWithoutResigning\n"}
+{"Time":"2026-09-15T23:36:08.136453979Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureGenerationLookupDoesNotAllocateCensus\n"}
+{"Time":"2026-09-15T23:36:08.136467306Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection\n"}
+{"Time":"2026-09-15T23:36:08.136480731Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadManifestAdmissionRequiresAuthenticatedIdentity\n"}
+{"Time":"2026-09-15T23:36:08.136494421Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadProjectionAdmissionPrecedesSignedReplay\n"}
+{"Time":"2026-09-15T23:36:08.13650821Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeJoinsConcurrentReaders\n"}
+{"Time":"2026-09-15T23:36:08.136521307Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeTracksExactBytes\n"}
+{"Time":"2026-09-15T23:36:08.136535414Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeWorkIsBounded\n"}
+{"Time":"2026-09-15T23:36:08.136548386Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations\n"}
+{"Time":"2026-09-15T23:36:08.136561913Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary\n"}
+{"Time":"2026-09-15T23:36:08.136574582Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire\n"}
+{"Time":"2026-09-15T23:36:08.136587455Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule\n"}
+{"Time":"2026-09-15T23:36:08.136601589Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap\n"}
+{"Time":"2026-09-15T23:36:08.136632953Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureRetainedTransitionsRejectChangedSource\n"}
+{"Time":"2026-09-15T23:36:08.136650025Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles\n"}
+{"Time":"2026-09-15T23:36:08.136663139Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity\n"}
+{"Time":"2026-09-15T23:36:08.136675569Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureSnapshotsAreDetached\n"}
+{"Time":"2026-09-15T23:36:08.136688509Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement\n"}
+{"Time":"2026-09-15T23:36:08.136701683Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsAreIndependentAndJoined\n"}
+{"Time":"2026-09-15T23:36:08.136714193Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsJoinAfterGoexit\n"}
+{"Time":"2026-09-15T23:36:08.136739182Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsRejectAliasedOrSkippedEpochs\n"}
+{"Time":"2026-09-15T23:36:08.136754558Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency\n"}
+{"Time":"2026-09-15T23:36:08.136768403Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureWorkersRejectNonReturningCases\n"}
+{"Time":"2026-09-15T23:36:08.136781177Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditDeduplicatesCyclesAndCachedReads\n"}
+{"Time":"2026-09-15T23:36:08.136794547Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact\n"}
+{"Time":"2026-09-15T23:36:08.136808147Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditRejectsIdentityAndValidityDrift\n"}
+{"Time":"2026-09-15T23:36:08.136822016Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditRejectsMissingWorkerResult\n"}
+{"Time":"2026-09-15T23:36:08.136862997Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditReplaysEveryOrdinaryGeneration\n"}
+{"Time":"2026-09-15T23:36:08.136878174Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity\n"}
+{"Time":"2026-09-15T23:36:08.136891499Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHeadUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.136905738Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration\n"}
+{"Time":"2026-09-15T23:36:08.136918995Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs\n"}
+{"Time":"2026-09-15T23:36:08.13693237Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof\n"}
+{"Time":"2026-09-15T23:36:08.136946049Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments\n"}
+{"Time":"2026-09-15T23:36:08.136960176Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs\n"}
+{"Time":"2026-09-15T23:36:08.136973984Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary\n"}
+{"Time":"2026-09-15T23:36:08.136987513Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection\n"}
+{"Time":"2026-09-15T23:36:08.137001347Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation\n"}
+{"Time":"2026-09-15T23:36:08.137015054Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions\n"}
+{"Time":"2026-09-15T23:36:08.137029251Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock\n"}
+{"Time":"2026-09-15T23:36:08.13708256Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCommitmentOracleScheduleBindsCalldataEventAndPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.137099249Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalConvictionRejectsReserveAndCalldataMutations\n"}
+{"Time":"2026-09-15T23:36:08.137112274Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization\n"}
+{"Time":"2026-09-15T23:36:08.137125776Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision\n"}
+{"Time":"2026-09-15T23:36:08.137140387Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead\n"}
+{"Time":"2026-09-15T23:36:08.137154182Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions\n"}
+{"Time":"2026-09-15T23:36:08.137167069Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions\n"}
+{"Time":"2026-09-15T23:36:08.137180776Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState\n"}
+{"Time":"2026-09-15T23:36:08.1371931Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges\n"}
+{"Time":"2026-09-15T23:36:08.13720645Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade\n"}
+{"Time":"2026-09-15T23:36:08.137219567Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain\n"}
+{"Time":"2026-09-15T23:36:08.137232352Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock\n"}
+{"Time":"2026-09-15T23:36:08.137245634Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline\n"}
+{"Time":"2026-09-15T23:36:08.137258614Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorUpgradeReaderReplaysSealedRanges\n"}
+{"Time":"2026-09-15T23:36:08.137295537Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalDepositRejectsReserveAndCalldataMutations\n"}
+{"Time":"2026-09-15T23:36:08.137309544Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations\n"}
+{"Time":"2026-09-15T23:36:08.137322931Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection\n"}
+{"Time":"2026-09-15T23:36:08.137336348Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy\n"}
+{"Time":"2026-09-15T23:36:08.13735022Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets\n"}
+{"Time":"2026-09-15T23:36:08.137375297Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets\n"}
+{"Time":"2026-09-15T23:36:08.137409955Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations\n"}
+{"Time":"2026-09-15T23:36:08.137424765Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace\n"}
+{"Time":"2026-09-15T23:36:08.137438742Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalPolicyScheduleBindsPostStateAndCalldata\n"}
+{"Time":"2026-09-15T23:36:08.137452404Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReaderFactorySnapshotCannotMutateVerifiedCopy\n"}
+{"Time":"2026-09-15T23:36:08.137465473Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptArtifactRejectsEnvelopeAndLogMutations\n"}
+{"Time":"2026-09-15T23:36:08.137478583Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptCensusSkipsFailedNonMutations\n"}
+{"Time":"2026-09-15T23:36:08.13749197Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptProofBindsRawLogs\n"}
+{"Time":"2026-09-15T23:36:08.137505235Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRegistrationBindsFullEventTuples\n"}
+{"Time":"2026-09-15T23:36:08.137557523Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRegistrationRejectsTransactionAndEmitterMutations\n"}
+{"Time":"2026-09-15T23:36:08.137574095Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeLockRetainsExactOriginalProvenance\n"}
+{"Time":"2026-09-15T23:36:08.137587677Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeNativeArchiveRetainsOriginalArtifactAuthority\n"}
+{"Time":"2026-09-15T23:36:08.137601261Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeRenewalReconstructsOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:08.137614571Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalUpgradeBindsTransactionAndEvent\n"}
+{"Time":"2026-09-15T23:36:08.137627921Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker\n"}
+{"Time":"2026-09-15T23:36:08.137641192Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPathProofArtifactCount\n"}
+{"Time":"2026-09-15T23:36:08.137654787Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPathProofArtifactRejectsMalformedTrailingJSON\n"}
+{"Time":"2026-09-15T23:36:08.137668291Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery\n"}
+{"Time":"2026-09-15T23:36:08.137681553Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolOperatorVersionRejectsTerminalAuthoritySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.13769473Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolRegistrationRequiresSuccessfulEVMReceipt\n"}
+{"Time":"2026-09-15T23:36:08.137738026Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot\n"}
+{"Time":"2026-09-15T23:36:08.137755983Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.13776951Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsConvictionAdded\n"}
+{"Time":"2026-09-15T23:36:08.137782815Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDeferredCapture\n"}
+{"Time":"2026-09-15T23:36:08.137795827Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDeferredClaim\n"}
+{"Time":"2026-09-15T23:36:08.137809399Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDishonestDepositNonceOrder\n"}
+{"Time":"2026-09-15T23:36:08.137823074Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsHistoricScheduleBeforeTerminalRotation\n"}
+{"Time":"2026-09-15T23:36:08.137836328Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsReleaseEconomicEvents\n"}
+{"Time":"2026-09-15T23:36:08.13784983Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsRootMissed\n"}
+{"Time":"2026-09-15T23:36:08.137862582Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsWithdrawalOnlyClaimPaid\n"}
+{"Time":"2026-09-15T23:36:08.137875876Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsClaimPaidColdkeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.137889276Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsCorruptAndNoncanonicalLogs\n"}
+{"Time":"2026-09-15T23:36:08.137902646Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsDepositPolicyAndSignerSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.13791623Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsFutureHistoricSchedule\n"}
+{"Time":"2026-09-15T23:36:08.137929642Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsUnrepresentedClaimPaid\n"}
+{"Time":"2026-09-15T23:36:08.137944094Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeHonorsCancellationAfterRead\n"}
+{"Time":"2026-09-15T23:36:08.137958053Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopePreservesEveryRejection\n"}
+{"Time":"2026-09-15T23:36:08.137971401Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeRechecksCurrentIdentity\n"}
+{"Time":"2026-09-15T23:36:08.13798526Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeVerifiesOwnedBytesOnce\n"}
+{"Time":"2026-09-15T23:36:08.137998934Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas\n"}
+{"Time":"2026-09-15T23:36:08.138014124Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.138059152Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration\n"}
+{"Time":"2026-09-15T23:36:08.138085977Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultCarryAuditRejectsOperatorCarrySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138100916Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditReconcilesPriorCreditAndWithdrawal\n"}
+{"Time":"2026-09-15T23:36:08.138114498Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsClaimCreditUnderflow\n"}
+{"Time":"2026-09-15T23:36:08.138128343Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsClaimKeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138141482Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsPayoutLeafSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138154702Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsTerminalCreditSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138167861Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimKeySeparatesOperatorAndPayoutLeaf\n"}
+{"Time":"2026-09-15T23:36:08.138181253Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureCollectedGraphRejectsAttemptOmission\n"}
+{"Time":"2026-09-15T23:36:08.138194298Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureLastWindowNeedsNoNextIntent\n"}
+{"Time":"2026-09-15T23:36:08.138208744Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureProofProjectionUsesExactEpochBounds\n"}
+{"Time":"2026-09-15T23:36:08.138222492Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsConflictingSuccessorTransition\n"}
+{"Time":"2026-09-15T23:36:08.138235296Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsDomainCensusAndBoundaryChanges\n"}
+{"Time":"2026-09-15T23:36:08.138248763Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsRehashedProofOmission\n"}
+{"Time":"2026-09-15T23:36:08.138261958Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureWaitAuthenticatesLastWindow\n"}
+{"Time":"2026-09-15T23:36:08.138274887Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureWaitHonorsPublicationAndCancellation\n"}
+{"Time":"2026-09-15T23:36:08.138288312Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalValidatorAuthorityV2ReconstructsHistorical455Renderer\n"}
+{"Time":"2026-09-15T23:36:08.138302337Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys\n"}
+{"Time":"2026-09-15T23:36:08.138315811Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsCompleteAdversarialRegressions\n"}
+{"Time":"2026-09-15T23:36:08.138328836Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressions\n"}
+{"Time":"2026-09-15T23:36:08.138357855Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage\n"}
+{"Time":"2026-09-15T23:36:08.138373894Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup\n"}
+{"Time":"2026-09-15T23:36:08.138387389Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsSemanticIntegrityRegressions\n"}
+{"Time":"2026-09-15T23:36:08.138421627Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsSyntheticEVMIdentityRegressions\n"}
+{"Time":"2026-09-15T23:36:08.138438524Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentRejectsAdjacentSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138469328Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentRejectsMalformedGetter\n"}
+{"Time":"2026-09-15T23:36:08.138484177Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentReturnsCompletePinnedCustodyState\n"}
+{"Time":"2026-09-15T23:36:08.138497962Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticEpochZeroCoordinatorReadersArePinned\n"}
+{"Time":"2026-09-15T23:36:08.138511354Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticNativeOwnerStakeRejectsAdjacentAndMalformedInputs\n"}
+{"Time":"2026-09-15T23:36:08.138524536Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticNativeOwnerStakeUsesPinnedStakingPrecompile\n"}
+{"Time":"2026-09-15T23:36:08.138537981Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticOperatorVersionRejectsMalformedHistoricalState\n"}
+{"Time":"2026-09-15T23:36:08.13855176Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticPerOperatorEVMAuditsArePinned\n"}
+{"Time":"2026-09-15T23:36:08.138565537Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticReceiptReplaysCanonicalABIPayload\n"}
+{"Time":"2026-09-15T23:36:08.138578567Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticSettlementVaultStateIsCompleteAndPinned\n"}
+{"Time":"2026-09-15T23:36:08.138591481Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter\n"}
+{"Time":"2026-09-15T23:36:08.138604746Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticVaultClaimAndCreditArePinned\n"}
+{"Time":"2026-09-15T23:36:08.138617543Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit\n"}
+{"Time":"2026-09-15T23:36:08.138630957Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain\n"}
+{"Time":"2026-09-15T23:36:08.138644112Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusAcceptsExactSortedSelection\n"}
+{"Time":"2026-09-15T23:36:08.138657659Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups\n"}
+{"Time":"2026-09-15T23:36:08.138671084Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusPinsSettlementClosureRegressions\n"}
+{"Time":"2026-09-15T23:36:08.138696352Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsDeclarationDrift\n"}
+{"Time":"2026-09-15T23:36:08.138713032Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsIncompleteSettlementClosureOwners\n"}
+{"Time":"2026-09-15T23:36:08.138727251Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsSourceSelectorOmissions\n"}
+{"Time":"2026-09-15T23:36:08.138741081Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsZeroSelection\n"}
+{"Time":"2026-09-15T23:36:08.138754808Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRequiresCompleteSettlementClosureOwners\n"}
+{"Time":"2026-09-15T23:36:08.13876952Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestSemanticMismatchBranchesNeverWrapPotentiallyNilErrors\n"}
+{"Time":"2026-09-15T23:36:08.1387835Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestStateMismatchErrorPreservesCausesWithoutFormattingNilWraps\n"}
+{"Time":"2026-09-15T23:36:08.138797077Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        selected:\n"}
+{"Time":"2026-09-15T23:36:08.138810648Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalAttemptFixtureLedgerMatchesDurableProductionWire\n"}
+{"Time":"2026-09-15T23:36:08.138824403Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalClaimPaymentLedgerRejectsDuplicateReceipt\n"}
+{"Time":"2026-09-15T23:36:08.138837813Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalClaimPaymentLedgerRejectsMissingPayment\n"}
+{"Time":"2026-09-15T23:36:08.138851184Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalCollectedCoordinatorBaselinesRequireInitializerLog\n"}
+{"Time":"2026-09-15T23:36:08.138864521Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalCollectorIncludesCompletedSettlementTail\n"}
+{"Time":"2026-09-15T23:36:08.138877854Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalEVMLogQueryRangesRespectOfficialInclusiveLimit\n"}
+{"Time":"2026-09-15T23:36:08.138892063Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAcceptsExactTwoGenerationTopology\n"}
+{"Time":"2026-09-15T23:36:08.138905613Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAcceptsHistoricalRuntimeAndRequiresCurrentRefreshRoots\n"}
+{"Time":"2026-09-15T23:36:08.138919845Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationAllCarriedArtifactsSkipEmptyBatchPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.138933352Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactDeriverRejectsAbsentOrSubstitutedBytes\n"}
+{"Time":"2026-09-15T23:36:08.138948326Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactEventsRejectsReceiptSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.138961743Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationArtifactFilesRejectsUnsafeOrUnorderedSources\n"}
+{"Time":"2026-09-15T23:36:08.138988542Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationDecodesExactReceiptEventFields\n"}
+{"Time":"2026-09-15T23:36:08.139004616Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInitialPartitionRejectsOmissionDuplicateAndUnexplainedMixed\n"}
+{"Time":"2026-09-15T23:36:08.139018491Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInstalledPublicWriteRejectsWrongTargetCalldataOrEmitter\n"}
+{"Time":"2026-09-15T23:36:08.139048565Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationInstalledReceiptTopologyRejectsOmissionDuplicateAndWrongEmitter\n"}
+{"Time":"2026-09-15T23:36:08.139073927Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsCurrentBatchTargetSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139089149Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsInstalledBatchReceiptCalldataOrPostconditionSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139103135Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsMissingOrCorruptGenerationOne\n"}
+{"Time":"2026-09-15T23:36:08.139117008Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsPartialOrSubstitutedPublicWrite\n"}
+{"Time":"2026-09-15T23:36:08.139130352Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsReceiptEventFieldOrTopicSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139143597Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsReorderedBatchPartition\n"}
+{"Time":"2026-09-15T23:36:08.139157641Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsSubstitutedBatchReceiptCalldataEventOrPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.139172093Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsTerminalGenerationThree\n"}
+{"Time":"2026-09-15T23:36:08.139185713Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationRejectsWriteHeadRuntimeSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139199402Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes\n"}
+{"Time":"2026-09-15T23:36:08.139212879Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors\n"}
+{"Time":"2026-09-15T23:36:08.139226951Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges\n"}
+{"Time":"2026-09-15T23:36:08.139240381Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries\n"}
+{"Time":"2026-09-15T23:36:08.139276727Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay\n"}
+{"Time":"2026-09-15T23:36:08.139294876Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetGenerationWriteEmitterGraphUsesDistinctHistoricalBatcher\n"}
+{"Time":"2026-09-15T23:36:08.139308596Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions\n"}
+{"Time":"2026-09-15T23:36:08.13934315Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139359459Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetLifecycleSchedulesBindIndependentEVMDeadline\n"}
+{"Time":"2026-09-15T23:36:08.139373099Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalCaptureOwnsExactSignedEnvelope\n"}
+{"Time":"2026-09-15T23:36:08.139386733Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLifecycleJoinsExactGenerationAndSource\n"}
+{"Time":"2026-09-15T23:36:08.139400622Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLifecyclePathsUseApprovedTakeoverAndSuccessor\n"}
+{"Time":"2026-09-15T23:36:08.139447196Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation\n"}
+{"Time":"2026-09-15T23:36:08.13946369Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalPublicReplayAndArchiveRejectSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.139477675Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalFleetRenewalSourceRequiresExactArchivedApprovalAndSignatures\n"}
+{"Time":"2026-09-15T23:36:08.139491539Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeApplicationRejectsOldStateAndUIDReassignment\n"}
+{"Time":"2026-09-15T23:36:08.139504794Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeApplicationRejectsReusedCycleLineage\n"}
+{"Time":"2026-09-15T23:36:08.139517941Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCallEvidenceDerivesReviewedWireIdentity\n"}
+{"Time":"2026-09-15T23:36:08.139531353Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCommitRejectsSuccessfulRemarkContainingCiphertext\n"}
+{"Time":"2026-09-15T23:36:08.139545308Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2ApplicationSeparatesNewerCommitFromAppliedRow\n"}
+{"Time":"2026-09-15T23:36:08.139559072Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2CountsSharedPayoutOnceAndRetainsEverySettlement\n"}
+{"Time":"2026-09-15T23:36:08.139573064Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2RejectsMissingStaleAndConflictingHistory\n"}
+{"Time":"2026-09-15T23:36:08.139587301Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2ReproducesOnlyImmutableCheckpointState\n"}
+{"Time":"2026-09-15T23:36:08.139601135Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2RetryNeedsActualTargetCommit\n"}
+{"Time":"2026-09-15T23:36:08.139615335Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeCoverageV2UsesActualIntervalsAcrossIndependentClocks\n"}
+{"Time":"2026-09-15T23:36:08.139629777Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsBindEmissionAndRelevantStakeMutations\n"}
+{"Time":"2026-09-15T23:36:08.139643761Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsCoverAdjacentStakeMutationClasses\n"}
+{"Time":"2026-09-15T23:36:08.139671821Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochEventsRejectAmbiguityAndRedirectedAutoStake\n"}
+{"Time":"2026-09-15T23:36:08.139687375Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutProvesExactRuntimeCausality\n"}
+{"Time":"2026-09-15T23:36:08.139701505Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutPublicReplayRejectsTampering\n"}
+{"Time":"2026-09-15T23:36:08.139715364Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsDivergentValidatorBoundary\n"}
+{"Time":"2026-09-15T23:36:08.139728756Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsIncompleteOrAmbiguousUIDSet\n"}
+{"Time":"2026-09-15T23:36:08.13974217Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsManualStakeInflation\n"}
+{"Time":"2026-09-15T23:36:08.139756003Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsPollingApplicationAsPayoutBoundary\n"}
+{"Time":"2026-09-15T23:36:08.13976906Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsServerVectorSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139782151Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsStaleStorageChannels\n"}
+{"Time":"2026-09-15T23:36:08.139796001Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEpochPayoutRejectsZeroWeightStakeInflation\n"}
+{"Time":"2026-09-15T23:36:08.139808708Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeEvidenceCycleAliasesMustKeepOneIdentity\n"}
+{"Time":"2026-09-15T23:36:08.139821507Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeExtrinsicIdentityRejectsCallAndSignerSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139834707Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeIntentSourceBindsPreparedLifecycle\n"}
+{"Time":"2026-09-15T23:36:08.139847377Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeOperationEventsRejectSubstitutionAndAmbiguity\n"}
+{"Time":"2026-09-15T23:36:08.139861411Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeParentHeadRejectsSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139874891Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRegistrationSourceBindsPlanJournalAndPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.139888548Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs\n"}
+{"Time":"2026-09-15T23:36:08.139901492Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardRejectsHotkeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.139914677Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardRequiresExplicitWellFormedStake\n"}
+{"Time":"2026-09-15T23:36:08.139927526Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2CancellationJoinsHistoricalBatch\n"}
+{"Time":"2026-09-15T23:36:08.139941051Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2HonorsRPCContextAndSharedConnectionOwnership\n"}
+{"Time":"2026-09-15T23:36:08.139990812Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeRewardV2ReadsExactHistoricalVectorsAndUIDStake\n"}
+{"Time":"2026-09-15T23:36:08.140006066Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourceDecodesEachPlanOnce\n"}
+{"Time":"2026-09-15T23:36:08.140019563Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseAuthenticatesChangedValidBytes\n"}
+{"Time":"2026-09-15T23:36:08.140047559Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseDoesNotCacheFailure\n"}
+{"Time":"2026-09-15T23:36:08.140072039Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseIsArchiveLocal\n"}
+{"Time":"2026-09-15T23:36:08.140086478Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseRejectsChangedBytes\n"}
+{"Time":"2026-09-15T23:36:08.140099703Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalNativeSourcePlanReuseRejectsRehashedBudget\n"}
+{"Time":"2026-09-15T23:36:08.140113547Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactAcceptsAuthenticatedProviderDomain\n"}
+{"Time":"2026-09-15T23:36:08.140127259Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactAllowsPayoutColdkeyReuseAcrossOperators\n"}
+{"Time":"2026-09-15T23:36:08.140140449Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactCollectorUsesRetainedSigner\n"}
+{"Time":"2026-09-15T23:36:08.140153426Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactConfiguredRoleCensusRejectsSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.140187545Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactFixtureUsesCanonicalPayoutIdentities\n"}
+{"Time":"2026-09-15T23:36:08.140204267Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsAuthenticatedProviderOmission\n"}
+{"Time":"2026-09-15T23:36:08.140217949Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsDuplicatePayoutColdkey\n"}
+{"Time":"2026-09-15T23:36:08.140231096Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsInvalidTopologyPayoutIdentities\n"}
+{"Time":"2026-09-15T23:36:08.140244758Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsMalformedAndExtraRows\n"}
+{"Time":"2026-09-15T23:36:08.140259048Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsOperatorSnapshotDomainSwap\n"}
+{"Time":"2026-09-15T23:36:08.140272502Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsPayeeSwap\n"}
+{"Time":"2026-09-15T23:36:08.140286219Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsProviderCensusCommitmentSwap\n"}
+{"Time":"2026-09-15T23:36:08.140299996Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsReliabilityAMinSwap\n"}
+{"Time":"2026-09-15T23:36:08.140333017Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsResignedCrossOperatorProvider\n"}
+{"Time":"2026-09-15T23:36:08.140360954Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsResignedProviderOmissionAgainstSignedMeasurement\n"}
+{"Time":"2026-09-15T23:36:08.140394523Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactRejectsSignedBoundarySwap\n"}
+{"Time":"2026-09-15T23:36:08.140411152Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactSeparatesProvenanceFromRootAuthorization\n"}
+{"Time":"2026-09-15T23:36:08.140425019Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutArtifactSignedAuditProvenanceBindsAllDecisionSources\n"}
+{"Time":"2026-09-15T23:36:08.140439173Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership\n"}
+{"Time":"2026-09-15T23:36:08.140452568Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript\n"}
+{"Time":"2026-09-15T23:36:08.140498404Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins\n"}
+{"Time":"2026-09-15T23:36:08.140513876Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicFleetAuditFailsClosedOnMissingOrTamperedSummary\n"}
+{"Time":"2026-09-15T23:36:08.140527158Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicFleetAuditSealsExactReplayScope\n"}
+{"Time":"2026-09-15T23:36:08.140539972Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicNativePayoutAuditSealsExactScope\n"}
+{"Time":"2026-09-15T23:36:08.140553217Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2BoundsRejectPartialReadResults\n"}
+{"Time":"2026-09-15T23:36:08.140565951Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2CancelsAndJoinsActiveTransport\n"}
+{"Time":"2026-09-15T23:36:08.140579468Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority\n"}
+{"Time":"2026-09-15T23:36:08.140592603Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2KeepsNativeClockAndNullStorage\n"}
+{"Time":"2026-09-15T23:36:08.140605693Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicState\n"}
+{"Time":"2026-09-15T23:36:08.140618895Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2RefusesWritesUnpinnedAndConflictingReads\n"}
+{"Time":"2026-09-15T23:36:08.140632314Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalPublicValidatorSourcesV2RetainsRealBatchesAndCanonicalHeads\n"}
+{"Time":"2026-09-15T23:36:08.140645586Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticArtifactDeploymentAdmissionPrecedesSignedReplay\n"}
+{"Time":"2026-09-15T23:36:08.140658803Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent\n"}
+{"Time":"2026-09-15T23:36:08.140673402Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderArchiveRetentionRejectsHistoricalFloorAsCurrentRelease\n"}
+{"Time":"2026-09-15T23:36:08.140698996Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderAttributesPriorCurrentAndVerifyKeyRestarts\n"}
+{"Time":"2026-09-15T23:36:08.140713951Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderBindsCompleteClosedCallInputs\n"}
+{"Time":"2026-09-15T23:36:08.140727208Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery\n"}
+{"Time":"2026-09-15T23:36:08.140740768Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderChecksEveryRecoveryObservationHead\n"}
+{"Time":"2026-09-15T23:36:08.140754025Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration\n"}
+{"Time":"2026-09-15T23:36:08.140767537Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead\n"}
+{"Time":"2026-09-15T23:36:08.140780676Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts\n"}
+{"Time":"2026-09-15T23:36:08.140793886Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent\n"}
+{"Time":"2026-09-15T23:36:08.14080698Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix\n"}
+{"Time":"2026-09-15T23:36:08.140820128Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderDerivesNativeStartFromSealedAppliedIntents\n"}
+{"Time":"2026-09-15T23:36:08.140833519Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderFailureCreatesNoLooseOutputs\n"}
+{"Time":"2026-09-15T23:36:08.140848391Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderProjectsDeterministicNativeRewardSnapshots\n"}
+{"Time":"2026-09-15T23:36:08.140863041Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRecoversPriorNativeTerminalFromBoundClosedBundle\n"}
+{"Time":"2026-09-15T23:36:08.14087669Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions\n"}
+{"Time":"2026-09-15T23:36:08.140890412Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus\n"}
+{"Time":"2026-09-15T23:36:08.14090454Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsMissingTamperedAndDuplicateRestartEvidence\n"}
+{"Time":"2026-09-15T23:36:08.140918874Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsOwnerStakeSubstitutionAndExternalDelegation\n"}
+{"Time":"2026-09-15T23:36:08.140932421Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt\n"}
+{"Time":"2026-09-15T23:36:08.140946561Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt\n"}
+{"Time":"2026-09-15T23:36:08.140960475Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderUsesCleanAnomalyLedgerStatus\n"}
+{"Time":"2026-09-15T23:36:08.140987434Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticBuilderUsesSelfContainedCopiedPriorLiveChain\n"}
+{"Time":"2026-09-15T23:36:08.141002973Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesDecodeEachByteOnce\n"}
+{"Time":"2026-09-15T23:36:08.141017061Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesJoinEveryRecord\n"}
+{"Time":"2026-09-15T23:36:08.141046767Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesKeepDocumentAndDepthBounds\n"}
+{"Time":"2026-09-15T23:36:08.141072616Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesOwnDecodedInput\n"}
+{"Time":"2026-09-15T23:36:08.141109247Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCampaignArtifactReferencesPreserveJSONValues\n"}
+{"Time":"2026-09-15T23:36:08.141126874Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors\n"}
+{"Time":"2026-09-15T23:36:08.141141561Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorRuntimeAuditRejectsHistoricalUpgradeBack\n"}
+{"Time":"2026-09-15T23:36:08.141155568Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeChunkBindsTransactionIndex\n"}
+{"Time":"2026-09-15T23:36:08.141169385Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeRangeChunksCoverOfficialLimit\n"}
+{"Time":"2026-09-15T23:36:08.141183402Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCoordinatorUpgradeTranscriptRejectsIncompleteChunks\n"}
+{"Time":"2026-09-15T23:36:08.141197234Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCycleConvictionAuditIncludesEpochIncrement\n"}
+{"Time":"2026-09-15T23:36:08.141211701Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticCycleConvictionAuditRejectsSwappedEpochIncrement\n"}
+{"Time":"2026-09-15T23:36:08.141225308Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentArtifactRejectsIgnoredRuntimeMap\n"}
+{"Time":"2026-09-15T23:36:08.141238693Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryExecutorPersistsCrashRecovery\n"}
+{"Time":"2026-09-15T23:36:08.141252262Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryMigratesLegacyStateIdempotently\n"}
+{"Time":"2026-09-15T23:36:08.141265799Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRecoversCrashWithoutSavedObservation\n"}
+{"Time":"2026-09-15T23:36:08.141279661Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsForeignSignedCreateEnvelopes\n"}
+{"Time":"2026-09-15T23:36:08.141314368Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery\n"}
+{"Time":"2026-09-15T23:36:08.141330817Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRejectsMissingForeignAndConflictingEvidence\n"}
+{"Time":"2026-09-15T23:36:08.141357533Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders\n"}
+{"Time":"2026-09-15T23:36:08.141373333Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentBoundarySeparatesProxyHistoryFromReleaseGraph\n"}
+{"Time":"2026-09-15T23:36:08.141387185Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsLegacySchemaAndPlanLockSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.141422406Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact\n"}
+{"Time":"2026-09-15T23:36:08.141437823Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsMutuallyConsistentSubstitutedRuntime\n"}
+{"Time":"2026-09-15T23:36:08.141451735Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsRootCardinalityAndAliasMutations\n"}
+{"Time":"2026-09-15T23:36:08.141465285Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash\n"}
+{"Time":"2026-09-15T23:36:08.141478479Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDeploymentRejectsWrongUpgradeAddressAndHash\n"}
+{"Time":"2026-09-15T23:36:08.141492444Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDishonestDepositDecisionsAndPublicReplay\n"}
+{"Time":"2026-09-15T23:36:08.14150677Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticDishonestDepositReceiptPayloadIsMandatoryAndOrdered\n"}
+{"Time":"2026-09-15T23:36:08.14152086Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEpochDepositUsesSettlementEpochNotSourceEpoch\n"}
+{"Time":"2026-09-15T23:36:08.141534597Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEvidenceBuildRenderAndArtifacts\n"}
+{"Time":"2026-09-15T23:36:08.141548486Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticEvidenceFailsClosed\n"}
+{"Time":"2026-09-15T23:36:08.141562439Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation\n"}
+{"Time":"2026-09-15T23:36:08.141576741Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureChainCasesJoinAllFailuresAndCancellation\n"}
+{"Time":"2026-09-15T23:36:08.14159056Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureChainCasesKeepExactCensusAndPrivateReaders\n"}
+{"Time":"2026-09-15T23:36:08.141604537Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureClosedProofsReuseExactSuccessorWithoutResigning\n"}
+{"Time":"2026-09-15T23:36:08.141618646Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureGenerationLookupDoesNotAllocateCensus\n"}
+{"Time":"2026-09-15T23:36:08.141633563Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection\n"}
+{"Time":"2026-09-15T23:36:08.141647878Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadManifestAdmissionRequiresAuthenticatedIdentity\n"}
+{"Time":"2026-09-15T23:36:08.141675527Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHeadProjectionAdmissionPrecedesSignedReplay\n"}
+{"Time":"2026-09-15T23:36:08.141691487Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeJoinsConcurrentReaders\n"}
+{"Time":"2026-09-15T23:36:08.141705754Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeTracksExactBytes\n"}
+{"Time":"2026-09-15T23:36:08.141719226Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureHotkeyDecodeWorkIsBounded\n"}
+{"Time":"2026-09-15T23:36:08.14173228Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations\n"}
+{"Time":"2026-09-15T23:36:08.141746665Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary\n"}
+{"Time":"2026-09-15T23:36:08.141763879Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire\n"}
+{"Time":"2026-09-15T23:36:08.141778971Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule\n"}
+{"Time":"2026-09-15T23:36:08.141792711Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap\n"}
+{"Time":"2026-09-15T23:36:08.141806522Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureRetainedTransitionsRejectChangedSource\n"}
+{"Time":"2026-09-15T23:36:08.141820192Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles\n"}
+{"Time":"2026-09-15T23:36:08.141834079Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity\n"}
+{"Time":"2026-09-15T23:36:08.141847804Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureSnapshotsAreDetached\n"}
+{"Time":"2026-09-15T23:36:08.141861131Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement\n"}
+{"Time":"2026-09-15T23:36:08.141874915Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsAreIndependentAndJoined\n"}
+{"Time":"2026-09-15T23:36:08.141888287Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsJoinAfterGoexit\n"}
+{"Time":"2026-09-15T23:36:08.141901819Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureValidatorChainsRejectAliasedOrSkippedEpochs\n"}
+{"Time":"2026-09-15T23:36:08.141915506Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency\n"}
+{"Time":"2026-09-15T23:36:08.141929296Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFixtureWorkersRejectNonReturningCases\n"}
+{"Time":"2026-09-15T23:36:08.1419426Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditDeduplicatesCyclesAndCachedReads\n"}
+{"Time":"2026-09-15T23:36:08.141977814Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact\n"}
+{"Time":"2026-09-15T23:36:08.142015845Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditRejectsIdentityAndValidityDrift\n"}
+{"Time":"2026-09-15T23:36:08.142047039Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditRejectsMissingWorkerResult\n"}
+{"Time":"2026-09-15T23:36:08.142070371Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetAuditReplaysEveryOrdinaryGeneration\n"}
+{"Time":"2026-09-15T23:36:08.142084287Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity\n"}
+{"Time":"2026-09-15T23:36:08.142097715Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHeadUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.142111226Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration\n"}
+{"Time":"2026-09-15T23:36:08.142123919Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs\n"}
+{"Time":"2026-09-15T23:36:08.142137901Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof\n"}
+{"Time":"2026-09-15T23:36:08.14215059Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments\n"}
+{"Time":"2026-09-15T23:36:08.14216375Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs\n"}
+{"Time":"2026-09-15T23:36:08.142176672Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary\n"}
+{"Time":"2026-09-15T23:36:08.142189239Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection\n"}
+{"Time":"2026-09-15T23:36:08.142202166Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation\n"}
+{"Time":"2026-09-15T23:36:08.142230886Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions\n"}
+{"Time":"2026-09-15T23:36:08.142241668Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock\n"}
+{"Time":"2026-09-15T23:36:08.142251444Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCommitmentOracleScheduleBindsCalldataEventAndPostcondition\n"}
+{"Time":"2026-09-15T23:36:08.142277047Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalConvictionRejectsReserveAndCalldataMutations\n"}
+{"Time":"2026-09-15T23:36:08.142288254Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization\n"}
+{"Time":"2026-09-15T23:36:08.142297604Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision\n"}
+{"Time":"2026-09-15T23:36:08.142306978Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead\n"}
+{"Time":"2026-09-15T23:36:08.142325818Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions\n"}
+{"Time":"2026-09-15T23:36:08.142336844Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions\n"}
+{"Time":"2026-09-15T23:36:08.142346368Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState\n"}
+{"Time":"2026-09-15T23:36:08.142357462Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges\n"}
+{"Time":"2026-09-15T23:36:08.142367584Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade\n"}
+{"Time":"2026-09-15T23:36:08.142377342Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain\n"}
+{"Time":"2026-09-15T23:36:08.142387056Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock\n"}
+{"Time":"2026-09-15T23:36:08.142396781Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline\n"}
+{"Time":"2026-09-15T23:36:08.142406322Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalCoordinatorUpgradeReaderReplaysSealedRanges\n"}
+{"Time":"2026-09-15T23:36:08.142415944Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalDepositRejectsReserveAndCalldataMutations\n"}
+{"Time":"2026-09-15T23:36:08.142425464Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations\n"}
+{"Time":"2026-09-15T23:36:08.142434894Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection\n"}
+{"Time":"2026-09-15T23:36:08.142444404Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy\n"}
+{"Time":"2026-09-15T23:36:08.142469066Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets\n"}
+{"Time":"2026-09-15T23:36:08.142480503Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets\n"}
+{"Time":"2026-09-15T23:36:08.142490326Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations\n"}
+{"Time":"2026-09-15T23:36:08.142499675Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace\n"}
+{"Time":"2026-09-15T23:36:08.142509515Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalPolicyScheduleBindsPostStateAndCalldata\n"}
+{"Time":"2026-09-15T23:36:08.142520011Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReaderFactorySnapshotCannotMutateVerifiedCopy\n"}
+{"Time":"2026-09-15T23:36:08.142538178Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptArtifactRejectsEnvelopeAndLogMutations\n"}
+{"Time":"2026-09-15T23:36:08.142548953Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptCensusSkipsFailedNonMutations\n"}
+{"Time":"2026-09-15T23:36:08.14255885Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalReceiptProofBindsRawLogs\n"}
+{"Time":"2026-09-15T23:36:08.142584487Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRegistrationBindsFullEventTuples\n"}
+{"Time":"2026-09-15T23:36:08.142595859Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRegistrationRejectsTransactionAndEmitterMutations\n"}
+{"Time":"2026-09-15T23:36:08.142605693Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeLockRetainsExactOriginalProvenance\n"}
+{"Time":"2026-09-15T23:36:08.142615402Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeNativeArchiveRetainsOriginalArtifactAuthority\n"}
+{"Time":"2026-09-15T23:36:08.142641885Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalRuntimeRenewalReconstructsOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:08.142652379Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticHistoricalUpgradeBindsTransactionAndEvent\n"}
+{"Time":"2026-09-15T23:36:08.142662208Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker\n"}
+{"Time":"2026-09-15T23:36:08.142672289Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPathProofArtifactCount\n"}
+{"Time":"2026-09-15T23:36:08.142681502Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPathProofArtifactRejectsMalformedTrailingJSON\n"}
+{"Time":"2026-09-15T23:36:08.142691348Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery\n"}
+{"Time":"2026-09-15T23:36:08.14270097Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolOperatorVersionRejectsTerminalAuthoritySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.142723153Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolRegistrationRequiresSuccessfulEVMReceipt\n"}
+{"Time":"2026-09-15T23:36:08.142745647Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot\n"}
+{"Time":"2026-09-15T23:36:08.142757417Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticPoolUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.142767197Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsConvictionAdded\n"}
+{"Time":"2026-09-15T23:36:08.142777298Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDeferredCapture\n"}
+{"Time":"2026-09-15T23:36:08.142786596Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDeferredClaim\n"}
+{"Time":"2026-09-15T23:36:08.14285649Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsDishonestDepositNonceOrder\n"}
+{"Time":"2026-09-15T23:36:08.142871453Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsHistoricScheduleBeforeTerminalRotation\n"}
+{"Time":"2026-09-15T23:36:08.142881289Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsReleaseEconomicEvents\n"}
+{"Time":"2026-09-15T23:36:08.14289127Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsRootMissed\n"}
+{"Time":"2026-09-15T23:36:08.142901144Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadBindsWithdrawalOnlyClaimPaid\n"}
+{"Time":"2026-09-15T23:36:08.142911208Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsClaimPaidColdkeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.142941933Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsCorruptAndNoncanonicalLogs\n"}
+{"Time":"2026-09-15T23:36:08.142954845Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsDepositPolicyAndSignerSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.142965404Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsFutureHistoricSchedule\n"}
+{"Time":"2026-09-15T23:36:08.142975371Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReceiptPayloadRejectsUnrepresentedClaimPaid\n"}
+{"Time":"2026-09-15T23:36:08.142985006Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeHonorsCancellationAfterRead\n"}
+{"Time":"2026-09-15T23:36:08.142994539Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopePreservesEveryRejection\n"}
+{"Time":"2026-09-15T23:36:08.143004223Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeRechecksCurrentIdentity\n"}
+{"Time":"2026-09-15T23:36:08.143014041Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticReplicatedEnvelopeVerifiesOwnedBytesOnce\n"}
+{"Time":"2026-09-15T23:36:08.14302392Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas\n"}
+{"Time":"2026-09-15T23:36:08.143052737Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique\n"}
+{"Time":"2026-09-15T23:36:08.143065239Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration\n"}
+{"Time":"2026-09-15T23:36:08.143075488Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultCarryAuditRejectsOperatorCarrySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.143085138Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditReconcilesPriorCreditAndWithdrawal\n"}
+{"Time":"2026-09-15T23:36:08.143094816Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsClaimCreditUnderflow\n"}
+{"Time":"2026-09-15T23:36:08.143104103Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsClaimKeySubstitution\n"}
+{"Time":"2026-09-15T23:36:08.143124066Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsPayoutLeafSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.143135315Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimAuditRejectsTerminalCreditSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.143145741Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSemanticVaultClaimKeySeparatesOperatorAndPayoutLeaf\n"}
+{"Time":"2026-09-15T23:36:08.143155634Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureCollectedGraphRejectsAttemptOmission\n"}
+{"Time":"2026-09-15T23:36:08.143165485Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureLastWindowNeedsNoNextIntent\n"}
+{"Time":"2026-09-15T23:36:08.143175371Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureProofProjectionUsesExactEpochBounds\n"}
+{"Time":"2026-09-15T23:36:08.143185195Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsConflictingSuccessorTransition\n"}
+{"Time":"2026-09-15T23:36:08.14319473Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsDomainCensusAndBoundaryChanges\n"}
+{"Time":"2026-09-15T23:36:08.143220232Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureRejectsRehashedProofOmission\n"}
+{"Time":"2026-09-15T23:36:08.143231776Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureWaitAuthenticatesLastWindow\n"}
+{"Time":"2026-09-15T23:36:08.143242242Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalSettlementClosureWaitHonorsPublicationAndCancellation\n"}
+{"Time":"2026-09-15T23:36:08.143251701Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalValidatorAuthorityV2ReconstructsHistorical455Renderer\n"}
+{"Time":"2026-09-15T23:36:08.143261419Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys\n"}
+{"Time":"2026-09-15T23:36:08.143270761Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsCompleteAdversarialRegressions\n"}
+{"Time":"2026-09-15T23:36:08.143280744Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressions\n"}
+{"Time":"2026-09-15T23:36:08.143290578Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage\n"}
+{"Time":"2026-09-15T23:36:08.143301034Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup\n"}
+{"Time":"2026-09-15T23:36:08.14331091Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsSemanticIntegrityRegressions\n"}
+{"Time":"2026-09-15T23:36:08.143320335Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestProducerGatePinsSyntheticEVMIdentityRegressions\n"}
+{"Time":"2026-09-15T23:36:08.1433301Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentRejectsAdjacentSubstitution\n"}
+{"Time":"2026-09-15T23:36:08.143349454Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentRejectsMalformedGetter\n"}
+{"Time":"2026-09-15T23:36:08.143360574Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticContractDeploymentReturnsCompletePinnedCustodyState\n"}
+{"Time":"2026-09-15T23:36:08.14337051Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticEpochZeroCoordinatorReadersArePinned\n"}
+{"Time":"2026-09-15T23:36:08.143380588Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticNativeOwnerStakeRejectsAdjacentAndMalformedInputs\n"}
+{"Time":"2026-09-15T23:36:08.143390302Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticNativeOwnerStakeUsesPinnedStakingPrecompile\n"}
+{"Time":"2026-09-15T23:36:08.143400449Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticOperatorVersionRejectsMalformedHistoricalState\n"}
+{"Time":"2026-09-15T23:36:08.143410351Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticPerOperatorEVMAuditsArePinned\n"}
+{"Time":"2026-09-15T23:36:08.143419699Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticReceiptReplaysCanonicalABIPayload\n"}
+{"Time":"2026-09-15T23:36:08.143429342Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticSettlementVaultStateIsCompleteAndPinned\n"}
+{"Time":"2026-09-15T23:36:08.143453367Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter\n"}
+{"Time":"2026-09-15T23:36:08.143465405Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicFinalSemanticVaultClaimAndCreditArePinned\n"}
+{"Time":"2026-09-15T23:36:08.143475246Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit\n"}
+{"Time":"2026-09-15T23:36:08.14348486Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain\n"}
+{"Time":"2026-09-15T23:36:08.143494522Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusAcceptsExactSortedSelection\n"}
+{"Time":"2026-09-15T23:36:08.143503331Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups\n"}
+{"Time":"2026-09-15T23:36:08.143512847Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusPinsSettlementClosureRegressions\n"}
+{"Time":"2026-09-15T23:36:08.143522015Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsDeclarationDrift\n"}
+{"Time":"2026-09-15T23:36:08.14353199Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsIncompleteSettlementClosureOwners\n"}
+{"Time":"2026-09-15T23:36:08.143541271Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsSourceSelectorOmissions\n"}
+{"Time":"2026-09-15T23:36:08.143550469Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRejectsZeroSelection\n"}
+{"Time":"2026-09-15T23:36:08.143559574Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestReleaseSemanticCensusRequiresCompleteSettlementClosureOwners\n"}
+{"Time":"2026-09-15T23:36:08.143577601Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestSemanticMismatchBranchesNeverWrapPotentiallyNilErrors\n"}
+{"Time":"2026-09-15T23:36:08.143588036Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"        TestStateMismatchErrorPreservesCausesWithoutFormattingNilWraps\n"}
+{"Time":"2026-09-15T23:36:15.041728577Z","Action":"output","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"--- FAIL: TestProducerGatePinsSemanticIntegrityRegressions (7.89s)\n"}
+{"Time":"2026-09-15T23:36:15.041851308Z","Action":"fail","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Elapsed":7.89}
+{"Time":"2026-09-15T23:36:15.041878727Z","Action":"run","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource"}
+{"Time":"2026-09-15T23:36:15.041890734Z","Action":"output","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Output":"=== RUN   TestReleaseGatesAttestPinnedRuntime454RustSource\n"}
+{"Time":"2026-09-15T23:36:15.045132646Z","Action":"output","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Output":"--- PASS: TestReleaseGatesAttestPinnedRuntime454RustSource (0.00s)\n"}
+{"Time":"2026-09-15T23:36:15.045200237Z","Action":"pass","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Elapsed":0}
+{"Time":"2026-09-15T23:36:15.04521499Z","Action":"run","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions"}
+{"Time":"2026-09-15T23:36:15.045225213Z","Action":"output","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Output":"=== RUN   TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions\n"}
+{"Time":"2026-09-15T23:36:15.271640785Z","Action":"output","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Output":"--- PASS: TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions (0.23s)\n"}
+{"Time":"2026-09-15T23:36:15.271935852Z","Action":"pass","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Elapsed":0.23}
+{"Time":"2026-09-15T23:36:15.27197222Z","Action":"run","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock"}
+{"Time":"2026-09-15T23:36:15.27199114Z","Action":"output","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Output":"=== RUN   TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock\n"}
+{"Time":"2026-09-15T23:36:15.277282724Z","Action":"output","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Output":"--- PASS: TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock (0.01s)\n"}
+{"Time":"2026-09-15T23:36:15.277320522Z","Action":"pass","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Elapsed":0.01}
+{"Time":"2026-09-15T23:36:15.277332784Z","Action":"run","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection"}
+{"Time":"2026-09-15T23:36:15.277341405Z","Action":"output","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Output":"=== RUN   TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection\n"}
+{"Time":"2026-09-15T23:36:15.29233872Z","Action":"output","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Output":"--- PASS: TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection (0.01s)\n"}
+{"Time":"2026-09-15T23:36:15.292656759Z","Action":"pass","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Elapsed":0.01}
+{"Time":"2026-09-15T23:36:15.292682338Z","Action":"run","Test":"TestRuntime458ArtifactRpcPreservesExactResponse"}
+{"Time":"2026-09-15T23:36:15.292692174Z","Action":"output","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Output":"=== RUN   TestRuntime458ArtifactRpcPreservesExactResponse\n"}
+{"Time":"2026-09-15T23:36:15.395940798Z","Action":"output","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Output":"--- PASS: TestRuntime458ArtifactRpcPreservesExactResponse (0.10s)\n"}
+{"Time":"2026-09-15T23:36:15.39602757Z","Action":"pass","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Elapsed":0.1}
+{"Time":"2026-09-15T23:36:15.396149739Z","Action":"run","Test":"TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses"}
+{"Time":"2026-09-15T23:36:15.396157368Z","Action":"output","Test":"TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses","Output":"=== RUN   TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses\n"}
+{"Time":"2026-09-15T23:36:15.619485469Z","Action":"output","Test":"TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses","Output":"--- PASS: TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses (0.22s)\n"}
+{"Time":"2026-09-15T23:36:15.619596686Z","Action":"pass","Test":"TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses","Elapsed":0.22}
+{"Time":"2026-09-15T23:36:15.619609406Z","Action":"run","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute"}
+{"Time":"2026-09-15T23:36:15.619613838Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute\n"}
+{"Time":"2026-09-15T23:36:15.619893869Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"    release_runtime458_source_test.go:210: artifact fixture manifest is incomplete: \u003cnil\u003e\n"}
+{"Time":"2026-09-15T23:36:15.619905907Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"--- FAIL: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.00s)\n"}
+{"Time":"2026-09-15T23:36:15.619912929Z","Action":"fail","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Elapsed":0}
+{"Time":"2026-09-15T23:36:15.619917627Z","Action":"run","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta"}
+{"Time":"2026-09-15T23:36:15.619921815Z","Action":"output","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Output":"=== RUN   TestRuntime458SourceAttestationIncludesExactCompatibilityDelta\n"}
+{"Time":"2026-09-15T23:36:15.620155673Z","Action":"output","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Output":"--- PASS: TestRuntime458SourceAttestationIncludesExactCompatibilityDelta (0.00s)\n"}
+{"Time":"2026-09-15T23:36:15.620185232Z","Action":"pass","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Elapsed":0}
+{"Time":"2026-09-15T23:36:15.620192024Z","Action":"run","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies"}
+{"Time":"2026-09-15T23:36:15.620196226Z","Action":"output","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Output":"=== RUN   TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies\n"}
+{"Time":"2026-09-15T23:36:15.620498722Z","Action":"output","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Output":"--- PASS: TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies (0.00s)\n"}
+{"Time":"2026-09-15T23:36:15.620514663Z","Action":"pass","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Elapsed":0}
+{"Time":"2026-09-15T23:36:15.62051989Z","Action":"run","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory"}
+{"Time":"2026-09-15T23:36:15.620524171Z","Action":"output","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"=== RUN   TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory\n"}
+{"Time":"2026-09-15T23:36:16.058720798Z","Action":"output","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"--- PASS: TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory (0.44s)\n"}
+{"Time":"2026-09-15T23:36:16.058778914Z","Action":"pass","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Elapsed":0.44}
+{"Time":"2026-09-15T23:36:16.058805545Z","Action":"run","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope"}
+{"Time":"2026-09-15T23:36:16.058812053Z","Action":"output","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Output":"=== RUN   TestRuntime460SourceAttestationPreservesReviewed459Scope\n"}
+{"Time":"2026-09-15T23:36:16.059185192Z","Action":"output","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Output":"--- PASS: TestRuntime460SourceAttestationPreservesReviewed459Scope (0.00s)\n"}
+{"Time":"2026-09-15T23:36:16.059252739Z","Action":"pass","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Elapsed":0}
+{"Time":"2026-09-15T23:36:16.059264457Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-15T23:36:16.059270254Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-15T23:36:16.059279816Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-15T23:36:16.059285762Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-15T23:36:16.059298279Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-15T23:36:16.059304359Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-15T23:36:16.059316941Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-15T23:36:16.059323059Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-15T23:36:16.059337354Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-15T23:36:16.059343531Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-15T23:36:16.059352386Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-15T23:36:16.059358261Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-15T23:36:16.059372375Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-15T23:36:16.059378553Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-15T23:36:16.059387264Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-15T23:36:16.05939312Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-15T23:36:16.059404572Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-15T23:36:16.059410437Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-15T23:36:16.059448658Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-15T23:36:16.059472105Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-15T23:36:16.059482247Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair"}
+{"Time":"2026-09-15T23:36:16.059488009Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair\n"}
+{"Time":"2026-09-15T23:36:18.209132314Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (2.15s)\n"}
+{"Time":"2026-09-15T23:36:18.209316592Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Elapsed":2.15}
+{"Time":"2026-09-15T23:36:18.209330644Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation"}
+{"Time":"2026-09-15T23:36:18.209335594Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation\n"}
+{"Time":"2026-09-15T23:36:18.939954603Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation (0.73s)\n"}
+{"Time":"2026-09-15T23:36:18.940257529Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Elapsed":0.73}
+{"Time":"2026-09-15T23:36:18.940314437Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks"}
+{"Time":"2026-09-15T23:36:18.940327573Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks\n"}
+{"Time":"2026-09-15T23:36:19.604586753Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks (0.66s)\n"}
+{"Time":"2026-09-15T23:36:19.604848343Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Elapsed":0.66}
+{"Time":"2026-09-15T23:36:19.604879199Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval"}
+{"Time":"2026-09-15T23:36:19.604894795Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:21.486174965Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval (1.88s)\n"}
+{"Time":"2026-09-15T23:36:21.486365548Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Elapsed":1.88}
+{"Time":"2026-09-15T23:36:21.486387129Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads"}
+{"Time":"2026-09-15T23:36:21.486395216Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads\n"}
+{"Time":"2026-09-15T23:36:22.129352736Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads (0.64s)\n"}
+{"Time":"2026-09-15T23:36:22.129439899Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Elapsed":0.64}
+{"Time":"2026-09-15T23:36:22.129471354Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460"}
+{"Time":"2026-09-15T23:36:22.129478164Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460\n"}
+{"Time":"2026-09-15T23:36:22.816596917Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460 (0.69s)\n"}
+{"Time":"2026-09-15T23:36:22.816716314Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460","Elapsed":0.69}
+{"Time":"2026-09-15T23:36:22.81676068Z","Action":"run","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-15T23:36:22.81676898Z","Action":"output","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-15T23:36:22.816779839Z","Action":"output","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- PASS: TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.816785569Z","Action":"pass","Test":"TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.81679012Z","Action":"run","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance"}
+{"Time":"2026-09-15T23:36:22.816803469Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance\n"}
+{"Time":"2026-09-15T23:36:22.817818378Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.817840881Z","Action":"pass","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.817847026Z","Action":"run","Test":"TestRuntime460HistoricalPublicationsRemainEvidenceOnly"}
+{"Time":"2026-09-15T23:36:22.817851224Z","Action":"output","Test":"TestRuntime460HistoricalPublicationsRemainEvidenceOnly","Output":"=== RUN   TestRuntime460HistoricalPublicationsRemainEvidenceOnly\n"}
+{"Time":"2026-09-15T23:36:22.81990952Z","Action":"output","Test":"TestRuntime460HistoricalPublicationsRemainEvidenceOnly","Output":"--- PASS: TestRuntime460HistoricalPublicationsRemainEvidenceOnly (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.819932691Z","Action":"pass","Test":"TestRuntime460HistoricalPublicationsRemainEvidenceOnly","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.819938871Z","Action":"run","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs"}
+{"Time":"2026-09-15T23:36:22.81994289Z","Action":"output","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Output":"=== RUN   TestRuntime458PublicationsRejectCrossArtifactPairs\n"}
+{"Time":"2026-09-15T23:36:22.822322351Z","Action":"output","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Output":"--- PASS: TestRuntime458PublicationsRejectCrossArtifactPairs (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.822352282Z","Action":"pass","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.822359482Z","Action":"run","Test":"TestRuntime458HistoricalLockRejectsOfficialSeedVariant"}
+{"Time":"2026-09-15T23:36:22.822364196Z","Action":"output","Test":"TestRuntime458HistoricalLockRejectsOfficialSeedVariant","Output":"=== RUN   TestRuntime458HistoricalLockRejectsOfficialSeedVariant\n"}
+{"Time":"2026-09-15T23:36:22.824214493Z","Action":"output","Test":"TestRuntime458HistoricalLockRejectsOfficialSeedVariant","Output":"--- PASS: TestRuntime458HistoricalLockRejectsOfficialSeedVariant (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.824239451Z","Action":"pass","Test":"TestRuntime458HistoricalLockRejectsOfficialSeedVariant","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.824259641Z","Action":"run","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader"}
+{"Time":"2026-09-15T23:36:22.824265133Z","Action":"output","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader\n"}
+{"Time":"2026-09-15T23:36:22.826505738Z","Action":"output","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"--- PASS: TestRuntime458HistoryAllowlistReachesArtifactReader (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.826556553Z","Action":"pass","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.826571369Z","Action":"run","Test":"TestRuntime459ConfigHashPreserves455And458Domains"}
+{"Time":"2026-09-15T23:36:22.826580616Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"=== RUN   TestRuntime459ConfigHashPreserves455And458Domains\n"}
+{"Time":"2026-09-15T23:36:22.827112324Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"--- PASS: TestRuntime459ConfigHashPreserves455And458Domains (0.00s)\n"}
+{"Time":"2026-09-15T23:36:22.827246203Z","Action":"pass","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Elapsed":0}
+{"Time":"2026-09-15T23:36:22.827256274Z","Action":"run","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-15T23:36:22.827260595Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-15T23:36:24.134006406Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval (1.31s)\n"}
+{"Time":"2026-09-15T23:36:24.134220071Z","Action":"pass","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Elapsed":1.31}
+{"Time":"2026-09-15T23:36:24.134233598Z","Action":"run","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift"}
+{"Time":"2026-09-15T23:36:24.134238584Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"=== RUN   TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift\n"}
+{"Time":"2026-09-15T23:36:24.137137503Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"--- PASS: TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift (0.00s)\n"}
+{"Time":"2026-09-15T23:36:24.137161208Z","Action":"pass","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Elapsed":0}
+{"Time":"2026-09-15T23:36:24.137167486Z","Action":"run","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-15T23:36:24.137171619Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-15T23:36:24.828948545Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval (0.69s)\n"}
+{"Time":"2026-09-15T23:36:24.829046909Z","Action":"pass","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Elapsed":0.69}
+{"Time":"2026-09-15T23:36:24.829063796Z","Action":"run","Test":"TestRuntime460Archived459LockRetainsExactProvenance"}
+{"Time":"2026-09-15T23:36:24.829068519Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"=== RUN   TestRuntime460Archived459LockRetainsExactProvenance\n"}
+{"Time":"2026-09-15T23:36:24.831183529Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"--- PASS: TestRuntime460Archived459LockRetainsExactProvenance (0.00s)\n"}
+{"Time":"2026-09-15T23:36:24.831395429Z","Action":"pass","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Elapsed":0}
+{"Time":"2026-09-15T23:36:24.83143369Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval"}
+{"Time":"2026-09-15T23:36:24.831442518Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"=== CONT  TestValidatorEvidenceHistoricalLockReopensOriginalApproval\n"}
+{"Time":"2026-09-15T23:36:24.83145566Z","Action":"cont","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob"}
+{"Time":"2026-09-15T23:36:24.831462899Z","Action":"output","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob","Output":"=== CONT  TestProducerGateStateSelectionCoversNativeSourceCommitmentJob\n"}
+{"Time":"2026-09-15T23:36:24.831496235Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-15T23:36:24.831502647Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-15T23:36:24.831514414Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-15T23:36:24.831532306Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-15T23:36:24.838694228Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin (0.01s)\n"}
+{"Time":"2026-09-15T23:36:24.838747521Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Elapsed":0.01}
+{"Time":"2026-09-15T23:36:24.838761326Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime"}
+{"Time":"2026-09-15T23:36:24.838768865Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime","Output":"=== CONT  TestValidatorEvidenceHistoricalLockRejectsForeignRuntime\n"}
+{"Time":"2026-09-15T23:36:24.845996749Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership (0.01s)\n"}
+{"Time":"2026-09-15T23:36:24.846064041Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Elapsed":0.01}
+{"Time":"2026-09-15T23:36:24.846084977Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift"}
+{"Time":"2026-09-15T23:36:24.846094345Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift","Output":"=== CONT  TestValidatorEvidenceHistoricalLockRejectsApprovalDrift\n"}
+{"Time":"2026-09-15T23:36:24.89887296Z","Action":"output","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob","Output":"--- PASS: TestProducerGateStateSelectionCoversNativeSourceCommitmentJob (0.07s)\n"}
+{"Time":"2026-09-15T23:36:24.898934813Z","Action":"pass","Test":"TestProducerGateStateSelectionCoversNativeSourceCommitmentJob","Elapsed":0.07}
+{"Time":"2026-09-15T23:36:24.898946443Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority"}
+{"Time":"2026-09-15T23:36:24.898952305Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority","Output":"=== CONT  TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority\n"}
+{"Time":"2026-09-15T23:36:25.555977015Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Output":"--- PASS: TestValidatorEvidenceHistoricalLockReopensOriginalApproval (0.72s)\n"}
+{"Time":"2026-09-15T23:36:25.556073661Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockReopensOriginalApproval","Elapsed":0.72}
+{"Time":"2026-09-15T23:36:25.556099666Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T23:36:25.556138884Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T23:36:25.744484453Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift","Output":"--- PASS: TestValidatorEvidenceHistoricalLockRejectsApprovalDrift (0.90s)\n"}
+{"Time":"2026-09-15T23:36:25.744530856Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockRejectsApprovalDrift","Elapsed":0.9}
+{"Time":"2026-09-15T23:36:25.744542106Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-15T23:36:25.744549083Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-15T23:36:25.744937675Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire (0.00s)\n"}
+{"Time":"2026-09-15T23:36:25.744953841Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Elapsed":0}
+{"Time":"2026-09-15T23:36:25.744959721Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-15T23:36:25.744991733Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-15T23:36:25.887476871Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority","Output":"--- PASS: TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority (0.99s)\n"}
+{"Time":"2026-09-15T23:36:25.891227214Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockKeepsAdjacentLineageAuthority","Elapsed":0.99}
+{"Time":"2026-09-15T23:36:25.891250321Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-15T23:36:25.891258714Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-15T23:36:26.404698901Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (0.85s)\n"}
+{"Time":"2026-09-15T23:36:26.404782741Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Elapsed":0.85}
+{"Time":"2026-09-15T23:36:26.404812143Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority"}
+{"Time":"2026-09-15T23:36:26.404827869Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority","Output":"=== CONT  TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority\n"}
+{"Time":"2026-09-15T23:36:26.581372937Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions (0.69s)\n"}
+{"Time":"2026-09-15T23:36:26.581447958Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Elapsed":0.69}
+{"Time":"2026-09-15T23:36:26.581473522Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls"}
+{"Time":"2026-09-15T23:36:26.581487639Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls","Output":"=== CONT  TestValidatorEvidenceHistoricalLockPreservesStaticControls\n"}
+{"Time":"2026-09-15T23:36:26.600572732Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls","Output":"--- PASS: TestValidatorEvidenceHistoricalLockPreservesStaticControls (0.02s)\n"}
+{"Time":"2026-09-15T23:36:26.605146123Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockPreservesStaticControls","Elapsed":0.02}
+{"Time":"2026-09-15T23:36:26.605175488Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution (0.86s)\n"}
+{"Time":"2026-09-15T23:36:26.84943991Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Elapsed":0.86}
+{"Time":"2026-09-15T23:36:26.849491094Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority","Output":"--- PASS: TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority (0.44s)\n"}
+{"Time":"2026-09-15T23:36:28.414316642Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority","Elapsed":0.44}
+{"Time":"2026-09-15T23:36:28.414384924Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime","Output":"--- PASS: TestValidatorEvidenceHistoricalLockRejectsForeignRuntime (3.58s)\n"}
+{"Time":"2026-09-15T23:36:28.414412808Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockRejectsForeignRuntime","Elapsed":3.58}
+{"Time":"2026-09-15T23:36:28.414430325Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T23:36:28.433527136Z","Action":"fail","Elapsed":21.43}

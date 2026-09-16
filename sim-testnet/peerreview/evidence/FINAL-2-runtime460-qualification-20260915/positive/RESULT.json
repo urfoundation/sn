@@ -1,0 +1,29 @@
+{
+  "kind": "runtime460-positive-qualification-portable-receipts",
+  "accepted_roots": {
+    "normal": 108,
+    "race": 108,
+    "total_mapped": 216,
+    "retained_per_mode": 104,
+    "replacement_per_mode": 4
+  },
+  "membership_validation": {
+    "checked": 216,
+    "valid": true
+  },
+  "source_commits": {
+    "initial": "0127b7ee08d1cd77262a6dd28b606e2cfee33e6b",
+    "crv4_type_repair": "27eecfdf49cf90593de4a0e5ff905af8657c5d94",
+    "final_retry": "7989fa78faae81b82138c79e43dded16aad449dc"
+  },
+  "maps": {
+    "accepted_root_map_sha256": "73f2cd77bc5f76b92a39f457dd87f793d5ec79a08a24df4127aa03a2207de9b4",
+    "retry_outcomes_sha256": "09ae1e214c15cd3830194cba78fe08c90de17dfdec51444066ee4f90f555c3c0"
+  },
+  "portable_content": {
+    "raw_receipt_files": 1352,
+    "test_binaries_omitted": true,
+    "temporary_build_trees_omitted": true,
+    "symlinks_present": false
+  }
+}

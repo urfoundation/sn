@@ -1,0 +1,6 @@
+9ee6bcc1b2f3d89b4f502660bef93c84b9e2741f78a41c4008f5314372a02880  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-selection.json
+09d920bcf1d914bea85f6551f084d3ef252699584ee74f8f27e5c8b2a4d96f84  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/causal-worktrees/current_artifact_admission/VARIANT.json
+39c9d9e37a47f6d4aa15b1a20c4d2d37550064c9164385ead74e737edf7c846c  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/current_artifact_admission/miner/inputs/selector
+05544682beb2c3cec1bea78b0b09167473841e5fd8467f4456b8def2c282943a  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/current_artifact_admission/miner/inputs/expected-pass.txt
+5e67a1d80928dace5985e33b096c6edcf7ec38e2746cff236e463c441d3c7dd5  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/current_artifact_admission/miner/inputs/expected-fail.txt
+e309e98cd1921ea79855716a3ce3896bbae10d4e95828d7c5fca821a9f850194  /mnt/data/sn-testnet/qualification/runtime460-20260915-r1/terra-causal-normal-20260915-r1/current_artifact_admission/miner/inputs/expected-all.txt

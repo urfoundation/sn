@@ -1,0 +1,14 @@
+{
+  "reason": "Large bytes remain in the closed source capture; exact upstream retrieval links and accompanying qualified source fixture are identified in provenance.json and EVIDENCE.md.",
+  "capture_root": "/mnt/data/sn-testnet/qualification/runtime460-20260915-r1",
+  "artifacts": [
+    {"retained_source":"lan-artifacts/code-response.json","size_bytes":5051086,"sha256":"632e0bc18d5b11532d043856c00dd95ae27b52384a04e5b080494ba4656920db","included":false},
+    {"retained_source":"lan-artifacts/metadata-response.json","size_bytes":672754,"sha256":"5fdb34fe1f21ea37d0b804d4332d0b96b914c2b12957d500288df44f765d11ec","included":false},
+    {"retained_source":"lan-artifacts/runtime460.code.wasm","size_bytes":2525524,"sha256":"12b9affec176cbb79c7e5db253d3d0e47f4cb575ce4501ef10de6578afbb817f","included":false},
+    {"retained_source":"lan-artifacts/runtime460.metadata.scale","size_bytes":336358,"sha256":"0e18eed4701255a567411bdc646c76eba355cf41bcb5fcbed8f673a458118e1a","included":false},
+    {"retained_source":"upstream-records/runtime-460-ci.zip","size_bytes":2526508,"sha256":"4c00445deb37516aa9bde60a87d65a461721a864ab342a88a5ffed72e4068cca","included":false},
+    {"retained_source":"upstream-records/subtensor.wasm","size_bytes":2525524,"sha256":"12b9affec176cbb79c7e5db253d3d0e47f4cb575ce4501ef10de6578afbb817f","included":false},
+    {"retained_source":"upstream-records/upstream460-source.tar.gz","size_bytes":57749836,"sha256":"d5a63034391d919ac62ddb1c2c36db1a67728464b40a3487cdc9d42acb938bf4","included":false},
+    {"retained_source":"upstream-records/459-to-460.json","size_bytes":59680,"sha256":"68bb6d53ffe81cb5c0d1c0ee26ad5dfe6fd4f52dba62b205d7b9fd330bdd8033","included":false,"included_extraction":"upstream/459-to-460.extracted-summary.json"}
+  ]
+}

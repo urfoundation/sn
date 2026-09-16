@@ -1,0 +1,271 @@
+{
+  "artifact_type": "doctor_hard_failure_extract",
+  "hard_checks": [
+    {
+      "name": "artifact-store/minio-live",
+      "ok": true,
+      "hard": true,
+      "detail": "http://172.28.208.177:23900/minio/health/live"
+    },
+    {
+      "name": "artifact-store/server-blob",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-launch-preparation-failure-batch-20260915/budget-candidate-205-225-r3/private-vault/main/minio.yml"
+    },
+    {
+      "name": "config/operational-rpcs",
+      "ok": true,
+      "hard": true,
+      "detail": "mode=owned-node substrate=ws://192.168.1.162:9944 evm=http://192.168.1.162:9944"
+    },
+    {
+      "name": "config/operator-resource-sources",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workspace/config"
+    },
+    {
+      "name": "docker/daemon",
+      "ok": true,
+      "hard": true,
+      "detail": "29.7.2"
+    },
+    {
+      "name": "host/default-state-disk",
+      "ok": true,
+      "hard": true,
+      "detail": "path=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/sim-testnet free_bytes=83658203136 minimum_bytes=21474836480"
+    },
+    {
+      "name": "host/linux-amd64",
+      "ok": true,
+      "hard": true,
+      "detail": "linux/amd64"
+    },
+    {
+      "name": "host/udp-buffer-limits",
+      "ok": true,
+      "hard": true,
+      "detail": "rmem_max=16777216 wmem_max=16777216 minimum=7340032"
+    },
+    {
+      "name": "release-lock",
+      "ok": true,
+      "hard": true,
+      "detail": "1.0"
+    },
+    {
+      "name": "repository/operator-proxy",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/operator-proxy"
+    },
+    {
+      "name": "repository/platform-config",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workspace/config"
+    },
+    {
+      "name": "repository/server",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/server"
+    },
+    {
+      "name": "repository/sn",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn"
+    },
+    {
+      "name": "repository/vault",
+      "ok": true,
+      "hard": true,
+      "detail": "/home/by/urnetwork/temp/sn-launch-preparation-failure-batch-20260915/budget-candidate-205-225-r3/private-vault"
+    },
+    {
+      "name": "rpc/evm-operational",
+      "ok": true,
+      "hard": true,
+      "detail": "http://192.168.1.162:9944"
+    },
+    {
+      "name": "rpc/evm-operational-eth_getLogs",
+      "ok": true,
+      "hard": true,
+      "detail": "from=8013159 to=8014158 inclusive_blocks=1000 addresses=3 logs=0"
+    },
+    {
+      "name": "rpc/evm-public",
+      "ok": true,
+      "hard": true,
+      "detail": "http://192.168.1.162:9944; same_endpoint_observation=true"
+    },
+    {
+      "name": "rpc/evm-public-eth_getLogs",
+      "ok": true,
+      "hard": true,
+      "detail": "from=8013159 to=8014158 inclusive_blocks=1000 addresses=3 logs=0; same_endpoint_observation=true"
+    },
+    {
+      "name": "rpc/operational-eth_getLogs",
+      "ok": true,
+      "hard": true,
+      "detail": "exact finalized block=8014158"
+    },
+    {
+      "name": "rpc/substrate-operational",
+      "ok": false,
+      "hard": true,
+      "detail": "ws://192.168.1.162:9944 genesis=0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105 finalized=0xac777024cc431a17fd264cb89d3c2e0fcb51129641bd41f766b68ad7ee80bb18 spec=460 tx=1 state=1; error=runtime spec 460, want 459"
+    },
+    {
+      "name": "rpc/substrate-operational-readiness",
+      "ok": false,
+      "hard": true,
+      "detail": "operational RPC: runtime at 0xac777024cc431a17fd264cb89d3c2e0fcb51129641bd41f766b68ad7ee80bb18 has unreviewed identity node-subtensor/460/1/1"
+    },
+    {
+      "name": "rpc/substrate-public",
+      "ok": false,
+      "hard": true,
+      "detail": "ws://192.168.1.162:9944 genesis=0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105 finalized=0xac777024cc431a17fd264cb89d3c2e0fcb51129641bd41f766b68ad7ee80bb18 spec=460 tx=1 state=1; error=runtime spec 460, want 459; same_endpoint_observation=true"
+    },
+    {
+      "name": "runtime/evm-finality",
+      "ok": true,
+      "hard": true,
+      "detail": "number=8014158 hash=0xf5a354d25ae7368389b3ecaf4a9033100d90ec37a20400383627596642b11c25"
+    },
+    {
+      "name": "runtime/evm-finality-public",
+      "ok": true,
+      "hard": true,
+      "detail": "number=8014158 hash=0xf5a354d25ae7368389b3ecaf4a9033100d90ec37a20400383627596642b11c25; same_endpoint_observation=true"
+    },
+    {
+      "name": "runtime/evm-historical-state",
+      "ok": true,
+      "hard": true,
+      "detail": "block=8014157"
+    },
+    {
+      "name": "runtime/precompile-metagraph-neuron",
+      "ok": true,
+      "hard": true,
+      "detail": "uid_count=256 uid0_hotkey=0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658 uid0_coldkey=0x3c0663e8ab5a7890b71201bdd80de884163d9ab6fc8d1f53982e79b8c09bb94d"
+    },
+    {
+      "name": "runtime/precompile-metagraph-neuron-public",
+      "ok": true,
+      "hard": true,
+      "detail": "uid_count=256 uid0_hotkey=0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658 uid0_coldkey=0x3c0663e8ab5a7890b71201bdd80de884163d9ab6fc8d1f53982e79b8c09bb94d; same_endpoint_observation=true"
+    },
+    {
+      "name": "runtime/precompile-signatures",
+      "ok": true,
+      "hard": true,
+      "detail": "ed25519=good/bad sr25519=good/bad"
+    },
+    {
+      "name": "runtime/precompile-signatures-public",
+      "ok": true,
+      "hard": true,
+      "detail": "ed25519=good/bad sr25519=good/bad; same_endpoint_observation=true"
+    },
+    {
+      "name": "runtime/precompile-staking",
+      "ok": true,
+      "hard": true,
+      "detail": "uid0_stake_rao=18360244272287 nominator_minimum_rao=20000000"
+    },
+    {
+      "name": "runtime/precompile-staking-public",
+      "ok": true,
+      "hard": true,
+      "detail": "uid0_stake_rao=18360244272287 nominator_minimum_rao=20000000; same_endpoint_observation=true"
+    },
+    {
+      "name": "state/approved-plan-journal",
+      "ok": true,
+      "hard": true,
+      "detail": "plan_hash=0xe128f2988512285a6270f45031f4a8af16e04009ceca385259869af02c50be30 remaining_registrations=3"
+    },
+    {
+      "name": "supervisor/systemd-user",
+      "ok": true,
+      "hard": true,
+      "detail": "running"
+    },
+    {
+      "name": "tool/docker",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/bin/docker"
+    },
+    {
+      "name": "tool/getcap",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/sbin/getcap"
+    },
+    {
+      "name": "tool/git",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/bin/git"
+    },
+    {
+      "name": "tool/go",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/local/go/bin/go"
+    },
+    {
+      "name": "tool/setcap",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/sbin/setcap"
+    },
+    {
+      "name": "tool/sudo",
+      "ok": true,
+      "hard": true,
+      "detail": "/usr/bin/sudo"
+    },
+    {
+      "name": "vault/budgets",
+      "ok": true,
+      "hard": true,
+      "detail": "tao_rao=225000000000 alpha_rao=37250000000000 evm_gas_wei=205000000000000000000"
+    },
+    {
+      "name": "vault/governance",
+      "ok": true,
+      "hard": true,
+      "detail": "testnet=single-owner mainnet=safe-2-of-3"
+    },
+    {
+      "name": "vault/netuid",
+      "ok": true,
+      "hard": true,
+      "detail": "521"
+    },
+    {
+      "name": "vault/wallet",
+      "ok": true,
+      "hard": true,
+      "detail": "5DRQdQh85sqyBCtyjc5wtex3KFRfSS1ZxQnkwuegM8HZphbS"
+    },
+    {
+      "name": "wallet/finalized-alpha-source",
+      "ok": false,
+      "hard": true,
+      "detail": "runtime at 0xac777024cc431a17fd264cb89d3c2e0fcb51129641bd41f766b68ad7ee80bb18 has unreviewed identity node-subtensor/460/1/1"
+    }
+  ],
+  "independent_rpc": false,
+  "rpc_authority": "192.168.1.162:9944"
+}
