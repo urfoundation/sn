@@ -1,0 +1,15 @@
+diff --git a/sim-testnet/reserve_software_revision_test.go b/sim-testnet/reserve_software_revision_test.go
+index e5613da..cf539d2 100644
+--- a/sim-testnet/reserve_software_revision_test.go
++++ b/sim-testnet/reserve_software_revision_test.go
+@@ -117,7 +117,10 @@ func TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair(t *testing.T) {
+ 	revised.LiveFacts.FinalizedBlock++
+ 	revised.LiveFacts.EVMFinalizedBlock++
+ 	revised.LiveFacts.WalletFreeTAORao++
++	// One unlocked source credit also increases its coldkey total and capacity.
+ 	revised.LiveFacts.AlphaAvailableRao++
++	revised.LiveFacts.WalletNetuidAlphaRao++
++	revised.LiveFacts.AlphaTransferableRao++
+ 	if err := applyCompletedReserveSoftwareRevision(f, revised); err != nil {
+ 		t.Fatalf("software-only release repeated completed reserve funding: %v", err)
+ 	}

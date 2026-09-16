@@ -795,6 +795,13 @@ signing, the harness rechecks price, transferable source capacity, the retained
 source position, and the full live registered-alpha composition at 65%; the
 postcondition proves the same share at the finalized transaction block. A
 separate 60% barrier then protects the remainder of setup from later dilution.
+An exact software-only revision can retain an entirely verified repair chain
+while the live 60% floor still passes. Its complete reconstructed approval must
+match the predecessor after replacing only the release lock and ancestor list;
+all actions, limits and retired spending remain bound. The earlier 65% proof
+stays attached to its finalized transfer block. Initial or unfinished repairs,
+changed economic approvals and a failed live floor keep the ordinary 65%
+target and cumulative-budget checks.
 
 Generation-2 fleet refresh intentionally consumes generation-1 mirror and
 binding live state. Resume accepts an older receipt historically only when the

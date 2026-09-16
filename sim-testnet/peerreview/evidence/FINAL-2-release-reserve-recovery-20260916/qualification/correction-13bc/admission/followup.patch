@@ -1,0 +1,101 @@
+diff --git a/sim-testnet/reserve_software_revision_test.go b/sim-testnet/reserve_software_revision_test.go
+index 5e41481..e5613da 100644
+--- a/sim-testnet/reserve_software_revision_test.go
++++ b/sim-testnet/reserve_software_revision_test.go
+@@ -99,7 +99,7 @@ func requireUnchangedReserveSoftwareSpend(t *testing.T, prior, revised *SetupPla
+ 		}
+ 		equal, err := equalSpend(pair.prior, pair.revised)
+ 		if err != nil || !equal {
+-			t.Fatalf("software-only carry changed %s spending: prior=%#v revised=%#v: %v", pair.name, pair.prior, pair.revised, err)
++			t.Errorf("software-only carry changed %s spending: prior=%#v revised=%#v: %v", pair.name, pair.prior, pair.revised, err)
+ 		}
+ 	}
+ }
+@@ -122,31 +122,32 @@ func TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair(t *testing.T) {
+ 		t.Fatalf("software-only release repeated completed reserve funding: %v", err)
+ 	}
+ 	requireUnchangedReserveSoftwareSpend(t, f.prior, revised)
+-	wantActions, err := json.Marshal(f.prior.Actions)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	gotActions, err := json.Marshal(revised.Actions)
+-	if err != nil || !bytes.Equal(wantActions, gotActions) {
+-		t.Fatalf("completed repair, barrier or ordered action history changed: %v", err)
+-	}
+-	if err := validatePlanBudget(revised); err != nil {
+-		t.Fatalf("carried exact exhausted budget is invalid: %v", err)
++	wantActions, wantErr := json.Marshal(f.prior.Actions)
++	gotActions, gotErr := json.Marshal(revised.Actions)
++	if wantErr != nil || gotErr != nil || !bytes.Equal(wantActions, gotActions) {
++		t.Errorf("completed repair, barrier or ordered action history changed: prior=%v revised=%v", wantErr, gotErr)
+ 	}
+ 	after, err := json.Marshal(f.prior)
+ 	if err != nil || !bytes.Equal(before, after) {
+-		t.Fatalf("revision changed its immutable predecessor: %v", err)
++		t.Errorf("revision changed its immutable predecessor: %v", err)
+ 	}
+ 	newHash, err := revised.hash()
+ 	if err != nil || newHash == f.prior.PlanHash {
+-		t.Fatalf("new software release did not require a new approval: %v", err)
++		t.Errorf("new software release did not require a new approval: %v", err)
+ 	}
+ 	comparison := *revised
+ 	comparison.ReleaseLockHash = f.prior.ReleaseLockHash
+ 	comparison.PriorPlanHashes = f.prior.PriorPlanHashes
++	comparison.PlanHash = f.prior.PlanHash
+ 	hash, err := comparison.hash()
+ 	if err != nil || hash != f.prior.PlanHash {
+-		t.Fatalf("software-only carry changed another approval field: %v", err)
++		t.Errorf("software-only carry changed another approval field: %v", err)
++	}
++	// This repair-stage fixture changes only the outer release identity; its
++	// fresh companion still belongs to the predecessor. Validate the complete
++	// reconstructed predecessor here; the full renderer below proves new carry.
++	if err := validatePlanBudget(&comparison); err != nil {
++		t.Errorf("carried exact exhausted predecessor budget is invalid: %v", err)
+ 	}
+ }
+ 
+@@ -205,17 +206,20 @@ func TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve(t *testin
+ 	}
+ 	requireUnchangedReserveSoftwareSpend(t, repaired, revised)
+ 	if revised.PlanHash == repaired.PlanHash || revised.ReleaseLockHash == repaired.ReleaseLockHash {
+-		t.Fatal("complete renderer failed to bind the new software")
++		t.Error("complete renderer failed to bind the new software")
++	}
++	if err := validatePlanBudget(revised); err != nil {
++		t.Errorf("complete authenticated software revision is invalid: %v", err)
+ 	}
+ 	comparison := *revised
+ 	comparison.ReleaseLockHash = repaired.ReleaseLockHash
+ 	comparison.PriorPlanHashes = repaired.PriorPlanHashes
+ 	hash, err := comparison.hash()
+ 	if err != nil || hash != repaired.PlanHash {
+-		t.Fatalf("complete renderer changed another approval field: %v", err)
++		t.Errorf("complete renderer changed another approval field: %v", err)
+ 	}
+ 	if fixture.rpc.sends.Load() != 0 || fixture.independent != nil && fixture.independent.sends.Load() != 0 {
+-		t.Fatal("software-only preparation broadcast a transaction")
++		t.Error("software-only preparation broadcast a transaction")
+ 	}
+ }
+ 
+@@ -277,7 +281,7 @@ func TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval(t *testing.T) {
+ 			f.cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS++
+ 		}
+ 		if err := applyCompletedReserveSoftwareRevision(f, revised); err == nil || !strings.Contains(err.Error(), "no repair capacity") {
+-			t.Fatalf("%s entered software-only reserve carry: %v", fault, err)
++			t.Errorf("%s entered software-only reserve carry: %v", fault, err)
+ 		}
+ 	}
+ }
+@@ -310,7 +314,7 @@ func TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory(t *testing.T) {
+ 			f.current.ReserveValidatorAlphaRao = 122_000_000_000_000
+ 		}
+ 		if err := applyCompletedReserveSoftwareRevision(f, revised); err == nil {
+-			t.Fatalf("%s was treated as a completed reserve proof", fault)
++			t.Errorf("%s was treated as a completed reserve proof", fault)
+ 		}
+ 	}
+ }

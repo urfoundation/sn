@@ -3626,6 +3626,8 @@ func retainExecutableReserveValidatorRepairChain(cfg *ResolvedConfig, prior *Set
 // Carry every prior validator-1 repair in its original order and, when live
 // emissions have diluted the reserve below its configured target, append one
 // fixed repair which consumes only the remaining cumulative alpha ceiling.
+// A software-only revision retains completed target proofs while requiring
+// the current majority floor; it cannot create another funding obligation.
 // The fixed tranche keeps review/apply stable across new emission snapshots;
 // live target checks still run before signing and at finality. The verified
 // bootstrap transfer is never resized or replayed. A changed majority barrier
@@ -3690,7 +3692,11 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		}
 	}
 
-	if !alphaShareMeets(current.RegisteredAlphaRao, prospectiveReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
+	carryCompleted, err := mayCarryVerifiedReserveRepairForRelease(cfg, revised, prior, current, entries, repairs)
+	if err != nil {
+		return err
+	}
+	if !carryCompleted && !alphaShareMeets(current.RegisteredAlphaRao, prospectiveReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
 		minimumTransfer, minimumErr := minimumAlphaTransferRao(revised.LiveFacts.DefaultMinTransferRao, revised.LiveFacts.AlphaPriceQ9, revised.AlphaTransferMarginBPS)
 		if minimumErr != nil {
 			return minimumErr
@@ -3754,16 +3760,66 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 			return err
 		}
 		repairs = append(repairs, repair)
-		tail = repair.ID
 	}
+	return retainReserveValidatorRepairActions(revised, base.ID, repairs)
+}
+
+// Completed funding is not repeated to adopt software alone. Compare the
+// entire reconstructed approval, including action order and retired spend,
+// after changing only its release identity and ancestor list back to the
+// predecessor. Moving observations already have the normal plan-hash rules.
+func mayCarryVerifiedReserveRepairForRelease(cfg *ResolvedConfig, revised, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, repairs []Action) (bool, error) {
+	if prior.Schema != currentSetupPlanSchema || revised.Schema != prior.Schema || prior.ReleaseLockHash == "" || revised.ReleaseLockHash == "" || prior.ReleaseLockHash == revised.ReleaseLockHash || len(repairs) == 0 {
+		return false, nil
+	}
+	if !alphaShareMeets(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) {
+		return false, nil
+	}
+	for _, id := range []string{"alpha.transfer.validator.1", "alpha.transfer.validator.2", "validator.reserve-majority"} {
+		if !exactVerifiedPlanAction(prior, entries, id) {
+			return false, nil
+		}
+	}
+	targetProved := false
+	for _, repair := range repairs {
+		if !exactVerifiedPlanAction(prior, entries, repair.ID) {
+			return false, nil
+		}
+		target, minimum, shareRepair, err := reserveShareRepairTerms(repair)
+		if err != nil {
+			return false, err
+		}
+		if shareRepair {
+			if target != cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS || minimum != cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS {
+				return false, nil
+			}
+			targetProved = true
+		}
+	}
+	if !targetProved {
+		return false, nil
+	}
+	carried := *revised
+	if err := retainReserveValidatorRepairActions(&carried, "alpha.transfer.validator.1", repairs); err != nil {
+		return false, err
+	}
+	carried.ReleaseLockHash = prior.ReleaseLockHash
+	carried.PriorPlanHashes = prior.PriorPlanHashes
+	hash, err := carried.hash()
+	return hash == prior.PlanHash, err
+}
+
+// Insert the exact retained or newly approved chain and rebind the live
+// majority barrier to its tail without changing any other action or liability.
+func retainReserveValidatorRepairActions(revised *SetupPlan, baseId string, repairs []Action) error {
 	if len(repairs) == 0 {
 		return nil
 	}
-
+	tail := repairs[len(repairs)-1].ID
 	result := make([]Action, 0, len(revised.Actions)+len(repairs))
 	for _, action := range revised.Actions {
 		result = append(result, action)
-		if action.ID == base.ID {
+		if action.ID == baseId {
 			result = append(result, repairs...)
 		}
 	}
@@ -3776,7 +3832,7 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		result[index].DependsOn = append([]string(nil), result[index].DependsOn...)
 		replaced := false
 		for dependency := range result[index].DependsOn {
-			if result[index].DependsOn[dependency] == base.ID {
+			if result[index].DependsOn[dependency] == baseId {
 				result[index].DependsOn[dependency] = tail
 				replaced = true
 			}
@@ -3784,15 +3840,17 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		if !replaced {
 			return errors.New("reserve-validator majority barrier does not depend on validator-1 bootstrap")
 		}
-		result[index].IntentHash, err = actionIntentHash(result[index])
+		intent, err := actionIntentHash(result[index])
 		if err != nil {
 			return err
 		}
+		result[index].IntentHash = intent
 	}
 	if !barrierFound {
 		return errors.New("reserve-validator majority barrier is unavailable")
 	}
 	revised.Actions = result
+	var err error
 	revised.MaximumSpend, err = maximumActionSpend(revised.Actions)
 	return err
 }
@@ -4288,14 +4346,14 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, err
 		}
 	}
-	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries, reserveRepairs); err != nil {
-		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
-	}
 	if err := applyFleetCommitmentRecoveries(cfg, stateDir, revised, prior, current, entries); err != nil {
 		return nil, fmt.Errorf("recover expiring fleet commitments: %w", err)
 	}
 	if err := trimLiveCampaignEVMReserveToLimit(revised); err != nil {
 		return nil, err
+	}
+	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries, reserveRepairs); err != nil {
+		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
 	}
 	if err := validateFleetRenewalReservedLiability(revised); err != nil {
 		return nil, err

@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 02:47:09.551080 2962473 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0916 02:47:09.551377 2962473 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0916 02:47:09.551496 2962473 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0916 02:47:09.551537 2962473 env.go:67] [env]settings = map[]
+sim-testnet: repair reserve-validator majority: reserve-validator target needs 471808849 rao but cumulative alpha limit 37250000000000 has no repair capacity after 37250000000000 rao

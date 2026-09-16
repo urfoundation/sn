@@ -1,0 +1,1 @@
+timeout --foreground --kill-after=15s 120s binary -test.list=exact-selector

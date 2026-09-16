@@ -1,0 +1,11 @@
+a8a0db55ce4110c893d8be0160611c885a223daf47f1534d2e01664141c433cb  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/confirmation.selector
+cab03f5138646d8ed8c516f840bd48e078d17c73e21a197130e992d76702f09d  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/confirmation.expected-tests.txt
+807c3be5686dcfe9953a91a1036869ceec7e211d95a190704aef5d3fd3bfb166  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/admission/source-inputs.sha256
+5faed54487dd18fb67b792f63d97c51e445dfdf92b2b429efd3a5986644b063f  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/admission/dependency.siblings.tsv
+58198c93a8d679525ce0564d3f90dd283ee6fe78af27e5d3537206bd45140fa0  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/admission/followup.patch.sha256
+996ab8b53ac2656872109fa99889d97756451072bb2ce725e6890a572feff3bd  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/compile/normal/command.sh
+5c411268f79b7aa47971f05b442d2a0b9e90f19191cd0bf1e8bcbad4425b8d0b  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/compile/race/command.sh
+2ff1f828bb85e4ef875dc7dcc6aaffadc89ea58e9f3ee2f1967ac3655ee6c953  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/normal/body/command.sh
+0ea19a7d23fdba87544e7829a1ab5d663c72945b546986c997e37352396b8ef5  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/race/body/command.sh
+031900cb9bd1f2f2faf4413838bf656053f1d2402cc4493a5301163b5c06cbe1  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/normal/body/census.sh
+f222c9ec5b6c300620d0e82c414c4c6f0dfb9cdefd575d9e1adcf34cb0e20fd0  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-5237/race/body/census.sh

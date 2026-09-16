@@ -1,0 +1,5 @@
+a8a0db55ce4110c893d8be0160611c885a223daf47f1534d2e01664141c433cb  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-e639/confirmation.selector
+cab03f5138646d8ed8c516f840bd48e078d17c73e21a197130e992d76702f09d  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-e639/confirmation.expected-tests.txt
+2d7f38b9bd8251c4502fcdb072ddcbe25f2f167bc451625c99c3501115252db7  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-e639/admission/source-inputs.sha256
+8674f7aaaf5bd8958cca9d06bf25a070e34612e33bb04929dc9e62d055b8c55c  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-e639/admission/dependency.siblings.tsv
+048f07e4d1f74de13aee66340dbc04f2d03eb936ccca9bcb04d135ac21901a80  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-e639/admission/test-only-followup.patch.sha256

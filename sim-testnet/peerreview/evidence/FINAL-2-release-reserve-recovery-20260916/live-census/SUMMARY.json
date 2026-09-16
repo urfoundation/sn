@@ -1,0 +1,28 @@
+{
+  "observed_at": "2026-09-16T02:54:45Z",
+  "read_only": true,
+  "endpoint": "http://192.168.1.162:9944",
+  "independent_rpc": false,
+  "rpc_pacing": false,
+  "native_hash": "0xd0bc6e10880e751dd97880f2d32ecb48fa0aee8e22f6fc78f33f5cd2a46656ad",
+  "native_block": 8015417,
+  "genesis": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "runtime": 460,
+  "health": {
+    "peers": 9,
+    "isSyncing": false,
+    "shouldHavePeers": true
+  },
+  "uid_count": 256,
+  "uid_identities_unchanged_since_previous_complete_census": true,
+  "complete_census": true,
+  "zero_default_alpha_entries": 248,
+  "reserve_hotkey": "0x6873c28d2f449235f1a7a30b211880826d04c2ce1a1454ec6e4e499aebd6005e",
+  "registered_alpha_rao": "92840400514372",
+  "reserve_alpha_rao": "60345788525494",
+  "reserve_share_percent": 64.9994918065,
+  "reserve_floor_60_pass": true,
+  "reserve_target_65_pass": false,
+  "minimum_additional_credit_for_target_rao": "471808848",
+  "null_interpretation": "TotalHotkeyAlpha ValueQuery defaults to zero; registered UID mapping matches the prior complete census"
+}

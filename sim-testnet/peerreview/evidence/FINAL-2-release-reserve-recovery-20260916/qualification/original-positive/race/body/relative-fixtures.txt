@@ -1,0 +1,1 @@
+selected tests use checked synthetic fixtures and private temporary state from the package working directory

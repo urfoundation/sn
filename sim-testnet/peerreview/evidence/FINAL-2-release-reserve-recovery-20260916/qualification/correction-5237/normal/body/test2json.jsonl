@@ -1,0 +1,33 @@
+{"Time":"2026-09-16T03:49:48.563971427Z","Action":"start"}
+{"Time":"2026-09-16T03:49:48.611783818Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T03:49:48.611894301Z","Action":"output","Output":"I0916 03:49:48.611690 3057940 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T03:49:48.611978191Z","Action":"output","Output":"I0916 03:49:48.611943 3057940 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T03:49:48.61208434Z","Action":"output","Output":"I0916 03:49:48.612028 3057940 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T03:49:48.612106103Z","Action":"output","Output":"I0916 03:49:48.612079 3057940 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T03:49:48.624176796Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:49:48.624211352Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== RUN   TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:49:48.624275815Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:49:48.624285257Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:49:48.624292781Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:49:48.624299298Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:49:48.624317924Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:49:48.62432526Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:49:48.624334977Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:49:48.624341495Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:49:48.624351661Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:49:48.624358403Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:49:48.624520397Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:49:48.624532374Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== CONT  TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:49:48.624542885Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:49:48.624549318Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:49:48.624585272Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:49:48.624594705Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:49:50.724159787Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"    reserve_software_revision_test.go:127: retired raw spending representations: prior=main.Spend{TAORao:0x0, AlphaRao:0x74cf4427f6, EVMGasWei:\"\", Registrations:0x0, SubnetCreations:0x0} revised=main.Spend{TAORao:0x0, AlphaRao:0x74cf4427f6, EVMGasWei:\"0\", Registrations:0x0, SubnetCreations:0x0}\n"}
+{"Time":"2026-09-16T03:49:50.868228357Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"--- PASS: TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair (2.24s)\n"}
+{"Time":"2026-09-16T03:49:51.072232857Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Elapsed":2.24}
+{"Time":"2026-09-16T03:49:51.072282932Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve (2.45s)\n"}
+{"Time":"2026-09-16T03:50:02.971116427Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Elapsed":2.45}
+{"Time":"2026-09-16T03:50:02.97119429Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval (14.35s)\n"}
+{"Time":"2026-09-16T03:50:02.971227051Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Elapsed":14.35}
+{"Time":"2026-09-16T03:50:02.97123965Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T03:50:02.983527006Z","Action":"pass","Elapsed":14.42}

@@ -1,0 +1,217 @@
+{"Time":"2026-09-16T03:27:13.390568544Z","Action":"start"}
+{"Time":"2026-09-16T03:27:13.641905543Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T03:27:13.642127117Z","Action":"output","Output":"I0916 03:27:13.641888 3025760 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T03:27:13.642377038Z","Action":"output","Output":"I0916 03:27:13.642315 3025760 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T03:27:13.642594718Z","Action":"output","Output":"I0916 03:27:13.642537 3025760 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T03:27:13.642664826Z","Action":"output","Output":"I0916 03:27:13.642617 3025760 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T03:27:13.682707656Z","Action":"run","Test":"TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer"}
+{"Time":"2026-09-16T03:27:13.682781803Z","Action":"output","Test":"TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer","Output":"=== RUN   TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer\n"}
+{"Time":"2026-09-16T03:27:13.682897021Z","Action":"output","Test":"TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer","Output":"--- PASS: TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer (0.00s)\n"}
+{"Time":"2026-09-16T03:27:13.683661438Z","Action":"pass","Test":"TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer","Elapsed":0}
+{"Time":"2026-09-16T03:27:13.683705926Z","Action":"run","Test":"TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling"}
+{"Time":"2026-09-16T03:27:13.683717276Z","Action":"output","Test":"TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling","Output":"=== RUN   TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling\n"}
+{"Time":"2026-09-16T03:27:13.683767703Z","Action":"output","Test":"TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling","Output":"--- PASS: TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling (0.00s)\n"}
+{"Time":"2026-09-16T03:27:13.684252963Z","Action":"pass","Test":"TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling","Elapsed":0}
+{"Time":"2026-09-16T03:27:13.684324992Z","Action":"run","Test":"TestReserveShareRepairTermsRejectsMixedOrForeignModes"}
+{"Time":"2026-09-16T03:27:13.68433836Z","Action":"output","Test":"TestReserveShareRepairTermsRejectsMixedOrForeignModes","Output":"=== RUN   TestReserveShareRepairTermsRejectsMixedOrForeignModes\n"}
+{"Time":"2026-09-16T03:27:13.684630124Z","Action":"output","Test":"TestReserveShareRepairTermsRejectsMixedOrForeignModes","Output":"--- PASS: TestReserveShareRepairTermsRejectsMixedOrForeignModes (0.00s)\n"}
+{"Time":"2026-09-16T03:27:13.685119475Z","Action":"pass","Test":"TestReserveShareRepairTermsRejectsMixedOrForeignModes","Elapsed":0}
+{"Time":"2026-09-16T03:27:13.685166017Z","Action":"run","Test":"TestReserveTransferPrebroadcastRequiresLiveMajority"}
+{"Time":"2026-09-16T03:27:13.685178277Z","Action":"output","Test":"TestReserveTransferPrebroadcastRequiresLiveMajority","Output":"=== RUN   TestReserveTransferPrebroadcastRequiresLiveMajority\n"}
+{"Time":"2026-09-16T03:27:13.685480962Z","Action":"output","Test":"TestReserveTransferPrebroadcastRequiresLiveMajority","Output":"--- PASS: TestReserveTransferPrebroadcastRequiresLiveMajority (0.00s)\n"}
+{"Time":"2026-09-16T03:27:13.703967935Z","Action":"pass","Test":"TestReserveTransferPrebroadcastRequiresLiveMajority","Elapsed":0}
+{"Time":"2026-09-16T03:27:13.70401992Z","Action":"run","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend"}
+{"Time":"2026-09-16T03:27:13.704062735Z","Action":"output","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend","Output":"=== RUN   TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend\n"}
+{"Time":"2026-09-16T03:27:13.704093173Z","Action":"output","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend","Output":"=== PAUSE TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend\n"}
+{"Time":"2026-09-16T03:27:13.704141892Z","Action":"pause","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend"}
+{"Time":"2026-09-16T03:27:13.771126725Z","Action":"run","Test":"TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce"}
+{"Time":"2026-09-16T03:27:13.771184812Z","Action":"output","Test":"TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce","Output":"=== RUN   TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce\n"}
+{"Time":"2026-09-16T03:27:26.254736061Z","Action":"output","Test":"TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce","Output":"--- PASS: TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce (12.48s)\n"}
+{"Time":"2026-09-16T03:27:26.254879107Z","Action":"pass","Test":"TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce","Elapsed":12.48}
+{"Time":"2026-09-16T03:27:26.254895127Z","Action":"run","Test":"TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows"}
+{"Time":"2026-09-16T03:27:26.254901407Z","Action":"output","Test":"TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows","Output":"=== RUN   TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows\n"}
+{"Time":"2026-09-16T03:27:29.99275783Z","Action":"output","Test":"TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows","Output":"--- PASS: TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows (3.74s)\n"}
+{"Time":"2026-09-16T03:27:29.995334633Z","Action":"pass","Test":"TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows","Elapsed":3.74}
+{"Time":"2026-09-16T03:27:29.995392724Z","Action":"run","Test":"TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap"}
+{"Time":"2026-09-16T03:27:29.995420283Z","Action":"output","Test":"TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap","Output":"=== RUN   TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap\n"}
+{"Time":"2026-09-16T03:27:53.6039335Z","Action":"output","Test":"TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap","Output":"--- PASS: TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap (23.61s)\n"}
+{"Time":"2026-09-16T03:27:53.604081763Z","Action":"pass","Test":"TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap","Elapsed":23.61}
+{"Time":"2026-09-16T03:27:53.604102884Z","Action":"run","Test":"TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit"}
+{"Time":"2026-09-16T03:27:53.60411059Z","Action":"output","Test":"TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit","Output":"=== RUN   TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit\n"}
+{"Time":"2026-09-16T03:27:58.613158681Z","Action":"output","Test":"TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit","Output":"--- PASS: TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit (5.01s)\n"}
+{"Time":"2026-09-16T03:27:58.613290835Z","Action":"pass","Test":"TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit","Elapsed":5.01}
+{"Time":"2026-09-16T03:27:58.61330693Z","Action":"run","Test":"TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend"}
+{"Time":"2026-09-16T03:27:58.613313108Z","Action":"output","Test":"TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend","Output":"=== RUN   TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend\n"}
+{"Time":"2026-09-16T03:28:06.808160069Z","Action":"output","Test":"TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend","Output":"--- PASS: TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend (8.19s)\n"}
+{"Time":"2026-09-16T03:28:06.808311652Z","Action":"pass","Test":"TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend","Elapsed":8.19}
+{"Time":"2026-09-16T03:28:06.808327953Z","Action":"run","Test":"TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering"}
+{"Time":"2026-09-16T03:28:06.808334057Z","Action":"output","Test":"TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering","Output":"=== RUN   TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering\n"}
+{"Time":"2026-09-16T03:28:16.347379711Z","Action":"output","Test":"TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering","Output":"--- PASS: TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering (9.54s)\n"}
+{"Time":"2026-09-16T03:28:16.362061168Z","Action":"pass","Test":"TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering","Elapsed":9.54}
+{"Time":"2026-09-16T03:28:16.362112448Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable"}
+{"Time":"2026-09-16T03:28:16.362119573Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable\n"}
+{"Time":"2026-09-16T03:28:16.362132204Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable\n"}
+{"Time":"2026-09-16T03:28:16.36213857Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable"}
+{"Time":"2026-09-16T03:28:16.362226811Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes"}
+{"Time":"2026-09-16T03:28:16.362240421Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes\n"}
+{"Time":"2026-09-16T03:28:16.362250702Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes\n"}
+{"Time":"2026-09-16T03:28:16.362256944Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes"}
+{"Time":"2026-09-16T03:28:16.362374161Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent"}
+{"Time":"2026-09-16T03:28:16.362384377Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent\n"}
+{"Time":"2026-09-16T03:28:16.362396744Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent\n"}
+{"Time":"2026-09-16T03:28:16.362403407Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent"}
+{"Time":"2026-09-16T03:28:16.362731245Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities"}
+{"Time":"2026-09-16T03:28:16.362763193Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities\n"}
+{"Time":"2026-09-16T03:28:16.362778203Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities\n"}
+{"Time":"2026-09-16T03:28:16.362787896Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities"}
+{"Time":"2026-09-16T03:28:16.362917673Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair"}
+{"Time":"2026-09-16T03:28:16.362934755Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair\n"}
+{"Time":"2026-09-16T03:28:16.362955963Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair\n"}
+{"Time":"2026-09-16T03:28:16.362966689Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair"}
+{"Time":"2026-09-16T03:28:16.363151398Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence"}
+{"Time":"2026-09-16T03:28:16.363170499Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence\n"}
+{"Time":"2026-09-16T03:28:16.363191448Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence\n"}
+{"Time":"2026-09-16T03:28:16.363199285Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence"}
+{"Time":"2026-09-16T03:28:16.363369719Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche"}
+{"Time":"2026-09-16T03:28:16.363380852Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche\n"}
+{"Time":"2026-09-16T03:28:16.363421015Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche\n"}
+{"Time":"2026-09-16T03:28:16.363431756Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche"}
+{"Time":"2026-09-16T03:28:16.363596284Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission"}
+{"Time":"2026-09-16T03:28:16.363606892Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission\n"}
+{"Time":"2026-09-16T03:28:16.363681323Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission\n"}
+{"Time":"2026-09-16T03:28:16.36369222Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission"}
+{"Time":"2026-09-16T03:28:16.363864876Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch"}
+{"Time":"2026-09-16T03:28:16.363875515Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch\n"}
+{"Time":"2026-09-16T03:28:16.363944413Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch","Output":"=== PAUSE TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch\n"}
+{"Time":"2026-09-16T03:28:16.363955552Z","Action":"pause","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch"}
+{"Time":"2026-09-16T03:28:16.364116453Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:28:16.364132279Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== RUN   TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:28:16.364217185Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:28:16.364231931Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:28:16.364894747Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:28:16.364926186Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:28:16.365136937Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:28:16.365194515Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:28:16.365371528Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor"}
+{"Time":"2026-09-16T03:28:16.365387034Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor","Output":"=== RUN   TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor\n"}
+{"Time":"2026-09-16T03:28:16.365462145Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor\n"}
+{"Time":"2026-09-16T03:28:16.365476601Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor"}
+{"Time":"2026-09-16T03:28:16.365768363Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor"}
+{"Time":"2026-09-16T03:28:16.365787519Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor\n"}
+{"Time":"2026-09-16T03:28:16.365865436Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor\n"}
+{"Time":"2026-09-16T03:28:16.365880232Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor"}
+{"Time":"2026-09-16T03:28:16.366128576Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:28:16.366156269Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:28:16.366247105Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:28:16.366262541Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:28:16.366479153Z","Action":"run","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory"}
+{"Time":"2026-09-16T03:28:16.366492656Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory","Output":"=== RUN   TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory\n"}
+{"Time":"2026-09-16T03:28:16.366625861Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory","Output":"=== PAUSE TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory\n"}
+{"Time":"2026-09-16T03:28:16.366644964Z","Action":"pause","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory"}
+{"Time":"2026-09-16T03:28:16.380583925Z","Action":"cont","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend"}
+{"Time":"2026-09-16T03:28:16.380639853Z","Action":"output","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend","Output":"=== CONT  TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend\n"}
+{"Time":"2026-09-16T03:28:16.380656636Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche"}
+{"Time":"2026-09-16T03:28:16.380666152Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche\n"}
+{"Time":"2026-09-16T03:28:16.380695171Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair"}
+{"Time":"2026-09-16T03:28:16.38070566Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair\n"}
+{"Time":"2026-09-16T03:28:16.380885734Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable"}
+{"Time":"2026-09-16T03:28:16.380929809Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable\n"}
+{"Time":"2026-09-16T03:28:16.381052077Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime"}
+{"Time":"2026-09-16T03:28:16.381081413Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime\n"}
+{"Time":"2026-09-16T03:28:26.95339211Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche"}
+{"Time":"2026-09-16T03:28:26.953438692Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche\n"}
+{"Time":"2026-09-16T03:28:27.217977167Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair (10.84s)\n"}
+{"Time":"2026-09-16T03:28:27.218045694Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesInsufficientNonterminalRepair","Elapsed":10.84}
+{"Time":"2026-09-16T03:28:27.218063904Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent"}
+{"Time":"2026-09-16T03:28:27.218071771Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent\n"}
+{"Time":"2026-09-16T03:28:27.218246619Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent"}
+{"Time":"2026-09-16T03:28:27.218260389Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent\n"}
+{"Time":"2026-09-16T03:28:28.40536281Z","Action":"output","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend","Output":"--- PASS: TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend (12.02s)\n"}
+{"Time":"2026-09-16T03:28:28.405409512Z","Action":"pass","Test":"TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend","Elapsed":12.02}
+{"Time":"2026-09-16T03:28:28.405421079Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes"}
+{"Time":"2026-09-16T03:28:28.40542723Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes\n"}
+{"Time":"2026-09-16T03:28:28.435718266Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable (12.05s)\n"}
+{"Time":"2026-09-16T03:28:28.435774069Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionMakesReplacementExecutable","Elapsed":12.05}
+{"Time":"2026-09-16T03:28:28.435787716Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor"}
+{"Time":"2026-09-16T03:28:28.435794863Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor\n"}
+{"Time":"2026-09-16T03:28:37.088459051Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed"}
+{"Time":"2026-09-16T03:28:37.088511505Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed\n"}
+{"Time":"2026-09-16T03:28:37.161395177Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche (20.78s)\n"}
+{"Time":"2026-09-16T03:28:37.161444449Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime (10.57s)\n"}
+{"Time":"2026-09-16T03:28:37.161453464Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/lifetime","Elapsed":10.57}
+{"Time":"2026-09-16T03:28:37.161463544Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche (10.21s)\n"}
+{"Time":"2026-09-16T03:28:37.16147025Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche/tranche","Elapsed":10.21}
+{"Time":"2026-09-16T03:28:37.16147538Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionCannotCreateBudgetOrTranche","Elapsed":20.78}
+{"Time":"2026-09-16T03:28:37.161480255Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval"}
+{"Time":"2026-09-16T03:28:37.161484895Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval\n"}
+{"Time":"2026-09-16T03:28:40.537895382Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor (12.10s)\n"}
+{"Time":"2026-09-16T03:28:40.537977989Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor","Elapsed":12.1}
+{"Time":"2026-09-16T03:28:40.537997201Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory"}
+{"Time":"2026-09-16T03:28:40.538006818Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory\n"}
+{"Time":"2026-09-16T03:28:42.113586784Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes (13.71s)\n"}
+{"Time":"2026-09-16T03:28:42.113653126Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionPreservesOriginalBytes","Elapsed":13.71}
+{"Time":"2026-09-16T03:28:42.113664135Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor"}
+{"Time":"2026-09-16T03:28:42.113668272Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor","Output":"=== CONT  TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor\n"}
+{"Time":"2026-09-16T03:28:46.589799191Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast"}
+{"Time":"2026-09-16T03:28:46.589842542Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast\n"}
+{"Time":"2026-09-16T03:28:53.845401608Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor","Output":"--- PASS: TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor (11.73s)\n"}
+{"Time":"2026-09-16T03:28:53.845446144Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor","Elapsed":11.73}
+{"Time":"2026-09-16T03:28:53.845455811Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence"}
+{"Time":"2026-09-16T03:28:53.845459982Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence\n"}
+{"Time":"2026-09-16T03:28:56.17178817Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included"}
+{"Time":"2026-09-16T03:28:56.171848781Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included\n"}
+{"Time":"2026-09-16T03:29:05.835059383Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized"}
+{"Time":"2026-09-16T03:29:05.835114659Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized\n"}
+{"Time":"2026-09-16T03:29:10.610720526Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence (16.77s)\n"}
+{"Time":"2026-09-16T03:29:10.610819734Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionNeverReusesRetiredSequence","Elapsed":16.77}
+{"Time":"2026-09-16T03:29:10.610842204Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission"}
+{"Time":"2026-09-16T03:29:10.61085585Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission\n"}
+{"Time":"2026-09-16T03:29:15.496246185Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission (4.89s)\n"}
+{"Time":"2026-09-16T03:29:15.496291774Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionEmptyChainKeepsOriginalAdmission","Elapsed":4.89}
+{"Time":"2026-09-16T03:29:15.49630322Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities"}
+{"Time":"2026-09-16T03:29:15.496309578Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities\n"}
+{"Time":"2026-09-16T03:29:15.990583746Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan"}
+{"Time":"2026-09-16T03:29:15.990656984Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan\n"}
+{"Time":"2026-09-16T03:29:25.368383954Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent"}
+{"Time":"2026-09-16T03:29:25.368444483Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent\n"}
+{"Time":"2026-09-16T03:29:26.114838243Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities (10.62s)\n"}
+{"Time":"2026-09-16T03:29:26.114883967Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionKeepsCreditedLiabilities","Elapsed":10.62}
+{"Time":"2026-09-16T03:29:26.114895031Z","Action":"cont","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch"}
+{"Time":"2026-09-16T03:29:26.11490089Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch","Output":"=== CONT  TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch\n"}
+{"Time":"2026-09-16T03:29:31.78368067Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch (5.67s)\n"}
+{"Time":"2026-09-16T03:29:31.783742857Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRequiresDurableIntentBeforeDispatch","Elapsed":5.67}
+{"Time":"2026-09-16T03:29:31.783753773Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair"}
+{"Time":"2026-09-16T03:29:31.78375815Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"=== CONT  TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair\n"}
+{"Time":"2026-09-16T03:29:34.853062488Z","Action":"run","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent"}
+{"Time":"2026-09-16T03:29:34.853106177Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent","Output":"=== RUN   TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent\n"}
+{"Time":"2026-09-16T03:29:44.084364468Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"    reserve_software_revision_test.go:103: software-only carry changed active, retired or cumulative spending\n"}
+{"Time":"2026-09-16T03:29:44.08751603Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Output":"--- FAIL: TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair (12.30s)\n"}
+{"Time":"2026-09-16T03:29:44.087561871Z","Action":"fail","Test":"TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair","Elapsed":12.3}
+{"Time":"2026-09-16T03:29:44.087580236Z","Action":"cont","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve"}
+{"Time":"2026-09-16T03:29:44.087590659Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"=== CONT  TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve\n"}
+{"Time":"2026-09-16T03:29:44.413326671Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent","Output":"--- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent (77.20s)\n"}
+{"Time":"2026-09-16T03:29:44.413372791Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent (9.87s)\n"}
+{"Time":"2026-09-16T03:29:44.413381841Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/intent","Elapsed":9.87}
+{"Time":"2026-09-16T03:29:44.413392738Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed (9.50s)\n"}
+{"Time":"2026-09-16T03:29:44.413400199Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/failed","Elapsed":9.5}
+{"Time":"2026-09-16T03:29:44.413407041Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast (9.58s)\n"}
+{"Time":"2026-09-16T03:29:44.413414548Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/broadcast","Elapsed":9.58}
+{"Time":"2026-09-16T03:29:44.413421213Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included (9.66s)\n"}
+{"Time":"2026-09-16T03:29:44.41342849Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/included","Elapsed":9.66}
+{"Time":"2026-09-16T03:29:44.413434916Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized (10.15s)\n"}
+{"Time":"2026-09-16T03:29:44.413466103Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/finalized","Elapsed":10.15}
+{"Time":"2026-09-16T03:29:44.413473236Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan (9.38s)\n"}
+{"Time":"2026-09-16T03:29:44.413499177Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/foreign_plan","Elapsed":9.38}
+{"Time":"2026-09-16T03:29:44.413507491Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent (9.48s)\n"}
+{"Time":"2026-09-16T03:29:44.413513279Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/different_intent","Elapsed":9.48}
+{"Time":"2026-09-16T03:29:44.413517797Z","Action":"output","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent","Output":"    --- PASS: TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent (9.56s)\n"}
+{"Time":"2026-09-16T03:29:53.421933299Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent/aliased_intent","Elapsed":9.56}
+{"Time":"2026-09-16T03:29:53.421979416Z","Action":"pass","Test":"TestPlanRevisionReserveRepairSuccessionRefusesAnyStartedOrAmbiguousIntent","Elapsed":77.2}
+{"Time":"2026-09-16T03:29:53.421986665Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory (72.88s)\n"}
+{"Time":"2026-09-16T03:29:58.417059403Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory","Elapsed":72.88}
+{"Time":"2026-09-16T03:29:58.417106157Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve (14.33s)\n"}
+{"Time":"2026-09-16T03:30:26.448536658Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve","Elapsed":14.33}
+{"Time":"2026-09-16T03:30:26.44859449Z","Action":"output","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Output":"--- PASS: TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval (109.29s)\n"}
+{"Time":"2026-09-16T03:30:26.448715284Z","Action":"pass","Test":"TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval","Elapsed":109.29}
+{"Time":"2026-09-16T03:30:26.448733296Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T03:30:26.497153992Z","Action":"fail","Elapsed":193.107}

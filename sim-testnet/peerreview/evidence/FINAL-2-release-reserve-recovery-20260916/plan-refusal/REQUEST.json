@@ -1,0 +1,22 @@
+{
+  "prepared_at": "2026-09-16T02:46:00Z",
+  "command": "native plan revision, read only",
+  "source_revision": "1270adc17cd0097226b2b9fb188c283ffc9c5405",
+  "binary_sha256": "a8fb94b9fca09fd14062580be2e6018311c9a64498d560eb6d9de1f13c4dc318",
+  "release_lock_sha256": "beb6db750aa042e4464c3c92d3c886e77fc2852d53807fb977d055bfc565cad3",
+  "retained_plan_hash": "0xe0a245138784d18cc14e109b682b9c2927777b5ce3973b13e7e72fb364311799",
+  "scope": "Revise the saved release identity for the qualified bounded journal-validation repair. Retain original custody, action approvals, finalized repair/funding/renewals and signed history. Review the emitted action/limit/authority diff before adoption.",
+  "limits": {
+    "evm_tao": 205,
+    "total_tao": 225,
+    "lifetime_alpha": 37250,
+    "per_repair_alpha": 6000,
+    "registrations": 262,
+    "new_subnets": 0
+  },
+  "fleet_validity_retained": [393, 424],
+  "full_required_work_blocks": 7570,
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_submission_authorized_by_this_request": false
+}

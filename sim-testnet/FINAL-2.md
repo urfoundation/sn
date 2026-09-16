@@ -1,12 +1,30 @@
 # Sim-testnet finalization report 2
 
 **Current status: in progress; `final_acceptance=false`.** The soak remains
-stopped. The approved **6,000-alpha reserve repair has finalized**, and the
-latest retained complete census shows **65.5997247163%** reserve share. The
+stopped. The approved **6,000-alpha reserve repair has finalized** and reached
+**65.5997247163%** at the retained preparation snapshot. The latest complete
+LAN census, at block **8,015,417** on September 16, shows **64.9994918065%**:
+above the 60% operating floor and below the 65% repair target. The
 user has approved **205 EVM TAO within 225 total TAO** for the required fleet
 renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
+
+**The software plan revision stopped at 02:48:30 UTC on September 16.**
+The qualified journal patch and matching executable are ready, but the native
+planner requested another 471,808,849-alpha-rao repair when revising the
+software identity. Current and superseded liabilities already consume the
+approved 37,250-alpha lifetime limit. This read-only command exited 1 with
+unchanged state, executable and lock bytes; no successor plan or transaction
+was created. The completed repair's historical target proof remains valid.
+A bounded correction now retains verified repair history during an exact
+software-only revision while still checking the current operating floor.
+Qualification passes **28 affected roots per mode**, normally and under race,
+by composing retained results with three corrected test roots. The original
+planner reproduces **three expected failures and three passing controls**.
+Failed fixture invocations remain recorded with their actual exits. The
+matching release build and native adoption are next; the soak is still stopped.
+[Actual refusal and fresh complete census](peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
 
 **Runtime-460 startup stopped at 02:13:45 UTC on September 16.** Its 4,672
 carried-action checks finished, configuration rendering was verified and both

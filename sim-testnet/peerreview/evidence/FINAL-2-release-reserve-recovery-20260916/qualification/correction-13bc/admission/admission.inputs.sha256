@@ -1,0 +1,11 @@
+a8a0db55ce4110c893d8be0160611c885a223daf47f1534d2e01664141c433cb  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/confirmation.selector
+cab03f5138646d8ed8c516f840bd48e078d17c73e21a197130e992d76702f09d  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/confirmation.expected-tests.txt
+09c3ac16e5c8302435436d9fea96241db921123bf6a1807bf7a7b0486afd6ddb  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/admission/source-inputs.sha256
+5faed54487dd18fb67b792f63d97c51e445dfdf92b2b429efd3a5986644b063f  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/admission/dependency.siblings.tsv
+9cbd8dfde4c7d5b923c55b3d684fd5e173832a2fe1735d6b87a931938503b33f  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/admission/followup.patch.sha256
+c3709a2ce737fdefd5cd1e545d4d6a28ca9f21b9d330ad780ad69e2d3ebc5259  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/compile/normal/command.sh
+dee5b381ce4bd4f7012d2fbbd9b8aacfb2cdb6bce88f937c4cdd26f1ddc5be65  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/compile/race/command.sh
+0841c7042640f64c861d8b249c25ec387c715089c0ca0c802cbbe6d63dd9a613  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/normal/body/command.sh
+552f340ec9e8374a7413abcfbf06c361cea1a97182605f2fe759c057589865ce  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/race/body/command.sh
+7d74a3a6d6299fe478c8ed37bddaea5e47416ee64514237c428663149a260e8e  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/normal/body/census.sh
+d3b364d825c49a5e773538dd6d3c8c598e95128f83d2df52715625fe1d5ea992  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/correction-13bc/race/body/census.sh

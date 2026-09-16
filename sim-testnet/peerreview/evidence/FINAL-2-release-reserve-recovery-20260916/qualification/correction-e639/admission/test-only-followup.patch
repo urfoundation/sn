@@ -1,0 +1,70 @@
+diff --git a/sim-testnet/reserve_software_revision_test.go b/sim-testnet/reserve_software_revision_test.go
+index 970e032..5e41481 100644
+--- a/sim-testnet/reserve_software_revision_test.go
++++ b/sim-testnet/reserve_software_revision_test.go
+@@ -82,6 +82,28 @@ func applyCompletedReserveSoftwareRevision(f reserveRepairSuccessionFixture, rev
+ 	return applyReserveValidatorMajorityRepair(f.cfg, revised, f.prior, &f.current, f.entries, repairs)
+ }
+ 
++// JSON canonicalizes the DecimalUint Go zero value to "0". Compare every
++// economic component while retaining raw fixture diagnostics for that boundary.
++func requireUnchangedReserveSoftwareSpend(t *testing.T, prior, revised *SetupPlan) {
++	t.Helper()
++	for _, pair := range []struct {
++		name           string
++		prior, revised Spend
++	}{
++		{name: "active", prior: prior.MaximumSpend, revised: revised.MaximumSpend},
++		{name: "retired", prior: prior.SupersededSpend, revised: revised.SupersededSpend},
++		{name: "limits", prior: prior.Limits, revised: revised.Limits},
++	} {
++		if pair.prior != pair.revised {
++			t.Logf("%s raw spending representations: prior=%#v revised=%#v", pair.name, pair.prior, pair.revised)
++		}
++		equal, err := equalSpend(pair.prior, pair.revised)
++		if err != nil || !equal {
++			t.Fatalf("software-only carry changed %s spending: prior=%#v revised=%#v: %v", pair.name, pair.prior, pair.revised, err)
++		}
++	}
++}
++
+ // Previously this exact completed state demanded another 65% transfer and
+ // failed with no repair capacity, although no funding or policy changed.
+ func TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair(t *testing.T) {
+@@ -99,9 +121,7 @@ func TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair(t *testing.T) {
+ 	if err := applyCompletedReserveSoftwareRevision(f, revised); err != nil {
+ 		t.Fatalf("software-only release repeated completed reserve funding: %v", err)
+ 	}
+-	if revised.MaximumSpend != f.prior.MaximumSpend || revised.SupersededSpend != f.prior.SupersededSpend || revised.Limits != f.prior.Limits {
+-		t.Fatal("software-only carry changed active, retired or cumulative spending")
+-	}
++	requireUnchangedReserveSoftwareSpend(t, f.prior, revised)
+ 	wantActions, err := json.Marshal(f.prior.Actions)
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -121,6 +141,13 @@ func TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair(t *testing.T) {
+ 	if err != nil || newHash == f.prior.PlanHash {
+ 		t.Fatalf("new software release did not require a new approval: %v", err)
+ 	}
++	comparison := *revised
++	comparison.ReleaseLockHash = f.prior.ReleaseLockHash
++	comparison.PriorPlanHashes = f.prior.PriorPlanHashes
++	hash, err := comparison.hash()
++	if err != nil || hash != f.prior.PlanHash {
++		t.Fatalf("software-only carry changed another approval field: %v", err)
++	}
+ }
+ 
+ // Exercise the complete revision renderer with an independently authenticated
+@@ -176,8 +203,9 @@ func TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve(t *testin
+ 	if err != nil {
+ 		t.Fatalf("complete software-only renderer repeated completed reserve funding: %v", err)
+ 	}
+-	if revised.PlanHash == repaired.PlanHash || revised.ReleaseLockHash == repaired.ReleaseLockHash || revised.MaximumSpend != repaired.MaximumSpend || revised.SupersededSpend != repaired.SupersededSpend || revised.Limits != repaired.Limits {
+-		t.Fatal("complete renderer changed economics or failed to bind the new software")
++	requireUnchangedReserveSoftwareSpend(t, repaired, revised)
++	if revised.PlanHash == repaired.PlanHash || revised.ReleaseLockHash == repaired.ReleaseLockHash {
++		t.Fatal("complete renderer failed to bind the new software")
+ 	}
+ 	comparison := *revised
+ 	comparison.ReleaseLockHash = repaired.ReleaseLockHash

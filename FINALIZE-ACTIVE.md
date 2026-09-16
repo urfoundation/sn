@@ -50,7 +50,35 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-16 02:30 UTC: runtime460 strict resume naturally
+Latest checkpoint, 2026-09-16 03:54 UTC: the exact software-only reserve
+correction is qualified with 28 affected roots normally and under race. Root
+checked both exact accepted sets against raw terminal events. The original
+planner produces three expected failures and three passing controls; failed
+fixture invocations remain preserved. Publish the qualified correction and
+evidence, preview and publish its release lock with the existing CLI, then build
+one final matched executable. Adopt one native revision, select continuation
+and native epoch late, and resume directly into the actual campaign. Do not
+repeat prior qualification or finalized funding. The 60% operating floor,
+historical 65% repair proofs, full approval comparison and all limits remain
+required. Native adoption and soak acceptance remain pending.
+[Qualification and retained refusal](sim-testnet/peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
+
+Previous checkpoint, 2026-09-16 02:57 UTC: the journal patch and matched CLI are
+ready on `1270adc`, but the read-only native plan revision exited 1 at 02:48:30.
+Its generic reserve-target step requested another 471,808,849 alpha rao, while
+the approved 37,250-alpha lifetime ceiling is fully committed. No plan was
+adopted, no transaction was submitted and all watched bytes are unchanged.
+The fresh complete census at native block 8,015,417 shows 64.9994918065%:
+the 60% operating floor passes, the current 65% target does not. Retain the
+completed repair's pinned target proof. Astra is preparing a narrowly scoped
+software-only revision correction with deterministic and adjacent controls;
+ordinary initial, unfinished, changed-economic and below-floor planning retain
+the target and budget checks. Then adopt the qualified revision, choose the
+continuation and native epoch late, and resume into the actual campaign.
+The soak remains stopped; no additional allowance is authorized or assumed.
+[Refusal and current reserve evidence](sim-testnet/peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
+
+Previous checkpoint, 2026-09-16 02:30 UTC: runtime460 strict resume naturally
 exited 1 at 02:13:45 after its full-work window expired. All 4,672 carried
 checks, configuration verification and migrations completed; temporary
 processes were cleaned up and no soak began. Preserve that failed invocation

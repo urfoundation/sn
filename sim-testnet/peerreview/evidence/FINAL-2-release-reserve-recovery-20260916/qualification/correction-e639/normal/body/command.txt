@@ -1,0 +1,1 @@
+env GOMAXPROCS=4 GOCACHE=/mnt/data/sn-testnet/gocache TMPDIR=private GOTMPDIR=private timeout --foreground --kill-after=15s 600s go tool test2json -t sim-testnet.correction.normal.test -test.v -test.run=exact-union-selector -test.count=1 -test.timeout=10m -test.parallel=4

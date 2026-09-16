@@ -1,0 +1,1 @@
+timeout --foreground --kill-after=15s 120s /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/positive/compile/normal/sim-testnet.normal.test -test.list=exact-selector

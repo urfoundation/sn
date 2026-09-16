@@ -1,0 +1,51 @@
+{
+  "schema": "reserve-software-revision-selection-v1",
+  "base_commit": "1270adc17cd0097226b2b9fb188c283ffc9c5405",
+  "positive": {
+    "source_commit": "2ffbab2bb3b2251e3eab1d79f687fba50c2b57b5",
+    "package": "./sim-testnet",
+    "selector": "^(TestPlanRevisionSoftwareOnly.*|TestPlanRevisionReserveRepairSuccession.*|TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap|TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit|TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend|TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering|TestRetiredAlphaSpendCountsEveryTransferAndRepairFamilyOnce|TestRetiredAlphaSpendIgnoresUnverifiedAndForeignJournalRows|TestReserveTransferPrebroadcastRequiresLiveMajority|TestReserveShareRepairTermsRejectsMixedOrForeignModes|TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer|TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend|TestReserveValidatorTransferTargetsMajorityWithoutDepositCoupling)$",
+    "root_count": 26,
+    "modes": [
+      "normal",
+      "race"
+    ],
+    "expected": "PASS"
+  },
+  "causal": {
+    "source_commit": "b021ec3c68c73253af730028f7b9d70b655f2a35",
+    "package": "./sim-testnet",
+    "selector": "^TestPlanRevisionSoftwareOnly.*$",
+    "root_count": 6,
+    "modes": [
+      "normal"
+    ],
+    "expected_result_map": [
+      {
+        "name": "TestPlanRevisionSoftwareOnlyAcceptsCurrentReserveFloor",
+        "result": "FAIL"
+      },
+      {
+        "name": "TestPlanRevisionSoftwareOnlyCarriesCompletedReserveRepair",
+        "result": "FAIL"
+      },
+      {
+        "name": "TestPlanRevisionSoftwareOnlyRebuildsAuthenticatedCompletedReserve",
+        "result": "FAIL"
+      },
+      {
+        "name": "TestPlanRevisionSoftwareOnlyRejectsDilutionBelowReserveFloor",
+        "result": "PASS"
+      },
+      {
+        "name": "TestPlanRevisionSoftwareOnlyRequiresExactCompletedHistory",
+        "result": "PASS"
+      },
+      {
+        "name": "TestPlanRevisionSoftwareOnlyRequiresExactPriorApproval",
+        "result": "PASS"
+      }
+    ],
+    "required_failure_text": "no repair capacity"
+  }
+}

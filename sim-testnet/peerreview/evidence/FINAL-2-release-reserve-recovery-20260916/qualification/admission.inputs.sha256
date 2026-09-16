@@ -1,0 +1,9 @@
+ee80db63c49e1042d1aee9a58dadd518a271b9121ce7cbc026781c07ace2aa1d  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/dependency.siblings.positive.tsv
+ee80db63c49e1042d1aee9a58dadd518a271b9121ce7cbc026781c07ace2aa1d  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/dependency.siblings.causal.tsv
+41fa255e213f763e0786a1748990718eb725166430045cb8c8a549399b2e8140  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/positive.source.commit.admitted
+2111980b24a30668d820134b2c26d69499ab3d033f88571a79cf5d0e7a3c38e1  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/causal.source.commit.admitted
+ff3d218a46788c9bdb6a5bb3dcfd0df95de1814f6dde2626a62131f79cb74d54  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/positive.go-mod-sums.sha256
+82c862681c8950fc29cb2f59ff81bc206cc3112e8685baa650c7eed902b4b040  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/causal.go-mod-sums.sha256
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/formatter/gofmt.diff
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/formatter/diff.check
+0cba64c8b3b7ee4138a12a0fa09359dcf51b16697b1fddd5ef4290439cab5f7f  /mnt/data/sn-testnet/qualification/reserve-software-revision-20260916-r1/terra/formatter/changed-files.sha256
