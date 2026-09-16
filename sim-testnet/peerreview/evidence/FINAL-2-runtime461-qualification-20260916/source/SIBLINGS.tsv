@@ -1,0 +1,11 @@
+connect	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/connect	ac9b0eecf2e446d97d4f5aac6946a5e8dd102c6e
+server	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/server	6752a8df246c0ee7e1c5a38cbd26b1e849b702ca
+warp	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/warp	7498864c7cd3605aad3c43eabfab9008ed7f7228
+operator-proxy	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/operator-proxy	448369740c70eb2e642bde9d36f3708fe9ad4b5d
+proxy	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/proxy	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f
+userwireguard	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/userwireguard	85fb1ca4086fa5dbfcda526bec7a17a894e691b9
+sdk	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sdk	0b0cd2a9d32b7df80c18cf2d57040d38152dc130
+glog	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/glog	892ade4a6be396b32ea82a550f243190b5992180
+goidenticons	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/goidenticons	325750b38314313dc5f44c880ab6f12f6c1ecb3c
+config	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/config	268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc
+vault	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/vault	8b2f481dbe87092d0c1742274712a6f805c1c375

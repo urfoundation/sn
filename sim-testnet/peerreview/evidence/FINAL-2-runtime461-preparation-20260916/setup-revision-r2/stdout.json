@@ -1,0 +1,457 @@
+{
+  "schema": "urnetwork-sim-launch-preparation-v1",
+  "command": "setup",
+  "plan_hash": "0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6",
+  "prepare_only": true,
+  "stopped_before_actions": true,
+  "doctor": {
+    "schema": "urnetwork-sim-doctor-v1",
+    "generated_at": "2026-09-16T11:46:17Z",
+    "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+    "policy_hash": "0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277",
+    "checks": [
+      {
+        "name": "artifact-store/minio-live",
+        "ok": true,
+        "hard": true,
+        "detail": "http://172.28.208.177:23900/minio/health/live"
+      },
+      {
+        "name": "artifact-store/server-blob",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-launch-preparation-failure-batch-20260915/budget-candidate-205-225-r3/private-vault/main/minio.yml"
+      },
+      {
+        "name": "config/independent-rpcs",
+        "ok": false,
+        "hard": false,
+        "detail": "owned-node-only verification; operational and historical reads use the approved LAN node, without backend independence; error=public postcondition RPC is shared with the operational endpoint"
+      },
+      {
+        "name": "config/operational-rpcs",
+        "ok": true,
+        "hard": true,
+        "detail": "mode=owned-node substrate=ws://192.168.1.162:9944 evm=http://192.168.1.162:9944"
+      },
+      {
+        "name": "config/operator-resource-sources",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workspace/config"
+      },
+      {
+        "name": "docker/daemon",
+        "ok": true,
+        "hard": true,
+        "detail": "29.7.2"
+      },
+      {
+        "name": "host/default-state-disk",
+        "ok": true,
+        "hard": true,
+        "detail": "path=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/sim-testnet free_bytes=75306852352 minimum_bytes=21474836480"
+      },
+      {
+        "name": "host/linux-amd64",
+        "ok": true,
+        "hard": true,
+        "detail": "linux/amd64"
+      },
+      {
+        "name": "host/udp-buffer-limits",
+        "ok": true,
+        "hard": true,
+        "detail": "rmem_max=16777216 wmem_max=16777216 minimum=7340032"
+      },
+      {
+        "name": "release-lock",
+        "ok": true,
+        "hard": true,
+        "detail": "1.0"
+      },
+      {
+        "name": "repository/operator-proxy",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/operator-proxy"
+      },
+      {
+        "name": "repository/platform-config",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workspace/config"
+      },
+      {
+        "name": "repository/server",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/server"
+      },
+      {
+        "name": "repository/sn",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn"
+      },
+      {
+        "name": "repository/vault",
+        "ok": true,
+        "hard": true,
+        "detail": "/home/by/urnetwork/temp/sn-launch-preparation-failure-batch-20260915/budget-candidate-205-225-r3/private-vault"
+      },
+      {
+        "name": "rpc/evm-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "http://192.168.1.162:9944"
+      },
+      {
+        "name": "rpc/evm-operational-eth_getLogs",
+        "ok": true,
+        "hard": true,
+        "detail": "from=8017076 to=8018075 inclusive_blocks=1000 addresses=3 logs=0"
+      },
+      {
+        "name": "rpc/evm-public",
+        "ok": true,
+        "hard": true,
+        "detail": "http://192.168.1.162:9944; same_endpoint_observation=true"
+      },
+      {
+        "name": "rpc/evm-public-eth_getLogs",
+        "ok": true,
+        "hard": true,
+        "detail": "from=8017076 to=8018075 inclusive_blocks=1000 addresses=3 logs=0; same_endpoint_observation=true"
+      },
+      {
+        "name": "rpc/operational-eth_getLogs",
+        "ok": true,
+        "hard": true,
+        "detail": "exact finalized block=8018075"
+      },
+      {
+        "name": "rpc/substrate-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "ws://192.168.1.162:9944 genesis=0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105 finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e spec=460 tx=1 state=1"
+      },
+      {
+        "name": "rpc/substrate-operational-readiness",
+        "ok": true,
+        "hard": true,
+        "detail": "peers=9 syncing=false operational_finalized=8018075 public_finalized=8018075 checkpoint=8018075"
+      },
+      {
+        "name": "rpc/substrate-physical-independence",
+        "ok": false,
+        "hard": false,
+        "detail": "operational=12D3KooWMXdqCurb3rvEP5AianFS69LHs37cDDc8SooQzcEJkVM2 public=12D3KooWMXdqCurb3rvEP5AianFS69LHs37cDDc8SooQzcEJkVM2; error=operational and public RPCs expose the same physical Subtensor peer 12D3KooWMXdqCurb3rvEP5AianFS69LHs37cDDc8SooQzcEJkVM2"
+      },
+      {
+        "name": "rpc/substrate-public",
+        "ok": true,
+        "hard": true,
+        "detail": "ws://192.168.1.162:9944 genesis=0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105 finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e spec=460 tx=1 state=1; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/code-hash-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e"
+      },
+      {
+        "name": "runtime/code-hash-public",
+        "ok": true,
+        "hard": true,
+        "detail": "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/compatibility-gates-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "{\"alpha_values\":{\"decision\":\"release-1.0 uses the pinned v454 liquid-alpha range of 0.7 through 0.9\",\"expected\":[45875,58982],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[45875,58982],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"AlphaValues\"},\"bonds_penalty\":{\"decision\":\"release-1.0 is validated against the pinned v454 full bonds-penalty setting\",\"expected\":[65535],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[65535],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"BondsPenalty\"},\"max_allowed_validators\":{\"decision\":\"runtime-v454 testnet root-controlled default is accepted for the bounded release topology; production governance must lower it to 56 or less before targeting 200 top-level miner UIDs\",\"expected\":[64],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[64],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"MaxAllowedValidators\"},\"max_weight_limit\":{\"decision\":\"runtime-v454 retains the native getter with no effective cap; release validators enforce the signed policy max_weight_limit_u16 and the production policy must lower it as recipient breadth grows\",\"expected\":[65535],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[65535],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"MaxWeightsLimit\"},\"min_delegate_take\":{\"decision\":\"the reserve validator must be able to compound delegated reserve stake at zero take\",\"expected\":[0],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[0],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"MinDelegateTake\"},\"registration_burn\":{\"decision\":\"all release registrations use runtime-enforced register_limit calls capped at 1000000 rao; bootstrap burn_half_life=1 bounds sequential registrations and production restores 360\",\"expected\":null,\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[500000],\"rule\":\"nonzero\",\"scope\":\"netuid\",\"storage\":\"Burn\"},\"subnet_owner_cut\":{\"decision\":\"release economics require the pinned v454 eighteen-percent owner cut\",\"expected\":[11796],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[11796],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"SubnetOwnerCut\"},\"tao_weight\":{\"decision\":\"testnet governance currently pins the global root-stake factor to 1.8 percent; the live finalized value is compatibility-gated and mainnet must be observed independently\",\"expected\":[332041393326771929],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[332041393326771929],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"TaoWeight\"}}"
+      },
+      {
+        "name": "runtime/compatibility-gates-public",
+        "ok": true,
+        "hard": true,
+        "detail": "{\"alpha_values\":{\"decision\":\"release-1.0 uses the pinned v454 liquid-alpha range of 0.7 through 0.9\",\"expected\":[45875,58982],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[45875,58982],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"AlphaValues\"},\"bonds_penalty\":{\"decision\":\"release-1.0 is validated against the pinned v454 full bonds-penalty setting\",\"expected\":[65535],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[65535],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"BondsPenalty\"},\"max_allowed_validators\":{\"decision\":\"runtime-v454 testnet root-controlled default is accepted for the bounded release topology; production governance must lower it to 56 or less before targeting 200 top-level miner UIDs\",\"expected\":[64],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[64],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"MaxAllowedValidators\"},\"max_weight_limit\":{\"decision\":\"runtime-v454 retains the native getter with no effective cap; release validators enforce the signed policy max_weight_limit_u16 and the production policy must lower it as recipient breadth grows\",\"expected\":[65535],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[65535],\"rule\":\"exact\",\"scope\":\"netuid\",\"storage\":\"MaxWeightsLimit\"},\"min_delegate_take\":{\"decision\":\"the reserve validator must be able to compound delegated reserve stake at zero take\",\"expected\":[0],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[0],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"MinDelegateTake\"},\"registration_burn\":{\"decision\":\"all release registrations use runtime-enforced register_limit calls capped at 1000000 rao; bootstrap burn_half_life=1 bounds sequential registrations and production restores 360\",\"expected\":null,\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[500000],\"rule\":\"nonzero\",\"scope\":\"netuid\",\"storage\":\"Burn\"},\"subnet_owner_cut\":{\"decision\":\"release economics require the pinned v454 eighteen-percent owner cut\",\"expected\":[11796],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[11796],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"SubnetOwnerCut\"},\"tao_weight\":{\"decision\":\"testnet governance currently pins the global root-stake factor to 1.8 percent; the live finalized value is compatibility-gated and mainnet must be observed independently\",\"expected\":[332041393326771929],\"finalized_block_hash\":\"0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e\",\"observed\":[332041393326771929],\"rule\":\"exact\",\"scope\":\"global\",\"storage\":\"TaoWeight\"}}; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/evm-finality",
+        "ok": true,
+        "hard": true,
+        "detail": "number=8018075 hash=0xc10c42d16ee1375df62106c6c4235d886804e51082fe7f464fe8ede768f8e1e4"
+      },
+      {
+        "name": "runtime/evm-finality-public",
+        "ok": true,
+        "hard": true,
+        "detail": "number=8018075 hash=0xc10c42d16ee1375df62106c6c4235d886804e51082fe7f464fe8ede768f8e1e4; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/evm-historical-state",
+        "ok": true,
+        "hard": true,
+        "detail": "block=8018074"
+      },
+      {
+        "name": "runtime/metadata-hash-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e"
+      },
+      {
+        "name": "runtime/metadata-hash-public",
+        "ok": true,
+        "hard": true,
+        "detail": "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c finalized=0xecd3337730738e0e47bafe602c4cc900a266e8628b88dead619c33bdca3a3d5e; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/metadata-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "pallet_index=7 signed_extensions=13"
+      },
+      {
+        "name": "runtime/metadata-public",
+        "ok": true,
+        "hard": true,
+        "detail": "pallet_index=7 signed_extensions=13; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/precompile-metagraph-neuron",
+        "ok": true,
+        "hard": true,
+        "detail": "uid_count=256 uid0_hotkey=0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658 uid0_coldkey=0x3c0663e8ab5a7890b71201bdd80de884163d9ab6fc8d1f53982e79b8c09bb94d"
+      },
+      {
+        "name": "runtime/precompile-metagraph-neuron-public",
+        "ok": true,
+        "hard": true,
+        "detail": "uid_count=256 uid0_hotkey=0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658 uid0_coldkey=0x3c0663e8ab5a7890b71201bdd80de884163d9ab6fc8d1f53982e79b8c09bb94d; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/precompile-signatures",
+        "ok": true,
+        "hard": true,
+        "detail": "ed25519=good/bad sr25519=good/bad"
+      },
+      {
+        "name": "runtime/precompile-signatures-public",
+        "ok": true,
+        "hard": true,
+        "detail": "ed25519=good/bad sr25519=good/bad; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/precompile-staking",
+        "ok": true,
+        "hard": true,
+        "detail": "uid0_stake_rao=19359260812539 nominator_minimum_rao=20000000"
+      },
+      {
+        "name": "runtime/precompile-staking-public",
+        "ok": true,
+        "hard": true,
+        "detail": "uid0_stake_rao=19359260812539 nominator_minimum_rao=20000000; same_endpoint_observation=true"
+      },
+      {
+        "name": "runtime/release-call-shapes-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "registration, staking/activation, take, transfer, commitments, and owner calls"
+      },
+      {
+        "name": "runtime/release-call-shapes-public",
+        "ok": true,
+        "hard": true,
+        "detail": "registration, staking/activation, take, transfer, commitments, and owner calls; same_endpoint_observation=true"
+      },
+      {
+        "name": "state/deployment-lineage",
+        "ok": true,
+        "hard": true,
+        "detail": "finalized_uids=256 fresh_bootstrap_uids=2 persisted_approval=true"
+      },
+      {
+        "name": "subnet/activation-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "enabled=true registered_at=7481932 first_emission=7826090 finalized=8018075"
+      },
+      {
+        "name": "subnet/activation-public",
+        "ok": true,
+        "hard": true,
+        "detail": "enabled=true registered_at=7481932 first_emission=7826090 finalized=8018075; same_endpoint_observation=true"
+      },
+      {
+        "name": "subnet/owner-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "5DRQdQh85sqyBCtyjc5wtex3KFRfSS1ZxQnkwuegM8HZphbS"
+      },
+      {
+        "name": "subnet/owner-public",
+        "ok": true,
+        "hard": true,
+        "detail": "5DRQdQh85sqyBCtyjc5wtex3KFRfSS1ZxQnkwuegM8HZphbS; same_endpoint_observation=true"
+      },
+      {
+        "name": "subnet/uid-capacity-operational",
+        "ok": true,
+        "hard": true,
+        "detail": "all missing release identities fit the intended finalized UID cap"
+      },
+      {
+        "name": "subnet/uid-capacity-public",
+        "ok": true,
+        "hard": true,
+        "detail": "all missing release identities fit the intended finalized UID cap; same_endpoint_observation=true"
+      },
+      {
+        "name": "supervisor/systemd-user",
+        "ok": true,
+        "hard": true,
+        "detail": "running"
+      },
+      {
+        "name": "tool/docker",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/bin/docker"
+      },
+      {
+        "name": "tool/getcap",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/sbin/getcap"
+      },
+      {
+        "name": "tool/git",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/bin/git"
+      },
+      {
+        "name": "tool/go",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/local/go/bin/go"
+      },
+      {
+        "name": "tool/setcap",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/sbin/setcap"
+      },
+      {
+        "name": "tool/sudo",
+        "ok": true,
+        "hard": true,
+        "detail": "/usr/bin/sudo"
+      },
+      {
+        "name": "vault/budgets",
+        "ok": true,
+        "hard": true,
+        "detail": "tao_rao=225000000000 alpha_rao=37250000000000 evm_gas_wei=205000000000000000000"
+      },
+      {
+        "name": "vault/governance",
+        "ok": true,
+        "hard": true,
+        "detail": "testnet=single-owner mainnet=safe-2-of-3"
+      },
+      {
+        "name": "vault/netuid",
+        "ok": true,
+        "hard": true,
+        "detail": "521"
+      },
+      {
+        "name": "vault/wallet",
+        "ok": true,
+        "hard": true,
+        "detail": "5DRQdQh85sqyBCtyjc5wtex3KFRfSS1ZxQnkwuegM8HZphbS"
+      },
+      {
+        "name": "wallet/finalized-alpha-source",
+        "ok": true,
+        "hard": true,
+        "detail": "source=0xa20080205804bba26541104cbac4def8a0eba26f7a86f6f1e7d16ad37f0cd658 alpha_rao=19359260812539 transferable_alpha_rao=19359260812539 stored_lock_rao=0 position_collateral_rao=0 coldkey_collateral_rao=0 burn_rao=500000 existential_deposit_rao=500 finalized=8018075"
+      },
+      {
+        "name": "wallet/setup-budget-and-balance",
+        "ok": true,
+        "hard": true,
+        "detail": "tao_rao=3492003000/225000000000 alpha_rao=0/37250000000000 gas_wei=77034000000000000000/205000000000000000000 registrations=3/262"
+      }
+    ],
+    "ready": true
+  },
+  "checks": [
+    {
+      "name": "attempt-upload-budget",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "provisional-live-topology",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "doctor",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "role-secrets",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "run-inputs",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "execution-readers",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "carried plan history preflight",
+      "ok": false,
+      "hard": true,
+      "detail": "action fleet.register.201: current postcondition: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction fleet.register.202: current postcondition: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction churn.tournament-complete: current postcondition: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction lifecycle.prepare.target.fund-hotkey: current postcondition: churn-6-hotkey balance=0 want\u003e=3000500: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction lifecycle.prepare.target.commitment: operational historical EVM state: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction lifecycle.prepare.companion.fund-hotkey: current postcondition: churn-7-hotkey balance=0 want\u003e=3000500: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction lifecycle.prepare.companion.commitment: operational historical EVM state: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction precompile.commitment-write: operational historical EVM state: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1\naction precompile.commitment-restore: operational historical EVM state: authenticate finalized runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca: runtime at 0x084c71a4d9ff696816d6ef14d74f781da238998eee992fbae8646fefd5542cca has unreviewed identity node-subtensor/461/1/1"
+    },
+    {
+      "name": "contract-deployment-payloads",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    },
+    {
+      "name": "launch-runtime-inputs",
+      "ok": false,
+      "hard": false,
+      "detail": "deferred to launch/resume: config.render is already verified; future namespace/adoption authority does not block approved setup repair"
+    },
+    {
+      "name": "preparation-context",
+      "ok": true,
+      "hard": true,
+      "detail": ""
+    }
+  ],
+  "ready": false
+}

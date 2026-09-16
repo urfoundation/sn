@@ -1,0 +1,204 @@
+{"Time":"2026-09-16T12:35:11.997970641Z","Action":"start"}
+{"Time":"2026-09-16T12:35:12.327293282Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T12:35:12.327481019Z","Action":"output","Output":"I0916 12:35:12.327307 3949408 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:12.327787957Z","Action":"output","Output":"I0916 12:35:12.327711 3949408 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:12.328022635Z","Action":"output","Output":"I0916 12:35:12.327956 3949408 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:12.328152271Z","Action":"output","Output":"I0916 12:35:12.328084 3949408 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T12:35:12.383925271Z","Action":"run","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity"}
+{"Time":"2026-09-16T12:35:12.384002662Z","Action":"output","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Output":"=== RUN   TestResolvedConfigPinsReviewedRuntimeArtifactIdentity\n"}
+{"Time":"2026-09-16T12:35:12.45896822Z","Action":"output","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Output":"--- PASS: TestResolvedConfigPinsReviewedRuntimeArtifactIdentity (0.07s)\n"}
+{"Time":"2026-09-16T12:35:12.459361463Z","Action":"pass","Test":"TestResolvedConfigPinsReviewedRuntimeArtifactIdentity","Elapsed":0.07}
+{"Time":"2026-09-16T12:35:12.459398499Z","Action":"run","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity"}
+{"Time":"2026-09-16T12:35:12.459409392Z","Action":"output","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Output":"=== RUN   TestPublishedManifestBindsCompleteRuntimeIdentity\n"}
+{"Time":"2026-09-16T12:35:12.47720609Z","Action":"output","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Output":"--- PASS: TestPublishedManifestBindsCompleteRuntimeIdentity (0.02s)\n"}
+{"Time":"2026-09-16T12:35:12.478726728Z","Action":"pass","Test":"TestPublishedManifestBindsCompleteRuntimeIdentity","Elapsed":0.02}
+{"Time":"2026-09-16T12:35:12.478747677Z","Action":"run","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding"}
+{"Time":"2026-09-16T12:35:12.478753019Z","Action":"output","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Output":"=== RUN   TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding\n"}
+{"Time":"2026-09-16T12:35:12.478950382Z","Action":"output","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Output":"--- PASS: TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.479043036Z","Action":"pass","Test":"TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.479055068Z","Action":"run","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift"}
+{"Time":"2026-09-16T12:35:12.479059836Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Output":"=== RUN   TestRuntimeVersionIdentityRejectsAdjacentDrift\n"}
+{"Time":"2026-09-16T12:35:12.479154408Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Output":"--- PASS: TestRuntimeVersionIdentityRejectsAdjacentDrift (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.479251911Z","Action":"pass","Test":"TestRuntimeVersionIdentityRejectsAdjacentDrift","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.479258585Z","Action":"run","Test":"TestRuntimeVersionIdentityRejectsMissingRequiredFields"}
+{"Time":"2026-09-16T12:35:12.47926264Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsMissingRequiredFields","Output":"=== RUN   TestRuntimeVersionIdentityRejectsMissingRequiredFields\n"}
+{"Time":"2026-09-16T12:35:12.479510944Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsMissingRequiredFields","Output":"--- PASS: TestRuntimeVersionIdentityRejectsMissingRequiredFields (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.479585697Z","Action":"pass","Test":"TestRuntimeVersionIdentityRejectsMissingRequiredFields","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.47961133Z","Action":"run","Test":"TestRuntimeVersionIdentityRejectsAmbiguousEncoding"}
+{"Time":"2026-09-16T12:35:12.479616828Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAmbiguousEncoding","Output":"=== RUN   TestRuntimeVersionIdentityRejectsAmbiguousEncoding\n"}
+{"Time":"2026-09-16T12:35:12.480144862Z","Action":"output","Test":"TestRuntimeVersionIdentityRejectsAmbiguousEncoding","Output":"--- PASS: TestRuntimeVersionIdentityRejectsAmbiguousEncoding (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.480571353Z","Action":"pass","Test":"TestRuntimeVersionIdentityRejectsAmbiguousEncoding","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.480585951Z","Action":"run","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly"}
+{"Time":"2026-09-16T12:35:12.480590576Z","Action":"output","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Output":"=== RUN   TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly\n"}
+{"Time":"2026-09-16T12:35:12.480607222Z","Action":"output","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Output":"--- PASS: TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.480859792Z","Action":"pass","Test":"TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.480869467Z","Action":"run","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain"}
+{"Time":"2026-09-16T12:35:12.480873491Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"=== RUN   TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain\n"}
+{"Time":"2026-09-16T12:35:12.496413931Z","Action":"output","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Output":"--- PASS: TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain (0.02s)\n"}
+{"Time":"2026-09-16T12:35:12.564436255Z","Action":"pass","Test":"TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain","Elapsed":0.02}
+{"Time":"2026-09-16T12:35:12.564532469Z","Action":"run","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource"}
+{"Time":"2026-09-16T12:35:12.564554045Z","Action":"output","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Output":"=== RUN   TestReleaseGatesAttestPinnedRuntime454RustSource\n"}
+{"Time":"2026-09-16T12:35:12.585164828Z","Action":"output","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Output":"--- PASS: TestReleaseGatesAttestPinnedRuntime454RustSource (0.02s)\n"}
+{"Time":"2026-09-16T12:35:12.58535021Z","Action":"pass","Test":"TestReleaseGatesAttestPinnedRuntime454RustSource","Elapsed":0.02}
+{"Time":"2026-09-16T12:35:12.585374305Z","Action":"run","Test":"TestReleaseGatesAttestRuntime455SourceCompatibility"}
+{"Time":"2026-09-16T12:35:12.58538814Z","Action":"output","Test":"TestReleaseGatesAttestRuntime455SourceCompatibility","Output":"=== RUN   TestReleaseGatesAttestRuntime455SourceCompatibility\n"}
+{"Time":"2026-09-16T12:35:12.586231622Z","Action":"output","Test":"TestReleaseGatesAttestRuntime455SourceCompatibility","Output":"--- PASS: TestReleaseGatesAttestRuntime455SourceCompatibility (0.00s)\n"}
+{"Time":"2026-09-16T12:35:12.586469167Z","Action":"pass","Test":"TestReleaseGatesAttestRuntime455SourceCompatibility","Elapsed":0}
+{"Time":"2026-09-16T12:35:12.586490142Z","Action":"run","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions"}
+{"Time":"2026-09-16T12:35:12.586502746Z","Action":"output","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Output":"=== RUN   TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions\n"}
+{"Time":"2026-09-16T12:35:14.74808715Z","Action":"output","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Output":"--- PASS: TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions (2.16s)\n"}
+{"Time":"2026-09-16T12:35:14.748477116Z","Action":"pass","Test":"TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions","Elapsed":2.16}
+{"Time":"2026-09-16T12:35:14.748495066Z","Action":"run","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock"}
+{"Time":"2026-09-16T12:35:14.7485196Z","Action":"output","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Output":"=== RUN   TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock\n"}
+{"Time":"2026-09-16T12:35:14.772216175Z","Action":"output","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Output":"--- PASS: TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock (0.02s)\n"}
+{"Time":"2026-09-16T12:35:14.772333097Z","Action":"pass","Test":"TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock","Elapsed":0.02}
+{"Time":"2026-09-16T12:35:14.772344679Z","Action":"run","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection"}
+{"Time":"2026-09-16T12:35:14.77234944Z","Action":"output","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Output":"=== RUN   TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection\n"}
+{"Time":"2026-09-16T12:35:14.846314632Z","Action":"output","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Output":"--- PASS: TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection (0.07s)\n"}
+{"Time":"2026-09-16T12:35:14.846476056Z","Action":"pass","Test":"TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection","Elapsed":0.07}
+{"Time":"2026-09-16T12:35:14.846487566Z","Action":"run","Test":"TestCanonicalReleaseLockRenderingIsStableAndRoundTrips"}
+{"Time":"2026-09-16T12:35:14.846491982Z","Action":"output","Test":"TestCanonicalReleaseLockRenderingIsStableAndRoundTrips","Output":"=== RUN   TestCanonicalReleaseLockRenderingIsStableAndRoundTrips\n"}
+{"Time":"2026-09-16T12:35:14.90425233Z","Action":"output","Test":"TestCanonicalReleaseLockRenderingIsStableAndRoundTrips","Output":"--- PASS: TestCanonicalReleaseLockRenderingIsStableAndRoundTrips (0.06s)\n"}
+{"Time":"2026-09-16T12:35:14.904385769Z","Action":"pass","Test":"TestCanonicalReleaseLockRenderingIsStableAndRoundTrips","Elapsed":0.06}
+{"Time":"2026-09-16T12:35:14.904402286Z","Action":"run","Test":"TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference"}
+{"Time":"2026-09-16T12:35:14.904409286Z","Action":"output","Test":"TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference","Output":"=== RUN   TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference\n"}
+{"Time":"2026-09-16T12:35:14.972333281Z","Action":"output","Test":"TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference","Output":"--- PASS: TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference (0.07s)\n"}
+{"Time":"2026-09-16T12:35:14.973057511Z","Action":"pass","Test":"TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference","Elapsed":0.07}
+{"Time":"2026-09-16T12:35:14.973078802Z","Action":"run","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute"}
+{"Time":"2026-09-16T12:35:14.973084514Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute\n"}
+{"Time":"2026-09-16T12:35:15.079284998Z","Action":"output","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"--- PASS: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.11s)\n"}
+{"Time":"2026-09-16T12:35:15.07942061Z","Action":"pass","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Elapsed":0.11}
+{"Time":"2026-09-16T12:35:15.079435818Z","Action":"run","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta"}
+{"Time":"2026-09-16T12:35:15.079441831Z","Action":"output","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Output":"=== RUN   TestRuntime458SourceAttestationIncludesExactCompatibilityDelta\n"}
+{"Time":"2026-09-16T12:35:15.080459864Z","Action":"output","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Output":"--- PASS: TestRuntime458SourceAttestationIncludesExactCompatibilityDelta (0.00s)\n"}
+{"Time":"2026-09-16T12:35:15.080592824Z","Action":"pass","Test":"TestRuntime458SourceAttestationIncludesExactCompatibilityDelta","Elapsed":0}
+{"Time":"2026-09-16T12:35:15.080605132Z","Action":"run","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies"}
+{"Time":"2026-09-16T12:35:15.080610477Z","Action":"output","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Output":"=== RUN   TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies\n"}
+{"Time":"2026-09-16T12:35:15.082047371Z","Action":"output","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Output":"--- PASS: TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies (0.00s)\n"}
+{"Time":"2026-09-16T12:35:15.082163979Z","Action":"pass","Test":"TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies","Elapsed":0}
+{"Time":"2026-09-16T12:35:15.08217712Z","Action":"run","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory"}
+{"Time":"2026-09-16T12:35:15.082183193Z","Action":"output","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"=== RUN   TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory\n"}
+{"Time":"2026-09-16T12:35:15.494848226Z","Action":"output","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"--- PASS: TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory (0.41s)\n"}
+{"Time":"2026-09-16T12:35:15.494963055Z","Action":"pass","Test":"TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Elapsed":0.41}
+{"Time":"2026-09-16T12:35:15.494977376Z","Action":"run","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope"}
+{"Time":"2026-09-16T12:35:15.494982022Z","Action":"output","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Output":"=== RUN   TestRuntime460SourceAttestationPreservesReviewed459Scope\n"}
+{"Time":"2026-09-16T12:35:15.496317468Z","Action":"output","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Output":"--- PASS: TestRuntime460SourceAttestationPreservesReviewed459Scope (0.00s)\n"}
+{"Time":"2026-09-16T12:35:15.496393012Z","Action":"pass","Test":"TestRuntime460SourceAttestationPreservesReviewed459Scope","Elapsed":0}
+{"Time":"2026-09-16T12:35:15.496403197Z","Action":"run","Test":"TestRuntime461SourceAttestationPreservesReviewed460Scope"}
+{"Time":"2026-09-16T12:35:15.496407758Z","Action":"output","Test":"TestRuntime461SourceAttestationPreservesReviewed460Scope","Output":"=== RUN   TestRuntime461SourceAttestationPreservesReviewed460Scope\n"}
+{"Time":"2026-09-16T12:35:15.497947872Z","Action":"output","Test":"TestRuntime461SourceAttestationPreservesReviewed460Scope","Output":"--- PASS: TestRuntime461SourceAttestationPreservesReviewed460Scope (0.00s)\n"}
+{"Time":"2026-09-16T12:35:15.498042101Z","Action":"pass","Test":"TestRuntime461SourceAttestationPreservesReviewed460Scope","Elapsed":0}
+{"Time":"2026-09-16T12:35:15.498056865Z","Action":"run","Test":"TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory"}
+{"Time":"2026-09-16T12:35:15.498062053Z","Action":"output","Test":"TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"=== RUN   TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory\n"}
+{"Time":"2026-09-16T12:35:15.949810081Z","Action":"output","Test":"TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Output":"--- PASS: TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory (0.45s)\n"}
+{"Time":"2026-09-16T12:35:15.951981076Z","Action":"pass","Test":"TestRuntime461ArtifactCheckerRequiresOwnedObservationAndCompleteHistory","Elapsed":0.45}
+{"Time":"2026-09-16T12:35:15.9520191Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:35:15.95202854Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:35:15.952132484Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:35:15.952143354Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:35:15.952216294Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-16T12:35:15.952228848Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-16T12:35:15.952310968Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-16T12:35:15.952322024Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-16T12:35:15.952486879Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-16T12:35:15.952497644Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-16T12:35:15.95254643Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-16T12:35:15.952557234Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-16T12:35:15.952715344Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-16T12:35:15.952726156Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-16T12:35:15.952834737Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-16T12:35:15.952848654Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-16T12:35:15.952969912Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-16T12:35:15.952981085Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-16T12:35:15.953087388Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-16T12:35:15.953106753Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-16T12:35:15.953231956Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair"}
+{"Time":"2026-09-16T12:35:15.953243873Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair\n"}
+{"Time":"2026-09-16T12:35:35.604050651Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair (19.65s)\n"}
+{"Time":"2026-09-16T12:35:35.605113128Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair","Elapsed":19.65}
+{"Time":"2026-09-16T12:35:35.605138823Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation"}
+{"Time":"2026-09-16T12:35:35.605145131Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation\n"}
+{"Time":"2026-09-16T12:35:40.770970877Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation (5.17s)\n"}
+{"Time":"2026-09-16T12:35:40.771238678Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation","Elapsed":5.17}
+{"Time":"2026-09-16T12:35:40.771291944Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks"}
+{"Time":"2026-09-16T12:35:40.771304937Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks\n"}
+{"Time":"2026-09-16T12:35:45.823931661Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks (5.05s)\n"}
+{"Time":"2026-09-16T12:35:45.824308785Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeRetainsEligibilityAndConsentChecks","Elapsed":5.05}
+{"Time":"2026-09-16T12:35:45.824346727Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval"}
+{"Time":"2026-09-16T12:35:45.82436072Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval\n"}
+{"Time":"2026-09-16T12:35:57.033694236Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval (11.21s)\n"}
+{"Time":"2026-09-16T12:35:57.033958406Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeCarriedActionUsesOriginalApproval","Elapsed":11.21}
+{"Time":"2026-09-16T12:35:57.033992882Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads"}
+{"Time":"2026-09-16T12:35:57.034007051Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads\n"}
+{"Time":"2026-09-16T12:36:01.604305248Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads (4.57s)\n"}
+{"Time":"2026-09-16T12:36:01.60463975Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads","Elapsed":4.57}
+{"Time":"2026-09-16T12:36:01.604671775Z","Action":"run","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461"}
+{"Time":"2026-09-16T12:36:01.604685965Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461","Output":"=== RUN   TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461\n"}
+{"Time":"2026-09-16T12:36:05.898845311Z","Action":"output","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461","Output":"--- PASS: TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461 (4.29s)\n"}
+{"Time":"2026-09-16T12:36:05.90482039Z","Action":"pass","Test":"TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461","Elapsed":4.29}
+{"Time":"2026-09-16T12:36:05.904872615Z","Action":"run","Test":"TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-16T12:36:05.904888255Z","Action":"output","Test":"TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-16T12:36:05.905088365Z","Action":"output","Test":"TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- PASS: TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-16T12:36:05.905290238Z","Action":"pass","Test":"TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-16T12:36:05.905307212Z","Action":"run","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance"}
+{"Time":"2026-09-16T12:36:05.905315935Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance\n"}
+{"Time":"2026-09-16T12:36:05.916821665Z","Action":"output","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Output":"--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.01s)\n"}
+{"Time":"2026-09-16T12:36:05.917073507Z","Action":"pass","Test":"TestRuntime458CanonicalLockRetainsHistoricalProvenance","Elapsed":0.01}
+{"Time":"2026-09-16T12:36:05.917101899Z","Action":"run","Test":"TestRuntime461HistoricalPublicationsRemainEvidenceOnly"}
+{"Time":"2026-09-16T12:36:05.917111444Z","Action":"output","Test":"TestRuntime461HistoricalPublicationsRemainEvidenceOnly","Output":"=== RUN   TestRuntime461HistoricalPublicationsRemainEvidenceOnly\n"}
+{"Time":"2026-09-16T12:36:05.946943225Z","Action":"output","Test":"TestRuntime461HistoricalPublicationsRemainEvidenceOnly","Output":"--- PASS: TestRuntime461HistoricalPublicationsRemainEvidenceOnly (0.03s)\n"}
+{"Time":"2026-09-16T12:36:05.947125288Z","Action":"pass","Test":"TestRuntime461HistoricalPublicationsRemainEvidenceOnly","Elapsed":0.03}
+{"Time":"2026-09-16T12:36:05.947155077Z","Action":"run","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs"}
+{"Time":"2026-09-16T12:36:05.947165287Z","Action":"output","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Output":"=== RUN   TestRuntime458PublicationsRejectCrossArtifactPairs\n"}
+{"Time":"2026-09-16T12:36:05.972964932Z","Action":"output","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Output":"--- PASS: TestRuntime458PublicationsRejectCrossArtifactPairs (0.03s)\n"}
+{"Time":"2026-09-16T12:36:05.973183397Z","Action":"pass","Test":"TestRuntime458PublicationsRejectCrossArtifactPairs","Elapsed":0.03}
+{"Time":"2026-09-16T12:36:05.973200644Z","Action":"run","Test":"TestRuntime459ConfigHashPreserves455And458Domains"}
+{"Time":"2026-09-16T12:36:05.973207122Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"=== RUN   TestRuntime459ConfigHashPreserves455And458Domains\n"}
+{"Time":"2026-09-16T12:36:05.975787786Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"--- PASS: TestRuntime459ConfigHashPreserves455And458Domains (0.00s)\n"}
+{"Time":"2026-09-16T12:36:05.975933819Z","Action":"pass","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Elapsed":0}
+{"Time":"2026-09-16T12:36:05.975945032Z","Action":"run","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-16T12:36:05.975989642Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-16T12:36:17.01454215Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval (11.04s)\n"}
+{"Time":"2026-09-16T12:36:17.014800425Z","Action":"pass","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Elapsed":11.04}
+{"Time":"2026-09-16T12:36:17.01483591Z","Action":"run","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift"}
+{"Time":"2026-09-16T12:36:17.01484995Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"=== RUN   TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift\n"}
+{"Time":"2026-09-16T12:36:17.03876834Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"--- PASS: TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift (0.02s)\n"}
+{"Time":"2026-09-16T12:36:17.038909055Z","Action":"pass","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Elapsed":0.02}
+{"Time":"2026-09-16T12:36:17.038932724Z","Action":"run","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-16T12:36:17.038942727Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-16T12:36:21.740581359Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval (4.70s)\n"}
+{"Time":"2026-09-16T12:36:21.740866503Z","Action":"pass","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Elapsed":4.7}
+{"Time":"2026-09-16T12:36:21.740899805Z","Action":"run","Test":"TestRuntime460Archived459LockRetainsExactProvenance"}
+{"Time":"2026-09-16T12:36:21.740913721Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"=== RUN   TestRuntime460Archived459LockRetainsExactProvenance\n"}
+{"Time":"2026-09-16T12:36:21.764952397Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"--- PASS: TestRuntime460Archived459LockRetainsExactProvenance (0.02s)\n"}
+{"Time":"2026-09-16T12:36:21.765247207Z","Action":"pass","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Elapsed":0.02}
+{"Time":"2026-09-16T12:36:21.765280599Z","Action":"run","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-16T12:36:21.765294075Z","Action":"output","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-16T12:36:27.07832166Z","Action":"output","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval (5.31s)\n"}
+{"Time":"2026-09-16T12:36:27.078642632Z","Action":"pass","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Elapsed":5.31}
+{"Time":"2026-09-16T12:36:27.078676015Z","Action":"run","Test":"TestRuntime461Archived460LockRetainsExactProvenance"}
+{"Time":"2026-09-16T12:36:27.078689907Z","Action":"output","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Output":"=== RUN   TestRuntime461Archived460LockRetainsExactProvenance\n"}
+{"Time":"2026-09-16T12:36:27.102419367Z","Action":"output","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Output":"--- PASS: TestRuntime461Archived460LockRetainsExactProvenance (0.02s)\n"}
+{"Time":"2026-09-16T12:36:27.111881259Z","Action":"pass","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Elapsed":0.02}
+{"Time":"2026-09-16T12:36:27.111936353Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions"}
+{"Time":"2026-09-16T12:36:27.111962236Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions\n"}
+{"Time":"2026-09-16T12:36:27.11213498Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership"}
+{"Time":"2026-09-16T12:36:27.112166715Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership\n"}
+{"Time":"2026-09-16T12:36:27.11222689Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:36:27.112248882Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:36:27.112276085Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin"}
+{"Time":"2026-09-16T12:36:27.112294311Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin\n"}
+{"Time":"2026-09-16T12:36:27.116529421Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire (0.00s)\n"}
+{"Time":"2026-09-16T12:36:27.116582255Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Elapsed":0}
+{"Time":"2026-09-16T12:36:27.116600515Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution"}
+{"Time":"2026-09-16T12:36:27.116615168Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution\n"}
+{"Time":"2026-09-16T12:36:27.196992905Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin (0.08s)\n"}
+{"Time":"2026-09-16T12:36:27.198980716Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin","Elapsed":0.08}
+{"Time":"2026-09-16T12:36:27.199005398Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership (0.09s)\n"}
+{"Time":"2026-09-16T12:36:32.322547803Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership","Elapsed":0.09}
+{"Time":"2026-09-16T12:36:32.322624994Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution (5.21s)\n"}
+{"Time":"2026-09-16T12:36:32.517994419Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution","Elapsed":5.21}
+{"Time":"2026-09-16T12:36:32.518111364Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions (5.41s)\n"}
+{"Time":"2026-09-16T12:36:32.518499001Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions","Elapsed":5.41}
+{"Time":"2026-09-16T12:36:32.518515822Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T12:36:33.563192658Z","Action":"pass","Elapsed":81.565}

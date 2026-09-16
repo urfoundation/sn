@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scope": "Closed runtime461 source/artifact review only; active Go qualification is excluded",
+  "source_commit": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+  "sn_qualification_source": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "rpc_url": "http://192.168.1.162:9944",
+  "finalized_block": 8018145,
+  "finalized_hash": "0x43093d12230005ca09a38835fb1506e7b018fb52233597e68ad50c440c2d7272",
+  "runtime": {
+    "spec_name": "node-subtensor",
+    "spec_version": 461,
+    "transaction_version": 1,
+    "state_version": 1,
+    "metadata_version": 14
+  },
+  "upstream_ci": {
+    "artifact_id": 10445345071,
+    "workflow_run_id": 35046095878,
+    "archive_sha256": "6cb1ce0ef00453faf2354dab33c39baee8cf7d8efdb1c4ccd02a106ae4ced24e",
+    "source_commit_matches": true,
+    "extracted_wasm_matches_pinned_lan": true,
+    "srtool_identity_matches": true
+  },
+  "source_review": {
+    "comparison_commits": 68,
+    "prior_witnesses": 71,
+    "unchanged_prior_witnesses": 53,
+    "changed_prior_witnesses": 18,
+    "new_manifest_witnesses": 94,
+    "cargo_lock_unchanged": true,
+    "sdk_revision": "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a",
+    "consumed_nonroot_abi_change_identified": false,
+    "all_upstream_economics_unchanged": false
+  },
+  "offline_probe": {
+    "owner": "Terra",
+    "capture": "/mnt/data/sn-testnet/qualification/runtime461-terra-offline-probe-20260916-r1",
+    "result_sha256": "70d8b9a870525b26565ab173b439f2b040e6f17b8542649eb4e0ffbf92d511a3",
+    "seal_sha256": "76d48bc891ea1de1f51cdc9999327d00093786609ca3d5f58c4d5e250c0e3ab7",
+    "probe_exit": 0,
+    "outer_exit": 0,
+    "launcher_join_exit": 0,
+    "inputs_unchanged": true
+  },
+  "omissions": [
+    "Bulk runtime Wasm, SCALE metadata, source tar and CI ZIP remain in original sealed-by-digest local paths; hashes are retained in LAN-SOURCE.sha256 and UPSTREAM-SOURCE.sha256",
+    "Original zero-byte first ZIP attempt was an unfollowed redirect; retried archive was admitted only after its authoritative digest and exact extracted Wasm comparison passed",
+    "No live deployment, native setup, continuation or full campaign success is asserted",
+    "Go normal/race and causal qualification are separate pending captures"
+  ],
+  "independent_rpc": false
+}

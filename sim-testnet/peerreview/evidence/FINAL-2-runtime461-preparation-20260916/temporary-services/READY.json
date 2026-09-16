@@ -1,0 +1,7 @@
+{
+  "at": "2026-09-16T11:58:04.830650610Z",
+  "helpers": 4,
+  "proxies_healthz_http": 204,
+  "operator_status_http": 200,
+  "helper_health_is_campaign_acceptance": false
+}

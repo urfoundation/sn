@@ -1,0 +1,10 @@
+{
+  "owner_session": 42232,
+  "owner_exit": 0,
+  "actual_tool_join_exit": 0,
+  "all_four_child_exits_zero": true,
+  "forced_kill": false,
+  "required_helper_listeners_absent": true,
+  "inputs_after_exit": 0,
+  "helper_health_is_campaign_acceptance": false
+}

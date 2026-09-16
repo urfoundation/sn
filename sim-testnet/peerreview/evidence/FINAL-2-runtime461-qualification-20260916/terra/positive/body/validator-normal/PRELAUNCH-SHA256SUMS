@@ -1,0 +1,4 @@
+a2e83bc13be69cfe44c48dec57d47cc095298e9cba60659f4bb352d80c01e3b0  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-normal/command.sh
+ab86df0f1b34cc6781e2d125d058d012d1fe06d1c9f381132cb278be38ccb0ae  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-normal/launcher.sh
+0a088d5a2ce5de0386a74d53adc4d0dca01f5ae825f2a5d873409be8a7a0450f  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-normal/selector.txt
+60fd2ec54012d867f393d0c453cebfe325aeb79211f5655f5e3e9176ff3b1a49  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-normal/expected-tests.txt

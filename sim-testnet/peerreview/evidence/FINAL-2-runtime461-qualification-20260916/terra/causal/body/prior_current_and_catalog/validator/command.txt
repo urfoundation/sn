@@ -1,0 +1,1 @@
+go tool test2json -t <fresh-causal-binary> -test.v -test.run=<exact causal selector> -test.count=1 -test.parallel=4

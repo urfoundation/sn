@@ -1,0 +1,1 @@
+go tool test2json -t <compiled-binary> -test.v -test.run=<exact selector> -test.count=1 -test.parallel=4

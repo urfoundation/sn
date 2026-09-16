@@ -1,0 +1,26 @@
+{"Time":"2026-09-16T12:35:09.937178217Z","Action":"start"}
+{"Time":"2026-09-16T12:35:09.996960639Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T12:35:09.997073575Z","Action":"output","Output":"I0916 12:35:09.996883 3948942 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:09.997186176Z","Action":"output","Output":"I0916 12:35:09.997128 3948942 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:09.997301115Z","Action":"output","Output":"I0916 12:35:09.997263 3948942 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:09.997366635Z","Action":"output","Output":"I0916 12:35:09.997306 3948942 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T12:35:10.014223299Z","Action":"run","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-16T12:35:10.01424707Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-16T12:35:11.112436928Z","Action":"output","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Output":"--- PASS: TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval (1.10s)\n"}
+{"Time":"2026-09-16T12:35:11.112506344Z","Action":"pass","Test":"TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval","Elapsed":1.1}
+{"Time":"2026-09-16T12:35:11.112517502Z","Action":"run","Test":"TestRuntime460Archived459LockRetainsExactProvenance"}
+{"Time":"2026-09-16T12:35:11.112521783Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"=== RUN   TestRuntime460Archived459LockRetainsExactProvenance\n"}
+{"Time":"2026-09-16T12:35:11.114181535Z","Action":"output","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Output":"--- PASS: TestRuntime460Archived459LockRetainsExactProvenance (0.00s)\n"}
+{"Time":"2026-09-16T12:35:11.114203038Z","Action":"pass","Test":"TestRuntime460Archived459LockRetainsExactProvenance","Elapsed":0}
+{"Time":"2026-09-16T12:35:11.114209288Z","Action":"run","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-16T12:35:11.114213581Z","Action":"output","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-16T12:35:11.638721649Z","Action":"output","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Output":"    runtime_identity_461_test.go:30: runtime461 cannot reopen original460 companion: persisted active setup plan: validator evidence original release lock: validator evidence archived runtime version is not a reviewed companion release\n"}
+{"Time":"2026-09-16T12:35:11.639572689Z","Action":"output","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Output":"--- FAIL: TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval (0.53s)\n"}
+{"Time":"2026-09-16T12:35:11.639594781Z","Action":"fail","Test":"TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval","Elapsed":0.53}
+{"Time":"2026-09-16T12:35:11.639604248Z","Action":"run","Test":"TestRuntime461Archived460LockRetainsExactProvenance"}
+{"Time":"2026-09-16T12:35:11.639608624Z","Action":"output","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Output":"=== RUN   TestRuntime461Archived460LockRetainsExactProvenance\n"}
+{"Time":"2026-09-16T12:35:11.641115166Z","Action":"output","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Output":"    runtime_identity_461_test.go:54: validator evidence archived runtime version is not a reviewed companion release\n"}
+{"Time":"2026-09-16T12:35:11.641139571Z","Action":"output","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Output":"--- FAIL: TestRuntime461Archived460LockRetainsExactProvenance (0.00s)\n"}
+{"Time":"2026-09-16T12:35:11.641163499Z","Action":"fail","Test":"TestRuntime461Archived460LockRetainsExactProvenance","Elapsed":0}
+{"Time":"2026-09-16T12:35:11.64116969Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T12:35:11.653951903Z","Action":"fail","Elapsed":1.717}

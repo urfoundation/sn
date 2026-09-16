@@ -1,0 +1,5 @@
+helper	pid	startticks	signal
+subtensor-evm-egress	3871413	184621969	TERM
+subtensor-rpc-proxy	3871420	184621970	TERM
+operator-1-api	3871427	184621972	TERM
+operator-2-api	3871434	184621973	TERM

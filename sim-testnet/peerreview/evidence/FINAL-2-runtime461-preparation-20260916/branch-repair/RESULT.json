@@ -1,0 +1,24 @@
+{
+  "at": "2026-09-16T11:43:30.575150+00:00",
+  "cause": "read SN upstream refused detached HEAD before preparation",
+  "failed_setup_session": 31956,
+  "failed_setup_body_outer_join": [
+    1,
+    1,
+    1
+  ],
+  "command": [
+    "git",
+    "switch",
+    "--create",
+    "sim-testnet-final-1860261",
+    "--track",
+    "origin/main"
+  ],
+  "switch_exit": 0,
+  "upstream_after": "origin/main",
+  "same_commit": "1860261f524054b3d8132a48f75307ffdb792322",
+  "saved_state_lock_binary_unchanged": true,
+  "source_clean": true,
+  "no_rebuild_or_test_needed": true
+}

@@ -1,0 +1,7 @@
+980e5cf55c38b27888856b9bc1a892ae1d23773e77cc5faa226597e3bce60b11  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/command.sh
+e22f635785b97d01a7b8a0c78ad915cd8e919527164085d803304f97100fd6e6  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/launcher.sh
+8759bea8a88a80f83395e13a8ecdc918a9f936ff5673cab1998121e46ba3df0e  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/selector.txt
+26cd1ec49b0b92000278b41715a3907629891967a9acbf2f93651707cff70128  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/expected-tests.txt
+777f68fc1cfb00c68a4d5fea94294f15df11f3fd48e35beb0925574653dec9b1  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/expected-pass-tests.txt
+fcaaced8a0d6d8210bdf2d844064ff36eb0136ea5759990400ec4e0916b0ae0b  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/compile/prior_current_and_catalog/validator/expected-fail-tests.txt
+95b0bcfee2d8b62afafb3cf22a23a85251061574a9dfad5ca53f9ff76082b023  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/causal/prior_current_and_catalog/workspace/sn/../../VARIANT.json

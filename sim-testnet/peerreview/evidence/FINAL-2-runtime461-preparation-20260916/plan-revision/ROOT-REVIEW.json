@@ -1,0 +1,36 @@
+{
+  "at": "2026-09-16T11:39:22.224117+00:00",
+  "command_body_outer_join_exits": [
+    0,
+    0,
+    0
+  ],
+  "tool_session": 41487,
+  "prior_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "proposed_plan_hash": "0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6",
+  "prior_bytes_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48",
+  "proposed_bytes_sha256": "4a305f4afa487a8df053f332fd5e179f666b322817c5f69c774c1c39699d9bfc",
+  "all_4733_actions_identical": true,
+  "all_other_fields_identical_except_exact_allowlist": true,
+  "allowed_top_level_fields": [
+    "generated_at",
+    "plan_hash",
+    "release_lock_hash",
+    "prior_plan_hashes"
+  ],
+  "allowed_live_fact_fields": [
+    "alpha_available_rao",
+    "alpha_transferable_rao",
+    "evm_finalized_block",
+    "evm_finalized_block_hash",
+    "finalized_block",
+    "finalized_block_hash",
+    "wallet_netuid_alpha_rao"
+  ],
+  "prior_plan_ancestry": "exact original prefix plus original plan hash",
+  "full_diff": "root-full-diff.json",
+  "earlier_diff_note": "root-complete-diff.json recorded array length; root-full-diff.json also records the exact added ancestor.",
+  "all_saved_state_binary_lock_fences_unchanged": true,
+  "chain_submission": false,
+  "approved_limits_unchanged": true
+}

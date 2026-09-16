@@ -1,0 +1,12 @@
+{"Time":"2026-09-16T12:35:09.487423763Z","Action":"start"}
+{"Time":"2026-09-16T12:35:09.501816047Z","Action":"run","Test":"TestReleaseRuntime461RequiresExactReviewedArtifact"}
+{"Time":"2026-09-16T12:35:09.501856756Z","Action":"output","Test":"TestReleaseRuntime461RequiresExactReviewedArtifact","Output":"=== RUN   TestReleaseRuntime461RequiresExactReviewedArtifact\n"}
+{"Time":"2026-09-16T12:35:09.501911765Z","Action":"output","Test":"TestReleaseRuntime461RequiresExactReviewedArtifact","Output":"    runtime_identity_458_test.go:38: release 1.0 native runtime is not the reviewed node-subtensor/461/1/1 artifact\n"}
+{"Time":"2026-09-16T12:35:09.501922159Z","Action":"output","Test":"TestReleaseRuntime461RequiresExactReviewedArtifact","Output":"--- FAIL: TestReleaseRuntime461RequiresExactReviewedArtifact (0.00s)\n"}
+{"Time":"2026-09-16T12:35:09.501927489Z","Action":"fail","Test":"TestReleaseRuntime461RequiresExactReviewedArtifact","Elapsed":0}
+{"Time":"2026-09-16T12:35:09.501933938Z","Action":"run","Test":"TestReleaseRuntime459RetainsBothOriginalCompanionDomains"}
+{"Time":"2026-09-16T12:35:09.501937768Z","Action":"output","Test":"TestReleaseRuntime459RetainsBothOriginalCompanionDomains","Output":"=== RUN   TestReleaseRuntime459RetainsBothOriginalCompanionDomains\n"}
+{"Time":"2026-09-16T12:35:09.501943096Z","Action":"output","Test":"TestReleaseRuntime459RetainsBothOriginalCompanionDomains","Output":"--- PASS: TestReleaseRuntime459RetainsBothOriginalCompanionDomains (0.00s)\n"}
+{"Time":"2026-09-16T12:35:09.50195992Z","Action":"pass","Test":"TestReleaseRuntime459RetainsBothOriginalCompanionDomains","Elapsed":0}
+{"Time":"2026-09-16T12:35:09.501964891Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T12:35:09.503714478Z","Action":"fail","Elapsed":0.016}

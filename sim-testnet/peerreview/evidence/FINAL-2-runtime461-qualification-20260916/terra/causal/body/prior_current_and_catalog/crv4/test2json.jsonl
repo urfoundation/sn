@@ -1,0 +1,12 @@
+{"Time":"2026-09-16T12:35:09.08963389Z","Action":"start"}
+{"Time":"2026-09-16T12:35:09.09547943Z","Action":"run","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest"}
+{"Time":"2026-09-16T12:35:09.095530025Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"=== RUN   TestRuntimeArtifactMetadataCatalogPreservesExactManifest\n"}
+{"Time":"2026-09-16T12:35:09.095804608Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"    reviewed_runtime_test.go:32: catalog lost an exact retained artifact\n"}
+{"Time":"2026-09-16T12:35:09.095856157Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"--- FAIL: TestRuntimeArtifactMetadataCatalogPreservesExactManifest (0.00s)\n"}
+{"Time":"2026-09-16T12:35:09.0958725Z","Action":"fail","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Elapsed":0}
+{"Time":"2026-09-16T12:35:09.095890958Z","Action":"run","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain"}
+{"Time":"2026-09-16T12:35:09.095897655Z","Action":"output","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Output":"=== RUN   TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain\n"}
+{"Time":"2026-09-16T12:35:09.314123644Z","Action":"output","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Output":"--- PASS: TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain (0.22s)\n"}
+{"Time":"2026-09-16T12:35:09.31416723Z","Action":"pass","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Elapsed":0.22}
+{"Time":"2026-09-16T12:35:09.314177212Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T12:35:09.315887257Z","Action":"fail","Elapsed":0.226}

@@ -50,7 +50,45 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest recovery checkpoint, 2026-09-16: strict managed resume 92055 failed its
+Latest recovery checkpoint, 2026-09-16 13:23 UTC: the runtime-461 correction is
+qualified and integrated at `8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c`.
+All 103 affected roots pass normally and under race; four causal restorations
+produce exactly nine expected failures and nine passes. Root verified all
+15 raw body streams, exact compiled membership, actual exits and unchanged
+inputs. The exact-Wasm probe also passed. The review caught and fixed the
+adjacent historical companion check that would reject former-current runtime
+460 approvals, plus a stale doctor test fixture before compilation.
+The [closed qualification](sim-testnet/peerreview/evidence/FINAL-2-runtime461-qualification-20260916/README.md)
+retains the complete evidence. The read-only release-lock preview passed;
+the exact candidate, SHA-256
+`aad35e8488e48190071889b3dec47c184ed9d2deedc30c44e3b52ee6f17afd84`, changes only
+observed protocol/SN Go digests beyond the qualified static461 identity.
+Publication, final matching build and native recovery follow. No native owner,
+helper or campaign is running. Current saved plan remains f6e8c46e, retaining
+the original history, limits and completed actions. Reuse unaffected tests.
+
+Previous recovery checkpoint, 2026-09-16 12:03 UTC: startup and direct campaign
+handoff are published at `1860261f524054b3d8132a48f75307ffdb792322`; the matching
+CLI built successfully, SHA-256
+`114bede0b30a9bc9fdb946f3075d1e1f3ff9b3e36daf57d1c084f6144e43bb07`.
+Read-only plan revision passed. The first setup failed before preparation
+because the physical checkout was detached; attaching the same commit to its
+`origin/main` tracking branch repaired that prerequisite without rebuilding.
+The retry ran 11:43:40–11:57:57, completed all 4,673 carried checks, and collected
+nine failures from newly observed runtime 461. Its body/outer/join exits are one.
+Eight hard preparation checks passed; the single hard failure aggregates those
+nine runtime-admission errors. Setup adopted plan `0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6`
+before stopping; only plan/config changed, with journal, supervisor state and
+manifest, identities, executable and lock preserved. A fresh LAN read confirmed
+461/1/1 at finalized block 8,018,145. No new END or native continuation was
+created. All four temporary helpers stopped and joined with exit zero.
+The [closed preparation evidence](sim-testnet/peerreview/evidence/FINAL-2-runtime461-preparation-20260916/README.md)
+preserves both failures and actual results. Astra is reviewing the 461 artifact,
+consumed interfaces and adjacent admission paths; Terra will qualify the
+affected correction. Reuse completed startup/handoff results and retain all
+approvals, signed history and full campaign requirements. RC remains unexecuted.
+
+Previous recovery checkpoint, 2026-09-16: strict managed resume 92055 failed its
 five-minute owned-node semantic-readiness wait at 10:20:25. Body/outer/join exits
 are 1. All 1,000 fleet and 4,673 carried-action checks completed; the new generation
 reached 33 healthy processes with zero restarts, but all four fresh proof domains

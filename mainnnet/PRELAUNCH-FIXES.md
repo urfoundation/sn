@@ -208,8 +208,21 @@ campaign. All 14 affected roots pass normally and under race, with three
 intended failures and three passes in the causal control. The
 [qualification](../sim-testnet/peerreview/evidence/FINAL-2-resume-campaign-handoff-20260916/README.md)
 retains original harness failures and identifies reused passing results.
-The matching release and actual managed campaign remain pending, so PF-04
-is still in progress.
+The matching release is published at `1860261` and its executable has been
+built. Subsequent setup completed all 4,673 carried checks but collected nine
+runtime-admission errors after testnet advanced to 461. The
+[closed preparation evidence](../sim-testnet/peerreview/evidence/FINAL-2-runtime461-preparation-20260916/README.md)
+records that failure and the finalized observation. Actual managed startup and
+campaign verification remain pending, so PF-04 is still in progress. This new
+update is another concrete instance of RT-04's version-specific admission
+problem; adding a reviewed 461 artifact alone will not complete the automatic
+upgrade requirement.
+The runtime-461 correction is qualified at `8edb3167`: 103 affected roots pass
+normally and under race, with nine expected causal failures and nine controls.
+It also repairs former-current460 companion history admission. See the
+[qualification evidence](../sim-testnet/peerreview/evidence/FINAL-2-runtime461-qualification-20260916/README.md).
+Deployment and actual managed startup remain pending; RT-04 and PF-04 are not
+closed by this version-specific correction.
 
 Make the warmup requirement and pending proof domains
 observable, and distinguish recoverable incomplete startup from invalid

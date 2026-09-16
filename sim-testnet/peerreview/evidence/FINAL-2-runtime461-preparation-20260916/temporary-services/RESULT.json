@@ -1,0 +1,10 @@
+{
+  "schema": "urnetwork-temporary-helper-owner-v1",
+  "stop_reason": "TERM",
+  "owner_exit": 0,
+  "forced_kill": false,
+  "child_count": 4,
+  "all_actual_children_joined": true,
+  "child_exits_file": "children-exits.tsv",
+  "helper_health_is_campaign_acceptance": false
+}

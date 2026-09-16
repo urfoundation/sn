@@ -1,0 +1,14 @@
+{
+  "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/runtime461-renderer-cli",
+  "build_outer_join_exits": [
+    0,
+    0,
+    0
+  ],
+  "binary_sha256": "6f89a919b4e092b98c0f416854c6baf46a4aca1f3b454b4aaee8f3ddf27d3e97",
+  "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "source_pair_unchanged": true,
+  "source_clean_before_after": true,
+  "build_info_matched": true,
+  "scope": "Read-only release-lock renderer; final publication requires its own matching CLI."
+}

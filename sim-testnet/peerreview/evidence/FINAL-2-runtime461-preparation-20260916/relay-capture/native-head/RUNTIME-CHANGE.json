@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-09-16T12:00:20Z",
+  "native_finalized_hash": "0x43093d12230005ca09a38835fb1506e7b018fb52233597e68ad50c440c2d7272",
+  "native_finalized_height": 8018145,
+  "evm_finalized_hash": "0xe7570097180720fb03a9d6cf15b7244bdd34e0ec03e9307f7eaaea936b945889",
+  "evm_finalized_height": 8018145,
+  "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "chain_id": 945,
+  "runtime": {
+    "specName": "node-subtensor",
+    "specVersion": 461,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "expected_qualified_spec_version": 460,
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "outcome": "Fresh observation refused before END binding because finalized runtime is461. No native relay-continuation command, new plan or chain submission occurred.",
+  "raw_payloads": {
+    "head.request.json": "bd63f199c7435ca3217a535b7567a65a19a1f4b4d297852806d6bf5b608f9cdb",
+    "head.response.json": "23c317cc727befc814fb6de24ba471b2e5f9c7c40fd4b21eb8370a00bace9cd2",
+    "snapshot.request.json": "5714f41ebf052ab8842e7baea5084d41529e7cf34e564a490ee0a9b6addc2cb8",
+    "snapshot.response.json": "a167357756a8bd03cb583b4536444d8a9f4f4ecfe5b03e37d15eedccf2ca00db"
+  }
+}

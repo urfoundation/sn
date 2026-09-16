@@ -1,0 +1,51 @@
+{
+  "schema": "urnetwork-closed-setup-runtime-review-v1",
+  "actual_body_exit": 1,
+  "actual_outer_exit": 1,
+  "actual_join_exit": 1,
+  "all_carried_checks_completed": 4673,
+  "hard_checks_passed": 8,
+  "hard_checks_failed": 1,
+  "failing_action_count": 9,
+  "failure_class": "unreviewed node-subtensor/461/1/1",
+  "failed_actions": [
+    "fleet.register.201",
+    "fleet.register.202",
+    "churn.tournament-complete",
+    "lifecycle.prepare.target.fund-hotkey",
+    "lifecycle.prepare.target.commitment",
+    "lifecycle.prepare.companion.fund-hotkey",
+    "lifecycle.prepare.companion.commitment",
+    "precompile.commitment-write",
+    "precompile.commitment-restore"
+  ],
+  "doctor_ready": true,
+  "doctor_check_count": 63,
+  "soft_checks": [
+    {
+      "name": "launch-runtime-inputs",
+      "ok": false,
+      "hard": false,
+      "detail": "deferred to launch/resume: config.render is already verified; future namespace/adoption authority does not block approved setup repair"
+    }
+  ],
+  "changed_watched_files": [
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plan.json",
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/config.redacted.yml"
+  ],
+  "unchanged_watched_files": [
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/journal.jsonl",
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.json",
+    "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/public/identities.json"
+  ],
+  "binary_unchanged": true,
+  "release_lock_unchanged": true,
+  "approved_plan_hash": "0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6",
+  "stopped_before_actions": true,
+  "managed_campaign_started": false,
+  "new_relay_end_selected": false,
+  "native_relay_continuation_command_executed": false,
+  "limits_unchanged": true,
+  "note": "balance=0 in two failed postcondition wrappers is not evidence of a funding deficit because runtime authentication failed. Helpers were launched after the setup body had ended; their readiness is separate, and they were stopped/joined with all4children exit0."
+}

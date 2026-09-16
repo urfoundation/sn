@@ -1,0 +1,524 @@
+[
+  {
+    "path": "setup-revision/REQUEST.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/REQUEST.json",
+    "sha256": "a8ea0d5bc6747407ae8229470ff3bb94acabe7fe2161870f056864872b53ef0f",
+    "bytes": 1205
+  },
+  {
+    "path": "setup-revision/binary.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/binary.after.sha256",
+    "sha256": "d4e13967cc0b0687a5e628d4d3bcd67dbd7d0e1302160503620e1b96d266f236",
+    "bytes": 176
+  },
+  {
+    "path": "setup-revision/binary.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/binary.before.sha256",
+    "sha256": "d4e13967cc0b0687a5e628d4d3bcd67dbd7d0e1302160503620e1b96d266f236",
+    "bytes": 176
+  },
+  {
+    "path": "setup-revision/body.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/body.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision/body.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/body.finished-at",
+    "sha256": "bead9eb58db4eaa2143b80e428854745c7a8997524a5e291b26a0585b9e5c44f",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision/body.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/body.started-at",
+    "sha256": "8fbd6329acab2884c7ccbb7ed2a503adff344910ee4c21b2b3f47077ee82ca58",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision/command.inputs.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/command.inputs.sha256",
+    "sha256": "ba0875e43d46e9fa255573433323b6bc518f54f85f707e502ab317a8cd0e22da",
+    "bytes": 312
+  },
+  {
+    "path": "setup-revision/command.sh",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/command.sh",
+    "sha256": "59c06c04ec7f43f97d3810745aff7f3c09e98bac64deb8bc3c8d7bdabfdb018e",
+    "bytes": 4890
+  },
+  {
+    "path": "setup-revision/join.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/join.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision/join.session",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/join.session",
+    "sha256": "8d258fc90b657524e2b79aae2be83c592a416a5816dfc933a394b5f1086b7f83",
+    "bytes": 6
+  },
+  {
+    "path": "setup-revision/joined-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/joined-at",
+    "sha256": "66113890d42bd3e6b9d2aedae8acf0ada245c8897785dd841e811ea21af86b74",
+    "bytes": 33
+  },
+  {
+    "path": "setup-revision/lock.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/lock.after.sha256",
+    "sha256": "0e5afb33a04d8cc7c8bef3d3d67b775bf4038cfd9373fa41c862d02563b15bdf",
+    "bytes": 98
+  },
+  {
+    "path": "setup-revision/lock.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/lock.before.sha256",
+    "sha256": "0e5afb33a04d8cc7c8bef3d3d67b775bf4038cfd9373fa41c862d02563b15bdf",
+    "bytes": 98
+  },
+  {
+    "path": "setup-revision/outer.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/outer.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision/outer.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/outer.finished-at",
+    "sha256": "770440c196456d0e6d5ab9a92832bcfa45012127bba8668cb853d782cb038d3a",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision/outer.pid",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/outer.pid",
+    "sha256": "d9d003607004d34af410a5098e22e3128871684f9fb408f979c786a8263b47e6",
+    "bytes": 8
+  },
+  {
+    "path": "setup-revision/outer.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/outer.started-at",
+    "sha256": "c31658b854e6c0c49e2c43b4500de8e1b4b3aa51d03520d14af1e2e3e33f8a3f",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision/result.status",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/result.status",
+    "sha256": "ed47ddffd9ac2df06a96282b1582186c33e673f7cd47644cb452cbd9ab8e3a39",
+    "bytes": 75
+  },
+  {
+    "path": "setup-revision/state.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/state.after.sha256",
+    "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69",
+    "bytes": 921
+  },
+  {
+    "path": "setup-revision/state.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/state.before.sha256",
+    "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69",
+    "bytes": 921
+  },
+  {
+    "path": "setup-revision/stderr",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/stderr",
+    "sha256": "64525490b86f93127c36642329bef611cfcc42c1cfc27d67ec528d055aed2ae0",
+    "bytes": 494
+  },
+  {
+    "path": "setup-revision/stdout.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision/stdout.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "setup-revision-r2/REQUEST.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/REQUEST.json",
+    "sha256": "cdfffe61bb8e39fa1fa425c9d2807534b0f8ec46783f4cf02db1ee47544d6991",
+    "bytes": 1492
+  },
+  {
+    "path": "setup-revision-r2/binary.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/binary.after.sha256",
+    "sha256": "d4e13967cc0b0687a5e628d4d3bcd67dbd7d0e1302160503620e1b96d266f236",
+    "bytes": 176
+  },
+  {
+    "path": "setup-revision-r2/binary.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/binary.before.sha256",
+    "sha256": "d4e13967cc0b0687a5e628d4d3bcd67dbd7d0e1302160503620e1b96d266f236",
+    "bytes": 176
+  },
+  {
+    "path": "setup-revision-r2/body.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/body.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision-r2/body.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/body.finished-at",
+    "sha256": "8418736d6377da36b28a0e47beb5208403418f8b3c50b841dfbede2589006c3a",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision-r2/body.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/body.started-at",
+    "sha256": "5cd334a5204da92d7f1ce1e661285492a332b0067f9c31e02145c5f1a863d8a7",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision-r2/command.inputs.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/command.inputs.sha256",
+    "sha256": "18b969bae9498661761e1536158cae1f20ddd1d51bc581aad27fbb626bb96382",
+    "bytes": 318
+  },
+  {
+    "path": "setup-revision-r2/command.sh",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/command.sh",
+    "sha256": "34dc842ca59973546301ac7d33c14391815df8f20eb36f5535ed75e908693c43",
+    "bytes": 4899
+  },
+  {
+    "path": "setup-revision-r2/join.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/join.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision-r2/join.session",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/join.session",
+    "sha256": "ae50d822485a3227a0152d479100caeb7fc2caa333cbf96ef7a97e0061b81c5f",
+    "bytes": 5
+  },
+  {
+    "path": "setup-revision-r2/joined-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/joined-at",
+    "sha256": "dac4ff9faf211eefb418c164c7bdf7688d97c10e43ce5a15a2e3f7561c27e48c",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision-r2/lock.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/lock.after.sha256",
+    "sha256": "0e5afb33a04d8cc7c8bef3d3d67b775bf4038cfd9373fa41c862d02563b15bdf",
+    "bytes": 98
+  },
+  {
+    "path": "setup-revision-r2/lock.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/lock.before.sha256",
+    "sha256": "0e5afb33a04d8cc7c8bef3d3d67b775bf4038cfd9373fa41c862d02563b15bdf",
+    "bytes": 98
+  },
+  {
+    "path": "setup-revision-r2/outer.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/outer.exit",
+    "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "bytes": 2
+  },
+  {
+    "path": "setup-revision-r2/outer.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/outer.finished-at",
+    "sha256": "7d43b053591ac31302de8ca8785571b3b400bb74f9e602c152b472559471ab64",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision-r2/outer.pid",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/outer.pid",
+    "sha256": "bc7d6d31ae2373ce6a9133248cee6afe68fdde720014c90a83f8e018c30f3faf",
+    "bytes": 8
+  },
+  {
+    "path": "setup-revision-r2/outer.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/outer.started-at",
+    "sha256": "96c08a188eef562d6dd7c0cd913fadeea8c2e93e576bbaadd10121f5d07dfc12",
+    "bytes": 21
+  },
+  {
+    "path": "setup-revision-r2/result.status",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/result.status",
+    "sha256": "eedfb1fbe2ed634f4d4d707c0ddb2828eb3133e0660d0f5da3b108e2875e6d79",
+    "bytes": 75
+  },
+  {
+    "path": "setup-revision-r2/state.after.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/state.after.sha256",
+    "sha256": "498983978e1d8c0ebb44e4788f3480e78014f15d8c11b974c372267b8bd66b4d",
+    "bytes": 921
+  },
+  {
+    "path": "setup-revision-r2/state.before.sha256",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/state.before.sha256",
+    "sha256": "d63f6de2e24c27dc371c4de70467a4662e72d1017eb5ee83c0bf1410e4e7da69",
+    "bytes": 921
+  },
+  {
+    "path": "setup-revision-r2/stderr",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/stderr",
+    "sha256": "cfa2cb78073b25000059d661e5ae6e84abdc799c5467a182e3960d3f20f21f37",
+    "bytes": 7417
+  },
+  {
+    "path": "setup-revision-r2/stdout.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/stdout.json",
+    "sha256": "7fe0b220db8706041934f35e937e50c73b62c314cd126e163a47c46eaed24727",
+    "bytes": 23664
+  },
+  {
+    "path": "setup-revision-r2/ADOPTED-PLAN-DIFF.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/ADOPTED-PLAN-DIFF.json",
+    "sha256": "11188ea66ea00f672fb34ece5e8911d2da4388ea3e235bc52b9c7f9f4a0fe34e",
+    "bytes": 1132
+  },
+  {
+    "path": "setup-revision-r2/ROOT-REVIEW.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/setup-revision-r2/ROOT-REVIEW.json",
+    "sha256": "b6448f3aa3066ccef08ba422201d46ea8731cdb7fdf8e7199950eff6b7bd7796",
+    "bytes": 2250
+  },
+  {
+    "path": "branch-repair/RESULT.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/RESULT.json",
+    "sha256": "211791a69daeb2d44b7679112a4910cc02a5847b28c0f39d490a0b65a24c1671",
+    "bytes": 562
+  },
+  {
+    "path": "branch-repair/inputs.after.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/inputs.after.json",
+    "sha256": "5cc829f7e97ebe1aeb4aef20bac5c4a447dfe61b122e209a59de98ee53503009",
+    "bytes": 1339
+  },
+  {
+    "path": "branch-repair/inputs.before.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/inputs.before.json",
+    "sha256": "5cc829f7e97ebe1aeb4aef20bac5c4a447dfe61b122e209a59de98ee53503009",
+    "bytes": 1339
+  },
+  {
+    "path": "branch-repair/switch.stderr",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/switch.stderr",
+    "sha256": "1a17ac011d72660dc0aae0c559c1f4ddb7eb051f1183f52d18b3279080092ab8",
+    "bytes": 53
+  },
+  {
+    "path": "branch-repair/switch.stdout",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/switch.stdout",
+    "sha256": "53289e3f78d72b13840f1d4a9162dcd499fe1b65ab0dd67eb7475f58666cc955",
+    "bytes": 66
+  },
+  {
+    "path": "branch-repair/upstream.before.stderr",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/upstream.before.stderr",
+    "sha256": "b531755602dc7aba5dcc1994595f5952cb9c976bf80bba63c05cb611dee81042",
+    "bytes": 39
+  },
+  {
+    "path": "branch-repair/upstream.before.stdout",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/branch-repair/upstream.before.stdout",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "temporary-services/READY.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/READY.json",
+    "sha256": "81a31fda8ab5d1e71b38893685310a467a72ff465407112efbe068e6c3be50fa",
+    "bytes": 172
+  },
+  {
+    "path": "temporary-services/RESULT.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/RESULT.json",
+    "sha256": "84ec90aecd76f5f63e1ba130729e6324ee12a8521c2116020e57ac72803eb8da",
+    "bytes": 273
+  },
+  {
+    "path": "temporary-services/ROOT-JOIN-REVIEW.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/ROOT-JOIN-REVIEW.json",
+    "sha256": "2d0f0990c8071e7c753a72f5e945189cb7b3a1875d07b87019cc587ede302dce",
+    "bytes": 258
+  },
+  {
+    "path": "temporary-services/children-exits.tsv",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/children-exits.tsv",
+    "sha256": "1e2bb393cda4575afc2b60ff7cbbb4b8c83882dba362a48f1931c5e4ca40badc",
+    "bytes": 178
+  },
+  {
+    "path": "temporary-services/children.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/children.started-at",
+    "sha256": "e04f381b11d4ab728d7715d7ca183e3f13b79c5cff0b9c4032dc8c45100e62cf",
+    "bytes": 31
+  },
+  {
+    "path": "temporary-services/children.tsv",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/children.tsv",
+    "sha256": "aa1bf7c1649f42735f5412179a52c9b0b5963394df827f4d929ff349fcf6ab77",
+    "bytes": 282
+  },
+  {
+    "path": "temporary-services/inputs.after.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/inputs.after.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "temporary-services/join.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/join.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "temporary-services/join.session",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/join.session",
+    "sha256": "77e3d1f06de0bfbd715b2eabcddac196d076cf876834f94b7dc6daaf0de5e3a8",
+    "bytes": 6
+  },
+  {
+    "path": "temporary-services/joined-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/joined-at",
+    "sha256": "dac4ff9faf211eefb418c164c7bdf7688d97c10e43ce5a15a2e3f7561c27e48c",
+    "bytes": 21
+  },
+  {
+    "path": "temporary-services/owner.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/owner.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "temporary-services/owner.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/owner.finished-at",
+    "sha256": "4bcbc8ce4e80d0df8b58ae8973ae9dde42ec3069a095e16853a2fe3a792a350d",
+    "bytes": 31
+  },
+  {
+    "path": "temporary-services/owner.pid",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/owner.pid",
+    "sha256": "a25fe5d5c9a5f41d0d833714df11f113df94efa5d1c142c27c2c6e5aa1f0782e",
+    "bytes": 8
+  },
+  {
+    "path": "temporary-services/owner.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/owner.started-at",
+    "sha256": "28c1288ad9a2ebcc4b9b7ef2d96094a09584a47c84a47e6c6362b7265de9e51a",
+    "bytes": 31
+  },
+  {
+    "path": "temporary-services/owner.startticks",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/owner.startticks",
+    "sha256": "e148bcd3a388ed83c55b3b21a27b8edf6d2bedbb6a6849b5865e15ec2c8ce34c",
+    "bytes": 10
+  },
+  {
+    "path": "temporary-services/signal-dispatch.tsv",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/signal-dispatch.tsv",
+    "sha256": "498f5d0549151bf420ce96851b3658a5c809f14cb6a88eb04a6cfcf780a0e01b",
+    "bytes": 192
+  },
+  {
+    "path": "temporary-services/stop.requested-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/stop.requested-at",
+    "sha256": "32aae2b2ba1846e7ba0d23768183dac84ea408e3f76763c7fe52293c1e614fee",
+    "bytes": 31
+  },
+  {
+    "path": "temporary-services/stop.signal.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/stop.signal.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "temporary-services/teardown.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/teardown.started-at",
+    "sha256": "408d8d4b70a73716f31e3afd1ea770ecf0e6d05e4b288ab448ae919156eca735",
+    "bytes": 31
+  },
+  {
+    "path": "temporary-services/teardown.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/temporary-services/teardown.finished-at",
+    "sha256": "ff0b41838a01cf45daca19b21a2b9781e2df23cf5934f516a758bddbd7fe998b",
+    "bytes": 31
+  },
+  {
+    "path": "relay-capture/native-head/RUNTIME-CHANGE.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/RUNTIME-CHANGE.json",
+    "sha256": "4451a00c442ee9890114291160135517cad568623f04d701de61c219467e00ee",
+    "bytes": 1232
+  },
+  {
+    "path": "relay-capture/native-head/head.request.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/head.request.json",
+    "sha256": "bd63f199c7435ca3217a535b7567a65a19a1f4b4d297852806d6bf5b608f9cdb",
+    "bytes": 70
+  },
+  {
+    "path": "relay-capture/native-head/head.response.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/head.response.json",
+    "sha256": "23c317cc727befc814fb6de24ba471b2e5f9c7c40fd4b21eb8370a00bace9cd2",
+    "bytes": 102
+  },
+  {
+    "path": "relay-capture/native-head/snapshot.request.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/snapshot.request.json",
+    "sha256": "5714f41ebf052ab8842e7baea5084d41529e7cf34e564a490ee0a9b6addc2cb8",
+    "bytes": 487
+  },
+  {
+    "path": "relay-capture/native-head/snapshot.response.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/snapshot.response.json",
+    "sha256": "a167357756a8bd03cb583b4536444d8a9f4f4ecfe5b03e37d15eedccf2ca00db",
+    "bytes": 2988
+  },
+  {
+    "path": "relay-capture/native-head/started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/relay-capture/native-head/started-at",
+    "sha256": "b4b510023804587f831529407a72c91fd344d6931e2fecaedd1073e73002926b",
+    "bytes": 21
+  },
+  {
+    "path": "plan-revision/ROOT-REVIEW.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/ROOT-REVIEW.json",
+    "sha256": "480780f4efcd4bf3973f299ac437510bd0de453c2a1b76a89de178100bf649a6",
+    "bytes": 1328
+  },
+  {
+    "path": "plan-revision/root-full-diff.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/root-full-diff.json",
+    "sha256": "4d1f3af2f3b2ed61141c77977419249490438ac5ad0dbb89a5a2adceb919f042",
+    "bytes": 1768
+  },
+  {
+    "path": "plan-revision/body.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/body.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "plan-revision/outer.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/outer.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "plan-revision/join.exit",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/join.exit",
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "bytes": 2
+  },
+  {
+    "path": "plan-revision/body.started-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/body.started-at",
+    "sha256": "8a31ea7c328e6bdc33fda10acd9c1789108d0ce939dacb316d10cd05630a94de",
+    "bytes": 21
+  },
+  {
+    "path": "plan-revision/body.finished-at",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/plan-revision/body.finished-at",
+    "sha256": "d425eb23e99bd997f782e9c3affdc28625d640550b2a8f285fc42841ca0a0bf8",
+    "bytes": 21
+  },
+  {
+    "path": "FINAL-CLI-ROOT-REVIEW.json",
+    "source": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r4/FINAL-CLI-ROOT-REVIEW.json",
+    "sha256": "8c85c2d06c9e26be69eccdf64afd259fcdf4fa18c7c90287289926df5c334386",
+    "bytes": 707
+  }
+]

@@ -1,0 +1,21 @@
+{"Time":"2026-09-16T12:35:09.945531162Z","Action":"start"}
+{"Time":"2026-09-16T12:35:10.001114606Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-16T12:35:10.001191184Z","Action":"output","Output":"I0916 12:35:10.001058 3948962 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:10.001360602Z","Action":"output","Output":"I0916 12:35:10.001253 3948962 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:10.001476834Z","Action":"output","Output":"I0916 12:35:10.001416 3948962 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-16T12:35:10.001507663Z","Action":"output","Output":"I0916 12:35:10.001462 3948962 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-16T12:35:10.013924918Z","Action":"run","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:35:10.013971918Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== RUN   TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:35:10.01400486Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== PAUSE TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:35:10.014024709Z","Action":"pause","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:35:10.014062565Z","Action":"run","Test":"TestRuntime459ConfigHashPreserves455And458Domains"}
+{"Time":"2026-09-16T12:35:10.014074894Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"=== RUN   TestRuntime459ConfigHashPreserves455And458Domains\n"}
+{"Time":"2026-09-16T12:35:10.015329571Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"    runtime_identity_459_test.go:34: runtime461 changed original activation identity or input bytes: runtime configuration identity is not the explicit reviewed 455-to-458/459/460 transitions\n"}
+{"Time":"2026-09-16T12:35:10.015374439Z","Action":"output","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Output":"--- FAIL: TestRuntime459ConfigHashPreserves455And458Domains (0.00s)\n"}
+{"Time":"2026-09-16T12:35:10.015389708Z","Action":"fail","Test":"TestRuntime459ConfigHashPreserves455And458Domains","Elapsed":0}
+{"Time":"2026-09-16T12:35:10.0153967Z","Action":"cont","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire"}
+{"Time":"2026-09-16T12:35:10.015400835Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"=== CONT  TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire\n"}
+{"Time":"2026-09-16T12:35:10.015880174Z","Action":"output","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Output":"--- PASS: TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire (0.00s)\n"}
+{"Time":"2026-09-16T12:35:10.01592337Z","Action":"pass","Test":"TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire","Elapsed":0}
+{"Time":"2026-09-16T12:35:10.015936766Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-16T12:35:10.020300243Z","Action":"fail","Elapsed":0.075}

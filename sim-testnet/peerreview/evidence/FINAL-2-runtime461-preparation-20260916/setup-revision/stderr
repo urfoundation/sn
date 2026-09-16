@@ -1,0 +1,6 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 11:39:55.698848 3845627 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0916 11:39:55.699116 3845627 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0916 11:39:55.699235 3845627 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0916 11:39:55.699284 3845627 env.go:67] [env]settings = map[]
+sim-testnet: setup executable attestation: read SN upstream: exit status 128

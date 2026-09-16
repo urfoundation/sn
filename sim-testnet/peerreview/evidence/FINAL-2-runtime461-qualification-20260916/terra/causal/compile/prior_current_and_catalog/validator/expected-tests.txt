@@ -1,0 +1,2 @@
+TestReleaseRuntime459RetainsBothOriginalCompanionDomains
+TestReleaseRuntime461RequiresExactReviewedArtifact

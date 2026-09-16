@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-16T11:34:10.831886+00:00",
+  "build_capture": "/mnt/data/sn-testnet/qualification/retained-startup-readiness-physical-cli-final-lock-20260916-r1",
+  "source": "1860261f524054b3d8132a48f75307ffdb792322",
+  "binary_sha256": "114bede0b30a9bc9fdb946f3075d1e1f3ff9b3e36daf57d1c084f6144e43bb07",
+  "build_outer_join_exits": [
+    0,
+    0,
+    0
+  ],
+  "all_13_source_inputs_unchanged": true,
+  "buildvcs_modified": false,
+  "lock_sha256": "42a48da4d4fd267c496b8558cd9838f68b3f5e4117a9e681352129069df2df22",
+  "retained_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "prior_plan_sha256": "e40de369ee48a5bbc7c4b752295187cdc1f44e49117d2d324744f62b3ad90a48"
+}

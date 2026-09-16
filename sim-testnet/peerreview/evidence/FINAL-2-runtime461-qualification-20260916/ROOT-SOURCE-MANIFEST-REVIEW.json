@@ -1,0 +1,494 @@
+{
+  "reviewed_at": "2026-09-16T13:27:59.859599+00:00",
+  "source_revision": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+  "source_tree": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/upstream-source",
+  "upstream_manifest_sha256": "9c5a558924993e796449198c081e62d165b36c1d7d853cc9a72d604e625ec8d5",
+  "upstream_files": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "b8ce1cb7add6465570c310517ccbf545c99262dd88f9e660a048c3839fcfae67",
+      "bytes": 521848
+    },
+    {
+      "path": "chain-extensions/src/lib.rs",
+      "sha256": "31de41ce7dd7e14f4634fa03a6e307756ffcacd87637e53268259559424b6b35",
+      "bytes": 34516
+    },
+    {
+      "path": "chain-extensions/src/tests.rs",
+      "sha256": "ad727e7f5c1a2e3f815737bac7076b3909523eaa56c0e93c4ca2020e6c2be9bb",
+      "bytes": 79115
+    },
+    {
+      "path": "chain-extensions/src/types.rs",
+      "sha256": "08fe06fef304cc03b8644ef6950bac06fe45c4790a4098316dc7e20bc92b7932",
+      "bytes": 8007
+    },
+    {
+      "path": "common/src/proxy.rs",
+      "sha256": "70357442f1c3eea5376034b23049c12c8fd04bbcf2f03ddf915887bec7496c05",
+      "bytes": 6452
+    },
+    {
+      "path": "docs/internals/wasm-contracts.mdx",
+      "sha256": "d66509c882423029720229eb824e1e9a8f45f4504a894f30123793c0702793b6",
+      "bytes": 8639
+    },
+    {
+      "path": "ink-contract/lib.rs",
+      "sha256": "2d38c6d0d6efbe9a21e47b3fec6ba69dde95897879a1330eb62b145e57142bbc",
+      "bytes": 18515
+    },
+    {
+      "path": "pallets/admin-utils/src/benchmarking.rs",
+      "sha256": "f7798b95ea599366150029a1795b8ad1f537de407a8ca9422d70b38f99d7ba42",
+      "bytes": 29905
+    },
+    {
+      "path": "pallets/admin-utils/src/lib.rs",
+      "sha256": "9fe0490ce70c9e47583c9b5ea0f30ae30675c3b61c8f1bc41263158c536c7051",
+      "bytes": 113637
+    },
+    {
+      "path": "pallets/admin-utils/src/tests/mod.rs",
+      "sha256": "8ab9a18762ab6d9c9052a6db36cf2c93825353d9c3639a55f43b8749fa3a2e50",
+      "bytes": 128093
+    },
+    {
+      "path": "pallets/admin-utils/src/tests/swap_basket_liquidity_cap.rs",
+      "sha256": "dcbb47a51b8bdc5f5102fee2960bbbca7fa3b8017c09d51815d2bbf77739d789",
+      "bytes": 1591
+    },
+    {
+      "path": "pallets/admin-utils/src/weights.rs",
+      "sha256": "4f298132949645e5cad8eaa7377304c9088c510b00c9b151abbb380566aec67f",
+      "bytes": 166876
+    },
+    {
+      "path": "pallets/crowdloan/src/benchmarking.rs",
+      "sha256": "9e93c3267c3ffd9fb573441eb07fb5d8d8dd9bd683048984fb4df5595572b8f2",
+      "bytes": 20499
+    },
+    {
+      "path": "pallets/crowdloan/src/lib.rs",
+      "sha256": "d26f355be5fa5074d4da9bc902f7d2cadbc6944221656aac18a736aabdb289af",
+      "bytes": 40825
+    },
+    {
+      "path": "pallets/crowdloan/src/mock.rs",
+      "sha256": "3ea83a22dbbc630894f329c198f6764d908e33f091b3769ed473038f1e9518ea",
+      "bytes": 9348
+    },
+    {
+      "path": "pallets/crowdloan/src/tests.rs",
+      "sha256": "9c8b2b74c529ec3aebf3096893468a762cea5c393a74aaa164c1fbc808b86396",
+      "bytes": 115770
+    },
+    {
+      "path": "pallets/drand/src/tests.rs",
+      "sha256": "12c489649322f4e4bac7e96e6eb4f56ac7f1dd6cf4a0258831de5f31fc9b5581",
+      "bytes": 34105
+    },
+    {
+      "path": "pallets/drand/src/verifier.rs",
+      "sha256": "761264ff5f1ae58a385d8738026729a325a3861ffdf1f319d49b5d28d9162548",
+      "bytes": 4541
+    },
+    {
+      "path": "pallets/limit-orders/src/lib.rs",
+      "sha256": "dd23c6c4868305fafec40ef2b89df8291300ac1556df837205b457f81d750359",
+      "bytes": 77797
+    },
+    {
+      "path": "pallets/limit-orders/src/tests/extrinsics.rs",
+      "sha256": "002c311d657f7dedd617a67decf499ed2f8853600d97b3b8415208b5bf9ffc96",
+      "bytes": 124747
+    },
+    {
+      "path": "pallets/limit-orders/src/tests/mock.rs",
+      "sha256": "6cd2c0ceba09f10ea04077155784752a53ada799918686138fbb51cb93ec1f7e",
+      "bytes": 26762
+    },
+    {
+      "path": "pallets/proxy/src/lib.rs",
+      "sha256": "6c7f5987504468166b1d5b005fc42a2277c70ac34d478915b364a3b637705b12",
+      "bytes": 47268
+    },
+    {
+      "path": "pallets/proxy/src/tests.rs",
+      "sha256": "994adca8bab7b6ecf096352890b291570a69b24c1dbc4725fca831f758d10b19",
+      "bytes": 50610
+    },
+    {
+      "path": "pallets/subtensor/rpc/src/lib.rs",
+      "sha256": "f2709487fee5723538b303d3d2218a7fcb570b267034ba91002ad4e47fe01c87",
+      "bytes": 27089
+    },
+    {
+      "path": "pallets/subtensor/runtime-api/src/lib.rs",
+      "sha256": "71520e4a5155aabfbf1296585bbdb22820f32b3a8a04163c6a8d34e0ded277de",
+      "bytes": 9589
+    },
+    {
+      "path": "pallets/subtensor/src/benchmarks/benchmarks.rs",
+      "sha256": "e1cdc182d2b2878c6f7337dd6e675e294d427f3d314a4d211b2e5ac963805497",
+      "bytes": 111236
+    },
+    {
+      "path": "pallets/subtensor/src/benchmarks/helpers.rs",
+      "sha256": "62b242ed088a3e12103dad46b4d1c684d8b1149755dd0a6cec088193ee8d1457",
+      "bytes": 24891
+    },
+    {
+      "path": "pallets/subtensor/src/coinbase/root.rs",
+      "sha256": "d43b309cad350e1a4790ce6c859f176cf7963cf20a78be57a74095516dc8dbb0",
+      "bytes": 16909
+    },
+    {
+      "path": "pallets/subtensor/src/epoch/math.rs",
+      "sha256": "a445d0da2e66654cefb16965d3b0cef712f6414c8b8c594a658fd4c17eb698c2",
+      "bytes": 51750
+    },
+    {
+      "path": "pallets/subtensor/src/guards/check_rate_limits.rs",
+      "sha256": "545480a76ca939d68c075112e9adafbd3b8abeb046273de6dff91b8aeaf37c6d",
+      "bytes": 13868
+    },
+    {
+      "path": "pallets/subtensor/src/lib.rs",
+      "sha256": "31b774d940cbe4d0308bf35fe12e06fd7262692b92c19212b49fdd20d4d52b35",
+      "bytes": 144235
+    },
+    {
+      "path": "pallets/subtensor/src/macros/dispatches.rs",
+      "sha256": "2cb8ee050e9ca14bf4a48f3a5445f159e7833dced641b7e8fc97b26844ea687f",
+      "bytes": 121164
+    },
+    {
+      "path": "pallets/subtensor/src/macros/errors.rs",
+      "sha256": "709fa9459d97a64d7e5222fbbfffebb4fdf10bcce08e9297429a78cdf0b01bcb",
+      "bytes": 19606
+    },
+    {
+      "path": "pallets/subtensor/src/macros/events.rs",
+      "sha256": "75e18b8fe9d47030abd579d52f651d9147ab2c0f175dbc78e1d766b10b3b0a4d",
+      "bytes": 34343
+    },
+    {
+      "path": "pallets/subtensor/src/macros/hooks.rs",
+      "sha256": "61a7028e53eb15739ae63fa8afa84513eff566a7cd9b059037b682d49b4c898f",
+      "bytes": 24144
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/migrate_cleanup_staking_hotkeys.rs",
+      "sha256": "301fab0e0e790cc9da08b2bc2e28d5d482b514d0084d3398cbf889df3fd700ad",
+      "bytes": 10539
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/migrate_create_root_network.rs",
+      "sha256": "3981102222930e1755ecca53c23cf6a194fc92bac2b6f5e82ca6acc47dbfcac1",
+      "bytes": 2474
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/migrate_fix_root_pot_shortfall.rs",
+      "sha256": "c9d7528e8cef54b23e3270d8663a4a97ea1a5fdfe46a0bb3dfae1b99f4847e22",
+      "bytes": 13087
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/migrate_remove_root_weights.rs",
+      "sha256": "aff10de4ec15c2a309ed6a48646ea2b20653e076f94b79b261d356af0e8e3db2",
+      "bytes": 7431
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/migrate_storage_bloat_v2.rs",
+      "sha256": "f3749e6e429fc3e3e7c5f242e9ffc9cf0140d3d5b41e73c458217d1d4447d05f",
+      "bytes": 8212
+    },
+    {
+      "path": "pallets/subtensor/src/migrations/mod.rs",
+      "sha256": "85191d9d3ac15d3455f0328f168518684a2520db3341ad37d2b31f61359dc097",
+      "bytes": 5997
+    },
+    {
+      "path": "pallets/subtensor/src/rpc_info/basket_info.rs",
+      "sha256": "007995f9777893daf4de6f9ff1d06da29bb5100f722677922bb89146da1678f2",
+      "bytes": 14337
+    },
+    {
+      "path": "pallets/subtensor/src/rpc_info/delegate_info.rs",
+      "sha256": "6e44aa11c948c81e3ff5afca429dce1b3e1c6a223c047ff69baa472615b393ba",
+      "bytes": 7883
+    },
+    {
+      "path": "pallets/subtensor/src/rpc_info/metagraph.rs",
+      "sha256": "59d593074bebe2957eaebe1bb21bee8f937405162c6be698459fafb0063a3161",
+      "bytes": 77889
+    },
+    {
+      "path": "pallets/subtensor/src/staking/basket_flush.rs",
+      "sha256": "7c1bf280251349e0c8b43041015bdfcb76333c4e479040d3e0803bb5aa1e7dbe",
+      "bytes": 29700
+    },
+    {
+      "path": "pallets/subtensor/src/staking/basket_trade.rs",
+      "sha256": "9f66b00c2181f9db17d3c2936402c86114c57e0025ae1c53246ac4156c4edb34",
+      "bytes": 22688
+    },
+    {
+      "path": "pallets/subtensor/src/staking/basket_views.rs",
+      "sha256": "da84d9afeadf41e3b8b9a64c39eeb0867d99b60ead5a504e00a8947f04318eb5",
+      "bytes": 11524
+    },
+    {
+      "path": "pallets/subtensor/src/staking/claim_root.rs",
+      "sha256": "fb0e1bc00d36c8425dacd5d10d9e9d306df813f79849dd426165c7bfbf0f8f6b",
+      "bytes": 72285
+    },
+    {
+      "path": "pallets/subtensor/src/staking/lock.rs",
+      "sha256": "9d17513f1d6142588850cd4f7306441eefd7b2817f841810b775655916c88419",
+      "bytes": 82410
+    },
+    {
+      "path": "pallets/subtensor/src/staking/mod.rs",
+      "sha256": "b0fe158f3307a0faed4b92c4b4559b57c3ef3c893265d72cd36bc3a6340eb194",
+      "bytes": 549
+    },
+    {
+      "path": "pallets/subtensor/src/staking/move_stake.rs",
+      "sha256": "6c97153a62396c205eba54110338a3bab54d7a579d1101b2d80661a2492e721a",
+      "bytes": 27023
+    },
+    {
+      "path": "pallets/subtensor/src/staking/order_swap.rs",
+      "sha256": "2cd41eeabacc6be8c7dccf7558f02c22e19f0b38a758e3a9e9871dcbe5dbcec3",
+      "bytes": 7449
+    },
+    {
+      "path": "pallets/subtensor/src/staking/remove_stake.rs",
+      "sha256": "178c10f64e3719d381e935ceb77791ef1f0a0bc3582f48cbeee6730487f50571",
+      "bytes": 41104
+    },
+    {
+      "path": "pallets/subtensor/src/staking/set_children.rs",
+      "sha256": "aaec5fee40ac0a76a768b7d47b356802a0d478f956395fca61c5403de3405d69",
+      "bytes": 47963
+    },
+    {
+      "path": "pallets/subtensor/src/staking/stake_utils.rs",
+      "sha256": "7ebb0406a74528eed510dcefa8a7e99a0097b2c6eda88860fe3e95c4775c0fc0",
+      "bytes": 74653
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/collateral.rs",
+      "sha256": "4598de7d7221f238fb2763d12abbd5a842cc8ce97554864604336df0b63ba342",
+      "bytes": 39949
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/dissolution.rs",
+      "sha256": "636b3809b1dcba122b7773343ba998e73819e577f18e1d00a97823a0de4e72ed",
+      "bytes": 44624
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/leasing.rs",
+      "sha256": "145b8e907857bef18a3205e806861bb8e27efe533c7caec41de06910043f6842",
+      "bytes": 17510
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/registration.rs",
+      "sha256": "00b55a4ddadb9ebc073320a8c343ee387b8c2750c87ce82774ebf3defdeab58d",
+      "bytes": 23954
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/subnet.rs",
+      "sha256": "520615725170cfcc2beab3e372adb265c9326d7c45ff53c817381570363985c8",
+      "bytes": 29261
+    },
+    {
+      "path": "pallets/subtensor/src/subnets/weights.rs",
+      "sha256": "a1a8740deb2337f8d4648c3ec7eb6fb8a788fae9b3227631ab2e9d25e5bab0c4",
+      "bytes": 50855
+    },
+    {
+      "path": "pallets/subtensor/src/swap/swap_coldkey.rs",
+      "sha256": "61d80c02a80b7480de6f2330b014ee375055c6bd7dbc37fe1c6ce5f734e3e4bd",
+      "bytes": 10669
+    },
+    {
+      "path": "pallets/subtensor/src/swap/swap_hotkey.rs",
+      "sha256": "c78902bf4eae36318333dc36e2438506339285773b75248b260aeabbd7f4532a",
+      "bytes": 42976
+    },
+    {
+      "path": "pallets/subtensor/src/tests/basket_flush.rs",
+      "sha256": "2558eef730458b58b132bc5abc9fd2fcd2a83ddb3cf47d704edd545b1b80da4c",
+      "bytes": 30895
+    },
+    {
+      "path": "pallets/subtensor/src/tests/children.rs",
+      "sha256": "4fb73bcf2ebeeaaa567c6e6a28200ff749845d874a70ae6d7567db22bdc791bc",
+      "bytes": 223236
+    },
+    {
+      "path": "pallets/subtensor/src/tests/claim_root.rs",
+      "sha256": "d2c5d7846342e031d725e65c62b057d8956829e0b6c7df53d404832f705ddccc",
+      "bytes": 154432
+    },
+    {
+      "path": "pallets/subtensor/src/tests/destroy_alpha_tests.rs",
+      "sha256": "8b50ad5ce6b953cd35227d23e659706653485c26e2a3d37d6e099c32421dc107",
+      "bytes": 27034
+    },
+    {
+      "path": "pallets/subtensor/src/tests/leasing.rs",
+      "sha256": "9bf9b827468ae084779eefd573920b5a4488f363c90f32a9cc3c6b6779029c18",
+      "bytes": 56016
+    },
+    {
+      "path": "pallets/subtensor/src/tests/locks.rs",
+      "sha256": "4cfd566a7ab28ea800145ccc4c4ec25984bd847f87e8dc35fcef766a8a2423fc",
+      "bytes": 195682
+    },
+    {
+      "path": "pallets/subtensor/src/tests/migration.rs",
+      "sha256": "8579c9f974440dc172e70548c2544f4d47bbf1d34452048be6cfa97f10097930",
+      "bytes": 319059
+    },
+    {
+      "path": "pallets/subtensor/src/tests/mock.rs",
+      "sha256": "4cc5bcc08c795c751f5d8671524dd1cb309903348d0a81866cf7cea53b3f1560",
+      "bytes": 53483
+    },
+    {
+      "path": "pallets/subtensor/src/tests/mod.rs",
+      "sha256": "b19468bebb2c78ff4699a99f3a7469f1f88b07a7b8401c5412450bac1be29942",
+      "bytes": 882
+    },
+    {
+      "path": "pallets/subtensor/src/tests/move_stake.rs",
+      "sha256": "a391fe0bf917e89e49d9b6e69d57d42d6defed4b285f820f885fb2979f10f3fe",
+      "bytes": 90944
+    },
+    {
+      "path": "pallets/subtensor/src/tests/networks.rs",
+      "sha256": "d33ab324f36bb8096e9f36e6ea70b73d6d6ee094fa30ec51346d737ad70c696a",
+      "bytes": 170588
+    },
+    {
+      "path": "pallets/subtensor/src/tests/registration.rs",
+      "sha256": "d7b640e5d947194972ce1fddc1dd20df8544cec75c63901c7c9a6dac7c07369c",
+      "bytes": 68685
+    },
+    {
+      "path": "pallets/subtensor/src/tests/stake_into_basket.rs",
+      "sha256": "35f98eef3a8b156d9124253f189e53d571152d1dd65c3d760e4914263838a2bd",
+      "bytes": 54206
+    },
+    {
+      "path": "pallets/subtensor/src/tests/staking.rs",
+      "sha256": "031b690cfd4cb009853d79645c9f5588f03e16005767573604cafd1c42b347f4",
+      "bytes": 254504
+    },
+    {
+      "path": "pallets/subtensor/src/tests/swap_basket.rs",
+      "sha256": "d31f92b8092c6475e604b5d72539019fe196db98de3206534862c6f77b73d596",
+      "bytes": 64412
+    },
+    {
+      "path": "pallets/subtensor/src/tests/swap_basket_liquidity_cap.rs",
+      "sha256": "89a050afb6976e4f37b01d56b2c8070276a9c51fbe5f2eb0bb5948eb9d9ee50f",
+      "bytes": 38500
+    },
+    {
+      "path": "pallets/subtensor/src/tests/swap_basket_stale_ema.rs",
+      "sha256": "412471064ffd7e769cb67a30396041de0da3931bc7ff109d449c1bebe335006d",
+      "bytes": 29126
+    },
+    {
+      "path": "pallets/subtensor/src/tests/swap_hotkey.rs",
+      "sha256": "fc0463710086a488eae959d9abaec07b74af14af3e1f3784c7aaf994af9c846d",
+      "bytes": 77842
+    },
+    {
+      "path": "pallets/subtensor/src/tests/swap_hotkey_with_subnet.rs",
+      "sha256": "f5caf1ec1525208331862c2a6def354c0b53f23e306b7fa08d50edf34a95fb53",
+      "bytes": 119128
+    },
+    {
+      "path": "pallets/subtensor/src/utils/misc.rs",
+      "sha256": "a40fc6cc1bb38ed07f0650df7af352152d6ac9941c48b6062133a93c42bd2ca6",
+      "bytes": 41957
+    },
+    {
+      "path": "pallets/subtensor/src/weights.rs",
+      "sha256": "982fb52e17d8dc6989a5c0a4c39d46d6ad0a43eb8da4832475794c5e4632dd38",
+      "bytes": 528997
+    },
+    {
+      "path": "precompiles/src/address_mapping.rs",
+      "sha256": "92015242464366decc76c9de0eedddba8ff35793c69401afc4ed45b54e977dd7",
+      "bytes": 7271
+    },
+    {
+      "path": "precompiles/src/balance_transfer.rs",
+      "sha256": "a58619eadcdf08a000b6d94e7ca01037a181597718268d11e98d4c8a1ce83d15",
+      "bytes": 7006
+    },
+    {
+      "path": "precompiles/src/lib.rs",
+      "sha256": "9a6b78cdad3aa54d6519c1268515bd83e41ead8e2dd7c416ffb87e55c5f9fb24",
+      "bytes": 39684
+    },
+    {
+      "path": "primitives/share-pool/src/lib.rs",
+      "sha256": "5d78110bbb714d9730d304042efdc7e2d07370ecea24ce93e730939d9abae989",
+      "bytes": 83374
+    },
+    {
+      "path": "runtime/src/lib.rs",
+      "sha256": "37951c55fc4d5914d70141b0d7702c6879f33d3fccf0a8488e88501744932bc9",
+      "bytes": 113440
+    },
+    {
+      "path": "runtime/src/proxy_filters/call_groups.rs",
+      "sha256": "e683bad3c8cc6dec885edd12a9b2464d07f6f01df9575c24dc8ae0fc4b8a0805",
+      "bytes": 34103
+    },
+    {
+      "path": "runtime/src/proxy_filters/mod.rs",
+      "sha256": "5b0290dcd4ca72e553df306aaa11e08a687de779941c205cfeb3436beee3f833",
+      "bytes": 39375
+    },
+    {
+      "path": "runtime/tests/claim_root_weight.rs",
+      "sha256": "aedf99889c7620454284af64fd16eeb5cb05bded119ec2129165b520786262a2",
+      "bytes": 4081
+    },
+    {
+      "path": "runtime/tests/precompiles.rs",
+      "sha256": "026120392f3a55210ce61b13a25f8bee99a6c11f41e91de8b539e109691db011",
+      "bytes": 9909
+    },
+    {
+      "path": "ts-tests/suites/zombienet_evm/03-wasm-contract.test.ts",
+      "sha256": "6f6e31e703feadaa6da7efb5750bc728c6fb185a5c6adeae2e3ba89be023f08f",
+      "bytes": 37745
+    }
+  ],
+  "scope": "Byte verification against captured exact upstream source. No test, build, network, native operation or full-gate execution.",
+  "initial_review_error": "An attempted extra static-manifest read assumed an ordinary two-column layout; that unrelated manifest is multi-column. No receipt was produced by that attempt; this result covers only the94-path upstream manifest.",
+  "new_static_metadata_source_rows_verified": [
+    {
+      "path": "runtime/src/lib.rs",
+      "sha256": "37951c55fc4d5914d70141b0d7702c6879f33d3fccf0a8488e88501744932bc9"
+    },
+    {
+      "path": "runtime/tests/metadata.rs",
+      "sha256": "4d62205f6caf52a0f2d56a15caaf87748ba08cebff4beb7451ade2f9be2f6cf9"
+    },
+    {
+      "path": "support/procedural-fork/src/construct_runtime/expand/metadata.rs",
+      "sha256": "17f41b4de6093b44aa28b2cd47d91af0f3f1e7a576c236f7070a3c35dd3f7b96"
+    }
+  ]
+}

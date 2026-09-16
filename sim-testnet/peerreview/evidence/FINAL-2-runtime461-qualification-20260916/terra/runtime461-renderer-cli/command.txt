@@ -1,0 +1,1 @@
+go build -trimpath -buildvcs=true -o sim-testnet ./sim-testnet; read-only renderer candidate only, no CLI invocation

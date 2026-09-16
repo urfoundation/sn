@@ -1,0 +1,21 @@
+{
+  "command": "setup --prepare-only software adoption",
+  "source_revision": "1860261f524054b3d8132a48f75307ffdb792322",
+  "binary_sha256": "114bede0b30a9bc9fdb946f3075d1e1f3ff9b3e36daf57d1c084f6144e43bb07",
+  "release_lock_sha256": "42a48da4d4fd267c496b8558cd9838f68b3f5e4117a9e681352129069df2df22",
+  "approved_plan_hash": "0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6",
+  "original_plan_hash": "0x17e49d00a7ce6aafac856e81a4ccf9eb37e4714ba7570a24cfa1c97a2d941f37",
+  "reviewed_plan_bytes_sha256": "4a305f4afa487a8df053f332fd5e179f666b322817c5f69c774c1c39699d9bfc",
+  "scope": "Adopt exactly the reviewed qualified software revision, collect all available preparation checks, and stop before setup actions or topology launch. Preserve all original actions, limits, custody, renewals, activation and signed history. Fresh relay continuation and strict-history selection follow adoption.",
+  "limits": {
+    "evm_tao": 205,
+    "total_tao": 225,
+    "lifetime_alpha": 37250,
+    "per_repair_alpha": 6000,
+    "registrations": 262,
+    "new_subnets": 0
+  },
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_submission_authorized_by_this_request": false
+}

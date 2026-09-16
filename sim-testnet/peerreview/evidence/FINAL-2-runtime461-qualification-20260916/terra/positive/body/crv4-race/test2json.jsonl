@@ -1,0 +1,63 @@
+{"Time":"2026-09-16T12:28:47.057461632Z","Action":"start"}
+{"Time":"2026-09-16T12:28:47.084669973Z","Action":"run","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest"}
+{"Time":"2026-09-16T12:28:47.084723251Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"=== RUN   TestRuntimeArtifactMetadataCatalogPreservesExactManifest\n"}
+{"Time":"2026-09-16T12:28:47.087570842Z","Action":"output","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Output":"--- PASS: TestRuntimeArtifactMetadataCatalogPreservesExactManifest (0.00s)\n"}
+{"Time":"2026-09-16T12:28:47.087608279Z","Action":"pass","Test":"TestRuntimeArtifactMetadataCatalogPreservesExactManifest","Elapsed":0}
+{"Time":"2026-09-16T12:28:47.087620541Z","Action":"run","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory"}
+{"Time":"2026-09-16T12:28:47.087625097Z","Action":"output","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory","Output":"=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory\n"}
+{"Time":"2026-09-16T12:28:47.091689907Z","Action":"output","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory","Output":"--- PASS: TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory (0.00s)\n"}
+{"Time":"2026-09-16T12:28:47.091828501Z","Action":"pass","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory","Elapsed":0}
+{"Time":"2026-09-16T12:28:47.091841093Z","Action":"run","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded"}
+{"Time":"2026-09-16T12:28:47.091847079Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Output":"=== RUN   TestRuntimeArtifactMetadataCacheIsHardBounded\n"}
+{"Time":"2026-09-16T12:28:47.092134985Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Output":"--- PASS: TestRuntimeArtifactMetadataCacheIsHardBounded (0.00s)\n"}
+{"Time":"2026-09-16T12:28:47.092216705Z","Action":"pass","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Elapsed":0}
+{"Time":"2026-09-16T12:28:47.09222731Z","Action":"run","Test":"TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity"}
+{"Time":"2026-09-16T12:28:47.092249899Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity","Output":"=== RUN   TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity\n"}
+{"Time":"2026-09-16T12:28:47.097234962Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity","Output":"--- PASS: TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity (0.00s)\n"}
+{"Time":"2026-09-16T12:28:47.097716283Z","Action":"pass","Test":"TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity","Elapsed":0}
+{"Time":"2026-09-16T12:28:47.097748305Z","Action":"run","Test":"TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains"}
+{"Time":"2026-09-16T12:28:47.097758985Z","Action":"output","Test":"TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains","Output":"=== RUN   TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains\n"}
+{"Time":"2026-09-16T12:28:54.236019263Z","Action":"output","Test":"TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains","Output":"--- PASS: TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains (7.14s)\n"}
+{"Time":"2026-09-16T12:28:54.236119226Z","Action":"pass","Test":"TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains","Elapsed":7.14}
+{"Time":"2026-09-16T12:28:54.236150048Z","Action":"run","Test":"TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains"}
+{"Time":"2026-09-16T12:28:54.236155614Z","Action":"output","Test":"TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains","Output":"=== RUN   TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains\n"}
+{"Time":"2026-09-16T12:29:01.023893835Z","Action":"output","Test":"TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains","Output":"--- PASS: TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains (6.79s)\n"}
+{"Time":"2026-09-16T12:29:01.024016772Z","Action":"pass","Test":"TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains","Elapsed":6.79}
+{"Time":"2026-09-16T12:29:01.024058467Z","Action":"run","Test":"TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains"}
+{"Time":"2026-09-16T12:29:01.024079487Z","Action":"output","Test":"TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains","Output":"=== RUN   TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains\n"}
+{"Time":"2026-09-16T12:29:07.866222605Z","Action":"output","Test":"TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains","Output":"--- PASS: TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains (6.84s)\n"}
+{"Time":"2026-09-16T12:29:07.866302696Z","Action":"pass","Test":"TestSourceCommitmentRuntime460RejectsAdjacentUnreviewedDomains","Elapsed":6.84}
+{"Time":"2026-09-16T12:29:07.866325229Z","Action":"run","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain"}
+{"Time":"2026-09-16T12:29:07.866337129Z","Action":"output","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Output":"=== RUN   TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain\n"}
+{"Time":"2026-09-16T12:29:09.555918822Z","Action":"output","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Output":"--- PASS: TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain (1.69s)\n"}
+{"Time":"2026-09-16T12:29:09.556021646Z","Action":"pass","Test":"TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain","Elapsed":1.69}
+{"Time":"2026-09-16T12:29:09.556076877Z","Action":"run","Test":"TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling"}
+{"Time":"2026-09-16T12:29:09.556092449Z","Action":"output","Test":"TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling","Output":"=== RUN   TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling\n"}
+{"Time":"2026-09-16T12:29:09.861133658Z","Action":"output","Test":"TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling","Output":"--- PASS: TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling (0.30s)\n"}
+{"Time":"2026-09-16T12:29:09.861221469Z","Action":"pass","Test":"TestSourceCommitmentRuntime461RejectsRetainedSignatureRelabeling","Elapsed":0.3}
+{"Time":"2026-09-16T12:29:09.861248012Z","Action":"run","Test":"TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains"}
+{"Time":"2026-09-16T12:29:09.861262508Z","Action":"output","Test":"TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains","Output":"=== RUN   TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains\n"}
+{"Time":"2026-09-16T12:29:17.482531985Z","Action":"output","Test":"TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains","Output":"--- PASS: TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains (7.62s)\n"}
+{"Time":"2026-09-16T12:29:17.483052115Z","Action":"pass","Test":"TestSourceCommitmentRuntime461RejectsAdjacentUnreviewedDomains","Elapsed":7.62}
+{"Time":"2026-09-16T12:29:17.483079496Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity"}
+{"Time":"2026-09-16T12:29:17.483085909Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity\n"}
+{"Time":"2026-09-16T12:29:17.526254329Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity (0.04s)\n"}
+{"Time":"2026-09-16T12:29:17.526370862Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity","Elapsed":0.04}
+{"Time":"2026-09-16T12:29:17.526392068Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity"}
+{"Time":"2026-09-16T12:29:17.526401914Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity\n"}
+{"Time":"2026-09-16T12:29:17.568858846Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity (0.04s)\n"}
+{"Time":"2026-09-16T12:29:17.568922261Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity","Elapsed":0.04}
+{"Time":"2026-09-16T12:29:17.568938217Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity"}
+{"Time":"2026-09-16T12:29:17.568948783Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity\n"}
+{"Time":"2026-09-16T12:29:17.596850172Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity (0.03s)\n"}
+{"Time":"2026-09-16T12:29:17.596877002Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime460RejectsForeignIdentity","Elapsed":0.03}
+{"Time":"2026-09-16T12:29:17.596884363Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime461"}
+{"Time":"2026-09-16T12:29:17.59692042Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime461","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime461\n"}
+{"Time":"2026-09-16T12:29:17.627669499Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime461","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime461 (0.03s)\n"}
+{"Time":"2026-09-16T12:29:17.627735115Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime461","Elapsed":0.03}
+{"Time":"2026-09-16T12:29:17.627748105Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity"}
+{"Time":"2026-09-16T12:29:17.627754463Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity\n"}
+{"Time":"2026-09-16T12:29:17.658604012Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity (0.03s)\n"}
+{"Time":"2026-09-16T12:29:17.659193937Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorStakeRuntime461RejectsForeignIdentity","Elapsed":0.03}
+{"Time":"2026-09-16T12:29:17.659214199Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-16T12:29:18.665641112Z","Action":"pass","Elapsed":31.608}

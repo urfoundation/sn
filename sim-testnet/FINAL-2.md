@@ -10,7 +10,53 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
-**Latest recovery checkpoint, September 16:** strict managed resume
+**Latest recovery checkpoint, September 16, 13:23 UTC:** runtime 461 is qualified
+at `8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c` and integrated locally. All
+**103 affected tests pass normally and under race detection**. Four causal
+restorations reproduce **nine expected failures and nine passing controls**.
+The exact-Wasm probe passed. Root verified raw results, compiled membership,
+actual exits and unchanged inputs. The batch also fixes retained runtime-460
+companion approval handling; tests preserve original bytes, budgets and signer
+authority. A stale positive test fixture was corrected before compilation.
+
+The [qualification bundle](peerreview/evidence/FINAL-2-runtime461-qualification-20260916/README.md)
+contains those results and source/artifact provenance. Its read-only lock
+preview passed, yielding SHA-256
+`aad35e8488e48190071889b3dec47c184ed9d2deedc30c44e3b52ee6f17afd84` with only the
+two expected observed source-digest changes. Publication and a matching final
+executable precede native recovery. All prior signed history and approvals are
+retained. The managed campaign remains unexecuted; this qualification does not
+establish final acceptance.
+
+**Previous recovery checkpoint, September 16, 12:03 UTC:** the startup and direct
+campaign handoff are published at `1860261`, and the matching executable built
+successfully with SHA-256
+`114bede0b30a9bc9fdb946f3075d1e1f3ff9b3e36daf57d1c084f6144e43bb07`.
+Software planning passed. After a detached-checkout prerequisite was repaired
+without changing source or executable bytes, setup ran **11:43:40–11:57:57** and
+completed all **4,673** carried-action checks. It collected **nine failures**,
+all caused by unreviewed runtime **461/1/1**. Eight hard preparation checks
+passed; one failed with those nine errors. Body, outer and joined exits are one.
+Only the saved plan and redacted configuration changed; the journal, supervisor
+manifest/state, public identities, executable and lock remained unchanged.
+The new software approval is
+`0xf6e8c46e6a6a79c7c67deb8304e387f4bc9821ad96513c0ab6851d954d0d3bc6`.
+
+A separate finalized LAN observation confirmed runtime 461 at block
+**8,018,145**, native hash
+`0x43093d12230005ca09a38835fb1506e7b018fb52233597e68ad50c440c2d7272`
+and EVM hash
+`0xe7570097180720fb03a9d6cf15b7244bdd34e0ec03e9307f7eaaea936b945889`.
+This uses the owned node with `independent_rpc=false`. The runtime check stopped
+before selecting a continuation END or running native capture/import. Four
+temporary helpers passed readiness and then stopped with all actual child and
+owner/join exits zero. The [closed preparation bundle](peerreview/evidence/FINAL-2-runtime461-preparation-20260916/README.md)
+contains exact RPC responses, failed setup output, state comparisons and teardown
+receipts. Runtime 461 compatibility review and affected qualification are in
+progress. The managed campaign has not started; earlier successful qualification
+and approved limits remain retained.
+
+**Previous recovery checkpoint, September 16:** strict managed resume
 session **92055** failed at **10:20:25 UTC**, with body, outer and joined exits
 all **one**. All **1,000 fleet checks** and **4,673 carried-action checks**
 completed. The new supervisor, PID 3676320/start ticks 184001647, reached

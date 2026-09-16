@@ -1,0 +1,4 @@
+f5502f91db9a44a215b2dbb66ebfb915e6a7f8822aaa8f06e59f9add82d3ade1  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-normal/command.sh
+143d711d8b36530d379f90b4834542a5338f135340d216b1959bca22faf0cc54  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-normal/launcher.sh
+2334d7498509b08a8e0990040595ae829aec9d3766cf9e80a8761ce8c09c9722  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-normal/selector.txt
+16a41574a092cf9f736c89e696d9ad66237681a98fe27ac02df670b2c11598e3  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-normal/expected-tests.txt

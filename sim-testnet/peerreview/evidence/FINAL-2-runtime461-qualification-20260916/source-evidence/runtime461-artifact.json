@@ -1,0 +1,18 @@
+{
+  "spec_version": 461,
+  "source_ref_kind": "commit",
+  "source_ref_name": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+  "source_commit": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+  "observation_block": 8018145,
+  "observation_block_hash": "0x43093d12230005ca09a38835fb1506e7b018fb52233597e68ad50c440c2d7272",
+  "code_source": "substrate-storage",
+  "code_url": null,
+  "code_size": 2534293,
+  "code_sha256": "a236f7d2ac285615ee1789953e5e009464cc96f357d48278a848f82cdc771cc4",
+  "code_blake2b_256": "0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e",
+  "metadata_size": 344267,
+  "metadata_sha256": "ddeffac09b36b85f584ad08b11441f7eae184728a67fa286c0c9b919d27f0405",
+  "metadata_blake2b_256": "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68",
+  "observation_rpc_url": "http://192.168.1.162:9944",
+  "independent_rpc": false
+}

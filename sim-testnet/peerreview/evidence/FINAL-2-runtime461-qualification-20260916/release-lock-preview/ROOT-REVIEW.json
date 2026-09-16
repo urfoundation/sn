@@ -1,0 +1,21 @@
+{
+  "body_outer_join_exit": [
+    0,
+    0,
+    0
+  ],
+  "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "candidate_sha256": "aad35e8488e48190071889b3dec47c184ed9d2deedc30c44e3b52ee6f17afd84",
+  "only_changes": [
+    {
+      "before": "protocol_source_hash: sha256:285cf3f99b0d1cb642c8dc8d3a84eb9cb71d0fe8e07b34ad27c60ad499510490",
+      "after": "protocol_source_hash: sha256:26efa0f328227166131f902d19ef0582632e713906a0b52b1c1f96ed70c7fbcf"
+    },
+    {
+      "before": "sn_go_source_hash: sha256:b4d79718f2e227882fd965d048f3a0cb71ffcac1e88deb82d7d2c0ac0062d96a",
+      "after": "sn_go_source_hash: sha256:6eec676a25277e4346cca51aca019b8ec718efdfcecd807baf32ed52275927ec"
+    }
+  ],
+  "all_watched_state_binary_lock_source_unchanged": true,
+  "review": "Exactly two observed source digests changed. protocolSourceHash covers docs/spec runtime artifacts/manifests and enforcement scripts as well as protocol; Go digest includes the qualified461 production corrections. All static461 identity, economics, dependency and contract inputs are unchanged."
+}

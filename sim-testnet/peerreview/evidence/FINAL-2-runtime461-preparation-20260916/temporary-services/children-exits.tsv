@@ -1,0 +1,5 @@
+helper	pid	startticks	exit
+subtensor-evm-egress	3871413	184621969	0
+subtensor-rpc-proxy	3871420	184621970	0
+operator-1-api	3871427	184621972	0
+operator-2-api	3871434	184621973	0

@@ -1,0 +1,218 @@
+{
+  "positive_source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "variants": [
+    {
+      "schema_version": 1,
+      "variant": "prior_companion_provenance",
+      "positive_source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "source_commit": "f7de86fa985a1c3062a31ea224b8bd8a71e24fd4",
+      "source_path": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/causal/prior_companion_provenance/workspace/sn",
+      "source_clean": true,
+      "mutation": "Exact restore of listed production files from1860261f524054b3d8132a48f75307ffdb792322; all test/fixture files remain positive-source bytes.",
+      "restored_from_commit": "1860261f524054b3d8132a48f75307ffdb792322",
+      "mutation_paths": [
+        "sim-testnet/evidence_carry_runtime_history.go"
+      ],
+      "reason": "Restore the exact source-provenance switch without former-current460;460 persisted companion recovery/archive admission fails,459 predecessors remain valid.",
+      "execution": "Terra normal-only fresh package binaries from this exact causal source; do not reuse positive binaries. No live RPC/full gates.",
+      "packages": [
+        {
+          "package": "./sim-testnet",
+          "tests": [
+            {
+              "name": "TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestRuntime461Archived460LockRetainsExactProvenance",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval",
+              "expected": "PASS"
+            },
+            {
+              "name": "TestRuntime460Archived459LockRetainsExactProvenance",
+              "expected": "PASS"
+            }
+          ],
+          "count": 4,
+          "selector": "^(TestRuntime460Archived459LockRetainsExactProvenance|TestRuntime460RestartsOriginal459CompanionWithoutRewritingApproval|TestRuntime461Archived460LockRetainsExactProvenance|TestRuntime461RestartsOriginal460CompanionWithoutRewritingApproval)$",
+          "expected_body_exit": 1
+        }
+      ],
+      "sibling_fence": "../../SIBLINGS.tsv",
+      "expected_total_failures": 2,
+      "expected_total_passes": 2
+    },
+    {
+      "schema_version": 1,
+      "variant": "prior_config_identity_gate",
+      "positive_source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "source_commit": "310c2de2fa6e8c39893c09820a9227b3ac47e410",
+      "source_path": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/causal/prior_config_identity_gate/workspace/sn",
+      "source_clean": true,
+      "mutation": "Exact restore of listed production files from1860261f524054b3d8132a48f75307ffdb792322; all test/fixture files remain positive-source bytes.",
+      "restored_from_commit": "1860261f524054b3d8132a48f75307ffdb792322",
+      "mutation_paths": [
+        "sim-testnet/runtime_config_identity.go"
+      ],
+      "reason": "Restore the old explicit455 transition allowlist;461 cannot preserve the original approved configuration hash, while legacy omitted-field wire stays valid.",
+      "execution": "Terra normal-only fresh package binaries from this exact causal source; do not reuse positive binaries. No live RPC/full gates.",
+      "packages": [
+        {
+          "package": "./sim-testnet",
+          "tests": [
+            {
+              "name": "TestRuntime459ConfigHashPreserves455And458Domains",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire",
+              "expected": "PASS"
+            }
+          ],
+          "count": 2,
+          "selector": "^(TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire|TestRuntime459ConfigHashPreserves455And458Domains)$",
+          "expected_body_exit": 1
+        }
+      ],
+      "sibling_fence": "../../SIBLINGS.tsv",
+      "expected_total_failures": 1,
+      "expected_total_passes": 1
+    },
+    {
+      "schema_version": 1,
+      "variant": "prior_current_and_catalog",
+      "positive_source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "source_commit": "90d36561fdf5bcd9eeab3f729a23d2cbde50fcc6",
+      "source_path": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/causal/prior_current_and_catalog/workspace/sn",
+      "source_clean": true,
+      "mutation": "Exact restore of listed production files from1860261f524054b3d8132a48f75307ffdb792322; all test/fixture files remain positive-source bytes.",
+      "restored_from_commit": "1860261f524054b3d8132a48f75307ffdb792322",
+      "mutation_paths": [
+        "crv4/reviewed_runtime.go"
+      ],
+      "reason": "Restore the prior exact current selection and eight-entry catalog; independently pinned461 callers must refuse while unrelated reviewed history and native encoding remain valid.",
+      "execution": "Terra normal-only fresh package binaries from this exact causal source; do not reuse positive binaries. No live RPC/full gates.",
+      "packages": [
+        {
+          "package": "./crv4",
+          "tests": [
+            {
+              "name": "TestRuntimeArtifactMetadataCatalogPreservesExactManifest",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain",
+              "expected": "PASS"
+            }
+          ],
+          "count": 2,
+          "selector": "^(TestRuntimeArtifactMetadataCatalogPreservesExactManifest|TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain)$",
+          "expected_body_exit": 1
+        },
+        {
+          "package": "./miner",
+          "tests": [
+            {
+              "name": "TestFleetFinalizedRuntime461AuthenticatesIndependentExactHeads",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority",
+              "expected": "PASS"
+            }
+          ],
+          "count": 2,
+          "selector": "^(TestFleetFinalizedRuntime461AuthenticatesIndependentExactHeads|TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority)$",
+          "expected_body_exit": 1
+        },
+        {
+          "package": "./validator",
+          "tests": [
+            {
+              "name": "TestReleaseRuntime461RequiresExactReviewedArtifact",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestReleaseRuntime459RetainsBothOriginalCompanionDomains",
+              "expected": "PASS"
+            }
+          ],
+          "count": 2,
+          "selector": "^(TestReleaseRuntime459RetainsBothOriginalCompanionDomains|TestReleaseRuntime461RequiresExactReviewedArtifact)$",
+          "expected_body_exit": 1
+        },
+        {
+          "package": "./sim-testnet",
+          "tests": [
+            {
+              "name": "TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestRuntime458CanonicalLockRetainsHistoricalProvenance",
+              "expected": "PASS"
+            }
+          ],
+          "count": 2,
+          "selector": "^(TestRuntime458CanonicalLockRetainsHistoricalProvenance|TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal)$",
+          "expected_body_exit": 1
+        }
+      ],
+      "sibling_fence": "../../SIBLINGS.tsv",
+      "expected_total_failures": 4,
+      "expected_total_passes": 4
+    },
+    {
+      "schema_version": 1,
+      "variant": "prior_native_abi_gates",
+      "positive_source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "source_commit": "38d7236e7af1d48f354844b894898b65ce6c345c",
+      "source_path": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/causal/prior_native_abi_gates/workspace/sn",
+      "source_clean": true,
+      "mutation": "Exact restore of listed production files from1860261f524054b3d8132a48f75307ffdb792322; all test/fixture files remain positive-source bytes.",
+      "restored_from_commit": "1860261f524054b3d8132a48f75307ffdb792322",
+      "mutation_paths": [
+        "crv4/source_commitment.go",
+        "crv4/validator_stake.go"
+      ],
+      "reason": "Restore exact old native layout version allowlists; actual461 encoding and synthetic complete461 stake/schedule fail, while the retained460 layout controls pass.",
+      "execution": "Terra normal-only fresh package binaries from this exact causal source; do not reuse positive binaries. No live RPC/full gates.",
+      "packages": [
+        {
+          "package": "./crv4",
+          "tests": [
+            {
+              "name": "TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestRuntimeArtifactMetadataValidatorScheduleRuntime461",
+              "expected": "FAIL"
+            },
+            {
+              "name": "TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain",
+              "expected": "PASS"
+            },
+            {
+              "name": "TestRuntimeArtifactMetadataValidatorScheduleRuntime460",
+              "expected": "PASS"
+            }
+          ],
+          "count": 4,
+          "selector": "^(TestRuntimeArtifactMetadataValidatorScheduleRuntime460|TestRuntimeArtifactMetadataValidatorScheduleRuntime461|TestSourceCommitmentRuntime460UsesActualMetadataAndDistinctSignedDomain|TestSourceCommitmentRuntime461UsesActualMetadataAndDistinctSignedDomain)$",
+          "expected_body_exit": 1
+        }
+      ],
+      "sibling_fence": "../../SIBLINGS.tsv",
+      "expected_total_failures": 2,
+      "expected_total_passes": 2
+    }
+  ],
+  "packages": 7,
+  "tests": 18,
+  "fail": 9,
+  "pass": 9
+}

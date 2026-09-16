@@ -1,0 +1,12 @@
+{
+  "command": "release-lock without --apply",
+  "scope": "Render exact observed source/build lock after qualified461 admission; preserve state and all files. No setup, transactions or topology requested.",
+  "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "binary_sha256": "6f89a919b4e092b98c0f416854c6baf46a4aca1f3b454b4aaee8f3ddf27d3e97",
+  "input_release_lock_sha256": "07e4356eb9d58d833edddc659dca941cbabe2824fe7dfde737bf75d4944979c2",
+  "qualification_review": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r5/ROOT-RUNTIME461-QUALIFICATION-REVIEW.json",
+  "rpc_authority": "192.168.1.162:9944",
+  "independent_rpc": false,
+  "chain_transactions_authorized": false,
+  "status": "bound for this read-only invocation"
+}

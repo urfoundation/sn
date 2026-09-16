@@ -1,0 +1,15 @@
+{
+  "reviewed_at": "2026-09-16T12:12:14Z",
+  "capture": "/mnt/data/sn-testnet/qualification/runtime461-terra-offline-probe-20260916-r1",
+  "manifest_sha256": "76d48bc891ea1de1f51cdc9999327d00093786609ca3d5f58c4d5e250c0e3ab7",
+  "payloads_verified": 36,
+  "actual_probe_outer_join_exits": [
+    0,
+    0,
+    0
+  ],
+  "raw_stdout_reviewed": true,
+  "input_hashes_and_modes_unchanged": true,
+  "actual_current_input_hashes_verified": true,
+  "scope": "Exact immutable runtime461 offline artifact probe; not Go qualification, live native operation or campaign acceptance."
+}

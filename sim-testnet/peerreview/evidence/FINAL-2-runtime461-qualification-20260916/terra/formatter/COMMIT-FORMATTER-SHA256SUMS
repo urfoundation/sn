@@ -1,0 +1,5 @@
+04649affde8b96152c1734bd035e19165cba915ce727f060c2a0037b74925c57  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/formatter/source.before.commit
+62ae0f1138870a47df11033012586b0a0d8e3c7bb85aabc6be0b0475397d535c  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/formatter/source.formatted.commit
+0251b2c8954ef384e956732c58f4b955027828cf129728a13ddaa77fd299dd14  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/formatter/changed-paths.txt
+2fd68b564c2bb2d4ed0e13dfb67ab130f3963f6133c87fc938792eb7bb8af273  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/formatter/formatting.patch
+90e2164446e2ae29b73c3619fae8f58cf5b6e96de74a5c38386a147b1fa9ac27  /mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/formatter/formatter-output.sha256

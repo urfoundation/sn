@@ -1,0 +1,253 @@
+{
+  "reviewed_at": "2026-09-16T13:19:52Z",
+  "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+  "selection_sha256": "a9b5ae3925aeb396ab7adee094de6a5f6a67df3428c3108d13e3019f3322457b",
+  "positive_passes_normal": 103,
+  "positive_passes_race": 103,
+  "causal_expected_failures": 9,
+  "causal_controls_passed": 9,
+  "all_15_compilers_closed_zero": true,
+  "body_streams": [
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/crv4-normal",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "520211f62b458b7f620866f2f2890a4a9d39c4335c024cadd2d8c172baf740e0",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "a093a01071ccd84b8177d54a877257b92c4d0561e15d876197ea9153e5de1767"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/crv4-race",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "20114de7c078c6e6e29e37f1034c0103bec48c507d69401a80618ecd0e39d856",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "fccde09adb3f782954ec5bc99e0d98ae186d452c7d552c33b8a0458073986273"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-normal",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "fd175be6a8bfbdf26fc03e3a760e2fc6c63fa5d82daed07eaa0d0c6fc2460d0c",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "3098072ebe22630f8ef0e739a0e1cb66eee38a68e7c9ee213fcf2534fce86f97"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/miner-race",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "fe4985a23a60ea13c6eabebaa4dc391ebee7d794d4d8e6e3cfabe45714ef9451",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "e5f777cb19e1b8bac455ee1fd1b89cb0ea289719135e7cb0448c9f707efee9f4"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-normal",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "266fe8ec24c9b2fadec451ffbde6facdcd421232362a35cce69f106849b528b8",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "19b093c40d10d6a69581139923b93690d94cfab23513d255499cbafdb2969c7c"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/validator-race",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "50f84d50a7d5da96079934331ce830a748761e990b65e4843529ee4033ea7c7f",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "fc3de6f780e036f1d73841b0fb9f2ffa31cde13a9c3f862c0cd6c9070c6880c7"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/sim-testnet-normal",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "78bfe626fbe5d5f892bcd96eaaa61e7cc8d4a7fd6a010428d13c6bbf9cd7c2c9",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "54368d4c074ee13823a82a382b59ce32bbba1cf33df0c341b1ec52ea8205369f"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/positive/body/sim-testnet-race",
+      "source_commit": "8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c",
+      "actual_body_outer_join": [
+        0,
+        0,
+        0
+      ],
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "raw_events_sha256": "e40450ab3bbc7e31d1cf623c26ff09bce89b043c6b660e6a10d9d07fcaf51142",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "0c899b4ff21ac302bbe10204487896973228915e50e7ae26e3d9fb72d37ac55f"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_companion_provenance/sim-testnet",
+      "source_commit": "f7de86fa985a1c3062a31ea224b8bd8a71e24fd4",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "raw_events_sha256": "d6a8299bd952f860087ff977bbc34a74d6c419b7eb6a5de84f55775115eba4f5",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "d28c1dc20f8982a1d66c84facd3d38c5fd730d48377c814abb4f5c094ef997d9"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_config_identity_gate/sim-testnet",
+      "source_commit": "310c2de2fa6e8c39893c09820a9227b3ac47e410",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "raw_events_sha256": "85c0a665f693f18149e89f1731348931b146fcfa8dad922e3064b947edc238a6",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "56dbc2ac4e4de752fe586459623b09878aff0e15cffed604284bd57dad0ae50e"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_current_and_catalog/crv4",
+      "source_commit": "90d36561fdf5bcd9eeab3f729a23d2cbde50fcc6",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "raw_events_sha256": "5cc4c0df0607f3a5931157915ec560345d3d5eef9348f2bbdaaa6dfe945be068",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "6debdafd47404b54b886be5a5103279f4da98f3e4102e37151984b323b968d5a"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_current_and_catalog/miner",
+      "source_commit": "90d36561fdf5bcd9eeab3f729a23d2cbde50fcc6",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "raw_events_sha256": "e804abf4d933efa289de899f47ead1df18dd2187359b8fd396ea25402b41770f",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "0fcee9d7b0a9c39ac1944d7a6319d5024f944adbbd3ebf16fcfeb394c4221757"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_current_and_catalog/validator",
+      "source_commit": "90d36561fdf5bcd9eeab3f729a23d2cbde50fcc6",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "raw_events_sha256": "162db911d98330e88dc0f4c0c3b91a560d3aef9bb00d69100451e73c5afa5ed4",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "ae637a5a06b8ca3adf31331bbff541ff37a023e799945cd6d18877d2d7def8d1"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_current_and_catalog/sim-testnet",
+      "source_commit": "90d36561fdf5bcd9eeab3f729a23d2cbde50fcc6",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "raw_events_sha256": "1f88e524e79bb65e6dd16aa2e79823794c357a642f71881073de26bed37eb112",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "b744f7aec5e44871abd66a8897e40dbfdd991e4e4ae9b4b1bf695a9991a4ad55"
+    },
+    {
+      "capture": "/mnt/data/sn-testnet/qualification/runtime461-20260916-r1/terra/causal/body/prior_native_abi_gates/crv4",
+      "source_commit": "38d7236e7af1d48f354844b894898b65ce6c345c",
+      "actual_body_outer_join": [
+        1,
+        1,
+        1
+      ],
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "raw_events_sha256": "6d531d814802caef06c4c95dc1546c768d22c57dea01dba21cba308b1797a07a",
+      "compiled_census_exact": true,
+      "before_after_fences_unchanged": true,
+      "binary_sha256": "e527372809df609b3db138730e7bdbb913db2cb192fa214363c00b8751e1b3d0"
+    }
+  ],
+  "scope": "Affected runtime461 admission, original-history/config preservation, actual metadata/encoding and source gates; not live campaign acceptance."
+}
