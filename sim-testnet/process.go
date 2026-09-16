@@ -691,13 +691,32 @@ func releaseTopologyReadyWithRestartPolicy(state SupervisorState, wantHash strin
 // earlier attempt. Strict mode rejects restarts; provisional mode permits
 // recovery within the same bounded launch deadline.
 func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, processLogs *processLogGate, timeout time.Duration) error {
+	return waitReleaseTopologyReadyWithClock(ctx, cfg, stateDir, want, supervisorPID, supervisorStartTimeTicks, baseline, processLogs, timeout, time.Now, func(ctx context.Context, delay time.Duration) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			return nil
+		}
+	})
+}
+
+// Keeps the real proof, process and log readers in deadline tests; only elapsed
+// time and the interruptible poll wait are supplied by the caller.
+func waitReleaseTopologyReadyWithClock(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, processLogs *processLogGate, timeout time.Duration, now func() time.Time, wait func(context.Context, time.Duration) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(timeout)
+	deadline := now().Add(timeout)
 	var lastErr error
-	for time.Now().Before(deadline) {
+	for now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		var state SupervisorState
 		if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
 			lastErr = err
@@ -712,19 +731,17 @@ func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir
 		} else if ready, err := releaseTopologyReadyWithRestartPolicy(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current, provisionalResumeEnabled(cfg)); err != nil {
 			return err
 		} else if ready {
-			return nil
+			return ctx.Err()
 		}
-		remaining := time.Until(deadline)
+		remaining := deadline.Sub(now())
 		if remaining > 500*time.Millisecond {
 			remaining = 500 * time.Millisecond
 		}
 		if remaining <= 0 {
 			break
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(remaining):
+		if err := wait(ctx, remaining); err != nil {
+			return err
 		}
 	}
 	if lastErr != nil {
@@ -2731,12 +2748,11 @@ func providerStartupWaveSize(cfg *ResolvedConfig) int {
 	return 0
 }
 
-// Real public-RPC validator initialization took about twenty minutes before
-// its first signed trails. Allow bounded warm-up after provider readiness;
-// fresh proofs, signature checks, process ownership and log checks still gate
-// admission. This does not extend campaign windows or per-request deadlines.
+// Retained strict history needs complete signed and public replay before fresh
+// trails on every RPC route. Reuse the bounded public-RPC warm-up allowance;
+// proof, health and log gates, campaign windows and request deadlines stay exact.
 func releaseTopologyStartupReadinessTimeout(cfg *ResolvedConfig) time.Duration {
-	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+	if cfg != nil && (cfg.strictHistoryAdoption != nil || cfg.OperationalRPCMode == rpcModePublicOverride) {
 		return 30 * time.Minute
 	}
 	return 5 * time.Minute
