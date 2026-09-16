@@ -248,23 +248,23 @@ func TestJournalValidationIndexRejectedLoadKeepsAcceptedPrefix(t *testing.T) {
 		mutate func(*JournalEntry)
 		want   string
 	}{
-		{"identity", func(e *JournalEntry) { e.IntentHash = "" }, "journal entry identity is incomplete"},
-		{"deployment", func(e *JournalEntry) { e.DeploymentID = "other-deployment" }, "does not match"},
-		{"stage", func(e *JournalEntry) { e.Stage = "unknown" }, "unknown journal stage"},
-		{"signer", func(e *JournalEntry) { e.Signer = "" }, "broadcast entry is incomplete"},
-		{"nonce", func(e *JournalEntry) { e.Nonce = "" }, "broadcast entry is incomplete"},
-		{"transaction", func(e *JournalEntry) { e.TransactionHash = "" }, "broadcast entry is incomplete"},
-		{"recovery height", func(e *JournalEntry) { e.RecoveryBlock = 0 }, "no finalized recovery checkpoint"},
-		{"recovery hash", func(e *JournalEntry) { e.RecoveryBlockHash = "" }, "no finalized recovery checkpoint"},
-		{"fee", func(e *JournalEntry) { e.FeeEstimateRao, e.FeeLimitRao = 2, 1 }, "exceeds its approved limit"},
-		{"intent", func(e *JournalEntry) { e.IntentHash = "other-intent" }, "multiple intent hashes"},
-		{"included", func(e *JournalEntry) { e.Stage = StageIncluded }, "included entry is incomplete"},
-		{"finalized", func(e *JournalEntry) { e.Stage = StageFinalized }, "finalized entry is incomplete"},
-		{"verification", func(e *JournalEntry) { *e = journalIndexTestEntry(StageVerified); e.PostconditionHash = "" }, "no postcondition hash/path"},
-		{"verification path", func(e *JournalEntry) {
+		{name: "identity", mutate: func(e *JournalEntry) { e.IntentHash = "" }, want: "journal entry identity is incomplete"},
+		{name: "deployment", mutate: func(e *JournalEntry) { e.DeploymentID = "other-deployment" }, want: "does not match"},
+		{name: "stage", mutate: func(e *JournalEntry) { e.Stage = "unknown" }, want: "unknown journal stage"},
+		{name: "signer", mutate: func(e *JournalEntry) { e.Signer = "" }, want: "broadcast entry is incomplete"},
+		{name: "nonce", mutate: func(e *JournalEntry) { e.Nonce = "" }, want: "broadcast entry is incomplete"},
+		{name: "transaction", mutate: func(e *JournalEntry) { e.TransactionHash = "" }, want: "broadcast entry is incomplete"},
+		{name: "recovery height", mutate: func(e *JournalEntry) { e.RecoveryBlock = 0 }, want: "no finalized recovery checkpoint"},
+		{name: "recovery hash", mutate: func(e *JournalEntry) { e.RecoveryBlockHash = "" }, want: "no finalized recovery checkpoint"},
+		{name: "fee", mutate: func(e *JournalEntry) { e.FeeEstimateRao, e.FeeLimitRao = 2, 1 }, want: "exceeds its approved limit"},
+		{name: "intent", mutate: func(e *JournalEntry) { e.IntentHash = "other-intent" }, want: "multiple intent hashes"},
+		{name: "included", mutate: func(e *JournalEntry) { e.Stage = StageIncluded }, want: "included entry is incomplete"},
+		{name: "finalized", mutate: func(e *JournalEntry) { e.Stage = StageFinalized }, want: "finalized entry is incomplete"},
+		{name: "verification", mutate: func(e *JournalEntry) { *e = journalIndexTestEntry(StageVerified); e.PostconditionHash = "" }, want: "no postcondition hash/path"},
+		{name: "verification path", mutate: func(e *JournalEntry) {
 			*e = journalIndexTestEntry(StageVerified)
 			e.PostconditionPath = "../other.json"
-		}, "noncanonical postcondition path"},
+		}, want: "noncanonical postcondition path"},
 	} {
 		bad := journalIndexTestEntry(StageBroadcast)
 		change.mutate(&bad)
