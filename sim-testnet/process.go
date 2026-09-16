@@ -1506,6 +1506,9 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 			if svc.role == "connect" {
 				args = append(args, "--tls-default-host="+listenIP, "--direct-h3-loopback")
 			}
+			if svc.role == "taskworker" {
+				args = append(args, "--workload-profile=subnet-operator")
+			}
 			spec := ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5}
 			if svc.role == "connect" {
 				spec.H3ProbeAddress = net.JoinHostPort(listenIP, "443")

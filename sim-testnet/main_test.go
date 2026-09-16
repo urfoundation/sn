@@ -303,8 +303,8 @@ func TestRunMainServerModulesConfineTLSFallbackToConnectLoopback(t *testing.T) {
 		{"__server_connect", "--port=19081", "--tls-default-host=127.0.1.1"},
 		{"__server_api", "--port=18081", "--tls-default-host=127.0.1.1"},
 		{"__server_api", "--port=18081", "--direct-h3-loopback"},
-		{"__server_taskworker", "--port=20081", "--tls-default-host=127.0.1.1"},
-		{"__server_taskworker", "--port=20081", "--direct-h3-loopback"},
+		{"__server_taskworker", "--port=20081", "--workload-profile=subnet-operator", "--tls-default-host=127.0.1.1"},
+		{"__server_taskworker", "--port=20081", "--workload-profile=subnet-operator", "--direct-h3-loopback"},
 	} {
 		if err := runMain(invalid); err == nil {
 			t.Errorf("invalid internal server invocation accepted: %q", invalid)

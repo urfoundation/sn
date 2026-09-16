@@ -346,18 +346,25 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		component := args[0]
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var port, count, batchSize int
-		var tlsDefaultHost string
+		var tlsDefaultHost, workloadProfile string
 		var directH3Loopback bool
 		fs.IntVar(&port, "port", 0, "")
 		fs.IntVar(&count, "count", 8, "")
 		fs.IntVar(&batchSize, "batch_size", 4, "")
 		fs.StringVar(&tlsDefaultHost, "tls-default-host", "", "")
+		fs.StringVar(&workloadProfile, "workload-profile", "", "")
 		fs.BoolVar(&directH3Loopback, "direct-h3-loopback", false, "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if port == 0 || fs.NArg() != 0 {
 			return fmt.Errorf("invalid internal %s invocation", component)
+		}
+		if component != "__server_taskworker" && workloadProfile != "" {
+			return errors.New("workload profile is restricted to the taskworker module")
+		}
+		if component == "__server_taskworker" && servertaskworker.WorkloadProfile(workloadProfile) != servertaskworker.WorkloadProfileSubnetOperator {
+			return errors.New("simulator taskworker requires the subnet-operator workload profile")
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -380,7 +387,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		if tlsDefaultHost != "" || directH3Loopback {
 			return errors.New("taskworker module cannot set Connect transport options")
 		}
-		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
+		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize, WorkloadProfile: servertaskworker.WorkloadProfile(workloadProfile)})
 	}
 	if len(args) > 0 && args[0] == "__server_cleanup_contracts" {
 		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)

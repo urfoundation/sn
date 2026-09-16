@@ -1741,7 +1741,7 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 			if _, ok := spec.Env[servercontroller.VerifySimulationAssignmentFilterFileEnv]; ok {
 				t.Fatalf("%s received API-only validator-view fault authority", spec.ID)
 			}
-			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_taskworker" {
+			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 3 || spec.Args[0] != "__server_taskworker" || spec.Args[2] != "--workload-profile=subnet-operator" {
 				t.Fatalf("%s bypasses the production taskworker module runner: %+v", spec.ID, spec)
 			}
 		}
