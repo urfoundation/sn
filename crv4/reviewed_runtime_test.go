@@ -26,7 +26,7 @@ func TestRuntimeArtifactMetadataCatalogPreservesExactManifest(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	wantSpecs := []uint32{451, 452, 453, 454, 455, 458, 459, 460}
+	wantSpecs := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461}
 	artifacts := ReviewedRuntimeArtifacts()
 	if len(artifacts) != len(manifest.Artifacts) || len(artifacts) != len(wantSpecs) {
 		t.Fatal("catalog lost an exact retained artifact")
@@ -58,7 +58,7 @@ func TestRuntimeArtifactMetadataCatalogPreservesExactManifest(t *testing.T) {
 	if !reflect.DeepEqual(ReviewedRuntimeArtifacts(), copyArtifacts) {
 		t.Fatal("caller mutated reviewed artifact authority")
 	}
-	for _, spec := range []uint32{456, 457, 461} {
+	for _, spec := range []uint32{456, 457, 462} {
 		if _, ok := ReviewedRuntimeArtifact(RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}); ok {
 			t.Fatal("unreviewed runtime entered the catalog")
 		}

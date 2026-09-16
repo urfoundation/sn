@@ -1,4 +1,4 @@
-// Current460 admission is an exact artifact boundary, not a spec-only upgrade.
+// Current461 admission is an exact artifact boundary, not a spec-only upgrade.
 package validator
 
 import (
@@ -30,10 +30,10 @@ func runtime459ValidatorTestConfig() ReleaseConfig {
 	}
 }
 
-// The one reviewed460 pair is accepted; every adjacent version or artifact
+// The one reviewed461 pair is accepted; every adjacent version or artifact
 // mismatch is refused before its configured bytes can become signing authority.
-func TestReleaseRuntime460RequiresExactReviewedArtifact(t *testing.T) {
-	cfg := runtime460ValidatorTestConfig()
+func TestReleaseRuntime461RequiresExactReviewedArtifact(t *testing.T) {
+	cfg := runtime461ValidatorTestConfig()
 	if err := validateReleaseNativeRuntimeConfig(&cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,8 @@ func TestReleaseRuntime460RequiresExactReviewedArtifact(t *testing.T) {
 		func(value *ReleaseConfig) { value.RuntimeSpec = 457 },
 		func(value *ReleaseConfig) { value.RuntimeSpec = 458 },
 		func(value *ReleaseConfig) { value.RuntimeSpec = 459 },
-		func(value *ReleaseConfig) { value.RuntimeSpec = 461 },
+		func(value *ReleaseConfig) { value.RuntimeSpec = 460 },
+		func(value *ReleaseConfig) { value.RuntimeSpec = 462 },
 		func(value *ReleaseConfig) {
 			value.RuntimeCodeHash = "0x3708442dc6aae2ea654d827d8b9985d36b6640b2447cfd48125a1a0205c8f1d3"
 		},
@@ -67,9 +68,9 @@ func TestReleaseRuntime460RequiresExactReviewedArtifact(t *testing.T) {
 	}
 }
 
-// A formerly reviewed release lock is evidence, not authority for new460
+// A formerly reviewed release lock is evidence, not authority for new461
 // steering. Refusal happens before even a public read or chain-binding mutation.
-func TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc(t *testing.T) {
+func TestReleaseRuntime461RejectsHistoricalConfigBeforeRpc(t *testing.T) {
 	calls := 0
 	client := &validatorRuntimeIdentityTestClient{callContext: func(context.Context, any, string, ...any) error {
 		calls++
@@ -78,7 +79,7 @@ func TestReleaseRuntime460RejectsHistoricalConfigBeforeRpc(t *testing.T) {
 	metadata := types.NewMetadataV14()
 	runtime := &types.RuntimeVersion{SpecName: "retained", SpecVersion: 455, TransactionVersion: 1}
 	chain := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}, Meta: metadata, Runtime: runtime}
-	cfg := runtime460ValidatorTestConfig()
+	cfg := runtime461ValidatorTestConfig()
 	cfg.RuntimeSpec = 455
 	cfg.RuntimeCodeHash = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
 	cfg.RuntimeMetadataHash = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"

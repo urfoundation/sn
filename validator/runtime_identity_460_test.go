@@ -23,11 +23,11 @@ func releaseHistorical459TestArtifact() crv4.RuntimeArtifactIdentity {
 
 // Every owner sees exactly its own artifact and preceding companion artifacts;
 // future current pins and pre-companion runtimes cannot change that domain.
-func TestReleaseRuntime460PreservesEachOriginalCompanionDomain(t *testing.T) {
+func TestReleaseRuntime461PreservesEachOriginalCompanionDomain(t *testing.T) {
 	var predecessors []crv4.RuntimeArtifactIdentity
 	for _, cfg := range []ReleaseConfig{
 		{RuntimeSpec: 455, TransactionVersion: 1, StateVersion: 1, RuntimeCodeHash: "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a", RuntimeMetadataHash: "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"},
-		runtime458ValidatorTestConfig(), runtime459ValidatorTestConfig(), runtime460ValidatorTestConfig(),
+		runtime458ValidatorTestConfig(), runtime459ValidatorTestConfig(), runtime460ValidatorTestConfig(), runtime461ValidatorTestConfig(),
 	} {
 		owner := crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.RuntimeSpec, TransactionVersion: 1, StateVersion: 1}, CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash}
 		want := append([]crv4.RuntimeArtifactIdentity{owner}, predecessors...)
@@ -37,11 +37,11 @@ func TestReleaseRuntime460PreservesEachOriginalCompanionDomain(t *testing.T) {
 		if err := validateReleaseHistoricalNativeRuntimeConfig(&cfg); err != nil {
 			t.Fatal(err)
 		}
-		if err := validateReleaseNativeRuntimeConfig(&cfg); (err == nil) != (cfg.RuntimeSpec == 460) {
+		if err := validateReleaseNativeRuntimeConfig(&cfg); (err == nil) != (cfg.RuntimeSpec == 461) {
 			t.Fatalf("runtime%d gained or lost current authority: %v", cfg.RuntimeSpec, err)
 		}
 		for _, change := range []func(*crv4.RuntimeArtifactIdentity){
-			func(value *crv4.RuntimeArtifactIdentity) { value.Version.SpecVersion = 461 },
+			func(value *crv4.RuntimeArtifactIdentity) { value.Version.SpecVersion = 462 },
 			func(value *crv4.RuntimeArtifactIdentity) { value.Version.TransactionVersion++ },
 			func(value *crv4.RuntimeArtifactIdentity) { value.Version.StateVersion++ },
 			func(value *crv4.RuntimeArtifactIdentity) { value.CodeHash = "0x" + string(make([]byte, 64)) },

@@ -67,7 +67,7 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalPublic := *config.Public
 	originalPublic.Chain.ExpectedRuntimeSpec = spec
 	originalPublic.Chain.ConfigIdentityRuntimeSpec = 0
-	if spec == 458 || spec == 459 {
+	if spec == 458 || spec == 459 || spec == 460 {
 		originalPublic.Chain.ConfigIdentityRuntimeSpec = 455
 	}
 	originalConfig.Public = &originalPublic
@@ -78,19 +78,22 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalConfig.Release = validatorEvidenceRuntime455TestLock(t)
 	// Build the synthetic original with current planner checks, then bind its
 	// independently approved458 source before producing any persisted bytes.
-	if spec == 458 || spec == 459 {
+	if spec == 458 || spec == 459 || spec == 460 {
 		originalConfig = *config
 	}
 	original, err := buildPlan(&originalConfig, testSetupFacts(), roles, time.Unix(1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spec == 458 || spec == 459 {
+	if spec == 458 || spec == 459 || spec == 460 {
 		lock := testReleaseLockFixture(t)
 		image := lock.Runtime.Image
 		lock.Runtime = runtime458ReviewedTestLock().Runtime
 		if spec == 459 {
 			lock.Runtime = runtime459ReviewedTestLock().Runtime
+		}
+		if spec == 460 {
+			lock.Runtime = runtime460ReviewedTestLock().Runtime
 		}
 		lock.Runtime.Image = image
 		rebindValidatorEvidenceReleaseLockTest(t, original, lock)

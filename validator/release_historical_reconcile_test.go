@@ -285,7 +285,7 @@ func releaseHistoricalReconcileLegacyPending(t *testing.T) (*ReleaseSteerer, *St
 	}
 	events := releaseHistoricalReconcileEvents(t, metadata, []releaseHistoricalReconcileEvent{{pallet: "System", name: "ExtrinsicSuccess", fields: []any{releaseHistoricalReconcileDispatchInfo()}}})
 	receipt := installReleaseHistoricalReconcileReceipt(t, native, *metadataHex, pending.Prepared, events)
-	cfg := runtime460ValidatorTestConfig()
+	cfg := runtime461ValidatorTestConfig()
 	cfg.Netuid = intent.Netuid
 	return &ReleaseSteerer{cfg: &cfg, native: native.chain, intents: store, hotkey: hotkey}, pending, receipt
 }

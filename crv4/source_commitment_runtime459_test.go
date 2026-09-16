@@ -123,7 +123,7 @@ func TestSourceCommitmentRuntime459RejectsAdjacentUnreviewedDomains(t *testing.T
 			t.Fatal("runtime459 submission accepted a changed independent domain")
 		}
 	}
-	for _, spec := range []uint32{456, 457, 461} {
+	for _, spec := range []uint32{456, 457, 462} {
 		changed := *prepared.SourceCommitment
 		changed.RuntimeSpec = spec
 		copyPrepared := *prepared

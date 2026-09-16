@@ -121,7 +121,7 @@ func validatePublishedRuntimeIdentityShape(public *PublicDeploymentManifest) err
 		public.RuntimeSpec != reviewedRuntimeSpecVersion ||
 		public.TransactionVersion != reviewedRuntimeTransactionVersion ||
 		public.StateVersion != reviewedRuntimeStateVersion {
-		return errors.New("published runtime version identity is not the reviewed node-subtensor/460/1/1 release")
+		return errors.New("published runtime version identity is not the reviewed node-subtensor/461/1/1 release")
 	}
 	if err := validateRuntimeCodeHash(public.RuntimeCodeHash, reviewedRuntimeCodeHash); err != nil {
 		return fmt.Errorf("published runtime identity: %w", err)
@@ -296,7 +296,7 @@ func readAuthenticatedRuntimeMetadataAt(chain *crv4.Chain, cfg *ResolvedConfig, 
 }
 
 // Authenticate metadata-driven reads of immutable carried setup evidence.
-// Current v460 is always accepted through the release lock. Only the exact
+// Current v461 is always accepted through the release lock. Only the exact
 // historical artifact identities present in the persisted campaign history are
 // admitted as compatibility inputs; this helper must never guard a write.
 func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) (authenticatedRuntimeMetadata, error) {

@@ -4,14 +4,14 @@ runtime:
     source_repository: https://github.com/RaoFoundation/subtensor
     source_tag: ""
     source_ref_kind: commit
-    source_ref_name: 8d5f20ec1a5e5d90295d43046dacdefc54aaed06
-    source_commit: 8d5f20ec1a5e5d90295d43046dacdefc54aaed06
-    code_hash: 0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d
-    metadata_hash: 0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c
-    compressed_wasm_sha256: 0x12b9affec176cbb79c7e5db253d3d0e47f4cb575ce4501ef10de6578afbb817f
+    source_ref_name: 7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b
+    source_commit: 7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b
+    code_hash: 0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e
+    metadata_hash: 0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68
+    compressed_wasm_sha256: 0xa236f7d2ac285615ee1789953e5e009464cc96f357d48278a848f82cdc771cc4
     upstream_release_call_hash: ""
     upstream_release_timepoint: ""
-    spec_version: 460
+    spec_version: 461
     transaction_version: 1
     state_version: 1
     image: ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de

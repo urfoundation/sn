@@ -68,14 +68,14 @@ func upgradeRuntimeEvidenceHistoricalTest(t *testing.T, fixture *runtimeEvidence
 	t.Helper()
 	cfg := fixture.base.cfg
 	cfg.Release = testReleaseLockFixture(t)
-	cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ConfigIdentityRuntimeSpec = 460, 455
+	cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ConfigIdentityRuntimeSpec = 461, 455
 	if hash, err := releaseConfigHash(cfg.Config, cfg.Public, cfg.Hyperparameters); err != nil || hash != cfg.ConfigHash {
 		t.Fatalf("explicit runtime migration changed original config identity: %v", err)
 	}
 }
 
 // The actual failing preparation reader must retain its original source hash,
-// pinned native uid, signatures and exact persisted bytes under current460.
+// pinned native uid, signatures and exact persisted bytes under current461.
 func TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation(t *testing.T) {
 	fixture := newRuntimeEvidenceHistoricalRuntimeTest(t)
 	upgradeRuntimeEvidenceHistoricalTest(t, fixture)
@@ -83,7 +83,7 @@ func TestRuntimeEvidenceHistoricalRuntimeReplaysOriginalPreparation(t *testing.T
 	metadata, runtime := fixture.executor.substrate.chain.Meta, fixture.executor.substrate.chain.Runtime
 	prepared, wire, err := fixture.executor.prepareRuntimeEvidenceActivationsV2(t.Context(), fixture.chain)
 	if err != nil {
-		t.Fatalf("original455 preparation replay under460: %v", err)
+		t.Fatalf("original455 preparation replay under461: %v", err)
 	}
 	if prepared.PlanHash != fixture.base.plan.PlanHash || !bytes.Equal(before, wire) {
 		t.Fatal("historical preparation changed signed original bytes or approval")
@@ -179,7 +179,7 @@ func TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads(t
 	}
 }
 
-func TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires460(t *testing.T) {
+func TestRuntimeEvidenceHistoricalRuntimeFreshPreparationStillRequires461(t *testing.T) {
 	fixture := newRuntimeEvidenceHistoricalRuntimeTest(t)
 	upgradeRuntimeEvidenceHistoricalTest(t, fixture)
 	// Use a fresh private fixture directory; the preserved original preparation

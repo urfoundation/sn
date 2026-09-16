@@ -1,7 +1,7 @@
 package miner
 
 // fleet_runtime.go binds every release fleet publish and status read to the
-// exact node-subtensor v460 artifact. The fleet CLI has no release-lock input,
+// exact node-subtensor v461 artifact. The fleet CLI has no release-lock input,
 // so this immutable tuple is deliberately local and covered against that lock
 // by fleet_runtime_test.go.
 

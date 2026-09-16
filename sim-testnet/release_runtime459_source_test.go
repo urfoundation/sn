@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/urfoundation/sn/crv4"
 )
 
 // Retains all62 reviewed paths and the nine changed native dependencies.
@@ -51,7 +53,7 @@ func TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"for current_spec in 455 458 459", "runtime-v459-source.sha256", "current_commit=\"70378404b56c12a85bc8cd163aca2f32cf4d1b80\"", "expected_current_files=71", "SUBTENSOR_RUNTIME459_SOURCE", "expected_metadata_files=24"} {
+	for _, required := range []string{"for current_spec in 455 458 459", "runtime-v459-source.sha256", "current_commit=\"70378404b56c12a85bc8cd163aca2f32cf4d1b80\"", "expected_current_files=71", "SUBTENSOR_RUNTIME459_SOURCE", "expected_metadata_files=27"} {
 		if !strings.Contains(string(checker), required) {
 			t.Fatalf("runtime459 source checker omits %s", required)
 		}
@@ -94,7 +96,7 @@ func TestRuntime459ArtifactCheckerRequiresOwnedObservationAndCompleteHistory(t *
 			t.Fatal(err)
 		}
 		artifacts := manifest["artifacts"].([]any)
-		if len(artifacts) != 8 {
+		if len(artifacts) != len(crv4.ReviewedRuntimeArtifacts()) {
 			t.Fatal("runtime459 fixture is incomplete")
 		}
 		observation := artifacts[6].(map[string]any)

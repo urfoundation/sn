@@ -71,7 +71,7 @@ func TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity(t
 		{name: "metadata", change: func(f *validatorIdentityTestFixture) { f.allowed[0].MetadataHash = types.Hash{77}.Hex() }},
 		{name: "unreviewed456", change: func(f *validatorIdentityTestFixture) { f.version.SpecVersion = 456; f.allowed[0].Version = f.version }},
 		{name: "unreviewed457", change: func(f *validatorIdentityTestFixture) { f.version.SpecVersion = 457; f.allowed[0].Version = f.version }},
-		{name: "future461", change: func(f *validatorIdentityTestFixture) { f.version.SpecVersion = 461; f.allowed[0].Version = f.version }},
+		{name: "future462", change: func(f *validatorIdentityTestFixture) { f.version.SpecVersion = 462; f.allowed[0].Version = f.version }},
 		{name: "name", change: func(f *validatorIdentityTestFixture) {
 			f.version.SpecName = "synthetic-foreign"
 			f.allowed[0].Version = f.version

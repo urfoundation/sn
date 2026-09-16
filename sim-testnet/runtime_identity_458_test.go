@@ -45,8 +45,8 @@ func runtime459ReviewedTestLock() *ReleaseLock {
 
 // Exact commit provenance cannot be expressed as a mutable branch, invented
 // release tag or copied mainnet multisig proposal/timepoint.
-func TestRuntime460CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
-	lock := runtime460ReviewedTestLock()
+func TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
+	lock := runtime461ReviewedTestLock()
 	if err := validateReviewedRuntimeIdentity(lock); err != nil {
 		t.Fatal(err)
 	}
@@ -113,14 +113,14 @@ func TestRuntime458CanonicalLockRetainsHistoricalProvenance(t *testing.T) {
 
 // Read-only public history admits each exact reviewed predecessor. The same
 // object cannot become the current launch identity, even with a mutated config.
-func TestRuntime460HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
+func TestRuntime461HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	artifacts, err := releaseHistoryRuntimeArtifacts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(artifacts) != len(crv4.ReviewedRuntimeArtifacts()) || artifacts[0].Version.SpecVersion != 460 {
-		t.Fatal("current460 plus complete451–455/458/459 history is absent")
+	if len(artifacts) != len(crv4.ReviewedRuntimeArtifacts()) || artifacts[0].Version.SpecVersion != 461 {
+		t.Fatal("current461 plus complete451–455/458/459/460 history is absent")
 	}
 	for _, artifact := range artifacts {
 		public := &PublicDeploymentManifest{RuntimeSpec: artifact.Version.SpecVersion, TransactionVersion: artifact.Version.TransactionVersion, StateVersion: artifact.Version.StateVersion, RuntimeCodeHash: artifact.CodeHash, RuntimeMetadataHash: artifact.MetadataHash}
@@ -128,7 +128,7 @@ func TestRuntime460HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 			t.Fatalf("reviewed history%d refused: %v", artifact.Version.SpecVersion, err)
 		}
 		currentErr := validatePublishedRuntimeIdentity(public, cfg)
-		if artifact.Version.SpecVersion == 460 {
+		if artifact.Version.SpecVersion == 461 {
 			if currentErr != nil {
 				t.Fatal(currentErr)
 			}

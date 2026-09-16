@@ -22,7 +22,7 @@ func TestRuntime459ConfigHashPreserves455And458Domains(t *testing.T) {
 		t.Fatal(err)
 	}
 	public.Chain.ConfigIdentityRuntimeSpec = 455
-	for _, spec := range []uint32{458, 459, 460} {
+	for _, spec := range []uint32{458, 459, 460, 461} {
 		public.Chain.ExpectedRuntimeSpec = spec
 		before, err := json.Marshal(public)
 		if err != nil {
@@ -35,7 +35,7 @@ func TestRuntime459ConfigHashPreserves455And458Domains(t *testing.T) {
 		}
 	}
 	plan := &SetupPlan{ConfigIdentityRuntimeSpec: 455}
-	cfg := &ResolvedConfig{Public: &public, Release: runtime460ReviewedTestLock()}
+	cfg := &ResolvedConfig{Public: &public, Release: runtime461ReviewedTestLock()}
 	if err := validateRuntimeConfigIdentityPlan(cfg, plan); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRuntime459ConfigHashPreserves455And458Domains(t *testing.T) {
 	if err := validateRuntimeConfigIdentityPlan(cfg, plan); err == nil {
 		t.Fatal("historical458 lock gained current plan authority")
 	}
-	for _, spec := range []uint32{456, 457, 461} {
+	for _, spec := range []uint32{456, 457, 462} {
 		public.Chain.ExpectedRuntimeSpec = spec
 		if _, err := releaseConfigHash(config, &public, hyper); err == nil {
 			t.Fatalf("unreviewed%d acquired the original hash", spec)

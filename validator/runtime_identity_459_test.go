@@ -57,7 +57,7 @@ func TestReleaseRuntime459RetainsBothOriginalCompanionDomains(t *testing.T) {
 
 // A finalized458 receipt authenticates its real metadata under a459 owner.
 // The same block fails current admission before metadata or binding changes.
-func TestReleaseRuntime460AuthenticatesOriginal458BlockWithoutCurrentAuthority(t *testing.T) {
+func TestReleaseRuntime461AuthenticatesOriginal458BlockWithoutCurrentAuthority(t *testing.T) {
 	encoded, err := os.ReadFile("../miner/testdata/runtime458-metadata.scale.gz.base64")
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestReleaseRuntime460AuthenticatesOriginal458BlockWithoutCurrentAuthority(t
 		}
 	}}
 	chain := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}, Meta: types.NewMetadataV14(), Runtime: &types.RuntimeVersion{SpecName: "synthetic-retained", SpecVersion: 7}}
-	cfg := runtime460ValidatorTestConfig()
+	cfg := runtime461ValidatorTestConfig()
 	priorMetadata, priorRuntime := chain.Meta, chain.Runtime
 	if err := authenticatePinnedNativeRuntimeAtContext(t.Context(), chain, &cfg, block); err == nil || chain.Meta != priorMetadata || chain.Runtime != priorRuntime || !reflect.DeepEqual(calls, []string{"state_getRuntimeVersion"}) {
 		t.Fatalf("historical block became current authority: %v calls=%v", err, calls)

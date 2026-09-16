@@ -94,7 +94,7 @@ func newReleaseHistoricalSourceTestFixture(t *testing.T) *releaseHistoricalSourc
 	if err := signer.ValidatePreparedSource(prepared); err != nil {
 		t.Fatalf("original455 SDK signed source: %v", err)
 	}
-	cfg := runtime460ValidatorTestConfig()
+	cfg := runtime461ValidatorTestConfig()
 	cfg.Netuid = 521
 	cfg.EvidenceV2.Bounds.MaxArtifactBytes, cfg.EvidenceV2.Bounds.MaxControlBytes, cfg.EvidenceV2.Bounds.MaxOperators = 1024*1024, 1024*1024, 1
 	return &releaseHistoricalSourceTestFixture{native: native, config: cfg, artifact: artifact, measurement: measurement, metadataHex: *metadataHex,

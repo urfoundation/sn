@@ -659,7 +659,7 @@ func TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSpecs := []uint32{460, 451, 452, 453, 454, 455, 458, 459}
+	wantSpecs := []uint32{461, 451, 452, 453, 454, 455, 458, 459, 460}
 	if len(artifacts) != len(wantSpecs) {
 		t.Fatalf("history artifacts=%d, want %d", len(artifacts), len(wantSpecs))
 	}

@@ -2333,8 +2333,8 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadataRows := strings.Split(strings.TrimSpace(string(metadataManifestBytes)), "\n")
-	if len(metadataRows) != 24 {
-		t.Fatalf("runtime metadata source manifest has %d rows, want 24", len(metadataRows))
+	if len(metadataRows) != 27 {
+		t.Fatalf("runtime metadata source manifest has %d rows, want 27", len(metadataRows))
 	}
 	wantMetadataCommits := map[string]string{
 		"head:release-v451": "d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
@@ -2345,6 +2345,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"commit:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7": "a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7",
 		"commit:70378404b56c12a85bc8cd163aca2f32cf4d1b80": "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
 		"commit:8d5f20ec1a5e5d90295d43046dacdefc54aaed06": "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
+		"commit:7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
 	}
 	seenMetadataPaths := map[string]bool{}
 	for _, row := range metadataRows {
@@ -2381,8 +2382,8 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		artifactManifest.PolkadotSDKRevision != "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" {
 		t.Fatalf("runtime metadata artifact manifest identity=%+v", artifactManifest)
 	}
-	if len(artifactManifest.Artifacts) != 8 {
-		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 8", len(artifactManifest.Artifacts))
+	if len(artifactManifest.Artifacts) != 9 {
+		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 9", len(artifactManifest.Artifacts))
 	}
 	wantArtifacts := map[uint32]releaseRuntimeMetadataArtifact{
 		451: {
@@ -2459,7 +2460,19 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 	if independent := artifactManifest.Artifacts[6].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[6].ObservationRpcUrl != artifactManifest.Artifacts[5].ObservationRpcUrl {
 		t.Fatal("runtime459 lost its owned-node provenance")
 	}
-	wantVersions := []uint32{451, 452, 453, 454, 455, 458, 459, 460}
+	wantArtifacts[461] = releaseRuntimeMetadataArtifact{
+		SpecVersion: 461, SourceRefKind: "commit", SourceRefName: "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b", SourceCommit: "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+		ObservationBlock: 8018145, ObservationBlockHash: "0x43093d12230005ca09a38835fb1506e7b018fb52233597e68ad50c440c2d7272",
+		ObservationRpcUrl: artifactManifest.Artifacts[8].ObservationRpcUrl, IndependentRpc: artifactManifest.Artifacts[8].IndependentRpc,
+		CodeSource: "substrate-storage", CodeSize: 2534293, CodeSHA256: "a236f7d2ac285615ee1789953e5e009464cc96f357d48278a848f82cdc771cc4",
+		CodeBlake2b256: "0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e",
+		MetadataSize: 344267, MetadataSHA256: "ddeffac09b36b85f584ad08b11441f7eae184728a67fa286c0c9b919d27f0405",
+		MetadataBlake2b256: "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68",
+	}
+	if independent := artifactManifest.Artifacts[8].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[8].ObservationRpcUrl != artifactManifest.Artifacts[7].ObservationRpcUrl {
+		t.Fatal("runtime461 lost its owned-node provenance")
+	}
+	wantVersions := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461}
 	for index, artifact := range artifactManifest.Artifacts {
 		want, ok := wantArtifacts[artifact.SpecVersion]
 		if !ok || artifact.SpecVersion != wantVersions[index] {
@@ -2471,7 +2484,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 			if artifact.CodeSource != "github-release" || *artifact.CodeURL != wantURL {
 				t.Fatalf("runtime metadata artifact %d URL/source=%s/%s", artifact.SpecVersion, *artifact.CodeURL, artifact.CodeSource)
 			}
-		} else if (artifact.SpecVersion != 451 && artifact.SpecVersion != 455 && artifact.SpecVersion != 458 && artifact.SpecVersion != 459 && artifact.SpecVersion != 460) || artifact.CodeSource != "substrate-storage" {
+		} else if (artifact.SpecVersion != 451 && artifact.SpecVersion != 455 && artifact.SpecVersion != 458 && artifact.SpecVersion != 459 && artifact.SpecVersion != 460 && artifact.SpecVersion != 461) || artifact.CodeSource != "substrate-storage" {
 			t.Fatalf("runtime metadata artifact %d lacks its release URL", artifact.SpecVersion)
 		}
 		if artifact != want {
@@ -2494,7 +2507,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"runtime-v455-source.sha256",
 		"67dcf7f791dc495064c293f080a0702cb433e51e",
 		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount),
-		"expected_metadata_files=24",
+		"expected_metadata_files=27",
 		"d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
 		"da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
 		"support/procedural-fork/src/construct_runtime/expand/metadata.rs",
@@ -2527,7 +2540,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"wait \"${probe_process_ids[$spec_version]}\"",
 		"sha256sum",
 		"runtime metadata artifacts verified",
-		"[451, 452, 453, 454, 455, 458, 459, 460]",
+		"[451, 452, 453, 454, 455, 458, 459, 460, 461]",
 		"455:commit:67dcf7f791dc495064c293f080a0702cb433e51e:67dcf7f791dc495064c293f080a0702cb433e51e:substrate-storage:",
 	} {
 		if !strings.Contains(artifactChecker, required) {
@@ -2591,7 +2604,7 @@ func TestReleaseGatesAttestRuntime455SourceCompatibility(t *testing.T) {
 	checker := string(checkerRaw)
 	for _, fragment := range []string{
 		"current_commit=\"67dcf7f791dc495064c293f080a0702cb433e51e\"",
-		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount), "expected_files=29", "expected_metadata_files=24",
+		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount), "expected_files=29", "expected_metadata_files=27",
 		"SUBTENSOR_RUNTIME455_SOURCE", "current_seen_paths", "current_observed", "current_expected",
 		"current_count", "runtime source verified ref_kind=commit",
 	} {
@@ -2654,7 +2667,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	script := string(raw)
 	group := releaseEvidenceV2GateGroup{
 		phase: "runtime", variable: "runtime455_tests", packages: []string{"./sim-testnet"},
-		sources:  map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"runtime_identity_458_test.go", "runtime_identity_459_test.go", "runtime_identity_460_test.go", "release_runtime458_source_test.go", "release_runtime459_source_test.go", "release_runtime460_source_test.go", "fleet_history_batch_test.go", "final_semantic_rpc_transport_test.go"})},
+		sources:  map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"runtime_identity_458_test.go", "runtime_identity_459_test.go", "runtime_identity_460_test.go", "runtime_identity_461_test.go", "release_runtime458_source_test.go", "release_runtime459_source_test.go", "release_runtime460_source_test.go", "release_runtime461_source_test.go", "fleet_history_batch_test.go", "final_semantic_rpc_transport_test.go"})},
 		commands: []string{`go test ./sim-testnet -run "$runtime455_tests" -count=1`, `go test -race ./sim-testnet -run "$runtime455_tests" -count=1`},
 	}
 	if err := verifyReleaseEvidenceV2GateGroup(script, group); err != nil {
@@ -2670,7 +2683,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, family := range []string{"Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|"} {
+	for _, family := range []string{"Runtime461|", "Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|"} {
 		changedSelector := strings.Replace(selector, family, "", 1)
 		changed := strings.Replace(script, group.variable+"='"+selector+"'", group.variable+"='"+changedSelector+"'", 1)
 		if changed == script || verifyReleaseEvidenceV2GateGroup(changed, group) == nil {
@@ -2681,14 +2694,14 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyReleaseSourceTestCoverage(runtimeSelector, "^Test", releaseEvidenceV2GateSources(t, []string{"../validator/runtime_identity_458_test.go", "../validator/runtime_identity_459_test.go", "../validator/runtime_identity_460_test.go", "../miner/fleet_runtime_458_test.go", "../crv4/validator_stake_runtime458_test.go", "../crv4/validator_stake_runtime459_test.go", "../crv4/validator_stake_runtime460_test.go", "../crv4/reviewed_runtime_test.go", "../crv4/runtime_identity_test.go", "../crv4/runtime_identity_capacity_test.go"})); err != nil {
+	if err := verifyReleaseSourceTestCoverage(runtimeSelector, "^Test", releaseEvidenceV2GateSources(t, []string{"../validator/runtime_identity_458_test.go", "../validator/runtime_identity_459_test.go", "../validator/runtime_identity_460_test.go", "../validator/runtime_identity_461_test.go", "../miner/fleet_runtime_458_test.go", "../crv4/validator_stake_runtime458_test.go", "../crv4/validator_stake_runtime459_test.go", "../crv4/validator_stake_runtime460_test.go", "../crv4/validator_stake_runtime461_test.go", "../crv4/reviewed_runtime_test.go", "../crv4/runtime_identity_test.go", "../crv4/runtime_identity_capacity_test.go"})); err != nil {
 		t.Fatal(err)
 	}
 	nativeSelector, err := releaseConnectPolicySelectorAssignment(script, "native_evidence_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyReleaseSourceTestCoverage(nativeSelector, "^Test", releaseEvidenceV2GateSources(t, []string{"../crv4/source_commitment_runtime455_test.go", "../crv4/source_commitment_runtime458_test.go", "../crv4/source_commitment_runtime459_test.go", "../crv4/source_commitment_runtime460_test.go"})); err != nil {
+	if err := verifyReleaseSourceTestCoverage(nativeSelector, "^Test", releaseEvidenceV2GateSources(t, []string{"../crv4/source_commitment_runtime455_test.go", "../crv4/source_commitment_runtime458_test.go", "../crv4/source_commitment_runtime459_test.go", "../crv4/source_commitment_runtime460_test.go", "../crv4/source_commitment_runtime461_test.go"})); err != nil {
 		t.Fatal(err)
 	}
 }

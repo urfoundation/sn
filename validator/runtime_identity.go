@@ -32,7 +32,7 @@ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
 		cfg.StateVersion != releaseRuntimeStateVersion ||
 		!strings.EqualFold(cfg.RuntimeCodeHash, releaseRuntimeCodeHash) ||
 		!strings.EqualFold(cfg.RuntimeMetadataHash, releaseRuntimeMetadataHash) {
-		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/460/1/1 artifact")
+		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/461/1/1 artifact")
 	}
 	return nil
 }

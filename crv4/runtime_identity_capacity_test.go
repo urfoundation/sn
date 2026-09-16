@@ -69,7 +69,7 @@ func TestRuntimeArtifactMetadataAuthenticatesCompleteReviewedIdentityHistory(t *
 	for _, change := range []func([]RuntimeArtifactIdentity) []RuntimeArtifactIdentity{
 		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
 			extra := values[0]
-			extra.Version.SpecVersion = 461
+			extra.Version.SpecVersion = 462
 			return append(values, extra)
 		},
 		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
