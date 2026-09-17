@@ -10,8 +10,8 @@ import (
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 var _ finalNativeCheckpointReaderV2 = (*PublicFinalSemanticChainReader)(nil)
