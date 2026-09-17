@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/payoutartifact"
-	"github.com/urfoundation/sn/protocol"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 type finalLifecycleAppendExchanges func(string, ChainHead, []FinalRPCExchange) error
