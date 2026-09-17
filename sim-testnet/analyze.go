@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 type AnalysisConservation struct {

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 )
 
 // The existing actual archive fixture retains every observed write/read while
