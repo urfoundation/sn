@@ -27,9 +27,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 const (
