@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 func validateEvidenceRelayContinuationRetained(c *EvidenceRelayContinuation, observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected) error {

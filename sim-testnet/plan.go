@@ -20,7 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 type Spend struct {

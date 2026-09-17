@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	servercontroller "github.com/urnetwork/server/controller"
+	servercontroller "github.com/urnetwork/server/v2026/controller"
 )
 
 func fleetLifecycleFilterDriverFixture(t *testing.T) (*ResolvedConfig, *liveScenarioFaultDriver, scenarioFaultSpec, scenarioFaultSpec) {
