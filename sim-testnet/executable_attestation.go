@@ -163,7 +163,7 @@ func parseExecutableBuildInfo(info *debug.BuildInfo, strict bool) (releaseExecut
 		}
 		settings[setting.Key] = setting.Value
 	}
-	if info.Path != "github.com/urfoundation/sn/sim-testnet" || info.Main.Path != "github.com/urfoundation/sn" {
+	if info.Path != "github.com/urfoundation/sn/sim-testnet" || info.Main.Path != "github.com/urfoundation/sn/v2026" {
 		return releaseExecutableBuildIdentity{}, fmt.Errorf("running executable has package/module %q/%q", info.Path, info.Main.Path)
 	}
 	if settings["vcs"] != "git" {

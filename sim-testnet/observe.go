@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 type ChainHead struct {
