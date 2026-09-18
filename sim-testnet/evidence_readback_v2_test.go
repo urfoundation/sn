@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Routing changes only the test transport destination. Request host and the
