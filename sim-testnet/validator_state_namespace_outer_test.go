@@ -16,8 +16,8 @@ import (
 	"github.com/urnetwork/server/model"
 )
 
-// Supplies a real approved plan and a test-owned migration executable. The
-// executable records admission then exits immediately, without DB/network I/O.
+// Supplies a real approved plan and test-owned workload migration executable.
+// A divergent server tool would succeed, so the exit proves which one ran.
 func validatorNamespaceLaunchBoundaryFixture(t *testing.T) (*ResolvedConfig, string, *SetupPlan, *RoleSecrets, map[string]string, string) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
@@ -36,9 +36,14 @@ func validatorNamespaceLaunchBoundaryFixture(t *testing.T) (*ResolvedConfig, str
 		t.Fatal(err)
 	}
 	cfg.Repos.Server = t.TempDir()
-	binary := filepath.Join(cfg.Repos.Server, "migration-boundary")
-	writeValidatorStateTestFile(t, binary, "#!/bin/sh\nprintf 'test-controlled migration admission\\n' > migration-invoked\nexit 73\n")
-	if err := os.Chmod(binary, 0o700); err != nil {
+	workloadBinary := filepath.Join(cfg.Repos.Server, "workload-migration-boundary")
+	writeValidatorStateTestFile(t, workloadBinary, "#!/bin/sh\n[ \"$#\" = 1 ] && [ \"$1\" = __server_db_migrate ] || exit 72\nprintf 'test-controlled migration admission\\n' > migration-invoked\nexit 73\n")
+	if err := os.Chmod(workloadBinary, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	divergentBinary := filepath.Join(cfg.Repos.Server, "divergent-server-ctl")
+	writeValidatorStateTestFile(t, divergentBinary, "#!/bin/sh\nprintf 'wrong migration catalog\\n' > divergent-migration-invoked\nexit 0\n")
+	if err := os.Chmod(divergentBinary, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	stateDir := t.TempDir()
@@ -48,7 +53,7 @@ func validatorNamespaceLaunchBoundaryFixture(t *testing.T) (*ResolvedConfig, str
 	writeValidatorStateTestFile(t, filepath.Join(stateDir, "journal.jsonl"), "retained deployment journal\n")
 	writeValidatorStateTestFile(t, filepath.Join(stateDir, "runtime", "operator-1", "vault", "st.yml"), "retained operator configuration\n")
 	writeValidatorStateTestFile(t, filepath.Join(stateDir, "runtime", "operator-1", "vault", "provider_egress.yml"), "retained original credential\n")
-	return cfg, stateDir, plan, roles, map[string]string{"server-ctl": binary}, filepath.Join(cfg.Repos.Server, "migration-invoked")
+	return cfg, stateDir, plan, roles, map[string]string{"sim-testnet": workloadBinary, "server-ctl": divergentBinary}, filepath.Join(cfg.Repos.Server, "migration-invoked")
 }
 
 // A later validator's signed disk authority must be checked before the first
@@ -64,6 +69,9 @@ func TestValidatorStateNamespaceLaunchRejectsBeforeDatabaseMigration(t *testing.
 		t.Fatal("launch invoked database migration before refusing protected disk authority")
 	} else if !errors.Is(markerErr, os.ErrNotExist) {
 		t.Fatal(markerErr)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Repos.Server, "divergent-migration-invoked")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("launch invoked the divergent server catalog: %v", err)
 	}
 	if err == nil || !strings.Contains(err.Error(), "protected disk attempt-ledger state") {
 		t.Fatalf("launch did not reach protected disk refusal: %v", err)
@@ -88,6 +96,9 @@ func TestValidatorStateNamespaceLaunchPreflightPreservesUnsignedStartup(t *testi
 		}
 		if raw, err := os.ReadFile(marker); err != nil || string(raw) != "test-controlled migration admission\n" {
 			t.Fatalf("legacy=%t migration admission marker differs: %v", legacy, err)
+		}
+		if _, err := os.Stat(filepath.Join(cfg.Repos.Server, "divergent-migration-invoked")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("legacy=%t invoked the divergent server catalog: %v", legacy, err)
 		}
 		if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, stateDir)) {
 			t.Fatalf("legacy=%t preflight changed or prematurely archived runtime state", legacy)

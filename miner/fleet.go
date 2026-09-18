@@ -197,7 +197,7 @@ func mustBoolOpt(opts docopt.Opts, name string) bool {
 func fleetPublish(opts docopt.Opts, manifest *protocol.FleetManifest) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	chain, endpoint, err := dialFleetNativeContext(ctx, fleetOpts(opts, "--substrate"))
+	chain, endpoint, err := dialFleetNativeOptionsContext(ctx, opts, manifest)
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func fleetStatus(opts docopt.Opts, manifest *protocol.FleetManifest) error {
 		return err
 	}
 	want, _ := manifest.CommitmentHash()
-	chain, endpoint, err := dialFleetNativeContext(ctx, fleetOpts(opts, "--substrate"))
+	chain, endpoint, err := dialFleetNativeOptionsContext(ctx, opts, manifest)
 	if err != nil {
 		return err
 	}

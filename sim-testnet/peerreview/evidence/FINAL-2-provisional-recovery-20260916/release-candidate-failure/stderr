@@ -1,0 +1,9 @@
+[env]glog not configured from command line. Using default configuration.
+I0916 16:53:00.592736  194729 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]
+I0916 16:53:00.592950  194729 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0916 16:53:00.593021  194729 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]
+I0916 16:53:00.593071  194729 env.go:67] [env]settings = map[]
+sim-testnet: provisional testnet resume; final_acceptance=false; retained plan 0xcba026fa05f500c6ee120a19c94b1f3f0d1362bf4e6cab0db21aa4306d8b4d0f; actual driver SHA256 sha256:5ff1130c0f1b7ef3404c2d7a8c37f388854bed8299b3ae4bb152ac3ebf220348; provenance /home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/provisional-resumes/invocation-4171659671/provenance.json
+sim-testnet: provisional resume authenticated 4674 verified local receipts; current topology readiness remains required
+sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required
+sim-testnet: open durable release-1.0 attempt: campaign succession requires the strict approved deployment owner

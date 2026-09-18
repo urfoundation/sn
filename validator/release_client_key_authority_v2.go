@@ -342,16 +342,16 @@ func (self *releaseClientKeyAuthorityV2Reads) finish(resultErr error) error {
 	actualChainId, err := chain.client.ChainID(callCtx)
 	err = errors.Join(err, callCtx.Err())
 	cancel()
-	if err != nil || actualChainId == nil || actualChainId.Cmp(chain.chainId) != 0 {
-		return errors.Join(errors.New("client-key authority final chain identity changed"), err, ctx.Err())
+	if err := releaseRpcObservationError(err, actualChainId != nil && actualChainId.Cmp(chain.chainId) == 0, errors.New("client-key authority final chain identity changed")); err != nil {
+		return errors.Join(err, ctx.Err())
 	}
 	var genesis *common.Hash
 	callCtx, cancel = context.WithTimeout(ctx, chainCallTimeout)
 	err = chain.client.Client().CallContext(callCtx, &genesis, "chain_getBlockHash", uint64(0))
 	err = errors.Join(err, callCtx.Err())
 	cancel()
-	if err != nil || genesis == nil || [32]byte(*genesis) != self.identity.domain.GenesisHash {
-		return errors.Join(errors.New("client-key authority final native genesis changed"), err, ctx.Err())
+	if err := releaseRpcObservationError(err, genesis != nil && [32]byte(*genesis) == self.identity.domain.GenesisHash, errors.New("client-key authority final native genesis changed")); err != nil {
+		return errors.Join(err, ctx.Err())
 	}
 	finalized, finalizedHash, err := chain.FinalizedBlockContext(ctx)
 	if err != nil {
@@ -371,9 +371,15 @@ func (self *releaseClientKeyAuthorityV2Reads) finish(resultErr error) error {
 		err := chain.client.Client().CallContext(callCtx, &header, "eth_getBlockByNumber", hexutil.EncodeUint64(boundary.Block), false)
 		err = errors.Join(err, callCtx.Err())
 		cancel()
+		if err != nil {
+			return errors.Join(err, ctx.Err())
+		}
 		block, hash, identityErr := header.identity()
-		if err != nil || identityErr != nil || block != boundary.Block || hash != boundary.Hash {
-			return errors.Join(errors.New("client-key authority final canonical boundary changed"), err, identityErr, ctx.Err())
+		if identityErr != nil {
+			return errors.Join(identityErr, ctx.Err())
+		}
+		if block != boundary.Block || hash != boundary.Hash {
+			return errors.Join(errors.New("client-key authority final canonical boundary changed"), ctx.Err())
 		}
 		witnessedBoundaryKVs[boundary] = true
 	}

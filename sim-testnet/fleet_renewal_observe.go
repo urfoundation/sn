@@ -287,7 +287,7 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	}
 	defer manager.Close()
 	coordinator := stabi.NewSTCoordinator()
-	nativeHash, nativeNumber, err := native.finalizedHeadContext(ctx)
+	native, nativeHash, nativeNumber, err := native.finalizedManagerContext(ctx)
 	if err != nil {
 		return result, err
 	}

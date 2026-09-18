@@ -37,6 +37,11 @@ import (
 // The quota forecast includes every permitted validator process restart.
 const validatorProcessRestartLimit = 5
 
+// A child that stays up through this interval starts a fresh bounded recovery
+// burst. An exhausted stopped child waits out the remainder of the same window.
+// ProcessState.Restarts remains cumulative for evidence.
+const supervisorRestartBudgetRecoveryWindow = 10 * time.Minute
+
 type ProcessSpec struct {
 	ID, Role, Identity, Command, WorkDir string
 	Args                                 []string
@@ -767,7 +772,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
 		return err
 	}
-	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
+	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["sim-testnet"]); err != nil {
 		return err
 	}
 	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins, p.PlanHash)
@@ -862,6 +867,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	}
 	if detach || cfg.Config.Deployment.DetachAfterLaunch {
 		startedPersistentSupervisor := false
+		var persistentService *SupervisorService
 		defer func() {
 			returnErr = cleanupFailedPersistentLaunch(stateDir, startedPersistentSupervisor, returnErr, StopDeployment)
 		}()
@@ -873,12 +879,29 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 			// service. startPersistentSupervisor may fail after writing service
 			// ownership or asking systemd to start the unit.
 			startedPersistentSupervisor = true
-			if err := startPersistentSupervisor(ctx, cfg, bins["sim-testnet"], stateDir, specPath); err != nil {
+			persistentService, err = startPersistentSupervisor(ctx, cfg, bins["sim-testnet"], stateDir, specPath)
+			if err != nil {
 				return err
 			}
 		}
-		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf))
+		readyState, err := waitSupervisorReadyWithService(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf), persistentService, readSupervisorServiceStatus)
 		if err != nil {
+			if startedPersistentSupervisor {
+				preserved, preserveErr := preserveRecoverableProvisionalStartup(ctx, cfg, stateDir, sf, persistentService, err, false, liveRecordedSupervisor, readSupervisorServiceStatus)
+				if preserveErr != nil {
+					return errors.Join(err, fmt.Errorf("preserve recoverable provisional supervisor: %w", preserveErr))
+				}
+				if preserved {
+					// The next explicit resume authenticates and adopts this exact
+					// generation. The current invocation still reports its readiness
+					// failure and cannot claim topology or final acceptance.
+					startedPersistentSupervisor = false
+					return fmt.Errorf("provisional supervisor retained for independent child recovery; resume the same approved plan: %w", err)
+				}
+			}
+			return err
+		}
+		if adopted, err := adoptStartedProvisionalTopology(ctx, cfg, stateDir, p, roles, executor, *readyState, proofBaseline); adopted {
 			return err
 		}
 		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
@@ -1014,7 +1037,7 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		return nil, err
 	}
-	targets := []struct{ name, dir, pkg string }{{"sim-testnet", cfg.Repos.SN, "./sim-testnet"}, {"server-ctl", cfg.Repos.Server, "./bringyourctl"}}
+	targets := []struct{ name, dir, pkg string }{{"sim-testnet", cfg.Repos.SN, "./sim-testnet"}}
 	result := map[string]string{}
 	var failures []error
 	for _, t := range targets {
@@ -1557,13 +1580,15 @@ func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip stri
 	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_DOMAIN": "bringyour.com", "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet", "URNETWORK_SIM_TESTNET": "1"}
 }
 
+// Runs the database catalog from the exact binary that will serve and supervise
+// the workload, so a provisional image cannot diverge from a retained checkout.
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {
 	if binary == "" {
-		return fmt.Errorf("server migration binary is missing")
+		return fmt.Errorf("workload migration binary is missing")
 	}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		ip := fmt.Sprintf("127.0.0.%d", 10+i)
-		cmd := exec.CommandContext(ctx, binary, "db", "migrate")
+		cmd := exec.CommandContext(ctx, binary, "__server_db_migrate")
 		cmd.Dir = cfg.Repos.Server
 		cmd.Env = envList(operatorBaseEnv(cfg, stateDir, i, ip))
 		output, err := cmd.CombinedOutput()
@@ -2252,6 +2277,55 @@ func probeConnectH3Readiness(ctx context.Context, address, serverName, caFile st
 	return connection.CloseWithError(0, "readiness complete")
 }
 
+const maximumProcessHealthBodyBytes = 64 * 1024
+
+// Reads the bounded body because Warp-compatible services report startup
+// refusal inside HTTP 200 JSON. Other health endpoints retain status-code
+// compatibility when they do not expose that field.
+func processHealthResponseError(response *http.Response) error {
+	if response == nil || response.Body == nil {
+		return errors.New("health response is incomplete")
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, maximumProcessHealthBodyBytes+1))
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("health status %d", response.StatusCode)
+	}
+	if len(body) > maximumProcessHealthBodyBytes {
+		return errors.New("health response body is too large")
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(body, &document); err != nil {
+		return errors.New("health response body is not valid JSON")
+	}
+	rawStatus, ok := document["status"]
+	if !ok {
+		return nil
+	}
+	var status string
+	if err := json.Unmarshal(rawStatus, &status); err != nil || strings.TrimSpace(status) == "" {
+		return errors.New("health response status is invalid")
+	}
+	status = strings.TrimSpace(status)
+	lowerStatus := strings.ToLower(status)
+	if len(lowerStatus) > len("error") && strings.HasPrefix(lowerStatus, "error") {
+		switch lowerStatus[len("error")] {
+		case ':', ' ', '\t', '\r', '\n', '\f':
+			return fmt.Errorf("health response status is %q", status)
+		}
+	}
+	return nil
+}
+
 // Requires both the HTTP control surface and any transport-specific probe.
 // The injected callback gives regressions an exact barrier without timing.
 func processSpecReadinessWithH3Probe(ctx context.Context, client *http.Client, spec ProcessSpec, h3Probe func(context.Context, string, string, string) error) error {
@@ -2266,16 +2340,8 @@ func processSpecReadinessWithH3Probe(ctx context.Context, client *http.Client, s
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(io.Discard, response.Body)
-	closeErr := response.Body.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("health status %d", response.StatusCode)
+	if err := processHealthResponseError(response); err != nil {
+		return err
 	}
 	probeFieldCount := 0
 	for _, value := range []string{spec.H3ProbeAddress, spec.H3ProbeServerName, spec.H3ProbeCAFile} {
@@ -2489,6 +2555,71 @@ type SupervisorService struct {
 	StateDir string `json:"state_dir"`
 }
 
+type supervisorServiceStatus struct {
+	ActiveState    string
+	SubState       string
+	Result         string
+	ExecMainCode   string
+	ExecMainStatus string
+}
+
+type supervisorServiceStatusReader func(context.Context, SupervisorService) (supervisorServiceStatus, error)
+
+// A simple service must stay active while its supervisor publishes readiness.
+// Dead, exited and failed substates are terminal even if stale state remains.
+func (self supervisorServiceStatus) terminal() bool {
+	if self.ActiveState != "active" && self.ActiveState != "activating" && self.ActiveState != "reloading" {
+		return true
+	}
+	return self.SubState == "dead" || self.SubState == "exited" || self.SubState == "failed"
+}
+
+// Parses fixed systemd properties without accepting missing or duplicate keys.
+func parseSupervisorServiceStatus(output []byte) (supervisorServiceStatus, error) {
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || key == "" {
+			return supervisorServiceStatus{}, errors.New("systemd supervisor status is malformed")
+		}
+		if _, duplicate := values[key]; duplicate {
+			return supervisorServiceStatus{}, fmt.Errorf("systemd supervisor status repeats %s", key)
+		}
+		values[key] = value
+	}
+	for _, key := range []string{"ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus"} {
+		if _, ok := values[key]; !ok {
+			return supervisorServiceStatus{}, fmt.Errorf("systemd supervisor status omits %s", key)
+		}
+	}
+	return supervisorServiceStatus{
+		ActiveState: values["ActiveState"], SubState: values["SubState"], Result: values["Result"],
+		ExecMainCode: values["ExecMainCode"], ExecMainStatus: values["ExecMainStatus"],
+	}, nil
+}
+
+// Reads the exact service started by this launch. Each observation is bounded
+// so a stalled user manager cannot consume the outer readiness deadline.
+func readSupervisorServiceStatus(ctx context.Context, service SupervisorService) (supervisorServiceStatus, error) {
+	if service.Schema != "urnetwork-sim-supervisor-service-v1" || service.Name == "" {
+		return supervisorServiceStatus{}, errors.New("owned persistent supervisor service is invalid")
+	}
+	systemctl, err := exec.LookPath("systemctl")
+	if err != nil {
+		return supervisorServiceStatus{}, err
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(queryCtx, systemctl, "--user", "show", service.Name,
+		"--property=ActiveState", "--property=SubState", "--property=Result",
+		"--property=ExecMainCode", "--property=ExecMainStatus", "--no-pager")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return supervisorServiceStatus{}, fmt.Errorf("inspect owned persistent supervisor: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return parseSupervisorServiceStatus(output)
+}
+
 func serviceToken(value string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(value) {
@@ -2499,6 +2630,15 @@ func serviceToken(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// Derives the one user-service identity owned by a deployment.
+func persistentSupervisorServiceName(deploymentID string) (string, error) {
+	token := serviceToken(deploymentID)
+	if token == "" {
+		return "", errors.New("deployment id cannot form a systemd service name")
+	}
+	return "urnetwork-sim-" + token + ".service", nil
 }
 
 func systemdExecArgument(value string) (string, error) {
@@ -2553,41 +2693,71 @@ TimeoutStopSec=%d
 
 // Remove any legacy boot activation before starting the unit for this boot.
 func persistentSupervisorSystemctlActions(name string) [][]string {
-	return [][]string{{"--user", "daemon-reload"}, {"--user", "disable", name}, {"--user", "start", name}}
+	return [][]string{{"--user", "daemon-reload"}, {"--user", "disable", name}, {"--user", "reset-failed", name}, {"--user", "start", name}}
 }
 
-func startPersistentSupervisor(ctx context.Context, cfg *ResolvedConfig, binary, stateDir, specPath string) error {
+// Stops boot activation and clears the owned unit's terminal-state latch.
+func persistentSupervisorStopSystemctlActions(name string) [][]string {
+	return [][]string{{"--user", "disable", "--now", name}, {"--user", "reset-failed", name}}
+}
+
+// An unloaded exact unit has no failed latch left to clear. Match the complete
+// systemd diagnostic so another unit or another manager failure stays fatal.
+func persistentSupervisorResetAlreadyClean(args []string, output []byte) bool {
+	if len(args) != 3 || args[0] != "--user" || args[1] != "reset-failed" || args[2] == "" {
+		return false
+	}
+	message := fmt.Sprintf("Failed to reset failed state of unit %s: Unit %s not loaded.", args[2], args[2])
+	return strings.TrimSpace(string(output)) == message
+}
+
+// Runs an ordered lifecycle sequence, allowing only the idempotent exact-unit
+// reset outcome while the caller's context remains live.
+func runPersistentSupervisorSystemctlActions(ctx context.Context, run func(...string) ([]byte, error), actions [][]string) error {
+	for _, args := range actions {
+		output, runErr := run(args...)
+		if runErr == nil {
+			continue
+		}
+		if ctx.Err() == nil && persistentSupervisorResetAlreadyClean(args, output) {
+			continue
+		}
+		return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), runErr, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func startPersistentSupervisor(ctx context.Context, cfg *ResolvedConfig, binary, stateDir, specPath string) (*SupervisorService, error) {
 	systemctl, err := exec.LookPath("systemctl")
 	if err != nil {
-		return fmt.Errorf("persistent detached launch requires systemd user services: %w", err)
+		return nil, fmt.Errorf("persistent detached launch requires systemd user services: %w", err)
 	}
-	name := "urnetwork-sim-" + serviceToken(cfg.Config.Deployment.DeploymentID) + ".service"
-	if name == "urnetwork-sim-.service" {
-		return fmt.Errorf("deployment id cannot form a systemd service name")
+	name, err := persistentSupervisorServiceName(cfg.Config.Deployment.DeploymentID)
+	if err != nil {
+		return nil, err
 	}
 	unit, err := persistentSupervisorUnit(cfg, binary, stateDir, specPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	configHome, err := os.UserConfigDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	unitPath := filepath.Join(configHome, "systemd", "user", name)
 	if err := atomicWrite(unitPath, []byte(unit), 0o600); err != nil {
-		return err
+		return nil, err
 	}
-	metadata := SupervisorService{Schema: "urnetwork-sim-supervisor-service-v1", Name: name, Unit: unitPath, Binary: binary, StateDir: stateDir}
+	metadata := &SupervisorService{Schema: "urnetwork-sim-supervisor-service-v1", Name: name, Unit: unitPath, Binary: binary, StateDir: stateDir}
 	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.service.json"), metadata); err != nil {
-		return err
+		return nil, err
 	}
-	for _, args := range persistentSupervisorSystemctlActions(name) {
-		cmd := exec.CommandContext(ctx, systemctl, args...)
-		if output, runErr := cmd.CombinedOutput(); runErr != nil {
-			return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), runErr, strings.TrimSpace(string(output)))
-		}
+	if err := runPersistentSupervisorSystemctlActions(ctx, func(args ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, systemctl, args...).CombinedOutput()
+	}, persistentSupervisorSystemctlActions(name)); err != nil {
+		return nil, err
 	}
-	return nil
+	return metadata, nil
 }
 
 func supervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
@@ -2909,14 +3079,35 @@ func supervisorStateReady(state SupervisorState, wantHash string, specs []Proces
 }
 
 func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, processLogs *processLogGate, timeout time.Duration) (*SupervisorState, error) {
+	return waitSupervisorReadyWithService(ctx, stateDir, want, processLogs, timeout, nil, nil)
+}
+
+// Detached launch also observes the exact service it started. A terminal
+// service wins over stale supervisor state and ends recovery immediately.
+func waitSupervisorReadyWithService(ctx context.Context, stateDir string, want SupervisorFile, processLogs *processLogGate, timeout time.Duration, service *SupervisorService, readService supervisorServiceStatusReader) (*SupervisorState, error) {
+	if service != nil && readService == nil {
+		return nil, errors.New("owned persistent supervisor has no service status reader")
+	}
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(timeout)
 	var lastErr error
+	var lastServiceErr error
 	var lastState *SupervisorState
 	for time.Now().Before(deadline) {
+		if service != nil {
+			status, serviceErr := readService(ctx, *service)
+			if serviceErr != nil {
+				lastServiceErr = serviceErr
+			} else {
+				lastServiceErr = nil
+				if status.terminal() {
+					return nil, fmt.Errorf("owned persistent supervisor service %s is terminal: active=%s sub=%s result=%s exec_code=%s exec_status=%s", service.Name, status.ActiveState, status.SubState, status.Result, status.ExecMainCode, status.ExecMainStatus)
+				}
+			}
+		}
 		b, readErr := os.ReadFile(filepath.Join(stateDir, "supervisor.state.json"))
 		if readErr == nil {
 			var state SupervisorState
@@ -2956,6 +3147,9 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 		case <-timer.C:
 		}
 	}
+	if lastServiceErr != nil {
+		return nil, fmt.Errorf("inspect owned persistent supervisor service: %w", lastServiceErr)
+	}
 	if lastErr != nil {
 		return nil, fmt.Errorf("supervisor readiness timeout: %w", lastErr)
 	}
@@ -2971,9 +3165,36 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 
 type supervisorContractCleanup func(context.Context, string, []ProcessSpec, time.Time) error
 
+// Describes one permitted attempt without mutating cumulative process evidence.
+type supervisorRestartDecision struct {
+	restartBurst int
+	delay        time.Duration
+}
+
+// Binds a deferred attempt to the stopped process generation and burst that
+// created it, so a delayed or duplicate delivery cannot replace live state.
+type supervisorRestartNotice struct {
+	id                      string
+	generation              uint64
+	priorRestartBurst       int
+	replacementRestartBurst int
+}
+
+// Waits for one attempt delay or its owning supervisor's cancellation.
+type supervisorRestartWait func(context.Context, time.Duration) error
+
 func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string, cleanup supervisorContractCleanup) error {
+	return superviseWithContractCleanupAndRestartWait(ctx, stateDir, specPath, cleanup, waitSupervisorRestart)
+}
+
+// The waiter seam makes long recovery cooldowns deterministic in tests while
+// production retains one cancellation-bound timer for each stopped child.
+func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, specPath string, cleanup supervisorContractCleanup, restartWait supervisorRestartWait) error {
 	if cleanup == nil {
 		return errors.New("supervisor contract cleanup callback is missing")
+	}
+	if restartWait == nil {
+		return errors.New("supervisor restart waiter is missing")
 	}
 	lock, err := os.OpenFile(filepath.Join(stateDir, "supervisor.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -3021,25 +3242,23 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 	childCtx, cancelChildren := supervisorChildContext(ctx)
 	defer cancelChildren()
 	type running struct {
-		spec       ProcessSpec
-		cmd        *exec.Cmd
-		identity   supervisedProcessIdentity
-		state      ProcessState
-		generation uint64
+		spec         ProcessSpec
+		cmd          *exec.Cmd
+		identity     supervisedProcessIdentity
+		state        ProcessState
+		generation   uint64
+		startedAt    time.Time
+		restartBurst int
 	}
 	type exitNotice struct {
 		id         string
 		generation uint64
 		err        error
 	}
-	type restartNotice struct {
-		id         string
-		generation uint64
-	}
 	runs := map[string]*running{}
 	var mu sync.Mutex
 	exits := make(chan exitNotice, len(sf.Specs)*2)
-	restarts := make(chan restartNotice, len(sf.Specs))
+	restarts := make(chan supervisorRestartNotice, len(sf.Specs))
 	publish := func() error {
 		mu.Lock()
 		defer mu.Unlock()
@@ -3064,6 +3283,7 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 	start := func(r *running) error {
 		r.cmd = nil
 		r.identity = supervisedProcessIdentity{}
+		r.startedAt = time.Now()
 		cmd, exited, err := startSpecWithExit(childCtx, r.spec)
 		if err != nil {
 			return err
@@ -3173,28 +3393,23 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 				}
 				return fmt.Errorf("supervisor process %s left process-group descendants after leader exit", r.spec.ID)
 			}
-			if r.state.Restarts < r.spec.RestartLimit {
-				r.state.Restarts++
-				delay := restartBackoff(r.state.Restarts)
-				generation := r.generation
-				go func(id string) {
-					timer := time.NewTimer(delay)
-					defer timer.Stop()
-					select {
-					case <-ctx.Done():
-					case <-timer.C:
-						restarts <- restartNotice{id: id, generation: generation}
-					}
-				}(r.spec.ID)
+			if decision, restart := nextSupervisorRestart(r.restartBurst, time.Since(r.startedAt), r.spec.RestartLimit); restart {
+				notice := supervisorRestartNotice{
+					id: r.spec.ID, generation: r.generation,
+					priorRestartBurst: r.restartBurst, replacementRestartBurst: decision.restartBurst,
+				}
+				go sendSupervisorRestartAfter(ctx, restartWait, restarts, notice, decision.delay)
 			}
 			if err := publish(); err != nil {
 				return err
 			}
 		case notice := <-restarts:
 			r := runs[notice.id]
-			if r == nil || notice.generation != r.generation || r.state.PID != 0 {
+			if ctx.Err() != nil || r == nil || !supervisorRestartNoticeApplies(notice, r.generation, r.state.PID, r.restartBurst, r.spec.RestartLimit) {
 				continue
 			}
+			r.restartBurst = notice.replacementRestartBurst
+			r.state.Restarts++
 			if err := start(r); err != nil {
 				r.state.ExitError = "restart: " + err.Error()
 				// Feed the same bounded state machine without inventing a PID.
@@ -3214,6 +3429,56 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 	}
 }
 
+// A stopped child receives no more exit events, so an exhausted burst schedules
+// one fresh attempt when the last attempted child generation's window ends.
+func nextSupervisorRestart(current int, uptime time.Duration, limit int) (supervisorRestartDecision, bool) {
+	if current < 0 || uptime < 0 || limit < 1 {
+		return supervisorRestartDecision{}, false
+	}
+	if uptime >= supervisorRestartBudgetRecoveryWindow {
+		current = 0
+	}
+	if current < limit {
+		next := current + 1
+		return supervisorRestartDecision{restartBurst: next, delay: restartBackoff(next)}, true
+	}
+	return supervisorRestartDecision{restartBurst: 1, delay: supervisorRestartBudgetRecoveryWindow - uptime}, true
+}
+
+// Only the stopped generation and burst that scheduled a notice may consume it.
+// The prior-burst check also makes a duplicate notice stale after a failed start.
+func supervisorRestartNoticeApplies(notice supervisorRestartNotice, generation uint64, pid, restartBurst, restartLimit int) bool {
+	return notice.id != "" && notice.generation == generation && pid == 0 && notice.priorRestartBurst == restartBurst &&
+		notice.replacementRestartBurst > 0 && notice.replacementRestartBurst <= restartLimit
+}
+
+// Waits without leaving an uninterruptible cooldown goroutine behind.
+func waitSupervisorRestart(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// Delivers a restart only after its bounded delay and while its owner remains
+// live. The event loop performs the generation and burst checks on receipt.
+func sendSupervisorRestartAfter(ctx context.Context, wait supervisorRestartWait, restarts chan<- supervisorRestartNotice, notice supervisorRestartNotice, delay time.Duration) {
+	if err := wait(ctx, delay); err != nil {
+		return
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	select {
+	case <-ctx.Done():
+	case restarts <- notice:
+	}
+}
+
 func restartBackoff(restarts int) time.Duration {
 	if restarts < 1 {
 		restarts = 1
@@ -3224,6 +3489,7 @@ func restartBackoff(restarts int) time.Duration {
 	}
 	return d
 }
+
 func healthOK(url string) bool {
 	if url == "" {
 		return true
@@ -3233,9 +3499,7 @@ func healthOK(url string) bool {
 	if err != nil {
 		return false
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	return resp.StatusCode/100 == 2
+	return processHealthResponseError(resp) == nil
 }
 
 func StopDeployment(ctx context.Context, stateDir string) (map[string]any, error) {
@@ -3260,9 +3524,10 @@ func StopDeployment(ctx context.Context, stateDir string) (map[string]any, error
 		var service SupervisorService
 		if json.Unmarshal(serviceBytes, &service) == nil && service.Schema == "urnetwork-sim-supervisor-service-v1" && service.Name != "" {
 			if systemctl, lookupErr := exec.LookPath("systemctl"); lookupErr == nil {
-				cmd := exec.CommandContext(ctx, systemctl, "--user", "disable", "--now", service.Name)
-				if output, stopErr := cmd.CombinedOutput(); stopErr != nil {
-					return nil, fmt.Errorf("stop persistent supervisor: %w: %s", stopErr, strings.TrimSpace(string(output)))
+				if err := runPersistentSupervisorSystemctlActions(ctx, func(args ...string) ([]byte, error) {
+					return exec.CommandContext(ctx, systemctl, args...).CombinedOutput()
+				}, persistentSupervisorStopSystemctlActions(service.Name)); err != nil {
+					return nil, err
 				}
 				serviceStopped = service.Name
 			}

@@ -403,7 +403,7 @@ Add deterministic synthetic tests following [CODESTYLE.md](../../connect/CODESTY
   progress and cannot turn stale or failed evidence into a passing result.
 
 Astra (`gpt-6-astra`, effort `max`) diagnoses and implements; Terra
-(`gpt-5.6-terra`, effort `max`) runs affected tests normally and under race.
+(`gpt-5.6-terra`, effort `medium`) runs affected tests normally and under race.
 The final integration exercise upgrades a controlled runtime while the
 subnet is active and demonstrates continued required observations, reconciled
 transactions and unchanged approvals. This architecture work is not an extra

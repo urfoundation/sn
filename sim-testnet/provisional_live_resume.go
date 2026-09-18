@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -120,7 +121,7 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 		ManifestHash: hash, ManifestBytesSHA256: bytesSHA256(raw), SupervisorBinarySHA256: binaryHash,
 		SupervisorPID: live.SupervisorPID, SupervisorStartTimeTicks: live.SupervisorStartTimeTicks,
 		Driver: cfg.provisionalResume.Driver, ProvenancePath: cfg.provisionalResume.RecordPath,
-		ProcessLogGatePath: filepath.Join(filepath.Dir(cfg.provisionalResume.RecordPath), "process-log-gate.json"),
+		ProcessLogGatePath: provisionalProcessLogGatePath(cfg.provisionalResume.RecordPath, hash, live.SupervisorPID, live.SupervisorStartTimeTicks),
 		ProofBaseline:      baseline, FreshProofStartupWaived: true,
 		ObservedProofCounts: baseline, ObservedProofCountsAt: time.Now().UTC().Format(time.RFC3339Nano),
 		PriorRestarts: priorRestarts, manifest: manifest,
@@ -131,12 +132,37 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 	return adoption, nil
 }
 
+func provisionalProcessLogGatePath(recordPath, manifestHash string, supervisorPID int, supervisorStartTimeTicks uint64) string {
+	identity := strings.TrimPrefix(strings.ToLower(manifestHash), "0x")
+	return filepath.Join(filepath.Dir(recordPath), fmt.Sprintf("process-log-gate-%s-%d-%d.json", identity, supervisorPID, supervisorStartTimeTicks))
+}
+
 func writeProvisionalLiveTopologyRecord(adoption *provisionalLiveTopology) error {
 	raw, err := json.MarshalIndent(adoption, "", "  ")
 	if err != nil {
 		return err
 	}
 	return atomicWrite(filepath.Join(filepath.Dir(adoption.ProvenancePath), "live-topology.json"), append(raw, '\n'), 0600)
+}
+
+// A new detached provisional generation uses the same authenticated handoff
+// as a retained one. Its launch owner still cleans up any actual failure.
+func adoptStartedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, started SupervisorState, baseline map[string]int) (bool, error) {
+	if !provisionalResumeEnabled(cfg) {
+		return false, nil
+	}
+	adoption, err := prepareProvisionalLiveTopology(cfg, stateDir, "resume")
+	if err != nil {
+		return true, err
+	}
+	if adoption == nil {
+		return true, errors.New("new provisional supervisor is no longer live")
+	}
+	if err := provisionalAdoptionGeneration(adoption, started); err != nil {
+		return true, err
+	}
+	adoption.ProofBaseline = baseline
+	return true, adoptProvisionalLiveTopology(ctx, cfg, stateDir, plan, roles, executor, adoption)
 }
 
 func loadExistingProvisionalRoles(cfg *ResolvedConfig, stateDir string) (*RoleSecrets, error) {
@@ -163,6 +189,32 @@ func provisionalAdoptionGeneration(adoption *provisionalLiveTopology, state Supe
 		return errors.New("provisional adopted supervisor generation changed")
 	}
 	return validateSupervisorGeneration(state)
+}
+
+// A completed pointer for the same plan decides whether a scenario can reuse
+// its process-log fence or must authenticate and publish the current live
+// generation first. Malformed legacy placeholders remain replaceable, as they
+// never represented a completed adoption.
+func provisionalLiveTopologyAdoptionCurrent(cfg *ResolvedConfig, stateDir string, current *provisionalLiveTopology) (bool, error) {
+	if cfg == nil || cfg.provisionalResume == nil || cfg.provisionalResume.Record == nil || current == nil {
+		return false, errors.New("provisional scenario topology context is incomplete")
+	}
+	prior, present := optionalCompletedProvisionalLiveTopology(cfg, stateDir)
+	if !present {
+		return false, nil
+	}
+	return prior.ManifestHash == current.ManifestHash && prior.SupervisorPID == current.SupervisorPID && prior.SupervisorStartTimeTicks == current.SupervisorStartTimeTicks, nil
+}
+
+func optionalCompletedProvisionalLiveTopology(cfg *ResolvedConfig, stateDir string) (*provisionalLiveTopology, bool) {
+	var adoption provisionalLiveTopology
+	if err := readJSONFile(filepath.Join(stateDir, "provisional-resumes", "live-topology.json"), &adoption); err != nil {
+		return nil, false
+	}
+	if cfg == nil || cfg.provisionalResume == nil || cfg.provisionalResume.Record == nil || adoption.Schema != "urnetwork-sim-provisional-live-topology-v1" || !adoption.Provisional || adoption.FinalAcceptance || adoption.PlanHash != cfg.provisionalResume.Record.PlanHash || adoption.CompletedAt == "" {
+		return nil, false
+	}
+	return &adoption, true
 }
 
 // Provisional launch admits live provider swarms while their members catch up.
@@ -218,7 +270,11 @@ func provisionalProofsAdvanced(baseline, current map[string]int) bool {
 }
 
 func newProvisionalProcessLogGate(stateDir string, adoption *provisionalLiveTopology) (*processLogGate, error) {
-	cursors, err := processLogCursors(stateDir, adoption.manifest)
+	return newProvisionalProcessLogGateAtBoundary(stateDir, adoption, nil)
+}
+
+func newProvisionalProcessLogGateAtBoundary(stateDir string, adoption *provisionalLiveTopology, boundary []processLogCursor) (*processLogGate, error) {
+	cursors, err := processLogCursorsAtBoundary(stateDir, adoption.manifest, boundary)
 	if err != nil {
 		return nil, err
 	}
@@ -232,6 +288,41 @@ func newProvisionalProcessLogGate(stateDir string, adoption *provisionalLiveTopo
 		return nil, err
 	}
 	return gate, nil
+}
+
+// The previous generation's immutable gate supplies the exact next byte for
+// every append-only process log. Its findings stay in the prior invocation;
+// the new gate scans the shutdown/startup tail so a rollover cannot erase it.
+func provisionalProcessLogBoundary(cfg *ResolvedConfig, stateDir string, current *provisionalLiveTopology) ([]processLogCursor, error) {
+	prior, present := optionalCompletedProvisionalLiveTopology(cfg, stateDir)
+	if !present || prior.ManifestHash == current.ManifestHash && prior.SupervisorPID == current.SupervisorPID && prior.SupervisorStartTimeTicks == current.SupervisorStartTimeTicks {
+		return nil, nil
+	}
+	relative, err := filepath.Rel(filepath.Join(stateDir, "provisional-resumes"), prior.ProcessLogGatePath)
+	if err != nil || relative == "." || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
+		return nil, errors.New("prior provisional process log gate is outside retained provenance")
+	}
+	var state processLogGateState
+	if err := readJSONFile(prior.ProcessLogGatePath, &state); err != nil {
+		return nil, fmt.Errorf("read prior provisional process log gate: %w", err)
+	}
+	if state.Schema != processLogGateSchema || state.DeploymentID != current.manifest.DeploymentID || state.ManifestHash != prior.ManifestHash {
+		return nil, errors.New("prior provisional process log gate identity differs")
+	}
+	if state.SupervisorPID != 0 && (state.SupervisorPID != prior.SupervisorPID || state.SupervisorStartTimeTicks != prior.SupervisorStartTimeTicks) {
+		return nil, errors.New("prior provisional process log gate generation differs")
+	}
+	if err := validatePersistedProcessLogGate(state); err != nil {
+		return nil, err
+	}
+	expected, err := processLogCursorsWithoutOffsets(stateDir, current.manifest)
+	if err != nil {
+		return nil, err
+	}
+	if !sameProcessLogCursorInventory(state.Cursors, expected) {
+		return nil, errors.New("prior provisional process log inventory differs from the current topology")
+	}
+	return append([]processLogCursor(nil), state.Cursors...), nil
 }
 
 func provisionalVerifiedProofCounts(ctx context.Context, cfg *ResolvedConfig, stateDir string, manifest SupervisorFile) (map[string]int, error) {
@@ -278,7 +369,15 @@ func provisionalVerifiedProofCounts(ctx context.Context, cfg *ResolvedConfig, st
 	return counts, nil
 }
 
-func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
+// Authenticate a fresh read-only setup prefix before topology or tournament
+// execution. Its journal index and immutable source cache end at this boundary.
+func (self *Executor) authenticateProvisionalSetupPrefix(ctx context.Context, plan *SetupPlan, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) (*Action, error) {
+	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || plan == nil || readEntries == nil || readSource == nil {
+		return nil, errors.New("provisional setup prefix context is unavailable")
+	}
+	entries := readEntries()
+	verified := newCarriedPreparationIndex(self.plan, entries)
+	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
 	var topology *Action
 	for i := range plan.Actions {
 		action := plan.Actions[i]
@@ -286,18 +385,36 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 			topology = &plan.Actions[i]
 			break
 		}
-		prior, ok := executor.verifiedActionEntry(action)
-		if !ok {
-			return fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		if err := executor.authenticateProvisionalReceipt(action, prior); err != nil {
-			return err
+		prior, ok := verified.find(action, false)
+		if !ok {
+			return nil, fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
+		}
+		if err := self.authenticateProvisionalReceiptWithReader(action, prior, readPostcondition); err != nil {
+			return nil, err
 		}
 	}
 	if topology == nil {
-		return errors.New("approved plan has no topology.launch action")
+		return nil, errors.New("approved plan has no topology.launch action")
 	}
-	gate, err := newProvisionalProcessLogGate(stateDir, adoption)
+	if !slices.Equal(entries, readEntries()) {
+		return nil, errors.New("provisional setup prefix journal changed during reconciliation")
+	}
+	return topology, ctx.Err()
+}
+
+func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
+	topology, err := executor.authenticateProvisionalSetupPrefix(ctx, plan, executor.journal.Entries, readValidatorEvidenceHistoricalPlan)
+	if err != nil {
+		return err
+	}
+	boundary, err := provisionalProcessLogBoundary(cfg, stateDir, adoption)
+	if err != nil {
+		return err
+	}
+	gate, err := newProvisionalProcessLogGateAtBoundary(stateDir, adoption, boundary)
 	if err != nil {
 		return err
 	}
@@ -445,10 +562,14 @@ func loadProvisionalOrStrictProcessLogGateState(cfg *ResolvedConfig, stateDir st
 	if err := readJSONFile(adoption.ProcessLogGatePath, &state); err != nil {
 		return nil, err
 	}
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion || state.DeploymentID != manifest.DeploymentID || state.ManifestHash != hash {
+	if state.Schema != processLogGateSchema || state.DeploymentID != manifest.DeploymentID || state.ManifestHash != hash {
 		return nil, errors.New("provisional process log gate identity differs")
 	}
 	if err := validatePersistedProcessLogGate(state); err != nil {
+		return nil, err
+	}
+	migrated, err := migrateProcessLogClassifier(&state)
+	if err != nil {
 		return nil, err
 	}
 	expected, err := processLogCursorsWithoutOffsets(stateDir, manifest)
@@ -461,6 +582,11 @@ func loadProvisionalOrStrictProcessLogGateState(cfg *ResolvedConfig, stateDir st
 	gate := &processLogGate{stateDir: stateDir, path: adoption.ProcessLogGatePath, state: state}
 	if err := gate.bindWithLock(live); err != nil {
 		return nil, err
+	}
+	if migrated {
+		if err := gate.persistWithLock(); err != nil {
+			return nil, err
+		}
 	}
 	return gate, nil
 }

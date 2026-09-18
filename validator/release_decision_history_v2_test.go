@@ -101,6 +101,23 @@ func TestReleaseEvidenceV2DecisionJoinsActualNativeStakeAndPinnedEVM(t *testing.
 	}
 }
 
+// A decision reader derives predecessor authority from its current reviewed
+// owner, matching delayed audit publication after a runtime upgrade.
+func TestReleaseEvidenceV2DecisionReadsReviewedHistoricalRuntimeFromCurrentOwner(t *testing.T) {
+	t.Parallel()
+	fixture := newReleaseDecisionV2TestFixture(t)
+	native := newReleaseDecisionV2NativeTestFixture(t, fixture)
+	installReleaseHistoricalTestNative(t, native)
+	metadata, runtime := native.chain.Meta, native.chain.Runtime
+	observed, schedule, err := readReleaseDecisionV2Context(t.Context(), fixture.chain, native.chain, fixture.query, releaseDecisionV2TestSchedule(native), releaseHistoricalTestCurrentArtifact())
+	if err != nil || observed == nil || schedule.SubnetEpochIndex != 1 || schedule.Stake.Identity.UID != 2 {
+		t.Fatalf("reviewed historical decision read differs: %v", err)
+	}
+	if native.chain.Meta != metadata || native.chain.Runtime != runtime {
+		t.Fatal("historical decision read rebound current signing metadata")
+	}
+}
+
 // The real non-self permit gate cannot leak a later EVM-only observation.
 func TestReleaseEvidenceV2DecisionNativeRefusalPrecedesEVMRead(t *testing.T) {
 	t.Parallel()

@@ -811,7 +811,7 @@ func finalSemanticReaderFactoryFromCapturedFiles(cfg *ResolvedConfig, files map[
 		return nil, fmt.Errorf("authenticate captured final semantic RPC transport: %w", err)
 	}
 	return func(readerCtx context.Context, evidence *FinalSemanticEvidence) (FinalSemanticChainReader, error) {
-		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, &public, evidence, discoveryURI, origins, transport)
+		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, &public, evidence, discoveryURI, origins, transport, cfg)
 	}, nil
 }
 

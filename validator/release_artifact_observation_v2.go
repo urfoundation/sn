@@ -375,8 +375,8 @@ func (self *releaseEvidenceV2StartupHistory) historicalDepositAuditWithCaptureV2
 	}
 	maximum := min(self.cfg.EvidenceV2.Bounds.MaxArtifactBytes, self.cfg.EvidenceV2.Bounds.MaxControlBytes/8)
 	encoded, err := custody.read(ctx, path, maximum, false)
-	if err != nil || ReleaseMeasurementContentHash(encoded) != claimed.HttpObservationHash {
-		return DepositAudit{}, errors.Join(errors.New("retained artifact HTTP observation hash or custody differs"), err)
+	if err := releaseRpcObservationError(err, ReleaseMeasurementContentHash(encoded) == claimed.HttpObservationHash, errors.New("retained artifact HTTP observation hash or custody differs")); err != nil {
+		return DepositAudit{}, err
 	}
 	value, err := decodeArtifactHttpObservationV2(ctx, encoded, maximum, expected)
 	if err != nil {

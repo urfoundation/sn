@@ -153,6 +153,49 @@ func TestFaultStateMachineConditionalDeadlineCannotBypassMinimumDuration(t *test
 	}
 }
 
+func TestFaultStateMachineDelayedObservationPreservesSequentialWindows(t *testing.T) {
+	t.Parallel()
+	specs := []scenarioFaultSpec{
+		{ID: "postgres-two", Kind: "container-restart", Targets: []string{"operator-2-postgres"}, TriggerOffsetBlocks: 9, DurationBlocks: 20},
+		{ID: "redis-two", Kind: "container-restart", Targets: []string{"operator-2-redis"}, TriggerOffsetBlocks: 34, DurationBlocks: 20},
+	}
+	records, err := initializeFaultRecords(100, specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := &fakeFaultDriver{}
+	// One observation crosses both triggers and the first nominal deadline.
+	// Only the first mutation may become live at this evidence boundary.
+	if err := advanceFaults(context.Background(), ChainHead{Number: 140, Hash: "first"}, specs, records, driver); err != nil {
+		t.Fatal(err)
+	}
+	if records[0].Status != "active" || records[1].Status != "pending" || len(driver.applied) != 1 || driver.applied[0] != specs[0].ID {
+		t.Fatalf("delayed observation overlapped sequential faults: records=%+v applied=%v", records, driver.applied)
+	}
+	// Crossing the nominal restore block does not erase the complete duration
+	// measured from the delayed application.
+	if err := advanceFaults(context.Background(), ChainHead{Number: 159, Hash: "second"}, specs, records, driver); err != nil {
+		t.Fatal(err)
+	}
+	if records[0].Status != "active" || records[1].Status != "pending" || len(driver.restored) != 0 || len(driver.applied) != 1 {
+		t.Fatalf("delayed fault lost its actual active interval: records=%+v driver=%+v", records, driver)
+	}
+	// The next distinct observation at the complete actual duration restores
+	// the first before starting the later non-overlapping fault.
+	if err := advanceFaults(context.Background(), ChainHead{Number: 160, Hash: "third"}, specs, records, driver); err != nil {
+		t.Fatal(err)
+	}
+	if records[0].Status != "restored" || records[0].RestoredBlock != 160 || records[1].Status != "active" || records[1].AppliedBlock != 160 || len(driver.restored) != 1 || len(driver.applied) != 2 {
+		t.Fatalf("sequential recovery did not preserve distinct observations: records=%+v driver=%+v", records, driver)
+	}
+	if err := advanceFaults(context.Background(), ChainHead{Number: 180, Hash: "fourth"}, specs, records, driver); err != nil {
+		t.Fatal(err)
+	}
+	if !faultsComplete(records) || records[1].RestoredBlock-records[1].AppliedBlock < specs[1].DurationBlocks {
+		t.Fatalf("later fault lost its actual active interval: %+v", records[1])
+	}
+}
+
 func TestFaultImpactAttributionIncludesDependencyConsumersOnlyWhileActive(t *testing.T) {
 	specs := []scenarioFaultSpec{{
 		ID: "postgres", Kind: "container-restart", Targets: []string{"operator-1-postgres"},
@@ -186,6 +229,32 @@ func TestFaultImpactAttributionIncludesDependencyConsumersOnlyWhileActive(t *tes
 	records[0].Status = "restored"
 	if got := scenarioFaultTargets(records, 200, false); len(got) != 0 {
 		t.Fatalf("restored fault targets=%v", got)
+	}
+}
+
+// Dependency faults are scheduled against logical miners, but their transport
+// errors are emitted by the owning swarm process. The process-log fault scope
+// must therefore retain that supervisor identity while the outage is active.
+func TestOperatorDependencyImpactsIncludeOwningMinerSwarms(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		impacts := operatorDependencyImpacts(cfg, operator)
+		seen := map[string]bool{}
+		for _, impact := range impacts {
+			seen[impact] = true
+		}
+		for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+			if operatorForMiner(cfg, miner) != operator {
+				continue
+			}
+			swarm, err := minerSwarmFor(cfg, miner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !seen[fmt.Sprintf("miner-%d", miner)] || !seen[fmt.Sprintf("miner-swarm-%d", swarm)] {
+				t.Fatalf("operator %d dependency impacts omit miner %d or swarm %d", operator, miner, swarm)
+			}
+		}
 	}
 }
 

@@ -226,6 +226,11 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			chain.Close()
 			return nil, err
 		}
+		if err := enableProvisionalRuntimeCompatibility(native, cfg); err != nil {
+			native.API.Client.Close()
+			chain.Close()
+			return nil, err
+		}
 		captured, captureErr := validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: collected.EvidenceV2.Origins, MaximumBytes: captureLimits.dataBytes + captureLimits.controlBytes, MaximumObjects: captureLimits.maximumObjects, MaximumDataBytes: captureLimits.dataBytes, MaximumControlBytes: captureLimits.controlBytes, ThroughEpoch: lastEpoch}, retain)
 		if captureErr == nil {
 			collected.EvidenceV2.NativeCheckpoints, captureErr = collectFinalNativeCoverageV2(ctx, release, chain, native, hotkey, captured, *window, retain)

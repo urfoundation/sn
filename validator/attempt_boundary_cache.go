@@ -4,10 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"net"
+	"net/http"
 	"sync"
+	"syscall"
 	"time"
 
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/urnetwork/connect"
 
 	"github.com/urfoundation/sn/stabi"
@@ -34,6 +39,101 @@ type attemptBoundaryBlock struct {
 type attemptBoundaryLoad struct {
 	done chan struct{}
 	err  error
+}
+
+// Marks only failures returned by the finalized binding rpc read. Callers may
+// retry this provenance after separately proving every cause is transient.
+type attemptBindingReadError struct {
+	cause error
+}
+
+// Preserves the underlying rpc failure without relying on its message text.
+func (self *attemptBindingReadError) Error() string {
+	if self == nil || self.cause == nil {
+		return "attempt binding rpc read failed"
+	}
+	return fmt.Sprintf("attempt binding rpc read: %v", self.cause)
+}
+
+// Exposes the exact rpc failure for complete joined-tree classification.
+func (self *attemptBindingReadError) Unwrap() error {
+	if self == nil {
+		return nil
+	}
+	return self.cause
+}
+
+// Requires typed binding-read provenance and rejects a joined tree as soon as
+// any branch is cancellation, integrity state, or an unknown failure.
+func retryableAttemptBindingReadError(err error) bool {
+	retryable, bindingRead := classifyAttemptBindingReadRetry(err, false)
+	return retryable && bindingRead
+}
+
+// Walks every wrapper and joined branch while carrying whether the failure
+// originated inside the binding rpc read.
+func classifyAttemptBindingReadRetry(err error, bindingRead bool) (bool, bool) {
+	if err == nil {
+		return false, false
+	}
+	if readErr, ok := err.(*attemptBindingReadError); ok {
+		if readErr.cause == nil {
+			return false, true
+		}
+		return classifyAttemptBindingReadRetry(readErr.cause, true)
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
+			return false, bindingRead
+		}
+		seenBindingRead := bindingRead
+		for _, cause := range causes {
+			retryable, causeBindingRead := classifyAttemptBindingReadRetry(cause, bindingRead)
+			seenBindingRead = seenBindingRead || causeBindingRead
+			if !retryable {
+				return false, seenBindingRead
+			}
+		}
+		return true, seenBindingRead
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		cause := wrapped.Unwrap()
+		if cause == nil {
+			return false, bindingRead
+		}
+		return classifyAttemptBindingReadRetry(cause, bindingRead)
+	}
+	if !bindingRead {
+		return false, false
+	}
+	if err == context.DeadlineExceeded || err == io.EOF || err == io.ErrUnexpectedEOF {
+		return true, true
+	}
+	if err == context.Canceled {
+		return false, true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true, true
+	}
+	var httpErr gethrpc.HTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
+			http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return true, true
+		}
+	}
+	for _, transportErr := range []error{
+		syscall.ECONNABORTED, syscall.ECONNREFUSED, syscall.ECONNRESET,
+		syscall.EHOSTUNREACH, syscall.ENETUNREACH, syscall.EPIPE, syscall.ETIMEDOUT,
+	} {
+		if err == transportErr {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 type cachedAttemptBoundaryResolver struct {
@@ -264,6 +364,9 @@ func (self *cachedAttemptBoundaryResolver) binding(ctx context.Context, block *a
 		self.stateLock.Unlock()
 
 		chainBinding, err := self.rpc.Binding(ctx, block.boundary, clientID)
+		if err != nil {
+			err = &attemptBindingReadError{cause: err}
+		}
 		observation := AttemptBinding{ClientID: clientID, FleetID: zeroAttemptHash(), Hotkey: zeroAttemptHash()}
 		if err == nil && chainBinding.Active {
 			if chainBinding.Record.Cleaned || chainBinding.Record.Generation == 0 || chainBinding.Record.ValidFromEpoch > block.boundary.SettlementEpoch || chainBinding.Record.ValidToEpoch < block.boundary.SettlementEpoch {

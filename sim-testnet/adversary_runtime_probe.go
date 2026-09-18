@@ -29,6 +29,25 @@ type adversaryCommitRevealObservation struct {
 // Allows deterministic tests to replace the two-endpoint runtime observation.
 type adversaryCommitRevealProbe func(context.Context, *ResolvedConfig) (adversaryCommitRevealObservation, adversaryCommitRevealObservation, uint64, error)
 
+// The monitor retains its ordinary raw RPC exchanges, but a newer provisional
+// runtime must additionally pass the same block-local consumed profile as the
+// execution readers. Both routes still compare exact identities afterwards.
+func adversaryProvisionalRuntimeAt(ctx context.Context, cfg *ResolvedConfig, block string) (authenticatedRuntimeMetadata, error) {
+	hash, err := types.NewHashFromHexString(block)
+	if err != nil {
+		return authenticatedRuntimeMetadata{}, err
+	}
+	if err := validateOwnedRPCDialEndpoint(cfg, cfg.OperationalSubstrate); err != nil {
+		return authenticatedRuntimeMetadata{}, err
+	}
+	chain, err := crv4.DialChainContext(ctx, cfg.OperationalSubstrate)
+	if err != nil {
+		return authenticatedRuntimeMetadata{}, err
+	}
+	defer chain.API.Client.Close()
+	return readAuthenticatedRuntimeMetadataAtContext(ctx, chain, cfg, hash)
+}
+
 // Opens one chain only after matching its genesis to the release configuration.
 func adversaryDialRuntimeChain(cfg *ResolvedConfig, endpoint string) (*crv4.Chain, error) {
 	if cfg == nil || cfg.Public == nil || endpoint == "" {

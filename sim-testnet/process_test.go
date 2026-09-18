@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -425,6 +426,70 @@ func TestProcessSpecReadinessRequiresVerifiedH3AfterHTTPHealth(t *testing.T) {
 	}
 }
 
+// Warp status keeps HTTP 200 for a rejected process. The semantic error must
+// block both startup admission and the supervisor's later health snapshot.
+func TestProcessSpecReadinessRejectsHttp200NotReadyStatus(t *testing.T) {
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"status":"error not ready: database migration head is stale"}`)
+	}))
+	defer health.Close()
+	spec := ProcessSpec{ID: "operator-api", HealthURL: health.URL}
+	err := processSpecReadinessWithH3Probe(context.Background(), &http.Client{}, spec, nil)
+	if err == nil || !strings.Contains(err.Error(), "error not ready") {
+		t.Fatalf("semantic not-ready response error=%v", err)
+	}
+	if healthOK(health.URL) {
+		t.Fatal("supervisor health accepted semantic not-ready response")
+	}
+}
+
+// Ready and draining Warp responses are non-errors by contract, while an RPC
+// proxy legitimately reports readiness with an empty HTTP 204 response.
+func TestProcessSpecReadinessAcceptsReadyDrainingAndRpcNoContent(t *testing.T) {
+	responses := []struct {
+		statusCode int
+		body       string
+	}{
+		{statusCode: http.StatusOK, body: `{"status":"ok"}`},
+		{statusCode: http.StatusOK, body: `{"status":"draining"}`},
+		{statusCode: http.StatusNoContent},
+	}
+	for _, response := range responses {
+		health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(response.statusCode)
+			_, _ = io.WriteString(writer, response.body)
+		}))
+		spec := ProcessSpec{ID: "healthy-process", HealthURL: health.URL}
+		if err := processSpecReadinessWithH3Probe(context.Background(), &http.Client{}, spec, nil); err != nil {
+			health.Close()
+			t.Fatalf("status=%d body=%q readiness error=%v", response.statusCode, response.body, err)
+		}
+		if !healthOK(health.URL) {
+			health.Close()
+			t.Fatalf("status=%d body=%q supervisor health failed", response.statusCode, response.body)
+		}
+		health.Close()
+	}
+}
+
+// A response carrying bytes must be structurally meaningful; malformed JSON
+// or a non-string Warp status cannot become readiness by omission.
+func TestProcessSpecReadinessRejectsMalformedStatusBodies(t *testing.T) {
+	for _, body := range []string{`{"status":`, `{"status":17}`} {
+		health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, body)
+		}))
+		err := processSpecReadinessWithH3Probe(context.Background(), &http.Client{}, ProcessSpec{ID: "malformed", HealthURL: health.URL}, nil)
+		health.Close()
+		if err == nil {
+			t.Errorf("malformed health body accepted: %q", body)
+		}
+	}
+}
+
 // A partial transport declaration must fail closed instead of degrading back
 // to the HTTP-only check that missed the live blackhole.
 func TestProcessSpecReadinessRejectsIncompleteH3Identity(t *testing.T) {
@@ -615,6 +680,332 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	}
 }
 
+// Reads one atomically published supervisor state while retaining decode errors
+// for the bounded state-wait diagnostic below.
+func readSupervisorRestartTestState(path string) (SupervisorState, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return SupervisorState{}, err
+	}
+	var state SupervisorState
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		return SupervisorState{}, err
+	}
+	return state, nil
+}
+
+// Waits on semantic process state instead of sleeping for a guessed child or
+// filesystem scheduling interval.
+func waitSupervisorRestartTestState(t *testing.T, path string, accept func(ProcessState) bool) SupervisorState {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var lastState SupervisorState
+	var lastErr error
+	for time.Now().Before(deadline) {
+		state, err := readSupervisorRestartTestState(path)
+		if err == nil {
+			lastState = state
+			if len(state.Processes) == 1 && accept(state.Processes[0]) {
+				return state
+			}
+		} else {
+			lastErr = err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		<-timer.C
+	}
+	t.Fatalf("supervisor state did not converge: state=%+v error=%v", lastState, lastErr)
+	return SupervisorState{}
+}
+
+// Reproduces the live failure: the last rapid crash leaves PID zero, then the
+// same supervisor generation starts exactly one fresh attempt after cooldown.
+func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
+	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaryHash, err := fileSHA256(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processDir := filepath.Join(dir, "processes")
+	if err := os.MkdirAll(processDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	counterPath := filepath.Join(dir, "child.counter")
+	statePath := filepath.Join(dir, "supervisor.state.json")
+	spec := ProcessSpec{
+		ID: "cooldown-child", Role: "test", Identity: "cooldown-child", Command: "/bin/sh",
+		Args:    []string{"-c", `count=0; if [ -r "$SIM_TEST_COUNTER" ]; then IFS= read -r count < "$SIM_TEST_COUNTER"; fi; count=$((count+1)); printf '%s\n' "$count" > "$SIM_TEST_COUNTER"; while ! grep -Fq "\"pid\": $$" "$SIM_TEST_SUPERVISOR_STATE" 2>/dev/null; do sleep 0.01; done; if [ "$count" -lt 3 ]; then exit 17; fi; exec /bin/sleep 300`},
+		WorkDir: dir,
+		Env: map[string]string{
+			"SIM_TEST_COUNTER": counterPath, "SIM_TEST_SUPERVISOR_STATE": statePath,
+		},
+		StdoutPath: filepath.Join(processDir, "child.stdout"), StderrPath: filepath.Join(processDir, "child.stderr"), RestartLimit: 1,
+	}
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "cooldown-test", BinaryHash: binaryHash, Specs: []ProcessSpec{spec}}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "supervisor.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	restartDelays := make(chan time.Duration, 3)
+	releaseCooldown := make(chan struct{}, 1)
+	restartWait := func(ctx context.Context, delay time.Duration) error {
+		select {
+		case restartDelays <- delay:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if delay < supervisorRestartBudgetRecoveryWindow/2 {
+			return nil
+		}
+		select {
+		case <-releaseCooldown:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	release := func() {
+		select {
+		case releaseCooldown <- struct{}{}:
+		default:
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			return nil
+		}, restartWait)
+	}()
+	finished := false
+	t.Cleanup(func() {
+		release()
+		cancel()
+		if finished {
+			return
+		}
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("supervisor did not stop during cleanup")
+		}
+	})
+
+	select {
+	case delay := <-restartDelays:
+		if delay != restartBackoff(1) {
+			t.Fatalf("first retry delay=%s", delay)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("first child exit did not schedule a restart")
+	}
+	var cooldownDelay time.Duration
+	select {
+	case cooldownDelay = <-restartDelays:
+		if cooldownDelay <= 0 || cooldownDelay > supervisorRestartBudgetRecoveryWindow || cooldownDelay < supervisorRestartBudgetRecoveryWindow-time.Second {
+			t.Fatalf("cooldown delay=%s", cooldownDelay)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("exhausted child did not schedule a cooldown")
+	}
+	stopped := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
+		return process.PID == 0 && process.Restarts == 1 && process.ExitError != ""
+	})
+	release()
+	recovered := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
+		return process.PID > 1 && process.Restarts == 2 && process.ExitError == ""
+	})
+	if stopped.SupervisorPID != recovered.SupervisorPID || stopped.SupervisorStartTimeTicks != recovered.SupervisorStartTimeTicks {
+		t.Fatalf("cooldown replaced supervisor generation: before=%d/%d after=%d/%d", stopped.SupervisorPID, stopped.SupervisorStartTimeTicks, recovered.SupervisorPID, recovered.SupervisorStartTimeTicks)
+	}
+	counter, err := os.ReadFile(counterPath)
+	if err != nil || strings.TrimSpace(string(counter)) != "3" {
+		t.Fatalf("child starts=%q error=%v", counter, err)
+	}
+	select {
+	case delay := <-restartDelays:
+		t.Fatalf("recovered child scheduled an extra restart after %s", delay)
+	default:
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	finished = true
+}
+
+// A restart executable can disappear while the child that mapped it is still
+// live. The failed cooldown launch remains an attempted restart and re-enters
+// the fresh burst's ordinary backoff instead of retrying in a tight loop.
+func TestSupervisorCooldownLaunchFailureConsumesFreshBurst(t *testing.T) {
+	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaryHash, err := fileSHA256(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processDir := filepath.Join(dir, "processes")
+	if err := os.MkdirAll(processDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	counterPath := filepath.Join(dir, "child.counter")
+	statePath := filepath.Join(dir, "supervisor.state.json")
+	scriptPath := filepath.Join(dir, "child.sh")
+	script := `#!/bin/sh
+count=0
+if [ -r "$SIM_TEST_COUNTER" ]; then IFS= read -r count < "$SIM_TEST_COUNTER"; fi
+count=$((count+1))
+printf '%s\n' "$count" > "$SIM_TEST_COUNTER"
+while ! grep -Fq "\"pid\": $$" "$SIM_TEST_SUPERVISOR_STATE" 2>/dev/null; do sleep 0.01; done
+if [ "$count" -eq 3 ]; then rm -f "$SIM_TEST_SCRIPT"; fi
+exit 17
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec := ProcessSpec{
+		ID: "failed-cooldown-child", Role: "test", Identity: "failed-cooldown-child", Command: scriptPath, WorkDir: dir,
+		Env: map[string]string{
+			"SIM_TEST_COUNTER": counterPath, "SIM_TEST_SUPERVISOR_STATE": statePath, "SIM_TEST_SCRIPT": scriptPath,
+		},
+		StdoutPath: filepath.Join(processDir, "child.stdout"), StderrPath: filepath.Join(processDir, "child.stderr"), RestartLimit: 2,
+	}
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "failed-cooldown-test", BinaryHash: binaryHash, Specs: []ProcessSpec{spec}}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "supervisor.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	type restartWaitRequest struct {
+		delay   time.Duration
+		release chan struct{}
+	}
+	restartWaitRequests := make(chan restartWaitRequest, 1)
+	restartWait := func(ctx context.Context, delay time.Duration) error {
+		request := restartWaitRequest{delay: delay, release: make(chan struct{})}
+		select {
+		case restartWaitRequests <- request:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		select {
+		case <-request.release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	nextRestartWait := func() restartWaitRequest {
+		select {
+		case request := <-restartWaitRequests:
+			return request
+		case <-time.After(10 * time.Second):
+			t.Fatal("supervisor did not request its next restart wait")
+			return restartWaitRequest{}
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			return nil
+		}, restartWait)
+	}()
+	finished := false
+	t.Cleanup(func() {
+		cancel()
+		if finished {
+			return
+		}
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("failed-launch supervisor did not stop during cleanup")
+		}
+	})
+
+	first := nextRestartWait()
+	if first.delay != restartBackoff(1) {
+		t.Fatalf("first retry delay=%s", first.delay)
+	}
+	close(first.release)
+	second := nextRestartWait()
+	if second.delay != restartBackoff(2) {
+		t.Fatalf("second retry delay=%s", second.delay)
+	}
+	close(second.release)
+	cooldown := nextRestartWait()
+	if cooldown.delay <= 0 || cooldown.delay > supervisorRestartBudgetRecoveryWindow || cooldown.delay < supervisorRestartBudgetRecoveryWindow-time.Second {
+		t.Fatalf("fresh-burst cooldown=%s", cooldown.delay)
+	}
+	waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
+		return process.PID == 0 && process.Restarts == 2 && process.ExitError != ""
+	})
+	close(cooldown.release)
+	failedStart := nextRestartWait()
+	if failedStart.delay != restartBackoff(2) {
+		t.Fatalf("failed cooldown launch delay=%s", failedStart.delay)
+	}
+	failed := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
+		return process.PID == 0 && process.Restarts == 3 && strings.Contains(process.ExitError, "no such file")
+	})
+	if failed.SupervisorPID != os.Getpid() {
+		t.Fatalf("failed launch replaced supervisor pid: %+v", failed)
+	}
+	select {
+	case request := <-restartWaitRequests:
+		t.Fatalf("failed launch busy-retried after %s", request.delay)
+	default:
+	}
+	counter, err := os.ReadFile(counterPath)
+	if err != nil || strings.TrimSpace(string(counter)) != "3" {
+		t.Fatalf("successful child launches=%q error=%v", counter, err)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	finished = true
+}
+
+// A cooldown attempt is operational recovery, not evidence of a planned fault.
+// Its cumulative restart remains blocking when no exact fault accounts for it.
+func TestSupervisorCooldownRecoveryRemainsUnexpectedScenarioAnomaly(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	start := testScenarioObservation(cfg, 1)
+	current := testScenarioObservation(cfg, 2)
+	start.Status.Supervisor = &SupervisorState{Processes: []ProcessState{{ID: "validator-1", PID: 101, Restarts: 5, Healthy: true}}}
+	current.Status.Supervisor = &SupervisorState{Processes: []ProcessState{{ID: "validator-1", PID: 202, Restarts: 6, Healthy: true}}}
+	ledger := buildScenarioAnomalyLedger("cooldown", time.Now(), start, current, nil, nil, nil)
+	found := false
+	for _, entry := range ledger.Entries {
+		if entry.Class == "unexpected-restart" && entry.Source == "process:validator-1" {
+			found = true
+		}
+	}
+	if ledger.Status != "open" || !found {
+		t.Fatalf("cooldown recovery was not blocking: %+v", ledger)
+	}
+}
+
 func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *testing.T) {
 	dir := t.TempDir()
 	want := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash", Specs: []ProcessSpec{
@@ -651,6 +1042,40 @@ func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *
 	_, err = waitSupervisorReady(ctx, dir, want, nil, 20*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "decode supervisor state") {
 		t.Fatalf("malformed supervisor readiness error = %v", err)
+	}
+}
+
+// A detached service can fail before publishing its generation. Its terminal
+// systemd state must win immediately over an old stopped supervisor snapshot.
+func TestSupervisorReadinessRejectsOwnedTerminalServiceBeforeStaleState(t *testing.T) {
+	dir := t.TempDir()
+	stale := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: 41, ManifestHash: "old"}
+	encoded, err := json.Marshal(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "supervisor.state.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := parseSupervisorServiceStatus([]byte("SubState=failed\nActiveState=failed\nExecMainStatus=1\nResult=exit-code\nExecMainCode=1\n"))
+	if err != nil || !failed.terminal() {
+		t.Fatalf("failed service parse=%+v error=%v", failed, err)
+	}
+	active, err := parseSupervisorServiceStatus([]byte("ActiveState=active\nSubState=running\nResult=success\nExecMainCode=0\nExecMainStatus=0\n"))
+	if err != nil || active.terminal() {
+		t.Fatalf("active service parse=%+v error=%v", active, err)
+	}
+	service := &SupervisorService{Schema: "urnetwork-sim-supervisor-service-v1", Name: "urnetwork-sim-unit.example.service", StateDir: dir}
+	calls := 0
+	_, err = waitSupervisorReadyWithService(context.Background(), dir, SupervisorFile{Schema: "urnetwork-sim-supervisor-v1"}, nil, time.Hour, service, func(_ context.Context, observed SupervisorService) (supervisorServiceStatus, error) {
+		calls++
+		if !reflect.DeepEqual(observed, *service) {
+			t.Fatalf("service identity = %+v", observed)
+		}
+		return failed, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "is terminal") || !strings.Contains(err.Error(), "exec_status=1") || calls != 1 {
+		t.Fatalf("terminal service calls=%d error=%v", calls, err)
 	}
 }
 
@@ -826,6 +1251,12 @@ func TestSupervisorServiceNamesAndArgumentsAreSafe(t *testing.T) {
 	if got := serviceToken("Testnet / Release_1.0"); got != "testnet---release-1-0" {
 		t.Fatalf("service token = %q", got)
 	}
+	if got, err := persistentSupervisorServiceName("Testnet / Release_1.0"); err != nil || got != "urnetwork-sim-testnet---release-1-0.service" {
+		t.Fatalf("service name = %q, %v", got, err)
+	}
+	if _, err := persistentSupervisorServiceName(" /_"); err == nil {
+		t.Fatal("empty service token was accepted")
+	}
 	for _, value := range []string{"bad\npath", "bad\tpath", "bad\x7fpath"} {
 		if _, err := systemdExecArgument(value); err == nil {
 			t.Fatalf("systemd argument accepted a control character in %q", value)
@@ -871,8 +1302,71 @@ func TestPersistentSupervisorRequiresExplicitResumeAfterReboot(t *testing.T) {
 	for _, action := range actions {
 		joined += strings.Join(action, " ") + "\n"
 	}
-	if strings.Contains(joined, "enable") || strings.Contains(joined, "--now") || !strings.Contains(joined, "disable") || !strings.Contains(joined, "start") {
+	wantActions := "--user daemon-reload\n--user disable urnetwork-sim-test.service\n--user reset-failed urnetwork-sim-test.service\n--user start urnetwork-sim-test.service\n"
+	if joined != wantActions || strings.Contains(joined, "enable") || strings.Contains(joined, "--now") {
 		t.Fatalf("supervisor actions can persist across reboot:\n%s", joined)
+	}
+	stopActions := persistentSupervisorStopSystemctlActions("urnetwork-sim-test.service")
+	joined = ""
+	for _, action := range stopActions {
+		joined += strings.Join(action, " ") + "\n"
+	}
+	wantStopActions := "--user disable --now urnetwork-sim-test.service\n--user reset-failed urnetwork-sim-test.service\n"
+	if joined != wantStopActions {
+		t.Fatalf("supervisor stop leaves a failed-state latch:\n%s", joined)
+	}
+}
+
+// A service absent from the manager is already free of a failed latch. Only
+// the exact reset diagnostic for the requested unit is idempotent.
+func TestPersistentSupervisorSystemctlActionsTreatExactUnloadedResetAsClean(t *testing.T) {
+	name := "urnetwork-sim-test.service"
+	unloaded := fmt.Sprintf("Failed to reset failed state of unit %s: Unit %s not loaded.\n", name, name)
+	for _, actions := range [][][]string{
+		persistentSupervisorSystemctlActions(name),
+		persistentSupervisorStopSystemctlActions(name),
+	} {
+		calls := 0
+		err := runPersistentSupervisorSystemctlActions(context.Background(), func(args ...string) ([]byte, error) {
+			calls++
+			if len(args) >= 2 && args[1] == "reset-failed" {
+				return []byte(unloaded), errors.New("exit status 1")
+			}
+			return nil, nil
+		}, actions)
+		if err != nil || calls != len(actions) {
+			t.Fatalf("actions=%q calls=%d error=%v", actions, calls, err)
+		}
+	}
+
+	for _, test := range []struct {
+		name   string
+		args   []string
+		output string
+	}{
+		{name: "foreign unit", args: []string{"--user", "reset-failed", name}, output: "Failed to reset failed state of unit foreign.service: Unit foreign.service not loaded.\n"},
+		{name: "other reset error", args: []string{"--user", "reset-failed", name}, output: "Failed to reset failed state of unit " + name + ": Access denied.\n"},
+		{name: "other action", args: []string{"--user", "start", name}, output: unloaded},
+		{name: "additional diagnostic", args: []string{"--user", "reset-failed", name}, output: unloaded + "manager transport failed\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			err := runPersistentSupervisorSystemctlActions(context.Background(), func(args ...string) ([]byte, error) {
+				calls++
+				return []byte(test.output), errors.New("exit status 1")
+			}, [][]string{test.args, {"--user", "start", name}})
+			if err == nil || calls != 1 {
+				t.Fatalf("calls=%d error=%v", calls, err)
+			}
+		})
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runPersistentSupervisorSystemctlActions(cancelled, func(...string) ([]byte, error) {
+		return []byte(unloaded), errors.New("signal: killed")
+	}, [][]string{{"--user", "reset-failed", name}}); err == nil {
+		t.Fatal("cancelled reset accepted an unloaded diagnostic")
 	}
 }
 
@@ -1052,6 +1546,114 @@ func TestReleaseProcessPacketListenAddressesCoverTopologyWithoutDuplicates(t *te
 func TestRestartBackoffIsBounded(t *testing.T) {
 	if restartBackoff(1) != time.Second || restartBackoff(100) != 30*time.Second {
 		t.Fatalf("unexpected restart backoff: %s, %s", restartBackoff(1), restartBackoff(100))
+	}
+}
+
+// An exhausted stopped child must receive exactly one future attempt, because
+// it cannot produce the later exit that used to be required to reset a burst.
+func TestSupervisorRestartDecisionDefersExhaustedChildUntilRecoveryWindow(t *testing.T) {
+	decision, restart := nextSupervisorRestart(5, supervisorRestartBudgetRecoveryWindow-time.Nanosecond, 5)
+	if !restart || decision.restartBurst != 1 || decision.delay != time.Nanosecond {
+		t.Fatalf("exhausted decision=%+v restart=%t", decision, restart)
+	}
+	decision, restart = nextSupervisorRestart(5, supervisorRestartBudgetRecoveryWindow, 5)
+	if !restart || decision.restartBurst != 1 || decision.delay != restartBackoff(1) {
+		t.Fatalf("stable decision=%+v restart=%t", decision, restart)
+	}
+	decision, restart = nextSupervisorRestart(4, time.Second, 5)
+	if !restart || decision.restartBurst != 5 || decision.delay != restartBackoff(5) {
+		t.Fatalf("ordinary decision=%+v restart=%t", decision, restart)
+	}
+	for _, input := range []struct {
+		name    string
+		current int
+		uptime  time.Duration
+		limit   int
+	}{
+		{name: "zero limit", current: 2, uptime: time.Hour},
+		{name: "negative burst", current: -1, uptime: time.Second, limit: 5},
+		{name: "negative uptime", current: 1, uptime: -time.Nanosecond, limit: 5},
+	} {
+		t.Run(input.name, func(t *testing.T) {
+			if decision, restart := nextSupervisorRestart(input.current, input.uptime, input.limit); restart || decision != (supervisorRestartDecision{}) {
+				t.Fatalf("invalid input decision=%+v restart=%t", decision, restart)
+			}
+		})
+	}
+}
+
+// A failed first attempt in the fresh burst consumes that attempt and returns
+// to ordinary bounded backoff. Exhausting it again schedules one new cooldown.
+func TestSupervisorCooldownStartFailureRemainsBounded(t *testing.T) {
+	decision, restart := nextSupervisorRestart(2, 0, 2)
+	if !restart || decision.restartBurst != 1 || decision.delay != supervisorRestartBudgetRecoveryWindow {
+		t.Fatalf("fresh-burst decision=%+v restart=%t", decision, restart)
+	}
+	decision, restart = nextSupervisorRestart(decision.restartBurst, 0, 2)
+	if !restart || decision.restartBurst != 2 || decision.delay != restartBackoff(2) {
+		t.Fatalf("failed-start decision=%+v restart=%t", decision, restart)
+	}
+	decision, restart = nextSupervisorRestart(decision.restartBurst, 0, 2)
+	if !restart || decision.restartBurst != 1 || decision.delay != supervisorRestartBudgetRecoveryWindow {
+		t.Fatalf("re-exhausted decision=%+v restart=%t", decision, restart)
+	}
+}
+
+// Generation, liveness and prior burst are all part of notice ownership. A
+// consumed notice is stale even when a failed start leaves generation unchanged.
+func TestSupervisorRestartNoticeRejectsStaleAndDuplicateDelivery(t *testing.T) {
+	notice := supervisorRestartNotice{
+		id: "validator-1", generation: 7, priorRestartBurst: 5, replacementRestartBurst: 1,
+	}
+	if !supervisorRestartNoticeApplies(notice, 7, 0, 5, 5) {
+		t.Fatal("current stopped-generation notice was rejected")
+	}
+	for _, test := range []struct {
+		name         string
+		notice       supervisorRestartNotice
+		generation   uint64
+		pid          int
+		restartBurst int
+		restartLimit int
+	}{
+		{name: "old generation", notice: notice, generation: 8, restartBurst: 5, restartLimit: 5},
+		{name: "live child", notice: notice, generation: 7, pid: 41, restartBurst: 5, restartLimit: 5},
+		{name: "consumed duplicate", notice: notice, generation: 7, restartBurst: 1, restartLimit: 5},
+		{name: "empty identity", notice: supervisorRestartNotice{generation: 7, priorRestartBurst: 5, replacementRestartBurst: 1}, generation: 7, restartBurst: 5, restartLimit: 5},
+		{name: "zero restart limit", notice: notice, generation: 7, restartBurst: 5},
+		{name: "invalid replacement burst", notice: supervisorRestartNotice{id: "validator-1", generation: 7, priorRestartBurst: 5}, generation: 7, restartBurst: 5, restartLimit: 5},
+		{name: "replacement exceeds limit", notice: supervisorRestartNotice{id: "validator-1", generation: 7, priorRestartBurst: 5, replacementRestartBurst: 6}, generation: 7, restartBurst: 5, restartLimit: 5},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if supervisorRestartNoticeApplies(test.notice, test.generation, test.pid, test.restartBurst, test.restartLimit) {
+				t.Fatal("stale restart notice was accepted")
+			}
+		})
+	}
+}
+
+// Cancellation must retire a long cooldown immediately without publishing an
+// attempt that could race the supervisor's terminal stopped-state snapshot.
+func TestSupervisorCooldownCancellationDoesNotPublishRestart(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	restarts := make(chan supervisorRestartNotice, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sendSupervisorRestartAfter(ctx, waitSupervisorRestart, restarts, supervisorRestartNotice{
+			id: "validator-1", generation: 1, priorRestartBurst: 5, replacementRestartBurst: 1,
+		}, time.Hour)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled restart cooldown did not return")
+	}
+	select {
+	case notice := <-restarts:
+		t.Fatalf("cancelled cooldown published %+v", notice)
+	default:
 	}
 }
 

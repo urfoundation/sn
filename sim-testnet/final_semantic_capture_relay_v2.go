@@ -25,6 +25,70 @@ import (
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
+// Relay custody has three valid states: an already-present third-party winner,
+// our successful winner, or our failed transaction plus a different winner.
+// Keep this independent of the later live-chain readback so malformed retained
+// evidence fails before it can select or fetch additional capture inputs.
+func validateFinalRelayRetainedReceiptState(winner, own *types.Receipt, lostPublicationRace bool) error {
+	if winner == nil || winner.Status != types.ReceiptStatusSuccessful {
+		return errors.New("compact relay result has no successful winning receipt")
+	}
+	if own == nil {
+		if lostPublicationRace {
+			return errors.New("compact relay result claims a lost race without its failed receipt")
+		}
+		return nil
+	}
+	if lostPublicationRace {
+		if own.Status != types.ReceiptStatusFailed || own.TxHash == winner.TxHash {
+			return errors.New("compact relay lost race does not retain a distinct failed receipt")
+		}
+		return nil
+	}
+	if own.Status != types.ReceiptStatusSuccessful || !finalJSONEqual(own, winner) {
+		return errors.New("compact relay own success differs from its winning receipt")
+	}
+	return nil
+}
+
+// Capture follows the immutable plan reserve because an approved continuation
+// can repartition the original money into more lower-fee calls without changing
+// the launch configuration. The source-storage bound remains the original
+// configuration value and is not the continued transaction census authority.
+func finalRelayCaptureMaximumSlots(plan *SetupPlan) (uint64, error) {
+	if plan == nil {
+		return 0, errors.New("compact relay capture has no approved plan")
+	}
+	if plan.EvidenceRelayContinuation != nil {
+		if err := validateEvidenceRelayContinuationBudget(plan); err != nil {
+			return 0, err
+		}
+	}
+	reserve, err := exactPlanActionByID(plan, evidenceRelayReserveId)
+	if err != nil {
+		return 0, err
+	}
+	_, _, maximum, err := evidenceRelayPlanAllowance(plan, reserve)
+	if err != nil || maximum == 0 {
+		return 0, errors.Join(errors.New("compact relay capture has no approved slot ceiling"), err)
+	}
+	return maximum, nil
+}
+
+// Continued campaigns retain the plan hash and fee terms of each original
+// request. Reuse the continuation-aware reader so final capture never relabels
+// a predecessor transaction under the current plan.
+func readFinalRelayCaptureRequest(ctx context.Context, stateRoot string, current *SetupPlan, entries []JournalEntry, actionID string, owners map[string]*SetupPlan) (*SetupPlan, evidenceRelayRequestRecord, []byte, error) {
+	if owners == nil {
+		return nil, evidenceRelayRequestRecord{}, nil, errors.New("compact relay capture historical plan cache is absent")
+	}
+	owner, request, raw, err := readOwnedEvidenceRelayRequest(ctx, stateRoot, current, entries, actionID, owners)
+	if err != nil || owner == nil || request.Action.ID != actionID || request.PlanHash != owner.PlanHash {
+		return nil, evidenceRelayRequestRecord{}, nil, errors.Join(errors.New("compact relay request has no exact historical owner"), err)
+	}
+	return owner, request, raw, nil
+}
+
 // Reads immutable original requests/results first. Canonical winner readback
 // then reuses the real transaction verifier, including third-party-first wins.
 func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string, publications []validatorpkg.ReleaseEvidenceV2CapturedPublication, retain func(context.Context, validatorpkg.ReleaseEvidenceV2CaptureSource, []byte) error) error {
@@ -34,6 +98,10 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 	plan, err := loadPersistedPlan(cfg, stateRoot)
 	if err != nil || plan.ValidatorEvidence == nil {
 		return errors.Join(errors.New("compact relay capture approved companion is missing"), err)
+	}
+	maximumSlots, err := finalRelayCaptureMaximumSlots(plan)
+	if err != nil {
+		return err
 	}
 	journal, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateRoot, "journal.jsonl"), maximumCampaignEvidenceRawFileBytes)
 	if err != nil {
@@ -63,6 +131,7 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 	}
 	var selected []item
 	seen := map[[32]byte]bool{}
+	owners := map[string]*SetupPlan{plan.PlanHash: plan}
 	for _, publication := range publications {
 		slot, err := publication.Evidence.Header.SlotKey()
 		if err != nil {
@@ -72,27 +141,20 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 			continue
 		}
 		seen[slot] = true
-		if uint64(len(seen)) > cfg.Config.ValidatorEvidenceRelay.MaxSlots {
+		if uint64(len(seen)) > maximumSlots {
 			return errors.New("compact relay capture exceeds the approved finite slot reserve")
 		}
-		requestPath := filepath.Join(stateRoot, "evidence-relay", fmt.Sprintf("%x.json", slot))
-		raw, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, requestPath, evidenceRelayActionBytes)
+		actionID := fmt.Sprintf("%s%x", evidenceRelayActionPrefix, slot)
+		owner, request, raw, err := readFinalRelayCaptureRequest(ctx, stateRoot, plan, entries, actionID, owners)
 		if err != nil {
 			return err
 		}
+		requestPath := filepath.Join(stateRoot, "evidence-relay", fmt.Sprintf("%x.json", slot))
 		if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "relay-request", Name: filepath.Base(requestPath)}, raw); err != nil {
 			return err
 		}
-		action, err := validateEvidenceRelayRequest(plan, entries, raw)
-		if err != nil {
-			return err
-		}
-		var request evidenceRelayRequestRecord
-		if err := decodeStrictJSONBytes(raw, &request); err != nil {
-			return err
-		}
 		expected := request.Evidence
-		if action.ID != fmt.Sprintf("%s%x", evidenceRelayActionPrefix, slot) || expected.Activation != publication.Activation || !reflect.DeepEqual(expected.Evidence, publication.Evidence) || expected.Window.Epoch != publication.Window.Epoch || expected.Window.Subject != publication.Window.Subject || expected.Window.StartBlock != publication.Window.StartBlock || expected.Window.EndBlock != publication.Window.EndBlock {
+		if request.Action.ID != actionID || expected.Activation != publication.Activation || !reflect.DeepEqual(expected.Evidence, publication.Evidence) || expected.Window.Epoch != publication.Window.Epoch || expected.Window.Subject != publication.Window.Subject || expected.Window.StartBlock != publication.Window.StartBlock || expected.Window.EndBlock != publication.Window.EndBlock {
 			return errors.New("compact relay request differs from its independently retained public source")
 		}
 		resultPath := filepath.Join(stateRoot, "evidence-relay", request.Action.ID+".receipt.json")
@@ -107,10 +169,13 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 		if err := decodeStrictJSONBytes(raw, &result); err != nil {
 			return err
 		}
-		if result.Schema != "urnetwork-sim-evidence-relay-result-v2" || result.PlanHash != plan.PlanHash || !reflect.DeepEqual(result.Action, request.Action) || result.Receipt == nil || len(result.SignedTransaction) == 0 || result.LostPublicationRace != (result.OwnReceipt != nil) {
+		if result.Schema != "urnetwork-sim-evidence-relay-result-v2" || result.PlanHash != owner.PlanHash || !reflect.DeepEqual(result.Action, request.Action) || result.Receipt == nil || len(result.SignedTransaction) == 0 {
 			return errors.New("compact relay result is incomplete or misrouted")
 		}
-		original, broadcast, _, err := evidenceRelayOriginalBroadcast(entries, cfg.Config.Deployment.DeploymentID, plan.PlanHash, request.Action)
+		if err := validateFinalRelayRetainedReceiptState(result.Receipt, result.OwnReceipt, result.LostPublicationRace); err != nil {
+			return err
+		}
+		original, broadcast, _, err := evidenceRelayOriginalBroadcast(entries, cfg.Config.Deployment.DeploymentID, owner.PlanHash, request.Action)
 		if err != nil {
 			return err
 		}

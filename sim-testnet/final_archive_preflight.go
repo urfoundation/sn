@@ -68,8 +68,14 @@ type finalArchiveProbe interface {
 // RunFinalArchiveRetentionPreflight probes and persists a generation-unique,
 // content-addressed receipt beneath stateDir/receipts. Callers must invoke it
 // immediately before topology launch or scenario start and retain its locator.
-func RunFinalArchiveRetentionPreflight(ctx context.Context, stateDir string, public *PublicDeploymentManifest, plannedSpanBlocks, safetyMarginBlocks uint64) (*FinalArchiveRetentionPreflight, FinalArtifactLocator, error) {
+func RunFinalArchiveRetentionPreflight(ctx context.Context, stateDir string, public *PublicDeploymentManifest, plannedSpanBlocks, safetyMarginBlocks uint64, provisionalConfig ...*ResolvedConfig) (*FinalArchiveRetentionPreflight, FinalArtifactLocator, error) {
 	probe := liveFinalArchiveProbe{}
+	if len(provisionalConfig) > 1 {
+		return nil, FinalArtifactLocator{}, errors.New("multiple archive runtime authorities")
+	}
+	if len(provisionalConfig) == 1 {
+		probe.provisionalConfig = provisionalConfig[0]
+	}
 	if public != nil {
 		probe.genesisHash = public.GenesisHash
 		probe.runtimeVersion = runtimeVersionIdentity{
@@ -121,7 +127,7 @@ func RunFinalCompositeArchiveRetentionPreflight(ctx context.Context, cfg *Resolv
 	if err != nil {
 		return nil, FinalArtifactLocator{}, err
 	}
-	return RunFinalArchiveRetentionPreflight(ctx, stateDir, public, span, safetyMarginBlocks)
+	return RunFinalArchiveRetentionPreflight(ctx, stateDir, public, span, safetyMarginBlocks, cfg)
 }
 
 func runFinalArchiveRetentionPreflight(ctx context.Context, stateDir string, public *PublicDeploymentManifest, plannedSpanBlocks, safetyMarginBlocks uint64, now func() time.Time, probe finalArchiveProbe) (*FinalArchiveRetentionPreflight, FinalArtifactLocator, error) {
@@ -425,6 +431,7 @@ type liveFinalArchiveProbe struct {
 	runtimeVersion      runtimeVersionIdentity
 	runtimeCodeHash     string
 	runtimeMetadataHash string
+	provisionalConfig   *ResolvedConfig
 }
 
 func (live liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, earliest ChainHead, futureDepth uint64) (FinalArchiveProbeResult, error) {
@@ -447,6 +454,13 @@ func (live liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string
 	}
 	if !strings.EqualFold(chain.GenesisHash.Hex(), live.genesisHash) {
 		return FinalArchiveProbeResult{}, fmt.Errorf("archive genesis %s, want %s", chain.GenesisHash.Hex(), live.genesisHash)
+	}
+	if provisionalResumeEnabled(live.provisionalConfig) {
+		observed, err := readAuthenticatedRuntimeMetadataAtContext(ctx, chain, live.provisionalConfig, finalizedNativeHash)
+		if err != nil {
+			return FinalArchiveProbeResult{}, err
+		}
+		live.runtimeVersion, live.runtimeCodeHash, live.runtimeMetadataHash = observed.Version, observed.CodeHash, observed.MetadataHash
 	}
 	version, err := runtimeVersionAt(chain, finalizedNativeHash)
 	if err != nil {

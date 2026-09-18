@@ -9,6 +9,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
@@ -190,10 +192,19 @@ func requiredRuntimeEvidenceSourceCapacity(cfg *ResolvedConfig, bounds validator
 // This is called only by the real full-campaign owner before preparation or
 // spending. Setup-only configuration/rendering keeps its existing admission.
 func validateRuntimeEvidenceSourceCapacity(cfg *ResolvedConfig) error {
+	return validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, os.Stderr)
+}
+
+// The provisional run-first policy can defer a worst-case hourly upload
+// forecast, never the finite counters enforced by the serving operators.
+// Check every source and destination before emitting an advisory, so a quota
+// shortfall cannot conceal a later malformed owner or insufficient source.
+func validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg *ResolvedConfig, diagnostics io.Writer) error {
 	if cfg == nil || cfg.Config == nil || len(cfg.Config.ValidatorEvidenceV2) != cfg.Config.Topology.Validators || cfg.Config.Topology.Validators == 0 || len(cfg.Config.Artifacts.ReservedAttemptUploads) != cfg.Config.Topology.Operators {
 		return errors.New("source capacity has no complete validator/operator owner census")
 	}
 	seen := map[uint64]bool{}
+	var publicationShortfalls []error
 	if _, err := campaignEvidenceLimitsForConfig(cfg); err != nil {
 		return fmt.Errorf("source archive metadata capacity: %w", err)
 	}
@@ -247,6 +258,9 @@ func validateRuntimeEvidenceSourceCapacity(cfg *ResolvedConfig) error {
 			}
 		}
 		for index, destination := range cfg.Config.Artifacts.ReservedAttemptUploads {
+			if err := destination.ValidateCapacity(); err != nil {
+				return fmt.Errorf("replica %d protected publication capacity is invalid: %w", index+1, err)
+			}
 			if destination.Admission.ReplicaNoID != uint64(index+1) || destination.Admission.MaximumOwners < uint64(cfg.Config.Topology.Validators*cfg.Config.Topology.Operators) || source.Evidence.UploadIntentSeconds > destination.Admission.MaximumIntentSeconds {
 				return errors.New("source publication owner or intent capacity differs")
 			}
@@ -255,9 +269,26 @@ func validateRuntimeEvidenceSourceCapacity(cfg *ResolvedConfig) error {
 				return errors.New("source admission history cannot retain the funded block horizon")
 			}
 			if destination.Budget.ObjectsPerHour < minimum.objectsPerHour || destination.Budget.BytesPerHour < minimum.bytesPerHour || destination.Budget.RetryRequestsPerHour < minimum.retryRequestsPerHour {
-				return fmt.Errorf("replica %d protected publication capacity is below the campaign source/retry workload", index+1)
+				publicationShortfalls = append(publicationShortfalls, fmt.Errorf("validator %d replica %d protected publication capacity is below the campaign source/retry workload: validator_poll_seconds=%d objects_per_hour=%d required_objects_per_hour=%d bytes_per_hour=%d required_bytes_per_hour=%d retry_requests_per_hour=%d required_retry_requests_per_hour=%d", source.ValidatorID, index+1, validatorPollSeconds(cfg), destination.Budget.ObjectsPerHour, minimum.objectsPerHour, destination.Budget.BytesPerHour, minimum.bytesPerHour, destination.Budget.RetryRequestsPerHour, minimum.retryRequestsPerHour))
 			}
 		}
+	}
+	forecastErr := errors.Join(publicationShortfalls...)
+	if forecastErr == nil {
+		return nil
+	}
+	if !provisionalResumeEnabled(cfg) {
+		return forecastErr
+	}
+	record := cfg.provisionalResume.Record
+	if cfg.ChainID != testnetChainID || record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || !validCanonicalHashHex(record.PlanHash) {
+		return errors.Join(errors.New("provisional source forecast requires the exact non-accepting testnet approval"), forecastErr)
+	}
+	if diagnostics == nil {
+		return errors.Join(errors.New("provisional source forecast has no diagnostic owner"), forecastErr)
+	}
+	if _, err := fmt.Fprintf(diagnostics, "sim-testnet: provisional protected publication forecast advisory; forecast_waived=true runtime_limits_unchanged=true final_acceptance=false\n%v\n", forecastErr); err != nil {
+		return errors.Join(fmt.Errorf("record provisional source forecast: %w", err), forecastErr)
 	}
 	return nil
 }

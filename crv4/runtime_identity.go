@@ -41,11 +41,13 @@ type RuntimeArtifactIdentity struct {
 // allowed version and :code hash. Each connection fetches and hashes the large
 // bytes once per exact artifact.
 type AuthenticatedRuntimeArtifact struct {
-	BlockHash    types.Hash
-	Version      RuntimeVersionIdentity
-	CodeHash     string
-	MetadataHash string
-	Metadata     *types.Metadata
+	BlockHash            types.Hash
+	Version              RuntimeVersionIdentity
+	CodeHash             string
+	MetadataHash         string
+	Metadata             *types.Metadata
+	CompatibilityProfile string
+	GenesisHash          types.Hash
 }
 
 // Coordinates one in-flight or successfully published immutable metadata load.
@@ -399,7 +401,10 @@ func AuthenticateRuntimeArtifactAtContext(ctx context.Context, chain *Chain, blo
 			break
 		}
 	}
-	if selectedIdentity == nil {
+	if selectedIdentity == nil || (version.SpecVersion > ReviewedRuntimeSpecVersion && chain.ProvisionalRuntimeCompatibilityEnabled()) {
+		if chain.ProvisionalRuntimeCompatibilityEnabled() {
+			return authenticateProvisionalRuntimeArtifact(ctx, chain, blockHash, version, canonicalRuntimeArtifactIdentities)
+		}
 		return result, fmt.Errorf("runtime at %s has unreviewed identity %s/%d/%d/%d", blockHash.Hex(), version.SpecName, version.SpecVersion, version.TransactionVersion, version.StateVersion)
 	}
 	codeHash, err := RuntimeCodeHashAtContext(ctx, chain, blockHash)

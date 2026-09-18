@@ -97,10 +97,12 @@ Usage:
     provider fleet manifest --manifest=<path>
         [-v...]
     provider fleet publish --manifest=<path> --substrate=<ws_url>... --hotkey_seed_file=<path>
+        [--provisional-runtime-compatibility=<profile> --runtime-observation-dir=<path>]
         [-v...]
     provider fleet bind --manifest=<path> --client_id=<hex> --client_seed_file=<path> --hotkey_seed_file=<path> --valid_from_epoch=<e> --valid_to_epoch=<e> --rpc=<rpc_url>... --relayer_key_file=<path> [--dry-run]
         [-v...]
     provider fleet status --manifest=<path> --client_id=<hex> --substrate=<ws_url>... --rpc=<rpc_url>...
+        [--provisional-runtime-compatibility=<profile> --runtime-observation-dir=<path>]
         [-v...]
     provider fleet revoke --manifest=<path> --client_id=<hex> --client_seed_file=<path> --effective_epoch=<e> --rpc=<rpc_url>... --relayer_key_file=<path> [--dry-run]
         [-v...]
@@ -141,6 +143,8 @@ Options:
     --rpc=<rpc_url>                  EVM json-rpc endpoint used to check the payout root on-chain.
                                      May be repeated; endpoints are tried in order until one answers.
 	--substrate=<ws_url>               Substrate websocket endpoint; repeatable ordered failover.
+	--provisional-runtime-compatibility=<profile>  Explicit testnet consumed-runtime profile.
+	--runtime-observation-dir=<path>   Absolute durable directory required with the provisional profile.
 	--manifest=<path>                  Canonical urnetwork-fleet-manifest-v1 JSON file.
 	--client_id=<hex>                  Stable 16-byte UR client identity from the fleet manifest.
 	--client_seed_file=<path>          Raw or hex 32-byte Ed25519 client key seed.

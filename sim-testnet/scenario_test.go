@@ -36,6 +36,63 @@ type transientErrorScenarioProbe struct {
 	calls            int
 }
 
+// Models the exact pre-boundary filter state without relying on timing.
+type preAcceptanceOrderingFaultDriver struct {
+	eventStrings []string
+	active       bool
+}
+
+// Activates the synthetic validator view filter.
+func (self *preAcceptanceOrderingFaultDriver) Apply(_ context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	self.eventStrings = append(self.eventStrings, "apply:"+spec.ID)
+	self.active = true
+	return []FaultProcessEvidence{{ID: spec.Targets[0], Role: "validator", Identity: "test-validator", PID: 123}}, nil
+}
+
+// Clears the synthetic validator view filter by its exact fault identity.
+func (self *preAcceptanceOrderingFaultDriver) Restore(_ context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	self.eventStrings = append(self.eventStrings, "restore:"+spec.ID)
+	self.active = false
+	return []FaultProcessEvidence{{ID: spec.Targets[0], Role: "validator", Identity: "test-validator", PID: 123}}, nil
+}
+
+// Records whether crash recovery found an installed filter.
+func (self *preAcceptanceOrderingFaultDriver) Recover(context.Context) error {
+	if self.active {
+		self.eventStrings = append(self.eventStrings, "recover:active")
+	} else {
+		self.eventStrings = append(self.eventStrings, "recover:empty")
+	}
+	self.active = false
+	return nil
+}
+
+// Observes whether lifecycle initialization sees the required filter.
+type preAcceptanceOrderingLifecycle struct {
+	driver       *preAcceptanceOrderingFaultDriver
+	armedAtBegin bool
+}
+
+// Stops after capturing the deterministic ordering boundary.
+func (self *preAcceptanceOrderingLifecycle) BeginPhase(string, string) error {
+	self.driver.eventStrings = append(self.driver.eventStrings, "lifecycle:begin")
+	self.armedAtBegin = self.driver.active
+	return errors.New("stop after lifecycle ordering probe")
+}
+
+// The ordering probe stops before an acceptance window exists.
+func (self *preAcceptanceOrderingLifecycle) BindAcceptanceWindowForPhase(string, *ScenarioAcceptanceWindow) error {
+	return nil
+}
+
+// The ordering probe stops before lifecycle advancement.
+func (self *preAcceptanceOrderingLifecycle) Advance(context.Context, *ScenarioObservation, []ScenarioFaultRecord) error {
+	return nil
+}
+
+// The ordering probe cannot complete a lifecycle.
+func (self *preAcceptanceOrderingLifecycle) Complete() bool { return false }
+
 // descendingHeadScores builds canonical positive score evidence in the exact
 // deterministic ranking order expected by the independent scenario verifier.
 func descendingHeadScores(count int, multiplier int64) []validatorpkg.RationalJSON {
@@ -380,6 +437,38 @@ func TestScenarioPreparationRunsUnderAdversariesAndPersistsFailure(t *testing.T)
 	}
 	if result.Anomalies == nil || result.Anomalies.Status != "open" || len(result.Anomalies.Entries) == 0 {
 		t.Fatalf("preparation failure anomaly ledger=%+v", result.Anomalies)
+	}
+}
+
+func TestScenarioRunnerArmsPreAcceptanceFaultBeforeFleetLifecycle(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	driver := &preAcceptanceOrderingFaultDriver{}
+	lifecycle := &preAcceptanceOrderingLifecycle{driver: driver}
+	definition := scenarioDefinition{
+		Name:   "unit-pre-acceptance-lifecycle-order",
+		Checks: []scenarioCheck{{ID: "unused", Check: func(*scenarioEvaluation) (bool, string) { return true, "" }}},
+		Faults: []scenarioFaultSpec{{
+			ID: "prune-target", Kind: "validator-view-filter", Targets: []string{"validator-view-1"},
+			PreAcceptance: true, TriggerOffsetBlocks: 1, DurationBlocks: 1,
+		}},
+	}
+	result, err := runScenarioWithProbe(
+		context.Background(), cfg, t.TempDir(), definition,
+		&staticScenarioProbe{observations: []*ScenarioObservation{testScenarioObservation(cfg, 1)}},
+		scenarioRunOptions{
+			FaultDriver: driver, FleetLifecycle: lifecycle,
+			Prepare: func(context.Context) error {
+				driver.eventStrings = append(driver.eventStrings, "prepare")
+				return nil
+			},
+		},
+	)
+	if err == nil || result == nil || !strings.Contains(err.Error(), "stop after lifecycle ordering probe") {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	want := []string{"recover:empty", "prepare", "apply:prune-target", "lifecycle:begin", "recover:active"}
+	if !lifecycle.armedAtBegin || driver.active || !slices.Equal(driver.eventStrings, want) {
+		t.Fatalf("armed_at_begin=%t active_after_failure=%t events=%v, want %v", lifecycle.armedAtBegin, driver.active, driver.eventStrings, want)
 	}
 }
 

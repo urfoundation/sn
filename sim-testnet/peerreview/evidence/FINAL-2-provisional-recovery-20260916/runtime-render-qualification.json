@@ -1,0 +1,40 @@
+{
+  "fix": "runtime461-render-refresh",
+  "status": "qualified_by_composition",
+  "not_a_launch_gate": true,
+  "base_commit": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "review": {
+    "original_patch_sha256": "055d500608f619ba6004c3603641ca609b019f04c0500b19a77463a858d3fc96",
+    "corrected_patch_sha256": "f372e6ba7cbf4752a6c4771e99169c07ae9475335b23b9f6d07efc8eca688b0d",
+    "fixture_only_diff_sha256": "28c3c82abb7c5d9c090426aae597b9b000552f601049d3ddbff1e3fbbc9850c4",
+    "manifest_sha256": "5c8bfb84925db43ba86113ecc0c5ae91ed1157f24553998b5ad9cd9233946fc0"
+  },
+  "source_sha256": {
+    "sim-testnet/plan.go": "8e50accc416879b86a31a12599f353dd05b8212b4870aea767a8ebdc77d9584f",
+    "sim-testnet/runtime_config_identity_test.go": "6c08bceeb907dcb57971e648d5d8077272543100ffaf2128ffdfa5385bce5836",
+    "sim-testnet/runtime_config_native_render_test.go": "1166550f3ce017b4e7b138ca8ca94372d265bbd367d5c46485fffb97ab2e60d3"
+  },
+  "tests": {
+    "ordinary": {
+      "focus": { "original": { "roots": 9, "passed": 7, "fixture_failures": 2 }, "corrected_replacements": { "roots": 2, "passed": 2 }, "composed": { "roots": 9, "passed": 9 } },
+      "adjacent": { "roots": 9, "passed": 9 },
+      "composed_total": { "roots": 18, "passed": 18 }
+    },
+    "race": {
+      "focus": { "original": { "roots": 9, "passed": 7, "fixture_failures": 2 }, "corrected_replacements": { "roots": 2, "passed": 2 }, "composed": { "roots": 9, "passed": 9 } },
+      "adjacent": { "roots": 9, "passed": 9 },
+      "composed_total": { "roots": 18, "passed": 18 }
+    }
+  },
+  "causal_controls": [
+    { "run": "corrected-prefixed-base-intent-ordinary", "root": "TestRuntimeConfigNativeRefreshBindsReviewed460Migration", "outer_exit": 1, "child_exit": 1, "expected_failure": "changed current runtime reused the prior render approval" },
+    { "run": "prefixed-base-interrupted-ordinary", "root": "TestCoordinatorRepairCarryRuntimeIdentityInterruptedRenderRemainsPending", "outer_exit": 1, "child_exit": 1, "expected_failure": "interrupted current render inherited its ancestor's success", "reused": true },
+    { "run": "corrected-prefixed-base-partial-ordinary", "root": "TestRuntimeConfigNativeRefreshRecoversPartialRenderWithoutChangingHistory", "outer_exit": 0, "child_exit": 0, "passed": true }
+  ],
+  "original_fixture_failures": [
+    { "root": "TestRuntimeConfigNativeRefreshBindsReviewed460Migration", "modes": ["ordinary", "race"], "message": "runtime configuration migration requires the exact current461 release" },
+    { "root": "TestRuntimeConfigNativeRefreshRecoversPartialRenderWithoutChangingHistory", "modes": ["ordinary", "race"], "message": "minio.yml must select the blob bucket" }
+  ],
+  "run_sources_unchanged": true,
+  "records": "output/"
+}

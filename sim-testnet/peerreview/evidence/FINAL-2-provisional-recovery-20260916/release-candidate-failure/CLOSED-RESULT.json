@@ -1,0 +1,28 @@
+{
+  "body": {
+    "exit": 1,
+    "finished_at": "2026-09-16T17:01:52Z",
+    "started_at": "2026-09-16T16:53:00Z"
+  },
+  "candidate_cli_sha256": "5ff1130c0f1b7ef3404c2d7a8c37f388854bed8299b3ae4bb152ac3ebf220348",
+  "command": "scenario --name release-candidate --provisional-resume --apply",
+  "comparisons": {
+    "binary_exit": 0,
+    "lock_exit": 0,
+    "state_exit": 1
+  },
+  "final_acceptance": false,
+  "outer": {
+    "exit": 1,
+    "finished_at": "2026-09-16T17:01:53Z",
+    "started_at": "2026-09-16T16:52:59Z",
+    "tool_session": 37589
+  },
+  "plan_hash": "0xcba026fa05f500c6ee120a19c94b1f3f0d1362bf4e6cab0db21aa4306d8b4d0f",
+  "provisional": true,
+  "release_lock_sha256": "aad35e8488e48190071889b3dec47c184ed9d2deedc30c44e3b52ee6f17afd84",
+  "schema": "urnetwork-provisional-release-candidate-closed-v1",
+  "source_commit": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "terminal_error": "sim-testnet: open durable release-1.0 attempt: campaign succession requires the strict approved deployment owner",
+  "validator_restart_census": "VALIDATOR-RESTART-CENSUS.json"
+}

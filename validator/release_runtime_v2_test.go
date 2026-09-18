@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -238,6 +239,79 @@ func (self *releaseRuntimeV2TestFixture) start(t *testing.T) {
 		t.Fatal(err)
 	}
 	self.runtime = runtime
+}
+
+// Independent operator cuts must overlap so a short native-to-settlement
+// window is not consumed serially. The real Stats snapshot boundary supplies
+// a deterministic barrier after both signed journals have been published.
+func TestReleaseRuntimeV2CollectsNativeOperatorsConcurrently(t *testing.T) {
+	fixture, steerer := newReleaseStartupOwnerV2TestFixture(t)
+	arrived := make(chan uint64, len(fixture.runtime.history.participants))
+	release := make(chan struct{})
+	for _, participant := range fixture.runtime.history.participants {
+		noId := participant.NoID
+		participant.Stats.writeHooks.step = func(operation, stage string) {
+			if operation == "detach-native-v2" && stage == "before-snapshot" {
+				arrived <- noId
+				<-release
+			}
+		}
+	}
+	type outcome struct {
+		inputs  []ReleaseMeasurementInput
+		options ReleaseMeasurementV2Options
+		err     error
+	}
+	completed := make(chan outcome, 1)
+	boundary := fixture.startup.boundary
+	snapshotHash, err := parseReleaseHex32("parallel fixture EVM hash", boundary.EVMBlockHash, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		inputs, options, err := fixture.runtime.collect(t.Context(), steerer, nil,
+			&ReleaseSnapshot{Epoch: new(big.Int).SetUint64(boundary.SettlementEpoch), BlockNumber: boundary.EVMBlock, BlockHash: snapshotHash},
+			1, fixture.startup.nativeFixture.blockNumber, fixture.startup.nativeFixture.block.Hex(), map[[32]byte]uint16{fixture.hotkey.PublicKey(): 2})
+		completed <- outcome{inputs: inputs, options: options, err: err}
+	}()
+	first, second := <-arrived, <-arrived
+	close(release)
+	result := <-completed
+	if first == second || result.err != nil || len(result.inputs) != 2 || len(result.options.Operators) != 2 {
+		t.Fatalf("independent native inputs did not overlap and complete: arrivals=%d/%d inputs=%d operators=%d error=%v", first, second, len(result.inputs), len(result.options.Operators), result.err)
+	}
+}
+
+// One operator failure cannot suppress an independent successful signed cut.
+// The caller receives the failure after every worker joins and can reuse the
+// sibling journal on the next incremental retry.
+func TestReleaseRuntimeV2CollectRetainsSiblingProgressAfterOperatorFailure(t *testing.T) {
+	fixture, steerer := newReleaseStartupOwnerV2TestFixture(t)
+	participants := fixture.runtime.history.participants
+	failure := errors.New("first native operator snapshot failed")
+	participants[0].Stats.writeHooks.snapshotIO.after = func(stage string, _ *os.File) error {
+		if stage == "temporary-closed" {
+			return failure
+		}
+		return nil
+	}
+	boundary := fixture.startup.boundary
+	snapshotHash, err := parseReleaseHex32("partial fixture EVM hash", boundary.EVMBlockHash, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = fixture.runtime.collect(t.Context(), steerer, nil,
+		&ReleaseSnapshot{Epoch: new(big.Int).SetUint64(boundary.SettlementEpoch), BlockNumber: boundary.EVMBlock, BlockHash: snapshotHash},
+		1, fixture.startup.nativeFixture.blockNumber, fixture.startup.nativeFixture.block.Hex(), map[[32]byte]uint16{fixture.hotkey.PublicKey(): 2})
+	sibling := participants[1].NoID
+	journal := fixture.runtime.history.inputByEpoch[1][sibling]
+	_, reserved := fixture.runtime.nativeReservations[sibling]
+	if !errors.Is(err, failure) || journal == nil || reserved {
+		t.Fatalf("operator failure discarded independent sibling progress: sibling=%d journal=%t reserved=%t error=%v", sibling, journal != nil, reserved, err)
+	}
+	if _, readErr := readReleaseMeasurementInputV2(releaseMeasurementInputV2Path(fixture.runtime.cfg.StateDir, 1, sibling), fixture.runtime.cfg.EvidenceV2.Bounds.MaxInputJournalBytes); readErr != nil {
+		t.Fatalf("successful sibling journal is not reusable: %v", readErr)
+	}
 }
 
 func TestReleaseRuntimeV2ClosesMissedEpochsAndPublishesProtectedSourceCensus(t *testing.T) {

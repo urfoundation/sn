@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ type ValidatorUploadAdmissionConfig struct {
 	// A separately authorized testnet staging allowance uses exact private
 	// context pins without asserting historical or current chain eligibility.
 	ProvisionalRetainedContextAuthority bool   `json:"provisional_retained_context_authority,omitempty" yaml:"provisional_retained_context_authority,omitempty"`
+	ProvisionalRuntimeCompatibility     string `json:"provisional_runtime_compatibility,omitempty" yaml:"provisional_runtime_compatibility,omitempty"`
+	RuntimeObservationDir               string `json:"runtime_observation_dir,omitempty" yaml:"runtime_observation_dir,omitempty"`
 	MaximumContextBytes                 uint64 `json:"maximum_context_bytes" yaml:"maximum_context_bytes"`
 	MaximumOwners                       uint64 `json:"maximum_owners" yaml:"maximum_owners"`
 	BlocksPerRange                      uint64 `json:"blocks_per_range" yaml:"blocks_per_range"`
@@ -54,6 +57,11 @@ type ValidatorUploadAdmissionConfig struct {
 func (self ValidatorUploadAdmissionConfig) Validate() error {
 	if err := self.Deployment.Validate(); err != nil {
 		return err
+	}
+	if self.ProvisionalRuntimeCompatibility != "" || self.RuntimeObservationDir != "" {
+		if self.ProvisionalRuntimeCompatibility != crv4.ProvisionalRuntimeCompatibilityProfile || self.Deployment.ChainID != 945 || types.Hash(self.Deployment.GenesisHash).Hex() != provisionalRuntimeTestnetGenesis || !filepath.IsAbs(self.RuntimeObservationDir) {
+			return errors.New("provisional staging runtime requires the consumed profile, testnet chain 945, exact testnet genesis and absolute observation directory")
+		}
 	}
 	if self.ProvisionalSeededDiscoveryOnly && (self.Deployment.ChainID != 945 || len(self.ActivationContexts) == 0) {
 		return errors.New("provisional seeded discovery requires testnet chain 945 and explicit activation contexts")
@@ -192,6 +200,13 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 		digests = append(digests, digest)
 		if config.ProvisionalRetainedContextAuthority {
 			retainedContexts = append(retainedContexts, parsed)
+		}
+	}
+	if config.ProvisionalRuntimeCompatibility != "" {
+		if err := native.EnableProvisionalRuntimeCompatibility(types.Hash(config.Deployment.GenesisHash), func(artifact crv4.AuthenticatedRuntimeArtifact) error {
+			return crv4.WriteProvisionalRuntimeObservation(config.RuntimeObservationDir, artifact)
+		}); err != nil {
+			return nil, err
 		}
 	}
 	ownerCtx, cancel := context.WithCancel(ctx)

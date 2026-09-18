@@ -149,7 +149,7 @@ func walkAttemptStreamV2Chunk(ctx context.Context, kind string, chunk AttemptStr
 				break
 			}
 			if !errors.Is(readErr, bufio.ErrBufferFull) {
-				return errors.Join(errors.New("compact attempt chunk ends before its complete JSONL rows"), readErr)
+				return fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", readErr)
 			}
 		}
 		if uint64(len(row)) > chunk.DataBytes-dataBytes {
@@ -169,8 +169,10 @@ func walkAttemptStreamV2Chunk(ctx context.Context, kind string, chunk AttemptStr
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if _, err := buffer.ReadByte(); !errors.Is(err, io.EOF) {
-		return errors.Join(errors.New("compact attempt chunk contains an extra row or suffix"), err)
+	if _, err := buffer.ReadByte(); err == nil {
+		return errors.New("compact attempt chunk contains an extra row or suffix")
+	} else if !errors.Is(err, io.EOF) {
+		return fmt.Errorf("compact attempt chunk could not authenticate its exact EOF: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err

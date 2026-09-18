@@ -27,55 +27,53 @@ func TestFinalArchiveReviewerMarginIsOneDayAtConfiguredCadence(t *testing.T) {
 func TestReleaseAnalyzerDoesNotDelayProductionWindow(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
-	roles, err := BuildRoleSecrets(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, roles, _ := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 32)
 	journal := openCampaignTestJournal(t, stateDir)
 	releaseAnalysisStarted := make(chan struct{})
-	allowReleaseAnalysis := make(chan struct{})
 	productionStarted := make(chan struct{})
-	runner := func(_ context.Context, _ *ResolvedConfig, fixtureDir, name string, _ *Journal, _ *Executor, _ *scenarioCampaignAttempt) error {
+	runner := func(ctx context.Context, _ *ResolvedConfig, _ string, name string, _ *Journal, _ *Executor, _ *scenarioCampaignAttempt) error {
 		switch name {
 		case "release-1.0":
-			writeScenarioCampaignFixture(t, cfg, fixtureDir, name, 26, 32)
+			return errors.New("completed release phase was rerun")
 		case "production-soak":
 			close(productionStarted)
-			writeScenarioCampaignFixture(t, cfg, fixtureDir, name, 32, 36)
+			<-ctx.Done()
+			return ctx.Err()
 		default:
 			return fmt.Errorf("unexpected phase %s", name)
 		}
-		return nil
 	}
 	analyzer := func(ctx context.Context, _ *ResolvedConfig, _, _ string, _ *RoleSecrets, result *ScenarioResult) error {
 		if result.Name != "release-1.0" {
 			return nil
 		}
 		close(releaseAnalysisStarted)
-		select {
-		case <-allowReleaseAnalysis:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		<-ctx.Done()
+		return ctx.Err()
 	}
+	campaignCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- runReleaseCandidateCampaignWithAnalyzer(context.Background(), cfg, stateDir, journal, campaignTestExecutor(), roles, runner, noOpCampaignPreflight, analyzer)
+		done <- runReleaseCandidateCampaignWithAnalyzer(campaignCtx, cfg, stateDir, journal, campaignTestExecutor(), roles, runner, noOpCampaignPreflight, analyzer)
 	}()
 	select {
 	case <-releaseAnalysisStarted:
-	case <-time.After(5 * time.Second):
-		t.Fatal("release analyzer did not start")
+	case err := <-done:
+		t.Fatalf("campaign exited before the release analyzer started: %v", err)
+	case <-campaignCtx.Done():
+		t.Fatalf("release analyzer did not start: %v", <-done)
 	}
 	select {
 	case <-productionStarted:
-	case <-time.After(5 * time.Second):
-		t.Fatal("production waited for release semantic analysis")
+	case err := <-done:
+		t.Fatalf("campaign exited before production started: %v", err)
+	case <-campaignCtx.Done():
+		t.Fatalf("production waited for release semantic analysis: %v", <-done)
 	}
-	close(allowReleaseAnalysis)
-	if err := <-done; err != nil {
-		t.Fatal(err)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("campaign cancellation error=%v", err)
 	}
 }
 

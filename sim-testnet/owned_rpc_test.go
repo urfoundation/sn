@@ -255,20 +255,22 @@ func TestOwnedRPCPlanApprovalBindsExactRouteWithoutChangingCustody(t *testing.T)
 	}
 }
 
-func TestOwnedRPCCLIRejectsUnownedAndProvisionalRoutes(t *testing.T) {
-	for _, authority := range []string{"127.0.0.1:9944", "0.0.0.0:9944", "8.8.8.8:9944", "node.example:9944", "192.168.1.162", "192.168.1.162:09944", "http://192.168.1.162:9944", "192.168.1.162:65536"} {
+func TestOwnedRpcCliRejectsUnownedAndConflictingRoutes(t *testing.T) {
+	for _, authority := range []string{"127.0.0.1:9944", "0.0.0.0:9944", "192.0.2.20:9944", "node.example:9944", "192.168.50.20", "192.168.50.20:09944", "http://192.168.50.20:9944", "192.168.50.20:65536"} {
 		if _, _, err := parseCLI([]string{"doctor", "--owned-rpc-authority", authority}); err == nil {
 			t.Fatalf("unowned or ambiguous authority accepted: %s", authority)
 		}
 	}
 	for _, args := range [][]string{
 		{"resume", "--provisional-resume"}, {"release-lock"}, {"stop"}, {"inspect", "--manifest", "/fixture/public.json"},
+		{"resume", "--provisional-rpc-authority", "192.168.50.20:9944"},
+		{"coordinator-repair", "--provisional-resume", "--apply", "--plan-hash", "0x" + strings.Repeat("12", 32)},
 	} {
-		if _, _, err := parseCLI(append(args, "--owned-rpc-authority", "192.168.1.162:9944")); err == nil {
-			t.Fatalf("unsupported strict route options accepted: %v", args)
+		if _, _, err := parseCLI(append(args, "--owned-rpc-authority", "192.168.50.20:9944")); err == nil {
+			t.Fatalf("unsupported or conflicting route options accepted: %v", args)
 		}
 	}
-	if _, options, err := parseCLI([]string{"fleet-renew", "--renewal-valid-from-epoch", "318", "--owned-rpc-authority", "192.168.1.162:9944"}); err != nil || options.OwnedRPCAuthority != "192.168.1.162:9944" {
+	if _, options, err := parseCLI([]string{"fleet-renew", "--renewal-valid-from-epoch", "318", "--owned-rpc-authority", "192.168.50.20:9944"}); err != nil || options.OwnedRPCAuthority != "192.168.50.20:9944" {
 		t.Fatalf("strict renewal could not select owned RPC: %v", err)
 	}
 }

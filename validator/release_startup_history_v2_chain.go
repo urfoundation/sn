@@ -66,8 +66,8 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetained
 		return err
 	}
 	current, err := self.coordinator.UnpackCurrentEpoch(outputs[0])
-	if err != nil || current == nil || !current.IsUint64() || current.Uint64() != boundary.SettlementEpoch {
-		return errors.Join(errors.New("startup history boundary belongs to another on-chain epoch"), err)
+	if err := releaseRpcObservationError(err, current != nil && current.IsUint64() && current.Uint64() == boundary.SettlementEpoch, errors.New("startup history boundary belongs to another on-chain epoch")); err != nil {
+		return err
 	}
 	if err := canonicalReleaseActivationV2View("currentEpoch", outputs[0], current); err != nil {
 		return err
@@ -104,8 +104,8 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetained
 			return errors.New("startup history terminal does not end its independently observed window")
 		}
 		actualEnd, err := self.ReleaseEpochEndBlockAtHashContext(ctx, finalized, finalizedHash, epoch)
-		if err != nil || actualEnd != end.Uint64() {
-			return errors.Join(errors.New("startup history terminal differs from the actual rolled epoch end"), err)
+		if err := releaseRpcObservationError(err, actualEnd == end.Uint64(), errors.New("startup history terminal differs from the actual rolled epoch end")); err != nil {
+			return err
 		}
 	}
 	return ctx.Err()

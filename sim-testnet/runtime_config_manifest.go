@@ -257,6 +257,12 @@ func runtimeConfigManifestHash(manifest RuntimeConfigManifest) (string, error) {
 
 // Observe the complete expected static input set after atomic rendering.
 func buildRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeConfigManifest, error) {
+	return buildRuntimeConfigManifestWithPreview(cfg, stateDir, nil)
+}
+
+// Read all unchanged inputs and replace only explicitly rendered preview bytes.
+// This never writes the deployment tree or calls an external service.
+func buildRuntimeConfigManifestWithPreview(cfg *ResolvedConfig, stateDir string, preview map[string][]byte) (*RuntimeConfigManifest, error) {
 	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
 	if err != nil {
 		return nil, err
@@ -265,6 +271,11 @@ func buildRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeC
 	expected, err := expectedRuntimeConfigFiles(cfg, stateDir)
 	if err != nil {
 		return nil, err
+	}
+	for relative := range preview {
+		if _, ok := expected[relative]; !ok {
+			return nil, fmt.Errorf("preview path %s is not an expected runtime input", relative)
+		}
 	}
 	paths := make([]string, 0, len(expected))
 	for path := range expected {
@@ -285,9 +296,15 @@ func buildRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeC
 		if err := validateRuntimeConfigPathAncestry(stateDir, relative); err != nil {
 			return nil, err
 		}
-		digest, mode, err := resolvedRuntimeManifestInputDigest(cfg, stateDir, relative)
-		if err != nil {
-			return nil, err
+		var digest string
+		var mode os.FileMode
+		if wire, ok := preview[relative]; ok {
+			digest, mode = bytesSHA256(wire), expected[relative]
+		} else {
+			digest, mode, err = resolvedRuntimeManifestInputDigest(cfg, stateDir, relative)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if mode != expected[relative] {
 			return nil, fmt.Errorf("runtime config %s mode is %04o, want %04o", relative, mode, expected[relative])

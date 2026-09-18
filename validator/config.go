@@ -69,7 +69,8 @@ type ReleaseConfig struct {
 	Operators           []OperatorConfig        `yaml:"operators" json:"operators"`
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
 
-	ProvisionalDeferClosedNativeInput bool `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
+	ProvisionalDeferClosedNativeInput bool   `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
+	ProvisionalRuntimeCompatibility   string `yaml:"provisional_runtime_compatibility,omitempty" json:"provisional_runtime_compatibility,omitempty"`
 	historyAdoptionV2                 *ReleaseHistoryAdoptionV2
 }
 
@@ -246,6 +247,12 @@ func (c ReleaseConfig) validate(historical bool) error {
 	}
 	if c.ProvisionalDeferClosedNativeInput && !provisionalClosedNativeInputEnabled(&c) {
 		return errors.New("provisional closed native input deferral requires chain 945 and testnet policy")
+	}
+	if err := validateReleaseProvisionalRuntimeCompatibility(&c); err != nil {
+		return err
+	}
+	if historical && c.ProvisionalRuntimeCompatibility != "" {
+		return errors.New("provisional runtime compatibility cannot authorize a final historical archive")
 	}
 	if strings.TrimSpace(c.DeploymentID) == "" || strings.ContainsAny(c.DeploymentID, "/\\.") {
 		return errors.New("deployment_id must be one nonempty safe segment")

@@ -108,17 +108,17 @@ func (self *ChainClient) readReleaseClientKeyAuthorityUnsharedV2(ctx context.Con
 		}
 	}()
 	chainID, err := chain.client.ChainID(ctx)
-	if err != nil || chainID == nil || chainID.Cmp(chain.chainId) != 0 {
-		return result, errors.Join(errors.New("client-key authority RPC chain identity differs"), err)
+	if err := releaseRpcObservationError(err, chainID != nil && chainID.Cmp(chain.chainId) == 0, errors.New("client-key authority RPC chain identity differs")); err != nil {
+		return result, err
 	}
 	var nativeGenesis *common.Hash
 	err = chain.client.Client().CallContext(ctx, &nativeGenesis, "chain_getBlockHash", uint64(0))
-	if err != nil || nativeGenesis == nil || [32]byte(*nativeGenesis) != domain.GenesisHash {
-		return result, errors.Join(errors.New("client-key authority native RPC genesis identity differs"), err)
+	if err := releaseRpcObservationError(err, nativeGenesis != nil && [32]byte(*nativeGenesis) == domain.GenesisHash, errors.New("client-key authority native RPC genesis identity differs")); err != nil {
+		return result, err
 	}
 	finalized, finalizedHash, err := chain.FinalizedBlockContext(ctx)
-	if err != nil || finalized < boundary.Block || finalized == boundary.Block && finalizedHash != boundary.Hash {
-		return result, errors.Join(errors.New("client-key authority boundary is not finalized"), err)
+	if err := releaseRpcObservationError(err, finalized >= boundary.Block && (finalized != boundary.Block || finalizedHash == boundary.Hash), errors.New("client-key authority boundary is not finalized")); err != nil {
+		return result, err
 	}
 	epoch := new(big.Int).SetUint64(boundary.Epoch)
 	methods := []string{"currentEpoch", "netuid", "settlementVault", "policyAt", "operatorAt", "validatorEvidence"}
@@ -163,8 +163,8 @@ func (self *ChainClient) readReleaseClientKeyAuthorityUnsharedV2(ctx context.Con
 	}
 	for _, field := range fields {
 		encoded, err := chain.ethCallAtHashContext(ctx, anchor, field.data, boundary.Block, boundary.Hash)
-		if err != nil || !bytes.Equal(encoded, field.expected[:]) {
-			return result, errors.Join(errors.New("client-key companion immutable native/deployment identity differs"), err)
+		if err := releaseRpcObservationError(err, bytes.Equal(encoded, field.expected[:]), errors.New("client-key companion immutable native/deployment identity differs")); err != nil {
+			return result, err
 		}
 	}
 	return operator.RootSigner, nil
@@ -233,8 +233,8 @@ func verifyReservedReleaseClientKeyCaptureV2(ctx context.Context, chain *ChainCl
 			return result, err
 		}
 		registration, err := protocol.DecodeClientKeyRegistration(wrapper.Payload)
-		if err != nil || registration.Domain != domain || registration.ClientID != request.ClientID {
-			return result, errors.Join(errors.New("client-key capture registration identity differs"), err)
+		if err := releaseRpcObservationError(err, registration.Domain == domain && registration.ClientID == request.ClientID, errors.New("client-key capture registration identity differs")); err != nil {
+			return result, err
 		}
 		if err := registration.Follows(prior); err != nil {
 			return result, err
@@ -406,8 +406,11 @@ func readRetainedReleaseClientKeyV2(ctx context.Context, chain *ChainClient, cus
 		return protocol.ClientKeyRegistration{}, err
 	}
 	encoded, err := custody.read(ctx, path, min(maximum, uint64(protocol.MaxClientKeyHistoryResponseBytes)), false)
-	if err != nil || ReleaseMeasurementContentHash(encoded) != contentHash {
-		return protocol.ClientKeyRegistration{}, errors.Join(errReleaseHistoricalClientKeyV2, errors.New("retained client-key capture differs from its complete byte identity"), err)
+	if err != nil {
+		return protocol.ClientKeyRegistration{}, err
+	}
+	if ReleaseMeasurementContentHash(encoded) != contentHash {
+		return protocol.ClientKeyRegistration{}, errors.Join(errReleaseHistoricalClientKeyV2, errors.New("retained client-key capture differs from its complete byte identity"))
 	}
 	registration, err := verifyReleaseClientKeyCaptureV2(ctx, chain, encoded, maximum, domain, request, true)
 	return registration, errors.Join(err, custody.check(), ctx.Err())

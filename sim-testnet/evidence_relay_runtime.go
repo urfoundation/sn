@@ -47,6 +47,8 @@ type evidenceRelayRuntime struct {
 	horizon              *evidenceRelayHorizon
 	nativeWarmupBudget   *ScenarioNativeWarmupBudgetV2
 	nativeWarmupComplete bool
+	startupCache         *evidenceRelayStartupSession
+	startupProgress      bool
 	ready                chan struct{}
 	remainingRequests    chan evidenceRelayRemainingRequest
 	stateLock            sync.Mutex
@@ -197,12 +199,16 @@ func (self *evidenceRelayRuntime) run() {
 		outcome = fmt.Errorf("validator evidence funded phase admission: %w", err)
 		return
 	}
+	if self.startupCache != nil {
+		self.startupCache.seedCompletedAudits(completedAudits)
+	}
 	close(self.ready)
 	for {
 		if err := self.ctx.Err(); err != nil {
 			outcome = err
 			return
 		}
+		self.startupProgress = false
 		if err := self.advance(); err != nil {
 			outcome = fmt.Errorf("validator evidence relay: %w", err)
 			return
@@ -224,6 +230,9 @@ func (self *evidenceRelayRuntime) run() {
 			outcome = fmt.Errorf("validator evidence audit relay: %w", err)
 			return
 		}
+		if self.startupCache != nil {
+			self.startupCache.checkpoint(self.ctx, self, completedAudits)
+		}
 		func() {
 			self.stateLock.Lock()
 			defer self.stateLock.Unlock()
@@ -231,6 +240,9 @@ func (self *evidenceRelayRuntime) run() {
 			close(self.changed)
 			self.changed = make(chan struct{})
 		}()
+		if self.startupProgress {
+			continue
+		}
 		select {
 		case <-self.ctx.Done():
 			outcome = self.ctx.Err()
@@ -291,6 +303,12 @@ func (self *evidenceRelayRuntime) advance() error {
 			if err := self.retainOwnedResult(ownerPlanHash, action, result); err != nil {
 				return err
 			}
+			if err := self.startupCache.rememberAction(ownerPlanHash, action, expected.Evidence.Header); err != nil {
+				return err
+			}
+		}
+		if err := self.startupCache.completeClosed(self, source, manifest); err != nil {
+			return err
 		}
 		func() {
 			self.stateLock.Lock()
@@ -303,6 +321,9 @@ func (self *evidenceRelayRuntime) advance() error {
 			return errors.New("evidence relay reached the terminal uint64 epoch")
 		}
 		source.nextEpoch++
+		if self.startupCache != nil {
+			self.startupProgress = true
+		}
 	}
 	return self.ctx.Err()
 }

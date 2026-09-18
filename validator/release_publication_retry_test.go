@@ -108,7 +108,14 @@ func TestReleasePublicationInterruptedReadbackRetainsItsCause(t *testing.T) {
 	defer cancel(nil)
 	body = &attemptStreamV2HTTPBody{ctx: ctx, cancel: cancel, body: io.NopCloser(strings.NewReader("incomplete"))}
 	publication = &attemptReplicaPublicationError{causes: []error{body.Close(), context.DeadlineExceeded}}
+	if !transientReleaseSnapshotError(publication) {
+		t.Fatal("owned timeout did not explain its sibling's typed incomplete close")
+	}
+	ctx, cancel = context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	body = &attemptStreamV2HTTPBody{ctx: ctx, cancel: cancel, body: io.NopCloser(strings.NewReader("incomplete"))}
+	publication = &attemptReplicaPublicationError{causes: []error{body.Close()}}
 	if transientReleaseSnapshotError(publication) {
-		t.Fatal("genuine early readback close became retryable beside an unrelated timeout")
+		t.Fatal("typed incomplete close authorized a retry without a transient owned sibling")
 	}
 }

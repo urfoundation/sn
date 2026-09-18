@@ -1,0 +1,775 @@
+diff --git a/sim-testnet/evidence_relay_horizon_runtime.go b/sim-testnet/evidence_relay_horizon_runtime.go
+index a0e6805e29fb8c10c79b16e571e84e66841daba9..b2be438d133f1c3034468af062e402093ad0a69f 100644
+--- a/sim-testnet/evidence_relay_horizon_runtime.go
++++ b/sim-testnet/evidence_relay_horizon_runtime.go
+@@ -182,7 +182,13 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
+ 		return err
+ 	}
+ 	started := time.Now()
+-	work, err := evidenceRelayConfiguredWork(self.executor.cfg)
++	workCfg := *self.executor.cfg
++	if self.executor.plan.EvidenceRelayContinuation != nil {
++		// Approval binds the original complete workload, independently of this
++		// invocation's readiness waiver. This copy is only a clock calculation.
++		workCfg.provisionalResume = nil
++	}
++	work, err := evidenceRelayConfiguredWork(&workCfg)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -211,9 +217,6 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
+ 		}
+ 	}
+ 	if c := self.executor.plan.EvidenceRelayContinuation; c != nil {
+-		if provisionalResumeEnabled(self.executor.cfg) {
+-			return errors.New("relay continuation does not authorize provisional admission")
+-		}
+ 		if err := validateEvidenceRelayContinuationPlan(self.executor.plan); err != nil {
+ 			return err
+ 		}
+@@ -274,7 +277,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
+ 	}
+ 	var observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected
+ 	for index := range self.sources {
+-		if provisionalResumeEnabled(self.executor.cfg) {
++		if provisionalResumeEnabled(self.executor.cfg) && horizon.continuation == nil {
+ 			fmt.Fprintln(os.Stderr, "sim-testnet: provisional evidence relay pending_public_census_preview_waived=true; actual publication authentication and slot admission remain required; final_acceptance=false")
+ 			break
+ 		}
+diff --git a/sim-testnet/owned_rpc.go b/sim-testnet/owned_rpc.go
+index 259dd0d4e06a6939656cab53e260fc463e92d7c6..cfc9ae6b5d727eeaea5649fe7c267663481565a8 100644
+--- a/sim-testnet/owned_rpc.go
++++ b/sim-testnet/owned_rpc.go
+@@ -1,6 +1,6 @@
+ package main
+ 
+-// A strict continuation may move its operational transport to an explicitly
++// A continuation may move its operational transport to an explicitly
+ // approved owned node without rewriting the configuration which authenticated
+ // existing activation consents. The plan binds the selected route separately;
+ // new observations use only that node and do not assert backend independence.
+@@ -26,8 +26,11 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
+ 	if options.OwnedRPCAuthority == "" {
+ 		return nil
+ 	}
+-	if options.ProvisionalResume || options.ProvisionalRPCAuthority != "" || options.Manifest != "" {
+-		return errors.New("--owned-rpc-authority requires strict configured operation, without provisional or public-manifest overrides")
++	if options.ProvisionalRPCAuthority != "" || options.Manifest != "" {
++		return errors.New("--owned-rpc-authority cannot combine another route or public-manifest override")
++	}
++	if options.ProvisionalResume && command != "resume" && command != "scenario" {
++		return errors.New("provisional owned RPC is restricted to exact-plan resume or scenario")
+ 	}
+ 	switch command {
+ 	case "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
+@@ -50,8 +53,8 @@ func prepareOwnedRPCConfiguration(cfg *ResolvedConfig, authority string) (*Resol
+ 	if authority == "" {
+ 		return cfg, nil
+ 	}
+-	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) || provisionalResumeEnabled(cfg) || cfg.provisionalRPCAuthority != "" {
+-		return nil, errors.New("owned RPC routing requires a strict authenticated testnet configuration")
++	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) || cfg.provisionalRPCAuthority != "" {
++		return nil, errors.New("owned RPC routing requires an authenticated testnet configuration")
+ 	}
+ 	if err := validateOwnedRPCAuthority(authority); err != nil {
+ 		return nil, err
+@@ -74,8 +77,8 @@ func prepareOwnedRPCConfiguration(cfg *ResolvedConfig, authority string) (*Resol
+ }
+ 
+ func validateOwnedRPCRouting(cfg *ResolvedConfig) error {
+-	if cfg == nil || cfg.Config == nil || cfg.Public == nil || provisionalResumeEnabled(cfg) || cfg.provisionalRPCAuthority != "" || cfg.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) {
+-		return errors.New("owned RPC routing lost its strict testnet authority")
++	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.provisionalRPCAuthority != "" || cfg.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) {
++		return errors.New("owned RPC routing lost its authenticated testnet authority")
+ 	}
+ 	if err := validateOwnedRPCAuthority(cfg.ownedRPCAuthority); err != nil {
+ 		return err
+diff --git a/sim-testnet/owned_rpc_test.go b/sim-testnet/owned_rpc_test.go
+index 436c5508ababd1445e2d763a7a25784ac835bdd6..0a7f6a7438f7c09455145cbbfe7342e5191d2556 100644
+--- a/sim-testnet/owned_rpc_test.go
++++ b/sim-testnet/owned_rpc_test.go
+@@ -255,20 +255,22 @@ func TestOwnedRPCPlanApprovalBindsExactRouteWithoutChangingCustody(t *testing.T)
+ 	}
+ }
+ 
+-func TestOwnedRPCCLIRejectsUnownedAndProvisionalRoutes(t *testing.T) {
+-	for _, authority := range []string{"127.0.0.1:9944", "0.0.0.0:9944", "8.8.8.8:9944", "node.example:9944", "192.168.1.162", "192.168.1.162:09944", "http://192.168.1.162:9944", "192.168.1.162:65536"} {
++func TestOwnedRpcCliRejectsUnownedAndConflictingRoutes(t *testing.T) {
++	for _, authority := range []string{"127.0.0.1:9944", "0.0.0.0:9944", "192.0.2.20:9944", "node.example:9944", "192.168.50.20", "192.168.50.20:09944", "http://192.168.50.20:9944", "192.168.50.20:65536"} {
+ 		if _, _, err := parseCLI([]string{"doctor", "--owned-rpc-authority", authority}); err == nil {
+ 			t.Fatalf("unowned or ambiguous authority accepted: %s", authority)
+ 		}
+ 	}
+ 	for _, args := range [][]string{
+ 		{"resume", "--provisional-resume"}, {"release-lock"}, {"stop"}, {"inspect", "--manifest", "/fixture/public.json"},
++		{"resume", "--provisional-rpc-authority", "192.168.50.20:9944"},
++		{"coordinator-repair", "--provisional-resume", "--apply", "--plan-hash", "0x" + strings.Repeat("12", 32)},
+ 	} {
+-		if _, _, err := parseCLI(append(args, "--owned-rpc-authority", "192.168.1.162:9944")); err == nil {
+-			t.Fatalf("unsupported strict route options accepted: %v", args)
++		if _, _, err := parseCLI(append(args, "--owned-rpc-authority", "192.168.50.20:9944")); err == nil {
++			t.Fatalf("unsupported or conflicting route options accepted: %v", args)
+ 		}
+ 	}
+-	if _, options, err := parseCLI([]string{"fleet-renew", "--renewal-valid-from-epoch", "318", "--owned-rpc-authority", "192.168.1.162:9944"}); err != nil || options.OwnedRPCAuthority != "192.168.1.162:9944" {
++	if _, options, err := parseCLI([]string{"fleet-renew", "--renewal-valid-from-epoch", "318", "--owned-rpc-authority", "192.168.50.20:9944"}); err != nil || options.OwnedRPCAuthority != "192.168.50.20:9944" {
+ 		t.Fatalf("strict renewal could not select owned RPC: %v", err)
+ 	}
+ }
+diff --git a/sim-testnet/process.go b/sim-testnet/process.go
+index f1449743ff466c68c3723952276092ab574c0f0e..7157e181adc33c4cc6c18af924fecaa0e9c60c0f 100644
+--- a/sim-testnet/process.go
++++ b/sim-testnet/process.go
+@@ -881,6 +881,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
+ 		if err != nil {
+ 			return err
+ 		}
++		if adopted, err := adoptStartedProvisionalTopology(ctx, cfg, stateDir, p, roles, executor, *readyState, proofBaseline); adopted {
++			return err
++		}
+ 		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
+ 			return err
+ 		}
+diff --git a/sim-testnet/provisional_live_resume.go b/sim-testnet/provisional_live_resume.go
+index 4a8680860a0c8c8ae9e58884f22df115c84997b3..6e961fd8399b126dfb3994bf6d2224d1b4ca32f6 100644
+--- a/sim-testnet/provisional_live_resume.go
++++ b/sim-testnet/provisional_live_resume.go
+@@ -139,6 +139,26 @@ func writeProvisionalLiveTopologyRecord(adoption *provisionalLiveTopology) error
+ 	return atomicWrite(filepath.Join(filepath.Dir(adoption.ProvenancePath), "live-topology.json"), append(raw, '\n'), 0600)
+ }
+ 
++// A new detached provisional generation uses the same authenticated handoff
++// as a retained one. Its launch owner still cleans up any actual failure.
++func adoptStartedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, started SupervisorState, baseline map[string]int) (bool, error) {
++	if !provisionalResumeEnabled(cfg) {
++		return false, nil
++	}
++	adoption, err := prepareProvisionalLiveTopology(cfg, stateDir, "resume")
++	if err != nil {
++		return true, err
++	}
++	if adoption == nil {
++		return true, errors.New("new provisional supervisor is no longer live")
++	}
++	if err := provisionalAdoptionGeneration(adoption, started); err != nil {
++		return true, err
++	}
++	adoption.ProofBaseline = baseline
++	return true, adoptProvisionalLiveTopology(ctx, cfg, stateDir, plan, roles, executor, adoption)
++}
++
+ func loadExistingProvisionalRoles(cfg *ResolvedConfig, stateDir string) (*RoleSecrets, error) {
+ 	var got RoleSecrets
+ 	if err := readJSONFile(filepath.Join(stateDir, "secrets", "roles.json"), &got); err != nil {
+diff --git a/sim-testnet/owned_rpc_provisional_test.go b/sim-testnet/owned_rpc_provisional_test.go
+new file mode 100644
+--- /dev/null
++++ b/sim-testnet/owned_rpc_provisional_test.go
+@@ -0,0 +1,144 @@
++package main
++
++// Provisional assurance does not change the exact operational route already
++// approved by a stopped deployment. All transport choices remain private.
++
++import (
++	"bytes"
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++// The real plan, provenance writer and proxy builder need no live supervisor
++// to retain a previously approved owned route during provisional startup.
++func TestOwnedRpcProvisionalResumePreservesStoppedPlanAndPrivateRoutes(t *testing.T) {
++	source := ownedRPCSourceConfigTest(t)
++	cfg, err := prepareOwnedRPCConfiguration(source, "192.168.50.20:9944")
++	if err != nil {
++		t.Fatal(err)
++	}
++	roles, err := BuildRoleSecrets(cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	publicRoles, err := derivePublicRoles(cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0))
++	if err != nil {
++		t.Fatal(err)
++	}
++	provisional, _, stateDir, _ := provisionalResumeTestContext(t)
++	if err := writeRunInputs(cfg, stateDir, plan, roles); err != nil {
++		t.Fatal(err)
++	}
++	before := validatorNamespaceTreeSnapshot(t, stateDir)
++	planBytes, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	approval, err := json.Marshal(plan)
++	if err != nil {
++		t.Fatal(err)
++	}
++	source.provisionalResume = provisional.provisionalResume
++	resumed, err := prepareOwnedRPCConfiguration(source, cfg.ownedRPCAuthority)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, command := range []string{"resume", "scenario"} {
++		args := []string{command, "--provisional-resume", "--apply", "--plan-hash", plan.PlanHash, "--owned-rpc-authority", cfg.ownedRPCAuthority}
++		if command == "scenario" {
++			args = append(args, "--name", "release-candidate")
++		}
++		_, options, err := parseCLI(args)
++		if err != nil {
++			t.Fatalf("exact provisional %s could not retain its owned route: %v", command, err)
++		}
++		if err := prepareProvisionalResume(t.Context(), resumed, stateDir, command, options, plan); err != nil {
++			t.Fatal(err)
++		}
++		if err := validateOwnedRPCPlan(resumed, plan); err != nil {
++			t.Fatalf("provisional provenance invalidated approved routing: %v", err)
++		}
++	}
++	loaded, err := loadPersistedPlan(resumed, stateDir)
++	if err != nil || loaded.PlanHash != plan.PlanHash {
++		t.Fatalf("provisional routing needed a replacement plan: %v", err)
++	}
++	after, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
++	if err != nil || !bytes.Equal(planBytes, after) {
++		t.Fatal("provisional startup rewrote its approved plan", err)
++	}
++	afterTree := validatorNamespaceTreeSnapshot(t, stateDir)
++	for path, value := range before {
++		if current := afterTree[path]; value != current {
++			t.Fatalf("provenance changed retained input %s", path)
++		}
++	}
++	if resumed.Config != source.Config || resumed.Public != source.Public || resumed.ConfigHash != source.ConfigHash || resumed.PolicyHash != source.PolicyHash || resumed.Authority != source.Authority || !ownedRPCOnly(resumed) || independentRPCRequired(resumed) {
++		t.Fatal("provisional route changed canonical identity, custody or assurance")
++	}
++	if verificationEVMEndpoint(resumed) != cfg.OperationalEVM || verificationSubstrateEndpoint(resumed) != cfg.OperationalSubstrate || configuredEVMRequestsPerMinute(resumed, resumed.OperationalEVM) != 0 || effectiveAdversaryConfig(resumed).MaximumRPCRequestsPerSec != 0 {
++		t.Fatal("provisional owned route gained a public endpoint or request ceiling")
++	}
++	for _, endpoint := range []string{source.Public.Chain.EVMPublicReadEndpoint, source.Public.Chain.SubstratePublicReadEndpoint, "http://192.168.50.21:9944"} {
++		if validateOwnedRPCDialEndpoint(resumed, endpoint) == nil {
++			t.Fatalf("provisional route admitted an unapproved endpoint %s", endpoint)
++		}
++	}
++	runtime, err := campaignRPCConfig(resumed)
++	if err != nil || validateCampaignRPCTransport(resumed, runtime) != nil || runtime.OperationalSubstrate != cfg.OperationalSubstrate || runtime.OperationalEVM != "http://"+campaignEVMAuthority() {
++		t.Fatal("provisional campaign lost its exact owned egress", err)
++	}
++	specs, err := buildServerSpecs(resumed, stateDir, map[string]string{"sim-testnet": "/fixture/sim-testnet", connectServerBinaryName: "/fixture/connect"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	wanted := map[string]string{publicEVMEgressProcessID: cfg.ownedRPCAuthority, workloadSubstrateProcessID: cfg.ownedRPCAuthority, workloadRPCProxyProcessID: campaignEVMAuthority()}
++	for _, spec := range specs {
++		upstream, found := wanted[spec.ID]
++		if !found {
++			continue
++		}
++		matched := false
++		for _, arg := range spec.Args {
++			matched = matched || arg == "--upstream="+upstream
++			if strings.HasPrefix(arg, "--tls-server-name=") || strings.HasPrefix(arg, "--maximum-requests-per-minute=") {
++				t.Fatalf("provisional proxy restored public routing or pacing: %v", spec.Args)
++			}
++		}
++		if !matched {
++			t.Fatalf("proxy %s lost its exact owned upstream", spec.ID)
++		}
++		delete(wanted, spec.ID)
++	}
++	if len(wanted) != 0 {
++		t.Fatal("provisional startup omitted an owned proxy")
++	}
++	result := &ScenarioResult{Result: "pass"}
++	applyProvisionalScenarioProvenance(resumed, result)
++	if !result.Provisional || result.FinalAcceptance == nil || *result.FinalAcceptance {
++		t.Fatal("owned transport promoted provisional execution into final acceptance")
++	}
++	for _, mutate := range []func(*ResolvedConfig){
++		func(value *ResolvedConfig) { value.ownedRPCAuthority = "192.168.50.21:9944" },
++		func(value *ResolvedConfig) { value.OperationalEVM = source.Public.Chain.EVMPublicReadEndpoint },
++		func(value *ResolvedConfig) { value.provisionalRPCAuthority = cfg.ownedRPCAuthority },
++	} {
++		changed := *resumed
++		mutate(&changed)
++		if validateOwnedRPCPlan(&changed, plan) == nil {
++			t.Fatal("provisional execution accepted changed route authority")
++		}
++	}
++	encoded, err := json.Marshal(plan)
++	if err != nil || !bytes.Equal(approval, encoded) {
++		t.Fatal("route checks changed in-memory approval", err)
++	}
++}
+diff --git a/sim-testnet/evidence_relay_provisional_continuation_test.go b/sim-testnet/evidence_relay_provisional_continuation_test.go
+new file mode 100644
+--- /dev/null
++++ b/sim-testnet/evidence_relay_provisional_continuation_test.go
+@@ -0,0 +1,214 @@
++//go:build linux || darwin
++
++package main
++
++// The real phase reader owns synthetic signed activations, persisted plan
++// ancestry and metadata-qualified Rpc. It never starts a relay or spends.
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++
++	"github.com/ethereum/go-ethereum/common"
++	validatorcomponent "github.com/urfoundation/sn/validator"
++)
++
++// Empty publication history is real absence. Capacity is a captured syntax
++// fixture; startup ledger verification is not replaced or claimed here.
++func provisionalRelayContinuationRuntimeTest(t *testing.T) (*runtimeEvidenceActivationRpcV2TestFixture, *evidenceRelayRuntime) {
++	t.Helper()
++	fixture := newRuntimeEvidenceActivationConfiguredRpcV2TestFixture(t, func(cfg *ResolvedConfig) {
++		cfg.Config.ValidatorEvidenceRelay.MaxSlots = 256
++	})
++	executor := fixture.executor
++	journal, err := OpenJournal(executor.stateDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { journal.Close() })
++	executor.journal = journal
++	prepared, preparedBytes, err := executor.prepareRuntimeEvidenceActivationsV2(t.Context(), fixture.chain)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := writeRunInputs(executor.cfg, executor.stateDir, executor.plan, executor.roles); err != nil {
++		t.Fatal(err)
++	}
++	action := actionByID(t, executor.plan, "config.render")
++	if err := journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
++		t.Fatal(err)
++	}
++	work, err := evidenceRelayConfiguredWork(executor.cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	required, err := work.remaining("release-1.0", false)
++	if err != nil {
++		t.Fatal(err)
++	}
++	reserve, err := exactPlanActionByID(executor.plan, evidenceRelayReserveId)
++	if err != nil {
++		t.Fatal(err)
++	}
++	span := required + 720
++	c := EvidenceRelayContinuation{
++		Schema: evidenceRelayContinuationSchema, SourcePlanHash: executor.plan.PlanHash, ActivationPlanHash: executor.plan.PlanHash,
++		ConfigHash: executor.plan.ConfigHash, PreparedSHA256: bytesSHA256(preparedBytes), CompletedSHA256: bytesSHA256([]byte("synthetic completed activation")),
++		TransactionsSHA256: bytesSHA256([]byte("[]")), JournalHash: journal.Entries()[0].EntryHash, OriginalReserve: reserve,
++		EVMHead: ChainHead{Number: fixture.evmNumber, Hash: fixture.evmHash.Hex()}, NativeHead: ChainHead{Number: fixture.nativeNumber, Hash: fixture.nativeHash.Hex()},
++		SettlementEpoch: prepared.Epoch, NativeEpoch: 77, EndBlock: fixture.evmNumber + span, RequiredWorkBlocks: required,
++	}
++	closed, err := evidenceRelayContinuationCeil(span, work.settlementCadence)
++	if err != nil {
++		t.Fatal(err)
++	}
++	native, err := evidenceRelayContinuationCeil(span, work.nativeCadence)
++	if err != nil {
++		t.Fatal(err)
++	}
++	c.EndSettlementEpoch, c.EndNativeEpoch = c.SettlementEpoch+closed, c.NativeEpoch+native
++	runtime := &evidenceRelayRuntime{ctx: t.Context(), executor: executor, chain: fixture.chain, phase: "release-1.0",
++		origins: [2]string{executor.cfg.OperatorAPIOrigins[0], executor.cfg.OperatorAPIOrigins[1]}}
++	for _, configured := range executor.cfg.Config.ValidatorEvidenceV2 {
++		source := evidenceRelaySource{validatorId: configured.ValidatorID, bounds: configured.Evidence.Bounds,
++			stateDir: filepath.Join(executor.stateDir, "runtime", fmt.Sprintf("validator-%d", configured.ValidatorID), "coordinator-state-v2")}
++		for _, member := range prepared.Members {
++			if member.ValidatorId != configured.ValidatorID {
++				continue
++			}
++			source.activations = append(source.activations, member.Activation)
++			identity := validatorcomponent.AttemptLedgerIdentity{DeploymentID: executor.plan.DeploymentID, ChainID: executor.plan.ChainID, GenesisHash: executor.plan.GenesisHash,
++				Netuid: executor.plan.Netuid, ValidatorID: member.ValidatorId, ValidatorUID: member.ValidatorUid, NoID: member.NoId, ValidatorVPK: fmt.Sprintf("0x%x", member.Activation.VPK)}
++			c.Sources = append(c.Sources, EvidenceRelayContinuationSource{ValidatorID: member.ValidatorId, NoID: member.NoId, CoordinatorStateDir: source.stateDir,
++				IntentPrefixSHA256: bytesSHA256(nil), Activation: member.Activation,
++				Capacity: validatorcomponent.StoppedAttemptLedgerCapacity{Identity: identity, Coordinator: executor.plan.Deployment.CoordinatorProxy.Hex(), Head: validatorcomponent.AttemptLedgerHead{Root: common.Hash{}.Hex()}}})
++		}
++		runtime.sources = append(runtime.sources, source)
++	}
++	c.NewSlots, c.HistoricalLiabilityWei, err = c.remainingSlots()
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := appendEvidenceRelayContinuationPlan(executor.plan, c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := writeRunInputs(executor.cfg, executor.stateDir, plan, executor.roles); err != nil {
++		t.Fatal(err)
++	}
++	executor.plan = plan
++	executor.cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{PlanHash: plan.PlanHash, Provisional: true}}
++	fixture.stateLock.Lock()
++	fixture.finalizedEvmNumber, fixture.finalizedEvmHash = 210, common.Hash{0x33}
++	fixture.stateLock.Unlock()
++	return fixture, runtime
++}
++
++// The full phase reader retains strict approval geometry, real native permit
++// reads and fixed ends while admitting only the next provisional work block.
++func TestProvisionalRelayContinuationPreparesActualHorizonWithoutReapproval(t *testing.T) {
++	fixture, runtime := provisionalRelayContinuationRuntimeTest(t)
++	before := validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)
++	approval, err := json.Marshal(runtime.executor.plan)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := runtime.prepareHorizon(); err != nil {
++		t.Fatalf("approved provisional continuation could not enter actual phase preparation: %v", err)
++	}
++	c := runtime.executor.plan.EvidenceRelayContinuation
++	if runtime.horizon == nil || runtime.horizon.continuation != c || runtime.horizon.minimumEnd != 211 || runtime.horizon.minimumNativeEnd != 78 || runtime.nativeWarmupBudget != nil || !provisionalResumeEnabled(runtime.executor.cfg) || runtime.work.releaseWarmup == 0 || runtime.work.productionWarmup == 0 {
++		t.Fatal("provisional execution changed approval clocks, credited epochs or installed strict readiness")
++	}
++	if err := c.validateClocks(runtime.work); err != nil {
++		t.Fatal(err)
++	}
++	end, epoch, native, err := runtime.horizon.ceilings(nil)
++	if err != nil || end != c.EndBlock || epoch != c.EndSettlementEpoch || native != c.EndNativeEpoch || runtime.horizon.maximum != c.NewSlots {
++		t.Fatal("provisional phase changed fixed funded ceilings", err)
++	}
++	fixture.stateLock.Lock()
++	fixture.permits[1] = false
++	fixture.stateLock.Unlock()
++	refused := *runtime
++	refused.horizon = nil
++	if err := refused.prepareHorizon(); err == nil || !strings.Contains(err.Error(), "independent finalized eligibility/schedule") || refused.horizon != nil {
++		t.Fatal("provisional continuation waived actual native signing eligibility", err)
++	}
++	after, err := json.Marshal(runtime.executor.plan)
++	if err != nil || string(after) != string(approval) || !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)) {
++		t.Fatal("phase preparation changed approved source, money or history", err)
++	}
++}
++
++// A continuation requires actual pending-file discovery even in provisional
++// mode. Corrupt new source bytes cannot hide behind the ordinary preview waiver.
++func TestProvisionalRelayContinuationRejectsCorruptPendingCensus(t *testing.T) {
++	_, runtime := provisionalRelayContinuationRuntimeTest(t)
++	path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(runtime.sources[0].stateDir, runtime.sources[0].activations[0].Domain.Epoch)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := atomicWrite(path, []byte("not-json\n"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	before := validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)
++	if err := runtime.prepareHorizon(); err == nil || !strings.Contains(err.Error(), "invalid character") || runtime.horizon != nil {
++		t.Fatal("provisional continuation omitted its actual pending census reader", err)
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)) {
++		t.Fatal("refused census mutated retained sources or admissions")
++	}
++}
++
++// Neither the forecast waiver nor an exact previous plan extends the paid end.
++func TestProvisionalRelayContinuationRejectsExpiredRunway(t *testing.T) {
++	fixture, runtime := provisionalRelayContinuationRuntimeTest(t)
++	fixture.stateLock.Lock()
++	fixture.finalizedEvmNumber = runtime.executor.plan.EvidenceRelayContinuation.EndBlock
++	fixture.stateLock.Unlock()
++	if err := runtime.prepareHorizon(); err == nil || !strings.Contains(err.Error(), "insufficient remaining horizon") || runtime.horizon != nil {
++		t.Fatal("provisional continuation crossed its exact funded end", err)
++	}
++}
++
++// A separate chain/client keeps block hashes immutable while checking the
++// missing request. A previous failed debit cannot become a refunded slot.
++func TestProvisionalRelayContinuationRejectsCorruptDebit(t *testing.T) {
++	_, runtime := provisionalRelayContinuationRuntimeTest(t)
++	if err := runtime.executor.journal.Append(JournalEntry{DeploymentID: runtime.executor.plan.DeploymentID, PlanHash: runtime.executor.plan.PlanHash,
++		ActionID: evidenceRelayActionPrefix + strings.Repeat("ab", 32), IntentHash: "0x" + strings.Repeat("cd", 32), Stage: StageIntent}); err != nil {
++		t.Fatal(err)
++	}
++	before := validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)
++	if err := runtime.prepareHorizon(); !errors.Is(err, os.ErrNotExist) || runtime.horizon != nil {
++		t.Fatal("provisional continuation refunded a debit without its original request", err)
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, runtime.executor.stateDir)) {
++		t.Fatal("failed source admission changed original liabilities")
++	}
++}
++
++// Canonical retained subjects still require their original signed bytes;
++// neither missing entries nor equivalent slots with another signature qualify.
++func TestProvisionalRelayContinuationRetainsExactSignedCensus(t *testing.T) {
++	_, _, continuation := evidenceRelayContinuationTest(t)
++	if err := validateEvidenceRelayContinuationRetained(&continuation, continuation.Retained); err != nil {
++		t.Fatal(err)
++	}
++	if err := validateEvidenceRelayContinuationRetained(&continuation, continuation.Retained[1:]); err == nil {
++		t.Fatal("continuation omitted an original retained subject")
++	}
++	changed := append([]validatorcomponent.ValidatorEvidenceTransactionV2Expected(nil), continuation.Retained...)
++	changed[0].Evidence.HotkeySignature = append([]byte(nil), changed[0].Evidence.HotkeySignature...)
++	changed[0].Evidence.HotkeySignature[0] ^= 1
++	if err := validateEvidenceRelayContinuationRetained(&continuation, changed); err == nil {
++		t.Fatal("continuation accepted replacement original signed bytes")
++	}
++}
+diff --git a/sim-testnet/provisional_started_topology_test.go b/sim-testnet/provisional_started_topology_test.go
+new file mode 100644
+--- /dev/null
++++ b/sim-testnet/provisional_started_topology_test.go
+@@ -0,0 +1,239 @@
++//go:build linux
++
++package main
++
++// Fresh provisional startup uses real generation, proof and journal readers.
++// The test process owns the synthetic supervisor identity; nothing is signaled.
++
++import (
++	"bytes"
++	"compress/gzip"
++	"encoding/base64"
++	"encoding/hex"
++	"encoding/json"
++	"io"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++// The zero-cost synthetic tournament barrier exercises actual executor and
++// receipt persistence without modeling another registration protocol here.
++func startedProvisionalTopologyTest(t *testing.T) (*Executor, processLogGateFixture, map[string]int) {
++	t.Helper()
++	rpc := newRuntimeEvidenceActivationRpcV2TestFixture(t)
++	// Finalized postconditions require the real reviewed metadata artifact.
++	// The tiny activation fixture cannot satisfy that stricter entrypoint.
++	encoded, err := os.ReadFile("../miner/testdata/runtime461-metadata.scale.gz.base64")
++	if err != nil {
++		t.Fatal(err)
++	}
++	compressed, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
++	if err != nil {
++		t.Fatal(err)
++	}
++	reader, err := gzip.NewReader(bytes.NewReader(compressed))
++	if err != nil {
++		t.Fatal(err)
++	}
++	metadata, err := io.ReadAll(reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := reader.Close(); err != nil {
++		t.Fatal(err)
++	}
++	fixture := newProcessLogGateFixture(t, "", "")
++	executor := rpc.executor
++	executor.stateDir, executor.deployer = fixture.dir, executor.keeper
++	executor.cfg.OperationalRPCMode = rpcModePublicOverride
++	executor.cfg.Release.Runtime = testResolvedConfig(t).Release.Runtime
++	executor.cfg.Public.Chain.ExpectedRuntimeSpec = reviewedRuntimeSpecVersion
++	executor.cfg.Public.Chain.ExpectedTransactionVersion = reviewedRuntimeTransactionVersion
++	executor.cfg.Public.Chain.ExpectedStateVersion = reviewedRuntimeStateVersion
++	executor.substrate.cfg = executor.cfg
++	rpc.stateLock.Lock()
++	rpc.metadataHex = "0x" + hex.EncodeToString(metadata)
++	rpc.nativeRuntime = currentReleaseRuntimeArtifact(executor.cfg)
++	rpc.stateLock.Unlock()
++	plan := *executor.plan
++	plan.Actions = []Action{
++		{ID: "topology.launch", Kind: "local"},
++		{ID: "churn.tournament-complete", Kind: "budget-reserve", DependsOn: []string{"topology.launch"}},
++	}
++	for index := range plan.Actions {
++		var err error
++		plan.Actions[index].IntentHash, err = actionIntentHash(plan.Actions[index])
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++	plan.PlanHash, err = plan.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.plan = &plan
++	executor.journal, err = OpenJournal(fixture.dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { executor.journal.Close() })
++	provisional, _, _, options := provisionalResumeTestContext(t)
++	executor.cfg.provisionalResume = provisional.provisionalResume
++	options.PlanHash = plan.PlanHash
++	if err := prepareProvisionalResume(t.Context(), executor.cfg, fixture.dir, "resume", options, &plan); err != nil {
++		t.Fatal(err)
++	}
++	fixture.manifest.DeploymentID = plan.DeploymentID
++	fixture.manifest.BinaryHash, err = fileSHA256("/proc/self/exe")
++	if err != nil {
++		t.Fatal(err)
++	}
++	fixture.supervisor.ManifestHash, err = canonicalHashHex(fixture.manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for name, value := range map[string]any{"supervisor.json": fixture.manifest, "supervisor.state.json": fixture.supervisor} {
++		if err := writePublicJSON(filepath.Join(fixture.dir, name), value); err != nil {
++			t.Fatal(err)
++		}
++	}
++	baseline, err := releaseTopologyProofCounts(executor.cfg, fixture.dir)
++	if err != nil || len(baseline) != 4 {
++		t.Fatal("synthetic validator/operator proof domains unavailable", err)
++	}
++	return executor, fixture, baseline
++}
++
++// Strict mode still needs fresh proofs. Provisional startup records zero
++// observations, executes the tournament boundary, and refreshes scenario handoff.
++func TestStartedProvisionalTopologyAdoptsWithoutInventingFreshProofs(t *testing.T) {
++	executor, fixture, baseline := startedProvisionalTopologyTest(t)
++	state := executor.cfg.provisionalResume
++	executor.cfg.provisionalResume = nil
++	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); adopted || err != nil || len(executor.journal.Entries()) != 0 {
++		t.Fatal("strict launch was provisionally adopted", adopted, err)
++	}
++	ready, err := releaseTopologyReady(fixture.supervisor, fixture.supervisor.ManifestHash, fixture.manifest.Specs, fixture.supervisor.SupervisorPID, fixture.supervisor.SupervisorStartTimeTicks, baseline, baseline)
++	if err != nil || ready {
++		t.Fatal("strict startup accepted missing fresh proofs", ready, err)
++	}
++	executor.cfg.provisionalResume = state
++	oldPointer := filepath.Join(fixture.dir, "provisional-resumes", "live-topology.json")
++	if err := atomicWrite(oldPointer, []byte("previous generation pointer\n"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	manifestBefore, err := os.ReadFile(filepath.Join(fixture.dir, "supervisor.json"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); !adopted || err != nil {
++		t.Fatal("healthy provisional generation could not hand off without proofs", adopted, err)
++	}
++	var adoption provisionalLiveTopology
++	if err := readJSONFile(oldPointer, &adoption); err != nil {
++		t.Fatal(err)
++	}
++	if !adoption.Provisional || adoption.FinalAcceptance || !adoption.FreshProofStartupWaived || adoption.ObservedProofsVerified || len(adoption.VerifiedProofCounts) != 0 || adoption.CompletedAt == "" || adoption.PlanHash != executor.plan.PlanHash || !reflect.DeepEqual(adoption.ProofBaseline, baseline) || !reflect.DeepEqual(adoption.ObservedProofCounts, baseline) {
++		t.Fatal("provisional handoff changed generation, proof facts or final acceptance")
++	}
++	if err := provisionalAdoptionGeneration(&adoption, fixture.supervisor); err != nil {
++		t.Fatal(err)
++	}
++	if provisionalProofsAdvanced(adoption.ProofBaseline, adoption.ObservedProofCounts) {
++		t.Fatal("missing proofs were promoted into progress")
++	}
++	for _, action := range executor.plan.Actions {
++		entry, ok := executor.verifiedActionEntry(action)
++		if !ok {
++			t.Fatalf("actual approved executor skipped %s", action.ID)
++		}
++		record, err := executor.readPersistedPostcondition(entry)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if action.ID == "topology.launch" && (record.Observed["readiness_scope"] != "live-processes-and-non-provider-health" || record.Observed["final_acceptance"] != false) {
++			t.Fatal("topology receipt claimed full semantic readiness")
++		}
++	}
++	if gate, err := loadProvisionalOrStrictProcessLogGate(executor.cfg, fixture.dir); err != nil || gate == nil || gate.path != adoption.ProcessLogGatePath {
++		t.Fatal("next scenario cannot adopt the current generation directly", err)
++	}
++	manifestAfter, err := os.ReadFile(filepath.Join(fixture.dir, "supervisor.json"))
++	if err != nil || !bytes.Equal(manifestBefore, manifestAfter) {
++		t.Fatal("adoption changed retained launch inputs", err)
++	}
++	for _, path := range releaseTopologyProofPaths(executor.cfg, fixture.dir) {
++		if _, err := os.Stat(path); !os.IsNotExist(err) {
++			t.Fatal("adoption manufactured a missing proof file", err)
++		}
++	}
++}
++
++// A real approved tournament dependency failure must abort adoption after
++// topology execution, without publishing a completed generation pointer.
++func TestStartedProvisionalTopologyPropagatesTournamentFailure(t *testing.T) {
++	executor, fixture, baseline := startedProvisionalTopologyTest(t)
++	executor.plan.Actions[1].DependsOn = []string{"missing-approved-tournament-write"}
++	var err error
++	executor.plan.Actions[1].IntentHash, err = actionIntentHash(executor.plan.Actions[1])
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.plan.PlanHash, err = executor.plan.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.cfg.provisionalResume.Record.PlanHash = executor.plan.PlanHash
++	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); !adopted || err == nil || !strings.Contains(err.Error(), "missing-approved-tournament-write") {
++		t.Fatal("fresh proof waiver skipped the approved tournament executor", adopted, err)
++	}
++	if _, verified := executor.verifiedActionEntry(executor.plan.Actions[0]); !verified {
++		t.Fatal("failure occurred before the actual tournament boundary")
++	}
++	if _, verified := executor.verifiedActionEntry(executor.plan.Actions[1]); verified {
++		t.Fatal("failed tournament was recorded as successful")
++	}
++	if _, err := os.Stat(filepath.Join(fixture.dir, "provisional-resumes", "live-topology.json")); !os.IsNotExist(err) {
++		t.Fatal("failed adoption published a completed handoff", err)
++	}
++	var adoption provisionalLiveTopology
++	if err := readJSONFile(filepath.Join(filepath.Dir(executor.cfg.provisionalResume.RecordPath), "live-topology.json"), &adoption); err != nil || adoption.CompletedAt != "" || adoption.FinalAcceptance {
++		t.Fatal("failed tournament lost its incomplete provisional record", err)
++	}
++}
++
++// Readiness waivers cannot hide durable malformed proofs or a different
++// process generation. Both fail before any approved action is dispatched.
++func TestStartedProvisionalTopologyRejectsCorruptionAndGenerationChange(t *testing.T) {
++	executor, fixture, baseline := startedProvisionalTopologyTest(t)
++	started := fixture.supervisor
++	started.SupervisorStartTimeTicks++
++	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, started, baseline); !adopted || err == nil || !strings.Contains(err.Error(), "generation changed") {
++		t.Fatal("fresh startup adopted another process generation", adopted, err)
++	}
++	path := releaseTopologyProofPaths(executor.cfg, fixture.dir)["validator-1/no-1"]
++	if err := atomicWrite(path, []byte("not-json\n"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); !adopted || err == nil || !strings.Contains(err.Error(), "proof line 1 is malformed") {
++		t.Fatal("provisional startup hid durable proof corruption", adopted, err)
++	}
++	if len(executor.journal.Entries()) != 0 {
++		t.Fatal("invalid startup reached approved action dispatch")
++	}
++	raw, err := json.Marshal(fixture.supervisor)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var current SupervisorState
++	if err := readJSONFile(filepath.Join(fixture.dir, "supervisor.state.json"), &current); err != nil {
++		t.Fatal(err)
++	}
++	after, err := json.Marshal(current)
++	if err != nil || !bytes.Equal(raw, after) {
++		t.Fatal("refused handoff rewrote its supervisor", err)
++	}
++}

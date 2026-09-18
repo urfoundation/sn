@@ -1,0 +1,21 @@
+{
+  "restored_files": 8,
+  "restored_bytes": 1424,
+  "prior_2286_files_unchanged": true,
+  "watched_state_unchanged": true,
+  "observed_current_generation_finalized_transactions": 8,
+  "recovery_network_writes": 0,
+  "journal_mutation": false,
+  "database_mutation": false,
+  "new_signatures_created": 0,
+  "restored_names": [
+    "13ffb8b8ab05725e74a51ebd5c4b51baffb5b8631f3594e5d0e14a8f1510540f.rlp",
+    "307060513de1ca6cdd5592c9a96c1ac81cb4b21abfba416f4ff1bb040214dc4b.rlp",
+    "3f4ccc916537205239e776b2e8f3d64b6a0fe427dc769b901d83bcef75af8c3b.rlp",
+    "d357de5bcbaf7be6508a8e6ab054e1414c83065895666d7cffa604061c084d4b.rlp",
+    "52ed48f59ee359c307e8b466744d203df1d9b64a51bbcf6281cf8bff8fd74ff5.rlp",
+    "7a769c2ec58044b71fa050191a7be1b852aa62e3faff37d8483f8f525a609785.rlp",
+    "df34633ff6adc1fcf246b048a0f01f355fd181ef60fe4cdc0946b5cc265fe910.rlp",
+    "e4d385cc12bf67b7e7e9610983eea1068f359a1850585b57b683e83b34209baa.rlp"
+  ]
+}

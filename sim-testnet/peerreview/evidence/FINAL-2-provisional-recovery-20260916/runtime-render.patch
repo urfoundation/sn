@@ -1,0 +1,504 @@
+diff --git a/sim-testnet/plan.go b/sim-testnet/plan.go
+index 0de1979..37c0be8 100644
+--- a/sim-testnet/plan.go
++++ b/sim-testnet/plan.go
+@@ -20,6 +20,7 @@ import (
+ 	"github.com/ethereum/go-ethereum/common"
+ 	"github.com/ethereum/go-ethereum/crypto"
+ 
++	"github.com/urfoundation/sn/crv4"
+ 	"github.com/urfoundation/sn/ss58"
+ )
+ 
+@@ -1560,12 +1561,21 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
+ 		add(Action{ID: runtimeEvidenceActivationBoundaryActionId, Kind: "evm-read", Target: evidenceManifest.Address.Hex(), Description: "retain the common finalized activation boundary and exact fixed source inputs before validator startup", Parameters: map[string]string{"mode": "fresh-v2", "policy_hash": cfg.PolicyHash}, DependsOn: activationDeps})
+ 		setupDeps = append(setupDeps, runtimeEvidenceActivationBoundaryActionId)
+ 	}
+-	// An owned route preserves consent identity but changes rendered RPC inputs.
+-	// Its local action must therefore bind the resolved launch inputs as well.
++	// Consent identity survives reviewed runtime migrations; rendered current
++	// pins do not. A new local intent reaches the existing renderer on resume.
++	nativeRuntimeHash, err := canonicalHashHex(crv4.RuntimeArtifactIdentity{
++		Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.Public.Chain.ExpectedRuntimeSpec,
++			TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion},
++		CodeHash: cfg.Release.Runtime.CodeHash, MetadataHash: cfg.Release.Runtime.MetadataHash,
++	})
++	if err != nil {
++		return nil, fmt.Errorf("hash rendered native runtime: %w", err)
++	}
+ 	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", Parameters: map[string]string{
+ 		"config_hash": cfg.ConfigHash, "policy_hash": cfg.PolicyHash, "operator_config_overlay": operatorConfigOverlayVersion,
+ 		"runtime_config_format": runtimeConfigFormatVersion,
+ 		"resolved_inputs_hash":  resolvedHash,
++		"native_runtime_hash":   nativeRuntimeHash,
+ 	}, DependsOn: setupDeps})
+ 	add(Action{ID: "accounts.provision", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "provision stable operator-scoped miner and validator identities", DependsOn: []string{"config.render"}})
+ 	add(Action{ID: "campaign.voluntary-conviction.1", Kind: "evm-transaction", Target: "no:1", Description: "lock the exact first-tier boundary as voluntary conviction without recording current-epoch demand", Parameters: map[string]string{"no_id": "1", "amount_rao": fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao), "reserve_runtime_share_transitions": strconv.FormatUint(reserveRuntimeShareTransitionCount, 10), "reserve_rounding_allowance_rao": strconv.FormatUint(reserveRoundingAllowancePerCallRao, 10)}, Spend: Spend{EVMGasWei: voluntaryGas}, DependsOn: []string{"accounts.provision", "campaign.evm-gas-reserve", "alpha.transfer.operator-deposit.1"}})
+diff --git a/sim-testnet/runtime_config_identity_test.go b/sim-testnet/runtime_config_identity_test.go
+index e5f5ecb..4fccaac 100644
+--- a/sim-testnet/runtime_config_identity_test.go
++++ b/sim-testnet/runtime_config_identity_test.go
+@@ -13,6 +13,7 @@ import (
+ 	"testing"
+ 	"time"
+ 
++	"github.com/urfoundation/sn/crv4"
+ 	"gopkg.in/yaml.v3"
+ )
+ 
+@@ -152,9 +153,38 @@ func TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership(t *
+ 	}
+ }
+ 
+-// The real planner binds migration approval without changing resolved launch
+-// inputs, transaction intents, deterministic roles, custody or allowances.
+-func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t *testing.T) {
++// Current rendering changes independently of the signed consent domain. Only
++// its local receipt must be replaced; transaction and history intents survive.
++func requireRuntimeConfigOnlyRerenderTest(t *testing.T, prior, current *SetupPlan) {
++	t.Helper()
++	if len(prior.Actions) != len(current.Actions) {
++		t.Fatal("runtime migration changed the action census")
++	}
++	renders := 0
++	for index, previous := range prior.Actions {
++		action := current.Actions[index]
++		if action.ID == "config.render" {
++			renders++
++			if previous.IntentHash == action.IntentHash || action.Parameters["native_runtime_hash"] == "" || previous.Parameters["native_runtime_hash"] == action.Parameters["native_runtime_hash"] {
++				t.Fatal("changed current runtime reused the prior render approval")
++			}
++			previous.IntentHash, action.IntentHash = "", ""
++			previous.Parameters, action.Parameters = cloneStrings(previous.Parameters), cloneStrings(action.Parameters)
++			delete(previous.Parameters, "native_runtime_hash")
++			delete(action.Parameters, "native_runtime_hash")
++		}
++		if !reflect.DeepEqual(previous, action) {
++			t.Fatalf("runtime migration changed non-runtime action authority for %s", action.ID)
++		}
++	}
++	if renders != 1 {
++		t.Fatalf("runtime migration has %d render actions", renders)
++	}
++}
++
++// The real planner replaces only the derived render approval while preserving
++// resolved inputs, transaction intents, deterministic roles and allowances.
++func TestCoordinatorRepairCarryRuntimeIdentityRerendersOnlyLocalConfigs(t *testing.T) {
+ 	t.Parallel()
+ 	original, current := runtimeConfigIdentityTestConfigs(t)
+ 	roles, err := derivePublicRoles(original)
+@@ -172,8 +202,9 @@ func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t
+ 	if prior.ConfigIdentityRuntimeSpec != 0 || plan.ConfigIdentityRuntimeSpec != 455 || prior.PlanHash == plan.PlanHash || prior.ReleaseLockHash == plan.ReleaseLockHash || prior.ConfigHash != plan.ConfigHash || prior.ResolvedInputsHash != plan.ResolvedInputsHash {
+ 		t.Fatal("migration approval lost its explicit pin or changed retained activation inputs")
+ 	}
+-	if !reflect.DeepEqual(prior.Actions, plan.Actions) || !reflect.DeepEqual(prior.Roles, plan.Roles) || !reflect.DeepEqual(prior.Deployment, plan.Deployment) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
+-		t.Fatal("runtime identity migration changed action intents, custody or approved budgets")
++	requireRuntimeConfigOnlyRerenderTest(t, prior, plan)
++	if !reflect.DeepEqual(prior.Roles, plan.Roles) || !reflect.DeepEqual(prior.Deployment, plan.Deployment) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
++		t.Fatal("runtime identity migration changed custody or approved budgets")
+ 	}
+ 	withoutPin := *plan
+ 	withoutPin.ConfigIdentityRuntimeSpec = 0
+@@ -207,6 +238,159 @@ func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t
+ 	}
+ }
+ 
++// The last reviewed transition retains the normalized consent hash while
++// replacing the exact local intent that carried stale operator runtime pins.
++func TestRuntimeConfigNativeRefreshBindsReviewed460Migration(t *testing.T) {
++	t.Parallel()
++	_, current := runtimeConfigIdentityTestConfigs(t)
++	previous, public, release := *current, *current.Public, *current.Release
++	public.Chain.ExpectedRuntimeSpec = 460
++	release.Runtime = runtime460ReviewedTestLock().Runtime
++	release.Runtime.Image = current.Release.Runtime.Image
++	previous.Public, previous.Release = &public, &release
++	var err error
++	previous.ConfigHash, err = releaseConfigHash(previous.Config, previous.Public, previous.Hyperparameters)
++	if err != nil {
++		t.Fatal(err)
++	}
++	roles, err := derivePublicRoles(current)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Construct archive bytes before persistence, as the existing historical
++	// source fixtures do. The current planner cannot execute a 460 migration.
++	prior, err := buildPlan(current, testSetupFacts(), roles, time.Unix(1, 0))
++	if err != nil {
++		t.Fatal(err)
++	}
++	rebindValidatorEvidenceReleaseLockTest(t, prior, &release)
++	previousRuntime, ok := crv4.ReviewedRuntimeArtifact(crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1})
++	if !ok {
++		t.Fatal("former reviewed runtime fixture is absent")
++	}
++	previousRuntimeHash, err := canonicalHashHex(previousRuntime)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for index := range prior.Actions {
++		action := &prior.Actions[index]
++		if action.ID == "config.render" {
++			action.Parameters["native_runtime_hash"] = previousRuntimeHash
++			action.IntentHash, err = actionIntentHash(*action)
++			if err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	prior.PlanHash, err = prior.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	priorWire, err := json.Marshal(prior)
++	if err != nil {
++		t.Fatal(err)
++	}
++	archived, err := decodePersistedPlanBytesForHistory(priorWire, true)
++	if err != nil || archived == nil || archived.PlanHash != prior.PlanHash {
++		t.Fatalf("synthetic 460 archive is invalid: %v", err)
++	}
++	if err := validateRuntimeConfigIdentityPlan(&previous, archived); err == nil {
++		t.Fatal("historical 460 fixture became current execution authority")
++	}
++	plan, err := buildPlan(current, testSetupFacts(), roles, time.Unix(2, 0))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if prior.ConfigHash != previous.ConfigHash || prior.ConfigHash != plan.ConfigHash || prior.ResolvedInputsHash != plan.ResolvedInputsHash || !reflect.DeepEqual(prior.Roles, plan.Roles) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
++		t.Fatal("current runtime refresh changed consent, custody or spending limits")
++	}
++	requireRuntimeConfigOnlyRerenderTest(t, prior, plan)
++}
++
++// A durable ancestor success cannot hide a failed current render on restart,
++// and preparation must leave that local work for the ordinary action executor.
++func TestCoordinatorRepairCarryRuntimeIdentityInterruptedRenderRemainsPending(t *testing.T) {
++	t.Parallel()
++	original, current := runtimeConfigIdentityTestConfigs(t)
++	roles, err := BuildRoleSecrets(current)
++	if err != nil {
++		t.Fatal(err)
++	}
++	publicRoles, err := derivePublicRoles(current)
++	if err != nil {
++		t.Fatal(err)
++	}
++	prior, err := buildPlan(original, testSetupFacts(), publicRoles, time.Unix(1, 0))
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Reproduce an already sealed legacy action, which predates this field.
++	for index := range prior.Actions {
++		action := &prior.Actions[index]
++		if action.ID == "config.render" {
++			delete(action.Parameters, "native_runtime_hash")
++			action.IntentHash, err = actionIntentHash(*action)
++			if err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	prior.PlanHash, err = prior.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := buildPlan(current, testSetupFacts(), publicRoles, time.Unix(2, 0))
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan.PriorPlanHashes = []string{prior.PlanHash}
++	plan.PlanHash, err = plan.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor := launchPreparationTestExecutor(t)
++	executor.cfg, executor.roles, executor.plan = current, roles, plan
++	if err := writeRunInputs(original, executor.stateDir, prior, roles); err != nil {
++		t.Fatal(err)
++	}
++	if historical, err := readValidatorEvidenceHistoricalPlan(executor.stateDir, prior.PlanHash); err != nil || historical == nil || historical.PlanHash != prior.PlanHash {
++		t.Fatalf("original render approval lost historical readability: %v", err)
++	}
++	if err := writeRunInputs(current, executor.stateDir, plan, roles); err != nil {
++		t.Fatal(err)
++	}
++	previous := actionByID(t, prior, "config.render")
++	appendLaunchPreparationTestReceipt(t, executor, previous)
++	executor.plan.Actions = executor.plan.Actions[:len(executor.plan.Actions)-1]
++	action := actionByID(t, plan, "config.render")
++	for _, stage := range []JournalStage{StageIntent, StageFailed} {
++		if err := executor.journal.Append(JournalEntry{DeploymentID: plan.DeploymentID, PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: stage}); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := executor.journal.Close(); err != nil {
++		t.Fatal(err)
++	}
++	executor.journal, err = OpenJournal(executor.stateDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { executor.journal.Close() })
++	before := validatorNamespaceTreeSnapshot(t, executor.stateDir)
++	if _, found := executor.verifiedActionEntry(action); found {
++		t.Fatal("interrupted current render inherited its ancestor's success")
++	}
++	if err := executor.collectCarriedActionHistory(t.Context()); err != nil {
++		t.Fatalf("preparation verified stale derived inputs instead of scheduling their render: %v", err)
++	}
++	if err := executor.verifyActionDependencies(actionByID(t, plan, "accounts.provision")); err == nil || !strings.Contains(err.Error(), "config.render is not postcondition-verified") {
++		t.Fatalf("a consumer could start before current rendering completed: %v", err)
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, executor.stateDir)) {
++		t.Fatal("read-only preparation changed historical receipts or incomplete current work")
++	}
++}
++
+ // Current launch refuses an omitted or substituted pin before dialing, even
+ // when a caller recomputes the outer plan hash. Runtime authority stays461.
+ func TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution(t *testing.T) {
+@@ -344,14 +528,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
+ 	if plan.ResolvedInputsHash != prior.ResolvedInputsHash {
+ 		t.Fatalf("setup migration changed approved resolved inputs: got=%s want=%s", plan.ResolvedInputsHash, prior.ResolvedInputsHash)
+ 	}
+-	if len(plan.Actions) != len(executor.plan.Actions) {
+-		t.Fatalf("setup migration changed action count: got=%d want=%d", len(plan.Actions), len(executor.plan.Actions))
+-	}
+-	for index, action := range plan.Actions {
+-		if !reflect.DeepEqual(action, executor.plan.Actions[index]) {
+-			t.Fatalf("setup migration changed original action %s at index %d", action.ID, index)
+-		}
+-	}
++	requireRuntimeConfigOnlyRerenderTest(t, executor.plan, plan)
+ 	if plan.MaximumSpend != prior.MaximumSpend || plan.Limits != prior.Limits {
+ 		t.Fatalf("setup migration changed budget authority: maximum=%+v want=%+v limits=%+v want=%+v", plan.MaximumSpend, prior.MaximumSpend, plan.Limits, prior.Limits)
+ 	}
+diff --git a/sim-testnet/runtime_config_native_render_test.go b/sim-testnet/runtime_config_native_render_test.go
+new file mode 100644
+index 0000000..0c21532
+--- /dev/null
++++ b/sim-testnet/runtime_config_native_render_test.go
+@@ -0,0 +1,220 @@
++//go:build linux || darwin
++
++// Synthetic private inputs exercise the existing renderer's interrupted-write
++// boundary. No deployment capture, live credential or external RPC is used.
++package main
++
++import (
++	"bytes"
++	"fmt"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++
++	"github.com/urfoundation/sn/crv4"
++	validatorpkg "github.com/urfoundation/sn/validator"
++	"github.com/urnetwork/server/controller"
++	"gopkg.in/yaml.v3"
++)
++
++// Reuse the generated constructor/receipt fixture with wholly test-owned
++// source files, capacities, identities and renderer prerequisites.
++func runtimeConfigNativeRenderFixtureTest(t *testing.T) (*ResolvedConfig, string, *RoleSecrets) {
++	t.Helper()
++	cfg := testResolvedConfig(t)
++	cfg.OperationalRPCMode = rpcModePublicOverride
++	cfg.Public.Chain.EVMPublicReadEndpoint = "https://evm.example"
++	cfg.Repos.PlatformConfig = testOperatorConfigSources(t)
++	cfg.Repos.Vault = t.TempDir()
++	for _, source := range []struct{ path, contents string }{
++		{path: "local/st.yml", contents: "profile: synthetic-overwritten\n"},
++		{path: "local/pg.yml", contents: "authority: postgres.example\n"},
++		{path: "main/minio.yml", contents: "authority: objects.example:23900\ntls: true\nbucket: blob\naccess_key: synthetic-access\nsecret_key: synthetic-secret\n"},
++	} {
++		if err := atomicWrite(filepath.Join(cfg.Repos.Vault, filepath.FromSlash(source.path)), []byte(source.contents), 0o600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	budget, err := requiredRuntimeClientKeyUploadBudget(cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cfg.Config.Artifacts.AttemptUpload = &budget
++	stateDir := t.TempDir()
++	configureRuntimeEvidenceV2Test(t, cfg, stateDir)
++	roles, err := BuildRoleSecrets(cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for label, client := range roles.Clients {
++		client.ClientIDHex = strings.Repeat("01", 16)
++		roles.Clients[label] = client
++	}
++	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
++		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state")
++		for _, source := range []struct{ name, contents string }{
++			{name: "jwt", contents: "synthetic-network-jwt\n"},
++			{name: ".provider.jwt", contents: "synthetic-provider-jwt\n"},
++			{name: ".provider.key", contents: strings.Repeat("01", 32) + "\n"},
++		} {
++			if err := atomicWrite(filepath.Join(root, source.name), []byte(source.contents), 0o600); err != nil {
++				t.Fatal(err)
++			}
++		}
++	}
++	prepareRuntimeReservedRenderTest(t, cfg, stateDir, roles)
++	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err != nil {
++		t.Fatal(err)
++	}
++	return cfg, stateDir, roles
++}
++
++// Install only the former reviewed runtime tuple in generated inputs. The
++// old manifest remains internally authentic, reproducing the carried failure.
++func staleRuntimeConfigNativePinsTest(t *testing.T, cfg *ResolvedConfig, stateDir string) map[string][]byte {
++	t.Helper()
++	previous, ok := crv4.ReviewedRuntimeArtifact(crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1})
++	if !ok {
++		t.Fatal("former reviewed runtime fixture is absent")
++	}
++	originalWireKVs := map[string][]byte{}
++	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
++		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator), "vault", "st.yml")
++		wire, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		originalWireKVs[path] = wire
++		root, err := runtimeAttemptUploadYAML(wire)
++		if err != nil {
++			t.Fatal(err)
++		}
++		for index := 0; index < len(root.Content); index += 2 {
++			if root.Content[index].Value != "testnet-reserved-attempt-upload" {
++				continue
++			}
++			var reserved controller.StReservedAttemptUploadConfig
++			if err := root.Content[index+1].Decode(&reserved); err != nil {
++				t.Fatal(err)
++			}
++			reserved.Admission.Deployment.NativeRuntime = previous
++			if err := root.Content[index+1].Encode(reserved); err != nil {
++				t.Fatal(err)
++			}
++		}
++		wire, err = yaml.Marshal(root)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := atomicWrite(path, wire, 0o600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
++		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validator), "validator.yml")
++		wire, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		originalWireKVs[path] = wire
++		var value map[string]any
++		if err := yaml.Unmarshal(wire, &value); err != nil {
++			t.Fatal(err)
++		}
++		value["runtime_spec"], value["runtime_code_hash"], value["runtime_metadata_hash"] = previous.Version.SpecVersion, previous.CodeHash, previous.MetadataHash
++		wire, err = yaml.Marshal(value)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := atomicWrite(path, wire, 0o600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	rewriteRuntimeConfigManifest(t, stateDir, func(manifest *RuntimeConfigManifest) {
++		for index := range manifest.Files {
++			file := &manifest.Files[index]
++			path := filepath.Join(stateDir, filepath.FromSlash(file.Path))
++			if _, changed := originalWireKVs[path]; !changed {
++				continue
++			}
++			var err error
++			file.SHA256, _, err = runtimeConfigFileDigest(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++		}
++	})
++	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(err.Error(), "runtime reserved staging differs") {
++		t.Fatalf("stale rendered runtime did not reproduce the carried postcondition failure: %v", err)
++	}
++	return originalWireKVs
++}
++
++// An explicit filesystem failure after operator one forces partial rendering.
++// Retry uses the normal renderer and restores every validator before startup.
++func TestRuntimeConfigNativeRefreshRecoversPartialRenderWithoutChangingHistory(t *testing.T) {
++	t.Parallel()
++	cfg, stateDir, roles := runtimeConfigNativeRenderFixtureTest(t)
++	before := validatorNamespaceTreeSnapshot(t, stateDir)
++	originalWireKVs := staleRuntimeConfigNativePinsTest(t, cfg, stateDir)
++	manifestBefore, err := os.ReadFile(runtimeConfigManifestPath(stateDir))
++	if err != nil {
++		t.Fatal(err)
++	}
++	blocked := filepath.Join(stateDir, "runtime", "operator-2", "vault", "st.yml")
++	stale, err := os.ReadFile(blocked)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Remove(blocked); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Mkdir(blocked, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err == nil {
++		t.Fatal("partial render unexpectedly completed through its blocked second output")
++	}
++	first := filepath.Join(stateDir, "runtime", "operator-1", "vault", "st.yml")
++	if wire, err := os.ReadFile(first); err != nil || !bytes.Equal(wire, originalWireKVs[first]) {
++		t.Fatalf("failure did not occur after the first operator was refreshed: %v", err)
++	}
++	if wire, err := os.ReadFile(runtimeConfigManifestPath(stateDir)); err != nil || !bytes.Equal(wire, manifestBefore) {
++		t.Fatalf("incomplete rendering published a replacement manifest: %v", err)
++	}
++	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil {
++		t.Fatal("partial rendering became a verified current postcondition")
++	}
++	if err := os.Remove(blocked); err != nil {
++		t.Fatal(err)
++	}
++	if err := atomicWrite(blocked, stale, 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
++		t.Fatalf("ordinary retry could not finish current rendering: %v", err)
++	}
++	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err != nil {
++		t.Fatal(err)
++	}
++	for path, want := range originalWireKVs {
++		if wire, err := os.ReadFile(path); err != nil || !bytes.Equal(wire, want) {
++			t.Fatalf("current retry changed capacity, authority, custody or configuration at %s: %v", path, err)
++		}
++	}
++	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
++		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validator), "validator.yml")
++		loaded, err := validatorpkg.LoadReleaseConfig(path)
++		if err != nil || loaded.RuntimeSpec != cfg.Public.Chain.ExpectedRuntimeSpec || loaded.RuntimeCodeHash != cfg.Release.Runtime.CodeHash || loaded.RuntimeMetadataHash != cfg.Release.Runtime.MetadataHash {
++			t.Fatalf("validator could not start with the current derived runtime: %v", err)
++		}
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, stateDir)) {
++		t.Fatal("completed retry changed original plan, journal, signed references, custody or other non-derived bytes")
++	}
++}

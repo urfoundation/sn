@@ -98,7 +98,9 @@ func readFinalNativeRewardAtV2(ctx context.Context, native *crv4.Chain, at Chain
 		return nil, errors.Join(errors.New("historical native reward hash is invalid"), err)
 	}
 	client := &finalNativeRewardReadClientV2{Client: native.API.Client, ctx: ctx, budget: finalV2RPCDecodeBudget{remaining: uint64(maximumCampaignEvidenceRawFileBytes)}}
-	own := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client, RPC: &gsrpcrpc.RPC{State: gsrpcstate.NewState(client)}}, GenesisHash: native.GenesisHash}
+	view := *native
+	view.API = &gsrpc.SubstrateAPI{Client: client, RPC: &gsrpcrpc.RPC{State: gsrpcstate.NewState(client)}}
+	own := &view
 	var genesis, canonical types.Hash
 	if err := own.API.Client.CallContext(ctx, &genesis, "chain_getBlockHash", uint64(0)); err != nil {
 		return nil, err

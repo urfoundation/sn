@@ -1,9 +1,8 @@
 package miner
 
 // fleet_runtime.go binds every release fleet publish and status read to the
-// exact node-subtensor v461 artifact. The fleet CLI has no release-lock input,
-// so this immutable tuple is deliberately local and covered against that lock
-// by fleet_runtime_test.go.
+// exact reviewed artifact by default. Explicit provisional testnet operations
+// may bind an observed consumed-interface profile without changing that pin.
 
 import (
 	"context"
@@ -62,10 +61,8 @@ func authenticateFleetRuntimeAtContext(ctx context.Context, chain *crv4.Chain, f
 // dimensions have been authenticated. Callers own and serialize their Chain.
 func bindFleetRuntime(chain *crv4.Chain, artifact crv4.AuthenticatedRuntimeArtifact) error {
 	expected := fleetReleaseRuntimeArtifact()
-	if chain == nil || artifact.BlockHash == (types.Hash{}) || artifact.Metadata == nil ||
-		artifact.Version != expected.Version ||
-		!strings.EqualFold(artifact.CodeHash, expected.CodeHash) ||
-		!strings.EqualFold(artifact.MetadataHash, expected.MetadataHash) {
+	reviewed := artifact.Version == expected.Version && strings.EqualFold(artifact.CodeHash, expected.CodeHash) && strings.EqualFold(artifact.MetadataHash, expected.MetadataHash)
+	if chain == nil || artifact.BlockHash == (types.Hash{}) || artifact.Metadata == nil || (!reviewed && !chain.RuntimeArtifactCompatible(artifact)) {
 		return errors.New("refusing to bind an unreviewed fleet runtime artifact")
 	}
 	chain.Meta = artifact.Metadata
@@ -114,8 +111,7 @@ func pinnedFleetCommitmentFinalizedContext(ctx context.Context, chain *crv4.Chai
 }
 
 // Re-reads the write postcondition using metadata authenticated at the receipt
-// block. A runtime upgrade after the pre-signing gate is therefore a hard
-// failure rather than a successful decode under stale metadata.
+// block. An upgrade is authenticated independently before decoding the receipt.
 func verifyPinnedFleetCommitmentWriteContext(ctx context.Context, chain *crv4.Chain, netuid uint16, hotkey, expected [32]byte, receipt *crv4.FinalizedCommitment) (*crv4.FinalizedCommitment, error) {
 	if receipt == nil || receipt.FinalizedHash == (types.Hash{}) || receipt.FinalizedAt == 0 {
 		return nil, errors.New("fleet commitment receipt is incomplete")

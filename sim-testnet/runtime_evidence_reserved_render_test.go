@@ -53,7 +53,10 @@ func prepareRuntimeReservedRenderTest(t *testing.T, cfg *ResolvedConfig, stateDi
 	domain := validatorpkg.ValidatorUploadDeployment{ChainID: cfg.ChainID, GenesisHash: [32]byte(companion.GenesisHash), Netuid: cfg.Netuid,
 		Coordinator: [20]byte(companion.Coordinator), SettlementVault: [20]byte(companion.SettlementVault), DeploymentIDHash: [32]byte(companion.DeploymentIDHash),
 		Journal: [20]byte(companion.Address), RuntimeHash: [32]byte(companion.RuntimeCodeHash), DeploymentBlock: 100, NativeRuntime: runtime, MaximumSubnetUIDs: 256}
-	if !cfg.Config.ProvisionValidatorEvidenceV2 {
+	// Synthetic fixtures may opt into provisional V2 after the generic config
+	// constructor. Populate their explicit capacity templates just as the
+	// launch template does; an already populated launch config is preserved.
+	if len(cfg.Config.Artifacts.ReservedAttemptUploads) == 0 {
 		cfg.Config.Artifacts.ReservedAttemptUploads = nil
 		for noId := 1; noId <= cfg.Config.Topology.Operators; noId++ {
 			cfg.Config.Artifacts.ReservedAttemptUploads = append(cfg.Config.Artifacts.ReservedAttemptUploads, controller.StReservedAttemptUploadConfig{

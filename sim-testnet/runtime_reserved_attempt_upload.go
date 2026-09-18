@@ -1,7 +1,7 @@
 package main
 
 // Rendering copies explicit reserved capacity and independently approved
-// deployment pins; it never treats an activation list as staging authority.
+// deployment pins. Only an explicit provisional resume grants retained staging.
 import (
 	"errors"
 	"fmt"
@@ -80,6 +80,21 @@ func runtimeReservedAttemptUploads(cfg *ResolvedConfig, stateDir string, contrac
 	if err != nil {
 		return nil, fmt.Errorf("runtime reserved staging companion CREATE: %w", err)
 	}
+	var retainedContexts []validatorpkg.ReleaseEvidenceV2File
+	if provisionalResumeEnabled(cfg) {
+		if cfg.provisionalResume.Record.PlanHash != plan.PlanHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
+			return nil, errors.New("provisional retained staging requires the exact non-accepting approval")
+		}
+		resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+		if err != nil {
+			return nil, fmt.Errorf("provisional retained staging inputs: %w", err)
+		}
+		for _, source := range resolved.Config.ValidatorEvidenceV2 {
+			for _, operator := range source.Evidence.Operators {
+				retainedContexts = append(retainedContexts, operator.Context)
+			}
+		}
+	}
 	result := slices.Clone(cfg.Config.Artifacts.ReservedAttemptUploads)
 	expectedRuntime := crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.Public.Chain.ExpectedRuntimeSpec,
 		TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion}, CodeHash: cfg.Release.Runtime.CodeHash, MetadataHash: cfg.Release.Runtime.MetadataHash}
@@ -109,6 +124,15 @@ func runtimeReservedAttemptUploads(cfg *ResolvedConfig, stateDir string, contrac
 				// The existing loopback proxy owns the approved LAN upstream. This
 				// retains staging's TLS-or-loopback policy and the source consent hash.
 				value.NativeRPCURLs = []string{"ws://" + workloadSubstrateRPCAuthority()}
+			}
+			if provisionalResumeEnabled(cfg) {
+				// Existing admission requires chain 945, exactly four pinned
+				// contexts/owners and unchanged finite upload capacity.
+				value.Admission.ProvisionalSeededDiscoveryOnly = true
+				value.Admission.ProvisionalRetainedContextAuthority = true
+				value.Admission.ActivationContexts = slices.Clone(retainedContexts)
+				value.Admission.ProvisionalRuntimeCompatibility = crv4.ProvisionalRuntimeCompatibilityProfile
+				value.Admission.RuntimeObservationDir = filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", index+1), "runtime-compatibility")
 			}
 			profile := &controller.StConfig{Enabled: true, Profile: "testnet", DeploymentId: plan.DeploymentID, ChainId: plan.ChainID,
 				GenesisHash: domain.GenesisHash, Netuid: uint64(plan.Netuid), NoId: uint64(index + 1), ContractAddress: contracts.CoordinatorProxy, SettlementVault: contracts.SettlementVault}

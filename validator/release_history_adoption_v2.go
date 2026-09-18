@@ -97,7 +97,7 @@ func DecodeReleaseHistoryAdoptionV2(encoded []byte, expectedSHA256 string) (*Rel
 }
 
 func (request *ReleaseHistoryAdoptionV2) configure(cfg *ReleaseConfig, configPath string) error {
-	if request == nil || cfg == nil || cfg.ProvisionalDeferClosedNativeInput || cfg.ChainID != 945 || cfg.Policy.NetworkProfile != "testnet" || cfg.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" || request.DeploymentID != cfg.DeploymentID || request.ValidatorID != cfg.ValidatorID {
+	if request == nil || cfg == nil || cfg.ProvisionalDeferClosedNativeInput || cfg.ProvisionalRuntimeCompatibility != "" || cfg.ChainID != 945 || cfg.Policy.NetworkProfile != "testnet" || cfg.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" || request.DeploymentID != cfg.DeploymentID || request.ValidatorID != cfg.ValidatorID {
 		return errors.New("strict history adoption differs from its configured testnet owner")
 	}
 	if !filepath.IsAbs(configPath) || filepath.Clean(configPath) != configPath || request.CoordinatorStateDir != filepath.Join(filepath.Dir(configPath), "coordinator-state-v2") {
@@ -111,7 +111,7 @@ func (request *ReleaseHistoryAdoptionV2) configure(cfg *ReleaseConfig, configPat
 	if err != nil {
 		return err
 	}
-	if owned.ProvisionalDeferClosedNativeInput || owned.DeploymentID != request.DeploymentID || owned.ValidatorID != request.ValidatorID || owned.ChainID != 945 || owned.Policy.NetworkProfile != "testnet" || owned.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" {
+	if owned.ProvisionalDeferClosedNativeInput || owned.ProvisionalRuntimeCompatibility != "" || owned.DeploymentID != request.DeploymentID || owned.ValidatorID != request.ValidatorID || owned.ChainID != 945 || owned.Policy.NetworkProfile != "testnet" || owned.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" {
 		return errors.New("strict history adoption pinned config changed its owner or mode")
 	}
 	owner, err := openAttemptPrivateDirectory(request.CoordinatorStateDir)

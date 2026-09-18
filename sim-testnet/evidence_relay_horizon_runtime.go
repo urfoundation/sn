@@ -142,18 +142,18 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 // Provisional continuation admits only the next block of work. The original
 // horizon and every actual header/debit remain bounded by the paid allowance.
 func (self *evidenceRelayRuntime) phaseHorizonRemaining(horizon *evidenceRelayHorizon, block, remaining uint64) (uint64, error) {
-	if self == nil || self.executor == nil || !provisionalResumeEnabled(self.executor.cfg) {
+	if self == nil || self.executor == nil || !provisionalResumeEnabled(self.executor.cfg) || horizon != nil && horizon.continuation != nil && !horizon.forecastAdvisory {
 		return remaining, nil
 	}
 	end, ok := checkedAdd(block, remaining)
 	if !ok || remaining == 0 {
 		return 0, errors.New("evidence relay remaining horizon is zero or overflows")
 	}
-	funded, _, _, err := horizon.ceilings(nil)
+	forecast, _, _, err := horizon.ceilings(nil)
 	if err != nil {
 		return 0, err
 	}
-	fmt.Fprintf(os.Stderr, "sim-testnet: provisional evidence relay phase forecast; observed_block=%d requested_remaining=%d requested_end=%d funded_end=%d forecast_waived=true final_acceptance=false\n", block, remaining, end, funded)
+	fmt.Fprintf(os.Stderr, "sim-testnet: provisional evidence relay phase forecast; observed_block=%d requested_remaining=%d requested_end=%d forecast_end=%d forecast_waived=true final_acceptance=false\n", block, remaining, end, forecast)
 	return 1, nil
 }
 
@@ -182,7 +182,13 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		return err
 	}
 	started := time.Now()
-	work, err := evidenceRelayConfiguredWork(self.executor.cfg)
+	workCfg := *self.executor.cfg
+	if self.executor.plan.EvidenceRelayContinuation != nil {
+		// Approval binds the original complete workload, independently of this
+		// invocation's readiness waiver. This copy is only a clock calculation.
+		workCfg.provisionalResume = nil
+	}
+	work, err := evidenceRelayConfiguredWork(&workCfg)
 	if err != nil {
 		return err
 	}
@@ -211,8 +217,9 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		}
 	}
 	if c := self.executor.plan.EvidenceRelayContinuation; c != nil {
-		if provisionalResumeEnabled(self.executor.cfg) {
-			return errors.New("relay continuation does not authorize provisional admission")
+		advisory, err := evidenceRelayContinuationForecastAdvisory(self.executor.cfg, self.executor.plan)
+		if err != nil {
+			return err
 		}
 		if err := validateEvidenceRelayContinuationPlan(self.executor.plan); err != nil {
 			return err
@@ -245,6 +252,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		}
 		horizon.continuation = c
 		horizon.maximum = uint64(len(c.Debits)) + c.NewSlots
+		horizon.forecastAdvisory = advisory
 	}
 	// Reject plainly insufficient profiles before historical/native/public
 	// source I/O. This does not authenticate or credit any private candidate.
@@ -269,17 +277,37 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil || canonical != anchor.EVMHash {
 		return errors.Join(errors.New("evidence relay original activation Evm anchor is not canonical"), err)
 	}
+	var inventories map[uint64]evidenceRelayStartupSourceInventory
+	if horizon.continuation != nil && horizon.forecastAdvisory {
+		inventories, err = self.evidenceRelayStartupInventories(self.ctx, horizon.maximum)
+		if err != nil {
+			return err
+		}
+	}
+	self.startupCache, err = self.newEvidenceRelayStartupSession(self.ctx, self.executor.journal.Entries(), inventories)
+	if err != nil {
+		return err
+	}
 	if err := self.readAdmittedHorizon(self.ctx, horizon, block); err != nil {
 		return err
 	}
 	var observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected
 	for index := range self.sources {
-		if provisionalResumeEnabled(self.executor.cfg) {
+		if provisionalResumeEnabled(self.executor.cfg) && horizon.continuation == nil {
 			fmt.Fprintln(os.Stderr, "sim-testnet: provisional evidence relay pending_public_census_preview_waived=true; actual publication authentication and slot admission remain required; final_acceptance=false")
 			break
 		}
 		source := &self.sources[index]
-		closed, err := validatorcomponent.DiscoverValidatorEvidencePublicationV2Manifests(self.ctx, source.stateDir, source.bounds)
+		var closed []validatorcomponent.ValidatorEvidencePublicationV2Manifest
+		var audits []validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest
+		if self.startupCache != nil {
+			closed, audits, err = self.readEvidenceRelayStartupManifests(self.ctx, source, inventories[source.validatorId])
+		} else {
+			closed, err = validatorcomponent.DiscoverValidatorEvidencePublicationV2Manifests(self.ctx, source.stateDir, source.bounds)
+			if err == nil {
+				audits, err = validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -295,10 +323,6 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 				}
 			}
 		}
-		audits, err := validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
-		if err != nil {
-			return err
-		}
 		for index := range audits {
 			requests, err := self.readAuditPublication(self.ctx, source, &audits[index], block, hash)
 			if err != nil {
@@ -311,11 +335,17 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 				}
 			}
 		}
+		if err := self.startupCache.observeSource(source, closed, audits); err != nil {
+			return err
+		}
 	}
-	if horizon.continuation != nil {
+	if horizon.continuation != nil && (self.startupCache == nil || !self.startupCache.hit) {
 		if err := validateEvidenceRelayContinuationRetained(horizon.continuation, observed); err != nil {
 			return err
 		}
+	}
+	if self.startupCache != nil && self.startupCache.hit && !self.startupCache.revalidate(self) {
+		return errors.New("relay startup cached prefix changed during admission")
 	}
 	// Discovery/public reads can take real time. Re-read both clocks before
 	// giving preparation permission, without turning elapsed time into credit.
@@ -351,6 +381,16 @@ func (self *evidenceRelayRuntime) readAdmittedHorizon(ctx context.Context, horiz
 		return err
 	}
 	entries := self.executor.journal.Entries()
+	boundedKVs := map[string]bool{}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) || entry.PlanHash != self.executor.plan.PlanHash && self.executor.plan.EvidenceRelayContinuation == nil {
+			continue
+		}
+		boundedKVs[entry.ActionID] = true
+		if uint64(len(boundedKVs)) > horizon.maximum || uint64(len(boundedKVs)) > evidenceRelayStartupCacheMaximumSlots {
+			return errors.New("evidence relay retained request census exceeds its bounded approval before historical reads")
+		}
+	}
 	seenKVs := map[string]bool{}
 	owners := map[string]*SetupPlan{}
 	for _, entry := range entries {
@@ -358,6 +398,13 @@ func (self *evidenceRelayRuntime) readAdmittedHorizon(ctx context.Context, horiz
 			continue
 		}
 		if seenKVs[entry.ActionID] {
+			continue
+		}
+		if cached, found := self.startupCache.cachedAction(entry.ActionID); found {
+			if err := horizon.admit(cached.Header, block); err != nil {
+				return err
+			}
+			seenKVs[entry.ActionID] = true
 			continue
 		}
 		if self.executor.plan.EvidenceRelayContinuation != nil {
@@ -395,8 +442,9 @@ func (self *evidenceRelayRuntime) readAdmittedHorizon(ctx context.Context, horiz
 	return ctx.Err()
 }
 
-// Runtime polling cannot continue beyond the finite activation-anchored
-// block horizon, even when no next public manifest has appeared yet.
+// Strict runtime polling stays inside the activation-anchored clock horizon.
+// An exact provisional continuation keeps the anchor and admission bounds but
+// treats its already elapsed upper clock forecast as advisory.
 func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 	if self.horizon == nil {
 		return errors.New("evidence relay has no authenticated funded horizon")
@@ -405,7 +453,7 @@ func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 	if err != nil {
 		return err
 	}
-	if block < self.horizon.anchorBlock || block > maximum {
+	if block < self.horizon.anchorBlock || !self.horizon.forecastAdvisory && block > maximum {
 		return fmt.Errorf("evidence relay reached its funded activation horizon: block=%d maximum=%d", block, maximum)
 	}
 	if self.nativeWarmupBudget != nil && !self.nativeWarmupComplete || !self.prepared {
@@ -424,7 +472,7 @@ func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 			return err
 		}
 		end, ok := checkedAdd(block, remaining)
-		if !ok || end > maximum {
+		if !ok || !self.horizon.forecastAdvisory && end > maximum {
 			return fmt.Errorf("evidence relay preparation exhausted required later work: block=%d remaining=%d maximum=%d", block, remaining, maximum)
 		}
 		self.horizon.minimumEnd = max(self.horizon.minimumEnd, end)

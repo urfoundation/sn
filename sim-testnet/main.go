@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	server "github.com/urnetwork/server"
 	serverapi "github.com/urnetwork/server/api"
 	serverconnect "github.com/urnetwork/server/connect"
 	servertaskworker "github.com/urnetwork/server/taskworker"
@@ -231,6 +232,22 @@ func runMain(args []string) error {
 	return runMainWithReleaseDependencies(args, LoadResolved, authenticateRunningReleaseExecutable)
 }
 
+// Runs the database catalog embedded in the workload image. Keeping the
+// callback explicit lets tests prove the internal command without a database.
+func runServerDatabaseMigration(ctx context.Context, args []string, migrate func(context.Context)) error {
+	if len(args) != 0 {
+		return errors.New("invalid internal server database migration invocation")
+	}
+	if ctx == nil || migrate == nil {
+		return errors.New("internal server database migration is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	migrate(ctx)
+	return ctx.Err()
+}
+
 // Inject the two pre-dispatch release authorities so tests can prove that
 // public apply commands authenticate before any command-specific operation.
 func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLoader, authenticate releaseExecutableAuthenticator) error {
@@ -295,6 +312,14 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return runRPCProxy(ctx, config)
+	}
+	if len(args) > 0 && args[0] == "__server_db_migrate" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return runServerDatabaseMigration(ctx, args[1:], func(migrationCtx context.Context) {
+			server.DbMigrationVerbose = true
+			server.ApplyDbMigrations(migrationCtx)
+		})
 	}
 	if len(args) > 0 && (args[0] == "__miner_swarm" || args[0] == "__claim_swarm" || args[0] == "__validator") {
 		component := args[0]

@@ -5,13 +5,245 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
+
+func runtimeEvidenceProvisionalSourceCapacityTest(t *testing.T) *ResolvedConfig {
+	t.Helper()
+	cfg := runtimeEvidenceLaunchConfigTest(t)
+	// The scalar forecast selects the same owned mode as real LAN routing.
+	// This documentation address is never passed to a transport or dialer.
+	cfg.OperationalRPCMode = rpcModeOwnedNode
+	cfg.ownedRPCAuthority = "192.0.2.40:9944"
+	cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{
+		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false,
+		PlanHash: "0x" + strings.Repeat("71", 32), ConfigHash: cfg.ConfigHash, DeploymentID: cfg.Config.Deployment.DeploymentID,
+	}}
+	return cfg
+}
+
+// The old public-only fixture missed the fourfold poll frequency of the
+// owned route. Check its independent count and all configured quota axes.
+func TestRuntimeEvidenceSourceCapacityForecastUsesActualOwnedPoll(t *testing.T) {
+	for _, testCase := range []struct {
+		mode                     string
+		poll                     int
+		objects, bytes, requests uint64
+	}{
+		{mode: rpcModePublicOverride, poll: 60, objects: 18575, bytes: 15406497792, requests: 2555000},
+		{mode: rpcModePrivateAuthority, poll: 15, objects: 18935, bytes: 15430090752, requests: 6012260},
+		{mode: rpcModeOwnedNode, poll: 15, objects: 18935, bytes: 15430090752, requests: 6012260},
+	} {
+		cfg := runtimeEvidenceLaunchConfigTest(t)
+		cfg.OperationalRPCMode = testCase.mode
+		value, err := requiredRuntimeEvidenceSourceCapacity(cfg, cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds)
+		if err != nil || validatorPollSeconds(cfg) != testCase.poll || value.objectsPerHour != testCase.objects || value.bytesPerHour != testCase.bytes || value.retryRequestsPerHour != testCase.requests {
+			t.Fatalf("%s actual poll forecast=%+v: %v", testCase.mode, value, err)
+		}
+		var diagnostic bytes.Buffer
+		err = validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic)
+		if testCase.poll == 60 {
+			if err != nil || diagnostic.Len() != 0 {
+				t.Fatalf("public forecast no longer fits: %v %s", err, &diagnostic)
+			}
+			continue
+		}
+		if err == nil || diagnostic.Len() != 0 || strings.Count(err.Error(), "protected publication capacity is below") != 4 {
+			t.Fatalf("%s strict refusal omitted an original/destination owner: %v %s", testCase.mode, err, &diagnostic)
+		}
+		for _, field := range []string{"validator_poll_seconds=15", "objects_per_hour=32768 required_objects_per_hour=18935", "bytes_per_hour=34359738368 required_bytes_per_hour=15430090752", "retry_requests_per_hour=4194304 required_retry_requests_per_hour=6012260"} {
+			if strings.Count(err.Error(), field) != 4 {
+				t.Errorf("%s strict forecast lost exact %s: %v", testCase.mode, field, err)
+			}
+		}
+	}
+}
+
+// Provisional admission preserves the poll, configuration, finite operator
+// quotas and full source horizon; it reports no accepted result.
+func TestRuntimeEvidenceSourceCapacityProvisionalOwnedForecastPreservesRuntimeLimits(t *testing.T) {
+	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	before, err := canonicalHashHex(cfg.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configHash := cfg.ConfigHash
+	value, err := requiredRuntimeEvidenceSourceCapacity(cfg, cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds)
+	if err != nil || value.span != 10080 || value.objectsPerHour != 18935 || value.bytesPerHour != 15430090752 || value.retryRequestsPerHour != 6012260 {
+		t.Fatalf("provisional mode changed source forecast: %+v %v", value, err)
+	}
+	var diagnostic bytes.Buffer
+	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err != nil {
+		t.Fatalf("non-accepting owned campaign stopped on an hourly forecast: %v", err)
+	}
+	for _, field := range []string{"forecast_waived=true", "runtime_limits_unchanged=true", "final_acceptance=false", "required_retry_requests_per_hour=6012260", "validator 2 replica 2"} {
+		if !strings.Contains(diagnostic.String(), field) {
+			t.Errorf("provisional advisory lost %s: %s", field, &diagnostic)
+		}
+	}
+	after, err := canonicalHashHex(cfg.Config)
+	if err != nil || before != after || cfg.ConfigHash != configHash || validatorPollSeconds(cfg) != 15 || !ownedRPCOnly(cfg) || cfg.provisionalResume.Record.FinalAcceptance {
+		t.Fatalf("advisory changed approved runtime inputs: %v", err)
+	}
+	if _, err := runtimeAttemptUploadBudget(cfg); err != nil {
+		t.Fatalf("adjacent ordinary upload capacity does not fit unchanged: %v", err)
+	}
+}
+
+// Exercise the actual release and production entrypoint without a live
+// executor. Both must pass the forecast and stop at the absent relay owner.
+func TestRuntimeEvidenceSourceCapacityProvisionalOwnedReachesRealRelayBoundary(t *testing.T) {
+	for _, phase := range []string{"release-1.0", "production-soak"} {
+		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		prepared := false
+		result, err := runScenarioWithEvidenceRelay(t.Context(), cfg, "", scenarioDefinition{Name: phase}, nil, scenarioRunOptions{Prepare: func(context.Context) error { prepared = true; return nil }}, nil)
+		if err == nil || err.Error() != "evidence relay runtime owners are incomplete" || result != nil || prepared {
+			t.Fatalf("%s provisional forecast blocked before real relay ownership: %v", phase, err)
+		}
+	}
+}
+
+// Each finite hourly dimension can be a forecast shortfall. Aggregate both
+// destinations and both sources instead of failing sequentially at replica 1.
+func TestRuntimeEvidenceSourceCapacityProvisionalForecastCoversEachQuotaDimension(t *testing.T) {
+	for _, dimension := range []string{"objects", "bytes", "requests", "all"} {
+		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		value, err := requiredRuntimeEvidenceSourceCapacity(cfg, cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index := range cfg.Config.Artifacts.ReservedAttemptUploads {
+			budget := &cfg.Config.Artifacts.ReservedAttemptUploads[index].Budget
+			budget.ObjectsPerHour, budget.BytesPerHour, budget.RetryRequestsPerHour = value.objectsPerHour, value.bytesPerHour, value.retryRequestsPerHour
+			if dimension == "objects" || dimension == "all" {
+				budget.ObjectsPerHour--
+			}
+			if dimension == "bytes" || dimension == "all" {
+				budget.BytesPerHour--
+			}
+			if dimension == "requests" || dimension == "all" {
+				budget.RetryRequestsPerHour--
+			}
+		}
+		var diagnostic bytes.Buffer
+		if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err != nil || strings.Count(diagnostic.String(), "protected publication capacity is below") != 4 {
+			t.Fatalf("%s provisional quota census: %v %s", dimension, err, &diagnostic)
+		}
+		cfg.provisionalResume = nil
+		diagnostic.Reset()
+		if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err == nil || strings.Count(err.Error(), "protected publication capacity is below") != 4 || diagnostic.Len() != 0 {
+			t.Fatalf("%s strict quota census: %v %s", dimension, err, &diagnostic)
+		}
+	}
+}
+
+// An in-memory flag or an accepting/foreign record cannot waive a forecast.
+func TestRuntimeEvidenceSourceCapacityForecastRequiresNonAcceptingApproval(t *testing.T) {
+	for _, field := range []string{"missing-record", "schema", "provisional", "final-acceptance", "chain", "config", "deployment", "plan"} {
+		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		switch field {
+		case "missing-record":
+			cfg.provisionalResume.Record = nil
+		case "schema":
+			cfg.provisionalResume.Record.Schema = "different-schema"
+		case "provisional":
+			cfg.provisionalResume.Record.Provisional = false
+		case "final-acceptance":
+			cfg.provisionalResume.Record.FinalAcceptance = true
+		case "chain":
+			cfg.ChainID++
+		case "config":
+			cfg.provisionalResume.Record.ConfigHash = "0x" + strings.Repeat("72", 32)
+		case "deployment":
+			cfg.provisionalResume.Record.DeploymentID = "other-test-deployment"
+		case "plan":
+			cfg.provisionalResume.Record.PlanHash = "invalid-plan"
+		}
+		var diagnostic bytes.Buffer
+		if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err == nil || diagnostic.Len() != 0 {
+			t.Fatalf("%s admitted a forecast waiver: %v %s", field, err, &diagnostic)
+		}
+	}
+}
+
+// Invalid capacities, ownership, arithmetic, history and real source bounds
+// remain fatal even after a valid earlier replica has a retry forecast deficit.
+func TestRuntimeEvidenceSourceCapacityProvisionalForecastRetainsHardAdmission(t *testing.T) {
+	for _, field := range []string{"objects-zero", "bytes-zero", "requests-zero", "owner-product", "owner-census", "history", "record-newline", "record-product", "source-trails", "source-captures", "source-history", "source-operator", "later-source"} {
+		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		destination := &cfg.Config.Artifacts.ReservedAttemptUploads[1]
+		bounds := &cfg.Config.ValidatorEvidenceV2[1].Evidence.Bounds
+		switch field {
+		case "objects-zero":
+			destination.Budget.ObjectsPerHour = 0
+		case "bytes-zero":
+			destination.Budget.BytesPerHour = 0
+		case "requests-zero":
+			destination.Budget.RetryRequestsPerHour = 0
+		case "owner-product":
+			destination.Budget.RetryRequestsPerHour = 9007199254740991
+		case "owner-census":
+			destination.Admission.ReplicaNoID = 1
+		case "history":
+			destination.Admission.MaximumRanges = 1
+			destination.Admission.BlocksPerRange = 1
+		case "record-newline":
+			bounds.Replay.MaxRecordBytes = bounds.Disk.MaxRecordBytes
+		case "record-product":
+			bounds.Disk.MaxRecordCount = uint64(math.MaxInt64) / 2
+			bounds.Cut.Records.MaxItems = bounds.Disk.MaxRecordCount
+		case "source-trails":
+			bounds.Disk.MaxTrailCount = 40960
+		case "source-captures":
+			bounds.MaxCaptureFiles = 340010
+		case "source-history":
+			bounds.MaxHistoryBytes = 1024
+		case "source-operator":
+			cfg.Config.ValidatorEvidenceV2[1].Evidence.Operators[1].NoID = 1
+		case "later-source":
+			cfg.Config.ValidatorEvidenceV2[1].ValidatorID = 1
+		}
+		var diagnostic bytes.Buffer
+		if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err == nil || diagnostic.Len() != 0 {
+			t.Fatalf("%s became an advisory after an earlier forecast deficit: %v %s", field, err, &diagnostic)
+		}
+	}
+}
+
+func TestRuntimeEvidenceSourceCapacityForecastRequiresRecordedDiagnostic(t *testing.T) {
+	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, nil); err == nil || !strings.Contains(err.Error(), "no diagnostic owner") {
+		t.Fatalf("missing advisory output was silently admitted: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "read-only-diagnostic")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, writer); err == nil || !strings.Contains(err.Error(), "record provisional source forecast") {
+		t.Fatalf("failed advisory output was silently admitted: %v", err)
+	}
+	for _, source := range cfg.Config.ValidatorEvidenceV2 {
+		for _, destination := range cfg.Config.Artifacts.ReservedAttemptUploads {
+			if err := destination.ValidateCapacity(); err != nil {
+				t.Fatal(fmt.Errorf("validator %d replica %d runtime capacity: %w", source.ValidatorID, destination.Admission.ReplicaNoID, err))
+			}
+		}
+	}
+}
 
 // These are the shared funded horizon and independently rounded source
 // owners, not an estimate using only the accepted 5+3 observation epochs.

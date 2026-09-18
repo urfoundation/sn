@@ -18,8 +18,18 @@ controls execution wherever older entries below require a complete restart.
 Preserve original failures, approved limits, finalized actions and the required
 fully observed live epochs; report reused and new evidence distinctly.
 
-Terra (`gpt-5.6-terra`, reasoning effort `max`) executes tests and reruns.
-Astra (`gpt-6-astra`, reasoning effort `max`) diagnoses and fixes failures
+The user's 2026-09-16 direction prioritizes completing the actual run with less
+operational gatekeeping. Use explicit provisional testnet continuation when
+strict startup would repeat completed historical work. Retain the approved
+plan, spending limits, transaction reconciliation and saved state; qualify only
+the fixes needed for that continuation. Additional historical audits, full
+release packaging and report publication do not block the provisional run.
+Execute the real campaign and production cadence, retaining each completed
+phase. Mark deferred checks and `final_acceptance=false` explicitly: finishing
+the provisional workload does not itself establish full release acceptance.
+
+Terra (`gpt-5.6-terra`, reasoning effort `medium`) executes tests and reruns.
+Sol (`gpt-5.6-sol`, reasoning effort `max`) diagnoses and fixes failures
 and flakiness. The [harness execution policy](sim-testnet/README.md#agent-execution-policy)
 defines the handoff. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) tracks current
 work. Reports are numbered: [sim-testnet/FINAL.md](sim-testnet/FINAL.md) is
@@ -88,8 +98,8 @@ Current scheduling and integration (2026-09-07 06:59 UTC):
   delta is now applied to the same candidate for qualification, preserving
   newer shutdown cancellation/error propagation and Head/EMA selections.
   This is selected integration evidence, not either complete release gate.
-- Keep stable owners: root integration, Astra max root-cause fixes, one Terra
-  max integration-test lane and one independent Terra max isolation/gate lane.
+- Keep stable owners: root integration, Sol max root-cause fixes, one Terra
+  medium integration-test lane and one independent Terra medium isolation/gate lane.
   Reuse frozen sources for selector/output-name corrections with separate
   captures. Check exact nonempty compiled root membership, package-main `-o`,
   manifest paths/modes and actual replacement graphs before expensive runs.

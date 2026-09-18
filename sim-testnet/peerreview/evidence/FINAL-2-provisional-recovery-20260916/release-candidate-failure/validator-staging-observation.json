@@ -1,0 +1,106 @@
+{
+  "schema": "urnetwork-sim-testnet-provisional-staging-failure-v1",
+  "observed_at": "2026-09-16T17:04:39.773413Z",
+  "final_acceptance": false,
+  "supervisor_state_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+  "supervisor_state_observed_prefix_sha256": "sha256:96be39cd52e7eabef07a88839e986b04e9e9d4716ef76396287fed0d7472cf0d",
+  "supervisor_updated_at": "2026-09-16T17:04:35.772091951Z",
+  "process_count": 33,
+  "healthy_count": 33,
+  "restart_total": 3,
+  "validators": [
+    {
+      "id": "validator-1",
+      "role": "validator",
+      "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+      "pid": 207044,
+      "started_at": "2026-09-16T16:59:57Z",
+      "restarts": 2,
+      "healthy": true
+    },
+    {
+      "id": "validator-2",
+      "role": "validator",
+      "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+      "pid": 203148,
+      "started_at": "2026-09-16T16:57:40Z",
+      "restarts": 1,
+      "healthy": true
+    }
+  ],
+  "admissions": [
+    {
+      "operator": 1,
+      "config_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-1/vault/st.yml",
+      "config_sha256": "sha256:b4fe5252cd56a8dd8fde6398d9fc35fcf960ac879987c45acd86be0c870049a6",
+      "deployment_block": 7973237,
+      "activation_context_count": 0,
+      "provisional_seeded_discovery_only": false,
+      "provisional_retained_context_authority": false,
+      "maximum_owners": 4,
+      "blocks_per_range": 1024,
+      "maximum_ranges": 16,
+      "maximum_discovery_span": 16384
+    },
+    {
+      "operator": 2,
+      "config_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-2/vault/st.yml",
+      "config_sha256": "sha256:fffb04be5c18542a4ea83899abd0bf63cb4d875309534ab8084ac169c2b75fbb",
+      "deployment_block": 7973237,
+      "activation_context_count": 0,
+      "provisional_seeded_discovery_only": false,
+      "provisional_retained_context_authority": false,
+      "maximum_owners": 4,
+      "blocks_per_range": 1024,
+      "maximum_ranges": 16,
+      "maximum_discovery_span": 16384
+    }
+  ],
+  "validator_logs": [
+    {
+      "validator": 1,
+      "log_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log",
+      "observed_prefix_bytes": 30406412,
+      "observed_prefix_sha256": "sha256:f639bb293633e2df9afd856d03561090acb0294269cdedcd02c5ff93e298fb2b",
+      "startup_pids": [
+        4188287,
+        4188287,
+        171072,
+        171072,
+        191895,
+        191895,
+        207044,
+        207044
+      ],
+      "range_budget_refusal_count": 4,
+      "last_range_budget_refusals": [
+        "attempt replica 2: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\"",
+        "attempt replica 2: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\"",
+        "sim-testnet: release V2 initial terminal publication: attempt replica 1: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\"",
+        "attempt replica 1: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\""
+      ]
+    },
+    {
+      "validator": 2,
+      "log_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stderr.log",
+      "observed_prefix_bytes": 24834394,
+      "observed_prefix_sha256": "sha256:300a3cb35806aa68f3587478425f82de08d201981da9b910853832e8b29e70cc",
+      "startup_pids": [
+        3688801,
+        3688801,
+        4188289,
+        4188289,
+        171075,
+        171075,
+        203148,
+        203148
+      ],
+      "range_budget_refusal_count": 2,
+      "last_range_budget_refusals": [
+        "attempt replica 2: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\"",
+        "attempt replica 2: attempt upload response status is 403: \"Validator staging authority refused: validator staging activation is absent, stale or superseded: validator staging complete discovery exceeds its explicit range budget\""
+      ]
+    }
+  ],
+  "interpretation": "Process health is PID presence for validators; it does not prove terminal publication. Both generated staging configurations omitted explicit provisional retained-context authority and retained an expired bounded complete-discovery scan."
+}

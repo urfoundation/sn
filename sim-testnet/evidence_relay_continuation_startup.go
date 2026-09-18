@@ -8,10 +8,65 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	validatorcomponent "github.com/urfoundation/sn/validator"
 )
+
+// Only the exact invocation-local, non-accepting testnet record can turn the
+// continuation's elapsed clock forecast into an advisory. The signed plan,
+// source census and monetary authority remain the admission owners.
+func evidenceRelayContinuationForecastAdvisory(cfg *ResolvedConfig, plan *SetupPlan) (bool, error) {
+	if !provisionalResumeEnabled(cfg) {
+		return false, nil
+	}
+	record := cfg.provisionalResume.Record
+	if cfg.Config == nil || cfg.Public == nil || plan == nil || plan.EvidenceRelayContinuation == nil || cfg.ChainID != testnetChainID || plan.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) || !strings.EqualFold(plan.GenesisHash, testnetGenesis) || record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.PlanHash != plan.PlanHash || !validCanonicalHashHex(record.PlanHash) || record.ConfigHash != cfg.ConfigHash || plan.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || plan.DeploymentID != cfg.Config.Deployment.DeploymentID || !filepath.IsAbs(cfg.provisionalResume.RecordPath) {
+		return false, errors.New("provisional relay continuation forecast requires the exact non-accepting testnet approval")
+	}
+	return true, nil
+}
+
+// Capture-time clock geometry stays strict. Only elapsed time after that
+// approval may be advisory for an exact provisional invocation.
+func validateEvidenceRelayContinuationStartupRunway(cfg *ResolvedConfig, plan *SetupPlan, current *EvidenceRelayContinuation, block uint64) error {
+	advisory, approvalErr := evidenceRelayContinuationForecastAdvisory(cfg, plan)
+	if approvalErr != nil {
+		return approvalErr
+	}
+	err := validateEvidenceRelayContinuationRunway(current, block)
+	if err == nil {
+		return nil
+	}
+	if !advisory || current == nil || current.RequiredWorkBlocks == 0 || block < current.EVMHead.Number {
+		return err
+	}
+	workCfg := *cfg
+	workCfg.provisionalResume = nil
+	work, workErr := evidenceRelayConfiguredWork(&workCfg)
+	if workErr != nil {
+		return errors.Join(err, workErr)
+	}
+	if clockErr := current.validateClocks(work); clockErr != nil {
+		return errors.Join(err, clockErr)
+	}
+	fmt.Fprintf(os.Stderr, "sim-testnet: provisional relay continuation elapsed forecast advisory; observed_block=%d required_work=%d forecast_end=%d forecast_waived=true runtime_limits_unchanged=true final_acceptance=false\n", block, current.RequiredWorkBlocks, current.EndBlock)
+	return nil
+}
+
+// Once the forecast end has elapsed, startup still checks the observed ledger
+// plus one bounded block and the existing restart tail without unsigned wrap.
+func evidenceRelayContinuationCapacitySpan(current *EvidenceRelayContinuation, block uint64) (uint64, error) {
+	if current == nil || block < current.EVMHead.Number {
+		return 0, errors.New("relay continuation capacity clock precedes its approved snapshot")
+	}
+	if block >= current.EndBlock {
+		return 1, nil
+	}
+	return current.EndBlock - block, nil
+}
 
 func validateEvidenceRelayContinuationRetained(c *EvidenceRelayContinuation, observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected) error {
 	current, err := canonicalEvidenceRelayContinuationRequests(observed)
@@ -41,7 +96,7 @@ func validateEvidenceRelayContinuationRetained(c *EvidenceRelayContinuation, obs
 
 // Admission of the exact fresh bridge binds the approved relay namespace and
 // signed lifetime prefix. Subsequent stopped resume may append real records;
-// it must preserve the original root and fit only the fixed remaining runway.
+// it must preserve the original root and exact bounded source capacity.
 func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan) error {
 	c := plan.EvidenceRelayContinuation
 	if c == nil {
@@ -66,7 +121,7 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 	if err != nil {
 		return err
 	}
-	if err := validateEvidenceRelayContinuationRunway(c, head.Number); err != nil {
+	if err := validateEvidenceRelayContinuationStartupRunway(cfg, plan, c, head.Number); err != nil {
 		return err
 	}
 	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
@@ -90,7 +145,11 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 		if err != nil {
 			return err
 		}
-		if err := validateEvidenceRelayContinuationCapacity(cfg, bounds, c.EndBlock-head.Number, capacity); err != nil {
+		span, err := evidenceRelayContinuationCapacitySpan(c, head.Number)
+		if err != nil {
+			return err
+		}
+		if err := validateEvidenceRelayContinuationCapacity(cfg, bounds, span, capacity); err != nil {
 			return err
 		}
 	}
@@ -98,5 +157,5 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 	if err != nil {
 		return err
 	}
-	return validateEvidenceRelayContinuationRunway(c, latest.Number)
+	return validateEvidenceRelayContinuationStartupRunway(cfg, plan, c, latest.Number)
 }
