@@ -21,7 +21,7 @@ import (
 
 func provisionalRuntimeMetadataTest(t *testing.T) (*types.Metadata, string, string) {
 	t.Helper()
-	encoded, err := os.ReadFile("testdata/runtime463-metadata.scale.gz.base64")
+	encoded, err := os.ReadFile("runtime-profile-v1.scale.gz.base64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,13 +34,13 @@ func provisionalRuntimeMetadataTest(t *testing.T) (*types.Metadata, string, stri
 		t.Fatal(err)
 	}
 	defer reader.Close()
-	raw, err := io.ReadAll(io.LimitReader(reader, 338397))
-	if err != nil || len(raw) != 338396 {
+	raw, err := io.ReadAll(io.LimitReader(reader, 347305))
+	if err != nil || len(raw) != 347304 {
 		t.Fatalf("fixture size: %d %v", len(raw), err)
 	}
 	hex := fmt.Sprintf("0x%x", raw)
 	metadata, hash, err := DecodeRuntimeMetadata(hex)
-	if err != nil || hash != "0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c" {
+	if err != nil || hash != "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf" {
 		t.Fatalf("fixture hash: %s %v", hash, err)
 	}
 	return metadata, hash, hex
@@ -139,7 +139,7 @@ func TestProvisionalRuntimeCompatibilityConsumedApiOnly(t *testing.T) {
 
 func TestProvisionalRuntimeCompatibilityDurableObservationFailureAndReuse(t *testing.T) {
 	metadata, hash, _ := provisionalRuntimeMetadataTest(t)
-	artifact := AuthenticatedRuntimeArtifact{BlockHash: types.Hash{4}, GenesisHash: types.Hash{8}, Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 463, TransactionVersion: 1, StateVersion: 1}, CodeHash: types.Hash{7}.Hex(), MetadataHash: hash, Metadata: metadata, CompatibilityProfile: ProvisionalRuntimeCompatibilityProfile}
+	artifact := AuthenticatedRuntimeArtifact{BlockHash: types.Hash{4}, GenesisHash: types.Hash{8}, Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 468, TransactionVersion: 1, StateVersion: 1}, CodeHash: types.Hash{7}.Hex(), MetadataHash: hash, Metadata: metadata, CompatibilityProfile: ProvisionalRuntimeCompatibilityProfile}
 	dir := filepath.Join(t.TempDir(), "observations")
 	if err := WriteProvisionalRuntimeObservation(dir, artifact); err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func TestProvisionalRuntimeCompatibilityExactArtifactAndFailureRecovery(t *testi
 	allowed, _ := ReviewedRuntimeArtifact(RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1, StateVersion: 1})
 	for _, fault := range []string{"strict", "valid", "future-version", "wrong-genesis", "wrong-api", "wrong-name", "transaction", "state", "evidence-write", "catalog-hash", "foreign-pin", "cancelled"} {
 		genesis := types.Hash{8}
-		version := RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 463, TransactionVersion: 1, StateVersion: 1}
+		version := RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 468, TransactionVersion: 1, StateVersion: 1}
 		api := 2
 		code := types.Hash{9}.Hex()
 		pin := allowed
@@ -284,7 +284,7 @@ func TestProvisionalRuntimeCompatibilityActualSchedulePreservesEligibility(t *te
 	identity := fixture.identity
 	metadata, _, encoded := provisionalRuntimeMetadataTest(t)
 	identity.metadata, identity.metadataHex = metadata, encoded
-	identity.version.SpecVersion = 463
+	identity.version.SpecVersion = 468
 	allowed, _ := ReviewedRuntimeArtifact(RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1, StateVersion: 1})
 	identity.allowed = []RuntimeArtifactIdentity{allowed}
 	identity.keyNames = map[string]string{}
@@ -305,7 +305,7 @@ func TestProvisionalRuntimeCompatibilityActualSchedulePreservesEligibility(t *te
 	priorHook := identity.hook
 	identity.hook = func(ctx context.Context, target any, method string, args ...any) (bool, error) {
 		if method == "state_getRuntimeVersion" {
-			return true, setRuntimeIdentityTestResult(target, map[string]any{"specName": "node-subtensor", "specVersion": 463, "transactionVersion": 1, "stateVersion": 1, "apis": []any{[]any{"0x8375104b299b74c5", 2}}})
+			return true, setRuntimeIdentityTestResult(target, map[string]any{"specName": "node-subtensor", "specVersion": 468, "transactionVersion": 1, "stateVersion": 1, "apis": []any{[]any{"0x8375104b299b74c5", 2}}})
 		}
 		if method == "chain_getBlockHash" {
 			if result, ok := target.(*types.Hash); ok {
@@ -320,8 +320,8 @@ func TestProvisionalRuntimeCompatibilityActualSchedulePreservesEligibility(t *te
 	}
 	beforeMetadata, beforeRuntime := identity.chain.Meta, identity.chain.Runtime
 	result, err := ReadValidatorScheduleAtContext(identity.ctx, identity.chain, query, identity.allowed...)
-	if err != nil || result.SubnetEpochIndex != 77 || result.Stake.TotalStakeRao != 150 || !result.Stake.MeetsNonSelfStakeAndPermit() || result.Stake.Identity.Runtime.Version.SpecVersion != 463 || fixture.runtimeCalls != 1 {
-		t.Fatalf("actual463 schedule: %+v %v calls=%d", result, err, fixture.runtimeCalls)
+	if err != nil || result.SubnetEpochIndex != 77 || result.Stake.TotalStakeRao != 150 || !result.Stake.MeetsNonSelfStakeAndPermit() || result.Stake.Identity.Runtime.Version.SpecVersion != 468 || fixture.runtimeCalls != 1 {
+		t.Fatalf("actual468 schedule: %+v %v calls=%d", result, err, fixture.runtimeCalls)
 	}
 	if identity.chain.Meta != beforeMetadata || identity.chain.Runtime != beforeRuntime {
 		t.Fatal("block-local schedule changed signing authority")
@@ -330,8 +330,8 @@ func TestProvisionalRuntimeCompatibilityActualSchedulePreservesEligibility(t *te
 
 func TestProvisionalRuntimeCompatibilitySourceSignsActualDomainAndRejectsRelabeling(t *testing.T) {
 	metadata, hash, _ := provisionalRuntimeMetadataTest(t)
-	version := RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 463, TransactionVersion: 1, StateVersion: 1}
-	chain := &Chain{Meta: metadata, GenesisHash: types.Hash{8}, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 463, TransactionVersion: 1}}
+	version := RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 468, TransactionVersion: 1, StateVersion: 1}
+	chain := &Chain{Meta: metadata, GenesisHash: types.Hash{8}, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 468, TransactionVersion: 1}}
 	if err := chain.EnableProvisionalRuntimeCompatibility(chain.GenesisHash, func(AuthenticatedRuntimeArtifact) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestProvisionalRuntimeCompatibilitySourceSignsActualDomainAndRejectsRelabel
 	for _, mecid := range []*uint8{nil, new(uint8)} {
 		prepared, key := sourcePreparedTest(t)
 		prepared.Mecid = mecid
-		prepared.SourceCommitment.RuntimeSpec = 463
+		prepared.SourceCommitment.RuntimeSpec = 468
 		prepared.SourceCommitment.CompatibilityProfile = ProvisionalRuntimeCompatibilityProfile
 		signSourcePreparedTest(t, prepared, key, nil)
 		if err := chain.ValidatePreparedSource(prepared); err != nil {
@@ -355,7 +355,7 @@ func TestProvisionalRuntimeCompatibilitySourceSignsActualDomainAndRejectsRelabel
 		if _, err := prepared.Validate(); err == nil {
 			t.Fatal("signature relabeled to successor runtime")
 		}
-		prepared.SourceCommitment.RuntimeSpec = 463
+		prepared.SourceCommitment.RuntimeSpec = 468
 		prepared.SourceCommitment.CompatibilityProfile = ""
 		if _, err := prepared.Validate(); err == nil {
 			t.Fatal("provisional signature acquired strict authority")

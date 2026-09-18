@@ -1,7 +1,7 @@
 package crv4
 
 // Compatibility is an explicit provisional admission, not a new reviewed
-// runtime identity. The baseline is the existing reviewed461 metadata. Only
+// runtime identity. The baseline is the current reviewed467 metadata. Only
 // interfaces consumed by SN participate; unrelated root-basket changes do not.
 
 import (
@@ -35,8 +35,8 @@ var runtimeProfileBaseline = sync.OnceValues(func() (*types.Metadata, error) {
 		return nil, err
 	}
 	defer reader.Close()
-	raw, err := io.ReadAll(io.LimitReader(reader, 344268))
-	if err != nil || len(raw) != 344267 {
+	raw, err := io.ReadAll(io.LimitReader(reader, 347305))
+	if err != nil || len(raw) != 347304 {
 		return nil, errors.Join(errors.New("runtime profile baseline size differs"), err)
 	}
 	metadata, hash, err := DecodeRuntimeMetadata(fmt.Sprintf("0x%x", raw))

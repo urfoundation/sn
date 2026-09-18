@@ -123,7 +123,7 @@ func validatePublishedRuntimeIdentityShape(public *PublicDeploymentManifest) err
 		public.RuntimeSpec != reviewedRuntimeSpecVersion ||
 		public.TransactionVersion != reviewedRuntimeTransactionVersion ||
 		public.StateVersion != reviewedRuntimeStateVersion {
-		return errors.New("published runtime version identity is not the reviewed node-subtensor/461/1/1 release")
+		return errors.New("published runtime version identity is not the reviewed node-subtensor/467/1/1 release")
 	}
 	if err := validateRuntimeCodeHash(public.RuntimeCodeHash, reviewedRuntimeCodeHash); err != nil {
 		return fmt.Errorf("published runtime identity: %w", err)

@@ -32,7 +32,7 @@ func runtimeConfigIdentityTestConfigs(t *testing.T) (*ResolvedConfig, *ResolvedC
 	}
 	current := *original
 	public := *original.Public
-	public.Chain.ExpectedRuntimeSpec = 461
+	public.Chain.ExpectedRuntimeSpec = 467
 	public.Chain.ConfigIdentityRuntimeSpec = 455
 	current.Public, current.Release = &public, testReleaseLockFixture(t)
 	current.ConfigHash, err = releaseConfigHash(current.Config, current.Public, current.Hyperparameters)
@@ -79,7 +79,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire(t *testing.T) {
 func TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin(t *testing.T) {
 	t.Parallel()
 	original, current := runtimeConfigIdentityTestConfigs(t)
-	for _, version := range []uint32{451, 454, 458, 459, 460, 461, 462} {
+	for _, version := range []uint32{451, 454, 458, 459, 460, 461, 467, 462} {
 		public := *current.Public
 		public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = version, 0
 		hash, err := releaseConfigHash(current.Config, &public, current.Hyperparameters)
@@ -124,7 +124,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership(t *
 		t.Fatalf("explicit runtime migration changed signed configuration identity: %v", err)
 	}
 	after, err := json.Marshal(current.Public)
-	if err != nil || !bytes.Equal(before, after) || current.Public.Chain.ExpectedRuntimeSpec != 461 || !bytes.Contains(after, []byte(`"ConfigIdentityRuntimeSpec":455`)) {
+	if err != nil || !bytes.Equal(before, after) || current.Public.Chain.ExpectedRuntimeSpec != 467 || !bytes.Contains(after, []byte(`"ConfigIdentityRuntimeSpec":455`)) {
 		t.Fatalf("hashing mutated or omitted current runtime authority: %v", err)
 	}
 	publicWire, err := yaml.Marshal(current.Public)
@@ -459,7 +459,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 	fixture := newCoordinatorRepairCarrySourceFixture(t, original, nil)
 	executor := fixture.executor
 	current, public := *executor.cfg, originalPublic
-	public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = 461, 455
+	public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = 467, 455
 	current.Public, current.Release = &public, testReleaseLockFixture(t)
 	// The HTTP fixtures inject clients after approval. Their transport address
 	// must not replace the immutable endpoint used by the original planner.

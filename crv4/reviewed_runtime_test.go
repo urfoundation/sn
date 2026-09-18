@@ -26,7 +26,7 @@ func TestRuntimeArtifactMetadataCatalogPreservesExactManifest(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	wantSpecs := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461}
+	wantSpecs := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461, 467}
 	artifacts := ReviewedRuntimeArtifacts()
 	if len(artifacts) != len(manifest.Artifacts) || len(artifacts) != len(wantSpecs) {
 		t.Fatal("catalog lost an exact retained artifact")

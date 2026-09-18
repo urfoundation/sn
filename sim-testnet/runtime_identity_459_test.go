@@ -22,7 +22,7 @@ func TestRuntime459ConfigHashPreserves455And458Domains(t *testing.T) {
 		t.Fatal(err)
 	}
 	public.Chain.ConfigIdentityRuntimeSpec = 455
-	for _, spec := range []uint32{458, 459, 460, 461} {
+	for _, spec := range []uint32{458, 459, 460, 461, 467} {
 		public.Chain.ExpectedRuntimeSpec = spec
 		before, err := json.Marshal(public)
 		if err != nil {
@@ -35,7 +35,7 @@ func TestRuntime459ConfigHashPreserves455And458Domains(t *testing.T) {
 		}
 	}
 	plan := &SetupPlan{ConfigIdentityRuntimeSpec: 455}
-	cfg := &ResolvedConfig{Public: &public, Release: runtime461ReviewedTestLock()}
+	cfg := &ResolvedConfig{Public: &public, Release: runtime467ReviewedTestLock()}
 	if err := validateRuntimeConfigIdentityPlan(cfg, plan); err != nil {
 		t.Fatal(err)
 	}

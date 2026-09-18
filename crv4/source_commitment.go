@@ -1,6 +1,6 @@
 package crv4
 
-// Reviewed runtimes 454, 455, 458, 459, 460 and 461 use Utility.batch_all for exactly two calls
+// Reviewed runtimes 454, 455, 458, 459, 460, 461 and 467 use Utility.batch_all for exactly two calls
 // under the original signer: one SHA256 metadata commitment and the actual
 // timelock-encrypted CRv4 write. No plaintext weights or recursive source hash
 // is published. A commitment authenticates bytes, not measurement truth.
@@ -57,10 +57,10 @@ func canonicalSourceHex(value string, size int) ([]byte, error) {
 // This is encoding admission, not artifact authority: live release callers
 // must authenticate their exact version, code and metadata at the chosen block.
 func reviewedSourceEncodingVersion(spec, transaction uint32) bool {
-	return (spec == 454 || spec == 455 || spec == 458 || spec == 459 || spec == 460 || spec == 461) && transaction == 1
+	return (spec == 454 || spec == 455 || spec == 458 || spec == 459 || spec == 460 || spec == 461 || spec == 467) && transaction == 1
 }
 
-// This strict offline encoding is the audited 454/455/458/459/460/461 shape. Live metadata
+// This strict offline encoding is the audited 454/455/458/459/460/461/467 shape. Live metadata
 // builder below must independently reproduce it; changed call indices,
 // argument order or signed extensions fail closed before any broadcast.
 func preparedSourceEncoding(prepared *PreparedSubmission) (call, fields, payload []byte, resultErr error) {

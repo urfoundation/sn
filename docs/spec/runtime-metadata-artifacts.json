@@ -160,6 +160,24 @@
       "metadata_blake2b_256": "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68",
       "observation_rpc_url": "http://192.168.1.162:9944",
       "independent_rpc": false
+    },
+    {
+      "spec_version": 467,
+      "source_ref_kind": "commit",
+      "source_ref_name": "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b",
+      "source_commit": "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b",
+      "observation_block": 8035539,
+      "observation_block_hash": "0x616f0e3c91b64e88b4815d760e068f9fd53c8beb7ac854fdb06bc5c34c9d5064",
+      "code_source": "substrate-storage",
+      "code_url": null,
+      "code_size": 2541439,
+      "code_sha256": "5a4218a3198cf276bf531643ca6813438781b72dc9fac57fa83a3ffe49f9a81a",
+      "code_blake2b_256": "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2",
+      "metadata_size": 347304,
+      "metadata_sha256": "1dcdc906dc30bba1a07323fd48bd0554fdedff0ef5b5391a171a0d1b24f19093",
+      "metadata_blake2b_256": "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf",
+      "observation_rpc_url": "http://192.168.1.162:9944",
+      "independent_rpc": false
     }
   ]
 }

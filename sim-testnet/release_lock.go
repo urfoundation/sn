@@ -32,11 +32,11 @@ const (
 	reviewedRuntimeSourceRepository         = "https://github.com/RaoFoundation/subtensor"
 	reviewedRuntimeSourceTag                = ""
 	reviewedRuntimeSourceRefKind            = "commit"
-	reviewedRuntimeSourceRefName            = "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b"
-	reviewedRuntimeSourceCommit             = "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b"
+	reviewedRuntimeSourceRefName            = "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b"
+	reviewedRuntimeSourceCommit             = "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b"
 	reviewedRuntimeCodeHash                 = crv4.ReviewedRuntimeCodeHash
 	reviewedRuntimeMetadataHash             = crv4.ReviewedRuntimeMetadataHash
-	reviewedRuntimeCompressedWasmSHA256     = "0xa236f7d2ac285615ee1789953e5e009464cc96f357d48278a848f82cdc771cc4"
+	reviewedRuntimeCompressedWasmSHA256     = "0x5a4218a3198cf276bf531643ca6813438781b72dc9fac57fa83a3ffe49f9a81a"
 	reviewedRuntimeUpstreamReleaseCallHash  = ""
 	reviewedRuntimeUpstreamReleaseTimepoint = ""
 	reviewedRuntimeSpecVersion              = crv4.ReviewedRuntimeSpecVersion
@@ -1011,13 +1011,13 @@ func validateReleaseRepositorySchema(repositories map[string]any) error {
 }
 
 // Bind the operational testnet profile to the source and finalized Wasm
-// independently reviewed for runtime 461. Exact-commit testnet provenance is
+// independently reviewed for runtime 467. Exact-commit testnet provenance is
 // distinct from a tagged mainnet proposal; no such proposal is asserted here.
 // The node image is pinned separately:
 // an older compatible binary may execute this on-chain Wasm while it syncs.
 func validateReviewedRuntimeIdentity(lock *ReleaseLock) error {
 	if lock == nil || lock.Runtime.SourceRepository != reviewedRuntimeSourceRepository || lock.Runtime.SourceTag != reviewedRuntimeSourceTag || lock.Runtime.SourceRefKind != reviewedRuntimeSourceRefKind || lock.Runtime.SourceRefName != reviewedRuntimeSourceRefName || lock.Runtime.SourceCommit != reviewedRuntimeSourceCommit || lock.Runtime.SpecVersion != reviewedRuntimeSpecVersion || lock.Runtime.TransactionVersion != reviewedRuntimeTransactionVersion || lock.Runtime.StateVersion != reviewedRuntimeStateVersion || !strings.EqualFold(lock.Runtime.CodeHash, reviewedRuntimeCodeHash) || !strings.EqualFold(lock.Runtime.MetadataHash, reviewedRuntimeMetadataHash) || !strings.EqualFold(lock.Runtime.CompressedWasmSHA256, reviewedRuntimeCompressedWasmSHA256) || lock.Runtime.UpstreamReleaseCallHash != reviewedRuntimeUpstreamReleaseCallHash || lock.Runtime.UpstreamReleaseTimepoint != reviewedRuntimeUpstreamReleaseTimepoint {
-		return errors.New("release lock runtime identity is not the reviewed testnet runtime 461 release")
+		return errors.New("release lock runtime identity is not the reviewed testnet runtime 467 release")
 	}
 	return nil
 }

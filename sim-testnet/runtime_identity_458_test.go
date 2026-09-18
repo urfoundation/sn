@@ -46,7 +46,7 @@ func runtime459ReviewedTestLock() *ReleaseLock {
 // Exact commit provenance cannot be expressed as a mutable branch, invented
 // release tag or copied mainnet multisig proposal/timepoint.
 func TestRuntime461CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
-	lock := runtime461ReviewedTestLock()
+	lock := runtime467ReviewedTestLock()
 	if err := validateReviewedRuntimeIdentity(lock); err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +119,8 @@ func TestRuntime461HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(artifacts) != len(crv4.ReviewedRuntimeArtifacts()) || artifacts[0].Version.SpecVersion != 461 {
-		t.Fatal("current461 plus complete451–455/458/459/460 history is absent")
+	if len(artifacts) != len(crv4.ReviewedRuntimeArtifacts()) || artifacts[0].Version.SpecVersion != 467 {
+		t.Fatal("current467 plus complete451–455/458/459/460 history is absent")
 	}
 	for _, artifact := range artifacts {
 		public := &PublicDeploymentManifest{RuntimeSpec: artifact.Version.SpecVersion, TransactionVersion: artifact.Version.TransactionVersion, StateVersion: artifact.Version.StateVersion, RuntimeCodeHash: artifact.CodeHash, RuntimeMetadataHash: artifact.MetadataHash}
@@ -128,7 +128,7 @@ func TestRuntime461HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 			t.Fatalf("reviewed history%d refused: %v", artifact.Version.SpecVersion, err)
 		}
 		currentErr := validatePublishedRuntimeIdentity(public, cfg)
-		if artifact.Version.SpecVersion == 461 {
+		if artifact.Version.SpecVersion == 467 {
 			if currentErr != nil {
 				t.Fatal(currentErr)
 			}

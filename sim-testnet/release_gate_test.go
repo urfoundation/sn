@@ -2333,8 +2333,8 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadataRows := strings.Split(strings.TrimSpace(string(metadataManifestBytes)), "\n")
-	if len(metadataRows) != 27 {
-		t.Fatalf("runtime metadata source manifest has %d rows, want 27", len(metadataRows))
+	if len(metadataRows) != 30 {
+		t.Fatalf("runtime metadata source manifest has %d rows, want 30", len(metadataRows))
 	}
 	wantMetadataCommits := map[string]string{
 		"head:release-v451": "d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
@@ -2346,6 +2346,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"commit:70378404b56c12a85bc8cd163aca2f32cf4d1b80": "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
 		"commit:8d5f20ec1a5e5d90295d43046dacdefc54aaed06": "8d5f20ec1a5e5d90295d43046dacdefc54aaed06",
 		"commit:7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b": "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b",
+		"commit:c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b": "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b",
 	}
 	seenMetadataPaths := map[string]bool{}
 	for _, row := range metadataRows {
@@ -2382,8 +2383,8 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		artifactManifest.PolkadotSDKRevision != "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" {
 		t.Fatalf("runtime metadata artifact manifest identity=%+v", artifactManifest)
 	}
-	if len(artifactManifest.Artifacts) != 9 {
-		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 9", len(artifactManifest.Artifacts))
+	if len(artifactManifest.Artifacts) != 10 {
+		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 10", len(artifactManifest.Artifacts))
 	}
 	wantArtifacts := map[uint32]releaseRuntimeMetadataArtifact{
 		451: {
@@ -2472,7 +2473,19 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 	if independent := artifactManifest.Artifacts[8].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[8].ObservationRpcUrl != artifactManifest.Artifacts[7].ObservationRpcUrl {
 		t.Fatal("runtime461 lost its owned-node provenance")
 	}
-	wantVersions := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461}
+	wantArtifacts[467] = releaseRuntimeMetadataArtifact{
+		SpecVersion: 467, SourceRefKind: "commit", SourceRefName: "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b", SourceCommit: "c6bcb4a7400764c94c1d1b1938514c6c2dd3d33b",
+		ObservationBlock: 8035539, ObservationBlockHash: "0x616f0e3c91b64e88b4815d760e068f9fd53c8beb7ac854fdb06bc5c34c9d5064",
+		ObservationRpcUrl: artifactManifest.Artifacts[9].ObservationRpcUrl, IndependentRpc: artifactManifest.Artifacts[9].IndependentRpc,
+		CodeSource: "substrate-storage", CodeSize: 2541439, CodeSHA256: "5a4218a3198cf276bf531643ca6813438781b72dc9fac57fa83a3ffe49f9a81a",
+		CodeBlake2b256: "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2",
+		MetadataSize:   347304, MetadataSHA256: "1dcdc906dc30bba1a07323fd48bd0554fdedff0ef5b5391a171a0d1b24f19093",
+		MetadataBlake2b256: "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf",
+	}
+	if independent := artifactManifest.Artifacts[9].IndependentRpc; independent == nil || *independent || artifactManifest.Artifacts[9].ObservationRpcUrl != artifactManifest.Artifacts[8].ObservationRpcUrl {
+		t.Fatal("runtime467 lost its owned-node provenance")
+	}
+	wantVersions := []uint32{451, 452, 453, 454, 455, 458, 459, 460, 461, 467}
 	for index, artifact := range artifactManifest.Artifacts {
 		want, ok := wantArtifacts[artifact.SpecVersion]
 		if !ok || artifact.SpecVersion != wantVersions[index] {
@@ -2484,7 +2497,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 			if artifact.CodeSource != "github-release" || *artifact.CodeURL != wantURL {
 				t.Fatalf("runtime metadata artifact %d URL/source=%s/%s", artifact.SpecVersion, *artifact.CodeURL, artifact.CodeSource)
 			}
-		} else if (artifact.SpecVersion != 451 && artifact.SpecVersion != 455 && artifact.SpecVersion != 458 && artifact.SpecVersion != 459 && artifact.SpecVersion != 460 && artifact.SpecVersion != 461) || artifact.CodeSource != "substrate-storage" {
+		} else if (artifact.SpecVersion != 451 && artifact.SpecVersion != 455 && artifact.SpecVersion != 458 && artifact.SpecVersion != 459 && artifact.SpecVersion != 460 && artifact.SpecVersion != 461 && artifact.SpecVersion != 467) || artifact.CodeSource != "substrate-storage" {
 			t.Fatalf("runtime metadata artifact %d lacks its release URL", artifact.SpecVersion)
 		}
 		if artifact != want {
@@ -2507,7 +2520,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"runtime-v455-source.sha256",
 		"67dcf7f791dc495064c293f080a0702cb433e51e",
 		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount),
-		"expected_metadata_files=27",
+		"expected_metadata_files=30",
 		"d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
 		"da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
 		"support/procedural-fork/src/construct_runtime/expand/metadata.rs",
@@ -2540,7 +2553,7 @@ func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
 		"wait \"${probe_process_ids[$spec_version]}\"",
 		"sha256sum",
 		"runtime metadata artifacts verified",
-		"[451, 452, 453, 454, 455, 458, 459, 460, 461]",
+		"[451, 452, 453, 454, 455, 458, 459, 460, 461, 467]",
 		"455:commit:67dcf7f791dc495064c293f080a0702cb433e51e:67dcf7f791dc495064c293f080a0702cb433e51e:substrate-storage:",
 	} {
 		if !strings.Contains(artifactChecker, required) {
@@ -2604,7 +2617,7 @@ func TestReleaseGatesAttestRuntime455SourceCompatibility(t *testing.T) {
 	checker := string(checkerRaw)
 	for _, fragment := range []string{
 		"current_commit=\"67dcf7f791dc495064c293f080a0702cb433e51e\"",
-		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount), "expected_files=29", "expected_metadata_files=27",
+		fmt.Sprintf("expected_current_files=%d", releaseRuntime455SourceFileCount), "expected_files=29", "expected_metadata_files=30",
 		"SUBTENSOR_RUNTIME455_SOURCE", "current_seen_paths", "current_observed", "current_expected",
 		"current_count", "runtime source verified ref_kind=commit",
 	} {

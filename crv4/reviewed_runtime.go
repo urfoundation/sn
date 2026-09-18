@@ -3,9 +3,9 @@
 package crv4
 
 const (
-	ReviewedRuntimeSpecVersion  = uint32(461)
-	ReviewedRuntimeCodeHash     = "0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e"
-	ReviewedRuntimeMetadataHash = "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68"
+	ReviewedRuntimeSpecVersion  = uint32(467)
+	ReviewedRuntimeCodeHash     = "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2"
+	ReviewedRuntimeMetadataHash = "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf"
 )
 
 // This array is private so callers cannot redefine reviewed authority or its
@@ -20,6 +20,7 @@ var reviewedRuntimeArtifacts = [...]RuntimeArtifactIdentity{
 	{Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 459, TransactionVersion: 1, StateVersion: 1}, CodeHash: "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b", MetadataHash: "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef"},
 	{Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1}, CodeHash: "0xa2ba599cc0ee97abaa078cf54498ad020957a32cdc2cb7c1e5b9fa14bf5cad3d", MetadataHash: "0x98574118d8447c31b72c57402bdda481203f58273ae175a3b6c1da44400e934c"},
 	{Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1, StateVersion: 1}, CodeHash: "0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e", MetadataHash: "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68"},
+	{Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 467, TransactionVersion: 1, StateVersion: 1}, CodeHash: "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2", MetadataHash: "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf"},
 }
 
 // Returns a copy of the reviewed catalog; presence alone grants no signing or
