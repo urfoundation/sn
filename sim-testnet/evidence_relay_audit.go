@@ -10,7 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Only immutable subject coordinates select a completed audit publication.

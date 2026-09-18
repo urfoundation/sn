@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"reflect"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Initial fee repartition owns only original debits. A refresh can also retain

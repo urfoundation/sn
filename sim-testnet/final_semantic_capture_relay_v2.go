@@ -20,9 +20,9 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Reads immutable original requests/results first. Canonical winner readback
