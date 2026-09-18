@@ -337,6 +337,7 @@ func TestProvisionalProcessLogAcceptanceRetainsLateHistoricalLinesAndFailsClosed
 		t.Fatalf("retained findings leaked through the acceptance cursor: %+v %v", current.Findings, err)
 	}
 	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:00 completeHandshake failed: tls handshake timeout\n")
+	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:01 completeHandshake failed: tls handshake timeout\n")
 	current, err := fixture.gate.Scan(false)
 	if err != nil || len(current.Findings) != 1 || !current.Findings[0].Blocking || current.Findings[0].AcceptanceScope != boundaryHash {
 		t.Fatalf("post-boundary finding did not fail closed: %+v %v", current.Findings, err)
@@ -594,6 +595,42 @@ func TestProcessLogGateFailsClosedOnMissingTruncatedAndRotatedLogs(t *testing.T)
 		if err != nil || len(scanResult.Findings) != 1 || scanResult.Findings[0].Class != "log-integrity" {
 			t.Fatalf("%s: integrity scan=(%+v,%v)", test.name, scanResult, err)
 		}
+	}
+}
+
+func TestProcessLogGateDefersSealedPrefixRehashUntilFinalAcceptance(t *testing.T) {
+	fixture := newProcessLogGateFixture(t, "", "")
+	appendProcessLog(t, fixture.stdoutPath, "healthy sealed history\n")
+	if _, _, err := fixture.gate.BindAcceptance(time.Date(2032, time.January, 2, 3, 4, 5, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := fixture.gate.Scan(false); err != nil || len(result.Findings) != 0 || !fixture.gate.acceptancePrefixesVerified {
+		t.Fatalf("initial provisional scan=(%+v,%v), prefixVerified=%t", result, err, fixture.gate.acceptancePrefixesVerified)
+	}
+	reloaded, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor)
+	if err != nil || !reloaded.state.ProvisionalPrefixVerified {
+		t.Fatalf("reload provisional prefix memo=(%+v,%v)", reloaded, err)
+	}
+	fixture.gate = reloaded
+	file, err := os.OpenFile(fixture.stdoutPath, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteAt([]byte("H"), 0); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Provisional polling preserves the prior check and waits for final
+	// acceptance to reread the sealed prefix. The final check remains hard.
+	if result, err := fixture.gate.Scan(false); err != nil || len(result.Findings) != 0 {
+		t.Fatalf("cached provisional scan=(%+v,%v)", result, err)
+	}
+	result, err := fixture.gate.Scan(true)
+	if err != nil || len(result.Findings) != 1 || result.Findings[0].Class != "log-integrity" || result.Findings[0].Summary != "process log acceptance prefix changed" || !result.Findings[0].Blocking {
+		t.Fatalf("final prefix verification=(%+v,%v)", result, err)
 	}
 }
 

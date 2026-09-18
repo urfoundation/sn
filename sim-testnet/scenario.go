@@ -240,8 +240,10 @@ type NativeRewardObservation struct {
 }
 
 type ScenarioObservation struct {
+	legacyByteAuthenticated    bool
 	Schema                     string                         `json:"schema"`
 	ObservedAt                 string                         `json:"observed_at"`
+	RecoveryStartedAt          string                         `json:"recovery_started_at,omitempty"`
 	Status                     *DeploymentStatus              `json:"status"`
 	Operators                  []OperatorObservation          `json:"operators"`
 	Validators                 []ValidatorObservation         `json:"validators"`
@@ -512,10 +514,12 @@ func buildScenarioAcceptanceWindow(cfg *ResolvedConfig, definition scenarioDefin
 }
 
 // acceptedEpochsTerminal proves that every operator position in every accepted
-// epoch reached the immutable vault's terminal entitlement state. A deliberate
-// missed root may carry zero value, but it must still be explicitly finalized.
+// epoch reached the immutable vault's terminal entitlement state. Finalization
+// with no committed root explicitly records RootMissed and carries that
+// operator's funding; it does not produce a Finalized claim entitlement. The
+// separate settlement checks prove roots, carry, claims and payments.
 func acceptedEpochsTerminal(contracts *ContractView, window *ScenarioAcceptanceWindow, operators int) (bool, string) {
-	if contracts == nil || window == nil || operators < 1 {
+	if contracts == nil || window == nil || window.EpochCount == 0 || operators < 1 {
 		return false, "accepted epoch terminal state is unavailable"
 	}
 	epochs := make(map[uint64]EpochView, len(contracts.Epochs))
@@ -536,7 +540,11 @@ func acceptedEpochsTerminal(contracts *ContractView, window *ScenarioAcceptanceW
 		}
 		seen := make(map[uint64]bool, operators)
 		for _, operator := range epoch.Operators {
-			if operator.NoID == 0 || operator.NoID > uint64(operators) || seen[operator.NoID] || operator.Status != 2 {
+			// STSettlementVault.EpochStatus: Finalized=2, RootMissed=3.
+			// Carried=4 is an expired claim entitlement, not proof of the
+			// timely terminal state required by this acceptance interval.
+			terminal := operator.Status == 2 || operator.Status == 3
+			if operator.NoID == 0 || operator.NoID > uint64(operators) || seen[operator.NoID] || !terminal {
 				return false, fmt.Sprintf("accepted epoch %d operator %d has duplicate/invalid terminal status %d", epochID, operator.NoID, operator.Status)
 			}
 			seen[operator.NoID] = true
@@ -989,47 +997,16 @@ func inspectMinerClientIDsBytes(cfg *ResolvedConfig, b []byte) (map[[16]byte]int
 }
 
 func inspectFleetEvidence(cfg *ResolvedConfig, stateDir string, epoch uint64) (bool, int, bool, []uint16, []string, [][]int) {
-	setup := map[string]json.RawMessage{}
 	descriptors, err := fleetLifecycleEvidenceDescriptors(cfg, stateDir, epoch)
 	if err != nil || len(descriptors) != cfg.Config.Topology.fleetCandidates() {
 		return false, 0, false, nil, nil, nil
-	}
-	minerGroups := make([][]int, 0, len(descriptors))
-	for index, descriptor := range descriptors {
-		fleet := index + 1
-		paths := map[string]string{
-			fmt.Sprintf("fleet_%d_manifest", fleet):   filepath.Join(stateDir, "public", descriptor.ManifestName),
-			fmt.Sprintf("fleet_%d_commitment", fleet): filepath.Join(stateDir, "public", descriptor.CommitmentName),
-		}
-		for member, name := range descriptor.BindingNames {
-			paths[fmt.Sprintf("fleet_%d_binding_%d", fleet, member+1)] = filepath.Join(stateDir, "public", name)
-		}
-		for name, path := range paths {
-			b, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return false, 0, false, nil, nil, nil
-			}
-			setup[name] = b
-		}
-		minerGroups = append(minerGroups, append([]int(nil), descriptor.MinerIDs...))
 	}
 	deployment, err := loadContractDeployment(stateDir)
 	if err != nil {
 		return false, 0, false, nil, nil, nil
 	}
-	commitments, count, bindings, uids := inspectCurrentFleetEvidenceBytes(cfg, setup, deployment.CoordinatorProxy, epoch)
-	if !bindings || len(uids) != len(minerGroups) {
-		return commitments, count, false, uids, nil, nil
-	}
-	hotkeys := make([]string, 0, len(descriptors))
-	for fleet := 1; fleet <= len(descriptors); fleet++ {
-		manifest, parseErr := protocol.ParseFleetManifest(setup[fmt.Sprintf("fleet_%d_manifest", fleet)])
-		if parseErr != nil {
-			return commitments, count, false, uids, nil, nil
-		}
-		hotkeys = append(hotkeys, fleetLifecycleHex(manifest.Hotkey))
-	}
-	return commitments, count, true, uids, hotkeys, minerGroups
+	cache := newFleetCensusCache(cfg, stateDir, deployment.CoordinatorProxy)
+	return inspectFleetEvidenceCensus(cfg, deployment.CoordinatorProxy, epoch, descriptors, cache)
 }
 
 func evidenceFixedHex(value string, size int) ([]byte, bool) {
@@ -3872,6 +3849,17 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 				interrupted = errors.Join(interrupted, fmt.Errorf("recover interrupted scenario faults: %w", err))
 			}
 		}
+		// The signed attempt is now permanently invalidated. Persist its terminal
+		// provisional failure before returning so a later recovery can authenticate
+		// exactly why it was superseded. Without this record a killed runner leaves
+		// an open attempt that cannot be recovered, despite the fault cleanup above.
+		result, _ := writeInitialScenarioFailure(cfg, runDir, runID, definitionHash, definition, started, nil, options.Attempt, interrupted)
+		if result == nil {
+			return nil, errors.Join(interrupted, errors.New("persist interrupted scenario terminal result"))
+		}
+		if _, err := os.Lstat(filepath.Join(runDir, "result.json")); err != nil {
+			return nil, errors.Join(interrupted, fmt.Errorf("persist interrupted scenario terminal result: %w", err))
+		}
 		return nil, interrupted
 	}
 	observationLogPrefix := scenarioObservationLogPrefix{ContentHash: bytesSHA256(nil)}
@@ -3909,6 +3897,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		options.Adversaries.MarkHappyPathStarted(options.Now().UTC())
 	}
 	adversariesFinalized := false
+	snapshotRetries := &scenarioSnapshotRetryState{runDir: runDir, phase: definition.Name, now: options.Now, wait: waitFinalSemanticRPCRetry}
 	observationHistory := []*ScenarioObservation{}
 	var faults []ScenarioFaultRecord
 	prearmedFaults := map[string][]FaultProcessEvidence{}
@@ -3964,12 +3953,17 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			applyScenarioAttemptBinding(result, options.Attempt)
 			result.Adversaries = evidence
 			result.Assertions = append(result.Assertions, adversaryRecords...)
+			result.Assertions = append(result.Assertions, snapshotRetries.assertions()...)
 			attachScenarioAnomalyGate(result, options.Now().UTC(), nil, observation, failureHistory...)
 			result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 			rewriteErr = writeScenarioOutputs(cfg, runDir, result, observation)
 		}
 		return result, errors.Join(resultErr, stopErr, rewriteErr)
 	}
+	if err := snapshotRetries.load(); err != nil {
+		return initialFailure(nil, fmt.Errorf("load scenario snapshot retry evidence: %w", err))
+	}
+	probe = snapshotRetries.wrap(probe)
 	// An owner-signed acceptance boundary may only be created by this process
 	// invocation. Any pre-existing boundary was rejected above as an interrupted
 	// attempt, so post-boundary execution can never be resumed.
@@ -4262,8 +4256,13 @@ scenarioLoop:
 				terminalErr = heartbeatErr
 				break scenarioLoop
 			}
-			if errors.Is(snapshotErr, context.Canceled) && ctx.Err() != nil {
+			if ctx.Err() != nil {
 				terminalErr = ctx.Err()
+				break scenarioLoop
+			}
+			var terminalSnapshot *scenarioSnapshotTerminalError
+			if errors.As(snapshotErr, &terminalSnapshot) {
+				terminalErr = terminalSnapshot
 				break scenarioLoop
 			}
 			snapshotFailureCount++
@@ -4394,6 +4393,7 @@ scenarioLoop:
 		})
 	}
 	assertions = append(assertions, runtimeAssertions...)
+	assertions = append(assertions, snapshotRetries.assertions()...)
 	assertions = append(assertions, adversaryRecords...)
 	var lifecycleHandoff *ScenarioLifecycleHandoff
 	if options.FleetLifecycle != nil {

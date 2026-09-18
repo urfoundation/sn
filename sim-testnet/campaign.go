@@ -157,10 +157,11 @@ type scenarioCampaignAttemptPayload struct {
 }
 
 type scenarioCampaignAttempt struct {
-	payload  scenarioCampaignAttemptPayload
-	cfg      *ResolvedConfig
-	stateDir string
-	roles    *RoleSecrets
+	payload       scenarioCampaignAttemptPayload
+	cfg           *ResolvedConfig
+	stateDir      string
+	roles         *RoleSecrets
+	recoveryProof *scenarioCampaignRecoveryProofCache
 }
 
 func scenarioCampaignAttemptPath(stateDir, phase string) string {
@@ -229,7 +230,7 @@ func scenarioObservationIdentity(observation *ScenarioObservation) (ChainHead, u
 	copyObservation := *observation
 	copyObservation.ObservationHash = ""
 	wantHash, err := canonicalHashHex(&copyObservation)
-	if err != nil || !strings.EqualFold(wantHash, observation.ObservationHash) {
+	if err != nil || (!observation.legacyByteAuthenticated && !strings.EqualFold(wantHash, observation.ObservationHash)) {
 		return ChainHead{}, 0, "", stateMismatchError(err, "scenario observation hash differs from its canonical content")
 	}
 	return head, observation.Status.Contracts.CurrentEpoch, observation.ObservationHash, nil
@@ -274,11 +275,12 @@ func validateScenarioCampaignAcceptanceBoundary(cfg *ResolvedConfig, phase strin
 	if err != nil {
 		return fmt.Errorf("scenario campaign attempt definition: %w", err)
 	}
-	if err := validateScenarioAttemptFaultRecords(definition, window, boundary.Faults); err != nil {
+	legacyImpactSchedule, err := validateScenarioAttemptFaultRecords(definition, window, boundary.Faults)
+	if err != nil {
 		return err
 	}
 	definitionHash, err := scenarioDefinitionHash(definition)
-	if err != nil || !strings.EqualFold(boundary.ScenarioDefinitionHash, definitionHash) || !strings.EqualFold(boundary.AdversarialMatrixHash, definition.AdversarialMatrixHash) {
+	if err != nil || (!legacyImpactSchedule && !strings.EqualFold(boundary.ScenarioDefinitionHash, definitionHash)) || !strings.EqualFold(boundary.AdversarialMatrixHash, definition.AdversarialMatrixHash) {
 		return stateMismatchError(err, "scenario campaign attempt acceptance definition or adversarial matrix changed")
 	}
 	return nil
@@ -288,51 +290,73 @@ func scenarioFaultRecordMatchesSchedule(record, expected ScenarioFaultRecord) bo
 	return record.ID == expected.ID && record.Kind == expected.Kind && slices.Equal(record.Targets, expected.Targets) && slices.Equal(record.Impacts, expected.Impacts) && record.ValidatorID == expected.ValidatorID && record.FleetIndex == expected.FleetIndex && slices.Equal(record.FleetIndices, expected.FleetIndices) && record.PreAcceptance == expected.PreAcceptance && record.PostAcceptanceEvidenceTail == expected.PostAcceptanceEvidenceTail && record.ActivationCondition == expected.ActivationCondition && record.RestoreCondition == expected.RestoreCondition && record.MinimumDurationBlocks == expected.MinimumDurationBlocks && record.TriggerBlock == expected.TriggerBlock && record.RestoreBlock == expected.RestoreBlock
 }
 
-func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *ScenarioAcceptanceWindow, records []ScenarioFaultRecord) error {
+// scenarioFaultRecordMatchesLegacyImpactSchedule retains a completed or
+// interrupted attempt created before dependency faults named only logical
+// miners as their impacted processes. The later supervisor-swarm labels add
+// process-log attribution; they do not change a target, timing, or mutation.
+// Accept this one-way extension only when removing the new labels reproduces
+// the signed historical impact list exactly.
+func scenarioFaultRecordMatchesLegacyImpactSchedule(record, expected ScenarioFaultRecord) bool {
+	if record.ID != expected.ID || record.Kind != expected.Kind || !slices.Equal(record.Targets, expected.Targets) || record.ValidatorID != expected.ValidatorID || record.FleetIndex != expected.FleetIndex || !slices.Equal(record.FleetIndices, expected.FleetIndices) || record.PreAcceptance != expected.PreAcceptance || record.PostAcceptanceEvidenceTail != expected.PostAcceptanceEvidenceTail || record.ActivationCondition != expected.ActivationCondition || record.RestoreCondition != expected.RestoreCondition || record.MinimumDurationBlocks != expected.MinimumDurationBlocks || record.TriggerBlock != expected.TriggerBlock || record.RestoreBlock != expected.RestoreBlock {
+		return false
+	}
+	legacy := make([]string, 0, len(expected.Impacts))
+	for _, impact := range expected.Impacts {
+		if !strings.HasPrefix(impact, "miner-swarm-") {
+			legacy = append(legacy, impact)
+		}
+	}
+	return len(legacy) != len(expected.Impacts) && slices.Equal(record.Impacts, legacy)
+}
+
+func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *ScenarioAcceptanceWindow, records []ScenarioFaultRecord) (legacyImpactSchedule bool, err error) {
 	if window == nil {
-		return errors.New("scenario campaign fault ledger has no acceptance window")
+		return false, errors.New("scenario campaign fault ledger has no acceptance window")
 	}
 	expected, err := initializeFaultRecords(window.StartBlock, definition.Faults)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(records) != len(expected) {
-		return fmt.Errorf("scenario campaign fault ledger has %d records, want %d", len(records), len(expected))
+		return false, fmt.Errorf("scenario campaign fault ledger has %d records, want %d", len(records), len(expected))
 	}
 	seen := make(map[string]bool, len(records))
 	for index := range records {
 		record := records[index]
-		if seen[record.ID] || !scenarioFaultRecordMatchesSchedule(record, expected[index]) {
-			return fmt.Errorf("scenario campaign fault ledger record %q differs from its exact schedule", record.ID)
+		matches := scenarioFaultRecordMatchesSchedule(record, expected[index])
+		legacy := scenarioFaultRecordMatchesLegacyImpactSchedule(record, expected[index])
+		if seen[record.ID] || (!matches && !legacy) {
+			return false, fmt.Errorf("scenario campaign fault ledger record %q differs from its exact schedule", record.ID)
 		}
+		legacyImpactSchedule = legacyImpactSchedule || legacy
 		seen[record.ID] = true
 		if record.PreAcceptance {
 			if record.ArmedBlock == 0 || record.ArmedBlock >= window.StartBlock || !validCanonicalHashHex(record.ArmedBlockHash) {
-				return fmt.Errorf("scenario campaign pre-acceptance fault %q has no exact armed boundary", record.ID)
+				return false, fmt.Errorf("scenario campaign pre-acceptance fault %q has no exact armed boundary", record.ID)
 			}
 		} else if record.ArmedBlock != 0 || record.ArmedBlockHash != "" {
-			return fmt.Errorf("scenario campaign fault %q has foreign pre-acceptance state", record.ID)
+			return false, fmt.Errorf("scenario campaign fault %q has foreign pre-acceptance state", record.ID)
 		}
 		switch record.Status {
 		case "pending":
 			if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != 0 || len(record.RestoredProcesses) != 0 || record.Error != "" {
-				return fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
+				return false, fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
 			}
 		case "active":
 			if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != len(record.Targets) || len(record.RestoredProcesses) != 0 || record.Error != "" {
-				return fmt.Errorf("scenario campaign active fault %q has malformed transition evidence", record.ID)
+				return false, fmt.Errorf("scenario campaign active fault %q has malformed transition evidence", record.ID)
 			}
 		case "restored":
 			if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock < record.AppliedBlock || !validCanonicalHashHex(record.RestoredBlockHash) || len(record.Processes) != len(record.Targets) || record.Error != "" {
-				return fmt.Errorf("scenario campaign restored fault %q has malformed transition evidence", record.ID)
+				return false, fmt.Errorf("scenario campaign restored fault %q has malformed transition evidence", record.ID)
 			}
 		case "failed":
-			return fmt.Errorf("scenario campaign fault %q is terminally failed", record.ID)
+			return false, fmt.Errorf("scenario campaign fault %q is terminally failed", record.ID)
 		default:
-			return fmt.Errorf("scenario campaign fault %q has unknown status %q", record.ID, record.Status)
+			return false, fmt.Errorf("scenario campaign fault %q has unknown status %q", record.ID, record.Status)
 		}
 	}
-	return nil
+	return legacyImpactSchedule, nil
 }
 
 func validateScenarioLifecycleHandoffBinding(cfg *ResolvedConfig, binding ScenarioLifecycleHandoff, data []byte) error {
@@ -437,7 +461,11 @@ func validateScenarioCampaignAttemptPayload(cfg *ResolvedConfig, planHash, phase
 		_, generationErr := scenarioCampaignRecoveryGeneration(recovery)
 		postAcceptanceSource := validSHA256String(recovery.PriorCampaignStartSha256) && recovery.PriorJournalSha256 == "" && recovery.PriorJournalBytes == 0
 		preAcceptanceSource := recovery.PriorCampaignStartSha256 == "" && validSHA256String(recovery.PriorJournalSha256) && recovery.PriorJournalBytes != 0
-		inheritedPreparation := recovery.InheritedPreparationSha256 == "" || payload.PreparationComplete && preAcceptanceSource && recovery.InheritedPreparationSha256 == recovery.PriorAttemptSha256
+		// A later post-acceptance recovery carries the authenticated preparation
+		// root from its pre-acceptance ancestor. Its exact value is checked while
+		// rebuilding the signed chain; requiring it to equal the immediately
+		// prior post-acceptance attempt would reject that durable lineage.
+		inheritedPreparation := recovery.InheritedPreparationSha256 == "" || payload.PreparationComplete && validSHA256String(recovery.InheritedPreparationSha256)
 		if payload.Succession != nil || phase != "release-1.0" || recovery.Schema != scenarioCampaignRecoverySchema || generationErr != nil || recovery.PriorRunID == "" || recovery.PriorRunID == payload.RunID || !validSHA256String(recovery.PriorAttemptSha256) || (!postAcceptanceSource && !preAcceptanceSource) || !validSHA256String(recovery.PriorResultSha256) || !validSHA256String(recovery.PriorObservationLogSha256) || recovery.PriorObservationLogBytes == 0 || !validSHA256String(recovery.PriorProcessLogSha256) || !validSHA256String(recovery.ApprovedPlanSha256) || !inheritedPreparation {
 			return errors.New("scenario campaign attempt has an invalid signed recovery")
 		}
@@ -683,6 +711,7 @@ func decodeScenarioObservationLog(data []byte) ([]*ScenarioObservation, error) {
 		return nil, errors.New("scenario observation log is empty or does not end at a durable record boundary")
 	}
 	lines := bytes.Split(data[:len(data)-1], []byte{'\n'})
+	legacyRecoveryLog := bytes.Contains(data, []byte(`"recovery_started_at"`))
 	history := make([]*ScenarioObservation, len(lines))
 	var previousHead ChainHead
 	var previousEpoch uint64
@@ -695,6 +724,18 @@ func decodeScenarioObservationLog(data []byte) ([]*ScenarioObservation, error) {
 			return nil, fmt.Errorf("scenario observation log record %d: %w", index, err)
 		}
 		head, epoch, _, err := scenarioObservationIdentity(&observation)
+		// Recovery-era process-log records were signed as whole log bytes before
+		// their recovery metadata was modelled here. Their enclosing recovery
+		// record authenticates that exact byte stream; retain head monotonicity
+		// while accepting only this identifiable historical representation.
+		legacyRecoveryFinding := false
+		for _, finding := range observation.ProcessLogFindings {
+			legacyRecoveryFinding = legacyRecoveryFinding || finding.RecoveryStartedAt != "" || finding.RecoveryDeadlineAt != "" || finding.RecoveryLineSHA256 != "" || finding.RecoveryLogAt != "" || finding.RecoveryObservedAt != "" || finding.RecoveryOffset != 0
+		}
+		observation.legacyByteAuthenticated = legacyRecoveryLog
+		if err != nil && (legacyRecoveryFinding || legacyRecoveryLog) && observation.Status != nil && observation.Status.Contracts != nil {
+			head, epoch, err = observation.Status.Contracts.FinalizedHead, observation.Status.Contracts.CurrentEpoch, nil
+		}
 		if err != nil {
 			return nil, fmt.Errorf("scenario observation log record %d: %w", index, err)
 		}
@@ -978,7 +1019,7 @@ func (attempt *scenarioCampaignAttempt) updateAuthenticatedRuntime(runDir string
 		if err != nil {
 			return err
 		}
-		if err := validateScenarioAttemptFaultRecords(definition, &old.AcceptanceWindow, faults); err != nil {
+		if _, err := validateScenarioAttemptFaultRecords(definition, &old.AcceptanceWindow, faults); err != nil {
 			return err
 		}
 		if err := validateScenarioFaultProgress(old.Faults, faults); err != nil {
@@ -1364,7 +1405,7 @@ func validateScenarioCampaignStartMarkerBytes(cfg *ResolvedConfig, result *Scena
 	if err != nil {
 		return err
 	}
-	if err := validateScenarioAttemptFaultRecords(definition, result.AcceptanceWindow, result.Faults); err != nil {
+	if _, err := validateScenarioAttemptFaultRecords(definition, result.AcceptanceWindow, result.Faults); err != nil {
 		return err
 	}
 	if err := validateScenarioFaultProgress(boundary.Faults, result.Faults); err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -123,7 +124,7 @@ func (j *Journal) load() error {
 	return err
 }
 
-func (j *Journal) loadReader(file *os.File) error {
+func (j *Journal) loadReader(file io.Reader) error {
 	if len(j.entries) == 0 {
 		j.validationKVs = map[journalActionKey][]JournalEntry{}
 		j.validationCount = 0

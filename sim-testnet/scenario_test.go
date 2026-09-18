@@ -111,7 +111,7 @@ func (p *transientErrorScenarioProbe) Snapshot(context.Context) (*ScenarioObserv
 		copy.ObservationHash, _ = canonicalHashHex(copy)
 		return &copy, nil
 	case 2:
-		return nil, errors.New("temporary finalized-head RPC failure")
+		return nil, fmt.Errorf("temporary finalized-head RPC failure: %w", snapshotRetryTestTransportError())
 	default:
 		copy := *p.recovered
 		copy.ObservationHash, _ = canonicalHashHex(copy)
@@ -362,7 +362,7 @@ func TestScenarioRunnerFailureHasNoCompleteMarker(t *testing.T) {
 	}
 }
 
-func TestScenarioRunnerRetainsTransientSnapshotFailureAfterRecovery(t *testing.T) {
+func TestScenarioRunnerRetainsRecoveredTransientSnapshotDiagnostic(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	dir := t.TempDir()
 	start := testScenarioObservation(cfg, 0)
@@ -372,16 +372,16 @@ func TestScenarioRunnerRetainsTransientSnapshotFailureAfterRecovery(t *testing.T
 	}}}}
 	probe := &transientErrorScenarioProbe{start: start, recovered: recovered}
 	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, probe, scenarioRunOptions{PollInterval: time.Microsecond, Timeout: time.Second})
-	if err == nil || result == nil || result.Result != "fail" || probe.calls < 3 {
+	if err != nil || result == nil || result.Result != "pass" || probe.calls != 3 {
 		t.Fatalf("result=%+v error=%v calls=%d", result, err, probe.calls)
 	}
 	found := false
 	for _, assertion := range result.Assertions {
-		if strings.HasPrefix(assertion.ID, "scenario_snapshot_") && !assertion.Passed && strings.Contains(assertion.Message, "temporary finalized-head RPC failure") {
+		if strings.HasPrefix(assertion.ID, "scenario_snapshot_retry_") && assertion.Passed && strings.Contains(assertion.Message, "temporary finalized-head RPC failure") {
 			found = true
 		}
 	}
-	if !found || result.Anomalies == nil || result.Anomalies.Status != "open" {
+	if !found || result.Anomalies == nil || result.Anomalies.Status == "open" {
 		t.Fatalf("transient snapshot failure was lost: assertions=%+v anomalies=%+v", result.Assertions, result.Anomalies)
 	}
 }

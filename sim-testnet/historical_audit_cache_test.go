@@ -257,7 +257,7 @@ func TestHistoricalAuditCacheRejectsForgedOrMalformedEntries(t *testing.T) {
 	}
 }
 
-func TestHistoricalAuditCacheCannotReplayAcrossExecutableOrVerifier(t *testing.T) {
+func TestHistoricalAuditCacheRejectsUnexpectedProofIdentity(t *testing.T) {
 	e := historicalAuditCacheTestExecutor(t)
 	entry := historicalAuditCacheTestSeed(t, e, historicalAuditCacheTestInput())
 	for _, field := range []string{"executable", "verifier", "schema", "kind"} {

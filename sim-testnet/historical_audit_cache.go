@@ -25,16 +25,18 @@ import (
 )
 
 const (
-	historicalAuditCacheSchema          = "urnetwork-sim-historical-audit-cache-v1"
+	historicalAuditCacheSchema = "urnetwork-sim-historical-audit-cache-v2"
+	// Bump when any cached immutable verifier changes its acceptance rules.
+	// Unrelated runner rebuilds must not invalidate completed verification.
 	historicalAuditCacheVerifierVersion = "immutable-history-v1"
-	historicalAuditCacheDirectoryName   = "historical-audit-cache-v1"
+	historicalAuditCacheDirectoryName   = "historical-audit-cache-v2"
 	historicalAuditCacheMaximumBytes    = 16 * 1024
 )
 
 type historicalAuditCacheProof struct {
 	Schema           string `json:"schema"`
 	VerifierVersion  string `json:"verifier_version"`
-	ExecutableSHA256 string `json:"executable_sha256"`
+	ExecutableSHA256 string `json:"executable_sha256,omitempty"` // Authenticated v1 import only.
 	ContextHash      string `json:"context_hash"`
 	Kind             string `json:"kind"`
 	InputHash        string `json:"input_hash"`
@@ -50,10 +52,11 @@ type historicalAuditCacheEnvelope struct {
 // each completed proof without replacing their cold RPC batches with calls
 // per action. The authentication key never leaves process memory.
 type historicalAuditCacheEntry struct {
-	stateDir string
-	name     string
-	proof    historicalAuditCacheProof
-	key      [32]byte
+	stateDir      string
+	name          string
+	proof         historicalAuditCacheProof
+	key           [32]byte
+	directoryName string
 }
 
 var historicalAuditExecutableIdentity struct {
@@ -152,7 +155,8 @@ func (e *Executor) historicalAuditContextHash(cfg *ResolvedConfig) (string, erro
 	})
 }
 
-// lookupHistoricalAuditCache performs no verification and creates no files.
+// Lookup performs no new verification. A compatible authenticated v1 success
+// may be promoted to the stable v2 identity without repeating its verifier.
 // A nonnil miss is a prepared entry whose saveSuccess may be called only once
 // all immutable checks required by its exact input have succeeded. In
 // particular, dual-observer action proofs require both observers to succeed.
@@ -167,10 +171,6 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.Release == nil || cfg.WalletMaterial == "" || cfg.Config.Deployment.DeploymentID == "" {
 		return nil, false
 	}
-	executableHash, err := historicalAuditExecutableSHA256()
-	if err != nil {
-		return nil, false
-	}
 	contextHash, err := e.historicalAuditContextHash(cfg)
 	if err != nil {
 		return nil, false
@@ -181,10 +181,10 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 	}
 	entry := &historicalAuditCacheEntry{
 		stateDir: e.stateDir,
-		key:      derive32(cfg, "historical-audit-cache/v1"),
+		key:      derive32(cfg, "historical-audit-cache/v2"),
 		proof: historicalAuditCacheProof{
 			Schema: historicalAuditCacheSchema, VerifierVersion: historicalAuditCacheVerifierVersion,
-			ExecutableSHA256: executableHash, ContextHash: contextHash, Kind: kind,
+			ContextHash: contextHash, Kind: kind,
 			InputHash: inputHash, Success: true,
 		},
 	}
@@ -194,6 +194,10 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 	}
 	entry.name = strings.TrimPrefix(nameHash, "0x") + ".json"
 	hit := entry.readSuccess()
+	if !hit && entry.readCompatibleSuccess(ctx, derive32(cfg, "historical-audit-cache/v1")) {
+		entry.saveSuccess(ctx)
+		hit = true
+	}
 	if ctx.Err() != nil {
 		return nil, false
 	}
@@ -230,7 +234,7 @@ func (e *Executor) withHistoricalAuditCache(ctx context.Context, kind string, in
 func (entry *historicalAuditCacheEntry) authenticationTag(proof historicalAuditCacheProof) []byte {
 	wire, _ := json.Marshal(proof) // The proof contains only strings and a bool.
 	mac := hmac.New(sha256.New, entry.key[:])
-	mac.Write([]byte(historicalAuditCacheSchema + "\x00"))
+	mac.Write([]byte(proof.Schema + "\x00"))
 	mac.Write(wire)
 	return mac.Sum(nil)
 }
@@ -239,6 +243,14 @@ func (entry *historicalAuditCacheEntry) authenticationTag(proof historicalAuditC
 // component, including the configured state directory, may be a symlink.
 // Only the cache directory may be created, after successful verification.
 func openHistoricalAuditCacheDirectory(stateDir string, create bool) (*os.File, error) {
+	return openHistoricalAuditNamedCacheDirectory(stateDir, historicalAuditCacheDirectoryName, create)
+}
+
+// Resolve a fixed cache directory without following substituted path components.
+func openHistoricalAuditNamedCacheDirectory(stateDir, directoryName string, create bool) (*os.File, error) {
+	if directoryName == "" || filepath.Base(directoryName) != directoryName || directoryName == "." || directoryName == ".." {
+		return nil, errors.New("historical audit cache directory is invalid")
+	}
 	path, err := filepath.Abs(stateDir)
 	if err != nil {
 		return nil, err
@@ -264,14 +276,14 @@ func openHistoricalAuditCacheDirectory(stateDir string, create bool) (*os.File, 
 		return nil, err
 	}
 	if create {
-		if err := unix.Mkdirat(fd, historicalAuditCacheDirectoryName, 0o700); err == nil {
+		if err := unix.Mkdirat(fd, directoryName, 0o700); err == nil {
 			// Persist the newly created directory's entry in the state root.
 			_ = unix.Fsync(fd)
 		} else if !errors.Is(err, unix.EEXIST) {
 			return nil, err
 		}
 	}
-	cacheFD, err := unix.Openat(fd, historicalAuditCacheDirectoryName, flags, 0)
+	cacheFD, err := unix.Openat(fd, directoryName, flags, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +291,7 @@ func openHistoricalAuditCacheDirectory(stateDir string, create bool) (*os.File, 
 		unix.Close(cacheFD)
 		return nil, err
 	}
-	return os.NewFile(uintptr(cacheFD), historicalAuditCacheDirectoryName), nil
+	return os.NewFile(uintptr(cacheFD), directoryName), nil
 }
 
 func requireHistoricalAuditPrivateMode(fd int, kind uint32, permissions uint32) error {
@@ -297,34 +309,48 @@ func (entry *historicalAuditCacheEntry) readSuccess() bool {
 	if entry == nil {
 		return false
 	}
-	directory, err := openHistoricalAuditCacheDirectory(entry.stateDir, false)
+	directoryName := entry.directoryName
+	if directoryName == "" {
+		directoryName = historicalAuditCacheDirectoryName
+	}
+	directory, err := openHistoricalAuditNamedCacheDirectory(entry.stateDir, directoryName, false)
 	if err != nil {
 		return false
 	}
 	defer directory.Close()
-	fd, err := unix.Openat(int(directory.Fd()), entry.name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
-	if err != nil {
-		return false
-	}
-	file := os.NewFile(uintptr(fd), entry.name)
-	defer file.Close()
-	if err := requireHistoricalAuditPrivateMode(fd, unix.S_IFREG, 0o600); err != nil {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil || info.Size() <= 0 || info.Size() > historicalAuditCacheMaximumBytes {
-		return false
-	}
-	wire, err := io.ReadAll(io.LimitReader(file, historicalAuditCacheMaximumBytes+1))
-	if err != nil || len(wire) > historicalAuditCacheMaximumBytes || rejectDuplicatePostconditionJSONFields(wire) != nil {
-		return false
-	}
-	var envelope historicalAuditCacheEnvelope
-	if err := decodeStrictJSONBytes(wire, &envelope); err != nil || envelope.Proof != entry.proof {
+	envelope, ok := readHistoricalAuditCacheEnvelope(directory, entry.name)
+	if !ok || envelope.Proof != entry.proof {
 		return false
 	}
 	tag, err := hex.DecodeString(envelope.MAC)
 	return err == nil && hmac.Equal(tag, entry.authenticationTag(envelope.Proof))
+}
+
+// Decode only bounded private regular files. The caller must authenticate and
+// compare the complete proof before treating any decoded value as evidence.
+func readHistoricalAuditCacheEnvelope(directory *os.File, name string) (historicalAuditCacheEnvelope, bool) {
+	var envelope historicalAuditCacheEnvelope
+	fd, err := unix.Openat(int(directory.Fd()), name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return envelope, false
+	}
+	file := os.NewFile(uintptr(fd), name)
+	defer file.Close()
+	if err := requireHistoricalAuditPrivateMode(fd, unix.S_IFREG, 0o600); err != nil {
+		return envelope, false
+	}
+	info, err := file.Stat()
+	if err != nil || info.Size() <= 0 || info.Size() > historicalAuditCacheMaximumBytes {
+		return envelope, false
+	}
+	wire, err := io.ReadAll(io.LimitReader(file, historicalAuditCacheMaximumBytes+1))
+	if err != nil || len(wire) > historicalAuditCacheMaximumBytes || rejectDuplicatePostconditionJSONFields(wire) != nil {
+		return envelope, false
+	}
+	if err := decodeStrictJSONBytes(wire, &envelope); err != nil {
+		return envelope, false
+	}
+	return envelope, true
 }
 
 // saveSuccess is best effort and nil-safe. Descriptor-relative creation and

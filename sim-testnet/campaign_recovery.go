@@ -191,12 +191,10 @@ func readScenarioCampaignRecoveryResult(cfg *ResolvedConfig, stateDir string, pr
 		return nil, nil, errors.New("campaign recovery predecessor has no terminal invalidated acceptance")
 	}
 	run := filepath.Join("runs", prior.payload.RunID)
-	for _, name := range []string{"complete.json", scenarioLifecycleHandoffFilename} {
-		if _, err := os.Lstat(filepath.Join(stateDir, run, name)); err == nil {
-			return nil, nil, errors.New("campaign recovery cannot replace a completed or handed-off release")
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, nil, err
-		}
+	if _, err := os.Lstat(filepath.Join(stateDir, run, "complete.json")); err == nil {
+		return nil, nil, errors.New("campaign recovery cannot replace a completed release")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, err
 	}
 	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); err == nil {
 		return nil, nil, errors.New("campaign recovery cannot replace a release with a production descendant")
@@ -226,7 +224,7 @@ func readScenarioCampaignRecoveryResult(cfg *ResolvedConfig, stateDir string, pr
 			failedCount++
 		}
 	}
-	if hashErr != nil || hash != result.EvidenceHash || startErr != nil || completedErr != nil || completed.Before(terminalStarted) || result.StartedAt != prior.payload.StartedAt || result.Schema != "urnetwork-sim-scenario-result-v1" || result.Release != "1.0" || result.RunID != prior.payload.RunID || result.Name != "release-1.0" || result.Result != "fail" || !result.Provisional || result.FinalAcceptance == nil || *result.FinalAcceptance || result.DeploymentID != cfg.Config.Deployment.DeploymentID || result.ConfigHash != cfg.ConfigHash || result.PolicyHash != cfg.PolicyHash || result.ChainID != cfg.ChainID || result.Netuid != cfg.Netuid || !strings.EqualFold(result.GenesisHash, cfg.Public.Chain.GenesisHash) || !failed || result.AssertionCount != len(result.Assertions) || result.FailedAssertionCount != failedCount || result.LifecycleHandoff != nil || result.PriorRelease != nil {
+	if hashErr != nil || hash != result.EvidenceHash || startErr != nil || completedErr != nil || completed.Before(terminalStarted) || result.StartedAt != prior.payload.StartedAt || result.Schema != "urnetwork-sim-scenario-result-v1" || result.Release != "1.0" || result.RunID != prior.payload.RunID || result.Name != "release-1.0" || result.Result != "fail" || !result.Provisional || result.FinalAcceptance == nil || *result.FinalAcceptance || result.DeploymentID != cfg.Config.Deployment.DeploymentID || result.ConfigHash != cfg.ConfigHash || result.PolicyHash != cfg.PolicyHash || result.ChainID != cfg.ChainID || result.Netuid != cfg.Netuid || !strings.EqualFold(result.GenesisHash, cfg.Public.Chain.GenesisHash) || !failed || result.AssertionCount != len(result.Assertions) || result.FailedAssertionCount != failedCount || result.PriorRelease != nil {
 		return nil, nil, errors.Join(errors.New("campaign recovery result differs from its invalidated provisional source"), hashErr)
 	}
 	return &result, raw, nil
@@ -333,8 +331,11 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 	if err := decodeStrictJSONBytes(processLogRaw, &processLogs); err != nil {
 		return nil, time.Time{}, err
 	}
-	if processLogs.DeploymentID != attempt.cfg.Config.Deployment.DeploymentID || validatePersistedProcessLogGate(processLogs) != nil {
-		return nil, time.Time{}, errors.New("campaign recovery process-log evidence is invalid")
+	if processLogs.DeploymentID != attempt.cfg.Config.Deployment.DeploymentID {
+		return nil, time.Time{}, errors.New("campaign recovery process-log evidence has the wrong deployment")
+	}
+	if err := validatePersistedProcessLogGate(processLogs); err != nil {
+		return nil, time.Time{}, fmt.Errorf("campaign recovery process-log evidence is invalid: %w", err)
 	}
 	if preAcceptance {
 		if processLogs.AcceptanceBoundary != nil {
@@ -392,10 +393,19 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 		recovery.PriorAttemptPath = priorRelativePath
 	}
 	if attempt.payload.Recovery != nil && attempt.payload.Recovery.InheritedPreparationSha256 != "" {
-		if !preAcceptance || !prior.payload.PreparationComplete || !attempt.payload.PreparationComplete {
+		if !attempt.payload.PreparationComplete {
 			return nil, time.Time{}, errors.New("campaign recovery inherited preparation has no completed pre-acceptance predecessor")
 		}
-		recovery.InheritedPreparationSha256 = bytesSHA256(priorRaw)
+		if preAcceptance {
+			if !prior.payload.PreparationComplete {
+				return nil, time.Time{}, errors.New("campaign recovery inherited preparation has no completed pre-acceptance predecessor")
+			}
+			recovery.InheritedPreparationSha256 = bytesSHA256(priorRaw)
+		} else if prior.payload.Recovery == nil || prior.payload.Recovery.InheritedPreparationSha256 == "" {
+			return nil, time.Time{}, errors.New("campaign recovery inherited preparation has no completed pre-acceptance predecessor")
+		} else {
+			recovery.InheritedPreparationSha256 = prior.payload.Recovery.InheritedPreparationSha256
+		}
 	}
 	return recovery, terminal, nil
 }
@@ -517,7 +527,8 @@ func validateScenarioCampaignRecoveryAncestor(attempt *scenarioCampaignAttempt, 
 	if attempt == nil || attempt.payload.Recovery == nil || attempt.payload.AcceptanceBoundary != nil || ancestorRunID == "" || ancestorRunID == attempt.payload.RunID {
 		return errors.New("campaign recovery has no distinct pre-acceptance ancestor")
 	}
-	if err := validateScenarioCampaignRecovery(attempt); err != nil {
+	ancestors, err := scenarioCampaignRecoveryAncestors(attempt, validateScenarioCampaignRecovery)
+	if err != nil {
 		return err
 	}
 	if _, err := os.Lstat(scenarioCampaignAttemptPath(attempt.stateDir, "production-soak")); err == nil {
@@ -525,28 +536,8 @@ func validateScenarioCampaignRecoveryAncestor(attempt *scenarioCampaignAttempt, 
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	root, _, _, err := readScenarioCampaignRecoveryRoot(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash)
-	if err != nil {
-		return err
-	}
-	if root.payload.RunID == ancestorRunID {
+	if ancestors[ancestorRunID] {
 		return nil
-	}
-	files, err := scenarioCampaignRecoveryFiles(attempt.stateDir)
-	if err != nil {
-		return err
-	}
-	records, err := readScenarioCampaignRecoveryChain(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, files)
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		if record.attempt.payload.RunID == attempt.payload.RunID {
-			break
-		}
-		if record.attempt.payload.RunID == ancestorRunID {
-			return nil
-		}
 	}
 	return errors.New("retained release run is not an authenticated campaign recovery ancestor")
 }
@@ -597,6 +588,37 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 		}
 		last := records[len(records)-1]
 		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
+	}
+	// A signed acceptance invalidation proves that its process session cannot
+	// continue. If the process was killed between invalidation and result
+	// persistence, materialize the terminal provisional failure here. This is
+	// deliberately limited to that signed state; a pre-acceptance missing result
+	// remains an integrity error and is never synthesized.
+	if prior.payload.AcceptanceBoundary != nil && prior.payload.AcceptanceInvalidation != "" {
+		runDir := filepath.Join(stateDir, "runs", prior.payload.RunID)
+		resultPath := filepath.Join(runDir, "result.json")
+		if _, err := os.Lstat(resultPath); errors.Is(err, os.ErrNotExist) {
+			definition, definitionErr := scenarioDefinitionFor(cfg, prior.payload.Phase)
+			definitionHash, hashErr := scenarioDefinitionHash(definition)
+			started, startErr := time.Parse(time.RFC3339Nano, prior.payload.StartedAt)
+			if definitionErr != nil || hashErr != nil || startErr != nil {
+				return nil, errors.Join(errors.New("campaign recovery cannot materialize interrupted terminal result"), definitionErr, hashErr, startErr)
+			}
+			interrupted := fmt.Errorf("scenario campaign acceptance was interrupted (%s); terminal result materialized by recovery after process exit", prior.payload.AcceptanceInvalidation)
+			result, _ := writeInitialScenarioFailure(cfg, runDir, prior.payload.RunID, definitionHash, definition, started.UTC(), nil, prior, interrupted)
+			if result == nil {
+				return nil, errors.New("campaign recovery could not materialize interrupted terminal result")
+			}
+			if _, err := os.Lstat(resultPath); err != nil {
+				return nil, fmt.Errorf("campaign recovery interrupted terminal result: %w", err)
+			}
+			// The terminal result uses the durable write time. Advance the
+			// successor clock after that write so ordering is checked against the
+			// actual terminal boundary rather than this function's entry time.
+			now = time.Now().UTC()
+		} else if err != nil {
+			return nil, err
+		}
 	}
 	probe := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{PlanHash: planHash}}
 	recovery, terminal, err := readScenarioCampaignRecoverySources(probe, prior, priorRelativePath, priorRaw)

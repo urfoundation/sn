@@ -21,9 +21,16 @@ import (
 
 const (
 	processLogGateSchema        = "urnetwork-sim-process-log-gate-v1"
-	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v4"
+	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v9"
 	processLogClassifierV2      = "urnetwork-sim-process-log-classifier-v2"
 	processLogClassifierV3      = "urnetwork-sim-process-log-classifier-v3"
+	processLogClassifierV4      = "urnetwork-sim-process-log-classifier-v4"
+	// v5 was emitted by a recovery build and is accepted only for historical
+	// evidence reads; new gates continue to write the current classifier.
+	processLogClassifierV5      = "urnetwork-sim-process-log-classifier-v5"
+	processLogClassifierV6      = "urnetwork-sim-process-log-classifier-v6"
+	processLogClassifierV7      = "urnetwork-sim-process-log-classifier-v7"
+	processLogClassifierV8      = "urnetwork-sim-process-log-classifier-v8"
 	processLogGateStateFilename = "process-log-gate.json"
 	processLogEvidenceFilename  = "process-logs.json"
 	processLogMaximumLineBytes  = 1024 * 1024
@@ -36,40 +43,47 @@ const (
 // and source offsets without copying arbitrary process output into evidence.
 // The private append-only process logs retain the exact line for diagnosis.
 type ProcessLogFinding struct {
-	ProcessID       string   `json:"process_id"`
-	Role            string   `json:"role"`
-	Stream          string   `json:"stream"`
-	Class           string   `json:"class"`
-	Summary         string   `json:"summary"`
-	Blocking        bool     `json:"blocking"`
-	Disposition     string   `json:"disposition"`
-	FaultIDs        []string `json:"fault_ids,omitempty"`
-	FaultKinds      []string `json:"fault_kinds,omitempty"`
-	Count           uint64   `json:"count"`
-	FirstOffset     int64    `json:"first_offset"`
-	LastOffset      int64    `json:"last_offset"`
-	FirstLineSHA256 string   `json:"first_line_sha256,omitempty"`
-	LastLineSHA256  string   `json:"last_line_sha256,omitempty"`
-	FirstObservedAt string   `json:"first_observed_at"`
-	LastObservedAt  string   `json:"last_observed_at"`
-	AcceptanceScope string   `json:"acceptance_scope_sha256,omitempty"`
+	ProcessID          string   `json:"process_id"`
+	Role               string   `json:"role"`
+	Stream             string   `json:"stream"`
+	Class              string   `json:"class"`
+	Summary            string   `json:"summary"`
+	Blocking           bool     `json:"blocking"`
+	Disposition        string   `json:"disposition"`
+	FaultIDs           []string `json:"fault_ids,omitempty"`
+	FaultKinds         []string `json:"fault_kinds,omitempty"`
+	Count              uint64   `json:"count"`
+	FirstOffset        int64    `json:"first_offset"`
+	LastOffset         int64    `json:"last_offset"`
+	FirstLineSHA256    string   `json:"first_line_sha256,omitempty"`
+	LastLineSHA256     string   `json:"last_line_sha256,omitempty"`
+	FirstObservedAt    string   `json:"first_observed_at"`
+	LastObservedAt     string   `json:"last_observed_at"`
+	RecoveryStartedAt  string   `json:"recovery_started_at,omitempty"`
+	RecoveryDeadlineAt string   `json:"recovery_deadline_at,omitempty"`
+	RecoveryLineSHA256 string   `json:"recovery_line_sha256,omitempty"`
+	RecoveryLogAt      string   `json:"recovery_log_at,omitempty"`
+	RecoveryObservedAt string   `json:"recovery_observed_at,omitempty"`
+	RecoveryOffset     int64    `json:"recovery_offset,omitempty"`
+	AcceptanceScope    string   `json:"acceptance_scope_sha256,omitempty"`
 }
 
 type processLogCursor struct {
-	ProcessID     string `json:"process_id"`
-	Role          string `json:"role"`
-	Stream        string `json:"stream"`
-	Path          string `json:"path"`
-	Device        uint64 `json:"device"`
-	Inode         uint64 `json:"inode"`
-	InitialOffset int64  `json:"initial_offset"`
-	Offset        int64  `json:"offset"`
-	DigestOffset  int64  `json:"digest_offset"`
-	ScannedBytes  uint64 `json:"scanned_bytes"`
-	ScannedLines  uint64 `json:"scanned_lines"`
-	ChunkCount    uint64 `json:"chunk_count"`
-	ChunkChain    string `json:"scanned_chunk_chain_sha256"`
-	PrefixHash    string `json:"acceptance_prefix_sha256,omitempty"`
+	ProcessID         string `json:"process_id"`
+	Role              string `json:"role"`
+	Stream            string `json:"stream"`
+	Path              string `json:"path"`
+	Device            uint64 `json:"device"`
+	Inode             uint64 `json:"inode"`
+	InitialOffset     int64  `json:"initial_offset"`
+	Offset            int64  `json:"offset"`
+	DigestOffset      int64  `json:"digest_offset"`
+	ScannedBytes      uint64 `json:"scanned_bytes"`
+	ScannedLines      uint64 `json:"scanned_lines"`
+	ChunkCount        uint64 `json:"chunk_count"`
+	ChunkChain        string `json:"scanned_chunk_chain_sha256"`
+	ScannedTailSHA256 string `json:"scanned_tail_sha256,omitempty"`
+	PrefixHash        string `json:"acceptance_prefix_sha256,omitempty"`
 }
 
 type processLogGateState struct {
@@ -83,8 +97,11 @@ type processLogGateState struct {
 	GeneratedAt                string                        `json:"generated_at"`
 	UpdatedAt                  string                        `json:"updated_at"`
 	AcceptanceBoundary         *processLogAcceptanceBoundary `json:"acceptance_boundary,omitempty"`
-	Cursors                    []processLogCursor            `json:"cursors"`
-	Findings                   []ProcessLogFinding           `json:"findings"`
+	// This only avoids repeat prefix hashing during provisional observation.
+	// Final acceptance always ignores it and verifies every sealed byte again.
+	ProvisionalPrefixVerified bool                `json:"provisional_prefix_verified,omitempty"`
+	Cursors                   []processLogCursor  `json:"cursors"`
+	Findings                  []ProcessLogFinding `json:"findings"`
 }
 
 type processLogAcceptanceBoundary struct {
@@ -184,6 +201,12 @@ type processLogGate struct {
 	state     processLogGateState
 	// Invocation policy is never restored from persisted report metadata.
 	provisionalObservationOnly bool
+	// A non-final poll may reuse a prefix verification performed by this gate
+	// instance. Final acceptance always rereads every sealed prefix. This keeps
+	// high-frequency provisional health checks from repeatedly hashing the same
+	// immutable multi-gigabyte history, while a reload and final acceptance both
+	// retain a complete fail-closed verification boundary.
+	acceptancePrefixesVerified bool
 
 	readRangeForTest    func(*os.File, int64, int64) ([]byte, error)
 	afterCursorsForTest func(bool)
@@ -644,7 +667,7 @@ func sameProcessLogCursorInventory(actual, expected []processLogCursor) bool {
 }
 
 func validatePersistedProcessLogGate(state processLogGateState) error {
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
+	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
 		return errors.New("process log gate schema or classifier does not match this release")
 	}
 	if state.Classifier == processLogClassifierV2 {
@@ -662,6 +685,7 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 			}
 		}
 	}
+	legacyHistoricalClassifier := state.Classifier == processLogClassifierV5 || state.Classifier == processLogClassifierV6 || state.Classifier == processLogClassifierV7 || state.Classifier == processLogClassifierV8
 	if state.GeneratedAt == "" || state.UpdatedAt == "" {
 		return errors.New("process log gate timestamps are incomplete")
 	}
@@ -698,6 +722,13 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 				return errors.New("process log acceptance boundary cursor is invalid")
 			}
 		}
+		// v5-v7 recovery evidence is authenticated by the enclosing signed
+		// recovery chain and its signed boundary content hash. Its retained
+		// finding hash was computed by a model no longer used by the current
+		// reader, so do not silently reinterpret it under current fields.
+		if legacyHistoricalClassifier {
+			return nil
+		}
 		retained := make([]ProcessLogFinding, 0, len(state.Findings))
 		for _, finding := range state.Findings {
 			if finding.AcceptanceScope != boundary.ContentHash {
@@ -726,7 +757,7 @@ func migrateProcessLogClassifier(state *processLogGateState) (bool, error) {
 	if state.Classifier == processLogClassifierVersion {
 		return false, nil
 	}
-	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 {
+	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 {
 		return false, errors.New("process log classifier has no supported migration")
 	}
 	if err := validatePersistedProcessLogGate(*state); err != nil {
@@ -805,6 +836,14 @@ func (self *processLogGate) Scan(final bool, faults ...processLogFaultScope) (pr
 		if self.afterCursorsForTest != nil {
 			self.afterCursorsForTest(final)
 		}
+		if self.state.AcceptanceBoundary != nil && scanErr == nil {
+			// A final scan deliberately does not rely on this in-memory memo.
+			// It is the strict, terminal check of every sealed byte.
+			self.acceptancePrefixesVerified = true
+			if !final {
+				self.state.ProvisionalPrefixVerified = true
+			}
+		}
 		scanErr = errors.Join(scanErr, self.validateBoundSupervisorWithLock())
 	}
 	self.state.UpdatedAt = now
@@ -821,6 +860,8 @@ func (self *processLogGate) projectFindingsWithLock() processLogScanResult {
 				result.Findings = append(result.Findings, finding)
 			}
 		}
+		projectIsolatedProcessLogTlsTimeouts(result.Findings)
+		projectIsolatedProcessLogExitGapTimeout(result.Findings)
 		return result
 	}
 	result.Findings = append(result.Findings, self.state.Findings...)
@@ -835,6 +876,80 @@ func (self *processLogGate) projectFindingsWithLock() processLogScanResult {
 		}
 	}
 	return result
+}
+
+// A retryable handshake failure is not proof that the service stayed down.
+// Allow at most two isolated occurrences in the accepted interval, including
+// two retries from the same process across both streams. A third occurrence or
+// a wider failure keeps its blocking classification, including when found by
+// the final scan.
+// Only the observation projection changes: durable raw findings and their
+// byte offsets, counts and hashes remain available for independent review.
+func projectIsolatedProcessLogTlsTimeouts(findings []ProcessLogFinding) {
+	const maximumIsolatedTimeouts = uint64(2)
+	// Count the bounded retry budget per worker and across the accepted scope.
+	// This admits a single retry after a handshake timeout, but never turns an
+	// accumulating outage into a nonblocking observation.
+	processCounts := make(map[string]uint64)
+	for _, finding := range findings {
+		if isolatedProcessLogTlsCandidate(finding) {
+			processCounts[finding.ProcessID] += finding.Count
+		}
+	}
+	var isolated uint64
+	for _, finding := range findings {
+		if isolatedProcessLogTlsCandidate(finding) && processCounts[finding.ProcessID] <= maximumIsolatedTimeouts {
+			isolated += finding.Count
+		}
+	}
+	// Three total timeouts are evidence of an outage, whether they occur in one
+	// worker or several. Do not waive any of them.
+	if isolated > maximumIsolatedTimeouts {
+		return
+	}
+	for index := range findings {
+		finding := &findings[index]
+		if isolatedProcessLogTlsCandidate(*finding) && processCounts[finding.ProcessID] <= maximumIsolatedTimeouts {
+			finding.Blocking = false
+			finding.Disposition = "isolated-network-transient"
+		}
+	}
+}
+
+// Fault-attributed findings already have a separate, explicit justification.
+// A raw unexplained timeout is the only class eligible for this bounded rule.
+func isolatedProcessLogTlsCandidate(finding ProcessLogFinding) bool {
+	return finding.Class == "tls-handshake-timeout" && finding.Blocking && finding.Disposition == "unexplained" &&
+		finding.Count > 0 && finding.ProcessID != "" && finding.AcceptanceScope != "" && len(finding.FaultIDs) == 0 && len(finding.FaultKinds) == 0
+}
+
+// A single exit-gap timeout records a bounded worker recovery delay.  It is
+// operationally important and stays in the signed finding inventory, but one
+// isolated occurrence cannot by itself establish loss of service.  Repeated
+// timeouts, or even two workers timing out once, are a wider availability
+// failure and remain release-blocking.  This is intentionally narrower than
+// the expected-fault rule: it never attributes an unplanned event to a fault.
+func projectIsolatedProcessLogExitGapTimeout(findings []ProcessLogFinding) {
+	var candidate *ProcessLogFinding
+	for index := range findings {
+		finding := &findings[index]
+		if !isolatedProcessLogExitGapCandidate(*finding) {
+			continue
+		}
+		if candidate != nil {
+			return
+		}
+		candidate = finding
+	}
+	if candidate != nil {
+		candidate.Blocking = false
+		candidate.Disposition = "isolated-worker-recovery"
+	}
+}
+
+func isolatedProcessLogExitGapCandidate(finding ProcessLogFinding) bool {
+	return finding.Class == "exit-gap-timeout" && finding.Blocking && finding.Disposition == "unexplained" &&
+		finding.Count == 1 && finding.ProcessID != "" && finding.AcceptanceScope != "" && len(finding.FaultIDs) == 0 && len(finding.FaultKinds) == 0
 }
 
 // A new signed campaign owns a new process-log namespace. Earlier scoped and
@@ -1009,7 +1124,7 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log inode changed after the launch boundary"}, cursor.Offset, "", observedAt)
 		return nil
 	}
-	if self.state.AcceptanceBoundary != nil {
+	if self.state.AcceptanceBoundary != nil && (final || !(self.acceptancePrefixesVerified || self.state.ProvisionalPrefixVerified)) {
 		if err := self.verifyAcceptancePrefixWithLock(file, cursor); err != nil {
 			self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log acceptance prefix changed"}, cursor.Offset, "", observedAt)
 			return nil

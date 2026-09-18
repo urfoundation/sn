@@ -34,7 +34,10 @@ func journalIndexTestEntry(stage JournalStage) JournalEntry {
 // Sign no transactions: only construct the existing local canonical hash chain.
 func writeJournalIndexTestHistory(t *testing.T, entries []JournalEntry) (string, []JournalEntry) {
 	t.Helper()
-	stateDir := t.TempDir()
+	stateDir := filepath.Join(t.TempDir(), "state")
+	if err := ensurePrivateDir(stateDir); err != nil {
+		t.Fatal(err)
+	}
 	file, err := os.OpenFile(filepath.Join(stateDir, "journal.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
 		t.Fatal(err)

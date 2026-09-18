@@ -2021,9 +2021,20 @@ func (p SetupPlan) hash() (string, error) {
 	}
 	return canonicalHashHex(p)
 }
+
+// Ordinary plan admission always performs the complete immutable verification.
 func validatePlanBudget(p *SetupPlan) error {
+	return validatePlanBudgetWithFleetRenewalVerifier(p, validateFleetRenewalPlan)
+}
+
+// Census reads may supply an authenticated exact-byte renewal proof. All other
+// budget, artifact, identity and action checks still run on every invocation.
+func validatePlanBudgetWithFleetRenewalVerifier(p *SetupPlan, verifyRenewal func(*SetupPlan) error) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
+	}
+	if verifyRenewal == nil {
+		return errors.New("setup plan renewal verifier is unavailable")
 	}
 	if p.ConfigIdentityRuntimeSpec != 0 && (p.ConfigIdentityRuntimeSpec != 455 || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis) {
 		return errors.New("setup plan runtime configuration identity is not the reviewed testnet predecessor")
@@ -2036,7 +2047,7 @@ func validatePlanBudget(p *SetupPlan) error {
 			return errors.New("owned RPC plan is outside the authenticated testnet")
 		}
 	}
-	if err := validateFleetRenewalPlan(p); err != nil {
+	if err := verifyRenewal(p); err != nil {
 		return err
 	}
 	if err := validateEvidenceRelayContinuationPlan(p); err != nil {

@@ -18,6 +18,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -199,6 +200,60 @@ type JournalSummary struct {
 	Actions       map[string]bool `json:"verified_actions,omitempty"`
 }
 
+// Status is polled throughout a campaign. The journal is append-only, so its
+// parsed summary is reusable while its size and modification time are stable.
+// Evidence producers and final validation independently reread the complete
+// hash chain; this cache only avoids turning routine health observation into
+// repeated multi-gigabyte local I/O.
+type statusJournalSummaryCacheEntry struct {
+	size    int64
+	modTime int64
+	summary JournalSummary
+}
+
+var statusJournalSummaryCache = struct {
+	sync.Mutex
+	entries map[string]statusJournalSummaryCacheEntry
+}{entries: map[string]statusJournalSummaryCacheEntry{}}
+
+func cloneJournalSummary(summary JournalSummary) JournalSummary {
+	copy := JournalSummary{Entries: summary.Entries, LastHash: summary.LastHash, LatestByStage: map[string]int{}, Actions: map[string]bool{}}
+	for key, value := range summary.LatestByStage {
+		copy.LatestByStage[key] = value
+	}
+	for key, value := range summary.Actions {
+		copy.Actions[key] = value
+	}
+	return copy
+}
+
+func statusJournalSummary(path string) (JournalSummary, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return JournalSummary{}, nil
+	}
+	if err != nil {
+		return JournalSummary{}, err
+	}
+	modTime := info.ModTime().UnixNano()
+	statusJournalSummaryCache.Lock()
+	if cached, found := statusJournalSummaryCache.entries[path]; found && cached.size == info.Size() && cached.modTime == modTime {
+		result := cloneJournalSummary(cached.summary)
+		statusJournalSummaryCache.Unlock()
+		return result, nil
+	}
+	statusJournalSummaryCache.Unlock()
+	entries, err := readJournal(path)
+	if err != nil {
+		return JournalSummary{}, err
+	}
+	summary := summarizeJournal(entries)
+	statusJournalSummaryCache.Lock()
+	statusJournalSummaryCache.entries[path] = statusJournalSummaryCacheEntry{size: info.Size(), modTime: modTime, summary: cloneJournalSummary(summary)}
+	statusJournalSummaryCache.Unlock()
+	return summary, nil
+}
+
 func Status(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*DeploymentStatus, error) {
 	s := &DeploymentStatus{
 		Schema:       "urnetwork-sim-status-v1",
@@ -230,11 +285,11 @@ func Status(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*Deploym
 		s.Warnings = append(s.Warnings, "local supervisor has not started")
 		s.Healthy = false
 	}
-	entries, err := readJournal(filepath.Join(stateDir, "journal.jsonl"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	summary, err := statusJournalSummary(filepath.Join(stateDir, "journal.jsonl"))
+	if err != nil {
 		return nil, err
 	}
-	s.Journal = summarizeJournal(entries)
+	s.Journal = summary
 	if _, err := os.Stat(filepath.Join(stateDir, "public", "contracts.json")); err == nil {
 		view, viewErr := inspectContracts(ctx, cfg, stateDir, "")
 		if viewErr != nil {
@@ -2046,7 +2101,7 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	}
 	var fleetBatcher common.Address
 	var fleetBatcherRuntimeHash string
-	if plan, planErr := readPersistedPlan(stateDir); planErr == nil {
+	if plan, planErr := readFleetCensusPlan(cfg, stateDir); planErr == nil {
 		if plan.DeploymentID != deployment.DeploymentID {
 			return nil, errors.New("persisted plan deployment differs from observed contract deployment")
 		}

@@ -664,6 +664,10 @@ func TestScenarioCampaignAttemptRejectsProcessRestartAfterAcceptanceStart(t *tes
 	if err == nil || !strings.Contains(err.Error(), "process-session-changed") || attempt.payload.AcceptanceInvalidation != "process-session-changed" || attempt.payload.AcceptanceInvalidatedAt != now.Format(time.RFC3339Nano) || faultDriver.recoverCalls != 1 {
 		t.Fatalf("process restart error=%v recover=%d attempt=%+v", err, faultDriver.recoverCalls, attempt.payload)
 	}
+	var terminal ScenarioResult
+	if err := readJSONFile(filepath.Join(attempt.stateDir, "runs", attempt.payload.RunID, "result.json"), &terminal); err != nil || terminal.Result != "fail" || len(terminal.Assertions) == 0 || terminal.Assertions[0].Passed {
+		t.Fatalf("interrupted terminal result=(%+v,%v)", terminal, err)
+	}
 }
 
 func TestScenarioCampaignAttemptRejectsSignedFaultScheduleSubstitution(t *testing.T) {
@@ -675,6 +679,46 @@ func TestScenarioCampaignAttemptRejectsSignedFaultScheduleSubstitution(t *testin
 	}
 	if _, err := readScenarioCampaignAttempt(cfg, attempt.stateDir, attempt.roles, campaignTestPlanHash, "release-1.0"); err == nil || !strings.Contains(err.Error(), "differs from its exact schedule") {
 		t.Fatalf("signed fault schedule substitution error=%v", err)
+	}
+}
+
+func TestScenarioCampaignAttemptAcceptsOnlyLegacySupervisorImpactExtension(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	definition, err := scenarioDefinitionFor(cfg, "release-1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := &ScenarioAcceptanceWindow{StartBlock: 100}
+	records, err := initializeFaultRecords(window.StartBlock, definition.Faults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := false
+	for index := range records {
+		if records[index].PreAcceptance {
+			records[index].ArmedBlock = window.StartBlock - 1
+			records[index].ArmedBlockHash = "0x" + strings.Repeat("aa", 32)
+		}
+		impacts := records[index].Impacts[:0]
+		for _, impact := range records[index].Impacts {
+			if strings.HasPrefix(impact, "miner-swarm-") {
+				changed = true
+				continue
+			}
+			impacts = append(impacts, impact)
+		}
+		records[index].Impacts = impacts
+	}
+	if !changed {
+		t.Fatal("release schedule has no supervisor impact extension")
+	}
+	legacy, err := validateScenarioAttemptFaultRecords(definition, window, records)
+	if err != nil || !legacy {
+		t.Fatalf("legacy supervisor impact schedule accepted=%t error=%v", legacy, err)
+	}
+	records[0].Targets[0] = "foreign-process"
+	if legacy, err := validateScenarioAttemptFaultRecords(definition, window, records); err == nil || legacy {
+		t.Fatalf("mutated legacy schedule accepted=%t error=%v", legacy, err)
 	}
 }
 

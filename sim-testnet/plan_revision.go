@@ -114,12 +114,39 @@ func exactVerifiedPlanAction(prior *SetupPlan, entries []JournalEntry, actionID 
 	if planned == nil {
 		return false
 	}
+	allowedPlanHashes := prior.allowedPlanHashes()
 	for _, entry := range entries {
-		if prior.allowedPlanHashes()[entry.PlanHash] && entry.ActionID == actionID && actionAcceptsIntent(*planned, entry.IntentHash) && entry.Stage == StageVerified {
+		if allowedPlanHashes[entry.PlanHash] && entry.ActionID == actionID && actionAcceptsIntent(*planned, entry.IntentHash) && entry.Stage == StageVerified {
 			return true
 		}
 	}
 	return false
+}
+
+// Keep the single-action verifier's exact duplicate, lineage and intent rules
+// while authenticating a whole fleet in one pass through the plan and journal.
+func exactVerifiedPlanActionIndex(prior *SetupPlan, entries []JournalEntry) map[string]bool {
+	verifiedActionIds := map[string]bool{}
+	if prior == nil {
+		return verifiedActionIds
+	}
+	plannedActionKVs := make(map[string]*Action, len(prior.Actions))
+	for index := range prior.Actions {
+		action := &prior.Actions[index]
+		if _, duplicate := plannedActionKVs[action.ID]; duplicate {
+			plannedActionKVs[action.ID] = nil
+		} else {
+			plannedActionKVs[action.ID] = action
+		}
+	}
+	allowedPlanHashes := prior.allowedPlanHashes()
+	for _, entry := range entries {
+		planned := plannedActionKVs[entry.ActionID]
+		if planned != nil && entry.Stage == StageVerified && allowedPlanHashes[entry.PlanHash] && actionAcceptsIntent(*planned, entry.IntentHash) {
+			verifiedActionIds[entry.ActionID] = true
+		}
+	}
+	return verifiedActionIds
 }
 
 // Resolve the next safe deployer nonce after an active coordinator release.

@@ -617,7 +617,7 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 	if cfg == nil || cfg.Config == nil {
 		return nil, errors.New("fleet lifecycle evidence descriptor configuration is unavailable")
 	}
-	plan, err := readPersistedPlan(stateDir)
+	plan, err := readFleetCensusPlan(cfg, stateDir)
 	if errors.Is(err, os.ErrNotExist) {
 		plan = nil
 	} else if err != nil {
@@ -640,7 +640,7 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 	// Authenticate every renewal binding first. Subsequent lifecycle waves can
 	// then select their own exact plan-bound files without being overwritten by
 	// the older renewal descriptors.
-	descriptors, err = fleetRenewalEvidenceDescriptors(cfg, stateDir, epoch, descriptors)
+	descriptors, err = fleetRenewalEvidenceDescriptorsForPlan(cfg, stateDir, epoch, descriptors, plan)
 	if err != nil {
 		return nil, err
 	}

@@ -51,12 +51,19 @@ func TestRuntimeEvidenceSourceCapacityForecastUsesActualOwnedPoll(t *testing.T) 
 		}
 		var diagnostic bytes.Buffer
 		err = validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic)
+		if err != nil || diagnostic.Len() != 0 {
+			t.Fatalf("%s configured forecast no longer fits: %v %s", testCase.mode, err, &diagnostic)
+		}
 		if testCase.poll == 60 {
-			if err != nil || diagnostic.Len() != 0 {
-				t.Fatalf("public forecast no longer fits: %v %s", err, &diagnostic)
-			}
 			continue
 		}
+		// Keep the strict diagnostic regression independent from the launch
+		// profile: the profile must fit the owned LAN cadence.
+		for index := range cfg.Config.Artifacts.ReservedAttemptUploads {
+			cfg.Config.Artifacts.ReservedAttemptUploads[index].Budget.RetryRequestsPerHour = 4_194_304
+		}
+		diagnostic.Reset()
+		err = validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic)
 		if err == nil || diagnostic.Len() != 0 || strings.Count(err.Error(), "protected publication capacity is below") != 4 {
 			t.Fatalf("%s strict refusal omitted an original/destination owner: %v %s", testCase.mode, err, &diagnostic)
 		}
@@ -72,6 +79,12 @@ func TestRuntimeEvidenceSourceCapacityForecastUsesActualOwnedPoll(t *testing.T) 
 // quotas and full source horizon; it reports no accepted result.
 func TestRuntimeEvidenceSourceCapacityProvisionalOwnedForecastPreservesRuntimeLimits(t *testing.T) {
 	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	// The checked-in profile fits the owned LAN cadence. This fixture is
+	// deliberately below only the retry dimension to verify that a valid
+	// provisional approval records the bounded shortfall without mutating it.
+	for index := range cfg.Config.Artifacts.ReservedAttemptUploads {
+		cfg.Config.Artifacts.ReservedAttemptUploads[index].Budget.RetryRequestsPerHour = 4_194_304
+	}
 	before, err := canonicalHashHex(cfg.Config)
 	if err != nil {
 		t.Fatal(err)

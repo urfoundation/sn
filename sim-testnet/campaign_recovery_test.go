@@ -693,7 +693,7 @@ func TestScenarioCampaignRecoveryRejectsUnbackedPreparationCarry(t *testing.T) {
 		t.Fatalf("unbacked preparation carry error=%v", err)
 	}
 	candidate.payload.Recovery.InheritedPreparationSha256 = "sha256:" + strings.Repeat("11", 32)
-	if err := validateScenarioCampaignAttemptPayload(fixture.cfg, fixture.current.PlanHash, "release-1.0", &candidate.payload); err == nil {
+	if err := validateScenarioCampaignRecoveryFromPrior(&candidate, first, scenarioCampaignRecoveryRelativePath(1), priorRaw); err == nil {
 		t.Fatal("recovery accepted an inherited preparation marker for another attempt")
 	}
 }
@@ -900,7 +900,7 @@ func TestScenarioCampaignRecoveryWriterRejectsMalformedGenerationBeforePathSelec
 }
 
 // Terminal success and descendants permanently close the recovery path.
-func TestScenarioCampaignRecoveryRejectsCompletedHandoffAndProductionPredecessors(t *testing.T) {
+func TestScenarioCampaignRecoveryRejectsCompletedAndProductionPredecessors(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name string
@@ -909,10 +909,7 @@ func TestScenarioCampaignRecoveryRejectsCompletedHandoffAndProductionPredecessor
 	}{
 		{name: "complete", path: func(_ *campaignSuccessionFixture, runDir string) string {
 			return filepath.Join(runDir, "complete.json")
-		}, want: "completed or handed-off"},
-		{name: "handoff", path: func(_ *campaignSuccessionFixture, runDir string) string {
-			return filepath.Join(runDir, scenarioLifecycleHandoffFilename)
-		}, want: "completed or handed-off"},
+		}, want: "completed release"},
 		{name: "production", path: func(fixture *campaignSuccessionFixture, _ string) string {
 			return scenarioCampaignAttemptPath(fixture.stateDir, "production-soak")
 		}, want: "production descendant"},
@@ -925,6 +922,41 @@ func TestScenarioCampaignRecoveryRejectsCompletedHandoffAndProductionPredecessor
 		if _, err := createScenarioCampaignRecovery(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, fixture.now.Add(time.Hour), fixture.journal); err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Errorf("%s predecessor error=%v", test.name, err)
 		}
+	}
+}
+
+// A lifecycle handoff is durable work, not a signed campaign completion. The
+// failed interval and its ancestry still require complete authentication.
+func TestScenarioCampaignRecoveryPreservesHandoffWithoutClaimingCompletion(t *testing.T) {
+	t.Parallel()
+	fixture := newCampaignSuccessionFixture(t)
+	prior, runDir := bindCampaignRecoveryFixture(t, fixture)
+	handoff := &FleetLifecycleEvidence{Schema: fleetLifecycleEvidenceSchema, DeploymentID: fixture.cfg.Config.Deployment.DeploymentID,
+		PlanHash: fixture.current.PlanHash, RunID: prior.payload.RunID, Stage: fleetLifecycleStageReleaseHandoff}
+	path := filepath.Join(runDir, scenarioLifecycleHandoffFilename)
+	if err := writePublicJSON(path, handoff); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery, err := createScenarioCampaignRecovery(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, fixture.now.Add(time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovery.payload.AcceptanceBoundary != nil || recovery.payload.HandoffAuthenticated || recovery.payload.PriorRelease != nil {
+		t.Fatal("retained handoff promoted a failed interval into accepted completion")
+	}
+	if err := validateScenarioCampaignRecoveryAncestor(recovery, prior.payload.RunID); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(raw, retained) {
+		t.Fatalf("recovery changed retained lifecycle work: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recovery minted a completion for the failed predecessor: %v", err)
 	}
 }
 

@@ -28,9 +28,11 @@ import (
 )
 
 const (
-	evidenceRelayStartupCacheSchema          = "urnetwork-sim-relay-startup-cache-v1"
+	evidenceRelayStartupCacheSchema = "urnetwork-sim-relay-startup-cache-v2"
+	// Change this contract when immutable prefix verification changes. Runner
+	// rebuilds and driver provenance do not change the verified prefix identity.
 	evidenceRelayStartupCacheVerifierVersion = "exact-plan-prefix-v1"
-	evidenceRelayStartupCacheDirectoryName   = "relay-startup-cache-v1"
+	evidenceRelayStartupCacheDirectoryName   = "relay-startup-cache-v2"
 	evidenceRelayStartupCacheMaximumBytes    = 16 * 1024 * 1024
 	evidenceRelayStartupCacheMaximumSlots    = uint64(1024)
 )
@@ -79,7 +81,7 @@ type evidenceRelayStartupSourceProof struct {
 type evidenceRelayStartupCacheProof struct {
 	Schema           string                            `json:"schema"`
 	VerifierVersion  string                            `json:"verifier_version"`
-	ExecutableSha256 string                            `json:"executable_sha256"`
+	ExecutableSha256 string                            `json:"executable_sha256,omitempty"` // Authenticated v1 import only.
 	ContextHash      string                            `json:"context_hash"`
 	JournalCount     uint64                            `json:"journal_prefix_count"`
 	JournalHash      string                            `json:"journal_prefix_hash"`
@@ -144,7 +146,14 @@ type evidenceRelayRetainedResult struct {
 	LostPublicationRace bool                                            `json:"lost_publication_race"`
 }
 
-func (self *evidenceRelayRuntime) evidenceRelayStartupContextHash(executableHash string) (string, error) {
+// Keep completed verification keyed to its semantic contract and exact inputs.
+func (self *evidenceRelayRuntime) evidenceRelayStartupContextHash() (string, error) {
+	return self.evidenceRelayStartupContextHashFor(evidenceRelayStartupCacheSchema, evidenceRelayStartupCacheVerifierVersion, "")
+}
+
+// The legacy arguments reproduce the original authenticated context exactly;
+// only the v2 identity deliberately omits the executable's incidental digest.
+func (self *evidenceRelayRuntime) evidenceRelayStartupContextHashFor(schema, verifierVersion, executableHash string) (string, error) {
 	if self == nil || self.executor == nil || self.executor.plan == nil {
 		return "", errors.New("relay startup cache context is absent")
 	}
@@ -172,7 +181,7 @@ func (self *evidenceRelayRuntime) evidenceRelayStartupContextHash(executableHash
 	return canonicalHashHex(struct {
 		Schema                 string
 		VerifierVersion        string
-		ExecutableSha256       string
+		ExecutableSha256       string `json:",omitempty"`
 		Plan                   *SetupPlan
 		Config                 *HarnessConfig
 		Public                 *PublicManifest
@@ -205,7 +214,7 @@ func (self *evidenceRelayRuntime) evidenceRelayStartupContextHash(executableHash
 		ProvisionalReleaseHash string
 		ProvisionalSnRepo      string
 	}{
-		Schema: evidenceRelayStartupCacheSchema, VerifierVersion: evidenceRelayStartupCacheVerifierVersion,
+		Schema: schema, VerifierVersion: verifierVersion,
 		ExecutableSha256: executableHash, Plan: self.executor.plan, Config: cfg.Config, Public: cfg.Public,
 		Release: cfg.Release, Hyperparameters: cfg.Hyperparameters, Policy: cfg.Policy,
 		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, DeploymentId: cfg.Config.Deployment.DeploymentID,
@@ -242,22 +251,24 @@ func (self *evidenceRelayRuntime) newEvidenceRelayStartupSession(ctx context.Con
 	if cfg == nil || cfg.WalletMaterial == "" {
 		return nil, nil
 	}
-	executableHash, err := historicalAuditExecutableSHA256()
-	if err != nil {
-		return nil, nil
-	}
-	contextHash, err := self.evidenceRelayStartupContextHash(executableHash)
+	contextHash, err := self.evidenceRelayStartupContextHash()
 	if err != nil {
 		return nil, nil
 	}
 	entry := &evidenceRelayStartupCacheEntry{stateDir: self.executor.stateDir,
-		name: strings.TrimPrefix(contextHash, "0x") + ".json", key: derive32(cfg, "relay-startup-cache/v1"),
+		name: strings.TrimPrefix(contextHash, "0x") + ".json", key: derive32(cfg, "relay-startup-cache/v2"),
 		fixed: evidenceRelayStartupCacheProof{Schema: evidenceRelayStartupCacheSchema,
-			VerifierVersion: evidenceRelayStartupCacheVerifierVersion, ExecutableSha256: executableHash, ContextHash: contextHash}}
+			VerifierVersion: evidenceRelayStartupCacheVerifierVersion, ContextHash: contextHash}}
 	session := &evidenceRelayStartupSession{entry: entry, actionKVs: map[string]evidenceRelayStartupAction{},
 		actionDraftKVs: map[string]evidenceRelayStartupActionDraft{}, sourceKVs: map[uint64]*evidenceRelayStartupSourceState{},
 		auditTargetKVs: map[evidenceRelayAuditKey][32]byte{}}
 	proof, hit := entry.read(ctx)
+	if !hit {
+		proof, hit = self.readCompatibleEvidenceRelayStartupProof(ctx, entry, derive32(cfg, "relay-startup-cache/v1"), entries, inventories)
+		if hit {
+			entry.save(ctx, proof)
+		}
+	}
 	if !hit || !self.validateEvidenceRelayStartupProof(proof, entries, inventories) {
 		for _, source := range self.sources {
 			session.sourceKVs[source.validatorId] = &evidenceRelayStartupSourceState{proof: evidenceRelayStartupSourceProof{ValidatorId: source.validatorId, NextEpoch: source.nextEpoch}}
@@ -416,7 +427,7 @@ func (self *evidenceRelayRuntime) validateEvidenceRelayStartupProof(proof eviden
 func (entry *evidenceRelayStartupCacheEntry) authenticationTag(proof evidenceRelayStartupCacheProof) []byte {
 	wire, _ := json.Marshal(proof)
 	mac := hmac.New(sha256.New, entry.key[:])
-	mac.Write([]byte(evidenceRelayStartupCacheSchema + "\x00"))
+	mac.Write([]byte(proof.Schema + "\x00"))
 	mac.Write(wire)
 	return mac.Sum(nil)
 }
@@ -431,25 +442,8 @@ func (entry *evidenceRelayStartupCacheEntry) read(ctx context.Context) (evidence
 		return proof, false
 	}
 	defer directory.Close()
-	fd, err := unix.Openat(int(directory.Fd()), entry.name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
-	if err != nil {
-		return proof, false
-	}
-	file := os.NewFile(uintptr(fd), entry.name)
-	defer file.Close()
-	if err := requireHistoricalAuditPrivateMode(fd, unix.S_IFREG, 0o600); err != nil {
-		return proof, false
-	}
-	info, err := file.Stat()
-	if err != nil || info.Size() <= 0 || info.Size() > evidenceRelayStartupCacheMaximumBytes {
-		return proof, false
-	}
-	wire, err := io.ReadAll(io.LimitReader(file, evidenceRelayStartupCacheMaximumBytes+1))
-	if err != nil || len(wire) > evidenceRelayStartupCacheMaximumBytes || rejectDuplicatePostconditionJSONFields(wire) != nil {
-		return proof, false
-	}
-	var envelope evidenceRelayStartupCacheEnvelope
-	if err := decodeStrictJSONBytes(wire, &envelope); err != nil || envelope.Proof.Schema != entry.fixed.Schema ||
+	envelope, _, ok := readEvidenceRelayStartupCacheEnvelope(directory, entry.name, evidenceRelayStartupCacheMaximumBytes)
+	if !ok || envelope.Proof.Schema != entry.fixed.Schema ||
 		envelope.Proof.VerifierVersion != entry.fixed.VerifierVersion || envelope.Proof.ExecutableSha256 != entry.fixed.ExecutableSha256 || envelope.Proof.ContextHash != entry.fixed.ContextHash {
 		return proof, false
 	}
@@ -458,6 +452,36 @@ func (entry *evidenceRelayStartupCacheEntry) read(ctx context.Context) (evidence
 		return proof, false
 	}
 	return envelope.Proof, true
+}
+
+// Decode a bounded private candidate; the caller must authenticate all bytes.
+func readEvidenceRelayStartupCacheEnvelope(directory *os.File, name string, maximumBytes int64) (evidenceRelayStartupCacheEnvelope, int64, bool) {
+	var envelope evidenceRelayStartupCacheEnvelope
+	if maximumBytes <= 0 || maximumBytes > evidenceRelayStartupCacheMaximumBytes {
+		return envelope, 0, false
+	}
+	fd, err := unix.Openat(int(directory.Fd()), name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return envelope, 0, false
+	}
+	file := os.NewFile(uintptr(fd), name)
+	defer file.Close()
+	if err := requireHistoricalAuditPrivateMode(fd, unix.S_IFREG, 0o600); err != nil {
+		return envelope, 0, false
+	}
+	info, err := file.Stat()
+	if err != nil || info.Size() <= 0 || info.Size() > maximumBytes {
+		return envelope, 0, false
+	}
+	wire, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	readBytes := int64(len(wire))
+	if err != nil || readBytes > maximumBytes || rejectDuplicatePostconditionJSONFields(wire) != nil {
+		return envelope, readBytes, false
+	}
+	if err := decodeStrictJSONBytes(wire, &envelope); err != nil {
+		return envelope, readBytes, false
+	}
+	return envelope, readBytes, true
 }
 
 func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.File, error) {
