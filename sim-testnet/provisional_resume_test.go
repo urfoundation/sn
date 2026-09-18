@@ -15,7 +15,7 @@ func provisionalResumeTestContext(t *testing.T) (*ResolvedConfig, *SetupPlan, st
 	cfg := testResolvedConfig(t)
 	cfg.provisionalResume = &provisionalResumeState{Driver: provisionalDriverProvenance{
 		ExecutablePath: "/reviewed/new/sim-testnet", ExecutableSHA256: "sha256:" + strings.Repeat("12", 32),
-		Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: strings.Repeat("34", 20), Modified: true},
+		Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn/v2026", Revision: strings.Repeat("34", 20), Modified: true},
 	}}
 	plan := &SetupPlan{PlanHash: "0x" + strings.Repeat("56", 32), ReleaseLockHash: "0x" + strings.Repeat("78", 32), ConfigHash: cfg.ConfigHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis}
 	dir := t.TempDir()
