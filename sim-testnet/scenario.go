@@ -363,6 +363,17 @@ type liveScenarioProbe struct {
 	campaignResultVerify func(*ResolvedConfig, *ScenarioResult, string) error
 }
 
+// FinalizedHead is the bounded scheduler read paired with Snapshot. It avoids
+// making block-timed fault delivery wait for the full evidence census.
+func (p *liveScenarioProbe) FinalizedHead(ctx context.Context) (ChainHead, error) {
+	client, err := dialConfiguredEVMClient(ctx, p.cfg, p.cfg.OperationalEVM)
+	if err != nil {
+		return ChainHead{}, err
+	}
+	defer client.Close()
+	return finalizedEVMHead(ctx, client)
+}
+
 type scenarioCheck struct {
 	ID    string
 	Check func(*scenarioEvaluation) (bool, string)
@@ -4199,16 +4210,62 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	snapshotFailureCount := 0
 scenarioLoop:
 	for (!assertionsPass(assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
-		timer := time.NewTimer(options.PollInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			terminalErr = ctx.Err()
-			break scenarioLoop
-		case <-timer.C:
-		}
-		next, snapshotErr := probe.Snapshot(ctx)
+		var heartbeatErr error
+		next, snapshotErr := waitScenarioSnapshot(ctx, probe, options.PollInterval, func(heartbeatCtx context.Context, head ChainHead) error {
+			if len(faults) == 0 {
+				return nil
+			}
+			faultScopesBefore := activeProcessLogFaultScopes(faults)
+			if options.Adversaries != nil {
+				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, head.Number, true))
+			}
+			beforeFaults, err := canonicalHashHex(faults)
+			if err != nil {
+				heartbeatErr = fmt.Errorf("hash heartbeat scenario faults: %w", err)
+				return heartbeatErr
+			}
+			// Evidence-gated transitions remain owned by a complete observation.
+			// The heartbeat advances only their hard restoration deadline; it does
+			// not turn stale evidence into an early activation or restoration.
+			faultErr = advanceFaultsWithConditions(heartbeatCtx, head, definition.Faults, faults, options.FaultDriver, nil, nil)
+			if options.Adversaries != nil {
+				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, head.Number, false))
+			}
+			afterFaults, hashErr := canonicalHashHex(faults)
+			if hashErr != nil {
+				heartbeatErr = fmt.Errorf("rehash heartbeat scenario faults: %w", hashErr)
+				return heartbeatErr
+			}
+			if beforeFaults == afterFaults && faultErr == nil {
+				return nil
+			}
+			if err := writeScenarioFaultEvidence(runDir, faults); err != nil {
+				heartbeatErr = fmt.Errorf("persist heartbeat scenario faults: %w", err)
+				return heartbeatErr
+			}
+			if options.Attempt != nil && options.Attempt.payload.AcceptanceBoundary != nil {
+				if err := options.Attempt.updateAuthenticatedRuntime(runDir, faults); err != nil {
+					heartbeatErr = fmt.Errorf("commit signed heartbeat fault checkpoint: %w", err)
+					return heartbeatErr
+				}
+			}
+			transitionScopes := mergeProcessLogFaultScopes(faultScopesBefore, activeProcessLogFaultScopes(faults))
+			if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, transitionScopes...); err != nil {
+				heartbeatErr = fmt.Errorf("heartbeat process log gate: %w", err)
+				return heartbeatErr
+			}
+			heartbeatErr = faultErr
+			return heartbeatErr
+		})
 		if snapshotErr != nil {
+			if heartbeatErr != nil {
+				terminalErr = heartbeatErr
+				break scenarioLoop
+			}
+			if errors.Is(snapshotErr, context.Canceled) && ctx.Err() != nil {
+				terminalErr = ctx.Err()
+				break scenarioLoop
+			}
 			snapshotFailureCount++
 			now := options.Now().UTC()
 			runtimeAssertions = append(runtimeAssertions, AssertionRecord{
