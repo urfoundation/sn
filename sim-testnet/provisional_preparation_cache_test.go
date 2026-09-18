@@ -23,8 +23,9 @@ func provisionalPreparationCacheTest(t *testing.T, count int) carriedPreparation
 	return fixture
 }
 
-// One invocation copies the journal twice and decodes each immutable source
-// once. The next invocation must authenticate that source independently again.
+// The first invocation copies the journal twice and decodes each immutable
+// source once. An unchanged later invocation validates the durable journal and
+// file witnesses, then reuses the authenticated receipt audit.
 func TestProvisionalPreparationReadsEachSourceOncePerInvocation(t *testing.T) {
 	fixture := provisionalPreparationCacheTest(t, 64)
 	executor := fixture.executor
@@ -44,12 +45,26 @@ func TestProvisionalPreparationReadsEachSourceOncePerInvocation(t *testing.T) {
 		if err := executor.collectCarriedActionHistoryWithReaders(t.Context(), readEntries, readSource); err != nil {
 			t.Fatal("actual provisional preparation failed", err)
 		}
-		if journalReads != invocation*2 || copied != invocation*2*len(fixture.entries) || sourceReads != invocation {
-			t.Fatalf("repeated or retained read work: journal=%d copied=%d source=%d invocation=%d", journalReads, copied, sourceReads, invocation)
+		if invocation == 1 && (journalReads != 2 || copied != 2*len(fixture.entries) || sourceReads != 1) {
+			t.Fatalf("cold audit did not authenticate its complete source: journal=%d copied=%d source=%d", journalReads, copied, sourceReads)
+		}
+		if invocation == 2 && (journalReads != 3 || copied != 3*len(fixture.entries) || sourceReads != 1) {
+			t.Fatalf("unchanged durable audit repeated receipt work: journal=%d copied=%d source=%d", journalReads, copied, sourceReads)
 		}
 	}
-	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, executor.stateDir)) || len(executor.carriedVerificationKeys) != 0 {
-		t.Fatal("read-only provisional preparation changed history or installed execution shortcuts")
+	if len(executor.carriedVerificationKeys) != 0 {
+		t.Fatal("read-only provisional preparation installed execution shortcuts")
+	}
+	after := validatorNamespaceTreeSnapshot(t, executor.stateDir)
+	for path, value := range before {
+		if after[path] != value {
+			t.Fatalf("read-only provisional preparation changed retained history at %s", path)
+		}
+	}
+	for path := range after {
+		if _, existed := before[path]; !existed && !strings.HasPrefix(path, provisionalPreparationPersistentCacheDir+"/") && path != provisionalPreparationPersistentCacheDir {
+			t.Fatalf("read-only provisional preparation added unexpected state %s", path)
+		}
 	}
 }
 

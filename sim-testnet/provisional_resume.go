@@ -175,9 +175,14 @@ func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Cont
 		return errors.New("provisional preparation readers are unavailable")
 	}
 	entries := readEntries()
+	if self.reuseProvisionalPreparationPersistentCache(ctx, entries) {
+		fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume reused authenticated local receipt audit; current topology readiness remains required\n")
+		return nil
+	}
 	verified := newCarriedPreparationIndex(self.plan, entries)
 	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
 	count := 0
+	verifiedEntries := make([]JournalEntry, 0, len(self.plan.Actions))
 	var failures []error
 	for index, action := range self.plan.Actions {
 		if index > 0 && index%carriedActionProgressInterval == 0 {
@@ -196,12 +201,17 @@ func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Cont
 			continue
 		}
 		count++
+		verifiedEntries = append(verifiedEntries, entry)
 	}
 	if !slices.Equal(entries, readEntries()) {
 		failures = append(failures, errors.New("provisional preparation journal changed during reconciliation"))
 	}
 	fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume authenticated %d verified local receipts; current topology readiness remains required\n", count)
-	return errors.Join(errors.Join(failures...), ctx.Err())
+	err := errors.Join(errors.Join(failures...), ctx.Err())
+	if err == nil {
+		self.saveProvisionalPreparationPersistentCache(entries, verifiedEntries)
+	}
+	return err
 }
 
 func applyProvisionalScenarioProvenance(cfg *ResolvedConfig, result *ScenarioResult) {
