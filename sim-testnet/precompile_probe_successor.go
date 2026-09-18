@@ -132,7 +132,7 @@ func validatePrecompileProbeSuccessor(plan *SetupPlan) error {
 	want := evidence.EvidenceHash
 	evidence.EvidenceHash = ""
 	hash, err := canonicalHashHex(&evidence)
-	if err != nil || hash != want || !evidence.Commitment.Restored || evidence.Commitment.CanonicalGeneration != precompileCanonicalFleetGeneration || evidence.Commitment.RestoreCommitmentBlock <= evidence.Commitment.WriteCommitmentBlock || evidence.ProbeAddress != successor.RetiredProbe || evidence.DeploymentID != plan.DeploymentID || evidence.ConfigHash != plan.ConfigHash || evidence.PolicyHash != plan.PolicyHash || evidence.ChainID != plan.ChainID || evidence.GenesisHash != plan.GenesisHash || evidence.Netuid != plan.Netuid || !strings.EqualFold(evidence.Owner, plan.Roles.Deployer) {
+	if err != nil || hash != want || !evidence.Commitment.Restored || evidence.Commitment.CanonicalGeneration != precompileCanonicalFleetGeneration || evidence.Commitment.RestoreCommitmentBlock <= evidence.Commitment.WriteCommitmentBlock || evidence.ProbeAddress != successor.RetiredProbe || evidence.DeploymentID != plan.DeploymentID || evidence.ChainID != plan.ChainID || evidence.GenesisHash != plan.GenesisHash || evidence.Netuid != plan.Netuid || !strings.EqualFold(evidence.Owner, plan.Roles.Deployer) {
 		return errors.New("precompile probe successor changed the original native evidence")
 	}
 	for index, entry := range []JournalEntry{successor.Write, successor.Restore} {
@@ -274,7 +274,7 @@ func validatePrecompileProbeSuccessorSource(cfg *ResolvedConfig, stateDir string
 	successor := plan.PrecompileProbeSuccessor
 	baseline := source.CoordinatorUpgradeBaseline
 	baseline.ReleaseDeploymentHash = plan.CoordinatorUpgradeBaseline.ReleaseDeploymentHash
-	if source.PrecompileProbeSuccessor != nil || source.PlanHash != successor.SourcePlanHash || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || source.ConfigHash != plan.ConfigHash || source.PolicyHash != plan.PolicyHash || !reflect.DeepEqual(source.Roles, plan.Roles) || source.CoordinatorUpgrade != plan.CoordinatorUpgrade || baseline != plan.CoordinatorUpgradeBaseline || !reflect.DeepEqual(source.CoordinatorRepairCarry, plan.CoordinatorRepairCarry) {
+	if source.PrecompileProbeSuccessor != nil || source.PlanHash != successor.SourcePlanHash || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || source.ConfigHash != successor.Evidence.ConfigHash || source.PolicyHash != successor.Evidence.PolicyHash || source.ChainID != successor.Evidence.ChainID || source.GenesisHash != successor.Evidence.GenesisHash || source.Netuid != successor.Evidence.Netuid || !strings.EqualFold(source.Roles.Deployer, successor.Evidence.Owner) || !reflect.DeepEqual(source.Roles, plan.Roles) || source.CoordinatorUpgrade != plan.CoordinatorUpgrade || baseline != plan.CoordinatorUpgradeBaseline || !reflect.DeepEqual(source.CoordinatorRepairCarry, plan.CoordinatorRepairCarry) {
 		return errors.New("precompile probe successor changes original approval or retained custody")
 	}
 	var prefix []JournalEntry

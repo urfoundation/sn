@@ -735,3 +735,20 @@ func TestPrecompileProbeSuccessorRerendersObservedCreateNonce(t *testing.T) {
 		t.Fatal("ordinary rerender replaced original admission or native receipt source")
 	}
 }
+
+func TestPrecompileProbeSuccessorRetainsHistoricalEvidenceAcrossConfigRevision(t *testing.T) {
+	fixture := newPrecompileProbeSuccessorFixture(t)
+	revised := *fixture.plan
+	revised.ConfigHash = common.Hash{0xa1}.Hex()
+	revised.PolicyHash = common.Hash{0xa2}.Hex()
+	if err := validatePrecompileProbeSuccessor(&revised); err != nil {
+		t.Fatalf("successor rejected its immutable source evidence after a configuration revision: %v", err)
+	}
+	changed := revised
+	changed.PrecompileProbeSuccessor = new(PrecompileProbeSuccessor)
+	*changed.PrecompileProbeSuccessor = *revised.PrecompileProbeSuccessor
+	changed.PrecompileProbeSuccessor.Evidence.ConfigHash = revised.ConfigHash
+	if err := validatePrecompileProbeSuccessor(&changed); err == nil {
+		t.Fatal("successor accepted evidence relabeled with the revised configuration hash")
+	}
+}
