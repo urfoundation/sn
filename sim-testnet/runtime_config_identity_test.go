@@ -501,6 +501,8 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 	}
 	for _, change := range []func(*ResolvedConfig){
 		func(cfg *ResolvedConfig) { cfg.Public.Chain.ConfigIdentityRuntimeSpec = 0 },
+		// Operational timing may be independently revised; it is not a
+		// coordinator-repair custody field.
 		func(cfg *ResolvedConfig) { cfg.Public.Chain.ExpectedBlockSeconds++ },
 	} {
 		changed, changedPublic := current, *current.Public
@@ -510,9 +512,19 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, err := authenticateCoordinatorRepairCarry(t.Context(), &changed, executor.stateDir, prior, entries, executor.deployer.client, executor.independentEVM); got != nil || err == nil || !strings.Contains(err.Error(), "configured strict domain differs") {
-			t.Fatalf("changed configuration inherited original signed repair: %v", err)
+		if got, err := authenticateCoordinatorRepairCarry(t.Context(), &changed, executor.stateDir, prior, entries, executor.deployer.client, executor.independentEVM); got == nil || err != nil {
+			t.Fatalf("safe configuration revision lost original signed repair: %v", err)
 		}
+	}
+	changed, changedConfig := current, *current.Config
+	changed.Config = &changedConfig
+	changed.Config.Deployment.DeploymentID += "-other"
+	changed.ConfigHash, err = releaseConfigHash(changed.Config, changed.Public, changed.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := authenticateCoordinatorRepairCarry(t.Context(), &changed, executor.stateDir, prior, entries, executor.deployer.client, executor.independentEVM); got != nil || err == nil || !strings.Contains(err.Error(), "configured strict domain differs") {
+		t.Fatalf("changed deployment configuration inherited original signed repair: %v", err)
 	}
 	roles, err := derivePublicRoles(&current)
 	if err != nil {
