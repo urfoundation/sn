@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -1284,6 +1285,56 @@ func validateFailedEVMRevisionTransactionFromReader(ctx context.Context, reader 
 	return nil
 }
 
+// Dynamic evidence relays deliberately retain their postcondition as the
+// immutable request/result pair, rather than creating a generic postcondition
+// file. Verify that pair against the canonical final receipt before allowing a
+// plan revision to carry the already-spent slot forward.
+func validateFinalizedEvidenceRelayRecovery(ctx context.Context, stateDir string, prior *SetupPlan, entries []JournalEntry, transaction planRevisionTransaction, signed *ethTypes.Transaction, receipt *ethTypes.Receipt) error {
+	if prior == nil || signed == nil || receipt == nil || !strings.HasPrefix(transaction.ActionID, evidenceRelayActionPrefix) {
+		return errors.New("evidence relay recovery context is incomplete")
+	}
+	owners := map[string]*SetupPlan{}
+	owner, request, _, err := readOwnedEvidenceRelayRequest(ctx, stateDir, prior, entries, transaction.ActionID, owners)
+	if err != nil {
+		return fmt.Errorf("read immutable relay request: %w", err)
+	}
+	if owner.PlanHash != transaction.PlanHash || request.Action.ID != transaction.ActionID || request.Action.IntentHash != transaction.IntentHash {
+		return errors.New("evidence relay request does not match the transaction lineage")
+	}
+	resultPath := filepath.Join(stateDir, "evidence-relay", transaction.ActionID+".receipt.json")
+	raw, err := os.ReadFile(resultPath)
+	if err != nil {
+		return fmt.Errorf("read retained relay result: %w", err)
+	}
+	var result evidenceRelayRetainedResult
+	if err := decodeStrictJSONBytes(raw, &result); err != nil {
+		return fmt.Errorf("decode retained relay result: %w", err)
+	}
+	if result.Schema != "urnetwork-sim-evidence-relay-result-v2" || result.PlanHash != owner.PlanHash || !reflect.DeepEqual(result.Action, request.Action) || result.Receipt == nil || result.OwnReceipt == nil || result.LostPublicationRace {
+		return errors.New("retained relay result has the wrong owner, action, or outcome")
+	}
+	if err := validateFinalRelayRetainedReceiptState(result.Receipt, result.OwnReceipt, result.LostPublicationRace); err != nil {
+		return err
+	}
+	retained, err := new(ethTypes.Transaction), error(nil)
+	if err = retained.UnmarshalBinary(result.SignedTransaction); err != nil {
+		return fmt.Errorf("decode retained relay transaction: %w", err)
+	}
+	canonical, err := signed.MarshalBinary()
+	if err != nil || !reflect.DeepEqual(canonical, result.SignedTransaction) || retained.Hash() != signed.Hash() || !strings.EqualFold(signed.Hash().Hex(), transaction.TransactionHash) {
+		return errors.Join(errors.New("retained relay transaction differs from the journaled transaction"), err)
+	}
+	if !finalJSONEqual(result.OwnReceipt, receipt) || result.OwnReceipt.TxHash != signed.Hash() || result.OwnReceipt.Status != ethTypes.ReceiptStatusSuccessful || result.OwnReceipt.BlockNumber == nil || result.OwnReceipt.BlockNumber.Uint64() != transaction.BlockNumber || !strings.EqualFold(result.OwnReceipt.BlockHash.Hex(), transaction.BlockHash) || result.Publication.PublishedBlock != transaction.BlockNumber {
+		return errors.New("retained relay receipt does not match the canonical finalized transaction")
+	}
+	for _, entry := range entries {
+		if entry.PlanHash == transaction.PlanHash && entry.ActionID == transaction.ActionID && entry.IntentHash == transaction.IntentHash && entry.Stage == StageFinalized && strings.EqualFold(entry.TransactionHash, transaction.TransactionHash) && entry.BlockNumber == transaction.BlockNumber && strings.EqualFold(entry.BlockHash, transaction.BlockHash) {
+			return nil
+		}
+	}
+	return errors.New("evidence relay transaction has no exact finalized journal checkpoint")
+}
+
 // Require a chain-proven revert for every unverified transaction in the plan
 // lineage. A missing artifact, pending transaction, successful mutation, or
 // observer error blocks revision rather than risking a duplicate side effect.
@@ -1399,6 +1450,10 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded, recoveryErr)
 			}
 			recoveries.VoluntaryConvictions = append(recoveries.VoluntaryConvictions, recovery)
+		case strings.HasPrefix(transaction.ActionID, evidenceRelayActionPrefix):
+			if err := validateFinalizedEvidenceRelayRecovery(ctx, stateDir, prior, entries, transaction, &signed, receipt); err != nil {
+				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded, err)
+			}
 		case strings.HasPrefix(transaction.ActionID, "fleet.mirror."):
 			if substrateChain == nil {
 				substrateChain, _, err = dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)

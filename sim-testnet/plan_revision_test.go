@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	validatorcomponent "github.com/urfoundation/sn/validator"
 )
 
 func actionByID(t *testing.T, plan *SetupPlan, id string) Action {
@@ -3333,5 +3334,58 @@ func TestPlanRevisionTopologyAcceptsOnlyTheApprovedTournamentSequence(t *testing
 	extra.ExistingUIDCount++
 	if err := validatePlanRevisionTopology(cfg, stateDir, prior, extra, roleSecrets); err == nil {
 		t.Fatal("unapproved post-topology insertion was accepted")
+	}
+}
+
+func TestFinalizedEvidenceRelayRecoveryUsesImmutableRequestAndResult(t *testing.T) {
+	executor, expected := evidenceRelayAdmissionTestFixture(t)
+	action, err := executor.admitEvidenceRelayAction(t.Context(), expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsigned := ethTypes.NewTx(&ethTypes.DynamicFeeTx{ChainID: big.NewInt(945), Nonce: 9, Gas: 100_000, GasFeeCap: big.NewInt(25), To: &expected.Journal})
+	signed, err := ethTypes.SignTx(unsigned, ethTypes.LatestSignerForChainID(big.NewInt(945)), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery := common.Hash{0x61}
+	included := common.Hash{0x62}
+	if err := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageBroadcast, Signer: crypto.PubkeyToAddress(key.PublicKey).Hex(), Nonce: "9", TransactionHash: signed.Hash().Hex(), RecoveryBlock: 6, RecoveryBlockHash: recovery.Hex()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, TransactionHash: signed.Hash().Hex(), BlockNumber: 7, BlockHash: included.Hex()}); err != nil {
+		t.Fatal(err)
+	}
+	receipt := &ethTypes.Receipt{Status: ethTypes.ReceiptStatusSuccessful, TxHash: signed.Hash(), BlockNumber: big.NewInt(7), BlockHash: included, GasUsed: 50_000, CumulativeGasUsed: 50_000, EffectiveGasPrice: big.NewInt(20), Logs: []*ethTypes.Log{}}
+	transactionBytes, err := signed.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := evidenceRelayRetainedResult{Schema: "urnetwork-sim-evidence-relay-result-v2", PlanHash: executor.plan.PlanHash, Action: action, SignedTransaction: transactionBytes, Receipt: receipt, OwnReceipt: receipt, Publication: validatorcomponent.ValidatorEvidencePublication{PublishedBlock: 7}}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(executor.stateDir, "evidence-relay", action.ID+".receipt.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	transaction := planRevisionTransaction{PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, TransactionHash: signed.Hash().Hex(), BlockNumber: 7, BlockHash: included.Hex()}
+	if err := validateFinalizedEvidenceRelayRecovery(t.Context(), executor.stateDir, executor.plan, executor.journal.Entries(), transaction, signed, receipt); err != nil {
+		t.Fatal(err)
+	}
+	result.OwnReceipt = &ethTypes.Receipt{Status: ethTypes.ReceiptStatusSuccessful, TxHash: common.Hash{0xff}, BlockNumber: big.NewInt(7), BlockHash: included, Logs: []*ethTypes.Log{}}
+	raw, err = json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(executor.stateDir, "evidence-relay", action.ID+".receipt.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateFinalizedEvidenceRelayRecovery(t.Context(), executor.stateDir, executor.plan, executor.journal.Entries(), transaction, signed, receipt); err == nil {
+		t.Fatal("mismatched retained receipt was accepted")
 	}
 }
