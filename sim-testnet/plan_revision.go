@@ -1123,7 +1123,7 @@ func recoverableFinalizedAlphaTransaction(prior *SetupPlan, entries []JournalEnt
 		return false
 	}
 	for _, entry := range entries {
-		if entry.PlanHash == transaction.PlanHash && entry.ActionID == transaction.ActionID && entry.IntentHash == transaction.IntentHash && entry.Stage == StageFinalized && strings.EqualFold(entry.TransactionHash, transaction.TransactionHash) && entry.BlockNumber == transaction.BlockNumber && strings.EqualFold(entry.BlockHash, transaction.BlockHash) {
+		if entry.PlanHash == transaction.PlanHash && entry.ActionID == transaction.ActionID && entry.IntentHash == transaction.IntentHash && (entry.Stage == StageIncluded || entry.Stage == StageFinalized) && strings.EqualFold(entry.TransactionHash, transaction.TransactionHash) && entry.BlockNumber == transaction.BlockNumber && strings.EqualFold(entry.BlockHash, transaction.BlockHash) {
 			return true
 		}
 	}
@@ -1324,15 +1324,25 @@ func validateFinalizedEvidenceRelayRecovery(ctx context.Context, stateDir string
 	if err != nil || !reflect.DeepEqual(canonical, result.SignedTransaction) || retained.Hash() != signed.Hash() || !strings.EqualFold(signed.Hash().Hex(), transaction.TransactionHash) {
 		return errors.Join(errors.New("retained relay transaction differs from the journaled transaction"), err)
 	}
-	if !finalJSONEqual(result.OwnReceipt, receipt) || result.OwnReceipt.TxHash != signed.Hash() || result.OwnReceipt.Status != ethTypes.ReceiptStatusSuccessful || result.OwnReceipt.BlockNumber == nil || result.OwnReceipt.BlockNumber.Uint64() != transaction.BlockNumber || !strings.EqualFold(result.OwnReceipt.BlockHash.Hex(), transaction.BlockHash) || result.Publication.PublishedBlock != transaction.BlockNumber {
+	if !finalJSONEqual(result.OwnReceipt, receipt) || result.OwnReceipt.TxHash != signed.Hash() || result.OwnReceipt.Status != ethTypes.ReceiptStatusSuccessful || result.OwnReceipt.BlockNumber == nil || result.Publication.PublishedBlock != result.OwnReceipt.BlockNumber.Uint64() {
 		return errors.New("retained relay receipt does not match the canonical finalized transaction")
 	}
 	for _, entry := range entries {
-		if entry.PlanHash == transaction.PlanHash && entry.ActionID == transaction.ActionID && entry.IntentHash == transaction.IntentHash && entry.Stage == StageFinalized && strings.EqualFold(entry.TransactionHash, transaction.TransactionHash) && entry.BlockNumber == transaction.BlockNumber && strings.EqualFold(entry.BlockHash, transaction.BlockHash) {
+		if entry.PlanHash != transaction.PlanHash || entry.ActionID != transaction.ActionID || entry.IntentHash != transaction.IntentHash || !strings.EqualFold(entry.TransactionHash, transaction.TransactionHash) {
+			continue
+		}
+		if (entry.Stage == StageIncluded || entry.Stage == StageFinalized) && entry.BlockNumber == result.OwnReceipt.BlockNumber.Uint64() && strings.EqualFold(entry.BlockHash, result.OwnReceipt.BlockHash.Hex()) {
+			return nil
+		}
+		// Older relay workers persisted the broadcast anchor, then retained the
+		// canonical receipt before they could append inclusion. The receipt's
+		// finality has already been proven above; retain the signed recovery
+		// anchor so an arbitrary receipt cannot close an unjournaled write.
+		if transaction.BlockNumber == 0 && entry.Stage == StageBroadcast && entry.RecoveryBlock != 0 && validCanonicalHashHex(entry.RecoveryBlockHash) {
 			return nil
 		}
 	}
-	return errors.New("evidence relay transaction has no exact finalized journal checkpoint")
+	return errors.New("evidence relay transaction has no exact durable journal checkpoint")
 }
 
 // Require a chain-proven revert for every unverified transaction in the plan

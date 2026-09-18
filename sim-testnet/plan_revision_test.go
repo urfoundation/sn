@@ -3357,7 +3357,7 @@ func TestFinalizedEvidenceRelayRecoveryUsesImmutableRequestAndResult(t *testing.
 	if err := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageBroadcast, Signer: crypto.PubkeyToAddress(key.PublicKey).Hex(), Nonce: "9", TransactionHash: signed.Hash().Hex(), RecoveryBlock: 6, RecoveryBlockHash: recovery.Hex()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, TransactionHash: signed.Hash().Hex(), BlockNumber: 7, BlockHash: included.Hex()}); err != nil {
+	if err := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIncluded, TransactionHash: signed.Hash().Hex(), BlockNumber: 7, BlockHash: included.Hex()}); err != nil {
 		t.Fatal(err)
 	}
 	receipt := &ethTypes.Receipt{Status: ethTypes.ReceiptStatusSuccessful, TxHash: signed.Hash(), BlockNumber: big.NewInt(7), BlockHash: included, GasUsed: 50_000, CumulativeGasUsed: 50_000, EffectiveGasPrice: big.NewInt(20), Logs: []*ethTypes.Log{}}
@@ -3377,6 +3377,12 @@ func TestFinalizedEvidenceRelayRecoveryUsesImmutableRequestAndResult(t *testing.
 	if err := validateFinalizedEvidenceRelayRecovery(t.Context(), executor.stateDir, executor.plan, executor.journal.Entries(), transaction, signed, receipt); err != nil {
 		t.Fatal(err)
 	}
+	broadcastOnly := executor.journal.Entries()[:2]
+	transaction.BlockNumber, transaction.BlockHash = 0, ""
+	if err := validateFinalizedEvidenceRelayRecovery(t.Context(), executor.stateDir, executor.plan, broadcastOnly, transaction, signed, receipt); err != nil {
+		t.Fatalf("finalized retained receipt did not recover broadcast-only legacy relay: %v", err)
+	}
+	transaction.BlockNumber, transaction.BlockHash = 7, included.Hex()
 	result.OwnReceipt = &ethTypes.Receipt{Status: ethTypes.ReceiptStatusSuccessful, TxHash: common.Hash{0xff}, BlockNumber: big.NewInt(7), BlockHash: included, Logs: []*ethTypes.Log{}}
 	raw, err = json.Marshal(result)
 	if err != nil {
