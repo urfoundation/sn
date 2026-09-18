@@ -202,6 +202,37 @@ func releaseRequiredTools(effectiveUserID int) []string {
 	return tools
 }
 
+// A degraded manager remains launch-capable when its complete failed-unit set
+// contains only this deployment's prior supervisor. Launch resets that latch.
+func inspectSystemdUserManager(run func(...string) ([]byte, error), ownedService string) (string, error) {
+	output, runErr := run("--user", "is-system-running")
+	state := strings.TrimSpace(string(output))
+	if state == "running" && runErr == nil {
+		return state, nil
+	}
+	if state != "degraded" {
+		if runErr != nil {
+			return state, runErr
+		}
+		return state, fmt.Errorf("systemd user manager is %q", state)
+	}
+	failedOutput, failedErr := run("--user", "list-units", "--state=failed", "--all", "--plain", "--no-legend", "--no-pager")
+	if failedErr != nil {
+		return state, fmt.Errorf("list failed systemd user units: %w: %s", failedErr, strings.TrimSpace(string(failedOutput)))
+	}
+	var failedUnits []string
+	for _, line := range strings.Split(string(failedOutput), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 0 {
+			failedUnits = append(failedUnits, fields[0])
+		}
+	}
+	if len(failedUnits) != 1 || failedUnits[0] != ownedService {
+		return state, fmt.Errorf("systemd user manager is degraded with failed units %q", failedUnits)
+	}
+	return fmt.Sprintf("degraded; sole_failed_unit=%s", ownedService), nil
+}
+
 // The approved mode rechecks changing facts against only unverified spend;
 // the read-only mode additionally proves a newly generated plan is affordable.
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
@@ -231,17 +262,11 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	if systemctl, err := exec.LookPath("systemctl"); err != nil {
 		r.add("supervisor/systemd-user", true, err, "")
 	} else {
-		cmd := exec.CommandContext(ctx, systemctl, "--user", "is-system-running")
-		output, runErr := cmd.CombinedOutput()
-		state := strings.TrimSpace(string(output))
-		if runErr != nil || state != "running" {
-			if runErr == nil {
-				runErr = fmt.Errorf("systemd user manager is %q", state)
-			}
-			r.add("supervisor/systemd-user", true, runErr, state)
-		} else {
-			r.add("supervisor/systemd-user", true, nil, state)
-		}
+		ownedService, nameErr := persistentSupervisorServiceName(cfg.Config.Deployment.DeploymentID)
+		detail, managerErr := inspectSystemdUserManager(func(args ...string) ([]byte, error) {
+			return exec.CommandContext(ctx, systemctl, args...).CombinedOutput()
+		}, ownedService)
+		r.add("supervisor/systemd-user", true, errors.Join(nameErr, managerErr), detail)
 	}
 	for name, path := range map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server, "operator-proxy": cfg.Repos.OperatorProxy, "vault": cfg.Repos.Vault, "platform-config": cfg.Repos.PlatformConfig} {
 		err := validateRepoIdentity(name, path)
@@ -695,11 +720,23 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 	if finalizedErr == nil {
 		runtimeVersion, finalizedErr = runtimeVersionAt(chain, finalized)
 	}
+	expectedVersion, expectedCode, expectedMetadata := currentReleaseRuntimeArtifact(cfg).Version, cfg.Release.Runtime.CodeHash, cfg.Release.Runtime.MetadataHash
+	var compatible *authenticatedRuntimeMetadata
+	if finalizedErr == nil && provisionalResumeEnabled(cfg) {
+		observed, runtimeErr := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalized)
+		if runtimeErr != nil {
+			finalizedErr = runtimeErr
+		} else if observed.CompatibilityProfile != "" {
+			compatible = &observed
+			expectedVersion, expectedCode, expectedMetadata = observed.Version, observed.CodeHash, observed.MetadataHash
+			r.add("runtime/provisional-profile-"+name, true, nil, observed.CompatibilityProfile+"; final_acceptance=false")
+		}
+	}
 	if strings.ToLower(chain.GenesisHash.Hex()) != testnetGenesis {
 		err = fmt.Errorf("genesis %s, want %s", chain.GenesisHash.Hex(), testnetGenesis)
 	} else if finalizedErr != nil {
 		err = finalizedErr
-	} else if runtimeErr := validateRuntimeVersionIdentity(runtimeVersion, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); runtimeErr != nil {
+	} else if runtimeErr := validateRuntimeVersionIdentity(runtimeVersion, expectedVersion.SpecVersion, expectedVersion.TransactionVersion, expectedVersion.StateVersion); runtimeErr != nil {
 		err = runtimeErr
 	}
 	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s finalized=%s spec=%d tx=%d state=%d", redactURL(endpoint), chain.GenesisHash.Hex(), finalized.Hex(), runtimeVersion.SpecVersion, runtimeVersion.TransactionVersion, runtimeVersion.StateVersion))
@@ -707,17 +744,20 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 	if err == nil {
 		codeHash, codeHashErr := runtimeCodeHashAt(chain, finalized)
 		if codeHashErr == nil {
-			codeHashErr = validateRuntimeCodeHash(codeHash, cfg.Release.Runtime.CodeHash)
+			codeHashErr = validateRuntimeCodeHash(codeHash, expectedCode)
 		}
 		r.add("runtime/code-hash-"+name, true, codeHashErr, fmt.Sprintf("%s finalized=%s", codeHash, finalized.Hex()))
 
 		exactMetadata, metadataHash, metadataHashErr := runtimeMetadataAt(chain, finalized)
 		if metadataHashErr == nil {
-			metadataHashErr = validateRuntimeMetadataHash(metadataHash, cfg.Release.Runtime.MetadataHash)
+			metadataHashErr = validateRuntimeMetadataHash(metadataHash, expectedMetadata)
 		}
 		r.add("runtime/metadata-hash-"+name, true, metadataHashErr, fmt.Sprintf("%s finalized=%s", metadataHash, finalized.Hex()))
 
 		if errors.Join(codeHashErr, metadataHashErr) == nil {
+			if compatible != nil {
+				exactMetadata = compatible.Metadata
+			}
 			bindAuthenticatedRuntime(chain, authenticatedRuntimeMetadata{
 				FinalizedHash: finalized,
 				Version:       runtimeVersion,
@@ -1168,11 +1208,11 @@ func countMissingStorageKeysAt(keys []types.StorageKey, changeSets []types.Stora
 }
 
 func verifySubnetOwner(chain *crv4.Chain, cfg *ResolvedConfig, walletAddress string) (error, string) {
-	finalized, _, err := (&SubstrateManager{chain: chain, cfg: cfg}).finalizedHead()
+	manager, finalized, _, err := (&SubstrateManager{chain: chain, cfg: cfg}).finalizedManager()
 	if err != nil {
 		return err, ""
 	}
-	return verifySubnetOwnerAt(chain, cfg, walletAddress, finalized)
+	return verifySubnetOwnerAt(manager.chain, cfg, walletAddress, finalized)
 }
 
 func verifySubnetOwnerAt(chain *crv4.Chain, cfg *ResolvedConfig, walletAddress string, finalized types.Hash) (error, string) {

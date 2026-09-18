@@ -32,8 +32,9 @@ var (
 )
 
 // Native registration/stake and EVM state have separate pinned hashes. The
-// native observation cannot be replaced with a claimed EVM-height identity.
-func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, native *crv4.Chain, query releaseDecisionChainV2Query, schedule crv4.ValidatorScheduleQuery, runtimes ...crv4.RuntimeArtifactIdentity) (result *releaseDecisionChainV2Observation, observed crv4.ValidatorScheduleObservation, resultErr error) {
+// current reviewed owner supplies the complete reviewed historical profile;
+// individual callers cannot accidentally omit a predecessor runtime.
+func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, native *crv4.Chain, query releaseDecisionChainV2Query, schedule crv4.ValidatorScheduleQuery, runtime crv4.RuntimeArtifactIdentity) (result *releaseDecisionChainV2Observation, observed crv4.ValidatorScheduleObservation, resultErr error) {
 	if ctx == nil || schedule.GenesisHash != types.Hash(query.domain.GenesisHash) || schedule.Netuid != query.domain.Netuid {
 		return nil, observed, errors.New("decision native and EVM deployment authorities differ")
 	}
@@ -61,9 +62,9 @@ func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, nativ
 			result, observed = nil, crv4.ValidatorScheduleObservation{}
 		}
 	}()
-	observed, err = crv4.ReadValidatorScheduleAtContext(ctx, native, schedule, runtimes...)
-	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() {
-		return nil, observed, errors.Join(errors.New("decision native signer lacks real stake/permit authority"), err)
+	observed, err = crv4.ReadValidatorScheduleAtContext(ctx, native, schedule, HistoricalReleaseRuntimeArtifacts(runtime)...)
+	if err := releaseRpcObservationError(err, observed.Stake.MeetsNonSelfStakeAndPermit(), errors.New("decision native signer lacks real stake/permit authority")); err != nil {
+		return nil, observed, err
 	}
 	result, err = chain.readOwnedReleaseDecisionChainV2Context(ctx, query, budget)
 	if err != nil {
@@ -158,10 +159,10 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 		return result, err
 	}
 	observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&self.cfg))
-	observed, schedule, err := readReleaseDecisionV2Context(observationCtx, chain, native, query, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(query.domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: artifact.NativeSnapshotBlock, Netuid: query.domain.Netuid, Hotkey: first.Activation.Hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(runtime)...)
+	observed, schedule, err := readReleaseDecisionV2Context(observationCtx, chain, native, query, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(query.domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: artifact.NativeSnapshotBlock, Netuid: query.domain.Netuid, Hotkey: first.Activation.Hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, runtime)
 	cancel()
-	if err != nil || schedule.SubnetEpochIndex != intent.SubnetEpoch || schedule.Stake.Identity.UID != intent.SelfUID {
-		return result, errors.Join(errors.New("historical decision signer or epoch differs from real chain observations"), err)
+	if err := releaseRpcObservationError(err, schedule.SubnetEpochIndex == intent.SubnetEpoch && schedule.Stake.Identity.UID == intent.SelfUID, errors.New("historical decision signer or epoch differs from real chain observations")); err != nil {
+		return result, err
 	}
 	// Complete chain observations retain inactive registry members; each intent
 	// participant still needs eligibility at this exact decision boundary.
@@ -222,8 +223,11 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 				return result, err
 			}
 			encoded, err := custody.read(keyCtx, path, maximum, false)
-			if err != nil || ReleaseMeasurementContentHash(encoded) != contentHash {
-				return result, errors.Join(errReleaseHistoricalClientKeyV2, errors.New("retained client-key capture differs from its complete byte identity"), err)
+			if err != nil {
+				return result, err
+			}
+			if ReleaseMeasurementContentHash(encoded) != contentHash {
+				return result, errors.Join(errReleaseHistoricalClientKeyV2, errors.New("retained client-key capture differs from its complete byte identity"))
 			}
 			if err := keyReads.reserveResponse(keyCtx, chain, domain, request, uint64(len(encoded))); err != nil {
 				return result, err
@@ -254,8 +258,9 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 		registration, err := verifyReservedReleaseClientKeyCaptureV2(keyCtx, chain, source.encoded, source.maximum, source.domain, source.request, true)
 		position := keyPositions[index]
 		actual := observed.bindings[position]
-		if err != nil || !registration.Present || releaseHex32(registration.PublicKey) != actual.ClientKey || artifact.Bindings[position].LocalClientKey != actual.ClientKey {
-			return result, errors.Join(errors.New("historical client key differs from its retained operator-signed capture"), err)
+		matches := registration.Present && releaseHex32(registration.PublicKey) == actual.ClientKey && artifact.Bindings[position].LocalClientKey == actual.ClientKey
+		if err := releaseRpcObservationError(err, matches, errors.New("historical client key differs from its retained operator-signed capture")); err != nil {
+			return result, err
 		}
 		result.bindings[position].LocalClientKey = actual.ClientKey
 		result.bindings[position].ClientKeyObservationHash = artifact.Bindings[position].ClientKeyObservationHash
@@ -362,12 +367,12 @@ func (self *HTTPArtifactReader) readCommittedReleaseDecisionV2Artifact(ctx conte
 		return nil, errors.New("historical committed artifact response has invalid status, media type or size")
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, int64(maximum)+1))
-	if err != nil || uint64(len(encoded)) > maximum {
-		return nil, errors.Join(errors.New("historical committed artifact exceeds its exact byte allowance"), err)
+	if err := releaseRpcObservationError(err, uint64(len(encoded)) <= maximum, errors.New("historical committed artifact exceeds its exact byte allowance")); err != nil {
+		return nil, err
 	}
 	artifact, err := payoutartifact.Decode(encoded)
-	if err != nil || artifact == nil || artifact.ContentHash != contentHash {
-		return nil, errors.Join(errors.New("historical payout content differs from its independently committed digest"), err)
+	if err := releaseRpcObservationError(err, artifact != nil && artifact.ContentHash == contentHash, errors.New("historical payout content differs from its independently committed digest")); err != nil {
+		return nil, err
 	}
 	return artifact, ctx.Err()
 }

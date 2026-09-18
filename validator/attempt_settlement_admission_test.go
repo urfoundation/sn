@@ -8,10 +8,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"syscall"
 	"testing"
+	"time"
 
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/urnetwork/connect"
+
+	"github.com/urfoundation/sn/stabi"
 )
 
 // Uses the signed mock server and production ledger; a real settlement advance
@@ -96,6 +106,106 @@ type attemptSettlementTestTransport func(context.Context, connect.Id, []byte) ([
 // Forwards each bounded request through the explicitly controlled test seam.
 func (self attemptSettlementTestTransport) PostVerify(ctx context.Context, hop connect.Id, body []byte) ([]byte, error) {
 	return self(ctx, hop, body)
+}
+
+// Exposes the exact production cache seam without invoking unrelated snapshot
+// or hotkey reads in the binding-error provenance tests.
+type attemptSettlementBindingRpc struct {
+	binding      stabi.BindingAtOutput
+	bindingError error
+	bindingCalls int
+}
+
+// Refuses an unrelated snapshot read so each test fails at the wrong seam.
+func (self *attemptSettlementBindingRpc) Snapshot(context.Context) (AttemptBoundary, error) {
+	return AttemptBoundary{}, errors.New("unexpected attempt snapshot")
+}
+
+// Refuses an unrelated boundary validation so each test fails at the wrong seam.
+func (self *attemptSettlementBindingRpc) Validate(context.Context, AttemptBoundary) error {
+	return errors.New("unexpected attempt boundary validation")
+}
+
+// Refuses an unrelated hotkey scan so each test fails at the wrong seam.
+func (self *attemptSettlementBindingRpc) Hotkeys(context.Context, AttemptBoundary) (map[[32]byte]uint16, error) {
+	return nil, errors.New("unexpected attempt hotkey scan")
+}
+
+// Returns the controlled chain result and records the isolated binding read.
+func (self *attemptSettlementBindingRpc) Binding(context.Context, AttemptBoundary, connect.Id) (stabi.BindingAtOutput, error) {
+	self.bindingCalls++
+	return self.binding, self.bindingError
+}
+
+// Only the chain read gets retry provenance. Decoded binding inconsistency and
+// pinned-block conflicts remain hard even though they share the same resolver.
+func TestAttemptBoundaryCacheTypesOnlyBindingRpcReadFailures(t *testing.T) {
+	boundary := attemptLedgerTestBoundary()
+	clientId := connect.NewId()
+	newResolver := func(rpc *attemptSettlementBindingRpc) *cachedAttemptBoundaryResolver {
+		resolver := newCachedAttemptBoundaryResolver(rpc)
+		resolver.blocks[boundary.EVMBlock] = &attemptBoundaryBlock{
+			boundary: boundary, hotkeys: map[[32]byte]uint16{}, bindings: map[connect.Id]AttemptBinding{},
+		}
+		return resolver
+	}
+	for _, test := range []struct {
+		name          string
+		rpc           *attemptSettlementBindingRpc
+		boundary      AttemptBoundary
+		wantTyped     bool
+		wantRetryable bool
+		wantCalls     int
+	}{
+		{name: "rpc timeout", rpc: &attemptSettlementBindingRpc{bindingError: context.DeadlineExceeded}, boundary: boundary, wantTyped: true, wantRetryable: true, wantCalls: 1},
+		{name: "rpc authorization", rpc: &attemptSettlementBindingRpc{bindingError: errors.New("binding authorization denied")}, boundary: boundary, wantTyped: true, wantCalls: 1},
+		{name: "decoded binding mismatch", rpc: &attemptSettlementBindingRpc{binding: stabi.BindingAtOutput{Active: true}}, boundary: boundary, wantCalls: 1},
+		{name: "pinned block conflict", rpc: &attemptSettlementBindingRpc{}, boundary: func() AttemptBoundary {
+			conflict := boundary
+			conflict.EVMBlockHash = attemptHex32([32]byte{9})
+			return conflict
+		}()},
+	} {
+		resolver := newResolver(test.rpc)
+		_, _, err := resolver.Resolve(context.Background(), &test.boundary, []connect.Id{clientId})
+		var readErr *attemptBindingReadError
+		if err == nil || errors.As(err, &readErr) != test.wantTyped || retryableAttemptBindingReadError(err) != test.wantRetryable || test.rpc.bindingCalls != test.wantCalls {
+			t.Fatalf("%s classification typed/retryable/calls=%t/%t/%d, want %t/%t/%d: %v", test.name, readErr != nil, retryableAttemptBindingReadError(err), test.rpc.bindingCalls, test.wantTyped, test.wantRetryable, test.wantCalls, err)
+		}
+		resolver.close()
+	}
+}
+
+// A timeout marker is necessary but not sufficient: every joined leaf must be
+// a recognized transport failure, and owner cancellation never starts a retry.
+func TestAttemptBindingReadRetryRequiresEveryJoinedCauseTransient(t *testing.T) {
+	hard := errors.New("binding integrity mismatch")
+	for _, test := range []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{name: "typed timeout", err: &attemptBindingReadError{cause: context.DeadlineExceeded}, retryable: true},
+		{name: "typed joined transport", err: &attemptBindingReadError{cause: errors.Join(context.DeadlineExceeded, io.ErrUnexpectedEOF)}, retryable: true},
+		{name: "wrapped url transport", err: &attemptBindingReadError{cause: &url.Error{Op: "read", URL: "https://rpc.example", Err: &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}}}, retryable: true},
+		{name: "wrapped geth http capacity", err: &attemptBindingReadError{cause: fmt.Errorf("binding rpc response: %w", gethrpc.HTTPError{StatusCode: http.StatusServiceUnavailable, Status: "503 Service Unavailable"})}, retryable: true},
+		{name: "wrapped geth http contract", err: &attemptBindingReadError{cause: fmt.Errorf("binding rpc response: %w", gethrpc.HTTPError{StatusCode: http.StatusConflict, Status: "409 Conflict"})}},
+		{name: "untyped timeout", err: context.DeadlineExceeded},
+		{name: "owner cancellation", err: &attemptBindingReadError{cause: context.Canceled}},
+		{name: "typed integrity", err: &attemptBindingReadError{cause: hard}},
+		{name: "typed mixed tree", err: &attemptBindingReadError{cause: errors.Join(context.DeadlineExceeded, hard)}},
+		{name: "outer mixed tree", err: errors.Join(&attemptBindingReadError{cause: context.DeadlineExceeded}, hard)},
+	} {
+		if retryable := retryableAttemptBindingReadError(test.err); retryable != test.retryable {
+			t.Fatalf("%s retryable=%t, want %t: %v", test.name, retryable, test.retryable, test.err)
+		}
+	}
+	if !onlyAttemptContextError(fmt.Errorf("resolver: %w", &attemptBindingReadError{cause: errors.Join(context.Canceled, fmt.Errorf("read: %w", context.Canceled))}), context.Canceled) {
+		t.Fatal("pure joined owner cancellation was not recognized")
+	}
+	if onlyAttemptContextError(&attemptBindingReadError{cause: errors.Join(context.Canceled, hard)}, context.Canceled) {
+		t.Fatal("owner cancellation hid an independent integrity branch")
+	}
 }
 
 // A delivered server assignment is already owned before either cut can close;
@@ -276,34 +386,213 @@ func TestAttemptSettlementRunTrailWaitsBeforeSeedOnOrdinaryCut(t *testing.T) {
 	}
 }
 
+// The authenticated assignment and reserved boundary stay in memory while only
+// the failed binding read repeats. This covers both capture sites without
+// replaying seed, extend, or a durable pending checkpoint.
+func TestAttemptSettlementRunTrailRetriesTransientAssignedBindingRead(t *testing.T) {
+	for _, test := range []struct {
+		name                 string
+		failedBindingCall    int
+		transportCallsAtWait int
+		sequencesAtWait      uint64
+	}{
+		{name: "first assignment", failedBindingCall: 1, transportCallsAtWait: 1},
+		{name: "later assignment", failedBindingCall: 2, transportCallsAtWait: 2, sequencesAtWait: 1},
+	} {
+		stateDir := t.TempDir()
+		server, key, clientId := newMockVerifyServer(t, 12)
+		engine, stats, _ := newTestEngine(t, server, key, clientId, 4, nil)
+		transportCalls := 0
+		engine.transport = attemptSettlementTestTransport(func(ctx context.Context, hop connect.Id, body []byte) ([]byte, error) {
+			transportCalls++
+			return server.PostVerify(ctx, hop, body)
+		})
+		generation := uint64(1)
+		ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
+		resolve := engine.resolve
+		bindingCalls := 0
+		var retryHop connect.Id
+		engine.resolve = func(ctx context.Context, pinned *AttemptBoundary, ids []connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			if len(ids) == 0 {
+				return resolve(ctx, pinned, ids)
+			}
+			bindingCalls++
+			if pinned == nil || *pinned != attemptLedgerTestBoundary() || len(ids) != 1 {
+				t.Fatalf("%s binding call %d changed pin or coverage: pin=%v ids=%v", test.name, bindingCalls, pinned, ids)
+			}
+			if bindingCalls == test.failedBindingCall {
+				retryHop = ids[0]
+				return AttemptBoundary{}, nil, &attemptBindingReadError{cause: errors.Join(context.DeadlineExceeded, io.ErrUnexpectedEOF)}
+			}
+			if bindingCalls == test.failedBindingCall+1 && ids[0] != retryHop {
+				t.Fatalf("%s binding retry changed assigned hop from %s to %s", test.name, retryHop, ids[0])
+			}
+			return resolve(ctx, pinned, ids)
+		}
+		waits := 0
+		engine.bindingRetryWait = func(ctx context.Context, delay time.Duration) error {
+			waits++
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if delay != 2*time.Second || transportCalls != test.transportCallsAtWait || ledger.LastSequence() != test.sequencesAtWait || stats.activeAttemptCount != 1 {
+				t.Fatalf("%s retry wait delay/transport/sequence/owners=%s/%d/%d/%d", test.name, delay, transportCalls, ledger.LastSequence(), stats.activeAttemptCount)
+			}
+			return nil
+		}
+
+		proof, err := engine.RunTrail(context.Background())
+		if err != nil || proof == nil {
+			t.Fatalf("%s binding retry did not complete: proof=%v error=%v", test.name, proof, err)
+		}
+		if waits != 1 || bindingCalls != 4 || transportCalls != 4 || stats.activeAttemptCount != 0 {
+			t.Fatalf("%s retry calls waits/bindings/transport/owners=%d/%d/%d/%d", test.name, waits, bindingCalls, transportCalls, stats.activeAttemptCount)
+		}
+		server.mu.Lock()
+		trails, extends := len(server.trails), server.extendCount
+		server.mu.Unlock()
+		if trails != 1 || extends != 3 {
+			t.Fatalf("%s binding retry replayed protocol work: trails=%d extends=%d", test.name, trails, extends)
+		}
+		records, err := ledger.RecordsAfter(0)
+		if err != nil || len(records) != 4 {
+			t.Fatalf("%s binding retry ledger records=%d error=%v", test.name, len(records), err)
+		}
+		for index, wantAssignments := range []int{1, 2, 3, 3} {
+			if len(records[index].Assignments) != wantAssignments || records[index].Boundary != attemptLedgerTestBoundary() {
+				t.Fatalf("%s binding retry record %d=%+v", test.name, index, records[index])
+			}
+		}
+	}
+}
+
 // Losing pinned binding authority after receiving an authentic first assignment
 // is not a retryable pre-admission event that could silently omit exposure.
 func TestAttemptSettlementRunTrailKeepsAssignedBindingFailureFatal(t *testing.T) {
-	stateDir := t.TempDir()
-	server, key, clientID := newMockVerifyServer(t, 12)
-	engine, stats, _ := newTestEngine(t, server, key, clientID, 4, nil)
-	generation := uint64(1)
-	ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
-	resolve := engine.resolve
-	engine.resolve = func(ctx context.Context, pinned *AttemptBoundary, ids []connect.Id) (AttemptBoundary, []AttemptBinding, error) {
-		if len(ids) != 0 {
-			if pinned == nil || *pinned != attemptLedgerTestBoundary() {
-				t.Fatal("first assignment has no reserved pin")
+	hard := errors.New("lost finalized binding authority")
+	for _, test := range []struct {
+		name    string
+		resolve func(connect.Id) (AttemptBoundary, []AttemptBinding, error)
+	}{
+		{name: "authority", resolve: func(connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			return AttemptBoundary{}, nil, hard
+		}},
+		{name: "untyped timeout", resolve: func(connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			return AttemptBoundary{}, nil, context.DeadlineExceeded
+		}},
+		{name: "typed integrity", resolve: func(connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			return AttemptBoundary{}, nil, &attemptBindingReadError{cause: hard}
+		}},
+		{name: "mixed transport and integrity", resolve: func(connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			return AttemptBoundary{}, nil, &attemptBindingReadError{cause: errors.Join(context.DeadlineExceeded, hard)}
+		}},
+		{name: "changed pin", resolve: func(id connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			changed := attemptLedgerTestBoundary()
+			changed.EVMBlock++
+			return changed, []AttemptBinding{attemptLedgerTestBinding(id, 1)}, nil
+		}},
+		{name: "binding mismatch", resolve: func(connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			return attemptLedgerTestBoundary(), []AttemptBinding{attemptLedgerTestBinding(connect.NewId(), 1)}, nil
+		}},
+	} {
+		stateDir := t.TempDir()
+		server, key, clientId := newMockVerifyServer(t, 12)
+		engine, stats, _ := newTestEngine(t, server, key, clientId, 4, nil)
+		transportCalls := 0
+		engine.transport = attemptSettlementTestTransport(func(ctx context.Context, hop connect.Id, body []byte) ([]byte, error) {
+			transportCalls++
+			return server.PostVerify(ctx, hop, body)
+		})
+		generation := uint64(1)
+		ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
+		resolve := engine.resolve
+		bindingCalls, waits := 0, 0
+		engine.resolve = func(ctx context.Context, pinned *AttemptBoundary, ids []connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			if len(ids) == 0 {
+				return resolve(ctx, pinned, ids)
 			}
-			return AttemptBoundary{}, nil, errors.New("lost finalized binding authority")
+			bindingCalls++
+			if pinned == nil || *pinned != attemptLedgerTestBoundary() || len(ids) != 1 {
+				t.Fatalf("%s first assignment has no exact reserved pin: pin=%v ids=%v", test.name, pinned, ids)
+			}
+			return test.resolve(ids[0])
 		}
-		return resolve(ctx, pinned, ids)
+		engine.bindingRetryWait = func(context.Context, time.Duration) error {
+			waits++
+			return nil
+		}
+		_, err := engine.RunTrail(context.Background())
+		var fatal *TrailFatalError
+		if !errors.As(err, &fatal) || stats.activeAttemptCount != 0 || ledger.LastSequence() != 0 || bindingCalls != 1 || waits != 0 || transportCalls != 1 {
+			t.Fatalf("%s assigned binding failure was hidden: error=%v owners=%d sequence=%d bindings=%d waits=%d transport=%d", test.name, err, stats.activeAttemptCount, ledger.LastSequence(), bindingCalls, waits, transportCalls)
+		}
+		server.mu.Lock()
+		assigned := len(server.trails)
+		server.mu.Unlock()
+		if assigned != 1 {
+			t.Fatalf("%s binding-failure control did not receive one real assignment", test.name)
+		}
 	}
-	_, err := engine.RunTrail(context.Background())
-	var fatal *TrailFatalError
-	if !errors.As(err, &fatal) || stats.activeAttemptCount != 0 || ledger.LastSequence() != 0 {
-		t.Fatalf("assigned binding failure was hidden: %v", err)
-	}
-	server.mu.Lock()
-	assigned := len(server.trails)
-	server.mu.Unlock()
-	if assigned != 1 {
-		t.Fatal("binding-failure control did not receive a real assignment")
+}
+
+// Owner cancellation ends the retained assignment retry without converting it
+// into fatal validator state. No additional request or checkpoint is emitted.
+func TestAttemptSettlementRunTrailCancelsAssignedBindingRetry(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		failedBindingCall int
+		sequences         uint64
+	}{
+		{name: "first assignment", failedBindingCall: 1},
+		{name: "later assignment", failedBindingCall: 2, sequences: 1},
+	} {
+		stateDir := t.TempDir()
+		server, key, clientId := newMockVerifyServer(t, 12)
+		engine, stats, _ := newTestEngine(t, server, key, clientId, 4, nil)
+		transportCalls := 0
+		engine.transport = attemptSettlementTestTransport(func(ctx context.Context, hop connect.Id, body []byte) ([]byte, error) {
+			transportCalls++
+			return server.PostVerify(ctx, hop, body)
+		})
+		generation := uint64(1)
+		ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
+		resolve := engine.resolve
+		bindingCalls := 0
+		engine.resolve = func(ctx context.Context, pinned *AttemptBoundary, ids []connect.Id) (AttemptBoundary, []AttemptBinding, error) {
+			if len(ids) == 0 {
+				return resolve(ctx, pinned, ids)
+			}
+			bindingCalls++
+			if pinned == nil || *pinned != attemptLedgerTestBoundary() || len(ids) != 1 {
+				t.Fatalf("%s canceled binding changed pin or coverage: pin=%v ids=%v", test.name, pinned, ids)
+			}
+			if bindingCalls == test.failedBindingCall {
+				return AttemptBoundary{}, nil, &attemptBindingReadError{cause: context.DeadlineExceeded}
+			}
+			return resolve(ctx, pinned, ids)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		waits := 0
+		engine.bindingRetryWait = func(waitCtx context.Context, delay time.Duration) error {
+			waits++
+			if delay != 2*time.Second || ledger.LastSequence() != test.sequences || transportCalls != test.failedBindingCall {
+				t.Fatalf("%s cancel wait delay/sequence/transport=%s/%d/%d", test.name, delay, ledger.LastSequence(), transportCalls)
+			}
+			cancel()
+			<-waitCtx.Done()
+			return waitCtx.Err()
+		}
+		proof, err := engine.RunTrail(ctx)
+		var fatal *TrailFatalError
+		if proof != nil || err != context.Canceled || errors.As(err, &fatal) || waits != 1 || bindingCalls != test.failedBindingCall || transportCalls != test.failedBindingCall || ledger.LastSequence() != test.sequences || stats.activeAttemptCount != 0 {
+			t.Fatalf("%s canceled binding retry proof/error/waits/bindings/transport/sequence/owners=%v/%v/%d/%d/%d/%d/%d", test.name, proof, err, waits, bindingCalls, transportCalls, ledger.LastSequence(), stats.activeAttemptCount)
+		}
+		server.mu.Lock()
+		trails, extends := len(server.trails), server.extendCount
+		server.mu.Unlock()
+		if trails != 1 || extends != test.failedBindingCall-1 {
+			t.Fatalf("%s canceled binding replayed protocol work: trails=%d extends=%d", test.name, trails, extends)
+		}
 	}
 }
 

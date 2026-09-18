@@ -68,7 +68,7 @@ func CheckReleaseHistoryAdoptionV2Source(ctx context.Context, configPath string,
 	if err != nil {
 		return err
 	}
-	if cfg.ProvisionalDeferClosedNativeInput || cfg.ChainID != 945 || cfg.Policy.NetworkProfile != "testnet" || cfg.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" || cfg.DeploymentID != request.DeploymentID || cfg.ValidatorID != request.ValidatorID {
+	if cfg.ProvisionalDeferClosedNativeInput || cfg.ProvisionalRuntimeCompatibility != "" || cfg.ChainID != 945 || cfg.Policy.NetworkProfile != "testnet" || cfg.GenesisHash != "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105" || cfg.DeploymentID != request.DeploymentID || cfg.ValidatorID != request.ValidatorID {
 		return errors.New("strict history source changes the testnet owner")
 	}
 	file, raw, closeOwner, err := readHistoryAdoptionPrefixV2(ctx, cfg, request.CoordinatorStateDir)

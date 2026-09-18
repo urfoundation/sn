@@ -415,15 +415,16 @@ type rpcHeader struct {
 }
 
 type rpcAdversary struct {
-	cfg                    *ResolvedConfig
-	http                   *adversaryHTTP
-	commitRevealProbe      adversaryCommitRevealProbe
-	commitRevealMu         sync.Mutex
-	commitRevealObservedAt time.Time
-	commitRevealLeft       adversaryCommitRevealObservation
-	commitRevealRight      adversaryCommitRevealObservation
-	commitRevealDelay      uint64
-	latency                adversaryLatencyWindow
+	cfg                     *ResolvedConfig
+	http                    *adversaryHTTP
+	commitRevealProbe       adversaryCommitRevealProbe
+	provisionalRuntimeProbe func(context.Context, *ResolvedConfig, string) (authenticatedRuntimeMetadata, error)
+	commitRevealMu          sync.Mutex
+	commitRevealObservedAt  time.Time
+	commitRevealLeft        adversaryCommitRevealObservation
+	commitRevealRight       adversaryCommitRevealObservation
+	commitRevealDelay       uint64
+	latency                 adversaryLatencyWindow
 }
 
 func (self *rpcAdversary) ID() string { return "rpc-consistency-pressure" }
@@ -701,7 +702,27 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	if privateRuntimeErr != nil || publicRuntimeErr != nil || privateRuntimeDecodeErr != nil || publicRuntimeDecodeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity operational=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 10, MaxInFlight: 1}
 	}
-	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, self.cfg.Release.Runtime.SpecVersion, self.cfg.Release.Runtime.TransactionVersion, self.cfg.Release.Runtime.StateVersion); runtimeErr != nil {
+	expectedSpec := self.cfg.Release.Runtime.SpecVersion
+	expectedPrivateCode, expectedPublicCode := self.cfg.Release.Runtime.CodeHash, self.cfg.Release.Runtime.CodeHash
+	if provisionalResumeEnabled(self.cfg) && (privateRuntime.SpecVersion > expectedSpec || publicRuntime.SpecVersion > expectedSpec) {
+		probe := self.provisionalRuntimeProbe
+		if probe == nil {
+			probe = adversaryProvisionalRuntimeAt
+		}
+		left, err := probe(ctx, self.cfg, privateFinalized)
+		if err != nil {
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "provisional operational runtime: " + err.Error(), Requests: 10, MaxInFlight: 1}
+		}
+		right := left
+		if privateFinalized != publicFinalized {
+			right, err = probe(ctx, self.cfg, publicFinalized)
+		}
+		if err != nil || left.Version != privateRuntime || right.Version != publicRuntime {
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("provisional runtime observation differs: %v", err), Requests: 10, MaxInFlight: 1}
+		}
+		expectedSpec, expectedPrivateCode, expectedPublicCode = left.Version.SpecVersion, left.CodeHash, right.CodeHash
+	}
+	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, expectedSpec, self.cfg.Release.Runtime.TransactionVersion, self.cfg.Release.Runtime.StateVersion); runtimeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: runtimeErr.Error(), Requests: 10, MaxInFlight: 1}
 	}
 	privateCodeResponse, privateCodeErr := self.call(ctx, privateEndpoint, "state_getStorageHash", []any{"0x3a636f6465", privateFinalized}, sequence*32+11)
@@ -711,10 +732,10 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	if privateCodeErr != nil || publicCodeErr != nil || privateCodeDecodeErr != nil || publicCodeDecodeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime code hash operational=%v/%v public=%v/%v", privateCodeErr, privateCodeDecodeErr, publicCodeErr, publicCodeDecodeErr), Requests: 12, MaxInFlight: 1}
 	}
-	if privateCodeErr = validateRuntimeCodeHash(privateCodeHash, self.cfg.Release.Runtime.CodeHash); privateCodeErr != nil {
+	if privateCodeErr = validateRuntimeCodeHash(privateCodeHash, expectedPrivateCode); privateCodeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "operational " + privateCodeErr.Error(), Requests: 12, MaxInFlight: 1}
 	}
-	if publicCodeErr = validateRuntimeCodeHash(publicCodeHash, self.cfg.Release.Runtime.CodeHash); publicCodeErr != nil {
+	if publicCodeErr = validateRuntimeCodeHash(publicCodeHash, expectedPublicCode); publicCodeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "public " + publicCodeErr.Error(), Requests: 12, MaxInFlight: 1}
 	}
 	const alphaPrecompile = "0x0000000000000000000000000000000000000808"

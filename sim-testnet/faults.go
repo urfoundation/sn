@@ -1033,19 +1033,32 @@ func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, boo
 }
 
 func operatorDependencyImpacts(cfg *ResolvedConfig, operator int) []string {
-	impacts := []string{
-		fmt.Sprintf("operator-%d-api", operator),
-		fmt.Sprintf("operator-%d-connect", operator),
-		fmt.Sprintf("operator-%d-taskworker", operator),
-		fmt.Sprintf("claim-relayer-%d", operator),
+	impactSet := map[string]bool{
+		fmt.Sprintf("operator-%d-api", operator):        true,
+		fmt.Sprintf("operator-%d-connect", operator):    true,
+		fmt.Sprintf("operator-%d-taskworker", operator): true,
+		fmt.Sprintf("claim-relayer-%d", operator):       true,
 	}
+	// A dependency outage reaches each SDK miner as well as the supervisor
+	// process hosting it. Keep both identities: the former is the public
+	// topology/evidence identity while the latter owns the process log that can
+	// report a delayed transport recovery failure.
 	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		if operatorForMiner(cfg, miner) == operator {
-			impacts = append(impacts, fmt.Sprintf("miner-%d", miner))
+		if operatorForMiner(cfg, miner) != operator {
+			continue
+		}
+		impactSet[fmt.Sprintf("miner-%d", miner)] = true
+		swarm, err := minerSwarmFor(cfg, miner)
+		if err == nil {
+			impactSet[fmt.Sprintf("miner-swarm-%d", swarm)] = true
 		}
 	}
 	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
-		impacts = append(impacts, fmt.Sprintf("validator-%d", validator))
+		impactSet[fmt.Sprintf("validator-%d", validator)] = true
+	}
+	impacts := make([]string, 0, len(impactSet))
+	for impact := range impactSet {
+		impacts = append(impacts, impact)
 	}
 	sort.Strings(impacts)
 	return impacts
@@ -1273,6 +1286,19 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			if head.Number < record.TriggerBlock {
 				continue
 			}
+			// A delayed observation can cross several nominally sequential fault
+			// windows. Preserve their configured order instead of applying a later
+			// non-overlapping mutation while its predecessor is still live.
+			blocked := false
+			for prior := 0; prior < i; prior++ {
+				if records[prior].RestoreBlock < record.TriggerBlock && records[prior].Status != "restored" {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
 			if specs[i].ActivationCondition != "" {
 				if activateReady == nil {
 					continue
@@ -1294,12 +1320,16 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			record.Status, record.AppliedBlock, record.AppliedBlockHash, record.Processes = "active", head.Number, head.Hash, processes
 		case "active":
-			minimumRestore, ok := checkedAdd(record.AppliedBlock, specs[i].MinimumDurationBlocks)
+			minimumDuration := specs[i].MinimumDurationBlocks
+			if specs[i].RestoreCondition == "" {
+				minimumDuration = specs[i].DurationBlocks
+			}
+			minimumRestore, ok := checkedAdd(record.AppliedBlock, minimumDuration)
 			if !ok {
 				record.Status, record.Error = "failed", "fault minimum restoration block overflows"
 				return errors.New(record.Error)
 			}
-			shouldRestore := head.Number >= record.RestoreBlock && (specs[i].RestoreCondition == "" || head.Number >= minimumRestore)
+			shouldRestore := head.Number >= record.RestoreBlock && head.Number >= minimumRestore
 			if !shouldRestore && specs[i].RestoreCondition != "" && head.Number >= minimumRestore && restoreReady != nil {
 				conditionMet, err := restoreReady(specs[i])
 				if err != nil {

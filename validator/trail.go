@@ -563,6 +563,11 @@ type TrailEngineConfig struct {
 	AttemptBoundaryResolver AttemptBoundaryResolver
 }
 
+const attemptBindingRetryDelay = 2 * time.Second
+
+// Waits between immutable binding reads or returns the owner's cancellation.
+type attemptBindingRetryWait func(context.Context, time.Duration) error
+
 func (self TrailEngineConfig) withDefaults() TrailEngineConfig {
 	if self.M == 0 {
 		self.M = connect.VerifyMDefault
@@ -596,6 +601,8 @@ type TrailEngine struct {
 	cfg     TrailEngineConfig
 	ledger  *AttemptLedger
 	resolve AttemptBoundaryResolver
+	// A retry retains the already verified assignment and exact pinned boundary.
+	bindingRetryWait attemptBindingRetryWait
 
 	seedDiscoverySchedule attemptSchedule
 	seedPostSchedule      attemptSchedule
@@ -674,21 +681,69 @@ func NewTrailEngine(
 	cfg TrailEngineConfig,
 ) *TrailEngine {
 	return &TrailEngine{
-		clientId:  clientId,
-		vsk:       vsk,
-		vpk:       vsk.Public().(ed25519.PublicKey),
-		transport: transport,
-		keys:      keys,
-		pickSeed:  pickSeed,
-		stats:     stats,
-		store:     store,
-		epochFn:   epochFn,
-		cfg:       cfg.withDefaults(),
-		ledger:    cfg.AttemptLedger,
-		resolve:   cfg.AttemptBoundaryResolver,
+		clientId:         clientId,
+		vsk:              vsk,
+		vpk:              vsk.Public().(ed25519.PublicKey),
+		transport:        transport,
+		keys:             keys,
+		pickSeed:         pickSeed,
+		stats:            stats,
+		store:            store,
+		epochFn:          epochFn,
+		cfg:              cfg.withDefaults(),
+		ledger:           cfg.AttemptLedger,
+		resolve:          cfg.AttemptBoundaryResolver,
+		bindingRetryWait: waitAttemptBindingRetry,
 	}
 }
 
+// Uses one cancellable production delay; tests replace the waiter without
+// changing the reviewed two-second pacing value.
+func waitAttemptBindingRetry(ctx context.Context, delay time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
+}
+
+// Applies the fixed production delay through the engine-owned test seam.
+func (self *TrailEngine) waitForAttemptBindingRetry(ctx context.Context) error {
+	wait := self.bindingRetryWait
+	if wait == nil {
+		wait = waitAttemptBindingRetry
+	}
+	return wait(ctx, attemptBindingRetryDelay)
+}
+
+// Wrapper labels do not turn owner cancellation into local corruption, while
+// one independent joined branch keeps the complete tree hard.
+func onlyAttemptContextError(err, want error) bool {
+	if err == nil || want == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !onlyAttemptContextError(cause, want) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		cause := wrapped.Unwrap()
+		return cause != nil && onlyAttemptContextError(cause, want)
+	}
+	return err == want
+}
+
+// Retains one verified assignment and its exact boundary while a typed
+// transient binding read is retried; record mutation starts after validation.
 func (self *TrailEngine) captureAttemptAssignment(ctx context.Context, record *AttemptRecord, assign *connect.VerifyAssignResult) error {
 	if record == nil || assign == nil || self.resolve == nil {
 		return errors.New("attempt assignment capture is not configured")
@@ -697,9 +752,26 @@ func (self *TrailEngine) captureAttemptAssignment(ctx context.Context, record *A
 	if record.Boundary != (AttemptBoundary{}) {
 		pinned = &record.Boundary
 	}
-	boundary, bindings, err := self.resolve(ctx, pinned, []connect.Id{assign.NextHop})
-	if err != nil {
-		return fmt.Errorf("resolve attempt binding: %w", err)
+	var boundary AttemptBoundary
+	var bindings []AttemptBinding
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var err error
+		boundary, bindings, err = self.resolve(ctx, pinned, []connect.Id{assign.NextHop})
+		if err == nil {
+			break
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil && onlyAttemptContextError(err, ctxErr) {
+			return ctxErr
+		}
+		if !retryableAttemptBindingReadError(err) {
+			return fmt.Errorf("resolve attempt binding: %w", err)
+		}
+		if err := self.waitForAttemptBindingRetry(ctx); err != nil {
+			return err
+		}
 	}
 	if err := validateAttemptBoundary(boundary); err != nil {
 		return err
@@ -926,6 +998,9 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 
 	if ledgerEnabled {
 		if err := self.captureAttemptAssignment(ctx, &attemptRecord, &assign); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil && err == ctxErr {
+				return nil, ctxErr
+			}
 			return nil, fatalTrailState("capture first server assignment after reservation", err)
 		}
 		if err := self.stats.checkpointAttempt(self.ledger, attemptRecord); err != nil {
@@ -1052,6 +1127,9 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 		recordConfirmation(latencyMs)
 		if ledgerEnabled {
 			if err := self.captureAttemptAssignment(ctx, &attemptRecord, &nextAssign); err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil && err == ctxErr {
+					return nil, ctxErr
+				}
 				self.stats.abortAttempt()
 				attemptActive = false
 				return nil, fatalTrailState("capture assigned hop after durable checkpoint", err)

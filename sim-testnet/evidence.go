@@ -1095,7 +1095,7 @@ func publishedFinalSemanticReaderFactory(ctx context.Context, cfg *ResolvedConfi
 		if transportErr != nil {
 			return nil, transportErr
 		}
-		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, public, evidence, discoveryURI, origins, transport)
+		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, public, evidence, discoveryURI, origins, transport, cfg)
 	}, nil
 }
 

@@ -1,0 +1,66 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-0",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0x13ffb8b8ab05725e74a51ebd5c4b51baffb5b8631f3594e5d0e14a8f1510540f"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-1",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0x307060513de1ca6cdd5592c9a96c1ac81cb4b21abfba416f4ff1bb040214dc4b"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-2",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0x3f4ccc916537205239e776b2e8f3d64b6a0fe427dc769b901d83bcef75af8c3b"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-3",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0xd357de5bcbaf7be6508a8e6ab054e1414c83065895666d7cffa604061c084d4b"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-4",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0x52ed48f59ee359c307e8b466744d203df1d9b64a51bbcf6281cf8bff8fd74ff5"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-5",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0x7a769c2ec58044b71fa050191a7be1b852aa62e3faff37d8483f8f525a609785"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-6",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0xdf34633ff6adc1fcf246b048a0f01f355fd181ef60fe4cdc0946b5cc265fe910"
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": "receipt-7",
+    "method": "eth_getTransactionReceipt",
+    "params": [
+      "0xe4d385cc12bf67b7e7e9610983eea1068f359a1850585b57b683e83b34209baa"
+    ]
+  }
+]

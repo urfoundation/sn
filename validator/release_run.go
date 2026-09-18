@@ -119,6 +119,15 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 	if publication, ok := err.(*attemptReplicaPublicationError); ok {
 		return classifyReleaseSnapshotRetryCauses(publication.causes, true)
 	}
+	if incomplete, ok := err.(*attemptStreamHTTPIncompleteError); ok {
+		if incomplete.cause != nil {
+			return classifyReleaseSnapshotRetry(incomplete.cause, siblingCancellation)
+		}
+		// Closing an owned sibling after another sibling times out can reach
+		// this exact typed marker before the body observes cancellation. It is
+		// neutral inside that owner; it cannot authorize a retry by itself.
+		return siblingCancellation, false
+	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		return classifyReleaseSnapshotRetryCauses(joined.Unwrap(), siblingCancellation)
 	}
@@ -263,6 +272,35 @@ func loadInitialReleaseSnapshot(ctx context.Context, load releaseSnapshotLoader,
 		}
 	}
 	return nil, fmt.Errorf("initial release snapshot failed after %d transient attempts: %w", releaseSnapshotStartupAttempts, lastErr)
+}
+
+// Replays the same immutable retained lineage after a transport timeout. Each
+// attempt rechecks complete bytes, hashes, signatures and disk ownership;
+// policy, identity and full-content integrity failures remain immediate.
+func loadReleaseSteererV2WithRetry(ctx context.Context, load func() (*ReleaseSteerer, error), wait releaseSnapshotRetryWait) (*ReleaseSteerer, error) {
+	if ctx == nil || load == nil || wait == nil {
+		return nil, errors.New("release V2 startup replay dependencies are incomplete")
+	}
+	var lastErr error
+	for attempt := 1; attempt <= releaseSnapshotStartupAttempts; attempt++ {
+		steerer, err := load()
+		if err == nil {
+			return steerer, nil
+		}
+		lastErr = err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if !transientReleaseSnapshotError(err) {
+			return nil, err
+		}
+		if attempt < releaseSnapshotStartupAttempts {
+			if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return nil, fmt.Errorf("release V2 startup replay failed after %d transient attempts: %w", releaseSnapshotStartupAttempts, lastErr)
 }
 
 // releaseSeedAttemptInterval leaves 25% headroom below the server's locked
@@ -561,6 +599,12 @@ func dialPinnedNative(ctx context.Context, cfg *ReleaseConfig) (*crv4.Chain, err
 			errs = append(errs, fmt.Errorf("%s: genesis does not match release pin", endpoint))
 			continue
 		}
+		if err := enableReleaseProvisionalRuntimeCompatibility(chain, cfg); err != nil {
+			cancel()
+			chain.API.Client.Close()
+			errs = append(errs, fmt.Errorf("%s: provisional runtime authority: %w", endpoint, err))
+			continue
+		}
 		if _, err := authenticatePinnedNativeRuntimeContext(endpointCtx, chain, cfg); err != nil {
 			cancel()
 			chain.API.Client.Close()
@@ -724,7 +768,9 @@ func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSet
 	for index, runtime := range runtimes {
 		measurements[index] = runtime.measurement
 	}
-	steerer, err := newReleaseSteererV2(cfg, chain, native, hotkey, measurements, runtimeV2)
+	steerer, err := loadReleaseSteererV2WithRetry(ctx, func() (*ReleaseSteerer, error) {
+		return newReleaseSteererV2(cfg, chain, native, hotkey, measurements, runtimeV2)
+	}, waitReleaseSnapshotRetry)
 	if err != nil {
 		return fmt.Errorf("release V2 native startup: %w", err)
 	}

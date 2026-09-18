@@ -102,7 +102,7 @@ func TestLaunchPreparationRuntimeChecksDoNotBlockCompletedSetupRepair(t *testing
 	}
 }
 
-func TestLaunchPreparationBinaryBuildCollectsBothIndependentTargetFailures(t *testing.T) {
+func TestLaunchPreparationBinaryBuildReportsWorkloadTargetFailure(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Repos.SN, cfg.Repos.Server = t.TempDir(), t.TempDir()
 	toolDir := t.TempDir()
@@ -111,8 +111,8 @@ func TestLaunchPreparationBinaryBuildCollectsBothIndependentTargetFailures(t *te
 	}
 	t.Setenv("PATH", toolDir)
 	binaries, err := buildReleaseBinaries(t.Context(), cfg, t.TempDir())
-	if err == nil || !strings.Contains(err.Error(), "build sim-testnet") || !strings.Contains(err.Error(), "build server-ctl") || !strings.Contains(err.Error(), "connect server binary blocked by simulator build") || len(binaries) != 0 {
-		t.Fatalf("first build failure hid another target or admitted a binary: binaries=%v error=%v", binaries, err)
+	if err == nil || !strings.Contains(err.Error(), "build sim-testnet") || !strings.Contains(err.Error(), "connect server binary blocked by simulator build") || strings.Contains(err.Error(), "server-ctl") || len(binaries) != 0 {
+		t.Fatalf("workload build failure admitted a divergent migration binary: binaries=%v error=%v", binaries, err)
 	}
 }
 

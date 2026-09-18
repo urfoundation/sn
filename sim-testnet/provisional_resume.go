@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -145,20 +146,44 @@ func provisionalResumeEnabled(cfg *ResolvedConfig) bool {
 }
 
 func (e *Executor) authenticateProvisionalReceipt(action Action, entry JournalEntry) error {
-	if !provisionalResumeEnabled(e.cfg) || e.plan == nil || e.cfg.provisionalResume.Record.PlanHash != e.plan.PlanHash || entry.Stage != StageVerified || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) {
+	return e.authenticateProvisionalReceiptWithReader(action, entry, e.readPersistedPostcondition)
+}
+
+// Only the read-only collector may supply its invocation-local source cache.
+// Ordinary action execution retains its fresh journal and receipt reader.
+func (self *Executor) authenticateProvisionalReceiptWithReader(action Action, entry JournalEntry, readPostcondition func(JournalEntry) (*ActionPostcondition, error)) error {
+	if !provisionalResumeEnabled(self.cfg) || self.plan == nil || self.cfg.provisionalResume.Record.PlanHash != self.plan.PlanHash || entry.Stage != StageVerified || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) {
 		return errors.New("provisional receipt does not match the exact approved verified intent")
 	}
-	if _, err := e.readPersistedPostcondition(entry); err != nil {
+	if _, err := readPostcondition(entry); err != nil {
 		return fmt.Errorf("provisional resume persisted postcondition: %w", err)
 	}
 	return nil
 }
 
 func (e *Executor) verifyProvisionalActionHistory(ctx context.Context) error {
+	if ctx == nil || e == nil || e.plan == nil || e.journal == nil {
+		return errors.New("provisional preparation context is unavailable")
+	}
+	return e.verifyProvisionalActionHistoryWithReaders(ctx, e.journal.Entries, readValidatorEvidenceHistoricalPlan)
+}
+
+// Index one exact journal snapshot and decode each original source once.
+// No successful receipt or decoded source survives this read-only invocation.
+func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Context, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) error {
+	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || readEntries == nil || readSource == nil {
+		return errors.New("provisional preparation readers are unavailable")
+	}
+	entries := readEntries()
+	verified := newCarriedPreparationIndex(self.plan, entries)
+	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
 	count := 0
 	var failures []error
-	for _, action := range e.plan.Actions {
-		entry, ok := e.verifiedActionEntryForScope(action, true)
+	for index, action := range self.plan.Actions {
+		if index > 0 && index%carriedActionProgressInterval == 0 {
+			fmt.Fprintf(os.Stderr, "sim-testnet: provisional local receipt audit %d/%d actions; authenticated=%d failures=%d; final_acceptance=false\n", index, len(self.plan.Actions), count, len(failures))
+		}
+		entry, ok := verified.find(action, true)
 		if !ok {
 			continue
 		}
@@ -166,14 +191,17 @@ func (e *Executor) verifyProvisionalActionHistory(ctx context.Context) error {
 			failures = append(failures, fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err))
 			continue
 		}
-		if err := e.authenticateProvisionalReceipt(action, entry); err != nil {
+		if err := self.authenticateProvisionalReceiptWithReader(action, entry, readPostcondition); err != nil {
 			failures = append(failures, fmt.Errorf("action %s: %w", action.ID, err))
 			continue
 		}
 		count++
 	}
+	if !slices.Equal(entries, readEntries()) {
+		failures = append(failures, errors.New("provisional preparation journal changed during reconciliation"))
+	}
 	fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume authenticated %d verified local receipts; current topology readiness remains required\n", count)
-	return errors.Join(failures...)
+	return errors.Join(errors.Join(failures...), ctx.Err())
 }
 
 func applyProvisionalScenarioProvenance(cfg *ResolvedConfig, result *ScenarioResult) {

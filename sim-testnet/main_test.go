@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -309,6 +310,31 @@ func TestRunMainServerModulesConfineTLSFallbackToConnectLoopback(t *testing.T) {
 		if err := runMain(invalid); err == nil {
 			t.Errorf("invalid internal server invocation accepted: %q", invalid)
 		}
+	}
+}
+
+// The hidden migration entrypoint accepts no alternate catalog or arguments;
+// its injected callback proves it receives the caller's exact context.
+func TestRunServerDatabaseMigrationUsesEmbeddedCatalog(t *testing.T) {
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("catalog"), "workload")
+	calls := 0
+	err := runServerDatabaseMigration(ctx, nil, func(migrationCtx context.Context) {
+		calls++
+		if migrationCtx.Value(contextKey("catalog")) != "workload" {
+			t.Fatal("migration lost its workload context")
+		}
+	})
+	if err != nil || calls != 1 {
+		t.Fatalf("embedded migration calls=%d error=%v", calls, err)
+	}
+	if err := runServerDatabaseMigration(ctx, []string{"db", "migrate"}, func(context.Context) { calls++ }); err == nil || calls != 1 {
+		t.Fatalf("alternate migration surface calls=%d error=%v", calls, err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runServerDatabaseMigration(canceled, nil, func(context.Context) { calls++ }); !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatalf("canceled migration calls=%d error=%v", calls, err)
 	}
 }
 

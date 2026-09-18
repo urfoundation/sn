@@ -279,3 +279,33 @@ func TestAttemptCutV2ReplayReadAndEOFCancellationStopsAdmission(t *testing.T) {
 		}
 	}
 }
+
+// A transport timeout while reading a row or proving final EOF keeps its
+// recoverable cause. No partial row, byte count or hash is ever accepted.
+func TestAttemptCutV2ReplayChunkTransportInterruptionIsRetryable(t *testing.T) {
+	raw := []byte("{}\n")
+	chunk := AttemptStreamV2Chunk{Index: 0, FirstSequence: 1, LastSequence: 1, ItemCount: 1, DataBytes: uint64(len(raw)), ContentHash: attemptHex32(sha256.Sum256(raw))}
+	for _, atEOF := range []bool{false, true} {
+		calls, visits := 0, 0
+		reader := &attemptReplayV2TestReader{Reader: attemptReplayV2ReadFunc(func(buffer []byte) (int, error) {
+			calls++
+			if calls == 1 {
+				if atEOF {
+					return copy(buffer, raw), nil
+				}
+				return copy(buffer, raw[:len(raw)-1]), context.DeadlineExceeded
+			}
+			return 0, context.DeadlineExceeded
+		}), close: func() error { return nil }}
+		err := walkAttemptStreamV2Chunk(t.Context(), AttemptStreamV2Records, chunk, 32,
+			func(context.Context, string, string, uint64) (io.ReadCloser, error) { return reader, nil },
+			func(uint64, []byte) error { visits++; return nil })
+		wantVisits := 0
+		if atEOF {
+			wantVisits = 1
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || !transientReleaseSnapshotError(err) || visits != wantVisits {
+			t.Fatalf("EOF=%t calls=%d visits=%d error=%v", atEOF, calls, visits, err)
+		}
+	}
+}

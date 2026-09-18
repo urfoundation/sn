@@ -11,10 +11,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"maps"
 	"math/big"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -478,8 +480,17 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 	if err != nil {
 		return nil, zero, err
 	}
-	inputs := make([]ReleaseMeasurementInput, 0, len(self.history.participants))
-	for _, participant := range self.history.participants {
+	type nativeInputTask struct {
+		participant  AttemptSettlementRuntimeV2Participant
+		cursor       releaseEvidenceV2StartupCursor
+		expected     AttemptCutV2Context
+		inputOptions releaseMeasurementInputV2Options
+		retry        bool
+		input        ReleaseMeasurementInput
+		err          error
+	}
+	tasks := make([]nativeInputTask, len(self.history.participants))
+	for index, participant := range self.history.participants {
 		noId, cursor := participant.NoID, self.history.current[participant.NoID]
 		boundary := AttemptBoundary{SettlementEpoch: snapshot.Epoch.Uint64(), EVMBlock: snapshot.BlockNumber, EVMBlockHash: attemptHex32(snapshot.BlockHash)}
 		expected, err := self.context(noId, cursor, boundary)
@@ -518,64 +529,95 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 			}
 			self.nativeReservations[noId] = subnetEpoch
 		}
-		input, err := steerer.loadOrDetachReleaseMeasurementInputV2(ctx, noId, subnetEpoch, nativeBlock, nativeHash, snapshot, inputOptions)
-		if err != nil {
-			return nil, zero, err
+		tasks[index] = nativeInputTask{participant: participant, cursor: cursor, expected: expected, inputOptions: inputOptions, retry: retry}
+	}
+	// Operators own different Stats engines, immutable journal names and upload
+	// credentials. Run their finite detach/replay operations together so one
+	// large operator cannot consume the complete native-to-settlement window.
+	// Every worker joins before the gate-owned history is changed.
+	var joined sync.WaitGroup
+	joined.Add(len(tasks))
+	for index := range tasks {
+		go func() {
+			defer joined.Done()
+			task := &tasks[index]
+			task.input, task.err = steerer.loadOrDetachReleaseMeasurementInputV2(ctx, task.participant.NoID, subnetEpoch, nativeBlock, nativeHash, snapshot, task.inputOptions)
+		}()
+	}
+	joined.Wait()
+	inputs := make([]ReleaseMeasurementInput, 0, len(tasks))
+	failures := make([]error, 0, len(tasks)+1)
+	for index := range tasks {
+		task := &tasks[index]
+		noId, input := task.participant.NoID, task.input
+		if task.err != nil {
+			failures = append(failures, fmt.Errorf("release V2 native operator %d: %w", noId, task.err))
+			continue
 		}
-		if input.AttemptCutV2 == nil {
-			return nil, zero, errors.New("release V2 native detach omitted its actual signed cut")
-		}
-		if err := input.AttemptCutV2.VerifyHeader(expected, bounds.Cut); err != nil {
-			return nil, zero, err
-		}
-		// Retain an independently owned copy of the actual journal bytes for
-		// native intent recovery; the returned candidate cannot mutate it.
-		journalBytes, err := readReleaseMeasurementInputV2Context(ctx, releaseMeasurementInputV2Path(self.cfg.StateDir, subnetEpoch, noId), bounds.MaxInputJournalBytes, releaseMeasurementInputV2ReadHooks{})
-		if err != nil {
-			return nil, zero, err
-		}
-		journal, err := decodeReleaseMeasurementInputV2(ctx, journalBytes, inputOptions)
-		if err != nil {
-			return nil, zero, err
-		}
-		actual, err := marshalAttemptSettlementV2JSON(ctx, input, bounds.MaxInputJournalBytes, false, true)
-		if err != nil {
-			return nil, zero, err
-		}
-		retained, err := marshalAttemptSettlementV2JSON(ctx, journal.MeasurementInput, bounds.MaxInputJournalBytes, false, true)
-		if err != nil || !bytes.Equal(actual, retained) {
-			return nil, zero, errors.Join(errors.New("release V2 native journal changed after actual detach"), err)
-		}
-		if self.history.inputByEpoch[subnetEpoch] == nil {
-			self.history.inputByEpoch[subnetEpoch] = make(map[uint64]*releaseMeasurementInputJournal)
-		}
-		self.history.inputByEpoch[subnetEpoch][noId] = journal
-		if self.history.inputContextsByEpoch == nil {
-			self.history.inputContextsByEpoch = make(map[uint64]map[uint64]AttemptCutV2Context)
-		}
-		if self.history.inputContextsByEpoch[subnetEpoch] == nil {
-			self.history.inputContextsByEpoch[subnetEpoch] = make(map[uint64]AttemptCutV2Context)
-		}
-		self.history.inputContextsByEpoch[subnetEpoch][noId] = expected
-		if !retry {
-			cursor.egressFirst, cursor.generation = input.AttemptCutV2.LastSequence+1, cursor.generation+1
-			cursor.lastSequence, cursor.lastRoot, cursor.lastBoundary = input.AttemptCutV2.LastSequence, input.AttemptCutV2.Root, expected.Boundary
-			self.history.current[noId] = cursor
-			self.history.lastOrdinary[noId] = journal
-			if self.history.ordinaryContexts == nil {
-				self.history.ordinaryContexts = make(map[uint64]AttemptCutV2Context)
+		err := func() error {
+			if input.AttemptCutV2 == nil {
+				return errors.New("release V2 native detach omitted its actual signed cut")
 			}
-			self.history.ordinaryContexts[noId] = expected
-		}
-		delete(self.nativeReservations, noId)
-		// The following consumer needs a fresh physical replay name: the
-		// ordinary statistics reconciliation already consumed its own one.
-		operator, err = self.operator(ctx, expected, "ordinary-head")
+			if err := input.AttemptCutV2.VerifyHeader(task.expected, bounds.Cut); err != nil {
+				return err
+			}
+			// Retain an independently owned copy of the actual journal bytes for
+			// native intent recovery; the returned candidate cannot mutate it.
+			journalBytes, err := readReleaseMeasurementInputV2Context(ctx, releaseMeasurementInputV2Path(self.cfg.StateDir, subnetEpoch, noId), bounds.MaxInputJournalBytes, releaseMeasurementInputV2ReadHooks{})
+			if err != nil {
+				return err
+			}
+			journal, err := decodeReleaseMeasurementInputV2(ctx, journalBytes, task.inputOptions)
+			if err != nil {
+				return err
+			}
+			actual, err := marshalAttemptSettlementV2JSON(ctx, input, bounds.MaxInputJournalBytes, false, true)
+			if err != nil {
+				return err
+			}
+			retained, err := marshalAttemptSettlementV2JSON(ctx, journal.MeasurementInput, bounds.MaxInputJournalBytes, false, true)
+			if err != nil || !bytes.Equal(actual, retained) {
+				return errors.Join(errors.New("release V2 native journal changed after actual detach"), err)
+			}
+			if self.history.inputByEpoch[subnetEpoch] == nil {
+				self.history.inputByEpoch[subnetEpoch] = make(map[uint64]*releaseMeasurementInputJournal)
+			}
+			self.history.inputByEpoch[subnetEpoch][noId] = journal
+			if self.history.inputContextsByEpoch == nil {
+				self.history.inputContextsByEpoch = make(map[uint64]map[uint64]AttemptCutV2Context)
+			}
+			if self.history.inputContextsByEpoch[subnetEpoch] == nil {
+				self.history.inputContextsByEpoch[subnetEpoch] = make(map[uint64]AttemptCutV2Context)
+			}
+			self.history.inputContextsByEpoch[subnetEpoch][noId] = task.expected
+			if !task.retry {
+				cursor := task.cursor
+				cursor.egressFirst, cursor.generation = input.AttemptCutV2.LastSequence+1, cursor.generation+1
+				cursor.lastSequence, cursor.lastRoot, cursor.lastBoundary = input.AttemptCutV2.LastSequence, input.AttemptCutV2.Root, task.expected.Boundary
+				self.history.current[noId] = cursor
+				self.history.lastOrdinary[noId] = journal
+				if self.history.ordinaryContexts == nil {
+					self.history.ordinaryContexts = make(map[uint64]AttemptCutV2Context)
+				}
+				self.history.ordinaryContexts[noId] = task.expected
+			}
+			delete(self.nativeReservations, noId)
+			// The following consumer needs a fresh physical replay name: the
+			// ordinary statistics reconciliation already consumed its own one.
+			operator, err := self.operator(ctx, task.expected, "ordinary-head")
+			if err != nil {
+				return err
+			}
+			options.Operators[noId] = ReleaseMeasurementV2OperatorOptions{Expected: task.expected, CutNativeBlock: input.CutNativeBlock, CutNativeBlockHash: input.CutNativeBlockHash, Bounds: bounds.Cut, Measurement: operator.Measurement}
+			inputs = append(inputs, input)
+			return nil
+		}()
 		if err != nil {
-			return nil, zero, err
+			failures = append(failures, fmt.Errorf("release V2 native operator %d result: %w", noId, err))
 		}
-		options.Operators[noId] = ReleaseMeasurementV2OperatorOptions{Expected: expected, CutNativeBlock: input.CutNativeBlock, CutNativeBlockHash: input.CutNativeBlockHash, Bounds: bounds.Cut, Measurement: operator.Measurement}
-		inputs = append(inputs, input)
+	}
+	if err := errors.Join(append(failures, ctx.Err())...); err != nil {
+		return nil, zero, err
 	}
 	if closure := self.history.terminal; closure != nil {
 		if closure.Epoch+1 != snapshot.Epoch.Uint64() {

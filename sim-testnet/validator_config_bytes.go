@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/urfoundation/sn/crv4"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
@@ -25,5 +26,8 @@ func marshalRuntimeValidatorConfig(cfg *ResolvedConfig, stateDir string, roles *
 	v["policy"] = cfg.Policy
 	v["operators"] = operatorDirectory(cfg, stateDir, roles, id)
 	v["evidence_v2"] = cfg.Config.ValidatorEvidenceV2[id-1].Evidence
+	if provisionalResumeEnabled(cfg) {
+		v["provisional_runtime_compatibility"] = crv4.ProvisionalRuntimeCompatibilityProfile
+	}
 	return yaml.Marshal(v)
 }

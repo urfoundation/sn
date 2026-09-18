@@ -1,0 +1,1 @@
+sim-testnet: open durable release-1.0 attempt: campaign succession requires the strict approved deployment owner

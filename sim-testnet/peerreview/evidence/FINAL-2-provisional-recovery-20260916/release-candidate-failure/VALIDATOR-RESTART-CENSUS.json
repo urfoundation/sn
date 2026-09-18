@@ -1,0 +1,14 @@
+[
+  {
+    "healthy": true,
+    "id": "validator-1",
+    "pid": 207044,
+    "restarts": 2
+  },
+  {
+    "healthy": true,
+    "id": "validator-2",
+    "pid": 203148,
+    "restarts": 1
+  }
+]

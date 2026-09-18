@@ -4,6 +4,8 @@ package validator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -155,6 +157,62 @@ func TestInitialReleaseSnapshotStopsOnParentCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) || loads != 1 {
 		t.Fatalf("error=%v loads=%d", err, loads)
+	}
+}
+
+// An interrupted authenticated lineage body is replayed in-process rather
+// than consuming another supervised validator restart.
+func TestReleaseV2StartupReplayRetriesTransientBodyInterruption(t *testing.T) {
+	want := &ReleaseSteerer{}
+	loads, waits := 0, 0
+	got, err := loadReleaseSteererV2WithRetry(t.Context(), func() (*ReleaseSteerer, error) {
+		loads++
+		if loads < 3 {
+			return nil, fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", context.DeadlineExceeded)
+		}
+		return want, nil
+	}, func(_ context.Context, delay time.Duration) error {
+		waits++
+		if delay != releaseSnapshotStartupRetryDelay {
+			t.Fatalf("retry delay = %s, want %s", delay, releaseSnapshotStartupRetryDelay)
+		}
+		return nil
+	})
+	if err != nil || got != want || loads != 3 || waits != 2 {
+		t.Fatalf("steerer=%p error=%v loads=%d waits=%d", got, err, loads, waits)
+	}
+}
+
+// A complete object whose authenticated content differs remains fail-fast;
+// the transport retry cannot turn a byte mismatch into accepted lineage.
+func TestReleaseV2StartupReplayFailsContentIntegrityErrorImmediately(t *testing.T) {
+	wantErr := errors.New("compact attempt chunk byte count or content hash differs")
+	loads, waits := 0, 0
+	got, err := loadReleaseSteererV2WithRetry(t.Context(), func() (*ReleaseSteerer, error) {
+		loads++
+		return nil, wantErr
+	}, func(context.Context, time.Duration) error {
+		waits++
+		return nil
+	})
+	if got != nil || !errors.Is(err, wantErr) || loads != 1 || waits != 0 {
+		t.Fatalf("steerer=%p error=%v loads=%d waits=%d", got, err, loads, waits)
+	}
+}
+
+// Persistent transport interruption remains bounded by the reviewed startup
+// budget, even though it no longer terminates after the first failed body.
+func TestReleaseV2StartupReplayBoundsPersistentInterruption(t *testing.T) {
+	loads, waits := 0, 0
+	got, err := loadReleaseSteererV2WithRetry(t.Context(), func() (*ReleaseSteerer, error) {
+		loads++
+		return nil, fmt.Errorf("compact attempt chunk could not authenticate its exact EOF: %w", io.ErrUnexpectedEOF)
+	}, func(context.Context, time.Duration) error {
+		waits++
+		return nil
+	})
+	if got != nil || err == nil || loads != releaseSnapshotStartupAttempts || waits != releaseSnapshotStartupAttempts-1 {
+		t.Fatalf("steerer=%p error=%v loads=%d waits=%d", got, err, loads, waits)
 	}
 }
 

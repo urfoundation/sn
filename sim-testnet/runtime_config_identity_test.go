@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urfoundation/sn/crv4"
 	"gopkg.in/yaml.v3"
 )
 
@@ -152,9 +153,38 @@ func TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership(t *
 	}
 }
 
-// The real planner binds migration approval without changing resolved launch
-// inputs, transaction intents, deterministic roles, custody or allowances.
-func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t *testing.T) {
+// Current rendering changes independently of the signed consent domain. Only
+// its local receipt must be replaced; transaction and history intents survive.
+func requireRuntimeConfigOnlyRerenderTest(t *testing.T, prior, current *SetupPlan) {
+	t.Helper()
+	if len(prior.Actions) != len(current.Actions) {
+		t.Fatal("runtime migration changed the action census")
+	}
+	renders := 0
+	for index, previous := range prior.Actions {
+		action := current.Actions[index]
+		if action.ID == "config.render" {
+			renders++
+			if previous.IntentHash == action.IntentHash || action.Parameters["native_runtime_hash"] == "" || previous.Parameters["native_runtime_hash"] == action.Parameters["native_runtime_hash"] {
+				t.Fatal("changed current runtime reused the prior render approval")
+			}
+			previous.IntentHash, action.IntentHash = "", ""
+			previous.Parameters, action.Parameters = cloneStrings(previous.Parameters), cloneStrings(action.Parameters)
+			delete(previous.Parameters, "native_runtime_hash")
+			delete(action.Parameters, "native_runtime_hash")
+		}
+		if !reflect.DeepEqual(previous, action) {
+			t.Fatalf("runtime migration changed non-runtime action authority for %s", action.ID)
+		}
+	}
+	if renders != 1 {
+		t.Fatalf("runtime migration has %d render actions", renders)
+	}
+}
+
+// The real planner replaces only the derived render approval while preserving
+// resolved inputs, transaction intents, deterministic roles and allowances.
+func TestCoordinatorRepairCarryRuntimeIdentityRerendersOnlyLocalConfigs(t *testing.T) {
 	t.Parallel()
 	original, current := runtimeConfigIdentityTestConfigs(t)
 	roles, err := derivePublicRoles(original)
@@ -172,8 +202,9 @@ func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t 
 	if prior.ConfigIdentityRuntimeSpec != 0 || plan.ConfigIdentityRuntimeSpec != 455 || prior.PlanHash == plan.PlanHash || prior.ReleaseLockHash == plan.ReleaseLockHash || prior.ConfigHash != plan.ConfigHash || prior.ResolvedInputsHash != plan.ResolvedInputsHash {
 		t.Fatal("migration approval lost its explicit pin or changed retained activation inputs")
 	}
-	if !reflect.DeepEqual(prior.Actions, plan.Actions) || !reflect.DeepEqual(prior.Roles, plan.Roles) || !reflect.DeepEqual(prior.Deployment, plan.Deployment) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
-		t.Fatal("runtime identity migration changed action intents, custody or approved budgets")
+	requireRuntimeConfigOnlyRerenderTest(t, prior, plan)
+	if !reflect.DeepEqual(prior.Roles, plan.Roles) || !reflect.DeepEqual(prior.Deployment, plan.Deployment) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
+		t.Fatal("runtime identity migration changed custody or approved budgets")
 	}
 	withoutPin := *plan
 	withoutPin.ConfigIdentityRuntimeSpec = 0
@@ -204,6 +235,159 @@ func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t 
 	}
 	if reopened, err := loadPersistedPlan(current, stateDir); err != nil || reopened.ConfigIdentityRuntimeSpec != 455 {
 		t.Fatalf("current pinned approval could not restart: %v", err)
+	}
+}
+
+// The last reviewed transition retains the normalized consent hash while
+// replacing the exact local intent that carried stale operator runtime pins.
+func TestRuntimeConfigNativeRefreshBindsReviewed460Migration(t *testing.T) {
+	t.Parallel()
+	_, current := runtimeConfigIdentityTestConfigs(t)
+	previous, public, release := *current, *current.Public, *current.Release
+	public.Chain.ExpectedRuntimeSpec = 460
+	release.Runtime = runtime460ReviewedTestLock().Runtime
+	release.Runtime.Image = current.Release.Runtime.Image
+	previous.Public, previous.Release = &public, &release
+	var err error
+	previous.ConfigHash, err = releaseConfigHash(previous.Config, previous.Public, previous.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err := derivePublicRoles(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Construct archive bytes before persistence, as the existing historical
+	// source fixtures do. The current planner cannot execute a 460 migration.
+	prior, err := buildPlan(current, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebindValidatorEvidenceReleaseLockTest(t, prior, &release)
+	previousRuntime, ok := crv4.ReviewedRuntimeArtifact(crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1})
+	if !ok {
+		t.Fatal("former reviewed runtime fixture is absent")
+	}
+	previousRuntimeHash, err := canonicalHashHex(previousRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range prior.Actions {
+		action := &prior.Actions[index]
+		if action.ID == "config.render" {
+			action.Parameters["native_runtime_hash"] = previousRuntimeHash
+			action.IntentHash, err = actionIntentHash(*action)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorWire, err := json.Marshal(prior)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := decodePersistedPlanBytesForHistory(priorWire, true)
+	if err != nil || archived == nil || archived.PlanHash != prior.PlanHash {
+		t.Fatalf("synthetic 460 archive is invalid: %v", err)
+	}
+	if err := validateRuntimeConfigIdentityPlan(&previous, archived); err == nil {
+		t.Fatal("historical 460 fixture became current execution authority")
+	}
+	plan, err := buildPlan(current, testSetupFacts(), roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prior.ConfigHash != previous.ConfigHash || prior.ConfigHash != plan.ConfigHash || prior.ResolvedInputsHash != plan.ResolvedInputsHash || !reflect.DeepEqual(prior.Roles, plan.Roles) || prior.MaximumSpend != plan.MaximumSpend || prior.Limits != plan.Limits {
+		t.Fatal("current runtime refresh changed consent, custody or spending limits")
+	}
+	requireRuntimeConfigOnlyRerenderTest(t, prior, plan)
+}
+
+// A durable ancestor success cannot hide a failed current render on restart,
+// and preparation must leave that local work for the ordinary action executor.
+func TestCoordinatorRepairCarryRuntimeIdentityInterruptedRenderRemainsPending(t *testing.T) {
+	t.Parallel()
+	original, current := runtimeConfigIdentityTestConfigs(t)
+	roles, err := BuildRoleSecrets(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRoles, err := derivePublicRoles(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(original, testSetupFacts(), publicRoles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reproduce an already sealed legacy action, which predates this field.
+	for index := range prior.Actions {
+		action := &prior.Actions[index]
+		if action.ID == "config.render" {
+			delete(action.Parameters, "native_runtime_hash")
+			action.IntentHash, err = actionIntentHash(*action)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(current, testSetupFacts(), publicRoles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.PriorPlanHashes = []string{prior.PlanHash}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := launchPreparationTestExecutor(t)
+	executor.cfg, executor.roles, executor.plan = current, roles, plan
+	if err := writeRunInputs(original, executor.stateDir, prior, roles); err != nil {
+		t.Fatal(err)
+	}
+	if historical, err := readValidatorEvidenceHistoricalPlan(executor.stateDir, prior.PlanHash); err != nil || historical == nil || historical.PlanHash != prior.PlanHash {
+		t.Fatalf("original render approval lost historical readability: %v", err)
+	}
+	if err := writeRunInputs(current, executor.stateDir, plan, roles); err != nil {
+		t.Fatal(err)
+	}
+	previous := actionByID(t, prior, "config.render")
+	appendLaunchPreparationTestReceipt(t, executor, previous)
+	executor.plan.Actions = executor.plan.Actions[:len(executor.plan.Actions)-1]
+	action := actionByID(t, plan, "config.render")
+	for _, stage := range []JournalStage{StageIntent, StageFailed} {
+		if err := executor.journal.Append(JournalEntry{DeploymentID: plan.DeploymentID, PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: stage}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := executor.journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	executor.journal, err = OpenJournal(executor.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { executor.journal.Close() })
+	before := validatorNamespaceTreeSnapshot(t, executor.stateDir)
+	if _, found := executor.verifiedActionEntry(action); found {
+		t.Fatal("interrupted current render inherited its ancestor's success")
+	}
+	if err := executor.collectCarriedActionHistory(t.Context()); err != nil {
+		t.Fatalf("preparation verified stale derived inputs instead of scheduling their render: %v", err)
+	}
+	if err := executor.verifyActionDependencies(actionByID(t, plan, "accounts.provision")); err == nil || !strings.Contains(err.Error(), "config.render is not postcondition-verified") {
+		t.Fatalf("a consumer could start before current rendering completed: %v", err)
+	}
+	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, executor.stateDir)) {
+		t.Fatal("read-only preparation changed historical receipts or incomplete current work")
 	}
 }
 
@@ -344,14 +528,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 	if plan.ResolvedInputsHash != prior.ResolvedInputsHash {
 		t.Fatalf("setup migration changed approved resolved inputs: got=%s want=%s", plan.ResolvedInputsHash, prior.ResolvedInputsHash)
 	}
-	if len(plan.Actions) != len(executor.plan.Actions) {
-		t.Fatalf("setup migration changed action count: got=%d want=%d", len(plan.Actions), len(executor.plan.Actions))
-	}
-	for index, action := range plan.Actions {
-		if !reflect.DeepEqual(action, executor.plan.Actions[index]) {
-			t.Fatalf("setup migration changed original action %s at index %d", action.ID, index)
-		}
-	}
+	requireRuntimeConfigOnlyRerenderTest(t, executor.plan, plan)
 	if plan.MaximumSpend != prior.MaximumSpend || plan.Limits != prior.Limits {
 		t.Fatalf("setup migration changed budget authority: maximum=%+v want=%+v limits=%+v want=%+v", plan.MaximumSpend, prior.MaximumSpend, plan.Limits, prior.Limits)
 	}

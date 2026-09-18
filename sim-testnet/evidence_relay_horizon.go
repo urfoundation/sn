@@ -322,6 +322,7 @@ type evidenceRelayHorizon struct {
 	sourceKVs         map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation
 	headerKVs         map[[32]byte]protocol.ValidatorEvidenceHeader
 	continuation      *EvidenceRelayContinuation
+	forecastAdvisory  bool
 }
 
 // Ceilings count a partial boundary on both clocks. The one/native term is
@@ -446,9 +447,9 @@ func (self *evidenceRelayHorizon) extraSubjects(candidate *protocol.ValidatorEvi
 	return audits - uint64(len(seenKVs)), nil
 }
 
-// Original activation plus remaining approved slots determines the furthest
-// funded block, settlement epoch and native epoch. No restart supplies a new
-// origin, and extra audit subjects shrink headroom rather than new approval.
+// Original activation plus remaining approved slots determines strict clock
+// ceilings and the continuation's stored forecasts. No restart supplies a new
+// origin or subject allowance.
 func (self *evidenceRelayHorizon) ceilings(candidate *protocol.ValidatorEvidenceHeader) (uint64, uint64, uint64, error) {
 	if self == nil || self.maximum == 0 || self.anchorBlock == 0 {
 		return 0, 0, 0, errors.New("evidence relay horizon is absent")
@@ -508,23 +509,27 @@ func (self *evidenceRelayHorizon) admit(header protocol.ValidatorEvidenceHeader,
 	if err != nil {
 		return err
 	}
-	if currentBlock < self.anchorBlock || currentBlock > block || self.minimumEnd > block || self.minimumNativeEnd > nativeEpoch || header.Epoch < self.anchorEpoch || header.Epoch > epoch || header.BoundaryBlock > currentBlock || header.BoundaryBlock > block ||
-		header.Kind == protocol.ValidatorEvidenceDepositAudit && (header.Subject.NativeEpoch < self.anchorNativeEpoch || header.Subject.NativeEpoch > nativeEpoch || header.Subject.ObservationEpoch > epoch) {
+	outsideForecast := currentBlock > block || self.minimumEnd > block || self.minimumNativeEnd > nativeEpoch || header.Epoch > epoch || header.BoundaryBlock > block ||
+		header.Kind == protocol.ValidatorEvidenceDepositAudit && (header.Subject.NativeEpoch > nativeEpoch || header.Subject.ObservationEpoch > epoch)
+	if currentBlock < self.anchorBlock || header.Epoch < self.anchorEpoch || header.BoundaryBlock > currentBlock ||
+		header.Kind == protocol.ValidatorEvidenceDepositAudit && header.Subject.NativeEpoch < self.anchorNativeEpoch || !self.forecastAdvisory && outsideForecast {
 		return fmt.Errorf("evidence relay insufficient remaining horizon before spend: observed_block=%d required_end=%d funded_end=%d", currentBlock, self.minimumEnd, block)
 	}
 	// Extra subjects cannot evict an already authenticated delayed/future
 	// header. Check the whole set, never journal or delivery ordering.
-	for _, retained := range self.headerKVs {
-		if retained.Epoch > epoch || retained.BoundaryBlock > block || retained.Kind == protocol.ValidatorEvidenceDepositAudit && (retained.Subject.NativeEpoch > nativeEpoch || retained.Subject.ObservationEpoch > epoch) {
-			return errors.New("evidence relay extra subject would underfund an original retained slot")
+	if !self.forecastAdvisory {
+		for _, retained := range self.headerKVs {
+			if retained.Epoch > epoch || retained.BoundaryBlock > block || retained.Kind == protocol.ValidatorEvidenceDepositAudit && (retained.Subject.NativeEpoch > nativeEpoch || retained.Subject.ObservationEpoch > epoch) {
+				return errors.New("evidence relay extra subject would underfund an original retained slot")
+			}
 		}
 	}
 	self.headerKVs[slot] = header
 	return nil
 }
 
-// A fresh phase/after-preparation snapshot must still leave every remaining
-// required block inside the same original allowance; no files or sends occur.
+// Strict preparation fits required work inside the original clock forecast.
+// Provisional continuation still checks arithmetic and anchored lower bounds.
 func (self *evidenceRelayHorizon) requireRemaining(currentBlock, nativeEpoch, remaining uint64) error {
 	end, ok := checkedAdd(currentBlock, remaining)
 	if !ok || remaining == 0 {
@@ -539,7 +544,8 @@ func (self *evidenceRelayHorizon) requireRemaining(currentBlock, nativeEpoch, re
 		nativeRemaining++
 	}
 	nativeEnd, nativeOk := checkedAdd(nativeEpoch, nativeRemaining)
-	if !nativeOk || currentBlock < self.anchorBlock || currentBlock > block || nativeEpoch < self.anchorNativeEpoch || nativeEpoch > maximumNativeEpoch || nativeEnd > maximumNativeEpoch || end > block {
+	outsideForecast := currentBlock > block || nativeEpoch > maximumNativeEpoch || nativeEnd > maximumNativeEpoch || end > block
+	if !nativeOk || currentBlock < self.anchorBlock || nativeEpoch < self.anchorNativeEpoch || !self.forecastAdvisory && outsideForecast {
 		return fmt.Errorf("evidence relay insufficient remaining horizon before preparation: observed_block=%d native_epoch=%d required_end=%d funded_end=%d", currentBlock, nativeEpoch, end, block)
 	}
 	self.minimumEnd = end

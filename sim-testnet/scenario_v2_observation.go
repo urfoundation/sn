@@ -49,6 +49,9 @@ func inspectValidatorIntentV2(ctx context.Context, cfg *ResolvedConfig, stateRoo
 		return failure(err)
 	}
 	defer native.API.Client.Close()
+	if err := enableProvisionalRuntimeCompatibility(native, cfg); err != nil {
+		return failure(err)
+	}
 	source, err := validatorpkg.ObserveReleaseNativeSourcesV2(ctx, release, native, hotkey, adoption)
 	if err != nil {
 		return failure(err)

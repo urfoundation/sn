@@ -81,6 +81,9 @@ func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.
 	if ctx == nil || chain == nil || cfg == nil || finalized == (types.Hash{}) {
 		return errors.New("native runtime identity context is incomplete")
 	}
+	if err := validateReleaseProvisionalRuntimeCompatibility(cfg); err != nil {
+		return err
+	}
 	validate := validateReleaseNativeRuntimeConfig
 	if historical {
 		validate = validateReleaseHistoricalNativeRuntimeConfig
@@ -105,6 +108,9 @@ func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.
 	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, chain, finalized, allowed...)
 	if err != nil {
 		return fmt.Errorf("native runtime at %s is not the configured node-subtensor/%d/%d/%d artifact: %w", finalized.Hex(), cfg.RuntimeSpec, cfg.TransactionVersion, cfg.StateVersion, err)
+	}
+	if artifact.CompatibilityProfile != "" && (cfg.ProvisionalRuntimeCompatibility != artifact.CompatibilityProfile || !chain.RuntimeArtifactCompatible(artifact)) {
+		return errors.New("native runtime compatibility lacks explicit validator authority")
 	}
 	chain.Meta = artifact.Metadata
 	chain.Runtime = &types.RuntimeVersion{

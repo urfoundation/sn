@@ -172,8 +172,9 @@ func CaptureReleaseNativeSourceV2(ctx context.Context, native *crv4.Chain, cfg *
 		return err
 	}
 	schedule, err := crv4.ReadValidatorScheduleAtContext(ctx, owned, crv4.ValidatorScheduleQuery{GenesisHash: owned.GenesisHash, BlockHash: hash, BlockNumber: artifact.NativeSnapshotBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
-	if err != nil || !schedule.Stake.MeetsNonSelfStakeAndPermit() || schedule.SubnetEpochIndex != artifact.SubnetEpoch || schedule.Stake.Identity.UID != artifact.SelfUID {
-		return errors.Join(errors.New("compact captured decision lacks actual native schedule/eligibility"), err)
+	matches := schedule.Stake.MeetsNonSelfStakeAndPermit() && schedule.SubnetEpochIndex == artifact.SubnetEpoch && schedule.Stake.Identity.UID == artifact.SelfUID
+	if err := releaseRpcObservationError(err, matches, errors.New("compact captured decision lacks actual native schedule/eligibility")); err != nil {
+		return err
 	}
 	return authenticateReleaseNativeSourceReferenceV2(ctx, owned, cfg, intent, artifact)
 }

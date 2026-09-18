@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,7 +21,9 @@ import (
 
 const (
 	processLogGateSchema        = "urnetwork-sim-process-log-gate-v1"
-	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v2"
+	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v4"
+	processLogClassifierV2      = "urnetwork-sim-process-log-classifier-v2"
+	processLogClassifierV3      = "urnetwork-sim-process-log-classifier-v3"
 	processLogGateStateFilename = "process-log-gate.json"
 	processLogEvidenceFilename  = "process-logs.json"
 	processLogMaximumLineBytes  = 1024 * 1024
@@ -49,6 +52,7 @@ type ProcessLogFinding struct {
 	LastLineSHA256  string   `json:"last_line_sha256,omitempty"`
 	FirstObservedAt string   `json:"first_observed_at"`
 	LastObservedAt  string   `json:"last_observed_at"`
+	AcceptanceScope string   `json:"acceptance_scope_sha256,omitempty"`
 }
 
 type processLogCursor struct {
@@ -65,20 +69,33 @@ type processLogCursor struct {
 	ScannedLines  uint64 `json:"scanned_lines"`
 	ChunkCount    uint64 `json:"chunk_count"`
 	ChunkChain    string `json:"scanned_chunk_chain_sha256"`
+	PrefixHash    string `json:"acceptance_prefix_sha256,omitempty"`
 }
 
 type processLogGateState struct {
-	Schema                     string              `json:"schema"`
-	Classifier                 string              `json:"classifier"`
-	ProvisionalObservationOnly bool                `json:"provisional_observation_only,omitempty"`
-	DeploymentID               string              `json:"deployment_id"`
-	ManifestHash               string              `json:"manifest_hash"`
-	SupervisorPID              int                 `json:"supervisor_pid,omitempty"`
-	SupervisorStartTimeTicks   uint64              `json:"supervisor_start_time_ticks,omitempty"`
-	GeneratedAt                string              `json:"generated_at"`
-	UpdatedAt                  string              `json:"updated_at"`
-	Cursors                    []processLogCursor  `json:"cursors"`
-	Findings                   []ProcessLogFinding `json:"findings"`
+	Schema                     string                        `json:"schema"`
+	Classifier                 string                        `json:"classifier"`
+	ProvisionalObservationOnly bool                          `json:"provisional_observation_only,omitempty"`
+	DeploymentID               string                        `json:"deployment_id"`
+	ManifestHash               string                        `json:"manifest_hash"`
+	SupervisorPID              int                           `json:"supervisor_pid,omitempty"`
+	SupervisorStartTimeTicks   uint64                        `json:"supervisor_start_time_ticks,omitempty"`
+	GeneratedAt                string                        `json:"generated_at"`
+	UpdatedAt                  string                        `json:"updated_at"`
+	AcceptanceBoundary         *processLogAcceptanceBoundary `json:"acceptance_boundary,omitempty"`
+	Cursors                    []processLogCursor            `json:"cursors"`
+	Findings                   []ProcessLogFinding           `json:"findings"`
+}
+
+type processLogAcceptanceBoundary struct {
+	Schema                   string             `json:"schema"`
+	BoundAt                  string             `json:"bound_at"`
+	ManifestHash             string             `json:"manifest_hash"`
+	SupervisorPID            int                `json:"supervisor_pid"`
+	SupervisorStartTimeTicks uint64             `json:"supervisor_start_time_ticks"`
+	Cursors                  []processLogCursor `json:"cursors"`
+	RetainedFindingsHash     string             `json:"retained_findings_hash"`
+	ContentHash              string             `json:"content_hash"`
 }
 
 type processLogScanResult struct {
@@ -155,6 +172,11 @@ type scenarioProcessLogGate interface {
 	WriteEvidence(runDir string) error
 }
 
+type scenarioAcceptanceProcessLogGate interface {
+	BeginAttempt() error
+	BindAcceptance(time.Time) (processLogScanResult, string, error)
+}
+
 type processLogGate struct {
 	stateLock sync.Mutex
 	stateDir  string
@@ -171,6 +193,7 @@ type processLogClassification struct {
 	class                  string
 	summary                string
 	faultAttributable      bool
+	requiredFaultKind      string
 	nonblockingDisposition string
 }
 
@@ -195,6 +218,10 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return processLogClassification{class: "fatal", summary: "process reported a fatal runtime error"}, true
 	case structuredLogSeverity(lower, "fatal"):
 		return processLogClassification{class: "fatal", summary: "process emitted an unclassified fatal log"}, true
+	case processLogReleaseSteeringAttempt(lower):
+		return processLogClassification{class: "release-steering-attempt-failure", summary: "release steering reported a failed native epoch attempt"}, true
+	case processLogReleaseSteeringContinuityFailure(lower):
+		return processLogClassification{class: "release-steering-continuity", summary: "release steering advanced past an incomplete native epoch"}, true
 	case strings.Contains(lower, "failed to sufficiently increase receive buffer size") || strings.Contains(lower, "failed to increase receive buffer size"):
 		return processLogClassification{class: "quic-receive-buffer", summary: "QUIC receive-buffer configuration is ineffective"}, true
 	case strings.Contains(lower, "tls handshake timeout"):
@@ -213,14 +240,25 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return classification, true
 	case strings.Contains(lower, "close timeout") || strings.Contains(lower, "timed out waiting for connections to close"):
 		return processLogClassification{class: "connection-close-timeout", summary: "connection close timed out", faultAttributable: true}, true
+	case strings.Contains(lower, "exit gap timeout"):
+		return processLogClassification{class: "exit-gap-timeout", summary: "worker exit-gap recovery timed out", faultAttributable: true}, true
 	case strings.Contains(lower, "exit could not create contract"):
-		return processLogClassification{class: "contract-create", summary: "worker exited because it could not create a contract"}, true
+		return processLogClassification{class: "contract-create", summary: "worker exited because it could not create a contract", faultAttributable: true}, true
+	case processLogRestartContractVerification(text, lower):
+		return processLogClassification{
+			class: "restart-stale-contract", summary: "restarted receiver rejected a contract signed with its prior in-memory secret",
+			faultAttributable: true, requiredFaultKind: "process-restart",
+		}, true
+	case strings.Contains(lower, "[api-token]failed to refresh jwt: timeout."):
+		return processLogClassification{class: "api-token-refresh-timeout", summary: "API token refresh timed out", faultAttributable: true}, true
+	case processLogFaultSeedUnavailable(lower):
+		return processLogClassification{class: "seed-unavailable", summary: "worker could not find a seed provider", faultAttributable: true}, true
 	case strings.Contains(lower, "no seed providers"):
 		return processLogClassification{class: "seed-unavailable", summary: "worker could not find a seed provider"}, true
 	case strings.Contains(lower, "invalid byte sequence for encoding") && strings.Contains(lower, "0x00"):
 		return processLogClassification{class: "postgres-null-byte", summary: "PostgreSQL rejected a transaction intent containing a NUL byte"}, true
 	case strings.Contains(lower, "completehandshake failed: context canceled"):
-		return processLogClassification{class: "connection-canceled", summary: "connection handshake was canceled", faultAttributable: true, nonblockingDisposition: "lifecycle"}, true
+		return processLogClassification{class: "connection-canceled", summary: "connection handshake was canceled", faultAttributable: true}, true
 	}
 
 	// These exact classes are expected protocol/lifecycle noise and have their
@@ -250,6 +288,81 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return processLogClassification{class: "warning", summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	return processLogClassification{}, false
+}
+
+// The validator admits at most 128 trail workers, numbered from zero. Match
+// only its canonical worker diagnostic with the pre-seed zero-hop identity;
+// every other seed failure remains visible but cannot inherit fault scope.
+func processLogFaultSeedUnavailable(lower string) bool {
+	const prefix = "[trail "
+	const suffix = "] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available"
+	if !strings.HasSuffix(lower, suffix) {
+		return false
+	}
+	numberEnd := len(lower) - len(suffix)
+	numberStart := strings.LastIndex(lower[:numberEnd], prefix)
+	if numberStart < 0 {
+		return false
+	}
+	number := lower[numberStart+len(prefix) : numberEnd]
+	worker, err := strconv.ParseUint(number, 10, 8)
+	return err == nil && worker < 128 && strconv.FormatUint(worker, 10) == number
+}
+
+// Matches only the receiver diagnostics emitted when a restarted process
+// rejects an in-flight Network contract signed with its prior provider secret.
+func processLogRestartContractVerification(text, lower string) bool {
+	if !klogSeverity(text, 'E') || !strings.Contains(lower, "] [r]") || !strings.Contains(lower, "<-") || !strings.Contains(lower, " s(00000000-0000-0000-0000-000000000000) ") {
+		return false
+	}
+	for _, suffix := range []string{
+		" exit contract verification failed (network)",
+		" ack could not register contracts = contract verification failed.",
+		" exit could not receive ack = contract verification failed.",
+	} {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// Matches only the validator's numbered hard-attempt diagnostic. Retryable
+// cut and transport paths use different text and stay outside this finding.
+func processLogReleaseSteeringAttempt(lower string) bool {
+	const prefix = "release steer: subnet epoch "
+	if !strings.HasPrefix(lower, prefix) {
+		return false
+	}
+	parts := strings.SplitN(strings.TrimPrefix(lower, prefix), " attempt ", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	if _, err := strconv.ParseUint(parts[0], 10, 64); err != nil {
+		return false
+	}
+	attemptAndCause := strings.SplitN(parts[1], ": ", 2)
+	if len(attemptAndCause) != 2 || attemptAndCause[1] == "" {
+		return false
+	}
+	attempt, err := strconv.ParseUint(attemptAndCause[0], 10, 64)
+	return err == nil && attempt > 0
+}
+
+// Matches the process-fatal continuity error emitted when a hard attempt is
+// still unresolved at the next native epoch.
+func processLogReleaseSteeringContinuityFailure(lower string) bool {
+	const prefix = "sim-testnet: release steering advanced from incomplete epoch "
+	if !strings.HasPrefix(lower, prefix) {
+		return false
+	}
+	parts := strings.Fields(strings.TrimPrefix(lower, prefix))
+	if len(parts) != 3 || parts[1] != "to" {
+		return false
+	}
+	prior, priorErr := strconv.ParseUint(parts[0], 10, 64)
+	current, currentErr := strconv.ParseUint(parts[2], 10, 64)
+	return priorErr == nil && currentErr == nil && current > prior
 }
 
 func processLogConnectionLoss(lower string) bool {
@@ -382,6 +495,30 @@ func initializeProcessLogGateAtBoundary(stateDir string, manifest SupervisorFile
 	if err != nil {
 		return nil, err
 	}
+	cursors, err := processLogCursorsAtBoundary(stateDir, manifest, boundary)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	gate := &processLogGate{
+		stateDir: stateDir,
+		path:     filepath.Join(stateDir, processLogGateStateFilename),
+		state: processLogGateState{
+			Schema: processLogGateSchema, Classifier: processLogClassifierVersion,
+			DeploymentID: manifest.DeploymentID, ManifestHash: manifestHash,
+			GeneratedAt: now, UpdatedAt: now, Cursors: cursors, Findings: []ProcessLogFinding{},
+		},
+	}
+	if err := gate.persistWithLock(); err != nil {
+		return nil, err
+	}
+	return gate, nil
+}
+
+// An explicit prior cursor set preserves the authenticated append-only byte
+// chain across a controlled supervisor generation change. New streams start at
+// their current EOF; removed or rerouted streams remain a hard mismatch.
+func processLogCursorsAtBoundary(stateDir string, manifest SupervisorFile, boundary []processLogCursor) ([]processLogCursor, error) {
 	cursors, err := processLogCursors(stateDir, manifest)
 	if err != nil {
 		return nil, err
@@ -407,20 +544,7 @@ func initializeProcessLogGateAtBoundary(stateDir string, manifest SupervisorFile
 	if len(boundaryPathCursors) != 0 {
 		return nil, errors.New("process log boundary contains a stream absent from the final supervisor manifest")
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	gate := &processLogGate{
-		stateDir: stateDir,
-		path:     filepath.Join(stateDir, processLogGateStateFilename),
-		state: processLogGateState{
-			Schema: processLogGateSchema, Classifier: processLogClassifierVersion,
-			DeploymentID: manifest.DeploymentID, ManifestHash: manifestHash,
-			GeneratedAt: now, UpdatedAt: now, Cursors: cursors, Findings: []ProcessLogFinding{},
-		},
-	}
-	if err := gate.persistWithLock(); err != nil {
-		return nil, err
-	}
-	return gate, nil
+	return cursors, nil
 }
 
 func loadProcessLogGate(stateDir string, manifest SupervisorFile, supervisor SupervisorState) (*processLogGate, error) {
@@ -433,13 +557,14 @@ func loadProcessLogGate(stateDir string, manifest SupervisorFile, supervisor Sup
 	if err := readJSONFile(path, &state); err != nil {
 		return nil, fmt.Errorf("read process log gate: %w", err)
 	}
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion {
-		return nil, errors.New("process log gate schema or classifier does not match this release")
-	}
 	if state.DeploymentID != manifest.DeploymentID || state.ManifestHash != manifestHash {
 		return nil, errors.New("process log gate does not match the live supervisor manifest")
 	}
 	if err := validatePersistedProcessLogGate(state); err != nil {
+		return nil, err
+	}
+	migrated, err := migrateProcessLogClassifier(&state)
+	if err != nil {
 		return nil, err
 	}
 	expected, err := processLogCursorsWithoutOffsets(stateDir, manifest)
@@ -452,6 +577,11 @@ func loadProcessLogGate(stateDir string, manifest SupervisorFile, supervisor Sup
 	gate := &processLogGate{stateDir: stateDir, path: path, state: state}
 	if err := gate.bindWithLock(supervisor); err != nil {
 		return nil, err
+	}
+	if migrated {
+		if err := gate.persistWithLock(); err != nil {
+			return nil, err
+		}
 	}
 	return gate, nil
 }
@@ -514,6 +644,24 @@ func sameProcessLogCursorInventory(actual, expected []processLogCursor) bool {
 }
 
 func validatePersistedProcessLogGate(state processLogGateState) error {
+	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
+		return errors.New("process log gate schema or classifier does not match this release")
+	}
+	if state.Classifier == processLogClassifierV2 {
+		if state.AcceptanceBoundary != nil {
+			return errors.New("legacy process log classifier has a future acceptance boundary")
+		}
+		for _, cursor := range state.Cursors {
+			if cursor.PrefixHash != "" {
+				return errors.New("legacy process log classifier has a future cursor prefix")
+			}
+		}
+		for _, finding := range state.Findings {
+			if finding.AcceptanceScope != "" {
+				return errors.New("legacy process log classifier has a future finding scope")
+			}
+		}
+	}
 	if state.GeneratedAt == "" || state.UpdatedAt == "" {
 		return errors.New("process log gate timestamps are incomplete")
 	}
@@ -532,11 +680,69 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 		if finding.ProcessID == "" || finding.Stream == "" || finding.Class == "" || finding.Summary == "" || finding.Disposition == "" || len(finding.FaultIDs) != len(finding.FaultKinds) || finding.Count == 0 || finding.FirstOffset < 0 || finding.LastOffset < 0 || finding.FirstObservedAt == "" || finding.LastObservedAt == "" {
 			return errors.New("process log gate contains an invalid finding")
 		}
-		if finding.Blocking != (finding.Disposition == "unexplained") || finding.Disposition == "expected-fault" && len(finding.FaultIDs) == 0 || finding.Disposition != "expected-fault" && len(finding.FaultIDs) != 0 {
+		if finding.Blocking != (finding.Disposition == "unexplained") || finding.Disposition == "expected-fault" && len(finding.FaultIDs) == 0 || finding.Disposition != "expected-fault" && len(finding.FaultIDs) != 0 || finding.AcceptanceScope != "" && !validCanonicalHashHex(finding.AcceptanceScope) {
 			return errors.New("process log gate finding disposition is invalid")
 		}
 	}
+	if state.AcceptanceBoundary != nil {
+		boundary := state.AcceptanceBoundary
+		if boundary.Schema != "urnetwork-sim-process-log-acceptance-v1" || boundary.ManifestHash != state.ManifestHash || boundary.SupervisorPID != state.SupervisorPID || boundary.SupervisorStartTimeTicks != state.SupervisorStartTimeTicks || !validCanonicalHashHex(boundary.RetainedFindingsHash) || !validCanonicalHashHex(boundary.ContentHash) {
+			return errors.New("process log acceptance boundary identity is invalid")
+		}
+		if _, err := time.Parse(time.RFC3339Nano, boundary.BoundAt); err != nil || !sameProcessLogCursorInventory(boundary.Cursors, state.Cursors) {
+			return errors.New("process log acceptance boundary cursor inventory is invalid")
+		}
+		for index := range boundary.Cursors {
+			sealed, current := boundary.Cursors[index], state.Cursors[index]
+			if sealed.Offset < sealed.InitialOffset || sealed.DigestOffset != sealed.Offset || sealed.Offset > current.Offset || sealed.Device != current.Device || sealed.Inode != current.Inode || !validCanonicalHashHex("0x"+sealed.ChunkChain) || !validSHA256ContentHash(sealed.PrefixHash) {
+				return errors.New("process log acceptance boundary cursor is invalid")
+			}
+		}
+		retained := make([]ProcessLogFinding, 0, len(state.Findings))
+		for _, finding := range state.Findings {
+			if finding.AcceptanceScope != boundary.ContentHash {
+				retained = append(retained, finding)
+			}
+		}
+		retainedHash, err := canonicalHashHex(retained)
+		if err != nil || retainedHash != boundary.RetainedFindingsHash {
+			return errors.Join(errors.New("process log acceptance retained findings changed"), err)
+		}
+		contentHash, err := processLogAcceptanceContentHash(boundary)
+		if err != nil || contentHash != boundary.ContentHash {
+			return errors.Join(errors.New("process log acceptance boundary content hash changed"), err)
+		}
+	}
 	return nil
+}
+
+// Earlier findings and byte cursors remain exact historical inventory. Only
+// the active classifier identity changes; an existing signed acceptance cut
+// and every finding scoped to it remain byte-for-byte unchanged.
+func migrateProcessLogClassifier(state *processLogGateState) (bool, error) {
+	if state == nil {
+		return false, errors.New("process log classifier migration state is unavailable")
+	}
+	if state.Classifier == processLogClassifierVersion {
+		return false, nil
+	}
+	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 {
+		return false, errors.New("process log classifier has no supported migration")
+	}
+	if err := validatePersistedProcessLogGate(*state); err != nil {
+		return false, err
+	}
+	state.Classifier = processLogClassifierVersion
+	return true, nil
+}
+
+func processLogAcceptanceContentHash(boundary *processLogAcceptanceBoundary) (string, error) {
+	if boundary == nil {
+		return "", errors.New("process log acceptance boundary is unavailable")
+	}
+	copy := *boundary
+	copy.ContentHash = ""
+	return canonicalHashHex(copy)
 }
 
 func (self *processLogGate) Bind(supervisor SupervisorState) error {
@@ -603,13 +809,24 @@ func (self *processLogGate) Scan(final bool, faults ...processLogFaultScope) (pr
 	}
 	self.state.UpdatedAt = now
 	persistErr := self.persistWithLock()
-	result := processLogScanResult{
-		Findings: append([]ProcessLogFinding(nil), self.state.Findings...),
+	result := self.projectFindingsWithLock()
+	return result, errors.Join(scanErr, persistErr)
+}
+
+func (self *processLogGate) projectFindingsWithLock() processLogScanResult {
+	result := processLogScanResult{}
+	if self.state.AcceptanceBoundary != nil {
+		for _, finding := range self.state.Findings {
+			if finding.AcceptanceScope == self.state.AcceptanceBoundary.ContentHash {
+				result.Findings = append(result.Findings, finding)
+			}
+		}
+		return result
 	}
+	result.Findings = append(result.Findings, self.state.Findings...)
 	if self.provisionalObservationOnly {
-		// Preserve the original release classifications in the durable report.
-		// Runtime observations retain every finding with an explicit disposition
-		// so launch, rotation and scenario anomaly checks share this policy.
+		// Provisional setup may inventory retained failures, but the signed cut
+		// ends that waiver. Findings after it keep their release classification.
 		for index := range result.Findings {
 			if result.Findings[index].Blocking {
 				result.Findings[index].Blocking = false
@@ -617,7 +834,128 @@ func (self *processLogGate) Scan(final bool, faults ...processLogFaultScope) (pr
 			}
 		}
 	}
-	return result, errors.Join(scanErr, persistErr)
+	return result
+}
+
+// A new signed campaign owns a new process-log namespace. Earlier scoped and
+// unscoped findings remain immutable in the durable report.
+func (self *processLogGate) BeginAttempt() error {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.state.AcceptanceBoundary == nil {
+		return nil
+	}
+	self.state.AcceptanceBoundary = nil
+	self.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	return self.persistWithLock()
+}
+
+func (self *processLogGate) sealCursorWithLock(cursor *processLogCursor) error {
+	path := filepath.Join(self.stateDir, cursor.Path)
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	device, inode, err := processLogIdentity(info)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || device != cursor.Device || inode != cursor.Inode || info.Size() < cursor.Offset {
+		return fmt.Errorf("process %s %s log changed before acceptance", cursor.ProcessID, cursor.Stream)
+	}
+	return self.extendChunkChainWithLock(file, cursor, true)
+}
+
+func processLogCursorPrefixHash(file *os.File, cursor processLogCursor) (string, error) {
+	if cursor.InitialOffset < 0 || cursor.Offset < cursor.InitialOffset {
+		return "", errors.New("process log cursor prefix is invalid")
+	}
+	hasher := sha256.New()
+	if _, err := io.CopyN(hasher, io.NewSectionReader(file, cursor.InitialOffset, cursor.Offset-cursor.InitialOffset), cursor.Offset-cursor.InitialOffset); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// The cut first drains every complete line, seals its byte chains, and then
+// fixes the retained finding set. Strict callers cannot bind across a finding;
+// an explicitly provisional caller may retain it only before this cut.
+func (self *processLogGate) BindAcceptance(boundAt time.Time) (processLogScanResult, string, error) {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.state.AcceptanceBoundary != nil {
+		return processLogScanResult{}, "", errors.New("process log acceptance boundary is already bound")
+	}
+	now := boundAt.UTC().Format(time.RFC3339Nano)
+	scanErr := self.validateBoundSupervisorWithLock()
+	if scanErr == nil {
+		for index := range self.state.Cursors {
+			if err := self.scanCursorWithLock(&self.state.Cursors[index], false, nil, now); err != nil {
+				scanErr = err
+				break
+			}
+		}
+	}
+	result := self.projectFindingsWithLock()
+	if scanErr == nil && processLogFindingsError(result.Findings) == nil {
+		for index := range self.state.Cursors {
+			if self.state.Cursors[index].Device == 0 || self.state.Cursors[index].Inode == 0 {
+				scanErr = fmt.Errorf("process %s %s log has no acceptance inode", self.state.Cursors[index].ProcessID, self.state.Cursors[index].Stream)
+				break
+			}
+			if err := self.sealCursorWithLock(&self.state.Cursors[index]); err != nil {
+				scanErr = err
+				break
+			}
+		}
+	}
+	if scanErr == nil {
+		scanErr = self.validateBoundSupervisorWithLock()
+	}
+	boundaryHash := ""
+	if scanErr == nil && processLogFindingsError(result.Findings) == nil {
+		retainedHash, err := canonicalHashHex(self.state.Findings)
+		if err != nil {
+			scanErr = err
+		} else {
+			sealedCursors := append([]processLogCursor(nil), self.state.Cursors...)
+			for index := range sealedCursors {
+				file, openErr := os.Open(filepath.Join(self.stateDir, sealedCursors[index].Path))
+				if openErr != nil {
+					scanErr = openErr
+					break
+				}
+				sealedCursors[index].PrefixHash, openErr = processLogCursorPrefixHash(file, sealedCursors[index])
+				closeErr := file.Close()
+				if openErr != nil || closeErr != nil {
+					scanErr = errors.Join(openErr, closeErr)
+					break
+				}
+			}
+			boundary := &processLogAcceptanceBoundary{
+				Schema: "urnetwork-sim-process-log-acceptance-v1", BoundAt: now,
+				ManifestHash: self.state.ManifestHash, SupervisorPID: self.state.SupervisorPID, SupervisorStartTimeTicks: self.state.SupervisorStartTimeTicks,
+				Cursors: sealedCursors, RetainedFindingsHash: retainedHash,
+			}
+			if scanErr == nil {
+				boundary.ContentHash, err = processLogAcceptanceContentHash(boundary)
+			}
+			if scanErr != nil || err != nil {
+				scanErr = errors.Join(scanErr, err)
+			} else {
+				self.state.AcceptanceBoundary = boundary
+				boundaryHash = boundary.ContentHash
+			}
+		}
+	}
+	self.state.UpdatedAt = now
+	persistErr := self.persistWithLock()
+	return result, boundaryHash, errors.Join(scanErr, processLogFindingsError(result.Findings), persistErr)
 }
 
 // readRangeWithLock reads one size-fenced region of a process log. The test
@@ -670,6 +1008,12 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 	} else if cursor.Device != device || cursor.Inode != inode {
 		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log inode changed after the launch boundary"}, cursor.Offset, "", observedAt)
 		return nil
+	}
+	if self.state.AcceptanceBoundary != nil {
+		if err := self.verifyAcceptancePrefixWithLock(file, cursor); err != nil {
+			self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log acceptance prefix changed"}, cursor.Offset, "", observedAt)
+			return nil
+		}
 	}
 	if info.Size() < cursor.Offset {
 		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log was truncated after the launch boundary"}, cursor.Offset, "", observedAt)
@@ -746,6 +1090,28 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 	return self.extendChunkChainWithLock(file, cursor, final)
 }
 
+func (self *processLogGate) verifyAcceptancePrefixWithLock(file *os.File, cursor *processLogCursor) error {
+	var sealed *processLogCursor
+	for index := range self.state.AcceptanceBoundary.Cursors {
+		candidate := &self.state.AcceptanceBoundary.Cursors[index]
+		if candidate.ProcessID == cursor.ProcessID && candidate.Stream == cursor.Stream {
+			sealed = candidate
+			break
+		}
+	}
+	if sealed == nil || sealed.InitialOffset > sealed.Offset {
+		return errors.New("process log acceptance cursor is unavailable")
+	}
+	prefixHash, err := processLogCursorPrefixHash(file, *sealed)
+	if err != nil {
+		return err
+	}
+	if prefixHash != sealed.PrefixHash {
+		return errors.New("process log acceptance cursor digest differs")
+	}
+	return nil
+}
+
 func initialProcessLogChunkChain() string {
 	digest := sha256.Sum256([]byte(processLogDigestDomain + "\x00initial"))
 	return hex.EncodeToString(digest[:])
@@ -806,9 +1172,13 @@ func hashProcessLogLine(line []byte) string {
 }
 
 func (self *processLogGate) recordFindingWithLock(cursor *processLogCursor, classification processLogClassification, offset int64, lineHash, observedAt string) {
+	acceptanceScope := ""
+	if self.state.AcceptanceBoundary != nil {
+		acceptanceScope = self.state.AcceptanceBoundary.ContentHash
+	}
 	for index := range self.state.Findings {
 		finding := &self.state.Findings[index]
-		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || !finding.Blocking || finding.Disposition != "unexplained" {
+		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || !finding.Blocking || finding.Disposition != "unexplained" || finding.AcceptanceScope != acceptanceScope {
 			continue
 		}
 		if finding.LastOffset == offset && finding.LastLineSHA256 == lineHash {
@@ -824,7 +1194,7 @@ func (self *processLogGate) recordFindingWithLock(cursor *processLogCursor, clas
 		ProcessID: cursor.ProcessID, Role: cursor.Role, Stream: cursor.Stream,
 		Class: classification.class, Summary: classification.summary, Blocking: true, Disposition: "unexplained", Count: 1,
 		FirstOffset: offset, LastOffset: offset, FirstLineSHA256: lineHash, LastLineSHA256: lineHash,
-		FirstObservedAt: observedAt, LastObservedAt: observedAt,
+		FirstObservedAt: observedAt, LastObservedAt: observedAt, AcceptanceScope: acceptanceScope,
 	})
 	sortProcessLogFindings(self.state.Findings)
 }
@@ -835,6 +1205,9 @@ func matchingProcessLogFaults(processID string, classification processLogClassif
 	}
 	kindByFaultID := map[string]string{}
 	for _, fault := range faults {
+		if classification.requiredFaultKind != "" && fault.Kind != classification.requiredFaultKind {
+			continue
+		}
 		for _, target := range fault.Targets {
 			if target == processID && fault.ID != "" && fault.Kind != "" {
 				kindByFaultID[fault.ID] = fault.Kind
@@ -862,9 +1235,13 @@ func (self *processLogGate) recordClassifiedLineWithLock(cursor *processLogCurso
 		blocking, disposition = false, classification.nonblockingDisposition
 	}
 	faultKey := strings.Join(faultIDs, "\x00")
+	acceptanceScope := ""
+	if self.state.AcceptanceBoundary != nil {
+		acceptanceScope = self.state.AcceptanceBoundary.ContentHash
+	}
 	for index := range self.state.Findings {
 		finding := &self.state.Findings[index]
-		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || finding.Blocking != blocking || finding.Disposition != disposition || strings.Join(finding.FaultIDs, "\x00") != faultKey {
+		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || finding.Blocking != blocking || finding.Disposition != disposition || strings.Join(finding.FaultIDs, "\x00") != faultKey || finding.AcceptanceScope != acceptanceScope {
 			continue
 		}
 		if finding.LastOffset == offset && finding.LastLineSHA256 == lineHash {
@@ -881,7 +1258,7 @@ func (self *processLogGate) recordClassifiedLineWithLock(cursor *processLogCurso
 		Class: classification.class, Summary: classification.summary, Blocking: blocking, Disposition: disposition,
 		FaultIDs: append([]string(nil), faultIDs...), FaultKinds: append([]string(nil), faultKinds...), Count: 1,
 		FirstOffset: offset, LastOffset: offset, FirstLineSHA256: lineHash, LastLineSHA256: lineHash,
-		FirstObservedAt: observedAt, LastObservedAt: observedAt,
+		FirstObservedAt: observedAt, LastObservedAt: observedAt, AcceptanceScope: acceptanceScope,
 	})
 	sortProcessLogFindings(self.state.Findings)
 }
@@ -900,6 +1277,9 @@ func sortProcessLogFindings(findings []ProcessLogFinding) {
 		}
 		if left.Disposition != right.Disposition {
 			return left.Disposition < right.Disposition
+		}
+		if left.AcceptanceScope != right.AcceptanceScope {
+			return left.AcceptanceScope < right.AcceptanceScope
 		}
 		return strings.Join(left.FaultIDs, "\x00") < strings.Join(right.FaultIDs, "\x00")
 	})
@@ -977,4 +1357,28 @@ func scanScenarioProcessLogs(gate scenarioProcessLogGate, runDir string, observa
 	}
 	evidenceErr := gate.WriteEvidence(runDir)
 	return errors.Join(scanErr, hashErr, evidenceErr, processLogFindingsError(result.Findings))
+}
+
+func beginScenarioProcessLogAttempt(gate scenarioProcessLogGate) error {
+	acceptanceGate, ok := gate.(scenarioAcceptanceProcessLogGate)
+	if !ok {
+		return nil
+	}
+	return acceptanceGate.BeginAttempt()
+}
+
+func bindScenarioProcessLogAcceptance(gate scenarioProcessLogGate, runDir string, boundAt time.Time) (string, error) {
+	acceptanceGate, ok := gate.(scenarioAcceptanceProcessLogGate)
+	if !ok {
+		return "", errors.New("process log gate cannot bind an acceptance cursor")
+	}
+	_, boundaryHash, bindErr := acceptanceGate.BindAcceptance(boundAt)
+	evidenceErr := gate.WriteEvidence(runDir)
+	if bindErr != nil || evidenceErr != nil {
+		return "", errors.Join(bindErr, evidenceErr)
+	}
+	if !validCanonicalHashHex(boundaryHash) {
+		return "", errors.New("process log acceptance cursor hash is invalid")
+	}
+	return boundaryHash, nil
 }

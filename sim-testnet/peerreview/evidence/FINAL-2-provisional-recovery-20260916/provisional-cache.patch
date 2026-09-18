@@ -1,0 +1,426 @@
+diff --git a/sim-testnet/carried_preparation.go b/sim-testnet/carried_preparation.go
+--- a/sim-testnet/carried_preparation.go
++++ b/sim-testnet/carried_preparation.go
+@@ -28,27 +28,11 @@
+ 	}
+ 	self.carriedVerificationKeys = nil
+ 	if provisionalResumeEnabled(self.cfg) {
+-		return self.verifyProvisionalActionHistory(ctx)
++		return self.verifyProvisionalActionHistoryWithReaders(ctx, readEntries, readSource)
+ 	}
+ 	entries := readEntries()
+ 	verified := newCarriedPreparationIndex(self.plan, entries)
+-	sourcePlanKVs := map[string]*SetupPlan{}
+-	readPostcondition := func(entry JournalEntry) (*ActionPostcondition, error) {
+-		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
+-			if err := ctx.Err(); err != nil {
+-				return nil, err
+-			}
+-			if source := sourcePlanKVs[hash]; source != nil {
+-				return source, nil
+-			}
+-			source, err := readSource(stateDir, hash)
+-			if err = errors.Join(err, ctx.Err()); err != nil {
+-				return nil, err
+-			}
+-			sourcePlanKVs[hash] = source
+-			return source, nil
+-		})
+-	}
++	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
+ 	var stages []error
+ 	var carryErr error
+ 	if self.plan.ValidatorEvidenceCarry != nil {
+@@ -251,6 +235,28 @@
+ 	return errors.Join(errors.Join(append(stages, actionErrors...)...), ctx.Err())
+ }
+ 
++// Share only authenticated immutable source decoding within one read-only
++// call. Every receipt's bytes, hash and original route remain freshly checked.
++func (self *Executor) carriedPreparationPostconditionReader(ctx context.Context, readSource func(string, string) (*SetupPlan, error)) func(JournalEntry) (*ActionPostcondition, error) {
++	sourcePlanKVs := map[string]*SetupPlan{}
++	return func(entry JournalEntry) (*ActionPostcondition, error) {
++		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
++			if err := ctx.Err(); err != nil {
++				return nil, err
++			}
++			if source := sourcePlanKVs[hash]; source != nil {
++				return source, nil
++			}
++			source, err := readSource(stateDir, hash)
++			if err = errors.Join(err, ctx.Err()); err != nil {
++				return nil, err
++			}
++			sourcePlanKVs[hash] = source
++			return source, nil
++		})
++	}
++}
++
+ // These local/native checks do not dereference derived topology secrets.
+ func carriedActionWithoutRoles(action Action) bool {
+ 	return action.Kind == "budget-reserve" || action.ID == "subnet.verify-owner" || action.ID == "topology.launch" || strings.HasPrefix(action.ID, "subnet.hyperparameter.") || strings.HasPrefix(action.ID, "production.hyperparameter.")
+diff --git a/sim-testnet/provisional_resume.go b/sim-testnet/provisional_resume.go
+--- a/sim-testnet/provisional_resume.go
++++ b/sim-testnet/provisional_resume.go
+@@ -11,6 +11,7 @@
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"slices"
+ 	"strings"
+ 	"time"
+ )
+@@ -145,20 +146,44 @@
+ }
+ 
+ func (e *Executor) authenticateProvisionalReceipt(action Action, entry JournalEntry) error {
+-	if !provisionalResumeEnabled(e.cfg) || e.plan == nil || e.cfg.provisionalResume.Record.PlanHash != e.plan.PlanHash || entry.Stage != StageVerified || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) {
++	return e.authenticateProvisionalReceiptWithReader(action, entry, e.readPersistedPostcondition)
++}
++
++// Only the read-only collector may supply its invocation-local source cache.
++// Ordinary action execution retains its fresh journal and receipt reader.
++func (self *Executor) authenticateProvisionalReceiptWithReader(action Action, entry JournalEntry, readPostcondition func(JournalEntry) (*ActionPostcondition, error)) error {
++	if !provisionalResumeEnabled(self.cfg) || self.plan == nil || self.cfg.provisionalResume.Record.PlanHash != self.plan.PlanHash || entry.Stage != StageVerified || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) {
+ 		return errors.New("provisional receipt does not match the exact approved verified intent")
+ 	}
+-	if _, err := e.readPersistedPostcondition(entry); err != nil {
++	if _, err := readPostcondition(entry); err != nil {
+ 		return fmt.Errorf("provisional resume persisted postcondition: %w", err)
+ 	}
+ 	return nil
+ }
+ 
+ func (e *Executor) verifyProvisionalActionHistory(ctx context.Context) error {
++	if ctx == nil || e == nil || e.plan == nil || e.journal == nil {
++		return errors.New("provisional preparation context is unavailable")
++	}
++	return e.verifyProvisionalActionHistoryWithReaders(ctx, e.journal.Entries, readValidatorEvidenceHistoricalPlan)
++}
++
++// Index one exact journal snapshot and decode each original source once.
++// No successful receipt or decoded source survives this read-only invocation.
++func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Context, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) error {
++	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || readEntries == nil || readSource == nil {
++		return errors.New("provisional preparation readers are unavailable")
++	}
++	entries := readEntries()
++	verified := newCarriedPreparationIndex(self.plan, entries)
++	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
+ 	count := 0
+ 	var failures []error
+-	for _, action := range e.plan.Actions {
+-		entry, ok := e.verifiedActionEntryForScope(action, true)
++	for index, action := range self.plan.Actions {
++		if index > 0 && index%carriedActionProgressInterval == 0 {
++			fmt.Fprintf(os.Stderr, "sim-testnet: provisional local receipt audit %d/%d actions; authenticated=%d failures=%d; final_acceptance=false\n", index, len(self.plan.Actions), count, len(failures))
++		}
++		entry, ok := verified.find(action, true)
+ 		if !ok {
+ 			continue
+ 		}
+@@ -166,14 +191,17 @@
+ 			failures = append(failures, fmt.Errorf("action %s: blocked by canceled preparation: %w", action.ID, err))
+ 			continue
+ 		}
+-		if err := e.authenticateProvisionalReceipt(action, entry); err != nil {
++		if err := self.authenticateProvisionalReceiptWithReader(action, entry, readPostcondition); err != nil {
+ 			failures = append(failures, fmt.Errorf("action %s: %w", action.ID, err))
+ 			continue
+ 		}
+ 		count++
+ 	}
++	if !slices.Equal(entries, readEntries()) {
++		failures = append(failures, errors.New("provisional preparation journal changed during reconciliation"))
++	}
+ 	fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume authenticated %d verified local receipts; current topology readiness remains required\n", count)
+-	return errors.Join(failures...)
++	return errors.Join(errors.Join(failures...), ctx.Err())
+ }
+ 
+ func applyProvisionalScenarioProvenance(cfg *ResolvedConfig, result *ScenarioResult) {
+diff --git a/sim-testnet/provisional_live_resume.go b/sim-testnet/provisional_live_resume.go
+--- a/sim-testnet/provisional_live_resume.go
++++ b/sim-testnet/provisional_live_resume.go
+@@ -11,6 +11,7 @@
+ 	"net/http"
+ 	"os"
+ 	"path/filepath"
++	"slices"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+@@ -298,7 +299,15 @@
+ 	return counts, nil
+ }
+ 
+-func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
++// Authenticate a fresh read-only setup prefix before topology or tournament
++// execution. Its journal index and immutable source cache end at this boundary.
++func (self *Executor) authenticateProvisionalSetupPrefix(ctx context.Context, plan *SetupPlan, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) (*Action, error) {
++	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || plan == nil || readEntries == nil || readSource == nil {
++		return nil, errors.New("provisional setup prefix context is unavailable")
++	}
++	entries := readEntries()
++	verified := newCarriedPreparationIndex(self.plan, entries)
++	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
+ 	var topology *Action
+ 	for i := range plan.Actions {
+ 		action := plan.Actions[i]
+@@ -306,16 +315,30 @@
+ 			topology = &plan.Actions[i]
+ 			break
+ 		}
+-		prior, ok := executor.verifiedActionEntry(action)
++		if err := ctx.Err(); err != nil {
++			return nil, err
++		}
++		prior, ok := verified.find(action, false)
+ 		if !ok {
+-			return fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
+-		}
+-		if err := executor.authenticateProvisionalReceipt(action, prior); err != nil {
+-			return err
++			return nil, fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
++		}
++		if err := self.authenticateProvisionalReceiptWithReader(action, prior, readPostcondition); err != nil {
++			return nil, err
+ 		}
+ 	}
+ 	if topology == nil {
+-		return errors.New("approved plan has no topology.launch action")
++		return nil, errors.New("approved plan has no topology.launch action")
++	}
++	if !slices.Equal(entries, readEntries()) {
++		return nil, errors.New("provisional setup prefix journal changed during reconciliation")
++	}
++	return topology, ctx.Err()
++}
++
++func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
++	topology, err := executor.authenticateProvisionalSetupPrefix(ctx, plan, executor.journal.Entries, readValidatorEvidenceHistoricalPlan)
++	if err != nil {
++		return err
+ 	}
+ 	gate, err := newProvisionalProcessLogGate(stateDir, adoption)
+ 	if err != nil {
+diff --git a/sim-testnet/provisional_preparation_cache_test.go b/sim-testnet/provisional_preparation_cache_test.go
+new file mode 100644
+--- /dev/null
++++ b/sim-testnet/provisional_preparation_cache_test.go
+@@ -0,0 +1,214 @@
++package main
++
++// Count actual historical decoder and journal reads over synthetic approvals.
++// These regressions use explicit mutations, never timing or a replacement verdict.
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++// Existing owned-route fixtures preserve authentic source plans and receipts.
++func provisionalPreparationCacheTest(t *testing.T, count int) carriedPreparationTest {
++	t.Helper()
++	fixture := newCarriedPreparationTest(t, count)
++	fixture.executor.cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{PlanHash: fixture.executor.plan.PlanHash, Provisional: true}}
++	return fixture
++}
++
++// One invocation copies the journal twice and decodes each immutable source
++// once. The next invocation must authenticate that source independently again.
++func TestProvisionalPreparationReadsEachSourceOncePerInvocation(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 64)
++	executor := fixture.executor
++	before := validatorNamespaceTreeSnapshot(t, executor.stateDir)
++	journalReads, copied, sourceReads := 0, 0, 0
++	readEntries := func() []JournalEntry {
++		entries := executor.journal.Entries()
++		journalReads++
++		copied += len(entries)
++		return entries
++	}
++	readSource := func(stateDir, hash string) (*SetupPlan, error) {
++		sourceReads++
++		return readValidatorEvidenceHistoricalPlan(stateDir, hash)
++	}
++	for invocation := 1; invocation <= 2; invocation++ {
++		if err := executor.collectCarriedActionHistoryWithReaders(t.Context(), readEntries, readSource); err != nil {
++			t.Fatal("actual provisional preparation failed", err)
++		}
++		if journalReads != invocation*2 || copied != invocation*2*len(fixture.entries) || sourceReads != invocation {
++			t.Fatalf("repeated or retained read work: journal=%d copied=%d source=%d invocation=%d", journalReads, copied, sourceReads, invocation)
++		}
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, executor.stateDir)) || len(executor.carriedVerificationKeys) != 0 {
++		t.Fatal("read-only provisional preparation changed history or installed execution shortcuts")
++	}
++}
++
++// A decoded source never authenticates another receipt's bytes or observer
++// labels. Both independent corruptions must be reported in the same pass.
++func TestProvisionalPreparationChecksEveryReceiptAfterSourceDecode(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 3)
++	executor := fixture.executor
++	sourceReads := 0
++	readSource := func(stateDir, hash string) (*SetupPlan, error) {
++		sourceReads++
++		plan, err := readValidatorEvidenceHistoricalPlan(stateDir, hash)
++		if sourceReads == 1 {
++			for index := 1; index <= 2; index++ {
++				record := *fixture.records[index]
++				if index == 1 {
++					record.Observed = map[string]any{"synthetic": "replaced-after-source-read"}
++				} else {
++					record.OperationalRPCMode = "unapproved-observer"
++				}
++				raw, encodeErr := json.Marshal(record)
++				if encodeErr != nil {
++					t.Fatal(encodeErr)
++				}
++				if writeErr := atomicWrite(filepath.Join(stateDir, fixture.entries[index].PostconditionPath), raw, 0o600); writeErr != nil {
++					t.Fatal(writeErr)
++				}
++			}
++		}
++		return plan, err
++	}
++	err := executor.collectCarriedActionHistoryWithReaders(t.Context(), executor.journal.Entries, readSource)
++	if err == nil || !strings.Contains(err.Error(), fixture.entries[1].ActionID) || !strings.Contains(err.Error(), fixture.entries[2].ActionID) || sourceReads != 1 {
++		t.Fatal("shared source skipped a later receipt or observer check", sourceReads, err)
++	}
++	if !reflect.DeepEqual(fixture.entries, executor.journal.Entries()) {
++		t.Fatal("failed receipt authentication changed the original journal")
++	}
++}
++
++// An executor's previous successful invocation cannot hide replaced source
++// bytes at the same canonical path in a later read-only invocation.
++func TestProvisionalPreparationReauthenticatesChangedSource(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 2)
++	executor := fixture.executor
++	if err := executor.verifyProvisionalActionHistory(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(executor.stateDir, "plans", stringsTrim0x(fixture.source.PlanHash)+".json")
++	raw, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	changed := bytes.Replace(raw, []byte("synthetic-reserve"), []byte("changed-source-target"), 1)
++	if bytes.Equal(raw, changed) {
++		t.Fatal("synthetic source mutation did not reach its target")
++	}
++	if err := atomicWrite(path, changed, 0o600); err != nil {
++		t.Fatal(err)
++	}
++	before := validatorNamespaceTreeSnapshot(t, executor.stateDir)
++	if err := executor.verifyProvisionalActionHistory(t.Context()); err == nil || !strings.Contains(err.Error(), "persisted setup plan hash mismatch") {
++		t.Fatal("later invocation reused a previous authenticated source", err)
++	}
++	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, executor.stateDir)) {
++		t.Fatal("failed fresh source check changed retained evidence")
++	}
++}
++
++// Even an unrelated appended row invalidates this read-only reconciliation;
++// it cannot silently become authority for subsequent action execution.
++func TestProvisionalPreparationRejectsConcurrentJournalAppend(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 2)
++	executor := fixture.executor
++	readSource := func(stateDir, hash string) (*SetupPlan, error) {
++		plan, err := readValidatorEvidenceHistoricalPlan(stateDir, hash)
++		if appendErr := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash,
++			ActionID: fixture.entries[0].ActionID, IntentHash: fixture.entries[0].IntentHash, Stage: StageFailed, Error: "synthetic concurrent observation"}); appendErr != nil {
++			t.Fatal(appendErr)
++		}
++		return plan, err
++	}
++	if err := executor.collectCarriedActionHistoryWithReaders(t.Context(), executor.journal.Entries, readSource); err == nil || !strings.Contains(err.Error(), "journal changed during reconciliation") {
++		t.Fatal("changed journal inherited the earlier receipt snapshot", err)
++	}
++	if len(executor.carriedVerificationKeys) != 0 {
++		t.Fatal("changed snapshot installed verified execution keys")
++	}
++}
++
++// Cancellation after a real decode remains an error, and the next call owns
++// a fresh cache rather than inheriting the canceled reader's partial result.
++func TestProvisionalPreparationCancellationKeepsFreshRetry(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 2)
++	executor := fixture.executor
++	ctx, cancel := context.WithCancel(t.Context())
++	defer cancel()
++	reads := 0
++	readSource := func(stateDir, hash string) (*SetupPlan, error) {
++		reads++
++		plan, err := readValidatorEvidenceHistoricalPlan(stateDir, hash)
++		cancel()
++		return plan, err
++	}
++	if err := executor.collectCarriedActionHistoryWithReaders(ctx, executor.journal.Entries, readSource); !errors.Is(err, context.Canceled) || reads != 1 {
++		t.Fatal("canceled source authentication was reused", reads, err)
++	}
++	if err := executor.verifyProvisionalActionHistory(t.Context()); err != nil {
++		t.Fatal("fresh retry inherited canceled preparation", err)
++	}
++}
++
++// Live adoption authenticates only its complete setup prefix. Its fresh
++// snapshot cannot waive a missing predecessor or inherit a later journal row.
++func TestProvisionalSetupPrefixUsesFreshBoundedHistory(t *testing.T) {
++	fixture := provisionalPreparationCacheTest(t, 16)
++	executor := fixture.executor
++	topology := Action{ID: "topology.launch", Kind: "local"}
++	var err error
++	topology.IntentHash, err = actionIntentHash(topology)
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.plan.Actions = append(executor.plan.Actions, topology, Action{ID: "synthetic.pending.after-topology", Kind: "local"})
++	executor.plan.PlanHash, err = executor.plan.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.cfg.provisionalResume.Record.PlanHash = executor.plan.PlanHash
++	journalReads, sourceReads := 0, 0
++	readEntries := func() []JournalEntry { journalReads++; return executor.journal.Entries() }
++	readSource := func(stateDir, hash string) (*SetupPlan, error) {
++		sourceReads++
++		return readValidatorEvidenceHistoricalPlan(stateDir, hash)
++	}
++	for invocation := 1; invocation <= 2; invocation++ {
++		got, err := executor.authenticateProvisionalSetupPrefix(t.Context(), executor.plan, readEntries, readSource)
++		if err != nil || got == nil || got.ID != topology.ID || journalReads != 2*invocation || sourceReads != invocation {
++			t.Fatal("setup prefix did not keep bounded fresh authentication", journalReads, sourceReads, err)
++		}
++	}
++	appendDuringRead := func(stateDir, hash string) (*SetupPlan, error) {
++		plan, err := readValidatorEvidenceHistoricalPlan(stateDir, hash)
++		if appendErr := executor.journal.Append(JournalEntry{DeploymentID: executor.plan.DeploymentID, PlanHash: executor.plan.PlanHash,
++			ActionID: fixture.entries[0].ActionID, IntentHash: fixture.entries[0].IntentHash, Stage: StageFailed, Error: "synthetic concurrent observation"}); appendErr != nil {
++			t.Fatal(appendErr)
++		}
++		return plan, err
++	}
++	if _, err := executor.authenticateProvisionalSetupPrefix(t.Context(), executor.plan, executor.journal.Entries, appendDuringRead); err == nil || !strings.Contains(err.Error(), "journal changed during reconciliation") {
++		t.Fatal("adoption accepted a changed setup snapshot", err)
++	}
++	executor.plan.Actions[0].IntentHash = "0x" + strings.Repeat("ef", 32)
++	executor.plan.PlanHash, err = executor.plan.hash()
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.cfg.provisionalResume.Record.PlanHash = executor.plan.PlanHash
++	if _, err := executor.authenticateProvisionalSetupPrefix(t.Context(), executor.plan, executor.journal.Entries, readSource); err == nil || !strings.Contains(err.Error(), "already verified setup action") {
++		t.Fatal("adoption inherited an old intent or ignored a missing prefix action", err)
++	}
++}

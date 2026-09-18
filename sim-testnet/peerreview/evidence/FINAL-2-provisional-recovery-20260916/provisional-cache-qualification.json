@@ -1,0 +1,22 @@
+{
+  "fix": "provisional-receipt-cache",
+  "status": "qualified_by_composition",
+  "not_a_launch_gate": true,
+  "base_commit": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "parent_patch_sha256": "477135d3aa0e5642df37e99e99838fd1ce6dafffd1e218d2ff30535b0b6f13d3",
+  "incremental_patch_sha256": "396fd02d8a22ec38ee8af95288107c2902882c726aef8577429cd4b58b24171b",
+  "source_root": "/home/by/urnetwork/temp/sn-provisional-cache-qualification-20260916-r1/sn",
+  "normal": {
+    "original": {"roots": 14, "passed": 12, "exit": 1, "refusal": "GOTMPDIR-created topology fixture state directories had mode 0775"},
+    "corrected": {"roots": 2, "passed": 2, "exit": 0, "same_binary": true, "correction": "umask 0077"},
+    "composed": {"roots": 14, "passed": 14}
+  },
+  "race": {"roots": 14, "passed": 14, "build_exit": 0, "body_exit": 0},
+  "causal_controls": [
+    {"mutation": "remove source cache hit", "root": "TestProvisionalPreparationReadsEachSourceOncePerInvocation", "exit": 1, "literal": "repeated or retained read work"},
+    {"mutation": "reindex per action", "root": "TestProvisionalPreparationReadsEachSourceOncePerInvocation", "exit": 1, "literal": "repeated or retained read work"},
+    {"mutation": "remove final journal equality fence", "root": "TestProvisionalPreparationRejectsConcurrentJournalAppend", "exit": 1, "literal": "changed journal inherited the earlier receipt snapshot"}
+  ],
+  "warm_gocache": "/home/by/urnetwork/temp/sn-carried-fleet-qualification-20260913/runtime/gocache",
+  "frozen_dependency_workspace": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical"
+}

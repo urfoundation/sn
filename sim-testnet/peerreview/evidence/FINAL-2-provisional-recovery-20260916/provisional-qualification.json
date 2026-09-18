@@ -1,0 +1,36 @@
+{
+  "fix": "provisional-continuation",
+  "status": "qualified_by_composition",
+  "not_a_launch_gate": true,
+  "base_commit": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "review": {
+    "original_patch_sha256": "516f2a96d59ff1c36b52dbd5a4869ec510dadecc3a1819244c87ad9758e8857d",
+    "corrected_patch_sha256": "477135d3aa0e5642df37e99e99838fd1ce6dafffd1e218d2ff30535b0b6f13d3",
+    "fixture_only_diff_sha256": "481a5f957d2b6f29591e31a5adbaf0822c91a6b65120aee1e4060c78e3b4523c",
+    "manifest_sha256": "453f723997096230ae6f40624a12e92d9050505c44476c426c573597bdef6425"
+  },
+  "source_sha256": {
+    "sim-testnet/evidence_relay_horizon_runtime.go": "35bbb1a8c7c06172355fa45ccb17c50f382b64dedbb6ad6fd2213fb9e26d763c",
+    "sim-testnet/owned_rpc.go": "84fbdc9a6f7e118fbb714eae9c60cc7381d462b0633e557252ef061f2d52be57",
+    "sim-testnet/process.go": "cd287eba23943a1abaf66025384238d862f740cbe1a22cf2f17503742b41626b",
+    "sim-testnet/provisional_live_resume.go": "c52485727cadc013adb36e0feb92cf533312c549af2fa68026bd52733c04df9f",
+    "sim-testnet/evidence_relay_provisional_continuation_test.go": "f6bd1f2d5d5d0a7f51136937d273792e52af2638fb208bfcec956a349127123c",
+    "sim-testnet/owned_rpc_test.go": "25d0394b28cea1daae3c9a640cc689de413dae819957828d63fa56e047b4e5ac",
+    "sim-testnet/owned_rpc_provisional_test.go": "cb5856f3ccf8ee3712d42f587cf70c1ca3b6309ef79ee96590e59ae26e2bc45a",
+    "sim-testnet/provisional_started_topology_test.go": "73b2e353487044ab1998b5858c493de9619e9a9006461d104f71dac81082c6e1"
+  },
+  "tests": {
+    "ordinary": { "original": { "roots": 16, "passed": 15, "fixture_failures": 1 }, "corrected_replacements": { "roots": 2, "passed": 2 }, "composed": { "roots": 17, "passed": 17 } },
+    "race": { "original": { "roots": 16, "passed": 15, "fixture_failures": 1 }, "corrected_replacements": { "roots": 2, "passed": 2 }, "composed": { "roots": 17, "passed": 17 } }
+  },
+  "causal_controls": [
+    { "run": "causal-basecombined-normal", "roots": 3, "outer_exit": 1, "child_exit": 1, "expected_failures": ["relay continuation does not authorize provisional admission", "--owned-rpc-authority requires strict configured operation, without provisional or public-manifest overrides", "healthy provisional generation could not hand off without proofs false <nil>"] },
+    { "run": "causal-clock-normal", "root": "TestProvisionalRelayContinuationPreparesActualHorizonWithoutReapproval", "outer_exit": 1, "child_exit": 1, "expected_failure": "relay continuation cannot fit the unchanged complete campaign work" },
+    { "run": "causal-census-normal", "root": "TestProvisionalRelayContinuationRejectsCorruptPendingCensus", "outer_exit": 1, "child_exit": 1, "expected_failure": "provisional continuation omitted its actual pending census reader <nil>" }
+  ],
+  "original_fixture_failures": [
+    { "root": "TestProvisionalRelayContinuationRejectsExpiredRunwayAndCorruptDebit", "modes": ["ordinary", "race"], "message": "provisional continuation refunded a debit without its original request finalized EVM head identity: EVM block hash 0x3300000000000000000000000000000000000000000000000000000000000000 identifies block 8490, not 210" }
+  ],
+  "run_sources_unchanged": true,
+  "records": "output/"
+}

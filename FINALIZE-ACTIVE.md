@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-16. The user has requested full finalization and fixes for
+Updated 2026-09-18. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full functional requirements in [FINALIZE.md](FINALIZE.md) govern completion.
 The user's 2026-09-15 instruction requires recovery by patching and retaining
@@ -34,8 +34,8 @@ Current work:
 1. The retained campaign, signer-authority and gate corrections are composed
    and published; their focused qualification and required failure confirmations
    are complete. Preserve the existing deployment, wallets, approvals and journals.
-2. Use Terra (`gpt-5.6-terra`, reasoning effort `max`) for all tests and gate
-   execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
+2. Use Terra (`gpt-5.6-terra`, reasoning effort `medium`) for all tests and gate
+   execution. Use Sol (`gpt-5.6-sol`, reasoning effort `max`) to diagnose and
    fix failures and flakiness, then return corrected source to Terra for reruns.
 3. Complete producer and aggregate coverage using valid retained phase results
    plus failed, missing or patch-affected checks. Collect independent failures
@@ -46,11 +46,770 @@ Current work:
    reconcile on-chain outcomes, LAN-node replay, the final report and shutdown.
    Reuse valid completed evidence; unrun, failed and waived checks are not passes.
 
+R30 live campaign, 2026-09-18: generation 5 ran from
+`/mnt/data/sn-testnet/qualification/r30-inherited-handoff-20260918T0210Z` as
+PID 35174 against the owned LAN RPC at `192.168.1.162:9944`. It created the
+append-only recovery record
+`campaign-attempts/release-1.0.recovery.5.evidence.json` and then signed the
+new acceptance interval at blocks 8,029,774 through 8,031,274, with terminal
+settlement at block 8,031,424. Its run directory is
+`runs/20260918T022128.652575174Z-release-1.0`. As of the initial live fault
+cycle, `quality-cohort`, `release-dependency-postgres-1`, and
+`release-dependency-redis-1` restored without a fault error; the remaining
+scheduled faults continue independently. This is a live provisional campaign,
+not final acceptance. Do not replace its executable or replay setup while it
+is live. It ended provisionally at `2026-09-18T03:10:08Z` with
+`final_acceptance=false`; setup, deployment, receipts and the recovery-5
+record remain reusable.
+
+The terminal process-log gate exposed a concrete attribution gap. The active
+`release-dependency-redis-2` fault enumerated logical `miner-*` consumers but
+the transport diagnostics originate from `miner-swarm-*` supervisor processes,
+so the 03:07 UTC delayed `exit gap timeout` records for swarms 19 and 20 were
+incorrectly unscoped. The next approved plan must retain both logical miners
+and their owning swarm process identities in each dependency-fault scope. A
+deterministic regression test now covers that mapping. The 03:10 UTC
+seed-provider records occurred after the result's completion instant while
+fault cleanup was stopping workers; they remain evidence and the recovery
+finalizer must exclude them from the acceptance-interval verdict.
+
+A staged recovery-only optimization is qualified separately at
+`/mnt/data/sn-testnet/qualification/r30-inherited-handoff-20260918T0210Z/ADMISSION-INDEX-QUALIFICATION.md`.
+It builds one authenticated evidence-relay admission index for the retained
+journal, avoiding a full journal scan for each relay request. The focused
+normal and race suites passed; it is not in the active R30 executable and may
+be composed only into a later append-only recovery if R30 terminates.
+
 Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest recovery checkpoint, 2026-09-16 13:23 UTC: the runtime-461 correction is
+R25 launch checkpoint, 2026-09-17 19:53 UTC: the append-only pre-boundary
+recovery and provisional startup-gate correction passed 22 focused recovery,
+26 recovery/topology-adjacent and 11 succession roots normally and under race
+detection, with no data races. Two builds were byte-identical at SHA-256
+`e50b4dc96cdaeebf02acffc8ea7fba70716e2bc9ef47b47ae2cfee61ee6821ea`;
+the sealed qualification is
+`/mnt/data/sn-testnet/qualification/runtime464-r25-preboundary-recovery-20260917T1924Z`
+and its `SHA256SUMS` hash is
+`6e72b9454c6d285368e8b5b498c8d498c7b868d084029d50703a72bf3398172f`.
+The attached controller started at 19:53:25 from the exact R24 terminal seal,
+generation-1 recovery, unchanged plan and journal. It is authorized to create
+only the append-only generation-2 recovery and continue the provisional run;
+it does not replay setup and remains `final_acceptance=false`.
+At 19:54:48 the controller created
+`release-1.0.recovery.2.evidence.json` with SHA-256
+`3d5be805097f3cffd84693c3a5c2fa70bcc49eef08b91dfba393068505c3a00c`.
+It binds the exact generation-1 attempt and R24 failed result, complete
+770,326-byte observation log, no-boundary process log, 18,726,946-byte journal
+prefix and unchanged approved plan. The signed record has no invented prior
+campaign-start hash. Its checkpoint `RECOVERY-CHECKPOINT.SHA256SUMS` is
+`910651cf61e3f405e21606a97e300b479e434118a2026bcaf6248f407899a069`;
+no transaction or spend had begun at that checkpoint.
+
+Before R25 started, validator 2 recovered once after a transient historical
+RPC call exceeded its deadline. The same supervisor generation remained live,
+all 33 identities were healthy, and direct LAN plus both retained RPC proxy
+layers subsequently answered 12/12 finalized-head probes. R25 records that one
+cumulative restart as its pre-boundary topology baseline instead of discarding
+earlier work. Strict acceptance will measure its own interval from a signed
+boundary. The launch capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r25/release-candidate-r25`.
+
+R25 completed its retained receipt and relay preparation at 20:18 UTC, then
+stopped before a signed acceptance boundary while reopening the persisted
+fleet lifecycle. The reported error was `release fleet lifecycle provisional
+bypass contains production state`; inspection shows the retained state is a
+release handoff with no serialized production fields, while its authenticated
+release run ID belongs to the earlier completed invocation. The validator had
+grouped that ordinary successor run-ID mismatch with its production-state
+check under one misleading error. Do not rewrite the earlier handoff or replay
+setup. The correction must authenticate that completed handoff as durable
+lineage for the new pre-boundary provisional successor, while leaving strict
+final acceptance unchanged.
+
+The plan and journal remained byte-identical at SHA-256
+`d10956f9b9cb078d7924af4a528e57233b8147292cc45d79bb579029e4787fab`
+and `a355a5dfc6c6202056b1435e3199181c92700f08426533b20da5e014e8c76bbe`.
+R25 submitted no transaction, spent no funds and created no campaign-start
+evidence. Its generation-2 recovery record was finalized with
+`preparation_complete=true` at SHA-256
+`36f99aebdb2f89b1e058d32a9f800a3e0aefefd25f1c2229b27405783a126bb5`.
+The same supervisor generation and all 33 processes remained healthy, with the
+single validator-2 restart retained as the baseline. The self-contained R25
+terminal seal has `TERMINAL-SHA256SUMS` SHA-256
+`6b3a44751acc905bf2192b08e89c9d879d1b0dd5b78f425b689ce160cb07128a`.
+The next controller must authenticate this seal and create generation 3; it
+must not restart from preparation.
+
+R26 qualified the lifecycle-handoff, relay-startup-cache and validator RPC
+resilience changes together. Fifteen simulator and five validator focused
+roots passed normally and under race detection with no data race. Two builds
+were byte-identical at SHA-256
+`ea6b58400fd634b56d94f73865ac94190f2723464754c3cc059fbf1d3610b7c3`.
+The corrected, independently verified qualification manifest is
+`/mnt/data/sn-testnet/qualification/runtime465-r26-lifecycle-resilience-20260917T2030Z/r26-integration/SHA256SUMS`
+with SHA-256
+`6fbf288ff53fca64771019cf3da5aaf94cd38ffe1360c3b930658db538513358`.
+The original self-including manifest is retained with a correction receipt;
+tests and builds were not repeated to repair that evidence-only seal.
+
+Before R26, both validators were updated independently to the qualified RPC
+resilience binary
+`8cd0f5cb1aebfde3f65300cc389b73605cb9ce7e916a607842ef3331b6647d7f`.
+The first rollout checker observed validator 1's replacement PID one state
+write before its incremented restart count and failed closed. It restored the
+pinned supervisor path while retaining the healthy replacement. The
+continuation then updated validator 2 only. All 33 processes are healthy; the
+unchanged supervisor is PID 2,849,990 with start ticks 195,540,640, while the
+validator restart baseline is now one and two. The failed and resumed captures
+are `/mnt/data/sn-testnet/qualification/rolling-validator-hotpatch-r26-20260917T213930Z`
+and `/mnt/data/sn-testnet/qualification/rolling-validator-hotpatch-r26-resume-20260917T2143Z`.
+
+The R26 controller started at 21:45:48 UTC against the owned LAN RPC. It
+created append-only generation 3 with run ID
+`20260917T214645.133882754Z-release-1.0` and evidence SHA-256
+`ac66c15b12241272fcc1fb9cdca42914bd6835c67737c3536563e29daa604518`.
+The record authenticates generation 2 at
+`36f99aebdb2f89b1e058d32a9f800a3e0aefefd25f1c2229b27405783a126bb5`,
+carries `preparation_complete=true`, and does not replay setup. Its atomic
+checkpoint manifest verifies at SHA-256
+`904d5a922cb8b5710f790e6a153491a7e2da61b1dc38026a7bb93a0d140639b4`.
+R26 passed the prior lifecycle-handoff blocker and completed the first
+authenticated relay-startup cache at 22:33:29 UTC. The cache binds the exact
+R26 executable, plan/context, 25,251-entry journal prefix, 706 relay actions,
+all retained file witnesses and its wallet-derived MAC. At 22:47 UTC R26
+committed the signed acceptance boundary. The accepted five-epoch window is
+blocks 8,028,574 through 8,030,074 (epochs 444--448), with terminal settlement
+at block 8,030,224. The baseline is finalized block 8,028,547, and the process
+log boundary is
+`0x690cdad99b9cb14e128427c8d95574cda754c6dc5d30f8d8b4e96d61aee99d9f`.
+At 22:54 UTC the invocation failed before applying its first fault. The process
+log gate classified two bounded TLS handshake timeouts and two validator exit-gap
+timeouts, caused during the transient network interruption, as four unexplained
+release blockers. Its post-boundary scan also rehashed the complete sealed prefix
+of every process log on every poll, rereading approximately 1.43 GB and delaying
+fault advancement by several minutes. The signed boundary is now explicitly
+invalidated with reason `execution-exited-before-completion`; it is evidence of
+the failed attempt and cannot be reused as an R27 acceptance interval. The
+generation-3 preparation checkpoint remains valid and the unchanged supervisor
+still has all 33 processes healthy at its retained restart baseline. R26 submitted
+no transaction and spent no funds.
+
+The self-contained R26 terminal capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r26/release-candidate-r26`.
+Its 52-file checksum manifest verifies and hashes to
+`7db851644c63e9e5a9ec29f25d01244632023eceef9f402a5e28405d9c0d9af0`;
+the terminal record hashes to
+`0b3f881c285d79a5bdf37a269554377a97c441d407e8112a9842636ca3feeddd`
+and the failed result to
+`6c43156a1e598735a1aa775cc0f4a3b74e5bdced37ce5c8d24ea537625034c37`.
+R27 must create append-only generation 4, retain `preparation_complete=true`,
+start a new future acceptance interval, and reuse the authenticated relay cache
+through a narrowly versioned verifier identity. Its process-log gate must verify
+the sealed prefix once, authenticate append-only suffixes incrementally, and
+accept a transient timeout only after bounded recovery evidence proves the
+affected process healthy. Tamper, truncation, inode replacement and unresolved
+timeouts remain blocking.
+
+The cache-identity correction has independent Terra-medium qualification under
+`/mnt/data/sn-testnet/qualification/startup-cache-semantic-identity-r26-20260917T215412Z/independent-terra-medium-20260917T2230Z`.
+Its 23 focused and 23 adjacent tests pass normally and under race detection;
+the exact two legacy-migration tests also pass twice. `RESULT.json` hashes to
+`ea0cbd86049c097995b7898df47fbdec5b17ad06aec9346b80c33e100b8dce2a`
+and the verified checksum manifest to
+`f5047b45b854d5295756c4115c27793e67ec077afdcb506604f192d4b3131c00`.
+Migration remains restricted to the exact R26 executable and authenticated
+legacy HMAC; every other identity misses and performs the ordinary cold audit.
+The qualified cache overlay is composed into the isolated R27 workspace at
+`/mnt/data/sn-testnet/qualification/r27-combined-20260917T2300Z/workspace/sn`.
+The process-log authentication performance change and the recovered-timeout plus
+lifecycle-handoff corrections are being produced as separate overlays so they
+can be reviewed and tested independently before one combined build.
+
+R27 launched against the owned LAN RPC at 23:53:15 UTC on 2026-09-17. The
+running candidate is SHA-256
+`fffd71bda98d6b33b82ac3891980423bb1b0572d053fbc6d57637faafbf25e9c`;
+its final Terra-medium incremental qualification result hashes to
+`0da088076ef41472a6d990006bc8ab8b61bc3eae8b4852d25c4e1a9b4b1e2968`
+and its verified checksum manifest to
+`af544787b4fbb6997d36af1e0371461529e775347ef6347617e729f182787bbe`.
+The launch capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r27/release-candidate-r27`.
+It created generation 4, authenticated the exact failed generation-3 lineage,
+retained `preparation_complete=true`, and did not reuse the invalidated R26
+acceptance interval. Its pre-boundary atomic checkpoint manifest hashes to
+`3d41ba39d1a85ba66aa9ce53358cfc1a0272a0d201753b73093e6070f3883084`.
+Setup and approved spending were not replayed. The live worker is making the
+expected new evidence-relay transactions; finalized examples include
+`0x57b040ce5c1958e02632dbd2a59b8c413dd6f67ea45dae45c9341de119a1dbed`
+at block 8,028,928 and
+`0x72cd6247a9bd9fe28ce487b88ddf32c7c81bb4d0c85ccacbf4920c2fbad682b2`
+at block 8,028,934.
+
+At 00:11:42 UTC on 2026-09-18 R27 signed a new acceptance boundary. Its
+baseline was finalized block 8,028,971, the proposed five-epoch interval was
+blocks 8,029,174 through 8,030,673 (epochs 446--450), and terminal settlement
+was block 8,030,824. The process-log boundary was
+`0xb98a61fe64b639d1ea4938b741c760d9621c35605791036e67de989d3ce6bcb6`.
+The signed campaign-start evidence hashes to
+`ed93961d7f25daa5224abec773a3d77187e1e75a9c2b2af39c594467b41078d6`.
+At 00:18 UTC the incremental process-log gate had authenticated 2,424,832
+post-boundary bytes across all 66 stream cursors with zero finding scoped to
+that boundary and no negative cursor movement. Its durable report retained 33
+earlier provisional findings as historical inventory and correctly excluded
+them from the proposed interval.
+
+R27 exited before acceptance began. At 00:25:55 UTC generation 4 invalidated
+the signed boundary with reason `execution-exited-before-completion`, and the
+controller sealed its failed terminal result at 00:26:06 UTC. The post-boundary
+gate found one unresolved item: `miner-swarm-15/stderr/tls-handshake-timeout`.
+The timeout line was timestamped 00:24:23.982536; the scanner first observed it
+30.164 seconds later and immediately expired its 30-second pending window. The
+same transfer recorded `contract set` and `contract wait 61ms ok=true` at
+00:24:25.854099, but that path can run before a cipher is usable and remains
+insufficient recovery proof. The next exact authenticated marker, `peer
+identity proof verified — cipher is now usable`, was appended to the same
+process stream at 00:25:59.243202, 95.261 seconds after the timeout. Other
+validator and miner timeout findings in that scan were authenticated as
+recovered. The correction keeps that exact cryptographic marker and the same
+process, stream, byte-distance and acceptance-scope checks, allows one bounded
+two-minute replacement-handshake interval, and gives a final scan the
+remaining interval to re-scan before it rejects an unresolved timeout.
+
+The self-contained R27 terminal capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r27/release-candidate-r27`.
+Its terminal record reports `body_exit=1`, `capture_complete=true`,
+`final_acceptance=false`, generation 4 and `setup_replayed=false`. The
+generation retains `preparation_complete=true`; all 33 supervised processes
+remain healthy with the same restart baseline. R28 must authenticate the R27
+terminal seal, create append-only generation 5, choose a new future boundary
+and leave the invalidated R27 boundary as failed evidence.
+
+This launch also exposed a process-local startup-cache stampede: three
+same-context relay sessions entered cold authentication before the first
+durable proof was published. It delayed startup but did not alter the signed
+boundary. A separate isolated correction adds singleflight, a per-context
+durable lock, a cache re-read after waiting and deterministic
+contention/cancellation tests. A follower must also refresh its bounded
+journal and inventory snapshots after acquiring the lease so an authenticated
+suffix written by the leader cannot turn a valid cache hit into another cold
+audit. Both corrections must be independently qualified and composed into the
+R28 candidate without mutating the retained topology or R27 evidence.
+
+Runtime 465/1/1 activated during R25 and the controller first observed it at
+finalized block 8,027,798
+(`0x50046d184a5aaf883712082f5b80fa477cdfea28231cd6087d05847bca8706ba`).
+The controller and validator 1 each
+authenticated its exact consumed-interface profile independently: code hash
+`0x5188d76f7ac3a6b78ab1f57d6a9784baa1df01426280978157f121abb694e0ed`
+and metadata hash
+`0xe7553ea82a25a6a14e901e39bb01b0f915020118ed15d82243c2c229d3eba3af`.
+Those immutable observations are included in the R25 terminal seal and remain
+explicitly provisional; the upgrade does not require replaying deployment.
+
+Live checkpoint, 2026-09-17 12:39 UTC: the R18 epoch-boundary validation at
+block 8,025,371 proved that waiting cannot recover the originally authorized
+UID-7 lifecycle transition. A full read-only LAN census at finalized block
+8,025,406 found 256/256 occupied UIDs, immunity 50,000, 255 nonimmune UIDs and
+minimum nonimmune occupancy 10. UID 7 retained emission 1,806,659,935 rao,
+while the runtime's internally consistent prune candidate remained UID 1 with
+zero emission. The recovery registrations' immunity window has expired. R18
+was therefore stopped gracefully without a lifecycle mutation, transaction or
+spend; the 33-process systemd topology remained active with zero restarts.
+
+At 12:09 UTC the chain moved to runtime 464/1/1. Its consumed-interface
+compatibility probe passed under the existing provisional authority at finalized head
+`0x3b0e44d527d50bb09d619c9cd52db1dbd4f02f8d7d08b1ff502c6bea2ca06232`,
+with code hash
+`0x637844a3ad94d3bdbea45664b67bbfa07a31f21c087834a56a772ba27f612b9f`
+and metadata hash
+`0x0b146ba30795422702623180d636d022967212833fdd25fd692d6df2156314e4`.
+Strict runtime admission remains unchanged.
+
+R19 adds a narrow provisional-resume lifecycle bypass for this exact state. It
+requires a complete, internally consistent launch census proving that the
+runtime would prune a different nonimmune UID. It records the census and an
+authenticated release-to-production handoff, performs zero lifecycle
+registration mutations, and marks `final_acceptance=false`; strict execution,
+partial or changed census data, tampering and mutation claims still fail.
+The full affected lifecycle suite passed normally (261.916 seconds) and under
+race detection (397.088 seconds), followed by sealed focused normal and race
+runs. Qualified binary SHA-256 is
+`c30ebf08889e2353dd43b12a4095aab1b0827ef59f5e7165924a255c00e45e3e`;
+sealed evidence is
+`/mnt/data/sn-testnet/qualification/runtime464-r19-lifecycle-bypass-20260917T1232Z`.
+Its controller began at 12:39:12 against the live retained topology and LAN
+RPC. Continue through the actual release campaign and production soak from
+this controller; the bypass itself is a validation checkpoint, not acceptance.
+The checkpoint completed at 12:59:50. The complete 256-UID census at finalized
+block 8,025,642 (`0xb3206e70bbefeb709a77d0510d3346c1244ec76301a5e051bb4572f9e4bb2164`)
+authenticated target UID 7, runtime prune UID 1 and nonimmune occupancy 255/10.
+The controller recorded the provisional bypass with zero lifecycle mutations
+and continued into the real release campaign on the same topology. Its two
+planned pre-acceptance validator-view fault filters are active. The immutable
+checkpoint is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r19/release-candidate-r19/checkpoint-20260917T125950Z`;
+its `SHA256SUMS` hash is
+`51649b8f81ad7266e05ce67b2650ea1d8c3bdfe0fb6a97929eb0bfd2bd4f11fe`.
+R19 then completed the post-preparation snapshot but exited before signing an
+acceptance boundary at 13:06:17. The append-only run log still contains an
+early failed-invocation observation with no contract view; the boundary reader
+incorrectly required that retained record to be a current campaign
+observation. No `campaign-start.evidence.json` exists and the signed successor
+still has no `acceptance_boundary`, so no accepted epoch was started or lost.
+Pre-acceptance fault recovery removed `active-faults.json`; systemd retained
+the same healthy supervisor and zero restarts. The sealed failure bundle is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r19/release-candidate-r19/failure-20260917T130617Z`;
+its `SHA256SUMS` hash is
+`227cf8103099c7b7ea3cb9e72c885974659f986250fc5ce94ac714138e3e4717`.
+Repair acceptance ownership by binding the exact current-invocation suffix
+while retaining and hashing every earlier log byte; do not delete or rewrite
+the failed observations.
+
+R20 implements that ownership boundary. The signed acceptance record now
+authenticates the complete retained prefix separately from the current
+invocation suffix: 3,856,384 retained bytes have SHA-256
+`94e8ad4bc276486146bc98fa700a36c800def35f833f3a7460980632def8795b`.
+Incomplete or changed current-invocation records and unsigned tails still
+fail. The same patch treats only the validator's sole stale settlement
+snapshot during a fresh native-epoch rollover as retryable; joined or mixed
+errors remain fatal. Eight test commands and all 11 qualification gates passed
+normally and under race detection. The qualified controller SHA-256 is
+`1dba12b2cf35583586cc4197d2b08ba0f8d5b41f4e9046ec7bcf914509720824`;
+sealed qualification is
+`/mnt/data/sn-testnet/qualification/runtime464-r20-observation-log-cut-20260917T132210Z`,
+whose `SHA256SUMS` hash is
+`6a47ddd5f08d9988ecf0eb44bca7bc8fe0bc3488f6d839f9edf4a27bdda2d2ee`.
+
+Before acceptance, both validators were restarted individually under the R20
+binary so the epoch-rollover repair is active while the other 31 managed
+processes and supervisor remain in their existing generation. The original
+supervisor binary was restored at its manifest path after the two running
+executables were verified. The sealed hotpatch evidence is
+`/mnt/data/sn-testnet/qualification/runtime464-r20-validator-hotpatch-20260917T133930Z`;
+its `SHA256SUMS` hash is
+`242cff6e63e6922a7cd744d1a04b4cfc6ddbfdcbe80d27b172a0bc752a1bde9a`.
+
+The R20 controller started at 13:40:31 against `192.168.1.162:9944`, reused
+4,674 authenticated receipts with zero failures and signed the real campaign
+boundary at 14:06:08. The window covers epochs 436 through 440: start block
+8,026,174, exclusive end block 8,027,674 and terminal block 8,027,824. There
+is no acceptance invalidation. The immutable start checkpoint is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/acceptance-start-checkpoint-20260917T142458Z`;
+its `SHA256SUMS` hash is
+`be090a41631d5daa1bd3b1f844ff0e3a9d8221eb0bad8b6db4ff147c88de3a2d`.
+This invocation remains provisional and cannot establish strict release
+acceptance; its deferred startup gates and `final_acceptance=false` status must
+remain explicit. Continue the five-epoch workload and preserve its actual
+fault, lifecycle, adversary, accounting and terminal evidence.
+
+The provisional process-log evidence currently carries seven source findings
+as blocking even though the runtime view relabels them observation-only. The
+gate was generated at 11:24:20, while the signed acceptance boundary began at
+14:06:08; every first/last source-line endpoint for those findings predates the
+acceptance boundary and its stored line hash reproduces exactly. Keep the raw
+findings and fix the acceptance scoping so historical bytes remain
+authenticated without being represented as failures from the new accepted
+window. Do not suppress a finding produced after the boundary. The immutable
+read-only audit is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/process-log-preboundary-audit-20260917T144121Z`;
+its `SHA256SUMS` hash is
+`3b3d53700594fa4dc6b8ffe2dd7d814938905dfad96a0b4aa34b5fc041e35fa4`.
+
+The first real in-window fault transition was recorded at finalized block
+8,026,186. The 96-miner quality cohort and both pre-armed lifecycle view
+filters became active with exact process evidence and no ledger error. The
+quality cohort was restored at block 8,026,220; the head-boundary filters and
+first PostgreSQL outage then became active. The controller retained its signed
+boundary and no acceptance-invalidation file exists. The first-transition
+checkpoint is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/first-fault-transition-20260917T150019Z`;
+its `SHA256SUMS` hash is
+`c2df924393988848999991e859c545e1ee5dc1075c099c9c74fe43a9aaad32ad`.
+
+That transition also exposed a separate real validator failure. Validator 2
+treated a joined authenticated-attempt stream timeout as a normal failed
+native submission, then exited when native epoch 1511 advanced to 1512. The
+supervisor restarted it at 14:55:07 from the restored R17 binary, increasing
+its restart count from three to four. Preserve that failure: the single-error
+R20 regression did not cover the live joined timeout tree. Its sealed evidence
+is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/validator-2-runtime-failure-20260917T1502Z`;
+its `SHA256SUMS` hash is
+`77c11089fd66cfcfcafc81b59dab553feb28f5bf97375a10b32790c3bb326833`.
+Validator 2 was then restarted alone under the already qualified R20 binary;
+PID 2432088 became healthy with executable hash
+`1dba12b2cf35583586cc4197d2b08ba0f8d5b41f4e9046ec7bcf914509720824`,
+while the supervisor path was restored to its original hash. That recovery did
+not restart the controller or alter the fault ledger, but the two real
+post-boundary validator restarts prevent a zero-restart strict claim. The
+re-hotpatch evidence is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/validator-2-rehotpatch-20260917T1502Z`;
+its final `SHA256SUMS` hash is
+`0743de90c2e94ea67e33e79fb5b30da93d65b7ef2764904bfc75e14572348172`.
+
+The next completed R20 observation exposed delayed-snapshot fault overlap.
+The snapshot was pinned at block 8,026,272 after the observer had crossed
+several 25-block schedule boundaries. It restored PostgreSQL-1, then activated
+Redis-1 and PostgreSQL-2 together at that same block even though those outage
+windows are nominally sequential. Both records remain active with no ledger
+error, the controller and validators remain live, and no acceptance-
+invalidation file exists. This interval cannot prove isolated dependency
+recovery. Preserve it as the causal reproduction: the fault state machine must
+serialize non-overlapping scheduled faults and measure each ordinary outage's
+minimum duration from its actual application block, rather than its missed
+nominal deadline. The sealed overlap evidence is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/sequential-fault-overlap-20260917T1517Z`;
+its `SHA256SUMS` hash is
+`c4de586b1a3f18e562307e1daaecf685de885739979dc062886b5be97f05e70f`.
+
+That observation also produced four adjacent, post-boundary log classes whose
+raw endpoints reproduce but whose fault attribution is incomplete: validator
+1's contract-creation exits, exit-gap timeouts from miner swarms 17 and 20,
+and validator 2's network-JWT refresh timeout. Each exact process ID is in the
+impact set of an active scheduled dependency fault. Keep these signatures
+blocking when no matching fault is active; with an exact active process impact,
+classify only these narrow outage forms as expected-fault evidence. The sealed
+line, hash, offset and active-impact audit is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/process-log-live-fault-attribution-20260917T1521Z`;
+its `SHA256SUMS` hash is
+`de5d9e762a2f1f68f275482530e8ae0990c11b80c14c04b4c44c21c581ae690c`.
+
+The following R20 observation confirmed that the slow, uncached path-proof
+scan is operationally coupled to fault restoration. The RPC-path pause was
+applied at block 8,026,324 with a five-block minimum, but it remained active
+past block 8,026,392 while the controller computed its next snapshot.
+Validator 1 then exited on a canonical-block RPC timeout and exhausted the
+recovered five-restart burst while both simulator-owned RPC proxies were still
+paused; its cumulative counter reached six and PID became zero. Validator 2
+remained live. The same snapshot recorded eight exact `seed-unavailable`
+findings from each validator as unexplained even though both IDs occur in the
+active RPC-path impact set. R21 must retain those signatures as blocking
+outside an exact active impact, attribute them narrowly inside one, cache the
+authenticated append-only proof prefix, and serialize ordinary dependency
+faults so observation delay cannot overlap or substantially extend their
+windows. Do not present the R20 restart churn as scheduled restart evidence.
+The sealed fault ledger, raw line endpoints and hashes, supervisor census,
+validator fatal lines and LAN head are in
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/rpc-path-validator-restart-20260917T153128Z`;
+its `SHA256SUMS` hash is
+`86992544c57ee1b7f75622b22159a4d3d032db654581fb1ca543cb20557dfa4e`.
+
+R20's next completed observation restored Redis-2 and the RPC path together at
+pinned block 8,026,372. Both proxy processes returned healthy, but validator 1
+had already exhausted its restart burst and validator 2 incurred another
+restart at recovery. In the same transition R20 applied `release-rolling-01`
+and `release-rolling-02` together, although their configured windows are
+8,026,334--8,026,354 and 8,026,359--8,026,379. This is a second direct
+reproduction of delayed observations collapsing nominally separated fault
+windows. The controller and signed boundary remain live and no persisted
+acceptance invalidation exists, but these facts do not make the interval clean
+acceptance evidence. The sealed before/after ledger and process census are in
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/rpc-restore-rolling-overlap-20260917T153523Z`;
+its `SHA256SUMS` hash is
+`86c36c8eb8ff63ec527b53abb5c8d3a6e1e51b66c35c1a04f7aee66b9f97be6e`.
+
+The first retained observation beyond the epoch-436 boundary is now sealed.
+It was observed at 15:48:23 UTC and pins finalized block 8,026,509, 35 blocks
+past the signed boundary at 8,026,474. The exact 28-record observation prefix,
+fault ledger, process-log inventory, supervisor state and owned-LAN finalized
+head all reproduce. At that cut the controller remained live with no persisted
+acceptance invalidation, but validator 1 had exhausted its restart burst and
+remained at PID zero; the fault ledger contained 11 restored, six active and
+25 pending entries. This is real provisional epoch evidence, not clean or
+strict acceptance. The sealed capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/epoch436-boundary-observation-20260917T155600Z`;
+its `SHA256SUMS` hash is
+`9584d3301852e6263483ebf47dce1c0394bc5d1512fd99ea4746924f3ade1fb9`.
+
+The first retained observation beyond the epoch-437 boundary is also sealed.
+It was observed at 16:51:04 UTC and pins finalized block 8,026,798, 24 blocks
+past boundary 8,026,774. The exact 37-record prefix and all captured state pass
+their stored checksums. The controller still has no persisted acceptance
+invalidation; validator 1 remains stopped at cumulative restart count six and
+validator 2 remains live. The fault ledger contains 24 restored, five active
+and 13 pending entries. This is a second real provisional epoch checkpoint,
+not clean acceptance. The sealed capture is
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r20/release-candidate-r20/epoch437-boundary-observation-20260917T165732Z`;
+its `SHA256SUMS` hash is
+`0cd998c80fb20aae1abef2a270bf915b9fbcba428e74a8993bde1b481596df9b`.
+
+R21 addresses the failures exposed before this cut with an authenticated
+append-only path-proof cache, actual-duration serialized faults, exact
+post-boundary process-log attribution, joined publication retry handling and
+failed-predecessor recovery evidence. Its focused simulator and validator
+tests pass normally and under race detection. Both broad validator modes and
+the broad simulator normal mode reached Go's package-wide ten-minute timeout
+under the loaded live host; each timeout occurred while the named current test
+had run for only a few seconds and hundreds of parallel tests were still
+queued. Preserve those actual failures and distinguish them with longer
+fenced commands if the diagnostics are continued; do not claim a broad pass
+from them. The unpartitioned simulator package is not an admitted release
+gate: the harness retains its exact disjoint owners and 5/10/45/90-minute
+budgets, while incremental promotion uses the passing affected R21 selectors.
+The exact R21 worktree has been
+copied to
+`/mnt/data/sn-testnet/qualification/runtime464-r21-frozen-workspace-20260917T1601Z`;
+its source-before, source-after and snapshot manifests are byte-identical, and
+the manifest SHA-256 is
+`a702e2b1b81a352ec606f8b591a719d5a1344f28b14e45ae211b02dde9046b0f`.
+The simulator qualification is sealed at
+`/mnt/data/sn-testnet/qualification/runtime464-r21-simulator-20260917T154318Z`:
+its focused slice is qualified, its two whole-package timeouts remain
+non-gating diagnostics, and its `RESULT.json` and `SHA256SUMS` hashes are
+`57ddf49ab1370136f6248baece53003a05b73236374217c4c50e5769b5503791`
+and
+`eec6b15d948188427b2b1a606176dc6b844f0cf92259cec82e38e5c599063e7c`.
+Retain that frozen copy for any subsequent R21 check while R22 repairs the
+independent live validator binding-timeout and exhausted-child recovery paths
+in the primary tree.
+
+The R22 supervisor repair is qualified from an immutable frozen workspace. An
+exhausted, stopped child now receives a fresh bounded restart burst only after
+a ten-minute recovery window; generation, PID, prior-burst and configured-limit
+guards prevent stale callbacks or an unbounded restart loop. Cumulative restart
+accounting remains unchanged, cancellation is bounded, and a zero restart limit
+remains terminal. All 11 exact supervisor roots pass normally and under race
+detection with identical before/after source fences. The sealed qualification is
+`/mnt/data/sn-testnet/qualification/runtime464-r22-supervisor-frozen-20260917T163010Z/qualification`;
+its `RESULT.json` and `SHA256SUMS` hashes are
+`2672c6ffbfc9a25764f7dddee94828afcc1d1c40d5e05dd9afb308f0ce8c0c9c`
+and
+`af988a2ead46110712ab93957a617dca9691ebbc4326ffd8c24f9ac9c0bb75b7`.
+This repair is staged for the next required generation and does not alter the
+running R20 supervisor or retroactively restart validator 1.
+
+R22 also fixes the validator failure that exhausted that restart burst. Only a
+typed failure originating in the finalized binding RPC read is eligible for a
+retry, and every leaf of a wrapped or joined error must be a recognized
+transient transport failure. The validator retains the authenticated assignment
+and exact pinned boundary, waits two seconds, and repeats only the binding read;
+it does not replay SEED/EXTEND traffic or mutate the attempt ledger before a
+successful read. Cancellation, authorization, integrity, pin and binding
+mismatches remain hard. The compile-only lane and the focused deterministic
+normal and race suites all pass with byte-identical source fences. Sealed
+qualification is
+`/mnt/data/sn-testnet/qualification/runtime464-r22-binding-retry-20260917T164554Z`;
+its `RESULT.json` and `SHA256SUMS` hashes are
+`7e5535d564fb615e7c5fa6eb195c7c09adcd78f76f4436b759caea3bf7d24999`
+and
+`b7843734fa5a0bdea5f7a46a02b3ea2daf6cf2a113953e21243d1b61424a9f8c`.
+The running R20 validator binary does not contain this repair; preserve its
+failure and use the qualified slice in the incremental successor.
+
+The combined R22 successor binary is built from the immutable R21 workspace
+with exactly those five qualified supervisor and validator files overlaid. A
+first frozen build attempt copied `sim-testnet/process.go` into `validator/` and
+failed before linking with a mixed-package error; that tooling failure is
+preserved and did not touch primary source or the live topology. The clean retry
+asserted the exact five-file diff, reproduced all sealed source hashes, held a
+byte-identical source manifest through the build and produced candidate SHA-256
+`e989fd2908a5e7ce08ae81dca871d7fa725de20dfb03d1b64434c9c7a832e5f6`.
+The build bundle is
+`/mnt/data/sn-testnet/qualification/runtime464-r22-combined-frozen-20260917T165502Z-retry`;
+its `RESULT.json` and `SHA256SUMS` hashes are
+`dbcdfd7a7b7742f121765195efcfc4918cbefb9ed3054a2a2d94cc3164a8dd9f`
+and
+`68431fb6cf489ef9cc576a5e193f357b6321291d606955e641832477c34a0108`.
+Do not replace the live R20 generation merely to adopt it; use this binary for
+the next required incremental successor after preserving R20's terminal state.
+
+The guarded R20-to-R22 rollover is prepared at
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r22/prepared-rollover-20260917T1705Z`.
+It refuses to mutate the managed generation until the R20 controller and runner
+have exited, the failed provisional result exactly matches its last signed
+observation, the acceptance interval has a signed invalidation, all faults are
+restored, the LAN genesis and head reproduce at or beyond that failed head, and
+the approved plan, old generation and qualified R22 hashes remain exact. A
+failed predecessor need not continue to its originally signed terminal block;
+the successor still has to run a distinct fresh full interval. Its current read-only
+preflight exited 75 because the live controller still owns `deployment.lock`,
+which is the required behavior. A recovery audit found and fixed two partial
+rollover holes: a stop command that fails after stopping the service and a
+binary replacement followed by a manifest-write failure now both restore the
+old binary and manifest, restart the old service, and verify the restored
+generation. Terra medium's six deterministic rollback and predecessor-admission
+tests, Python compile checks and all three shell syntax checks pass. `PREPARED.json` and
+`SHA256SUMS` have SHA-256
+`ed172c79379102a4271c159afafeaf20a9b63618a8cdacfbdb7f46eff254e531`
+and
+`5224266949f2153cb8017caa3e6d501563518807a3b65cd716208576e99f5f66`.
+No rollover or R22 campaign launch has occurred.
+
+The post-epoch-437 suffix audit then found a successor blocker in the frozen
+R22 candidate: a restarted miner swarm emits an exact three-line stale
+Network-contract rejection while its own rolling process-restart fault is
+active, but classifier v3 still records that attributable transient as a
+generic blocking error. Do not apply the prepared candidate until the narrow
+classifier-v4 repair and its lossless migration tests are qualified and the
+candidate, qualification, and guarded-rollover hashes are resealed. Rejections
+with no active fault, the wrong target or fault kind, a non-Network primary, or
+a malformed shape must remain blocking.
+
+A read-only recorder is also armed for the first complete retained R20
+observation at or beyond epoch-438 boundary block 8,027,074. It binds the
+existing controller PID/start-time/executable, copies the exact observation
+prefix and signed attempt, captures the LAN head and runtime ledgers, and
+verifies a self-contained checksum manifest before publishing the directory.
+Its script SHA-256 is
+`d47768612b58ccdc2425aefc7c3445dd5272a3f39c4be8ec0ab0267601307750`;
+at 17:17 UTC it was waiting under PID 2741385 and had not altered the live run.
+
+Live checkpoint, 2026-09-17 11:45 UTC: the retained campaign is running again
+against the LAN RPC. R17 corrected provisional native-epoch rollover,
+retryable attempt-stream interruption, serial operator collection and the
+supervisor's lifetime restart cap. Its focused normal and race suites and the
+broader affected validator suites pass. A controlled supervisor generation
+replacement at 10:52 preserved the plan, journal and signed successor and
+started all 33 processes from qualified binary SHA-256
+`64b0f7f5fcee78d032ebdb6c9e25169a18a102626338e64301f72c65a6540b62`.
+The current generation has supervisor PID 2032750, both validators live and
+zero child restarts. Preserve the earlier restart evidence; the zero counts are
+for this replacement generation only. The sealed qualification is
+`/mnt/data/sn-testnet/qualification/runtime463-r17-restart-recovery-20260917T1049Z`.
+
+The first R17 controller authenticated all 4,674 verified receipts and stopped
+before a scenario action, transaction or spend because its completed
+provisional topology pointer still named the prior supervisor generation. R18
+now adopts the current generation before campaign execution and carries the
+exact append-only process-log cursor into a distinct generation-specific gate.
+The prior gate stays immutable. All 29 selected adoption, process-log and
+supervisor-readiness tests pass normally and under race detection. Qualified
+controller SHA-256 is
+`c537b4bdfd2119c428627c994f65239698cea218b3a223dc4d78e39d2c2084cb`;
+its sealed evidence is
+`/mnt/data/sn-testnet/qualification/runtime463-r18-generation-adoption-20260917T1118Z`.
+
+R18 started at 11:23:19, authenticated the same 4,674 receipts with zero
+failures, proved no pending transaction or spend, and adopted the R17
+generation at 11:24:28. It then authenticated the four-source retained relay
+continuation (2,376 files) and reached the real fleet lifecycle gate at
+11:43:40. The target UID 7 still has one rao of emission while runtime prune
+UID 1 is internally consistent, so the controller retains prepared state and
+polls each finalized block without replaying preparation. The finalized subnet
+schedule at block 8,025,273 had tempo 360, last epoch block 8,025,011 and next
+normal epoch block 8,025,371, approximately 12:04 UTC at the observed cadence.
+This is a live pending campaign, not acceptance; `final_acceptance=false`.
+
+Live checkpoint, 2026-09-17 09:22 UTC: the persistent supervisor has remained
+up since 04:57 with no systemd restart and all 33 managed processes healthy.
+The R15 campaign controller retains the prepared successor and both
+pre-acceptance lifecycle filters while waiting for target UID 7 to reach zero
+emission. Validator 1 has one managed restart; validator 2 has four. Validator
+2 restarts one, three and four came from the strict release-steering guard
+exiting when ongoing recovery remained incomplete at a native epoch change;
+the first also retained the then-unfixed deposit-audit mismatch. Restart two
+was the controlled binary replacement also applied to validator 1. The scheduled
+fault lane has not begun and caused none of this churn.
+
+The provisional-only correction now continues an exclusively typed pending or
+stale-snapshot cut in the fresh native epoch without terminating the validator.
+Strict mode, mixed real failures, scheduler failures and ordinary submission
+failures retain the existing continuity refusal. Five focused tests pass
+normally and under race detection. Qualified candidate SHA-256
+`3187bd93063356fbfb73fb7040fbf57ba1ffe3ec6380a61d1c80ba03144fd461`
+is staged atomically at the supervisor child path for the next already-required
+managed restart; no live PID or restart count changed. Its sealed evidence is
+`/mnt/data/sn-testnet/qualification/runtime463-r16-provisional-cut-rollover-20260917T0915Z`.
+Do not spend validator 2's fifth restart solely to activate this fix. The next
+native checkpoint is block 8,024,651; verify actual filtered weight submission
+there before changing the live topology.
+
+Latest recovery checkpoint, 2026-09-17 UTC: the combined provisional
+succession, retained-context rendering and local-intent correction is qualified
+in driver SHA-256
+`b85ab8529118c9bc9f2848865882dfa1291651a1c08de8ad28bffcb72857707d`.
+All 19 selected roots pass normally and under race detection; seven causal
+controls reproduce their intended failures. Two live corrected resumes then
+proved the product path and exposed wrapper-only admission issues. Both
+authenticated all 4,674 receipts, generated the exact corrected configurations,
+started all 33 processes with zero restarts and reproduced no authority or range
+refusal. The first wrapper rejected one transient miner health sample. The
+second recorded 24 five-second samples: both validators and every non-miner
+service were healthy in all 24, every miner was healthy in at least 22, and nine
+samples were 33/33. It timed out only because `local-readiness` is emitted by an
+internal `WaitReady` caller that this provisional startup does not invoke.
+Both failed owners rolled back successfully without changing retained contexts,
+the executable or release lock.
+
+The third admission wrapper observed 16 samples over 82 seconds, permitted
+health flicker only for miner swarms, and requires every process to be observed
+healthy, at least three 33/33 samples, stable live PIDs and OS start ticks, zero
+restarts, continuously healthy validators and other critical services, both
+startup-authority markers and no refusal. Local readiness is recorded and
+deferred to the actual campaign. Terra medium passed all 26 deterministic cases,
+including both real 16-sample windows from the second run. The matching campaign
+consumer passed 52/52 targeted cases and retains the separately qualified
+43-case fail-closed finalizer unchanged. Live retry three completed at 19:57:09:
+all 33 identities remained alive and stable with zero restarts, every process
+was observed healthy, critical services were healthy throughout, and seven
+samples were 33/33. Its result SHA-256 is
+`4f2740bd3b9cb542636c75f42608a232c7c90643176d6bbe85497a2cedebeae6`.
+
+The bound campaign owner then ran from 19:58:56 through 20:00:05 against the
+LAN RPC. It authenticated all 4,674 retained receipts with zero failures and
+created the signed durable successor attempt, SHA-256
+`9aa94b86effb8aafc37bee904ff1e909a14edc6630a67f0a5588728ad7900417`.
+Before preparation, source-capacity admission rejected the faster 15-second
+owned-RPC poll profile: its deliberately conservative retry forecast is
+6,012,260 requests/hour versus the unchanged 4,194,304 protected ceiling.
+Objects and bytes still fit, no transaction or spend was pending, and the live
+topology remains in place. The next invocation reopens that same successor.
+The narrow provisional-only advisory then passed 21/21 normal and 21/21 race
+roots; its pre-fix causal control reproduced the original capacity refusal.
+The incremental retry wrapper passed 81/81 cases and reopened the same successor.
+
+The real retry ran from 20:43:00 through 20:45:18. It reauthenticated all 4,674
+receipts, recorded that no transaction or spend was pending, and reached the
+owned-LAN execution reader. The chain had upgraded directly from runtime
+461/1/1 at block 8,020,753 to 463/1/1 at block 8,020,754. The compiled exact
+runtime catalog therefore refused 463 before preparation or any scenario
+action. Plan, journal, config, roles, predecessor evidence and the signed
+successor remain unchanged. The observed 463 code and metadata BLAKE2b-256
+hashes are `0x9745e3f66053c3c7cb30ea45b88c66438b5076da78154f477e8660b0ded43869`
+and `0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c`.
+Both validators later exhausted five restart attempts because their retained
+binary also pins 461; the other 31 processes did not restart. Sol max fixed the
+two deterministic fixture defects exposed while qualifying runtime 463 and
+reviewed their adjacent callers. Terra medium passed the final exact 7-root
+CRV4 and 6-root simulator matrix normally and under race detection, with every
+source, dependency and frozen-manifest fence unchanged. The admitted candidate
+SHA-256 is
+`92f25f05f6e98dddee36146cdcd6ffe338e2c1d46090f0f6042098285724ff56`;
+the qualification `RESULT.json` SHA-256 is
+`03d3139ccd27df848e73383a1c01a80ea05513bd630e22bab60af72b9d59fa23`.
+The R5 retained-state recovery bundle remains sealed and unexecuted: it has no
+`REQUEST.json` or start marker. The next agent should bind that request, perform
+the qualified stop/resume, preserve all durable work and reopen the same
+campaign successor. `final_acceptance=false`.
+
+Previous recovery checkpoint, 2026-09-16 17:02 UTC: provisional resume completed
+at 16:52:13 under the existing approved plan and LAN RPC, launching and adopting
+all 33 processes. The first release-candidate command authenticated 4,674
+retained receipts, then closed at 17:01:52 with body/outer exit one before a
+measured phase: campaign succession unconditionally refused provisional mode.
+The executable and release lock are unchanged. Validator 1 restarted twice and
+validator 2 once after HTTP 403 staging refusals. Regenerated
+operator staging configuration omitted the explicit provisional retained-context
+authority and retained an expired 16,384-block complete-discovery window. Keep
+the 33-process topology while Astra max batches narrow succession and render
+corrections and Terra medium qualifies them. Resume from retained state without
+repeating setup. Process presence alone is not terminal publication evidence.
+`final_acceptance=false`.
+
+Previous recovery checkpoint, 2026-09-16 16:38 UTC: provisional resume was active
+under the existing approved plan and LAN RPC. The prior strict startup timed
+out at 15:41:52 without fresh proof trails; its eight finalized operator
+transactions and original signed bytes have been reconciled. The provisional
+driver's targeted checks are complete, with retained passes reused. Defer
+historical replay, release packaging and final acceptance audits; proceed from
+successful service startup directly into the actual campaign. Keep spending
+limits, transaction reconciliation and saved progress. The measured campaign
+has not started at this checkpoint; `final_acceptance=false`. Details and chain
+receipts are in [report 2](sim-testnet/FINAL-2.md).
+
+Previous recovery checkpoint, 2026-09-16 13:23 UTC: the runtime-461 correction is
 qualified and integrated at `8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c`.
 All 103 affected roots pass normally and under race; four causal restorations
 produce exactly nine expected failures and nine passes. Root verified all
@@ -1286,3 +2045,83 @@ Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
 campaign's full epoch windows remain real elapsed time; there is no renewed
 14-hour completion promise before an actual campaign start.
+
+
+## Active recovered release interval — 2026-09-17 18:50 UTC
+
+R20 reached the real release campaign and failed naturally when rolling fault
+`release-rolling-30` targeted `validator-1` after that manifest process had
+stopped. Its signed failed attempt remains immutable at run
+`20260916T195955.196642218Z-release-1.0`. The attempt hash is
+`9858b897eb4217c8f17e5dc0ad351d3dadfadb949c96e16637b7378d299d2ad7`;
+the failed result hash is
+`3f626a32b6ea64bfbb15fe8cea9ea4318e18ccd8c191ad338c99578a3cf8ce89`.
+The signed observation boundary is 16,415,645 bytes with content hash
+`sha256:00fa367cda71d5f7b20fbdf3fd0918bace1683b830f01cccdf24a240450ed123`.
+Two valid observations appended during the failure path remain preserved as an
+opaque suffix, making the complete 17,227,515-byte file hash
+`sha256:778805c56f8ad9c3f0c2f57e0d3c3b8ff471b6713fad868e6fc8620592bddcf3`.
+
+R24 authenticates runtime state only through that signed boundary after proving
+the predecessor is an invalidated provisional failure. It separately binds the
+complete append-only file, including the suffix, and never truncates or rewrites
+it. Ten focused recovery tests and eleven adjacent recovery/topology tests pass
+normally and under race. The detached-startup retention suites also pass normally
+and under race. The reproducible R24 binary is
+`01de1e797aa12edc3bb57169608dc83f9d08376538c0032e97b0b21670501161`;
+its qualification is under
+`/mnt/data/sn-testnet/qualification/runtime464-r24-recovery-resilience-20260917T1838Z`.
+
+The R23 supervisor generation remains unchanged: PID 2,849,990, start ticks
+195,540,640, canonical manifest
+`0xc137ba3f1c57b40e5810891ec0f63930780c500e5095a5468403de55604e233a`,
+33/33 healthy processes and zero restarts. R24 uses only the owned LAN RPC
+`192.168.1.162:9944`. Its signed recovery record was created at 18:51 UTC with
+new run ID `20260917T185114.663596192Z-release-1.0` and file hash
+`8c52af26f7b819edec9333d742346c78050dfa4adc1463c07d0535d177d0060c`.
+It binds the exact R20 attempt, start marker, result, full observation log,
+process-log evidence and unchanged approved plan. No setup, topology, transaction
+or spend was replayed before this checkpoint. The launch and recovery checkpoint
+are sealed under
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r24/release-candidate-r24`.
+
+The controller passed receipt and topology admission. Its first evidence-relay
+forecast was at finalized block 8,027,402; the expensive retained-history pass
+closed at block 8,027,459. The following forecasts were bounded relay recovery,
+not process restarts. The controller then reached live scenario preparation and
+terminated at 19:11:23 UTC because gas estimation for `precompile.seed` reverted.
+The preceding `precompile.read-battery` action passed at finalized block
+8,027,499. The seed action wrote only intent and failure journal rows: no EVM
+transaction was broadcast and no value or gas was spent. R24 did not create a
+campaign-start marker or signed acceptance boundary. Its terminal result remains
+provisional with `final_acceptance=false`.
+
+The exact terminal capture is sealed at
+`/mnt/data/sn-testnet/qualification/native-recovery-20260917-r24/release-candidate-r24/TERMINAL.json`
+(`sha256:a568a9f450adca942b32a04f57c4da41fbfda7a4e6f8d299f51ff9e7241a5193`),
+with a verified checksum manifest
+`TERMINAL-SHA256SUMS`
+(`sha256:955fdf1ba21f62fac88b4165f4d3425269678e5fddd9f282f4ee0adec5d15ba8`).
+The seal contains immutable copies of the exact terminal journal and plan, so
+later append-only recovery work cannot invalidate R24's checksum manifest.
+The result hash is
+`dda759c72e3c5de22d060c4f510bc7d5bb9e8f12b98f3cc8a35867d83595f875`;
+the journal advanced only from sequence 25,160 through 25,163 and now hashes to
+`a355a5dfc6c6202056b1435e3199181c92700f08426533b20da5e014e8c76bbe`.
+Before/after topology snapshots contain the same 33 process identities and
+generation, with zero restarts. The R23 supervisor remains live and unchanged.
+
+Resilience work continues independently of the stopped R24 controller. A
+detached provisional startup timeout already retains an exactly authenticated
+live supervisor generation so its children can recover independently. The next
+candidate adds an append-only chain of numbered recovery attempts; its initial
+18 focused and 39 adjacent tests pass normally and under race. R24 exposed an
+adjacent requirement: a terminal recovery attempt that fails before acceptance
+also needs a signed next generation, without inventing a campaign-start marker
+or replaying setup. That extension and the seed failure are being repaired as
+one affected scope. Relay startup also needs an authenticated exact-plan
+checkpoint: R24 reread 684 historical relay actions and 694 published requests,
+then replayed retained epochs without a durable `through` marker. The checkpoint
+must validate only append-only suffixes during provisional recovery and must be
+ignored for strict final acceptance. None of these source changes alters the
+retained supervisor or rewrites R20/R24 evidence.

@@ -49,6 +49,7 @@ type PublicFinalSemanticChainReader struct {
 	runtimeVersion        runtimeVersionIdentity
 	runtimeCodeHash       string
 	runtimeMetadataHash   string
+	provisionalRuntime    *crv4.Chain
 }
 
 var _ FinalSemanticChainReader = (*PublicFinalSemanticChainReader)(nil)
@@ -68,7 +69,7 @@ func NewPublicFinalSemanticChainReader(ctx context.Context, public *PublicDeploy
 	return newPublicFinalSemanticChainReaderWithTransport(ctx, public, evidence, evidenceURI, evidence.PublicVerification.OperatorEvidenceOrigins, transport)
 }
 
-func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string, origins []FinalOperatorEvidenceOrigin, transport finalSemanticRPCTransport) (*PublicFinalSemanticChainReader, error) {
+func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string, origins []FinalOperatorEvidenceOrigin, transport finalSemanticRPCTransport, provisionalConfig ...*ResolvedConfig) (*PublicFinalSemanticChainReader, error) {
 	if ctx == nil || public == nil || evidence == nil {
 		return nil, errors.New("public final semantic reader context is incomplete")
 	}
@@ -157,6 +158,17 @@ func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public 
 			TransactionVersion: public.TransactionVersion, StateVersion: public.StateVersion,
 		},
 		runtimeCodeHash: strings.ToLower(public.RuntimeCodeHash), runtimeMetadataHash: strings.ToLower(public.RuntimeMetadataHash),
+	}
+	if len(provisionalConfig) > 1 {
+		reader.Close()
+		return nil, errors.New("multiple provisional runtime authorities")
+	}
+	if len(provisionalConfig) == 1 && provisionalResumeEnabled(provisionalConfig[0]) {
+		reader.provisionalRuntime = &crv4.Chain{API: native, GenesisHash: genesis}
+		if err := enableProvisionalRuntimeCompatibility(reader.provisionalRuntime, provisionalConfig[0]); err != nil {
+			reader.Close()
+			return nil, err
+		}
 	}
 	if transport.profile == finalSemanticOwnedRPCTransport {
 		reader.rpcObservationProfile = finalSemanticOwnedRPCTransport
@@ -481,6 +493,20 @@ func (self *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Contex
 			return nil, nil, fmt.Errorf("authenticate public runtime metadata at %s: %w", head.Hash, err)
 		}
 		return metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
+	}
+	if self.provisionalRuntime != nil && version.SpecVersion > crv4.ReviewedRuntimeSpecVersion {
+		hash, err := gsrpctypes.NewHashFromHexString(head.Hash)
+		if err != nil {
+			return nil, nil, err
+		}
+		artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, self.provisionalRuntime, hash, crv4.RuntimeArtifactIdentity{Version: self.runtimeVersion, CodeHash: self.runtimeCodeHash, MetadataHash: self.runtimeMetadataHash})
+		if err != nil {
+			return nil, nil, err
+		}
+		if artifact.Version != version || !strings.EqualFold(artifact.CodeHash, codeHash) || artifact.MetadataHash != metadataHash {
+			return nil, nil, errors.New("public provisional runtime changed between retained exchanges and authentication")
+		}
+		return artifact.Metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
 	}
 
 	// Carried setup receipts can precede the v453 campaign start. Authenticate

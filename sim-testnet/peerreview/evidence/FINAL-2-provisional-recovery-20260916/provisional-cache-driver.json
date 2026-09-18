@@ -1,0 +1,21 @@
+{
+  "candidate_only": true,
+  "base_commit": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "parent_patch_sha256": "477135d3aa0e5642df37e99e99838fd1ce6dafffd1e218d2ff30535b0b6f13d3",
+  "cache_delta_patch_sha256": "396fd02d8a22ec38ee8af95288107c2902882c726aef8577429cd4b58b24171b",
+  "binary_path": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r5/provisional-driver-cli-cache-candidate-20260916-r2/sim-testnet",
+  "binary_sha256": "05a416c93fc977cc47b15010242ebbd8904cf7db65374fb46d4f7a60631a7dc8",
+  "build_exit": 0,
+  "body_exit": null,
+  "outer_exit": 0,
+  "go_version": "go1.26.6",
+  "trimpath": true,
+  "vcs": "git",
+  "vcs_revision": "fb0a7d98a27baf7a6b8439773f1081a6881a93a0",
+  "vcs_modified": true,
+  "source_before": "source.before.txt",
+  "source_after": "source.after.txt",
+  "input_hashes": "inputs.sha256",
+  "build_info": "go-build-info.txt",
+  "rejected_predecessor": "/mnt/data/sn-testnet/qualification/native-recovery-20260916-r5/provisional-driver-cli-cache-candidate-20260916-r1"
+}

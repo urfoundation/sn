@@ -98,10 +98,8 @@ func (s *ReleaseSteerer) validatePinnedChains(ctx context.Context, snapshot *Rel
 	if !bytes.Equal(s.native.GenesisHash[:], commonHashBytes(s.cfg.GenesisHash)) {
 		return fmt.Errorf("native genesis %s does not match configured %s", s.native.GenesisHash.Hex(), s.cfg.GenesisHash)
 	}
-	if s.native.Runtime == nil ||
-		uint32(s.native.Runtime.SpecVersion) != s.cfg.RuntimeSpec ||
-		uint32(s.native.Runtime.TransactionVersion) != s.cfg.TransactionVersion {
-		return errors.New("native signing runtime is not bound to the configured spec and transaction versions")
+	if err := validateReleaseNativeSigningRuntime(s.native, s.cfg); err != nil {
+		return err
 	}
 	netuid, err := s.chain.ReleaseNetuidAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash)
 	if err != nil {
@@ -716,6 +714,9 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if err != nil {
 		return false, fmt.Errorf("authenticate steering nonce runtime: %w", err)
 	}
+	if err := validatePreparedNativeRuntimeContext(ctx, s.native, s.cfg, preparedRuntimeHash, nonceHash); err != nil {
+		return false, err
+	}
 	finalizedNonce, err := s.native.AccountNonceAtContext(ctx, s.hotkey.PublicKey(), nonceHash)
 	if err != nil {
 		return false, err
@@ -730,8 +731,12 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if finalizedNonce < current.Prepared.AccountNonce {
 		return false, fmt.Errorf("steering nonce gap: finalized %d, prepared %d", finalizedNonce, current.Prepared.AccountNonce)
 	}
-	if _, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg); err != nil {
+	replayHash, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
+	if err != nil {
 		return false, fmt.Errorf("authenticate native runtime before pending replay: %w", err)
+	}
+	if err := validatePreparedNativeRuntimeContext(ctx, s.native, s.cfg, preparedRuntimeHash, replayHash); err != nil {
+		return false, err
 	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, current.Prepared)
 	if err != nil {
@@ -941,11 +946,11 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.headEMA.CommitForEpoch(measurementArtifact.SubnetEpoch, measurementArtifact.HeadEMA, measurementArtifact.Policy.Steering.HeadScoreEMA); err != nil {
 		return fmt.Errorf("commit head EMA after steering intent: %w", err)
 	}
-	if _, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg); err != nil {
-		return fmt.Errorf("authenticate native runtime before steering broadcast: %w", err)
-	}
-	result, err := crv4.SubmitPrepared(ctx, s.native, prepared)
+	result, attempted, err := submitPreparedNativeRuntimeContext(ctx, s.native, s.cfg, prepared)
 	if err != nil {
+		if !attempted {
+			return err
+		}
 		// The error can occur after broadcast but before finality was observed.
 		// Preserve an uncertain pending state so a restart cannot double-submit.
 		return s.recordReleasePendingError(intent.VectorHash, err)
@@ -1001,6 +1006,7 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 	completed := false
 	deferred := false
 	weightRejected := false
+	retryableCut := false
 	rejectedAttempts := 0
 	failures := 0
 	// At most the existing failure budget is retained. Expected drain polls
@@ -1021,11 +1027,15 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr)
 			}
 			if !targetKnown || currentEpoch > targetEpoch {
-				if targetKnown && !completed && !deferred && !weightRejected {
+				if targetKnown && !completed && !deferred && !weightRejected && !retryableCut {
 					return errors.Join(fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch), pendingErr)
+				}
+				if targetKnown && retryableCut {
+					fmt.Printf("release steer: provisional native epoch %d retryable cut continued in native epoch %d; no process restart\n", targetEpoch, currentEpoch)
 				}
 				targetEpoch, targetKnown, completed, failures = currentEpoch, true, false, 0
 				deferred = false
+				retryableCut = false
 				weightRejected, rejectedAttempts = false, 0
 				pendingErr = nil
 			}
@@ -1035,31 +1045,50 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 				var rejected *provisionalNativeWeightRejection
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
+					retryableCut = false
 					weightRejected = false
 					pendingErr = nil
 				} else if allowDeferral && errors.As(err, &closedInput) && closedInput.nativeEpoch == targetEpoch && releaseOnlyErrors(err, errProvisionalClosedNativeInput) {
 					deferred, failures, pendingErr = true, 0, nil
+					retryableCut = false
 					fmt.Printf("release steer: %v; waiting for next native epoch\n", closedInput)
 				} else if allowDeferral && errors.As(err, &rejected) && rejected.nativeEpoch == targetEpoch && releaseOnlyErrors(err, rejected) {
 					// Funding and eligibility can change before this native epoch
 					// ends. Keep the existing poll/retry, without killing independent
 					// proof workers or erasing an unrelated unresolved failure.
 					weightRejected = pendingErr == nil
+					retryableCut = false
 					rejectedAttempts++
 					fmt.Printf("release steer: %v; rejected attempt %d; retrying on next poll\n", rejected, rejectedAttempts)
 				} else if releaseOnlyErrors(err, errAttemptCutPending) {
 					weightRejected = false
+					retryableCut = allowDeferral && pendingErr == nil
 					// Admitted trails drain under their existing contexts. Waiting
-					// neither spends nor resets the real native-failure budget;
-					// the next scheduler read still enforces exact epoch continuity.
+					// neither spends nor resets the real native-failure budget. A
+					// provisional run can continue the retained cut in a fresh epoch.
 				} else if releaseOnlyErrors(err, errAttemptCutSnapshotStale) {
 					weightRejected = false
+					retryableCut = allowDeferral && pendingErr == nil
 					// A cut keeps its reservation while the next submission reads
 					// a fresh canonical snapshot. Earlier signed operator inputs
-					// remain immutable and are reused by that same-epoch retry.
+					// remain immutable and are reused by the retry.
 					fmt.Printf("release steer: %v; retrying on next poll\n", err)
+				} else if releaseOnlyErrors(err, errAttemptSettlementSnapshotStale) {
+					weightRejected = false
+					retryableCut = allowDeferral && pendingErr == nil
+					// A competing refresh already advanced the coherent settlement
+					// owner. Recapture it without weakening mixed-error handling.
+					fmt.Printf("release steer: %v; retrying on next poll\n", err)
+				} else if allowDeferral && transientReleaseSnapshotError(err) {
+					weightRejected = false
+					retryableCut = pendingErr == nil
+					// An interrupted authenticated replica body retains its immutable
+					// cut and retry context. Replay it in-process; mixed integrity or
+					// lifecycle errors remain outside this narrow classifier.
+					fmt.Printf("release steer: %v; retrying authenticated collection on next poll\n", err)
 				} else {
 					weightRejected = false
+					retryableCut = false
 					failures++
 					pendingErr = errors.Join(pendingErr, err)
 					fmt.Printf("release steer: subnet epoch %d attempt %d: %v\n", targetEpoch, failures, err)
@@ -1067,6 +1096,7 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 			}
 		} else {
 			weightRejected = false
+			retryableCut = false
 			failures++
 			pendingErr = errors.Join(pendingErr, err)
 			fmt.Printf("release steer: finalized scheduler attempt %d: %v\n", failures, err)

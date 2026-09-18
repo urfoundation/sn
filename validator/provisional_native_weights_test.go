@@ -70,7 +70,7 @@ func TestProvisionalNativeWeightsRetriesPastFailureLimitAndAcceptsLaterFunding(t
 
 func TestProvisionalNativeWeightsAllowsFreshEpochOnlyWithoutUnresolvedFailure(t *testing.T) {
 	broken := errors.New("native receipt read failed")
-	for _, preceding := range []string{"none", "submit", "scheduler", "pending cut"} {
+	for _, preceding := range []string{"none", "submit", "scheduler"} {
 		t.Run(preceding, func(t *testing.T) {
 			reads, attempts := 0, 0
 			err := runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) {
@@ -90,9 +90,6 @@ func TestProvisionalNativeWeightsAllowsFreshEpochOnlyWithoutUnresolvedFailure(t 
 				if reads == 1 && preceding == "submit" {
 					return broken
 				}
-				if reads == 2 && preceding == "pending cut" {
-					return errAttemptCutPending
-				}
 				return classifyProvisionalNativeWeights(context.Background(), true, 1400, 302, errNoPositiveUnmaskedWeights)
 			}, func() bool { return reads < 4 }, true)
 			if preceding == "none" {
@@ -106,6 +103,93 @@ func TestProvisionalNativeWeightsAllowsFreshEpochOnlyWithoutUnresolvedFailure(t 
 	}
 }
 
+// Expected cut waits and stale settlement ownership continue in the fresh
+// native epoch instead of consuming a provisional supervisor restart.
+func TestProvisionalNativeWeightsContinuesRetryableCutInFreshEpoch(t *testing.T) {
+	for _, retryableError := range []error{errAttemptCutPending, errAttemptCutSnapshotStale, errAttemptSettlementSnapshotStale} {
+		reads, attempts := 0, 0
+		err := runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) {
+			reads++
+			return uint64(1399 + reads), nil
+		}, func() error {
+			attempts++
+			if attempts == 1 {
+				return retryableError
+			}
+			return nil
+		}, func() bool { return reads < 2 }, true)
+		if err != nil || reads != 2 || attempts != 2 {
+			t.Errorf("retryable error %v did not continue in the fresh epoch: reads=%d attempts=%d err=%v", retryableError, reads, attempts, err)
+		}
+	}
+}
+
+// A retryable ownership marker joined to an actual failure cannot use
+// provisional rollover to erase the failure or authorize later native work.
+func TestProvisionalNativeWeightsRejectsMixedCutFailureAtFreshEpoch(t *testing.T) {
+	broken := errors.New("signed cut storage failed")
+	for _, retryableError := range []error{errAttemptCutPending, errAttemptCutSnapshotStale, errAttemptSettlementSnapshotStale} {
+		reads, attempts := 0, 0
+		err := runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) {
+			reads++
+			return uint64(1399 + reads), nil
+		}, func() error {
+			attempts++
+			return errors.Join(retryableError, broken)
+		}, func() bool { return reads < 2 }, true)
+		if !errors.Is(err, broken) || !strings.Contains(err.Error(), "incomplete epoch") || reads != 2 || attempts != 1 {
+			t.Errorf("mixed retryable error %v escaped continuity: reads=%d attempts=%d err=%v", retryableError, reads, attempts, err)
+		}
+	}
+}
+
+func TestProvisionalNativeWeightsContinuesInterruptedAuthenticatedCollection(t *testing.T) {
+	t.Parallel()
+	interrupted := fmt.Errorf("V2 intent 2: compact measurement envelope artifact: compact operator 2: %w", &attemptReplicaPublicationError{causes: []error{
+		fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", context.DeadlineExceeded),
+		context.DeadlineExceeded,
+		context.DeadlineExceeded,
+		&attemptStreamHTTPIncompleteError{},
+		context.DeadlineExceeded,
+	}})
+	reads, attempts := 0, 0
+	err := runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) {
+		reads++
+		return uint64(1508 + reads), nil
+	}, func() error {
+		attempts++
+		if attempts == 1 {
+			return interrupted
+		}
+		return nil
+	}, func() bool { return reads < 2 }, true)
+	if err != nil || reads != 2 || attempts != 2 {
+		t.Fatalf("authenticated collection interruption consumed a supervisor restart: reads=%d attempts=%d err=%v", reads, attempts, err)
+	}
+}
+
+func TestProvisionalNativeWeightsRejectsMixedInterruptedCollection(t *testing.T) {
+	t.Parallel()
+	broken := errors.New("compact attempt chunk byte count or content hash differs")
+	interrupted := fmt.Errorf("V2 intent 2: compact measurement envelope artifact: compact operator 2: %w", &attemptReplicaPublicationError{causes: []error{
+		fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", context.DeadlineExceeded),
+		context.DeadlineExceeded,
+		&attemptStreamHTTPIncompleteError{},
+		context.DeadlineExceeded,
+	}})
+	reads, attempts := 0, 0
+	err := runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) {
+		reads++
+		return uint64(1508 + reads), nil
+	}, func() error {
+		attempts++
+		return errors.Join(interrupted, broken)
+	}, func() bool { return reads < 2 }, true)
+	if !errors.Is(err, broken) || !strings.Contains(err.Error(), "incomplete epoch 1509") || reads != 2 || attempts != 1 {
+		t.Fatalf("mixed collection integrity failure escaped continuity: reads=%d attempts=%d err=%v", reads, attempts, err)
+	}
+}
+
 func TestProvisionalNativeWeightsPreservesStrictAndUnrelatedFailureBudget(t *testing.T) {
 	rejected := &provisionalNativeWeightRejection{nativeEpoch: 1400, settlementEpoch: 302, cause: errNoPositiveUnmaskedWeights}
 	for _, test := range []struct {
@@ -116,6 +200,7 @@ func TestProvisionalNativeWeightsPreservesStrictAndUnrelatedFailureBudget(t *tes
 		{"strict", false, rejected},
 		{"different epoch", true, &provisionalNativeWeightRejection{nativeEpoch: 1401, settlementEpoch: 302, cause: errNoPositiveUnmaskedWeights}},
 		{"joined failure", true, errors.Join(rejected, errors.New("signed intent storage failure"))},
+		{"strict transport interruption", false, fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", context.DeadlineExceeded)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			attempts := 0

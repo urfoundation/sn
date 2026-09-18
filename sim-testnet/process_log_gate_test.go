@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,8 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 		{name: "structured-panic", line: `{"level":"panic","message":"process aborted"}`, wantClass: "panic"},
 		{name: "fatal-runtime", line: "fatal error: concurrent map writes", wantClass: "fatal"},
 		{name: "structured-fatal", line: `time=now level=fatal msg="peer connection memory budget exhausted"`, wantClass: "fatal"},
+		{name: "release-steering-attempt", line: "release steer: subnet epoch 1511 attempt 1: V2 intent 2: compact measurement envelope artifact", wantClass: "release-steering-attempt-failure"},
+		{name: "release-steering-continuity", line: "sim-testnet: release steering advanced from incomplete epoch 1511 to 1512", wantClass: "release-steering-continuity"},
 		{name: "quic-buffer", line: "failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB)", wantClass: "quic-receive-buffer"},
 		{name: "tls-timeout", line: "E0902 18:07:08 completeHandshake failed: tls handshake timeout", wantClass: "tls-handshake-timeout", wantFaultAttributable: true},
 		{name: "h3-internal-error", line: "E0902 18:07:08 h3 connect err = CRYPTO_ERROR 0x150 (remote): tls: internal error", wantClass: "h3-tls-internal"},
@@ -31,8 +34,18 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 		{name: "packet-timeout-fallback", line: "I0902 18:07:08 [pt]read packet timeout", wantClass: "packet-read-timeout", wantDisposition: "resilient-fallback", wantFaultAttributable: true},
 		{name: "packet-timeout-error", line: "E0902 18:07:08 [pt]read packet timeout", wantClass: "packet-read-timeout", wantFaultAttributable: true},
 		{name: "close-timeout", line: "I0902 18:07:08 close timeout", wantClass: "connection-close-timeout", wantFaultAttributable: true},
-		{name: "contract-create", line: "I0902 18:07:08 exit could not create contract", wantClass: "contract-create"},
-		{name: "seed-unavailable", line: "I0902 18:07:08 no seed providers", wantClass: "seed-unavailable"},
+		{name: "exit-gap-timeout", line: "E0902 18:07:08 exit gap timeout", wantClass: "exit-gap-timeout", wantFaultAttributable: true},
+		{name: "contract-create", line: "I0902 18:07:08 exit could not create contract", wantClass: "contract-create", wantFaultAttributable: true},
+		{name: "restart-network-contract-verification", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)", wantClass: "restart-stale-contract", wantFaultAttributable: true},
+		{name: "restart-public-contract-verification", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Public)", wantClass: "error"},
+		{name: "api-token-refresh-timeout", line: "E0917 15:03:00 [api-token]failed to refresh JWT: Timeout.", wantClass: "api-token-refresh-timeout", wantFaultAttributable: true},
+		{name: "seed-unavailable-first-worker-fault-signature", line: "I0902 18:07:08 [trail 0] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available", wantClass: "seed-unavailable", wantFaultAttributable: true},
+		{name: "seed-unavailable-fourth-worker-fault-signature", line: "I0902 18:07:08 [trail 3] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available", wantClass: "seed-unavailable", wantFaultAttributable: true},
+		{name: "seed-unavailable-generic", line: "I0902 18:07:08 no seed providers", wantClass: "seed-unavailable"},
+		{name: "seed-unavailable-worker-out-of-range", line: "I0902 18:07:08 [trail 128] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available", wantClass: "seed-unavailable"},
+		{name: "seed-unavailable-worker-noncanonical", line: "I0902 18:07:08 [trail 03] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available", wantClass: "seed-unavailable"},
+		{name: "seed-unavailable-wrong-kind", line: "I0902 18:07:08 [trail 3] trail error (kind 1, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available", wantClass: "seed-unavailable"},
+		{name: "seed-unavailable-wrong-hop", line: "I0902 18:07:08 [trail 3] trail error (kind 0, hop 00000000-0000-0000-0000-000000000001): seed pick: no seed providers available", wantClass: "seed-unavailable"},
 		{name: "postgres-nul", line: `ERROR: invalid byte sequence for encoding "UTF8": 0x00`, wantClass: "postgres-null-byte"},
 		{name: "unknown-klog-error", line: "E0902 18:07:08 an unclassified failure", wantClass: "error"},
 		{name: "unknown-klog-warning", line: "W0902 18:07:08 an unclassified warning", wantClass: "warning"},
@@ -45,7 +58,9 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 		{name: "bounded-budget", line: "W0902 18:07:08 peer connection memory budget exhausted", wantClass: ""},
 		{name: "bounded-priority", line: "W0902 18:07:08 setup admission refused reason=priority", wantClass: ""},
 		{name: "bounded-admission", line: "W0902 18:07:08 setup admission refused reason=budget", wantClass: ""},
-		{name: "shutdown-cancel", line: "E0902 18:07:08 completeHandshake failed: context canceled", wantClass: "connection-canceled", wantDisposition: "lifecycle", wantFaultAttributable: true},
+		{name: "shutdown-cancel", line: "E0902 18:07:08 completeHandshake failed: context canceled", wantClass: "connection-canceled", wantFaultAttributable: true},
+		{name: "release-steering-info-near-miss", line: "release steer: provisional native epoch 1511 retryable cut continued in native epoch 1512; no process restart", wantClass: ""},
+		{name: "release-steering-malformed-near-miss", line: "sim-testnet: release steering advanced from incomplete epoch unknown to 1512", wantClass: ""},
 		{name: "ordinary-info", line: "I0902 18:07:08 service healthy", wantClass: ""},
 	}
 	for _, test := range tests {
@@ -68,6 +83,8 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 func TestProcessLogGateAttributesOnlyNarrowSignalsToExactFaultTargets(t *testing.T) {
 	exactFault := []processLogFaultScope{{ID: "fault-1", Kind: "process-pause", Targets: []string{"miner-1"}}}
 	wrongFault := []processLogFaultScope{{ID: "fault-1", Kind: "process-pause", Targets: []string{"validator-1"}}}
+	restartFault := []processLogFaultScope{{ID: "restart-1", Kind: "process-restart", Targets: []string{"miner-1"}}}
+	wrongRestartFault := []processLogFaultScope{{ID: "restart-1", Kind: "process-restart", Targets: []string{"validator-1"}}}
 	tests := []struct {
 		name            string
 		line            string
@@ -76,6 +93,7 @@ func TestProcessLogGateAttributesOnlyNarrowSignalsToExactFaultTargets(t *testing
 		wantDisposition string
 		wantBlocking    bool
 		wantFaultID     string
+		wantFaultKind   string
 	}{
 		{name: "exact-target-connection-loss", line: "E0902 18:07:08 dial failed: connection refused\n", faults: exactFault, wantClass: "error", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
 		{name: "wrong-target-connection-loss", line: "E0902 18:07:08 dial failed: connection refused\n", faults: wrongFault, wantClass: "error", wantDisposition: "unexplained", wantBlocking: true},
@@ -83,7 +101,28 @@ func TestProcessLogGateAttributesOnlyNarrowSignalsToExactFaultTargets(t *testing
 		{name: "info-h3-fallback", line: "I0902 18:07:08 h3 connect err: tls: internal error\n", faults: exactFault, wantClass: "h3-tls-internal", wantDisposition: "resilient-fallback"},
 		{name: "error-h3-fails-closed", line: "E0902 18:07:08 h3 connect err: tls: internal error\n", faults: exactFault, wantClass: "h3-tls-internal", wantDisposition: "unexplained", wantBlocking: true},
 		{name: "info-packet-fallback", line: "I0902 18:07:08 [pt]read packet timeout\n", wantClass: "packet-read-timeout", wantDisposition: "resilient-fallback"},
-		{name: "shutdown-lifecycle", line: "E0902 18:07:08 completeHandshake failed: context canceled\n", wantClass: "connection-canceled", wantDisposition: "lifecycle"},
+		{name: "unproven-shutdown", line: "E0902 18:07:08 completeHandshake failed: context canceled\n", wantClass: "connection-canceled", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "proven-shutdown", line: "E0902 18:07:08 completeHandshake failed: context canceled\n", faults: exactFault, wantClass: "connection-canceled", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
+		{name: "contract-create-exact-target", line: "I0902 18:07:08 exit could not create contract.\n", faults: exactFault, wantClass: "contract-create", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
+		{name: "contract-create-wrong-target", line: "I0902 18:07:08 exit could not create contract.\n", faults: wrongFault, wantClass: "contract-create", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "restart-stale-contract-primary-exact-target", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)\n", faults: restartFault, wantClass: "restart-stale-contract", wantDisposition: "expected-fault", wantFaultID: "restart-1", wantFaultKind: "process-restart"},
+		{name: "restart-stale-contract-register-exact-target", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) ack could not register contracts = Contract verification failed.\n", faults: restartFault, wantClass: "restart-stale-contract", wantDisposition: "expected-fault", wantFaultID: "restart-1", wantFaultKind: "process-restart"},
+		{name: "restart-stale-contract-receive-exact-target", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit could not receive ack = Contract verification failed.\n", faults: restartFault, wantClass: "restart-stale-contract", wantDisposition: "expected-fault", wantFaultID: "restart-1", wantFaultKind: "process-restart"},
+		{name: "restart-stale-contract-wrong-target", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)\n", faults: wrongRestartFault, wantClass: "restart-stale-contract", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "restart-stale-contract-wrong-kind", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)\n", faults: exactFault, wantClass: "restart-stale-contract", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "restart-stale-contract-without-fault", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)\n", wantClass: "restart-stale-contract", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "restart-stale-contract-public-remains-blocking", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Public)\n", faults: restartFault, wantClass: "error", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "restart-stale-contract-wrong-stream-remains-blocking", line: "E0902 18:07:08.000000 123 transfer.go:1] [r]receiver<-sender s(00000000-0000-0000-0000-000000000001) exit contract verification failed (Network)\n", faults: restartFault, wantClass: "error", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "exit-gap-exact-target", line: "E0902 18:07:08 exit gap timeout\n", faults: exactFault, wantClass: "exit-gap-timeout", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
+		{name: "exit-gap-wrong-target", line: "E0902 18:07:08 exit gap timeout\n", faults: wrongFault, wantClass: "exit-gap-timeout", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "api-token-exact-target", line: "E0917 15:03:00 [api-token]failed to refresh JWT: Timeout.\n", faults: exactFault, wantClass: "api-token-refresh-timeout", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
+		{name: "api-token-wrong-target", line: "E0917 15:03:00 [api-token]failed to refresh JWT: Timeout.\n", faults: wrongFault, wantClass: "api-token-refresh-timeout", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "seed-unavailable-exact-target", line: "E0917 15:24:00 [trail 3] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available\n", faults: exactFault, wantClass: "seed-unavailable", wantDisposition: "expected-fault", wantFaultID: "fault-1"},
+		{name: "seed-unavailable-wrong-target", line: "E0917 15:24:00 [trail 3] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available\n", faults: wrongFault, wantClass: "seed-unavailable", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "seed-unavailable-without-fault", line: "E0917 15:24:00 [trail 0] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available\n", wantClass: "seed-unavailable", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "generic-seed-unavailable-remains-blocking", line: "E0917 15:24:00 seed pick: no seed providers available\n", faults: exactFault, wantClass: "seed-unavailable", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "wrong-hop-seed-unavailable-remains-blocking", line: "E0917 15:24:00 [trail 3] trail error (kind 0, hop 00000000-0000-0000-0000-000000000001): seed pick: no seed providers available\n", faults: exactFault, wantClass: "seed-unavailable", wantDisposition: "unexplained", wantBlocking: true},
+		{name: "malformed-worker-seed-unavailable-remains-blocking", line: "E0917 15:24:00 [trail invalid] trail error (kind 0, hop 00000000-0000-0000-0000-000000000000): seed pick: no seed providers available\n", faults: exactFault, wantClass: "seed-unavailable", wantDisposition: "unexplained", wantBlocking: true},
 	}
 	for _, test := range tests {
 		fixture := newProcessLogGateFixture(t, "", "")
@@ -100,8 +139,14 @@ func TestProcessLogGateAttributesOnlyNarrowSignalsToExactFaultTargets(t *testing
 			if len(finding.FaultIDs) != 0 || len(finding.FaultKinds) != 0 {
 				t.Fatalf("%s: unexpected fault attribution=%+v", test.name, finding)
 			}
-		} else if len(finding.FaultIDs) != 1 || finding.FaultIDs[0] != test.wantFaultID || len(finding.FaultKinds) != 1 || finding.FaultKinds[0] != "process-pause" {
-			t.Fatalf("%s: fault attribution=%+v", test.name, finding)
+		} else {
+			wantFaultKind := test.wantFaultKind
+			if wantFaultKind == "" {
+				wantFaultKind = "process-pause"
+			}
+			if len(finding.FaultIDs) != 1 || finding.FaultIDs[0] != test.wantFaultID || len(finding.FaultKinds) != 1 || finding.FaultKinds[0] != wantFaultKind {
+				t.Fatalf("%s: fault attribution=%+v", test.name, finding)
+			}
 		}
 	}
 }
@@ -272,6 +317,92 @@ func TestProcessLogGatePersistsLaunchBoundaryInodeOffsetsAndFindings(t *testing.
 	}
 }
 
+func TestProvisionalProcessLogAcceptanceRetainsLateHistoricalLinesAndFailsClosedAfterCut(t *testing.T) {
+	t.Parallel()
+	fixture := newProcessLogGateFixture(t, "", "")
+	fixture.gate.provisionalObservationOnly = true
+	appendProcessLog(t, fixture.stderrPath, "E0902 11:27:00 completeHandshake failed: tls handshake timeout\n")
+	appendProcessLog(t, fixture.stderrPath, "W0902 13:39:00 artifact stream stopped: context canceled\n")
+	boundAt := time.Date(2031, time.April, 5, 14, 6, 0, 0, time.UTC)
+	retained, boundaryHash, err := fixture.gate.BindAcceptance(boundAt)
+	if err != nil || !validCanonicalHashHex(boundaryHash) || len(retained.Findings) != 2 {
+		t.Fatalf("historical late scan could not be retained at the acceptance cut: findings=%+v hash=%q err=%v", retained.Findings, boundaryHash, err)
+	}
+	for _, finding := range retained.Findings {
+		if finding.Blocking || finding.Disposition != "provisional-observation" {
+			t.Fatalf("historical finding entered the accepted interval: %+v", finding)
+		}
+	}
+	if current, err := fixture.gate.Scan(false); err != nil || len(current.Findings) != 0 {
+		t.Fatalf("retained findings leaked through the acceptance cursor: %+v %v", current.Findings, err)
+	}
+	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:00 completeHandshake failed: tls handshake timeout\n")
+	current, err := fixture.gate.Scan(false)
+	if err != nil || len(current.Findings) != 1 || !current.Findings[0].Blocking || current.Findings[0].AcceptanceScope != boundaryHash {
+		t.Fatalf("post-boundary finding did not fail closed: %+v %v", current.Findings, err)
+	}
+	if len(fixture.gate.state.Findings) != 3 || fixture.gate.state.AcceptanceBoundary == nil {
+		t.Fatalf("durable report did not preserve retained and current findings: %+v", fixture.gate.state)
+	}
+	if err := validatePersistedProcessLogGate(fixture.gate.state); err != nil {
+		t.Fatalf("scoped process log evidence is not self-authenticating: %v", err)
+	}
+}
+
+func TestProcessLogAcceptanceCapturesReleaseSteeringFailureSequence(t *testing.T) {
+	t.Parallel()
+	fixture := newProcessLogGateFixture(t, "", "")
+	fixture.gate.provisionalObservationOnly = true
+	_, boundaryHash, err := fixture.gate.BindAcceptance(time.Date(2031, time.April, 5, 14, 6, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendProcessLog(t, fixture.stdoutPath, "release steer: subnet epoch 1511 attempt 1: V2 intent 2: compact measurement envelope artifact\n")
+	appendProcessLog(t, fixture.stderrPath, "sim-testnet: release steering advanced from incomplete epoch 1511 to 1512\n")
+	result, err := fixture.gate.Scan(false)
+	if err != nil || len(result.Findings) != 2 {
+		t.Fatalf("release steering failure scan=(%+v,%v)", result, err)
+	}
+	classes := map[string]bool{}
+	for _, finding := range result.Findings {
+		if !finding.Blocking || finding.Disposition != "unexplained" || finding.AcceptanceScope != boundaryHash {
+			t.Fatalf("release steering failure escaped acceptance scope: %+v", finding)
+		}
+		classes[finding.Class] = true
+	}
+	if !classes["release-steering-attempt-failure"] || !classes["release-steering-continuity"] {
+		t.Fatalf("release steering sequence classes=%v", classes)
+	}
+}
+
+func TestProcessLogAcceptanceRejectsHistoricalStrictFindingAndPrefixSubstitution(t *testing.T) {
+	t.Parallel()
+	strict := newProcessLogGateFixture(t, "", "")
+	appendProcessLog(t, strict.stderrPath, "E0902 11:27:00 completeHandshake failed: tls handshake timeout\n")
+	if _, hash, err := strict.gate.BindAcceptance(time.Now().UTC()); err == nil || hash != "" || strict.gate.state.AcceptanceBoundary != nil {
+		t.Fatalf("strict acceptance cut waived a pre-boundary release failure: hash=%q err=%v", hash, err)
+	}
+
+	provisional := newProcessLogGateFixture(t, "", "")
+	provisional.gate.provisionalObservationOnly = true
+	appendProcessLog(t, provisional.stderrPath, "I0902 14:00:00 retained healthy line\n")
+	if _, _, err := provisional.gate.BindAcceptance(time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(provisional.stderrPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] ^= 1
+	if err := os.WriteFile(provisional.stderrPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := provisional.gate.Scan(false)
+	if err != nil || len(result.Findings) != 1 || !result.Findings[0].Blocking || result.Findings[0].Class != "log-integrity" {
+		t.Fatalf("signed process-log prefix substitution was not rejected: %+v %v", result.Findings, err)
+	}
+}
+
 func TestProcessLogGateRejectsPriorClassifierVersion(t *testing.T) {
 	fixture := newProcessLogGateFixture(t, "", "")
 	fixture.gate.stateLock.Lock()
@@ -284,6 +415,59 @@ func TestProcessLogGateRejectsPriorClassifierVersion(t *testing.T) {
 
 	if _, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor); err == nil || !strings.Contains(err.Error(), "schema or classifier") {
 		t.Fatalf("prior classifier version load error=%v", err)
+	}
+}
+
+func TestProcessLogGateMigratesV2CursorAndFindingInventoryWithoutRescan(t *testing.T) {
+	t.Parallel()
+	fixture := newProcessLogGateFixture(t, "", "")
+	appendProcessLog(t, fixture.stderrPath, "E0902 11:27:00 completeHandshake failed: tls handshake timeout\n")
+	if _, err := fixture.gate.Scan(false); err != nil {
+		t.Fatal(err)
+	}
+	wantCursors := append([]processLogCursor(nil), fixture.gate.state.Cursors...)
+	wantFindings := append([]ProcessLogFinding(nil), fixture.gate.state.Findings...)
+	fixture.gate.state.Classifier = processLogClassifierV2
+	if err := fixture.gate.persistWithLock(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.state.Classifier != processLogClassifierVersion || !reflect.DeepEqual(migrated.state.Cursors, wantCursors) || !reflect.DeepEqual(migrated.state.Findings, wantFindings) {
+		t.Fatalf("classifier migration changed retained evidence: %+v", migrated.state)
+	}
+	var persisted processLogGateState
+	if err := readJSONFile(migrated.path, &persisted); err != nil || persisted.Classifier != processLogClassifierVersion || !reflect.DeepEqual(persisted.Cursors, wantCursors) || !reflect.DeepEqual(persisted.Findings, wantFindings) {
+		t.Fatalf("classifier migration was not durable and lossless: %+v %v", persisted, err)
+	}
+}
+
+func TestProcessLogGateMigratesV3SignedScopeWithoutRewritingEvidence(t *testing.T) {
+	t.Parallel()
+	fixture := newProcessLogGateFixture(t, "", "")
+	_, boundaryHash, err := fixture.gate.BindAcceptance(time.Unix(123, 0))
+	if err != nil || boundaryHash == "" {
+		t.Fatalf("bind acceptance=(%q,%v)", boundaryHash, err)
+	}
+	appendProcessLog(t, fixture.stderrPath, "I0902 11:27:00 h3 connect err: tls: internal error\n")
+	if _, err := fixture.gate.Scan(false); err != nil {
+		t.Fatal(err)
+	}
+	wantCursors := append([]processLogCursor(nil), fixture.gate.state.Cursors...)
+	wantFindings := append([]ProcessLogFinding(nil), fixture.gate.state.Findings...)
+	wantBoundary := *fixture.gate.state.AcceptanceBoundary
+	fixture.gate.state.Classifier = processLogClassifierV3
+	if err := fixture.gate.persistWithLock(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.state.Classifier != processLogClassifierVersion || !reflect.DeepEqual(migrated.state.Cursors, wantCursors) || !reflect.DeepEqual(migrated.state.Findings, wantFindings) || !reflect.DeepEqual(migrated.state.AcceptanceBoundary, &wantBoundary) {
+		t.Fatalf("classifier migration changed signed evidence: %+v", migrated.state)
 	}
 }
 
@@ -708,15 +892,23 @@ func TestScenarioProcessLogGateAttributesApplyAndRestoreWindowsWithoutGrace(t *t
 		Faults: []scenarioFaultSpec{{ID: "pause-miner", Kind: "process-pause", Targets: []string{"miner-1"}, TriggerOffsetBlocks: 1, DurationBlocks: 1}},
 	}
 	driver := &writingScenarioFaultDriver{path: fixture.stderrPath}
-	result, err := runScenarioWithProbe(context.Background(), cfg, fixture.dir, definition, &staticScenarioProbe{observations: observations}, scenarioRunOptions{
+	probe := &staticScenarioProbe{observations: observations}
+	now := time.Date(2031, time.April, 5, 14, 6, 0, 0, time.UTC)
+	testClock := func() time.Time {
+		current := now
+		now = now.Add(time.Millisecond)
+		return current
+	}
+	result, err := runScenarioWithProbe(context.Background(), cfg, fixture.dir, definition, probe, scenarioRunOptions{
 		PollInterval: time.Microsecond,
 		Timeout:      time.Second,
 		Publish:      false,
 		FaultDriver:  driver,
 		ProcessLogs:  fixture.gate,
+		Now:          testClock,
 	})
-	if err != nil || result == nil || result.Result != "pass" || len(result.Faults) != 1 || result.Faults[0].Status != "restored" {
-		t.Fatalf("fault-window scenario result=%+v error=%v", result, err)
+	if err != nil || result == nil || result.Result != "pass" || len(result.Faults) != 1 || result.Faults[0].Status != "restored" || result.Faults[0].AppliedBlock != 101 || result.Faults[0].RestoredBlock != 102 || probe.calls != 3 {
+		t.Fatalf("fault-window scenario result=%+v probe_calls=%d error=%v", result, probe.calls, err)
 	}
 	var evidence processLogGateState
 	if err := readJSONFile(filepath.Join(fixture.dir, "runs", result.RunID, processLogEvidenceFilename), &evidence); err != nil {

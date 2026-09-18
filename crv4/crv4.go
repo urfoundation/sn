@@ -430,6 +430,7 @@ func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid ui
 	if opts.SourceHash != ([32]byte{}) {
 		prepared.Schema = PreparedSourceSubmissionSchema
 		prepared.SourceCommitment = &PreparedSourceCommitment{Hash: codec.HexEncodeToString(opts.SourceHash[:]), GenesisHash: chain.GenesisHash.Hex(), RuntimeSpec: uint32(chain.Runtime.SpecVersion), TransactionVersion: uint32(chain.Runtime.TransactionVersion)}
+		prepared.SourceCommitment.CompatibilityProfile = chain.CurrentRuntimeCompatibilityProfile()
 		if err := chain.ValidatePreparedSource(prepared); err != nil {
 			return nil, err
 		}

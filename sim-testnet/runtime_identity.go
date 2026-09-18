@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,11 +26,12 @@ type runtimeVersionIdentity = crv4.RuntimeVersionIdentity
 // metadata. On a cache hit, the large bytes were authenticated at another block
 // carrying the identical reviewed artifact.
 type authenticatedRuntimeMetadata struct {
-	FinalizedHash types.Hash
-	Version       runtimeVersionIdentity
-	CodeHash      string
-	MetadataHash  string
-	Metadata      *types.Metadata
+	FinalizedHash        types.Hash
+	Version              runtimeVersionIdentity
+	CodeHash             string
+	MetadataHash         string
+	Metadata             *types.Metadata
+	CompatibilityProfile string
 }
 
 type historicalRuntimeArtifactIdentity struct {
@@ -230,11 +232,12 @@ func readRuntimeArtifactWithPolicy(ctx context.Context, chain *crv4.Chain, final
 		return result, err
 	}
 	return authenticatedRuntimeMetadata{
-		FinalizedHash: authenticated.BlockHash,
-		Version:       authenticated.Version,
-		CodeHash:      authenticated.CodeHash,
-		MetadataHash:  authenticated.MetadataHash,
-		Metadata:      authenticated.Metadata,
+		FinalizedHash:        authenticated.BlockHash,
+		Version:              authenticated.Version,
+		CodeHash:             authenticated.CodeHash,
+		MetadataHash:         authenticated.MetadataHash,
+		Metadata:             authenticated.Metadata,
+		CompatibilityProfile: authenticated.CompatibilityProfile,
 	}, nil
 }
 
@@ -257,6 +260,16 @@ func bindAuthenticatedRuntime(chain *crv4.Chain, authenticated authenticatedRunt
 	}
 }
 
+// Interface compatibility does not preserve a signature's runtime domain.
+// This fence is required both before journaling fresh bytes and before replay
+// of a transaction that has no canonical finalized receipt.
+func requireSameNativeSigningRuntime(prepared, current authenticatedRuntimeMetadata) error {
+	if prepared.Version != current.Version || prepared.CodeHash != current.CodeHash || prepared.MetadataHash != current.MetadataHash {
+		return errors.New("native runtime changed across signing/recovery; retained bytes require a separately authorized replacement")
+	}
+	return nil
+}
+
 // Authenticate every runtime identity dimension at a caller-selected finalized
 // hash. This function is read-only: shared release chains bind once during
 // initialization so concurrent checks cannot race by replacing Meta/Runtime.
@@ -273,10 +286,16 @@ func readAuthenticatedRuntimeMetadataAtContext(ctx context.Context, chain *crv4.
 		cfg.Release.Runtime.StateVersion != cfg.Public.Chain.ExpectedStateVersion {
 		return result, errors.New("release/runtime manifest mismatch")
 	}
+	if err := enableProvisionalRuntimeCompatibility(chain, cfg); err != nil {
+		return result, err
+	}
 	var err error
 	result, err = readRuntimeArtifactWithPolicy(ctx, chain, finalized, []crv4.RuntimeArtifactIdentity{currentReleaseRuntimeArtifact(cfg)}, releaseRuntimeRPCRetryPolicy())
 	if err != nil {
 		return result, err
+	}
+	if result.CompatibilityProfile == crv4.ProvisionalRuntimeCompatibilityProfile {
+		return result, nil
 	}
 	if err := validateRuntimeVersionIdentity(result.Version, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); err != nil {
 		return result, err
@@ -312,6 +331,9 @@ func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4
 		cfg.Release.Runtime.StateVersion != cfg.Public.Chain.ExpectedStateVersion {
 		return result, errors.New("release/runtime manifest mismatch")
 	}
+	if err := enableProvisionalRuntimeCompatibility(chain, cfg); err != nil {
+		return result, err
+	}
 	allowed, err := releaseHistoryRuntimeArtifacts(cfg)
 	if err != nil {
 		return result, err
@@ -319,6 +341,9 @@ func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4
 	result, err = readRuntimeArtifactWithPolicy(ctx, chain, finalized, allowed, releaseRuntimeRPCRetryPolicy())
 	if err != nil {
 		return result, err
+	}
+	if result.CompatibilityProfile == crv4.ProvisionalRuntimeCompatibilityProfile {
+		return result, nil
 	}
 	if currentErr := validateRuntimeVersionIdentity(result.Version, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); currentErr == nil {
 		if err := validateRuntimeCodeHash(result.CodeHash, cfg.Release.Runtime.CodeHash); err != nil {
@@ -344,6 +369,26 @@ func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4
 		return result, fmt.Errorf("historical runtime %d: %w", result.Version.SpecVersion, err)
 	}
 	return result, nil
+}
+
+// The approved provisional record keeps the original release/plan authority.
+// Runtime changes are recorded separately and never rewrite that provenance.
+func enableProvisionalRuntimeCompatibility(chain *crv4.Chain, cfg *ResolvedConfig) error {
+	if !provisionalResumeEnabled(cfg) {
+		return nil
+	}
+	record := cfg.provisionalResume.Record
+	if cfg.Public == nil || cfg.Config == nil || cfg.ChainID != testnetChainID || !strings.EqualFold(cfg.Public.Chain.GenesisHash, testnetGenesis) || record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || !validCanonicalHashHex(record.PlanHash) || !filepath.IsAbs(cfg.provisionalResume.RecordPath) {
+		return errors.New("provisional runtime compatibility has no exact testnet resume authority")
+	}
+	genesis, err := types.NewHashFromHexString(cfg.Public.Chain.GenesisHash)
+	if err != nil {
+		return err
+	}
+	directory := filepath.Join(filepath.Dir(cfg.provisionalResume.RecordPath), "runtime-compatibility")
+	return chain.EnableProvisionalRuntimeCompatibility(genesis, func(artifact crv4.AuthenticatedRuntimeArtifact) error {
+		return crv4.WriteProvisionalRuntimeObservation(directory, artifact)
+	})
 }
 
 // Proves a carried native receipt using cancellable, retryable reads bound to

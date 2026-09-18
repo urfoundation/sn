@@ -1,0 +1,6 @@
+body_exit=1
+state_compare_exit=1
+binary_compare_exit=0
+lock_compare_exit=0
+provisional=true
+final_acceptance=false

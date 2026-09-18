@@ -356,6 +356,7 @@ type liveScenarioProbe struct {
 	cfg                  *ResolvedConfig
 	stateDir             string
 	client               *http.Client
+	pathProofs           *scenarioPathProofCache
 	trustedEvidenceOwner common.Address
 	publicManifestURI    string
 	finalSemanticVerify  campaignFinalSemanticVerifier
@@ -394,6 +395,7 @@ type scenarioRunOptions struct {
 	FaultDriver                 scenarioFaultDriver
 	Adversaries                 adversaryCampaign
 	Prepare                     func(context.Context) error
+	BeforeFleetLifecycle        func(context.Context) error
 	NativeWarmupV2              scenarioNativeWarmupReadV2
 	NativeWarmupCompleteV2      func(context.Context) error
 	NativeWarmupBudgetV2        *ScenarioNativeWarmupBudgetV2
@@ -624,7 +626,10 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		} else {
 			validator = inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
 		}
-		validator.PathProofCounts, err = inspectValidatorPathProofs(p.cfg, p.stateDir, validatorID, observation.Operators)
+		if p.pathProofs == nil {
+			p.pathProofs = newScenarioPathProofCache()
+		}
+		validator.PathProofCounts, err = inspectValidatorPathProofsCached(ctx, p.cfg, p.stateDir, validatorID, observation.Operators, p.pathProofs)
 		if err != nil {
 			if validator.Error == "" {
 				validator.Error = err.Error()
@@ -1807,6 +1812,19 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 		result.Error = err.Error()
 		return result
 	}
+	return projectValidatorIntent(all, validatorID, headSlots, candidateFleets, func(item *validatorpkg.SteeringIntent) (*validatorpkg.ReleaseMeasurementArtifact, error) {
+		artifact, verified, err := intentStore.MeasurementArtifact(item)
+		if err == nil {
+			err = validatorpkg.VerifyReleaseMeasurementIntent(item, artifact, verified)
+		}
+		return artifact, err
+	})
+}
+
+// Projection shares the ordinary operational fields. Its caller owns source
+// authentication and must keep local observations separate from strict receipts.
+func projectValidatorIntent(all []validatorpkg.SteeringIntent, validatorID, headSlots, candidateFleets int, measurement func(*validatorpkg.SteeringIntent) (*validatorpkg.ReleaseMeasurementArtifact, error)) ValidatorObservation {
+	result := ValidatorObservation{ValidatorID: validatorID}
 	if len(all) != 0 {
 		current := all[len(all)-1]
 		result.CurrentStatus = current.Status
@@ -1834,10 +1852,7 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 				SelectedHeadUIDs:   append([]uint16(nil), item.SelectedHeadUIDs...), RejectedHeadUIDs: append([]uint16(nil), item.RejectedHeadUIDs...),
 				StaleHeadBindings: len(item.StaleHeadBindings),
 			}
-			artifact, verified, measurementErr := intentStore.MeasurementArtifact(item)
-			if measurementErr == nil {
-				measurementErr = validatorpkg.VerifyReleaseMeasurementIntent(item, artifact, verified)
-			}
+			artifact, measurementErr := measurement(item)
 			if measurementErr == nil {
 				decision.CandidateFleetUIDs, decision.CandidateFleetHotkeys, measurementErr = headDecisionCandidateIdentities(artifact, item.EligibleHeadUIDs)
 			}
@@ -1891,6 +1906,10 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 // operator's published key history verifies FINAL signatures across rotations.
 // A missing store is a valid zero baseline before the first completed trail.
 func inspectValidatorPathProofs(cfg *ResolvedConfig, stateDir string, validatorID int, operators []OperatorObservation) (map[int]int, error) {
+	return inspectValidatorPathProofsCached(context.Background(), cfg, stateDir, validatorID, operators, nil)
+}
+
+func inspectValidatorPathProofsCached(ctx context.Context, cfg *ResolvedConfig, stateDir string, validatorID int, operators []OperatorObservation, cache *scenarioPathProofCache) (map[int]int, error) {
 	if cfg == nil || cfg.Config == nil || validatorID < 1 || validatorID > cfg.Config.Topology.Validators {
 		return nil, errors.New("validator path-proof identity is invalid")
 	}
@@ -1915,26 +1934,57 @@ func inspectValidatorPathProofs(cfg *ResolvedConfig, stateDir string, validatorI
 		return nil, fmt.Errorf("validator %d client seed is unavailable or invalid: %w", validatorID, err)
 	}
 	counts := make(map[int]int, cfg.Config.Topology.Operators)
+	limits, cacheConfigured, cacheErr := configuredScenarioPathProofLimits(cfg, validatorID)
+	if cache != nil {
+		if cacheErr != nil {
+			return nil, cacheErr
+		}
+		if !cacheConfigured {
+			// Legacy configurations have no trustworthy disk/replay bounds for an
+			// incremental prefix. Keep their established full validation path.
+			cache = nil
+		}
+	}
 	for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "operators", fmt.Sprintf("no-%d", noID))
 		expectedVPK := authority.keysByValidator[uint64(validatorID)][uint64(noID)]
-		lines, err := completedReleaseProofLines(filepath.Join(root, "proofs.jsonl"))
-		if err != nil {
-			return nil, fmt.Errorf("validator %d operator %d path proofs: %w", validatorID, noID, err)
-		}
-		for lineIndex, line := range lines {
-			var record validatorpkg.ProofRecord
-			if err := json.Unmarshal(line, &record); err != nil {
-				return nil, fmt.Errorf("validator %d operator %d proof %d decode: %w", validatorID, noID, lineIndex+1, err)
-			}
+		path := filepath.Join(root, "proofs.jsonl")
+		verify := func(record *validatorpkg.ProofRecord, lineIndex int) error {
 			if record.Epoch == 0 {
-				return nil, fmt.Errorf("validator %d operator %d proof %d has no contract epoch", validatorID, noID, lineIndex+1)
+				return fmt.Errorf("validator %d operator %d proof %d has no contract epoch", validatorID, noID, lineIndex+1)
 			}
-			if err := validatorpkg.VerifyProofRecord(&record, expectedVPK, serverKeys[noID], cfg.Policy.Verify.TrailDepth); err != nil {
-				return nil, fmt.Errorf("validator %d operator %d proof %d: %w", validatorID, noID, lineIndex+1, err)
+			if err := validatorpkg.VerifyProofRecord(record, expectedVPK, serverKeys[noID], cfg.Policy.Verify.TrailDepth); err != nil {
+				return fmt.Errorf("validator %d operator %d proof %d: %w", validatorID, noID, lineIndex+1, err)
+			}
+			return nil
+		}
+		var count int
+		if cache == nil {
+			lines, err := completedReleaseProofLines(path)
+			if err != nil {
+				return nil, fmt.Errorf("validator %d operator %d path proofs: %w", validatorID, noID, err)
+			}
+			for lineIndex, line := range lines {
+				var record validatorpkg.ProofRecord
+				if err := json.Unmarshal(line, &record); err != nil {
+					return nil, fmt.Errorf("validator %d operator %d proof %d decode: %w", validatorID, noID, lineIndex+1, err)
+				}
+				if err := verify(&record, lineIndex); err != nil {
+					return nil, err
+				}
+			}
+			count = len(lines)
+		} else {
+			verifierHash, err := scenarioPathProofVerifierHash(expectedVPK, serverKeys[noID], cfg.Policy.Verify.TrailDepth)
+			if err != nil {
+				return nil, err
+			}
+			count, err = cache.inspect(ctx, path, verifierHash, limits, verify)
+			if err != nil {
+				return nil, fmt.Errorf("validator %d operator %d path proofs: %w", validatorID, noID, err)
 			}
 		}
-		counts[noID] = len(lines)
+		counts[noID] = count
 	}
 	return counts, nil
 }
@@ -3230,6 +3280,10 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 	if name == "" {
 		name = cfg.Config.Scenarios.Launch
 	}
+	epochChecks := epochScenarioChecks()
+	if provisionalResumeEnabled(cfg) {
+		epochChecks = provisionalEpochScenarioChecks()
+	}
 	definition := scenarioDefinition{Name: name, Checks: commonScenarioChecks()}
 	switch name {
 	case "smoke":
@@ -3241,11 +3295,7 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		return definition, nil
 	case "epoch":
 		definition.GoalEpochs = 1
-		if provisionalResumeEnabled(cfg) {
-			definition.Checks = append(definition.Checks, provisionalEpochScenarioChecks()...)
-		} else {
-			definition.Checks = append(definition.Checks, epochScenarioChecks()...)
-		}
+		definition.Checks = append(definition.Checks, epochChecks...)
 		return definition, nil
 	case "release-1.0":
 		if cfg.Config.Scenarios.ShortEpochs < 1 {
@@ -3257,7 +3307,7 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 			return scenarioDefinition{}, err
 		}
 		definition.Faults = faults
-		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
+		definition.Checks = append(definition.Checks, epochChecks...)
 		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
 		definition.Checks = append(definition.Checks, acceptanceScenarioChecks()...)
 		matrix, err := loadScenarioMatrix(cfg.Repos.SN)
@@ -3265,10 +3315,30 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 			return scenarioDefinition{}, fmt.Errorf("release scenario matrix: %w", err)
 		}
 		definition.MatrixHash = matrix.Hash
-		if err := validateScenarioMatrixCoverage(matrix, definition.Checks, definition.Faults); err != nil {
+		coverageMatrix := matrix
+		if provisionalResumeEnabled(cfg) {
+			// Keep the approved matrix immutable and name the one operational
+			// substitution explicitly; it does not attest strict intent replay.
+			copied := *matrix
+			copied.Rows = slices.Clone(matrix.Rows)
+			for index := range copied.Rows {
+				row := &copied.Rows[index]
+				row.LiveAssertions = slices.Clone(row.LiveAssertions)
+				for assertion, id := range row.LiveAssertions {
+					if id == "validator_intents_finalized" {
+						row.LiveAssertions[assertion] = "validator_local_v2_receipts_finalized_and_applied"
+					}
+				}
+			}
+			coverageMatrix = &copied
+		}
+		if err := validateScenarioMatrixCoverage(coverageMatrix, definition.Checks, definition.Faults); err != nil {
 			return scenarioDefinition{}, err
 		}
 		definition.Checks = append(definition.Checks, scenarioCheck{ID: "scenario_matrix_coverage", Check: func(*scenarioEvaluation) (bool, string) {
+			if provisionalResumeEnabled(cfg) {
+				return true, fmt.Sprintf("20/20 matrix rows mapped with local V2 receipt observation; strict_intent_replay=unrun final_acceptance=false; hash=%s", matrix.Hash)
+			}
 			return true, fmt.Sprintf("20/20 matrix rows mapped; hash=%s", matrix.Hash)
 		}})
 		if err := enableContinuousAdversaries(cfg, &definition); err != nil {
@@ -3284,7 +3354,7 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		// epochs are accepted.
 		definition.GoalEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs)
 		definition.Faults = productionRollingFaults(cfg)
-		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
+		definition.Checks = append(definition.Checks, epochChecks...)
 		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
 		definition.Checks = append(definition.Checks, productionScenarioChecks()...)
 		definition.Checks = append(definition.Checks, acceptanceScenarioChecks()...)
@@ -3513,10 +3583,16 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 func appendFaultAssertions(assertions []AssertionRecord, records []ScenarioFaultRecord, started time.Time, current *ScenarioObservation) []AssertionRecord {
 	now := time.Now().UTC()
 	for _, record := range records {
-		timingValid := record.RestoredBlock >= record.RestoreBlock
+		durationValid := record.RestoreBlock >= record.TriggerBlock
+		var duration uint64
+		if durationValid {
+			duration = record.RestoreBlock - record.TriggerBlock
+		}
+		minimumRestore, minimumOK := checkedAdd(record.AppliedBlock, duration)
+		timingValid := durationValid && minimumOK && record.RestoredBlock >= record.RestoreBlock && record.RestoredBlock >= minimumRestore
 		if record.RestoreCondition != "" {
-			minimumRestore, ok := checkedAdd(record.AppliedBlock, record.MinimumDurationBlocks)
-			timingValid = ok && record.RestoredBlock >= minimumRestore && (record.RestoredBlock >= record.RestoreBlock || record.RestoreConditionMet && record.RestoreConditionBlock >= minimumRestore && record.RestoreConditionBlock <= record.RestoredBlock)
+			minimumRestore, minimumOK = checkedAdd(record.AppliedBlock, record.MinimumDurationBlocks)
+			timingValid = minimumOK && record.RestoredBlock >= minimumRestore && (record.RestoredBlock >= record.RestoreBlock || record.RestoreConditionMet && record.RestoreConditionBlock >= minimumRestore && record.RestoreConditionBlock <= record.RestoredBlock)
 		}
 		passed := record.Status == "restored" && record.AppliedBlock >= record.TriggerBlock && timingValid && len(record.Processes) == len(record.Targets)
 		if record.PreAcceptance {
@@ -3649,8 +3725,17 @@ func beginScenarioCampaignPreparation(ctx context.Context, phase, runID string, 
 			return errors.New("production fleet lifecycle cannot authenticate an exact release handoff")
 		}
 		gate := options.Attempt.payload.PriorRelease
-		if err := authenticator.AuthenticateReleaseHandoff(immutableHandoff, gate.LifecycleHandoff.ContentHash, gate.RunID); err != nil {
+		releaseRunID := gate.RunID
+		if gate.LifecycleHandoff.InheritedReleaseRunID != "" {
+			releaseRunID = gate.LifecycleHandoff.InheritedReleaseRunID
+		}
+		if err := authenticator.AuthenticateReleaseHandoff(immutableHandoff, gate.LifecycleHandoff.ContentHash, releaseRunID); err != nil {
 			return fmt.Errorf("bind exact release lifecycle handoff to production successor: %w", err)
+		}
+	}
+	if validator, ok := options.FleetLifecycle.(scenarioFleetLifecycleResumeValidator); ok {
+		if err := validator.ValidatePhaseResume(phase, runID); err != nil {
+			return fmt.Errorf("validate fleet lifecycle resume before preparation: %w", err)
 		}
 	}
 	if options.Prepare != nil && (options.Attempt == nil || !options.Attempt.payload.PreparationComplete) {
@@ -3668,8 +3753,22 @@ func beginScenarioCampaignPreparation(ctx context.Context, phase, runID string, 
 			return fmt.Errorf("commit empty scenario preparation boundary: %w", err)
 		}
 	}
+	// Lifecycle launch validation observes the validator view. Install the
+	// explicitly pre-acceptance filters first so the launch census can reach the
+	// intended zero-emission prune boundary inside this invocation.
+	if options.BeforeFleetLifecycle != nil {
+		if err := options.BeforeFleetLifecycle(ctx); err != nil {
+			return fmt.Errorf("before fleet lifecycle initialization: %w", err)
+		}
+	}
 	if options.FleetLifecycle != nil {
-		if err := options.FleetLifecycle.BeginPhase(phase, runID); err != nil {
+		var err error
+		if contextual, ok := options.FleetLifecycle.(scenarioFleetLifecycleContext); ok {
+			err = contextual.BeginPhaseContext(ctx, phase, runID)
+		} else {
+			err = options.FleetLifecycle.BeginPhase(phase, runID)
+		}
+		if err != nil {
 			if phase == "production-soak" {
 				return fmt.Errorf("initialize authenticated production fleet lifecycle successor: %w", err)
 			}
@@ -3764,6 +3863,13 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 		return nil, interrupted
 	}
+	observationLogPrefix := scenarioObservationLogPrefix{ContentHash: bytesSHA256(nil)}
+	if options.Attempt != nil {
+		observationLogPrefix, err = captureScenarioObservationLogPrefix(filepath.Join(runDir, "observations.jsonl"))
+		if err != nil {
+			return nil, fmt.Errorf("capture retained scenario observation log: %w", err)
+		}
+	}
 	scenarioCompleted := false
 	defer func() {
 		if scenarioCompleted || options.Attempt == nil || options.Attempt.payload.AcceptanceBoundary == nil {
@@ -3775,6 +3881,9 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return nil, errors.New("release and production scenarios require the persisted process log gate")
 	}
 	if options.ProcessLogs != nil {
+		if err := beginScenarioProcessLogAttempt(options.ProcessLogs); err != nil {
+			return nil, fmt.Errorf("initialize scenario process log acceptance scope: %w", err)
+		}
 		if err := options.ProcessLogs.WriteEvidence(runDir); err != nil {
 			return nil, fmt.Errorf("initialize scenario process log evidence: %w", err)
 		}
@@ -3791,6 +3900,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	adversariesFinalized := false
 	observationHistory := []*ScenarioObservation{}
 	var faults []ScenarioFaultRecord
+	prearmedFaults := map[string][]FaultProcessEvidence{}
 	faultCleanupComplete := false
 	recoverInterruptedFaults := func() error {
 		if options.FaultDriver == nil || faultCleanupComplete {
@@ -3814,13 +3924,18 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		_, _ = options.Adversaries.Stop(cleanupCtx)
 	}()
 	initialFailure := func(observation *ScenarioObservation, failure error) (*ScenarioResult, error) {
-		if options.Attempt != nil && options.Attempt.payload.AcceptanceBoundary != nil {
+		// Take the terminal log cut while the scenario's fault topology is still
+		// intact. Recovery can intentionally stop or restart workers, which may
+		// emit transport shutdown diagnostics after the scenario has already
+		// reached its terminal verdict. Those cleanup bytes remain in the private
+		// logs, but are not observations from the acceptance interval.
+		if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, observation, true, activeProcessLogFaultScopes(faults)...); logErr != nil {
+			failure = errors.Join(failure, fmt.Errorf("final process log gate: %w", logErr))
+		}
+		if len(prearmedFaults) != 0 || (options.Attempt != nil && options.Attempt.payload.AcceptanceBoundary != nil) {
 			if cleanupErr := recoverInterruptedFaults(); cleanupErr != nil {
 				failure = errors.Join(failure, fmt.Errorf("recover interrupted scenario faults: %w", cleanupErr))
 			}
-		}
-		if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, observation, true, activeProcessLogFaultScopes(faults)...); logErr != nil {
-			failure = errors.Join(failure, fmt.Errorf("final process log gate: %w", logErr))
 		}
 		failureHistory := append([]*ScenarioObservation(nil), observationHistory...)
 		if observation != nil && (len(failureHistory) == 0 || failureHistory[len(failureHistory)-1] != observation) {
@@ -3853,7 +3968,6 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	}
 	var start, current, campaignStart *ScenarioObservation
 	var window *ScenarioAcceptanceWindow
-	prearmedFaults := map[string][]FaultProcessEvidence{}
 	defer func() {
 		// A post-boundary exit permanently fails the attempt. Best-effort exact
 		// restoration prevents its injected state from lingering, while the signed
@@ -3919,19 +4033,30 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	// Public-RPC deployment can consume arbitrary epochs, while precompile,
 	// governance, key rotation, and dishonest-deposit preparation remain in
 	// the observed happy path before the exact acceptance baseline is signed.
+	preAcceptanceArmed := false
 	if options.Prepare != nil || options.FleetLifecycle != nil || options.Attempt != nil {
-		if err := beginScenarioCampaignPreparation(preparationCtx, definition.Name, runID, options); err != nil {
+		preparationOptions := options
+		preparationOptions.BeforeFleetLifecycle = func(armCtx context.Context) error {
+			var armErr error
+			prearmedFaults, armErr = armPreAcceptanceFaults(armCtx, definition.Faults, options.FaultDriver)
+			if armErr == nil {
+				preAcceptanceArmed = true
+			}
+			return armErr
+		}
+		if err := beginScenarioCampaignPreparation(preparationCtx, definition.Name, runID, preparationOptions); err != nil {
 			return initialFailure(start, err)
 		}
 	}
 	if err := preparationCtx.Err(); err != nil {
 		return initialFailure(start, fmt.Errorf("scenario preparation exhausted native readiness deadline: %w", err))
 	}
-	if !needsNativeWarmup {
+	if !needsNativeWarmup && !preAcceptanceArmed {
 		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
 		if err != nil {
 			return initialFailure(start, err)
 		}
+		preAcceptanceArmed = true
 	}
 	if options.Prepare != nil {
 		prepared, prepareErr := probe.Snapshot(preparationCtx)
@@ -3961,9 +4086,12 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return initialFailure(current, fmt.Errorf("native readiness before acceptance: %w", err))
 	}
 	if needsNativeWarmup {
-		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
-		if err != nil {
-			return initialFailure(current, err)
+		if !preAcceptanceArmed {
+			prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
+			if err != nil {
+				return initialFailure(current, err)
+			}
+			preAcceptanceArmed = true
 		}
 		if len(prearmedFaults) != 0 {
 			armed, readErr := probe.Snapshot(ctx)
@@ -4020,7 +4148,12 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if options.Adversaries != nil {
 			adversaryStart = options.Adversaries.Snapshot()
 		}
-		if err := options.Attempt.bindAcceptanceBoundary(runDir, processSessionID, definitionHash, adversaryStart, options.Now().UTC(), campaignStart, current, window, faults); err != nil {
+		acceptanceStarted := options.Now().UTC()
+		processLogBoundaryHash, processLogErr := bindScenarioProcessLogAcceptance(options.ProcessLogs, runDir, acceptanceStarted)
+		if processLogErr != nil {
+			return initialFailure(current, fmt.Errorf("commit process log acceptance boundary: %w", processLogErr))
+		}
+		if err := options.Attempt.bindAcceptanceBoundary(runDir, processSessionID, definitionHash, adversaryStart, acceptanceStarted, campaignStart, current, window, faults, observationLogPrefix, processLogBoundaryHash); err != nil {
 			return initialFailure(current, fmt.Errorf("commit scenario acceptance boundary: %w", err))
 		}
 		boundaryCommitted = true
@@ -4029,7 +4162,13 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return initialFailure(current, fmt.Errorf("persist initial scenario faults: %w", err))
 	}
 	if options.FleetLifecycle != nil {
-		if err := options.FleetLifecycle.BindAcceptanceWindowForPhase(definition.Name, window); err != nil {
+		lifecycleWindow := window
+		if retained, ok := options.FleetLifecycle.(scenarioFleetLifecycleRetainedWindow); ok {
+			if priorWindow, present := retained.RetainedAcceptanceWindowForPhase(definition.Name); present {
+				lifecycleWindow = priorWindow
+			}
+		}
+		if err := options.FleetLifecycle.BindAcceptanceWindowForPhase(definition.Name, lifecycleWindow); err != nil {
 			return initialFailure(current, fmt.Errorf("bind fleet lifecycle acceptance window: %w", err))
 		}
 	}
@@ -4203,7 +4342,7 @@ scenarioLoop:
 	if options.FleetLifecycle != nil {
 		passed, message := fleetLifecycleCompletionStatus(options.FleetLifecycle)
 		if passed && definition.Name == "release-1.0" && options.Attempt != nil {
-			binding, err := captureScenarioLifecycleHandoff(cfg, stateDir, runDir, runID)
+			binding, err := captureScenarioLifecycleHandoff(cfg, stateDir, runDir, runID, options.Attempt)
 			if err != nil {
 				passed = false
 				message = err.Error()
@@ -4777,6 +4916,12 @@ func executePrecompileActions(ctx context.Context, executor *Executor) error {
 	return nil
 }
 
+// releaseStartupGatesRequired preserves the approval-wide provisional waiver
+// across succession and every authenticated recovery generation.
+func releaseStartupGatesRequired(cfg *ResolvedConfig, _ *scenarioCampaignAttempt) bool {
+	return !provisionalResumeEnabled(cfg)
+}
+
 func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor) error {
 	return runScenarioCampaignAttempt(ctx, cfg, stateDir, name, journal, executor, nil)
 }
@@ -4813,7 +4958,14 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		if attempt == nil {
 			loaded, loadErr := readScenarioCampaignAttempt(cfg, stateDir, roles, executor.plan.PlanHash, name)
 			if loadErr == nil {
-				attempt = loaded
+				if name == "release-1.0" && scenarioCampaignAttemptNeedsRecovery(loaded) {
+					attempt, loadErr = loadOrCreateScenarioCampaignAttempt(cfg, stateDir, roles, executor.plan.PlanHash, name, nil, time.Now().UTC(), journal)
+					if loadErr != nil {
+						return fmt.Errorf("create scenario campaign recovery: %w", loadErr)
+					}
+				} else {
+					attempt = loaded
+				}
 			} else if !errors.Is(loadErr, os.ErrNotExist) && name != "release-1.0" {
 				return fmt.Errorf("load scenario campaign attempt: %w", loadErr)
 			} else {
@@ -4889,7 +5041,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 			if scenarioExecutor == nil {
 				return errors.New("release scenario requires the approved deployment executor")
 			}
-			if provisionalResumeEnabled(cfg) {
+			if !releaseStartupGatesRequired(cfg, attempt) {
 				fmt.Fprintln(os.Stderr, "sim-testnet: provisional precompile_conformance_startup_waived=true governance_drill_startup_waived=true; retained failures and unrun actions are not passes; final_acceptance=false")
 			} else {
 				precompile, readErr := loadPrecompileEvidence(stateDir)
@@ -4966,7 +5118,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		if scenarioExecutor == nil {
 			return errors.New("release scenario requires an approved executor for the live fleet lifecycle")
 		}
-		fleetLifecycle = &liveFleetLifecycle{cfg: runtimeCfg, stateDir: stateDir, executor: scenarioExecutor}
+		fleetLifecycle = &liveFleetLifecycle{cfg: runtimeCfg, stateDir: stateDir, executor: scenarioExecutor, attempt: attempt}
 	}
 	faultDriver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}
 	if scenarioExecutor != nil && scenarioExecutor.plan != nil && scenarioExecutor.payloads != nil {

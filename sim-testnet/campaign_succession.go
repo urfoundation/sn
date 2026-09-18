@@ -29,6 +29,13 @@ func scenarioCampaignSuccessorPath(stateDir string) string {
 }
 
 func (attempt *scenarioCampaignAttempt) path() string {
+	if attempt.payload.Recovery != nil {
+		generation, err := scenarioCampaignRecoveryGeneration(attempt.payload.Recovery)
+		if err == nil {
+			return scenarioCampaignRecoveryGenerationPath(attempt.stateDir, generation)
+		}
+		return scenarioCampaignRecoveryPath(attempt.stateDir)
+	}
 	if attempt.payload.Succession != nil {
 		return scenarioCampaignSuccessorPath(attempt.stateDir)
 	}
@@ -138,8 +145,11 @@ func validateScenarioCampaignSuccession(attempt *scenarioCampaignAttempt) error 
 }
 
 func createScenarioCampaignSuccessor(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, now time.Time, journal *Journal) (*scenarioCampaignAttempt, error) {
-	if cfg == nil || cfg.Config == nil || cfg.Public == nil || provisionalResumeEnabled(cfg) || roles == nil || journal == nil {
-		return nil, errors.New("campaign succession requires the strict approved deployment owner")
+	if cfg == nil || cfg.Config == nil || cfg.Public == nil || roles == nil || journal == nil {
+		return nil, errors.New("campaign succession requires the approved deployment owner")
+	}
+	if cfg.provisionalResume != nil && (!provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record.PlanHash != planHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance) {
+		return nil, errors.New("provisional campaign succession requires the exact non-accepting approval")
 	}
 	// OpenJournal's nonblocking exclusive lease is held by both real scenario
 	// entry points throughout execution. An active predecessor therefore blocks

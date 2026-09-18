@@ -38,12 +38,12 @@ func readReleaseDecisionChainV2Source(ctx context.Context, chain *ChainClient, q
 	observed.sourceEpoch = query.boundary.SettlementEpoch - query.policy.Deposit.UsageLagEpochs
 	epoch := new(big.Int).SetUint64(observed.sourceEpoch)
 	start, err := readUint("epochStartBlock", chain.coordinator.PackEpochStartBlock(epoch))
-	if err != nil || !start.IsUint64() || start.Sign() == 0 {
-		return errors.Join(errors.New("decision source epoch start is invalid"), err)
+	if err := releaseRpcObservationError(err, start != nil && start.IsUint64() && start.Sign() != 0, errors.New("decision source epoch start is invalid")); err != nil {
+		return err
 	}
 	end, err := readUint("epochEndBlock", chain.coordinator.PackEpochEndBlock(epoch))
-	if err != nil || !end.IsUint64() || end.Cmp(start) <= 0 || end.Uint64() > query.boundary.EVMBlock || end.Uint64() != observed.epochStart {
-		return errors.Join(errors.New("decision source epoch is not the complete preceding rolled window"), err)
+	if err := releaseRpcObservationError(err, end != nil && end.IsUint64() && end.Cmp(start) > 0 && end.Uint64() <= query.boundary.EVMBlock && end.Uint64() == observed.epochStart, errors.New("decision source epoch is not the complete preceding rolled window")); err != nil {
+		return err
 	}
 	observed.sourceStart, observed.sourceEnd = start.Uint64(), end.Uint64()
 	observed.sourceStartHash, err = chain.BlockHashContext(ctx, observed.sourceStart)
@@ -61,8 +61,8 @@ func readReleaseDecisionChainV2Source(ctx context.Context, chain *ChainClient, q
 			return err
 		}
 		version, err := chain.coordinator.UnpackOperatorAt(encoded)
-		if err != nil || version.EffectiveEpoch > observed.sourceEpoch {
-			return errors.Join(errors.New("decision source operator version is from a later epoch"), err)
+		if err := releaseRpcObservationError(err, version.EffectiveEpoch <= observed.sourceEpoch, errors.New("decision source operator version is from a later epoch")); err != nil {
+			return err
 		}
 		encoded, err = read("rootCommitments", chain.coordinator.PackRootCommitments(epoch, id))
 		if err != nil {
@@ -86,8 +86,8 @@ func readReleaseDecisionChainV2Source(ctx context.Context, chain *ChainClient, q
 		hash  [32]byte
 	}{{block: observed.sourceStart, hash: observed.sourceStartHash}, {block: observed.sourceEnd, hash: observed.sourceEndHash}} {
 		hash, err := chain.BlockHashContext(ctx, boundary.block)
-		if err != nil || hash != boundary.hash {
-			return errors.Join(errors.New("decision source boundary hash changed during observation"), err)
+		if err := releaseRpcObservationError(err, hash == boundary.hash, errors.New("decision source boundary hash changed during observation")); err != nil {
+			return err
 		}
 	}
 	return ctx.Err()

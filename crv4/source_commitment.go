@@ -35,10 +35,11 @@ const PreparedSourceSubmissionSchema = "urnetwork-crv4-prepared-source-submissio
 // metadata before preparation or replay. Hash is domain-separated by the
 // validator's pre-Prepared measurement protocol, outside this transport layer.
 type PreparedSourceCommitment struct {
-	Hash               string `json:"hash"`
-	GenesisHash        string `json:"genesis_hash"`
-	RuntimeSpec        uint32 `json:"runtime_spec"`
-	TransactionVersion uint32 `json:"transaction_version"`
+	Hash                 string `json:"hash"`
+	GenesisHash          string `json:"genesis_hash"`
+	RuntimeSpec          uint32 `json:"runtime_spec"`
+	TransactionVersion   uint32 `json:"transaction_version"`
+	CompatibilityProfile string `json:"compatibility_profile,omitempty"`
 }
 
 func canonicalSourceHex(value string, size int) ([]byte, error) {
@@ -67,7 +68,11 @@ func preparedSourceEncoding(prepared *PreparedSubmission) (call, fields, payload
 		return nil, nil, nil, errors.New("crv4: source preparation is absent")
 	}
 	source := prepared.SourceCommitment
-	if !reviewedSourceEncodingVersion(source.RuntimeSpec, source.TransactionVersion) || prepared.Netuid == 0 || prepared.CommitRevealVersion != CommitRevealVersion4 || prepared.RevealRound == 0 {
+	encodingSupported := reviewedSourceEncodingVersion(source.RuntimeSpec, source.TransactionVersion)
+	if source.CompatibilityProfile != "" {
+		encodingSupported = source.CompatibilityProfile == ProvisionalRuntimeCompatibilityProfile && source.RuntimeSpec > ReviewedRuntimeSpecVersion && source.TransactionVersion == 1
+	}
+	if !encodingSupported || prepared.Netuid == 0 || prepared.CommitRevealVersion != CommitRevealVersion4 || prepared.RevealRound == 0 {
 		return nil, nil, nil, errors.New("crv4: source runtime or CRv4 parameters are unsupported")
 	}
 	if prepared.PreparedAtBlock == 0 {
@@ -167,7 +172,7 @@ func validatePreparedSourceBytes(prepared *PreparedSubmission, raw []byte) error
 }
 
 func (self *Chain) newSourceCommitmentBatchCall(netuid uint16, mecid *uint8, source [32]byte, ciphertext []byte, round uint64, version uint16) (types.Call, error) {
-	if self == nil || self.Meta == nil || self.Runtime == nil || !reviewedSourceEncodingVersion(uint32(self.Runtime.SpecVersion), uint32(self.Runtime.TransactionVersion)) {
+	if self == nil || self.Meta == nil || self.Runtime == nil || (!reviewedSourceEncodingVersion(uint32(self.Runtime.SpecVersion), uint32(self.Runtime.TransactionVersion)) && self.CurrentRuntimeCompatibilityProfile() == "") {
 		return types.Call{}, errors.New("crv4: source metadata is not the reviewed runtime")
 	}
 	anchor, err := self.NewSetFleetCommitmentCall(netuid, source)
@@ -197,6 +202,9 @@ func (self *Chain) ValidatePreparedSource(prepared *PreparedSubmission) error {
 		return err
 	}
 	source := prepared.SourceCommitment
+	if source.CompatibilityProfile != "" && source.CompatibilityProfile != self.CurrentRuntimeCompatibilityProfile() {
+		return errors.New("crv4: provisional source has no independently authenticated compatible signing authority")
+	}
 	if source.GenesisHash != self.GenesisHash.Hex() || source.RuntimeSpec != uint32(self.Runtime.SpecVersion) || source.TransactionVersion != uint32(self.Runtime.TransactionVersion) {
 		return errors.New("crv4: prepared source chain or runtime differs from independent signing authority")
 	}

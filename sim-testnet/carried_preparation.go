@@ -28,27 +28,11 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	}
 	self.carriedVerificationKeys = nil
 	if provisionalResumeEnabled(self.cfg) {
-		return self.verifyProvisionalActionHistory(ctx)
+		return self.verifyProvisionalActionHistoryWithReaders(ctx, readEntries, readSource)
 	}
 	entries := readEntries()
 	verified := newCarriedPreparationIndex(self.plan, entries)
-	sourcePlanKVs := map[string]*SetupPlan{}
-	readPostcondition := func(entry JournalEntry) (*ActionPostcondition, error) {
-		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			if source := sourcePlanKVs[hash]; source != nil {
-				return source, nil
-			}
-			source, err := readSource(stateDir, hash)
-			if err = errors.Join(err, ctx.Err()); err != nil {
-				return nil, err
-			}
-			sourcePlanKVs[hash] = source
-			return source, nil
-		})
-	}
+	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
 	var stages []error
 	var carryErr error
 	if self.plan.ValidatorEvidenceCarry != nil {
@@ -249,6 +233,28 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		self.carriedVerificationKeys = verifiedKeys
 	}
 	return errors.Join(errors.Join(append(stages, actionErrors...)...), ctx.Err())
+}
+
+// Share only authenticated immutable source decoding within one read-only
+// call. Every receipt's bytes, hash and original route remain freshly checked.
+func (self *Executor) carriedPreparationPostconditionReader(ctx context.Context, readSource func(string, string) (*SetupPlan, error)) func(JournalEntry) (*ActionPostcondition, error) {
+	sourcePlanKVs := map[string]*SetupPlan{}
+	return func(entry JournalEntry) (*ActionPostcondition, error) {
+		return self.readPersistedPostconditionWithSource(entry, func(stateDir, hash string) (*SetupPlan, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if source := sourcePlanKVs[hash]; source != nil {
+				return source, nil
+			}
+			source, err := readSource(stateDir, hash)
+			if err = errors.Join(err, ctx.Err()); err != nil {
+				return nil, err
+			}
+			sourcePlanKVs[hash] = source
+			return source, nil
+		})
+	}
 }
 
 // These local/native checks do not dereference derived topology secrets.

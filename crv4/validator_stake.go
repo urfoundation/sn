@@ -62,12 +62,15 @@ func ReadValidatorStakeAtContext(ctx context.Context, chain *Chain, query Valida
 		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 458, TransactionVersion: 1, StateVersion: 1}) &&
 		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 459, TransactionVersion: 1, StateVersion: 1}) &&
 		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1}) &&
-		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1, StateVersion: 1}) {
+		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1, StateVersion: 1}) && (!chain.ProvisionalRuntimeCompatibilityEnabled() || identity.Runtime.Version.SpecVersion <= ReviewedRuntimeSpecVersion) {
 		return empty, errors.New("validator stake runtime layout has not been reviewed")
 	}
 	artifact, err := AuthenticateRuntimeArtifactAtContext(ctx, chain, query.BlockHash, allowed...)
 	if err != nil {
 		return empty, err
+	}
+	if identity.Runtime.Version.SpecVersion > ReviewedRuntimeSpecVersion && !chain.RuntimeArtifactCompatible(artifact) {
+		return empty, errors.New("validator stake runtime has no authenticated consumed-interface profile")
 	}
 	if (RuntimeArtifactIdentity{Version: artifact.Version, CodeHash: artifact.CodeHash, MetadataHash: artifact.MetadataHash}) != identity.Runtime {
 		return empty, errors.New("validator stake runtime changed after identity observation")

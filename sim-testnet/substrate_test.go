@@ -428,6 +428,45 @@ func TestRuntimeDefaultMinTransferBindingRejectsRuntimeAndManifestDrift(t *testi
 	}
 }
 
+func TestAuthenticatedRuntimeDefaultMinTransferBindingAcceptsApprovedProvisionalArtifact(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	raw := make([]byte, 8)
+	binary.LittleEndian.PutUint64(raw, cfg.Public.Chain.ExpectedDefaultMinTransferRao)
+	reviewed := authenticatedRuntimeMetadata{CodeHash: cfg.Release.Runtime.CodeHash}
+	if got, err := validateAuthenticatedRuntimeDefaultMinTransferBinding(raw, reviewed, cfg); err != nil || got != cfg.Public.Chain.ExpectedDefaultMinTransferRao {
+		t.Fatalf("reviewed transfer floor=%d error=%v", got, err)
+	}
+	provisional := authenticatedRuntimeMetadata{
+		CodeHash:             "0x9745e3f66053c3c7cb30ea45b88c66438b5076da78154f477e8660b0ded43869",
+		CompatibilityProfile: crv4.ProvisionalRuntimeCompatibilityProfile,
+	}
+	if got, err := validateAuthenticatedRuntimeDefaultMinTransferBinding(raw, provisional, cfg); err != nil || got != cfg.Public.Chain.ExpectedDefaultMinTransferRao {
+		t.Fatalf("provisional transfer floor=%d error=%v", got, err)
+	}
+	for _, test := range []struct {
+		name          string
+		authenticated authenticatedRuntimeMetadata
+		cfg           *ResolvedConfig
+		message       string
+	}{
+		{name: "strict-code-drift", authenticated: authenticatedRuntimeMetadata{CodeHash: provisional.CodeHash}, cfg: cfg, message: "runtime code hash"},
+		{name: "foreign-profile", authenticated: authenticatedRuntimeMetadata{CodeHash: provisional.CodeHash, CompatibilityProfile: "foreign"}, cfg: cfg, message: "runtime code hash"},
+		{name: "malformed-provisional-code", authenticated: authenticatedRuntimeMetadata{CodeHash: "invalid", CompatibilityProfile: crv4.ProvisionalRuntimeCompatibilityProfile}, cfg: cfg, message: "invalid finalized"},
+		{name: "missing-manifests", authenticated: provisional, message: "manifests are unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := validateAuthenticatedRuntimeDefaultMinTransferBinding(raw, test.authenticated, test.cfg); err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("invalid authenticated binding was accepted or reported unclearly: %v", err)
+			}
+		})
+	}
+	changed := testResolvedConfig(t)
+	changed.Public.Chain.ExpectedDefaultMinTransferRao++
+	if _, err := validateAuthenticatedRuntimeDefaultMinTransferBinding(raw, provisional, changed); err == nil || !strings.Contains(err.Error(), "reviewed manifest") {
+		t.Fatalf("provisional runtime changed the approved transfer floor: %v", err)
+	}
+}
+
 func TestAlphaPrecompilePriceDecodesOnlyExactQ9Units(t *testing.T) {
 	got, err := decodeAlphaPriceQ9(big.NewInt(568_309_000_000_000))
 	if err != nil || got != 568_309 {

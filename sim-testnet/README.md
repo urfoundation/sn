@@ -89,19 +89,32 @@ no chain transaction. Then capture the strict history adoption against that
 new plan hash. Original activation files, coordinator history, queues and
 request/receipt bytes remain owned by their original sources.
 
+Provisional campaign startup retains a successful evidence-relay history scan
+in an authenticated, exact-plan cache. The entry binds the config, deployment,
+genesis, netuid, activation origins, verifier inputs, inventory bounds, journal
+prefix, relay roots and manifests, and the earliest incomplete source slot.
+Every reuse still reads fresh chain heads, schedules and the retained suffix.
+Changed, reordered or truncated inputs cause a cold scan; cancellation and
+partial failure write nothing. Strict startup ignores this optimization and
+performs its complete audit.
+
 New qualification tooling, status/report processing and its tests are written
 in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and
 ACK/join controls; language migration must not weaken lifecycle guarantees.
 
 Release qualification assigns all test and gate execution to Terra
-(`gpt-5.6-terra`) with reasoning effort `max`, including preflight tests,
+(`gpt-5.6-terra`) with reasoning effort `medium`, including preflight tests,
 normal and race suites, confirmation runs, and reruns. If a test or gate fails
 or shows suspected flakiness, retain its exact output and assign root-cause
 diagnosis, adjacent-path review, implementation, and the deterministic
-regression to Astra (`gpt-6-astra`) with reasoning effort `max`. Test execution
-stays with Terra while Astra owns debugging and fixes; preserve these roles
-across agent handoffs. Follow [Connect's bug-fix and test policy](../../connect/CODESTYLE.md):
+regression to Sol (`gpt-5.6-sol`) with reasoning effort `max`. Test execution
+stays with Terra while Sol owns debugging and fixes; preserve these roles
+across agent handoffs. The user's September 17, 2026 update changes future
+test execution to Terra medium and debugging/fixes to Sol max; retain completed
+evidence and let active commands finish without restarting them for a model
+change.
+Follow [Connect's bug-fix and test policy](../../connect/CODESTYLE.md):
 deterministically reproduce the pre-fix failure, verify the corrected behavior
 at the failing layer, and inspect surrounding code, sibling call sites and
 similar patterns. Record the adjacent paths checked. Use synthetic fixtures
@@ -141,11 +154,26 @@ and running command captures at their existing paths until their owners join.
 Changing the location of future scratch data does not invalidate completed
 qualification or require rebuilding an already admitted executable.
 
+Use `/mnt/data/sn-testnet/temp` for new `sn-*` temporary workspaces. The
+legacy `/home/by/urnetwork/temp/sn-*` names are migration-compatible symlinks
+to that volume after each workspace is copied and verified; do not create new
+temporary workspaces on the root volume.
+
 ### Incremental recovery and acceptance
 
 Resume at the first incomplete or invalidated checkpoint. A failed attempt
 does not erase its completed independent phases, finalized transactions,
 adopted approvals, migrations, artifacts or valid preparation results.
+
+For the user's 2026-09-16 run-first instruction, prefer explicit provisional
+testnet continuation when strict startup repeatedly audits retained history.
+Run the actual campaign while preserving its approved plan, signed records,
+transaction recovery, spending caps and LAN-only RPC route. Use targeted fixes
+and affected tests; defer unrelated qualification, release packaging and report
+publication. Keep successful phases and patch the failed scope. Provisional
+results retain `final_acceptance=false`; record skipped checks and missing live
+observations separately from successful execution. Do not relabel them as full
+release acceptance or mainnet approval.
 
 For each patch, record its changed files, affected consumers and the checks
 needed to close the observed failure. Default to one uncached passing execution
@@ -472,7 +500,7 @@ and `failures.json` plus the referenced requests/logs for debugging. Passing
 updates should contain only the phase, exact counts, elapsed time, actual exits,
 integrity verdict and capture path. Do not repeatedly send passing raw logs,
 long hash inventories or the full historical handoff to an agent. Retain all
-raw evidence on disk and expand any failed or suspicious result for Astra max;
+raw evidence on disk and expand any failed or suspicious result for Sol max;
 compact reporting never means ignoring an anomaly or capping its investigation.
 Do not retry a failure blindly or declare a timeout an expected assertion
 failure. After its root cause is resolved, use the affected checks and any
@@ -510,11 +538,11 @@ isolated suites that pass. Independent source fixes and causal controls may
 retain their own exact preimages, but do not create another source checkout
 for a corrected selector, output filename, or report.
 
-During implementation, keep two Astra max implementation/fix agents and one
-Terra max execution agent. Once independent integration suites are ready,
-use two Terra max execution agents and one Astra max production/fix agent;
+During implementation, keep two Sol max implementation/fix agents and one
+Terra medium execution agent. Once independent integration suites are ready,
+use two Terra medium execution agents and one Sol max production/fix agent;
 the primary agent takes the second review role. The user explicitly requested
-this integration dispatch on2026-09-09. Split validator/simulator qualification
+this integration dispatch on 2026-09-09. Split validator/simulator qualification
 from fixture/database/Solidity qualification. An execution agent's command
 preparation queue is not a dependency for another lane. Routine test-fixture
 or launcher repairs must not preempt the production lane. The primary agent
@@ -859,6 +887,22 @@ transaction recovery and spending limits, and uses the admitted driver image
 for restarted components. It records actual executable provenance before work
 begins and marks scenario results provisional with `final_acceptance=false`.
 Strict release acceptance cannot consume those provisional results.
+Treat a healthy child restart before the next signed campaign boundary as
+retained supervisor history, not as a reason to repeat setup or discard the
+campaign predecessor. A provisional successor authenticates the same supervisor
+generation, manifest, process identities, bounded cumulative restart counts and
+fresh proof progress, then records that topology as its new baseline. Final
+acceptance still measures restart deltas from its own signed boundary and keeps
+the strict no-unexplained-restart requirement for that interval.
+A failed provisional attempt before acceptance may carry its signed
+`preparation_complete` checkpoint into the next append-only recovery generation.
+The carry requires the exact config, policy, plan, journal and contiguous signed
+recovery ancestry, with no campaign-start marker or production descendant. It
+also retains an already completed lifecycle handoff under its historical run ID
+and records both that inherited ID and the current recovery ID; the current
+campaign signs a fresh acceptance window separately. Changed lineage, lifecycle
+bytes, historical window or provenance fails before expensive preparation.
+Strict startup and final acceptance do not consume this provisional carry.
 Provider swarms sign a fresh `/auth/wallet-challenge` with each miner's existing
 payout coldkey before submitting `/sn/wallet` for that provider identity. The
 renderer materializes the existing role at `secrets/miner-N-payout.seed`, with

@@ -36,9 +36,21 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 	if err := self.checkHorizonBlock(block); err != nil {
 		return err
 	}
+	var inventories map[uint64]evidenceRelayStartupSourceInventory
+	if self.startupCache != nil && self.startupCache.hit {
+		inventories, err = self.evidenceRelayStartupInventories(self.ctx, self.horizon.maximum)
+		if err != nil {
+			return err
+		}
+	}
 	for index := range self.sources {
 		source := &self.sources[index]
-		manifests, err := validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
+		var manifests []validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest
+		if self.startupCache != nil && self.startupCache.hit {
+			_, manifests, err = self.readEvidenceRelayStartupManifests(self.ctx, source, inventories[source.validatorId])
+		} else {
+			manifests, err = validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
+		}
 		if err != nil {
 			return err
 		}
@@ -83,8 +95,18 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				if err := self.retainOwnedResult(ownerPlanHash, action, result); err != nil {
 					return err
 				}
+				if err := self.startupCache.rememberAction(ownerPlanHash, action, expected.Evidence.Header); err != nil {
+					return err
+				}
+			}
+			checkpointIdentity, err := self.startupCache.completeAudit(self, source, &manifest)
+			if err != nil || checkpointIdentity != identity {
+				return errors.Join(errors.New("evidence audit checkpoint identity changed"), err)
 			}
 			completed[key] = identity
+			if self.startupCache != nil {
+				self.startupProgress = true
+			}
 		}
 	}
 	return self.ctx.Err()

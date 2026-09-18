@@ -667,6 +667,17 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		// starts the persistent topology.
 		limitID := "config.render"
 		if cmd == "scenario" {
+			if liveAdoption != nil {
+				current, err := provisionalLiveTopologyAdoptionCurrent(cfg, stateDir, liveAdoption)
+				if err != nil {
+					return err
+				}
+				if !current {
+					if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
+						return fmt.Errorf("adopt current provisional scenario topology: %w", err)
+					}
+				}
+			}
 			if o.Name == releaseCandidateCampaignName {
 				return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
 			}
@@ -3367,16 +3378,16 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 	return writePublicJSON(filepath.Join(e.stateDir, "public", "voluntary-conviction.json"), evidence)
 }
 func (e *Executor) readBurn() (uint64, error) {
-	key, err := types.CreateStorageKey(e.substrate.chain.Meta, "SubtensorModule", "Burn", netuidArg(e.cfg.Netuid))
+	native, finalized, _, err := e.substrate.finalizedManager()
+	if err != nil {
+		return 0, err
+	}
+	key, err := types.CreateStorageKey(native.chain.Meta, "SubtensorModule", "Burn", netuidArg(e.cfg.Netuid))
 	if err != nil {
 		return 0, err
 	}
 	var v types.U64
-	finalized, _, err := e.substrate.finalizedHead()
-	if err != nil {
-		return 0, err
-	}
-	err = readRequiredStorageAt(e.substrate.chain, key, crv4.PalletName, "Burn", &v, finalized)
+	err = readRequiredStorageAt(native.chain, key, crv4.PalletName, "Burn", &v, finalized)
 	return uint64(v), err
 }
 func contractCall(ctx context.Context, c *ethclient.Client, address common.Address, a abi.ABI, method string, args ...any) ([]any, error) {
@@ -4465,47 +4476,10 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		if err := renderOperatorConnectTLS(cfg, stateDir, i); err != nil {
 			return err
 		}
-		deposit := roles.EVM[fmt.Sprintf("operator-%d-deposit", i)].PrivateKeyHex
-		rootKey := roles.EVM[fmt.Sprintf("operator-%d-root", i)].PrivateKeyHex
-		artifactKey := roles.EVM[fmt.Sprintf("operator-%d-artifact", i)].PrivateKeyHex
-		depositHotkey := "0x" + roles.Substrate[fmt.Sprintf("operator-%d-deposit-hotkey", i)].PublicKeyHex
-		// Testnet services are intentionally rendered with only testnet-prefixed
-		// values. The server loader must never be able to fall through to a
-		// mainnet signer or address when URNETWORK_ST_PROFILE=testnet.
-		st := map[string]any{
-			"profile":                         "testnet",
-			"testnet-enabled":                 true,
-			"testnet-attempt-upload":          uploadBudget,
-			"testnet-reserved-attempt-upload": reservedUploads[i-1],
-			// Swarms sign with their existing payout roles. Retain unsigned
-			// compatibility only for explicitly admitted provisional runs.
-			"testnet-wallet-allow-unsigned":              provisionalResumeEnabled(cfg),
-			"testnet-public-rpc-url":                     publicRPCURL,
-			"testnet-authority":                          workloadRPCAuthority(),
-			"testnet-rpc-urls":                           []string{evmHTTP(workloadRPCAuthority())},
-			"testnet-chain-id":                           testnetChainID,
-			"testnet-genesis-hash":                       testnetGenesis,
-			"testnet-deployment-id":                      cfg.Config.Deployment.DeploymentID,
-			"testnet-policy-hash":                        cfg.PolicyHash,
-			"testnet-coordinator-address":                contracts.CoordinatorProxy.Hex(),
-			"testnet-settlement-vault-address":           contracts.SettlementVault.Hex(),
-			"testnet-reserve-sink-address":               contracts.ReserveSink.Hex(),
-			"testnet-deploy-block":                       eventSyncBlock,
-			"testnet-netuid":                             cfg.Netuid,
-			"testnet-no-id":                              i,
-			"testnet-treasury-hotkey":                    "0x" + roles.Substrate[operatorPoolHotkeyLabelForGeneration(i, contracts.RegistrationRoleGeneration)].PublicKeyHex,
-			"testnet-deposit-hotkey":                     depositHotkey,
-			"testnet-deposit-key":                        deposit,
-			"testnet-root-key":                           rootKey,
-			"testnet-artifact-key":                       artifactKey,
-			"testnet-deposit-rate-numerator-rao-per-gib": cfg.Policy.Deposit.Tiers[0].RateNumeratorRaoPerGiB,
-			"testnet-deposit-rate-denominator":           cfg.Policy.Deposit.Tiers[0].RateDenominator,
-			"testnet-deposit-tiers":                      cfg.Policy.Deposit.Tiers,
-			"testnet-deposit-epoch-cap-rao":              cfg.Policy.Deposit.EpochCapRaoPerOperator,
-			"testnet-reliability-a-min":                  cfg.Policy.Verify.ReliabilityAMin,
-			"testnet-block-seconds":                      cfg.Public.Chain.ExpectedBlockSeconds,
+		b, err := marshalRuntimeOperatorStConfig(cfg, roles, contracts, publicRPCURL, eventSyncBlock, uploadBudget, reservedUploads[i-1], i)
+		if err != nil {
+			return err
 		}
-		b, _ := yaml.Marshal(st)
 		if err := atomicWrite(filepath.Join(vaultRoot, "st.yml"), b, 0o600); err != nil {
 			return err
 		}

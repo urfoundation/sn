@@ -83,6 +83,8 @@ type Chain struct {
 	// Shared by read-only copies. Every lookup still checks the requested block's
 	// complete version and :code hash before consulting authenticated bytes.
 	runtimeArtifacts *runtimeMetadataArtifactCache
+	// Set before sharing the connection, and shared by block-local read views.
+	provisionalRuntime *provisionalRuntimeCompatibility
 }
 
 // contextSubstrateClient adapts GSRPC's context-aware transport to the

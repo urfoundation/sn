@@ -195,6 +195,10 @@ func writeScenarioCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir, n
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	observationLogPrefix, err := captureScenarioObservationLogPrefix(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := attempt.updateProgress(name == "production-soak", true); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +235,7 @@ func writeScenarioCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir, n
 	runningAdversaries.HappyPathCompletedAt = ""
 	runningAdversaries.StoppedAt = ""
 	runningAdversaries.StoppedAfterHappyPath = false
-	if err := attempt.bindAcceptanceBoundary(runDir, "0x"+strings.Repeat("77", 32), definitionHash, &runningAdversaries, started.Add(2*time.Minute), campaignStartObservation, baselineObservation, window, initialFaults); err != nil {
+	if err := attempt.bindAcceptanceBoundary(runDir, "0x"+strings.Repeat("77", 32), definitionHash, &runningAdversaries, started.Add(2*time.Minute), campaignStartObservation, baselineObservation, window, initialFaults, observationLogPrefix, "0x"+strings.Repeat("88", 32)); err != nil {
 		t.Fatal(err)
 	}
 	result.EvidenceHash, err = canonicalScenarioResultHash(result)

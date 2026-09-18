@@ -57,8 +57,8 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 	observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&self.cfg))
 	observed, schedule, err := readReleaseDecisionV2Context(observationCtx, self.chain, self.native, query, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(domain.GenesisHash), BlockHash: types.Hash(nativeHash), BlockNumber: decision.NativeSnapshotBlock, Netuid: domain.Netuid, Hotkey: self.hotkey.PublicKey(), MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, releaseRuntimeIdentityV2(&self.cfg))
 	cancel()
-	if err != nil || schedule.SubnetEpochIndex != decision.SubnetEpoch || schedule.Stake.Identity.UID != decision.SelfUID {
-		return nil, window, errors.Join(errors.New("deposit audit native observation differs from its actual decision"), err)
+	if err := releaseRpcObservationError(err, schedule.SubnetEpochIndex == decision.SubnetEpoch && schedule.Stake.Identity.UID == decision.SelfUID, errors.New("deposit audit native observation differs from its actual decision")); err != nil {
+		return nil, window, err
 	}
 	window = protocol.ValidatorEvidenceWindow{Epoch: observed.sourceEpoch, StartBlock: observed.sourceStart, EndBlock: observed.sourceEnd, FinalizedBlock: observed.boundary.EVMBlock,
 		Subject: protocol.ValidatorEvidenceSubject{ObservationEpoch: observed.boundary.SettlementEpoch, NativeEpoch: schedule.SubnetEpochIndex}}
@@ -78,8 +78,8 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 			return nil, window, errors.New("deposit audit current source was inactive at its actual observation")
 		}
 		audit, err := self.history.historicalDepositAuditWithCaptureV2(ctx, observed, operator, claimed[index], projection, custody)
-		if err != nil || audit != claimed[index] {
-			return nil, window, errors.Join(errors.New("deposit audit differs from actual pinned chain and retained payout source replay"), err)
+		if err := releaseRpcObservationError(err, audit == claimed[index], errors.New("deposit audit differs from actual pinned chain and retained payout source replay")); err != nil {
+			return nil, window, err
 		}
 		payload := ValidatorEvidenceDepositAuditV2Payload{Schema: ValidatorEvidenceDepositAuditV2Schema, Decision: decision, Audit: audit}
 		if audit.HttpObservationHash != "" {
@@ -100,8 +100,8 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 			}
 			maximum := min(bounds.MaxArtifactBytes, bounds.MaxControlBytes/8)
 			raw, err := custody.read(ctx, path, maximum, false)
-			if err != nil || ReleaseMeasurementContentHash(raw) != audit.HttpObservationHash {
-				return nil, window, errors.Join(errors.New("deposit audit actual HTTP custody differs"), err)
+			if err := releaseRpcObservationError(err, ReleaseMeasurementContentHash(raw) == audit.HttpObservationHash, errors.New("deposit audit actual HTTP custody differs")); err != nil {
+				return nil, window, err
 			}
 			if _, err := decodeArtifactHttpObservationV2(ctx, raw, maximum, expected); err != nil {
 				return nil, window, err

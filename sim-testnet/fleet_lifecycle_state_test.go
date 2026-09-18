@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fleetLifecyclePersistedStateFixture(t *testing.T) (*liveFleetLifecycle, *FleetLifecycleEvidence) {
@@ -498,6 +501,334 @@ func TestFleetLifecycleLaunchSnapshotProvesMinimumFloorProtectsUIDOne(t *testing
 	}
 	if err := validateFleetLifecycleLaunchSnapshot(launch, lifecycle.executor.roles); err != nil {
 		t.Fatalf("minimum floor did not protect the only non-immune UID: %v", err)
+	}
+}
+
+func TestFleetLifecycleLaunchSnapshotDefersInternallyConsistentForeignPruneCandidate(t *testing.T) {
+	lifecycle, evidence := fleetLifecyclePersistedStateFixture(t)
+	launch := *evidence.LaunchPrune
+	launch.Inputs = append([]FleetLifecyclePruneInput(nil), launch.Inputs...)
+	launch.Inputs[2].Immune = false
+	launch.NonImmuneUIDs = 2
+	launch.MinimumNonImmuneUIDs = 1
+	launch.RuntimePruneUID = 1
+	err := validateFleetLifecycleLaunchSnapshot(launch, lifecycle.executor.roles)
+	var pending *fleetLifecyclePruneTargetPendingError
+	if !errors.As(err, &pending) || pending.computedUid != 1 || pending.target.UID != fleetLifecycleTargetExpectedUID {
+		t.Fatalf("valid pre-target prune census was not deferred: %v", err)
+	}
+}
+
+func TestFleetLifecycleContextRetriesPendingPruneWithoutReplayingCampaign(t *testing.T) {
+	attempts, waits := 0, 0
+	pending := &fleetLifecyclePruneTargetPendingError{target: FleetLifecyclePruneInput{UID: fleetLifecycleTargetExpectedUID}, computedUid: 1, recordedUid: 1}
+	err := retryFleetLifecyclePhaseContext(t.Context(), func() error {
+		attempts++
+		if attempts == 1 {
+			return pending
+		}
+		return nil
+	}, func(context.Context) error {
+		waits++
+		return nil
+	})
+	if err != nil || attempts != 2 || waits != 1 {
+		t.Fatalf("contextual retry error=%v attempts=%d waits=%d", err, attempts, waits)
+	}
+}
+
+// Reproduces an aged full subnet where the runtime would prune a different
+// nonimmune UID, while preserving the exact census and sending no mutation.
+func fleetLifecycleProvisionalBypassFixture(t *testing.T) (*liveFleetLifecycle, *FleetLifecycleEvidence) {
+	t.Helper()
+	lifecycle, evidence := fleetLifecyclePersistedStateFixture(t)
+	planHash := "0x" + strings.Repeat("42", 32)
+	lifecycle.executor.plan.PlanHash = planHash
+	evidence.PlanHash = planHash
+	lifecycle.cfg.provisionalResume = &provisionalResumeState{
+		RecordPath: filepath.Join(t.TempDir(), "provenance.json"),
+		Record: &provisionalResumeRecord{
+			Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false,
+			ConfigHash: lifecycle.cfg.ConfigHash, DeploymentID: lifecycle.cfg.Config.Deployment.DeploymentID, PlanHash: planHash,
+		},
+	}
+	launch := *evidence.LaunchPrune
+	launch.Inputs = append([]FleetLifecyclePruneInput(nil), launch.Inputs...)
+	launch.MinimumNonImmuneUIDs = 1
+	launch.NonImmuneUIDs = uint16(len(launch.Inputs) - 1)
+	for index := 1; index < len(launch.Inputs); index++ {
+		launch.Inputs[index].Immune = false
+		launch.Inputs[index].EmissionRao = 100
+	}
+	launch.Inputs[1].EmissionRao = 0
+	launch.RuntimePruneUID = 1
+	evidence.LaunchPrune = &launch
+	bypass, err := fleetLifecycleProvisionalBypass(lifecycle.cfg, lifecycle.executor.plan, lifecycle.executor.roles, launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence.Stage = fleetLifecycleStageReleaseHandoff
+	evidence.ProvisionalBypass = bypass
+	lifecycle.evidence = evidence
+	lifecycle.phase = "release-1.0"
+	lifecycle.resumeValidated = true
+	return lifecycle, evidence
+}
+
+// Models the deployed failure: the public lifecycle handoff belongs to the
+// signed root release while a later pre-acceptance recovery owns the new run.
+func fleetLifecycleProvisionalRecoveryFixture(t *testing.T) (*liveFleetLifecycle, *FleetLifecycleEvidence, *scenarioCampaignAttempt, []byte) {
+	t.Helper()
+	fixture := newCampaignSuccessionFixture(t)
+	root, _ := bindCampaignRecoveryFixture(t, fixture)
+	first, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.updateProgress(false, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = bindPreAcceptanceFailedRecoveryGeneration(t, fixture, first)
+	current, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(2*time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lifecycle, evidence := fleetLifecycleProvisionalBypassFixture(t)
+	fixture.cfg.provisionalResume = &provisionalResumeState{
+		RecordPath: filepath.Join(t.TempDir(), "provenance.json"),
+		Record: &provisionalResumeRecord{
+			Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false,
+			ConfigHash: fixture.cfg.ConfigHash, DeploymentID: fixture.cfg.Config.Deployment.DeploymentID, PlanHash: fixture.current.PlanHash,
+		},
+	}
+	lifecycle.cfg = fixture.cfg
+	lifecycle.stateDir = fixture.stateDir
+	lifecycle.executor = &Executor{cfg: fixture.cfg, stateDir: fixture.stateDir, plan: fixture.current, roles: fixture.roles}
+	lifecycle.attempt = current
+	evidence.DeploymentID = fixture.cfg.Config.Deployment.DeploymentID
+	evidence.PlanHash = fixture.current.PlanHash
+	evidence.RunID = root.payload.RunID
+	evidence.Renewal = cloneFleetLifecycleRenewal(fixture.current.FleetLifecycleRenewal)
+	for _, identity := range []struct {
+		uid   uint16
+		churn int
+	}{{fleetLifecycleTargetExpectedUID, fleetLifecycleTargetChurn}, {fleetLifecycleCompanionExpectedUID, fleetLifecycleCompanionChurn}, {fleetLifecycleTerminalVictimUID, fleetLifecycleTerminalVictimChurn}} {
+		hotkey, hotkeyErr := roleBytes32(fixture.roles, churnHotkeyLabel(identity.churn))
+		coldkey, coldkeyErr := roleBytes32(fixture.roles, churnColdkeyLabel(identity.churn))
+		if hotkeyErr != nil || coldkeyErr != nil {
+			t.Fatal(hotkeyErr, coldkeyErr)
+		}
+		evidence.LaunchPrune.Inputs[identity.uid].Hotkey = fleetLifecycleHex(hotkey)
+		evidence.LaunchPrune.Inputs[identity.uid].Coldkey = fleetLifecycleHex(coldkey)
+	}
+	evidence.FirstAcceptedEpoch = 101
+	evidence.AcceptanceStartBlock = 1_000
+	evidence.AcceptanceEndBlock = 2_500
+	evidence.AcceptanceTerminalBlock = 2_650
+	bypass, err := fleetLifecycleProvisionalBypass(fixture.cfg, fixture.current, fixture.roles, *evidence.LaunchPrune)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence.ProvisionalBypass = bypass
+	if err := os.MkdirAll(filepath.Join(fixture.stateDir, "public"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(fixture.stateDir, "public", "fleet-lifecycle.json"), evidence); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(fixture.stateDir, "public", "fleet-lifecycle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lifecycle, evidence, current, raw
+}
+
+func TestFleetLifecycleProvisionalRecoveryRetainsAuthenticatedReleaseHandoff(t *testing.T) {
+	lifecycle, evidence, current, before := fleetLifecycleProvisionalRecoveryFixture(t)
+	if !current.payload.PreparationComplete {
+		t.Fatal("recovery fixture did not carry its signed preparation checkpoint")
+	}
+	if err := lifecycle.ValidatePhaseResume("release-1.0", current.payload.RunID); err != nil {
+		t.Fatalf("preparation-time resume validation: %v", err)
+	}
+	if err := lifecycle.BeginPhase("release-1.0", current.payload.RunID); err != nil {
+		t.Fatalf("begin retained release lifecycle: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(lifecycle.stateDir, "public", "fleet-lifecycle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) || lifecycle.evidence.RunID != evidence.RunID || lifecycle.evidence.RunID == current.payload.RunID || !lifecycle.retainedProvisionalRelease || !lifecycle.Complete() {
+		t.Fatalf("retained lifecycle changed: retained=%t evidence_run=%q current_run=%q", lifecycle.retainedProvisionalRelease, lifecycle.evidence.RunID, current.payload.RunID)
+	}
+	window, present := lifecycle.RetainedAcceptanceWindowForPhase("release-1.0")
+	if !present || window.FirstEpoch != evidence.FirstAcceptedEpoch || window.StartBlock != evidence.AcceptanceStartBlock || window.TerminalBlock != evidence.AcceptanceTerminalBlock {
+		t.Fatalf("retained acceptance window=%+v present=%t", window, present)
+	}
+	if err := lifecycle.BindAcceptanceWindowForPhase("release-1.0", window); err != nil {
+		t.Fatal(err)
+	}
+	changed := *window
+	changed.StartBlock++
+	if err := lifecycle.BindAcceptanceWindowForPhase("release-1.0", &changed); err == nil || !strings.Contains(err.Error(), "differs from its authenticated predecessor") {
+		t.Fatalf("changed retained window error=%v", err)
+	}
+	if err := lifecycle.Advance(t.Context(), &ScenarioObservation{Status: &DeploymentStatus{Contracts: &ContractView{}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	finalBytes, err := os.ReadFile(filepath.Join(lifecycle.stateDir, "public", "fleet-lifecycle.json"))
+	if err != nil || !bytes.Equal(before, finalBytes) {
+		t.Fatalf("retained lifecycle bytes changed after no-op advancement: err=%v", err)
+	}
+}
+
+func TestFleetLifecycleProvisionalRecoveryArchiveBindsBothRunIdentities(t *testing.T) {
+	lifecycle, evidence, current, original := fleetLifecycleProvisionalRecoveryFixture(t)
+	if err := lifecycle.BeginPhase("release-1.0", current.payload.RunID); err != nil {
+		t.Fatal(err)
+	}
+	runDir := t.TempDir()
+	binding, err := captureScenarioLifecycleHandoff(lifecycle.cfg, lifecycle.stateDir, runDir, current.payload.RunID, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied, err := os.ReadFile(filepath.Join(runDir, scenarioLifecycleHandoffFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(original, copied) || binding.ReleaseRunID != current.payload.RunID || binding.CurrentRunID != current.payload.RunID || binding.InheritedReleaseRunID != evidence.RunID || binding.PlanHash != evidence.PlanHash || binding.ConfigHash != lifecycle.cfg.ConfigHash || binding.PolicyHash != lifecycle.cfg.PolicyHash {
+		t.Fatalf("inherited lifecycle binding=%+v", binding)
+	}
+	if err := validateScenarioLifecycleHandoffBinding(lifecycle.cfg, *binding, copied); err != nil {
+		t.Fatal(err)
+	}
+	gate := &ReleaseCampaignGate{
+		Schema: releaseCampaignGateSchema, RunID: current.payload.RunID,
+		ResultHash: "0x" + strings.Repeat("71", 32), CompleteContentHash: "sha256:" + strings.Repeat("72", 32),
+		StartEpoch: 101, EndEpoch: 106, LifecycleHandoff: *binding,
+	}
+	if err := validateReleaseCampaignGateShape(lifecycle.cfg, gate); err != nil {
+		t.Fatalf("inherited lifecycle release gate: %v", err)
+	}
+	strict := *lifecycle.cfg
+	strict.provisionalResume = nil
+	if err := validateScenarioLifecycleHandoffBinding(&strict, *binding, copied); err == nil {
+		t.Fatal("strict lifecycle binding accepted provisional inherited provenance")
+	}
+	changed := *binding
+	changed.InheritedReleaseRunID = "foreign-release"
+	if err := validateScenarioLifecycleHandoffBinding(lifecycle.cfg, changed, copied); err == nil {
+		t.Fatal("lifecycle binding accepted changed inherited run identity")
+	}
+	changed = *binding
+	changed.PlanHash = "0x" + strings.Repeat("73", 32)
+	if err := validateScenarioLifecycleHandoffBinding(lifecycle.cfg, changed, copied); err == nil {
+		t.Fatal("lifecycle binding accepted changed recovery plan")
+	}
+	if _, err := captureScenarioLifecycleHandoff(lifecycle.cfg, lifecycle.stateDir, t.TempDir(), current.payload.RunID, nil); err == nil {
+		t.Fatal("lifecycle archive accepted inherited bytes without signed recovery ancestry")
+	}
+}
+
+func TestFleetLifecycleProvisionalRecoveryRejectsForeignAndMutatedPredecessors(t *testing.T) {
+	lifecycle, evidence, current, _ := fleetLifecycleProvisionalRecoveryFixture(t)
+	foreign := *current
+	foreign.payload = current.payload
+	foreign.payload.RunID = "foreign-recovery-run"
+	lifecycle.attempt = &foreign
+	if err := lifecycle.BeginPhase("release-1.0", foreign.payload.RunID); err == nil {
+		t.Fatal("foreign unsigned recovery adopted the retained release handoff")
+	}
+	lifecycle.attempt = current
+	mutated := *evidence
+	mutated.Stage = fleetLifecycleStageComplete
+	if err := writePublicJSON(filepath.Join(lifecycle.stateDir, "public", "fleet-lifecycle.json"), &mutated); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.BeginPhase("release-1.0", current.payload.RunID); err == nil || !strings.Contains(err.Error(), "handoff stage") {
+		t.Fatalf("completed-stage predecessor error=%v", err)
+	}
+	mutated = *evidence
+	mutated.ProductionRunID = "production-run"
+	if err := writePublicJSON(filepath.Join(lifecycle.stateDir, "public", "fleet-lifecycle.json"), &mutated); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.BeginPhase("release-1.0", current.payload.RunID); err == nil || !strings.Contains(err.Error(), "production successor state") {
+		t.Fatalf("production-state predecessor error=%v", err)
+	}
+}
+
+func TestFleetLifecycleProvisionalBypassPreservesUnsafePruneCensusWithoutMutation(t *testing.T) {
+	lifecycle, evidence := fleetLifecycleProvisionalBypassFixture(t)
+	if err := lifecycle.validatePersistedStateForPhase("release-1.0", evidence.RunID, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if passed, detail := lifecycle.CompletionStatus(); !passed || !strings.Contains(detail, "final_acceptance=false") {
+		t.Fatalf("provisional completion passed=%t detail=%q", passed, detail)
+	}
+	window := &ScenarioAcceptanceWindow{FirstEpoch: 101, EpochCount: 5, EpochBlocks: 300, StartBlock: 1_000, EndBlock: 2_500, FinalizeOffsetBlocks: 150, TerminalBlock: 2_650}
+	if err := lifecycle.BindAcceptanceWindowForPhase("release-1.0", window); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.Complete() {
+		t.Fatal("window mutation remained validated without an evidence pass")
+	}
+	observation := &ScenarioObservation{Status: &DeploymentStatus{Contracts: &ContractView{}}}
+	if err := lifecycle.Advance(t.Context(), observation, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !lifecycle.Complete() || evidence.FallbackRegistration != nil || evidence.ProviderRegistration != nil || evidence.TerminalRegistration != nil || len(evidence.TargetCleanup) != 0 || len(evidence.CompanionCleanup) != 0 || len(evidence.FallbackCleanup) != 0 {
+		t.Fatal("provisional lifecycle bypass performed or claimed a mutation")
+	}
+}
+
+func TestFleetLifecycleProvisionalBypassCannotAuthorizeStrictOrChangedEvidence(t *testing.T) {
+	lifecycle, evidence := fleetLifecycleProvisionalBypassFixture(t)
+	lifecycle.cfg.provisionalResume = nil
+	if err := lifecycle.validatePersistedStateForPhase("release-1.0", evidence.RunID, evidence); err == nil {
+		t.Fatal("strict lifecycle accepted a provisional registration bypass")
+	}
+	lifecycle.cfg.provisionalResume = &provisionalResumeState{
+		RecordPath: filepath.Join(t.TempDir(), "provenance.json"),
+		Record: &provisionalResumeRecord{
+			Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true,
+			ConfigHash: lifecycle.cfg.ConfigHash, DeploymentID: lifecycle.cfg.Config.Deployment.DeploymentID, PlanHash: lifecycle.executor.plan.PlanHash,
+		},
+	}
+	evidence.ProvisionalBypass.RuntimePruneUid++
+	if err := lifecycle.validatePersistedStateForPhase("release-1.0", evidence.RunID, evidence); err == nil {
+		t.Fatal("changed runtime prune candidate retained bypass authority")
+	}
+}
+
+func TestFleetLifecycleProvisionalBypassCarriesExactReleaseHandoffIntoProduction(t *testing.T) {
+	lifecycle, evidence := fleetLifecycleProvisionalBypassFixture(t)
+	window := &ScenarioAcceptanceWindow{FirstEpoch: 101, EpochCount: 5, EpochBlocks: 300, StartBlock: 1_000, EndBlock: 2_500, FinalizeOffsetBlocks: 150, TerminalBlock: 2_650}
+	if err := lifecycle.BindAcceptanceWindowForPhase("release-1.0", window); err != nil {
+		t.Fatal(err)
+	}
+	lifecycle.resumeValidated = true
+	encoded, err := fleetLifecycleCanonicalBytes(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := bytesSHA256(encoded)
+	if err := lifecycle.AuthenticateReleaseHandoff(encoded, hash, evidence.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.BeginPhase("production-soak", "production-run"); err != nil {
+		t.Fatal(err)
+	}
+	production := &ScenarioAcceptanceWindow{FirstEpoch: 106, EpochCount: 3, EpochBlocks: 360, StartBlock: 3_000, EndBlock: 4_080, FinalizeOffsetBlocks: 180, TerminalBlock: 4_260}
+	if err := lifecycle.BindAcceptanceWindowForPhase("production-soak", production); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.Advance(t.Context(), &ScenarioObservation{Status: &DeploymentStatus{Contracts: &ContractView{}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !lifecycle.Complete() || lifecycle.evidence.Stage != fleetLifecycleStageComplete || lifecycle.evidence.ReleaseHandoffHash != hash || lifecycle.evidence.ProductionRunID != "production-run" {
+		t.Fatalf("production bypass did not retain exact release handoff: %+v", lifecycle.evidence)
 	}
 }
 

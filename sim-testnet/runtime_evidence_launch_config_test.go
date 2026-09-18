@@ -113,7 +113,7 @@ func TestRuntimeEvidenceOwnedReservedStagingRerenderReplacesProvisionalConfig(t 
 	testRuntimeEvidenceLaunchTemplateRender(t, true)
 }
 
-func testRuntimeEvidenceLaunchTemplateRender(t *testing.T, owned bool) {
+func testRuntimeEvidenceLaunchTemplateRender(t *testing.T, owned bool) (*ResolvedConfig, string, *RoleSecrets) {
 	t.Helper()
 	t.Parallel()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
@@ -334,6 +334,7 @@ func testRuntimeEvidenceLaunchTemplateRender(t *testing.T, owned bool) {
 			t.Fatal(err)
 		}
 	}
+	return cfg, stateDir, roles
 }
 
 // Partial generated identity, private allowlists and omitted finite fields

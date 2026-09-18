@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 
@@ -26,6 +27,28 @@ type scenarioFleetLifecycle interface {
 	Complete() bool
 }
 
+// Live lifecycle owners use the campaign context while a complete launch
+// census is waiting for its intended zero-emission prune boundary.
+type scenarioFleetLifecycleContext interface {
+	BeginPhaseContext(context.Context, string, string) error
+}
+
+// scenarioFleetLifecycleResumeValidator authenticates existing public state
+// before expensive preparation. BeginPhase repeats the check after setup.
+type scenarioFleetLifecycleResumeValidator interface {
+	ValidatePhaseResume(string, string) error
+}
+
+// scenarioFleetLifecycleRetainedWindow keeps a recovered campaign's window
+// separate from an already completed lifecycle predecessor.
+type scenarioFleetLifecycleRetainedWindow interface {
+	RetainedAcceptanceWindowForPhase(string) (*ScenarioAcceptanceWindow, bool)
+}
+
+type scenarioFleetLifecycleCompletionStatus interface {
+	CompletionStatus() (bool, string)
+}
+
 type liveFleetLifecycle struct {
 	cfg                             *ResolvedConfig
 	stateDir                        string
@@ -35,6 +58,8 @@ type liveFleetLifecycle struct {
 	resumeValidated                 bool
 	authenticatedReleaseHandoff     *FleetLifecycleEvidence
 	authenticatedReleaseHandoffHash string
+	attempt                         *scenarioCampaignAttempt
+	retainedProvisionalRelease      bool
 }
 
 func fleetLifecycleReleaseProjection(evidence *FleetLifecycleEvidence) *FleetLifecycleEvidence {
@@ -126,10 +151,109 @@ func fleetLifecycleCompletionStatus(lifecycle scenarioFleetLifecycle) (bool, str
 	if lifecycle == nil {
 		return true, "fleet lifecycle is not configured for this scenario"
 	}
+	if status, ok := lifecycle.(scenarioFleetLifecycleCompletionStatus); ok {
+		return status.CompletionStatus()
+	}
 	if !lifecycle.Complete() {
 		return false, "fleet lifecycle did not reach its phase-specific authenticated handoff"
 	}
 	return true, "fleet lifecycle reached its phase-specific authenticated handoff"
+}
+
+func validateFleetLifecycleProvisionalBypassAuthority(cfg *ResolvedConfig, plan *SetupPlan) error {
+	if !provisionalResumeEnabled(cfg) || cfg.Config == nil || plan == nil {
+		return errors.New("fleet lifecycle provisional bypass has no resume authority")
+	}
+	record := cfg.provisionalResume.Record
+	if record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || record.PlanHash != plan.PlanHash || !validCanonicalHashHex(record.PlanHash) || !filepath.IsAbs(cfg.provisionalResume.RecordPath) {
+		return errors.New("fleet lifecycle provisional bypass differs from its exact testnet resume authority")
+	}
+	return nil
+}
+
+// Converts only a complete, unsafe live prune census into an explicit
+// no-mutation provisional record. Integrity or ownership failures still stop.
+func fleetLifecycleProvisionalBypass(cfg *ResolvedConfig, plan *SetupPlan, roles *RoleSecrets, snapshot FleetLifecyclePruneSnapshot) (*FleetLifecycleProvisionalBypass, error) {
+	if err := validateFleetLifecycleProvisionalBypassAuthority(cfg, plan); err != nil {
+		return nil, err
+	}
+	err := validateFleetLifecycleLaunchSnapshot(snapshot, roles)
+	var pending *fleetLifecyclePruneTargetPendingError
+	if !errors.As(err, &pending) {
+		return nil, stateMismatchError(err, "fleet lifecycle provisional bypass requires an internally consistent foreign prune candidate")
+	}
+	if pending.target.UID != fleetLifecycleTargetExpectedUID || pending.computedUid == pending.target.UID || int(pending.computedUid) >= len(snapshot.Inputs) || pending.nonImmuneUids <= snapshot.MinimumNonImmuneUIDs || pending.target.Immune || pending.target.Immortal {
+		return nil, errors.New("fleet lifecycle provisional bypass requires an expired target recovery window and a different runtime candidate")
+	}
+	candidate := snapshot.Inputs[pending.computedUid]
+	if candidate.UID != pending.computedUid || candidate.Immune || candidate.Immortal {
+		return nil, errors.New("fleet lifecycle provisional bypass runtime candidate is not a canonical nonimmune row")
+	}
+	return &FleetLifecycleProvisionalBypass{
+		Schema: fleetLifecycleProvisionalBypassSchema, Reason: fleetLifecycleUnsafePruneReason,
+		TargetUid: pending.target.UID, RuntimePruneUid: pending.computedUid,
+		NonImmuneUids: pending.nonImmuneUids, MinimumNonImmuneUids: snapshot.MinimumNonImmuneUIDs,
+		Provisional: true, FinalAcceptance: false,
+	}, nil
+}
+
+func (self *liveFleetLifecycle) validateProvisionalBypassState(phase, runID string, evidence *FleetLifecycleEvidence) error {
+	if evidence == nil || evidence.ProvisionalBypass == nil || evidence.LaunchPrune == nil || self.executor == nil || self.executor.plan == nil {
+		return errors.New("fleet lifecycle provisional bypass state is incomplete")
+	}
+	if err := validateFleetLifecycleProvisionalBypassAuthority(self.cfg, self.executor.plan); err != nil {
+		return err
+	}
+	want, err := fleetLifecycleProvisionalBypass(self.cfg, self.executor.plan, self.executor.roles, *evidence.LaunchPrune)
+	if err != nil || *evidence.ProvisionalBypass != *want {
+		return stateMismatchError(err, "fleet lifecycle provisional bypass differs from its launch census")
+	}
+	if evidence.Schema != fleetLifecycleEvidenceSchema || evidence.DeploymentID != self.cfg.Config.Deployment.DeploymentID || evidence.PlanHash != self.executor.plan.PlanHash || evidence.RunID == "" || evidence.TakeoverEffectiveEpoch == 0 {
+		return errors.New("fleet lifecycle provisional bypass changed its run, deployment, plan, or takeover")
+	}
+	if evidence.ReleaseHandoffSchedule != nil || evidence.ReleaseEVMEvidenceDeadlineBlock != 0 || evidence.ProductionNativeSchedule != nil || evidence.ProductionEVMEvidenceDeadlineBlock != 0 || evidence.FallbackEffectiveEpoch != 0 || evidence.ProviderEffectiveEpoch != 0 || evidence.TerminalEffectiveEpoch != 0 || evidence.PostRegistrationRewardBaseline != (ChainHead{}) || evidence.FallbackRegistration != nil || evidence.ProviderRegistration != nil || evidence.TerminalRegistration != nil || len(evidence.TargetCleanup) != 0 || len(evidence.CompanionCleanup) != 0 || len(evidence.FallbackCleanup) != 0 || len(evidence.Payouts) != 0 || len(evidence.CandidateCensuses) != 0 {
+		return errors.New("fleet lifecycle provisional bypass contains mutation or decision evidence")
+	}
+	if evidence.FirstAcceptedEpoch == 0 {
+		if evidence.AcceptanceStartBlock != 0 || evidence.AcceptanceEndBlock != 0 || evidence.AcceptanceTerminalBlock != 0 {
+			return errors.New("fleet lifecycle provisional bypass has a partial release window")
+		}
+	} else if err := validateFleetLifecycleWindow(evidence.AcceptanceStartBlock, evidence.AcceptanceEndBlock, evidence.AcceptanceTerminalBlock, 5, 300, 150); err != nil {
+		return err
+	}
+	switch phase {
+	case "release-1.0":
+		if evidence.RunID != runID {
+			return errors.New("release fleet lifecycle provisional bypass is bound to another release run")
+		}
+		if evidence.Stage != fleetLifecycleStageReleaseHandoff {
+			return errors.New("release fleet lifecycle provisional bypass has not reached its handoff stage")
+		}
+		if fleetLifecycleHasProductionState(evidence) {
+			return errors.New("release fleet lifecycle provisional bypass contains production successor state")
+		}
+	case "production-soak":
+		if evidence.ProductionRunID != runID || evidence.Stage != fleetLifecycleStageComplete || evidence.ReleaseHandoffHash == "" || evidence.FirstAcceptedEpoch == 0 {
+			return errors.New("production fleet lifecycle provisional bypass has no exact release predecessor")
+		}
+		handoffHash, hashErr := fleetLifecycleReleaseHandoffHash(evidence)
+		if hashErr != nil || handoffHash != evidence.ReleaseHandoffHash {
+			return stateMismatchError(hashErr, "production fleet lifecycle provisional bypass changed its release handoff")
+		}
+		if self.authenticatedReleaseHandoff != nil && (evidence.ReleaseHandoffHash != self.authenticatedReleaseHandoffHash || !fleetLifecycleCanonicalEqual(fleetLifecycleReleaseProjection(evidence), self.authenticatedReleaseHandoff)) {
+			return errors.New("production fleet lifecycle provisional bypass differs from the authenticated release handoff")
+		}
+		if evidence.ProductionFirstSettlementEpoch == 0 {
+			if evidence.ProductionAcceptanceStartBlock != 0 || evidence.ProductionAcceptanceEndBlock != 0 || evidence.ProductionAcceptanceTerminalBlock != 0 {
+				return errors.New("fleet lifecycle provisional bypass has a partial production window")
+			}
+		} else if err := validateFleetLifecycleWindow(evidence.ProductionAcceptanceStartBlock, evidence.ProductionAcceptanceEndBlock, evidence.ProductionAcceptanceTerminalBlock, 3, 360, 180); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("fleet lifecycle provisional bypass phase %q is unsupported", phase)
+	}
+	return nil
 }
 
 func (self *liveFleetLifecycle) write() error {
@@ -143,15 +267,123 @@ func (self *liveFleetLifecycle) Begin(runID string) error {
 	return self.BeginPhase("release-1.0", runID)
 }
 
-func (self *liveFleetLifecycle) BeginPhase(phase, runID string) error {
-	if self.cfg == nil || self.cfg.Config == nil || self.executor == nil || self.executor.plan == nil || runID == "" || (phase != "release-1.0" && phase != "production-soak") {
-		return errors.New("fleet lifecycle dependencies are incomplete")
+// Retriable launch readiness stays inside one campaign invocation. Integrity,
+// ownership and lineage failures still return immediately.
+func (self *liveFleetLifecycle) BeginPhaseContext(ctx context.Context, phase, runID string) error {
+	return retryFleetLifecyclePhaseContext(ctx, func() error {
+		return self.BeginPhase(phase, runID)
+	}, func(ctx context.Context) error {
+		seconds := uint64(1)
+		if self != nil && self.cfg != nil && self.cfg.Public.Chain.ExpectedBlockSeconds > 0 {
+			seconds = self.cfg.Public.Chain.ExpectedBlockSeconds
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(seconds) * time.Second):
+			return nil
+		}
+	})
+}
+
+// The wait callback makes readiness transitions deterministic in tests while
+// production remains rate-limited by the configured native block interval.
+func retryFleetLifecyclePhaseContext(ctx context.Context, begin func() error, wait func(context.Context) error) error {
+	if ctx == nil || begin == nil || wait == nil {
+		return errors.New("fleet lifecycle contextual retry dependencies are incomplete")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := begin()
+		var pending *fleetLifecyclePruneTargetPendingError
+		if !errors.As(err, &pending) {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "sim-testnet: %v; retaining prepared campaign and waiting for the next native block\n", pending)
+		if err := wait(ctx); err != nil {
+			return errors.Join(pending, err)
+		}
+	}
+}
+
+// retainedProvisionalReleaseRunID authenticates a historical release identity
+// without rewriting it as the current recovery run.
+func (self *liveFleetLifecycle) retainedProvisionalReleaseRunID(phase, runID string, evidence *FleetLifecycleEvidence) (string, bool, error) {
+	if phase != "release-1.0" || evidence == nil || evidence.RunID == runID {
+		return runID, false, nil
+	}
+	if evidence.ProvisionalBypass == nil {
+		return runID, false, nil
+	}
+	if self.attempt == nil || self.attempt.payload.RunID != runID || self.attempt.payload.Phase != phase || self.attempt.payload.ConfigHash != self.cfg.ConfigHash || self.attempt.payload.PolicyHash != self.cfg.PolicyHash || self.attempt.payload.PlanHash != evidence.PlanHash {
+		return "", false, errors.New("release fleet lifecycle predecessor differs from the current signed recovery")
+	}
+	if err := validateScenarioCampaignRecoveryAncestor(self.attempt, evidence.RunID); err != nil {
+		return "", false, fmt.Errorf("release fleet lifecycle predecessor ancestry: %w", err)
+	}
+	return evidence.RunID, true, nil
+}
+
+// ValidatePhaseResume performs only the immutable persisted-state checks that
+// can fail before retained receipt preparation. BeginPhase repeats them before
+// any lifecycle state is adopted.
+func (self *liveFleetLifecycle) ValidatePhaseResume(phase, runID string) error {
+	if phase != "release-1.0" {
+		return nil
+	}
+	if self == nil || self.cfg == nil || self.cfg.Config == nil || self.executor == nil || self.executor.plan == nil || runID == "" {
+		return errors.New("fleet lifecycle resume validation dependencies are incomplete")
 	}
 	if err := validateFleetLifecycleTopology(self.cfg.Config.Topology); err != nil {
 		return err
 	}
 	prior, err := loadFleetLifecycleEvidence(self.stateDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	validationRunID, _, err := self.retainedProvisionalReleaseRunID(phase, runID, prior)
+	if err != nil {
+		return err
+	}
+	return self.validatePersistedStateForPhase(phase, validationRunID, prior)
+}
+
+// RetainedAcceptanceWindowForPhase exposes only the immutable lifecycle
+// predecessor window. The active scenario keeps its fresh acceptance window.
+func (self *liveFleetLifecycle) RetainedAcceptanceWindowForPhase(phase string) (*ScenarioAcceptanceWindow, bool) {
+	if self == nil || !self.retainedProvisionalRelease || phase != "release-1.0" || self.evidence == nil || self.evidence.FirstAcceptedEpoch == 0 {
+		return nil, false
+	}
+	return &ScenarioAcceptanceWindow{
+		FirstEpoch: self.evidence.FirstAcceptedEpoch, EpochCount: 5, EpochBlocks: 300,
+		StartBlock: self.evidence.AcceptanceStartBlock, EndBlock: self.evidence.AcceptanceEndBlock,
+		FinalizeOffsetBlocks: 150, TerminalBlock: self.evidence.AcceptanceTerminalBlock,
+	}, true
+}
+
+func (self *liveFleetLifecycle) BeginPhase(phase, runID string) error {
+	if self.cfg == nil || self.cfg.Config == nil || self.executor == nil || self.executor.plan == nil || runID == "" || (phase != "release-1.0" && phase != "production-soak") {
+		return errors.New("fleet lifecycle dependencies are incomplete")
+	}
+	self.retainedProvisionalRelease = false
+	if err := validateFleetLifecycleTopology(self.cfg.Config.Topology); err != nil {
+		return err
+	}
+	prior, err := loadFleetLifecycleEvidence(self.stateDir)
 	if err == nil {
+		validationRunID := runID
+		retainedRelease := false
+		if phase == "release-1.0" {
+			validationRunID, retainedRelease, err = self.retainedProvisionalReleaseRunID(phase, runID, prior)
+			if err != nil {
+				return err
+			}
+		}
 		if phase == "production-soak" {
 			if self.authenticatedReleaseHandoff == nil || self.authenticatedReleaseHandoffHash == "" {
 				return errors.New("production fleet lifecycle has no exact authenticated release handoff")
@@ -168,16 +400,23 @@ func (self *liveFleetLifecycle) BeginPhase(phase, runID string) error {
 				}
 				prior.ProductionRunID = runID
 				prior.ReleaseHandoffHash = self.authenticatedReleaseHandoffHash
+				if prior.ProvisionalBypass != nil {
+					prior.Stage = fleetLifecycleStageComplete
+				}
 			} else if prior.ReleaseHandoffHash != self.authenticatedReleaseHandoffHash {
 				return errors.New("persisted fleet lifecycle names a different release handoff hash")
 			}
 		}
-		if err := self.validatePersistedStateForPhase(phase, runID, prior); err != nil {
+		if err := self.validatePersistedStateForPhase(phase, validationRunID, prior); err != nil {
 			return fmt.Errorf("persisted fleet lifecycle state: %w", err)
 		}
 		self.evidence = prior
 		self.phase = phase
-		self.resumeValidated = false
+		self.resumeValidated = prior.ProvisionalBypass != nil
+		self.retainedProvisionalRelease = retainedRelease
+		if retainedRelease {
+			return nil
+		}
 		return self.write()
 	}
 	if !errors.Is(err, os.ErrNotExist) {
@@ -217,8 +456,23 @@ func (self *liveFleetLifecycle) BeginPhase(phase, runID string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateFleetLifecycleLaunchSnapshot(launch, self.executor.roles); err != nil {
-		return err
+	if launchErr := validateFleetLifecycleLaunchSnapshot(launch, self.executor.roles); launchErr != nil {
+		if provisionalResumeEnabled(self.cfg) {
+			bypass, bypassErr := fleetLifecycleProvisionalBypass(self.cfg, self.executor.plan, self.executor.roles, launch)
+			if bypassErr == nil {
+				self.evidence = &FleetLifecycleEvidence{
+					Schema: fleetLifecycleEvidenceSchema, DeploymentID: self.cfg.Config.Deployment.DeploymentID,
+					PlanHash: self.executor.plan.PlanHash, RunID: runID, Stage: fleetLifecycleStageReleaseHandoff,
+					TakeoverEffectiveEpoch: targetEffective, LaunchPrune: &launch, Renewal: cloneFleetLifecycleRenewal(self.executor.plan.FleetLifecycleRenewal), ProvisionalBypass: bypass,
+				}
+				self.phase = phase
+				self.resumeValidated = true
+				fmt.Fprintf(os.Stderr, "sim-testnet: provisional fleet lifecycle registration bypass; target_uid=%d runtime_prune_uid=%d nonimmune=%d/%d; mutation_count=0; final_acceptance=false\n", bypass.TargetUid, bypass.RuntimePruneUid, bypass.NonImmuneUids, bypass.MinimumNonImmuneUids)
+				return self.write()
+			}
+			return errors.Join(launchErr, bypassErr)
+		}
+		return launchErr
 	}
 	self.evidence = &FleetLifecycleEvidence{
 		Schema: fleetLifecycleEvidenceSchema, DeploymentID: self.cfg.Config.Deployment.DeploymentID,
@@ -238,6 +492,19 @@ func (self *liveFleetLifecycle) Complete() bool {
 		return self.evidence.Stage == fleetLifecycleStageReleaseHandoff
 	}
 	return self.phase == "production-soak" && self.evidence.Stage == fleetLifecycleStageComplete
+}
+
+func (self *liveFleetLifecycle) CompletionStatus() (bool, string) {
+	if !self.Complete() {
+		return false, "fleet lifecycle did not reach its phase-specific authenticated handoff"
+	}
+	if self.retainedProvisionalRelease {
+		return true, fmt.Sprintf("fleet lifecycle retained authenticated release handoff %s for recovery %s; provisional=true final_acceptance=false", self.evidence.RunID, self.attempt.payload.RunID)
+	}
+	if self.evidence.ProvisionalBypass != nil {
+		return true, fmt.Sprintf("fleet lifecycle registration mutations were bypassed at runtime prune UID %d to preserve target UID %d; provisional=true final_acceptance=false", self.evidence.ProvisionalBypass.RuntimePruneUid, self.evidence.ProvisionalBypass.TargetUid)
+	}
+	return true, "fleet lifecycle reached its phase-specific authenticated handoff"
 }
 
 func fleetLifecycleStageRank(stage string) (int, bool) {
@@ -637,6 +904,9 @@ func (self *liveFleetLifecycle) validatePersistedStateForPhase(phase, runID stri
 	if !fleetLifecycleCanonicalEqual(evidence.Renewal, self.executor.plan.FleetLifecycleRenewal) {
 		return errors.New("fleet lifecycle state changed its approved renewal")
 	}
+	if evidence.ProvisionalBypass != nil {
+		return self.validateProvisionalBypassState(phase, runID, evidence)
+	}
 	rank, ok := fleetLifecycleStageRank(evidence.Stage)
 	identityMatches := phase == "release-1.0" && evidence.RunID == runID || phase == "production-soak" && evidence.ProductionRunID == runID
 	if !ok || !identityMatches || evidence.Schema != fleetLifecycleEvidenceSchema || evidence.DeploymentID != self.cfg.Config.Deployment.DeploymentID || evidence.PlanHash != self.executor.plan.PlanHash || evidence.RunID == "" || evidence.LaunchPrune == nil || evidence.TakeoverEffectiveEpoch == 0 {
@@ -1028,6 +1298,52 @@ func (self *liveFleetLifecycle) BindAcceptanceWindowForPhase(phase string, windo
 	}
 	if self.phase != "" && self.phase != phase {
 		return errors.New("fleet lifecycle acceptance window phase differs from its initialized phase")
+	}
+	if self.retainedProvisionalRelease {
+		if phase != "release-1.0" || window.FirstEpoch != self.evidence.FirstAcceptedEpoch || window.EpochCount != 5 || window.EpochBlocks != 300 || window.StartBlock != self.evidence.AcceptanceStartBlock || window.EndBlock != self.evidence.AcceptanceEndBlock || window.FinalizeOffsetBlocks != 150 || window.TerminalBlock != self.evidence.AcceptanceTerminalBlock {
+			return errors.New("retained release fleet lifecycle window differs from its authenticated predecessor")
+		}
+		if err := self.validateProvisionalBypassState(phase, self.evidence.RunID, self.evidence); err != nil {
+			return err
+		}
+		return nil
+	}
+	if self.evidence.ProvisionalBypass != nil {
+		runID := self.evidence.RunID
+		if phase == "production-soak" {
+			runID = self.evidence.ProductionRunID
+		}
+		if err := self.validateProvisionalBypassState(phase, runID, self.evidence); err != nil {
+			return err
+		}
+		switch phase {
+		case "release-1.0":
+			if window.EpochCount != 5 || window.EpochBlocks != 300 || window.FinalizeOffsetBlocks != 150 || self.cfg.Config.Scenarios.ShortEpochs != 5 || self.cfg.Policy.Settlement.EpochBlocks != 300 || self.cfg.Policy.Settlement.FinalizeOffsetBlocks != 150 {
+				return fmt.Errorf("fleet lifecycle provisional bypass requires exact release settlement geometry 5x300+150, got %dx%d+%d", window.EpochCount, window.EpochBlocks, window.FinalizeOffsetBlocks)
+			}
+			if self.evidence.FirstAcceptedEpoch != 0 && (self.evidence.FirstAcceptedEpoch != window.FirstEpoch || self.evidence.AcceptanceStartBlock != window.StartBlock || self.evidence.AcceptanceEndBlock != window.EndBlock || self.evidence.AcceptanceTerminalBlock != window.TerminalBlock) {
+				return errors.New("fleet lifecycle provisional bypass release window changed")
+			}
+			self.evidence.FirstAcceptedEpoch = window.FirstEpoch
+			self.evidence.AcceptanceStartBlock = window.StartBlock
+			self.evidence.AcceptanceEndBlock = window.EndBlock
+			self.evidence.AcceptanceTerminalBlock = window.TerminalBlock
+		case "production-soak":
+			if window.EpochCount != 3 || window.EpochBlocks != 360 || window.FinalizeOffsetBlocks != 180 || self.cfg.Config.Scenarios.ProductionEpochs != 3 || self.cfg.Policy.ProductionCadence.EpochBlocks != 360 || self.cfg.Policy.ProductionCadence.FinalizeOffsetBlocks != 180 {
+				return fmt.Errorf("fleet lifecycle provisional bypass requires exact production settlement geometry 3x360+180, got %dx%d+%d", window.EpochCount, window.EpochBlocks, window.FinalizeOffsetBlocks)
+			}
+			if self.evidence.ProductionFirstSettlementEpoch != 0 && (self.evidence.ProductionFirstSettlementEpoch != window.FirstEpoch || self.evidence.ProductionAcceptanceStartBlock != window.StartBlock || self.evidence.ProductionAcceptanceEndBlock != window.EndBlock || self.evidence.ProductionAcceptanceTerminalBlock != window.TerminalBlock) {
+				return errors.New("fleet lifecycle provisional bypass production window changed")
+			}
+			self.evidence.ProductionFirstSettlementEpoch = window.FirstEpoch
+			self.evidence.ProductionAcceptanceStartBlock = window.StartBlock
+			self.evidence.ProductionAcceptanceEndBlock = window.EndBlock
+			self.evidence.ProductionAcceptanceTerminalBlock = window.TerminalBlock
+		default:
+			return fmt.Errorf("fleet lifecycle phase %q is unsupported", phase)
+		}
+		self.resumeValidated = false
+		return self.write()
 	}
 	var plan *SetupPlan
 	if self.executor != nil {
@@ -2009,6 +2325,20 @@ func (self *liveFleetLifecycle) Advance(ctx context.Context, observation *Scenar
 	}
 	if self.phase != "release-1.0" && self.phase != "production-soak" {
 		return errors.New("fleet lifecycle phase is not initialized")
+	}
+	if self.evidence.ProvisionalBypass != nil {
+		runID := self.evidence.RunID
+		if self.phase == "production-soak" {
+			runID = self.evidence.ProductionRunID
+		}
+		if err := self.validateProvisionalBypassState(self.phase, runID, self.evidence); err != nil {
+			return fmt.Errorf("fleet lifecycle provisional bypass proof: %w", err)
+		}
+		self.resumeValidated = true
+		if self.retainedProvisionalRelease {
+			return nil
+		}
+		return self.write()
 	}
 	if err := self.validateResumeLineage(ctx); err != nil {
 		return fmt.Errorf("fleet lifecycle immutable resume proof: %w", err)

@@ -1,7 +1,18 @@
 # Sim-testnet finalization report 2
 
-**Current status: in progress; `final_acceptance=false`.** The soak remains
-stopped. The approved **6,000-alpha reserve repair has finalized** and reached
+**Current status: in progress; `final_acceptance=false`.** The corrected
+provisional topology admission passed at **19:57:09 UTC on September 16**. A
+qualified incremental release retry subsequently reopened the signed durable
+successor and reauthenticated all 4,674 retained receipts. It reached the real
+LAN execution reader, then stopped before preparation or any scenario action
+because testnet upgraded directly from runtime 461/1/1 at block **8,020,753**
+to 463/1/1 at block **8,020,754**. No transaction or spend was pending; the
+plan, journal, configuration, roles and signed successor are unchanged. Both
+validators later exhausted their five restart attempts against the old 461 pin;
+the other 31 processes did not restart. A compatibility fix and retained-state
+topology resume are in progress against `192.168.1.162:9944`. The actual release
+campaign has not yet opened a measured phase. The approved **6,000-alpha reserve repair has finalized**
+and reached
 **65.5997247163%** at the retained preparation snapshot. The latest complete
 LAN census, at block **8,015,417** on September 16, shows **64.9994918065%**:
 above the 60% operating floor and below the 65% repair target. The
@@ -10,7 +21,142 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
-**Latest recovery checkpoint, September 16, 13:23 UTC:** runtime 461 is qualified
+**Latest recovery checkpoint, September 16, 19:40 UTC:** driver SHA-256
+`b85ab8529118c9bc9f2848865882dfa1291651a1c08de8ad28bffcb72857707d`
+contains the combined campaign-succession, retained-context rendering and local
+intent corrections. Its 19 selected test roots pass normally and under race
+detection, while seven causal controls reproduce exactly their intended
+failures. This qualification does not establish campaign or on-chain acceptance.
+
+The first corrected live resume authenticated all 4,674 receipts, started 33
+processes and exited zero, but its outer wrapper rejected a single transiently
+unhealthy miner snapshot and rolled back. The second corrected resume ran from
+**19:07:14 through 19:25:32 UTC**. Its product body again passed with all 4,674
+receipts and a 33-process, zero-restart generation. Across 24 five-second
+samples, both validators and every non-miner service were healthy in all 24;
+each miner was healthy in at least 22, and nine samples were fully 33/33 healthy.
+Both operator replicas emitted the corrected startup-authority marker and the
+refusal scan was empty. The wrapper timed out only because no caller invoked the
+internal path that emits the separate `local-readiness` marker. Its rollback
+passed, and retained contexts, executable and release-lock bytes were unchanged.
+
+The third wrapper records local readiness without blocking on it and permits
+only miner-swarm health flicker. It still requires stable live process identities
+and OS start ticks, zero restarts, continuously healthy validators and other
+critical services, every process observed healthy, at least three full-health
+samples, both startup-authority markers and no refusal. Terra medium passed
+**26/26** deterministic producer cases, including replay of both real 16-sample
+windows, and **52/52** campaign-consumer cases. The separately qualified 43-case
+fail-closed finalizer and the full campaign workload are byte-identical. Retry
+three completed under request SHA-256
+`0c3b723efdb34dcfb609b8be2352867886fd10069e10352a87ec3fce9458fb9f`.
+Its 16 samples covered 82 seconds, with seven 33/33 samples, every process
+observed healthy, continuously healthy validators and critical services, stable
+PIDs and OS start ticks, zero restarts and no refusal. The result SHA-256 is
+`4f2740bd3b9cb542636c75f42608a232c7c90643176d6bbe85497a2cedebeae6`.
+
+The release-candidate owner ran from **19:58:56 through 20:00:05 UTC**. It
+authenticated all **4,674** retained receipts with zero failures and wrote the
+signed successor attempt for run
+`20260916T195955.196642218Z-release-1.0`, SHA-256
+`9aa94b86effb8aafc37bee904ff1e909a14edc6630a67f0a5588728ad7900417`.
+That record is immutable and is selected first on the next invocation, so this
+failure does not restart setup or create another attempt. Before preparation,
+the campaign rejected protected publication capacity. The source-capacity test
+had exercised the public route's 60-second poll, while the LAN-only runtime
+correctly renders a 15-second validator poll. Objects and bytes remain within
+their configured ceilings, but the worst-case retry forecast increases from
+2,555,000 to **6,012,260 requests/hour**, above the protected **4,194,304**
+ceiling. No transaction or spend was pending. A narrow provisional-only
+advisory is being qualified; strict admission and hard runtime quotas remain.
+No measured campaign result is claimed yet.
+
+**Runtime-463 retry checkpoint, September 16, 20:43 UTC:** the capacity change
+passed **21/21 normal** and **21/21 race** roots, with one exact pre-fix causal
+failure. The incremental retry wrapper passed **81/81** deterministic cases.
+Request SHA-256
+`ac01e73b1833f2232ac8a0da2474b543749dda4556bb85f77d474a51b7064204`
+ran from **20:43:00 through 20:45:18 UTC**. It authenticated all retained
+receipts and recorded that the resumed successor had no pending transaction or
+spend. The execution reader then rejected exact runtime identity 463/1/1;
+body and outer exits are one, and result SHA-256 is
+`e688eaffe3153b45d0a3b55cd06f0f25d745baa34d8da97d10a5a94c2c35a002`.
+
+The LAN archive proves the transition boundary: block 8,020,753 is the reviewed
+461 artifact and block 8,020,754 is 463. Runtime 463 retains transaction and
+state versions 1/1 but has different exact code and metadata. Its code is
+2,536,695 bytes with BLAKE2b-256
+`0x9745e3f66053c3c7cb30ea45b88c66438b5076da78154f477e8660b0ded43869`;
+its 338,396-byte metadata hashes to
+`0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c`.
+The same capture rechecked the known 461 hashes, so the hash procedure is
+anchored to the existing catalog. The failed retry changed only live supervisor
+state among the wrapper's watched state files. It did not replace the signed
+successor or begin release/production measurements.
+
+Validator-2's original process first ended on a transient post-checkpoint RPC
+timeout at block 8,020,753. Validator-1 later exhausted its steering retries
+after an operator timeout and 463 identity refusals. Their replacement processes
+all rejected the old 461 pin, leaving each validator at five recorded restarts;
+the other 31 services stayed on their original zero-restart processes. The
+supervisor has no supported per-child retry reset, so the recovery must perform
+a controlled stop and retained-plan provisional resume after the compatible
+binary is qualified. Durable validator ledgers, proofs, statistics, setup
+receipts, plan/journal and campaign successor remain inputs to that recovery.
+
+**Previous recovery checkpoint, September 16, 17:02 UTC:** the provisional resume
+authenticated all **4,674 retained local receipts**, completed the setup prefix,
+launched 33 processes and adopted the live topology. The release-candidate
+command used `192.168.1.162:9944`, then closed with body and outer exit one on
+`open durable release-1.0 attempt: campaign succession requires the strict
+approved deployment owner`. The executable and release lock are unchanged;
+only the watched supervisor-state digest changed. This exposed an unconditional
+provisional-mode exclusion before the existing exact-plan, custody, journal,
+signed-predecessor and failed-result succession checks.
+
+Validator-1 restarted twice and validator-2 once before command closure. Their
+initial terminal publications received HTTP 403 because regenerated operator
+staging configurations omitted the explicit provisional retained-context
+authority and kept an ordinary 16,384-block discovery window that had already
+expired. A replacement PID being present is not proof of terminal publication.
+Both exact failures are retained while narrow succession and render corrections
+and deterministic adjacent tests are prepared. The 33-process topology was not
+discarded or relaunched after the failed command.
+
+The receipt-authentication optimization is qualified and integrated locally.
+Its affected scope passes **14/14 normal roots by composition** and **14/14 race
+roots**; all three causal controls reproduce their intended failures. It caches
+only immutable source-plan decoding and one journal index within a read-only
+invocation, then checks a final journal-equality fence. The separately built
+candidate containing this optimization was not used by the active command.
+
+**Previous recovery checkpoint, September 16, 16:38 UTC:** the previous strict
+startup ended at **15:41:52 UTC** after the 30-minute fresh-proof readiness
+window expired. Both validators were replaying retained history; no fresh
+complete validator/operator trails were observed. Native cleanup stopped its
+33 processes. Eight operator transactions nevertheless finalized successfully;
+their actual fees total **0.016528555545105692 EVM TAO**. The
+[recovery evidence](peerreview/evidence/FINAL-2-provisional-recovery-20260916/README.md)
+includes all eight receipts and their transaction hashes, plus the local
+signature-restoration result. Recovery restored the original signed bytes
+without signing or submitting new transactions.
+
+The user's instruction to finish the actual run now permits explicit
+provisional continuation with deferred historical replay and acceptance checks.
+The patched driver retains the approved plan, spending limits, signed history,
+transaction reconciliation and owned LAN routing. It can adopt a healthy fresh
+topology without claiming missing proof trails passed. Its 17 affected/adjacent
+test roots pass normally and under race by composition; five causal controls
+reproduce the original failures. A separate runtime-render fix passes 18 roots
+in both modes. The original fixture failures remain recorded. Neither source
+publication nor another full preparation pass gates the provisional run.
+At approximately **16:31 UTC**, the active resume finished authenticating
+**4,674 retained local receipts**. Services and the release-candidate handoff
+subsequently completed as described above. Actual campaign observations and
+production cadence remain required; provisional execution does not establish
+final acceptance.
+
+**Previous recovery checkpoint, September 16, 13:23 UTC:** runtime 461 is qualified
 at `8edb3167a6261bfd82ecbc5f3c0ac2c787beec7c` and integrated locally. All
 **103 affected tests pass normally and under race detection**. Four causal
 restorations reproduce **nine expected failures and nine passing controls**.

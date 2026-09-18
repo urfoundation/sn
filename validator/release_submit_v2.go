@@ -65,8 +65,9 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 		return err
 	}
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, &own, crv4.ValidatorScheduleQuery{GenesisHash: own.GenesisHash, BlockHash: hash, BlockNumber: prepared.PreparedAtBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
-	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() || observed.SubnetEpochIndex != intent.SubnetEpoch || observed.Stake.Identity.UID != intent.SelfUID {
-		return errors.Join(errors.New("V2 prepared signer lacks actual canonical native schedule/eligibility"), err)
+	matches := observed.Stake.MeetsNonSelfStakeAndPermit() && observed.SubnetEpochIndex == intent.SubnetEpoch && observed.Stake.Identity.UID == intent.SelfUID
+	if err := releaseRpcObservationError(err, matches, errors.New("V2 prepared signer lacks actual canonical native schedule/eligibility")); err != nil {
+		return err
 	}
 	if intent.FinalizedBlock == 0 {
 		return ctx.Err()
@@ -334,8 +335,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	}
 	runtimeIdentity := releaseRuntimeIdentityV2(self.cfg)
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, self.native, crv4.ValidatorScheduleQuery{GenesisHash: self.native.GenesisHash, BlockHash: nativeHash, BlockNumber: nativeState.CurrentBlock, Netuid: self.cfg.Netuid, Hotkey: self.hotkey.PublicKey(), MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, runtimeIdentity)
-	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() || observed.SubnetEpochIndex != nativeState.SubnetEpochIndex || hotkeyUids[self.hotkey.PublicKey()] != observed.Stake.Identity.UID {
-		return errors.Join(errors.New("V2 current native validator schedule/stake/permit differs from independent EVM registration"), err)
+	scheduleMatches := observed.Stake.MeetsNonSelfStakeAndPermit() && observed.SubnetEpochIndex == nativeState.SubnetEpochIndex && hotkeyUids[self.hotkey.PublicKey()] == observed.Stake.Identity.UID
+	if err := releaseRpcObservationError(err, scheduleMatches, errors.New("V2 current native validator schedule/stake/permit differs from independent EVM registration")); err != nil {
+		return err
 	}
 	inputs, options, err := self.runtimeV2.collect(ctx, self, current, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids)
 	if err != nil {
@@ -510,11 +512,11 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	if err := self.headEMA.CommitForEpochV2(ctx, measurementArtifact.SubnetEpoch, measurementArtifact.HeadEMA, measurementArtifact.Policy.Steering.HeadScoreEMA); err != nil {
 		return fmt.Errorf("commit head EMA after steering intent: %w", err)
 	}
-	if _, err := authenticatePinnedNativeRuntimeContext(ctx, self.native, self.cfg); err != nil {
-		return fmt.Errorf("authenticate native runtime before steering broadcast: %w", err)
-	}
-	result, err := crv4.SubmitPrepared(ctx, self.native, prepared)
+	result, attempted, err := submitPreparedNativeRuntimeContext(ctx, self.native, self.cfg, prepared)
 	if err != nil {
+		if !attempted {
+			return err
+		}
 		// The error can occur after broadcast but before finality was observed.
 		// Preserve an uncertain pending state so a restart cannot double-submit.
 		return self.recordReleasePendingError(intent.VectorHash, err)
@@ -581,6 +583,9 @@ func (self *ReleaseSteerer) reconcilePendingV2(ctx context.Context, current *Ste
 	if err != nil {
 		return false, fmt.Errorf("authenticate steering nonce runtime: %w", err)
 	}
+	if err := validatePreparedNativeRuntimeContext(ctx, self.native, self.cfg, preparedRuntimeHash, nonceHash); err != nil {
+		return false, err
+	}
 	finalizedNonce, err := self.native.AccountNonceAtContext(ctx, self.hotkey.PublicKey(), nonceHash)
 	if err != nil {
 		return false, err
@@ -595,8 +600,12 @@ func (self *ReleaseSteerer) reconcilePendingV2(ctx context.Context, current *Ste
 	if finalizedNonce < current.Prepared.AccountNonce {
 		return false, fmt.Errorf("steering nonce gap: finalized %d, prepared %d", finalizedNonce, current.Prepared.AccountNonce)
 	}
-	if _, err := authenticatePinnedNativeRuntimeContext(ctx, self.native, self.cfg); err != nil {
+	replayHash, err := authenticatePinnedNativeRuntimeContext(ctx, self.native, self.cfg)
+	if err != nil {
 		return false, fmt.Errorf("authenticate native runtime before pending replay: %w", err)
+	}
+	if err := validatePreparedNativeRuntimeContext(ctx, self.native, self.cfg, preparedRuntimeHash, replayHash); err != nil {
+		return false, err
 	}
 	result, err := crv4.SubmitPrepared(ctx, self.native, current.Prepared)
 	if err != nil {

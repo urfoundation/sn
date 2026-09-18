@@ -1,0 +1,4 @@
+action=provisional-release-candidate
+plan_hash=0xcba026fa05f500c6ee120a19c94b1f3f0d1362bf4e6cab0db21aa4306d8b4d0f
+owned_rpc_authority=192.168.1.162:9944
+candidate_cli_sha256=5ff1130c0f1b7ef3404c2d7a8c37f388854bed8299b3ae4bb152ac3ebf220348

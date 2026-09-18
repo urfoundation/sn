@@ -179,8 +179,8 @@ func (self *ChainClient) readReleaseDecisionHotkeysV2Context(ctx context.Context
 		calls[index] = chainBatchCall{address: metagraphAddress, calldata: calldata}
 	}
 	outputs, err := self.batchCallsAtHashContext(ctx, block, hash, calls)
-	if err != nil || len(outputs) != len(calls) {
-		return nil, errors.Join(errors.New("decision metagraph member census differs"), err)
+	if err := releaseRpcObservationError(err, len(outputs) == len(calls), errors.New("decision metagraph member census differs")); err != nil {
+		return nil, err
 	}
 	keys := make(map[[32]byte]uint16, len(outputs))
 	for index, output := range outputs {
@@ -293,8 +293,8 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	}
 	block, hash := query.boundary.EVMBlock, common.HexToHash(query.boundary.EVMBlockHash)
 	finalized, finalizedHash, err := chain.FinalizedBlockContext(ctx)
-	if err != nil || finalized < block || finalized == block && finalizedHash != hash {
-		return nil, errors.Join(errors.New("decision EVM boundary is not finalized"), err)
+	if err := releaseRpcObservationError(err, finalized >= block && (finalized != block || finalizedHash == hash), errors.New("decision EVM boundary is not finalized")); err != nil {
+		return nil, err
 	}
 	read := func(method string, calldata []byte) ([]byte, error) {
 		encoded, err := chain.ethCallAtHashContext(ctx, chain.contractAddr, calldata, block, hash)
@@ -321,12 +321,12 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 		return nil, err
 	}
 	netuid, err := chain.coordinator.UnpackNetuid(encoded)
-	if err != nil || netuid != query.domain.Netuid {
-		return nil, errors.Join(errors.New("decision coordinator subnet differs"), err)
+	if err := releaseRpcObservationError(err, netuid == query.domain.Netuid, errors.New("decision coordinator subnet differs")); err != nil {
+		return nil, err
 	}
 	epoch, err := readUint("currentEpoch", chain.coordinator.PackCurrentEpoch())
-	if err != nil || !epoch.IsUint64() || epoch.Uint64() != query.boundary.SettlementEpoch {
-		return nil, errors.Join(errors.New("decision coordinator epoch differs"), err)
+	if err := releaseRpcObservationError(err, epoch != nil && epoch.IsUint64() && epoch.Uint64() == query.boundary.SettlementEpoch, errors.New("decision coordinator epoch differs")); err != nil {
+		return nil, err
 	}
 	encoded, err = read("policyAt", chain.coordinator.PackPolicyAt(epoch))
 	if err != nil {
@@ -340,8 +340,9 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 		return nil, err
 	}
 	start, err := readUint("epochStartBlock", chain.coordinator.PackEpochStartBlock(epoch))
-	if err != nil || !start.IsUint64() || start.Sign() == 0 || policy.EpochBlocks > ^uint64(0)-start.Uint64() || block < start.Uint64() || block >= start.Uint64()+policy.EpochBlocks {
-		return nil, errors.Join(errors.New("decision epoch boundary differs from its pinned policy window"), err)
+	startMatches := start != nil && start.IsUint64() && start.Sign() != 0 && policy.EpochBlocks <= ^uint64(0)-start.Uint64() && block >= start.Uint64() && block < start.Uint64()+policy.EpochBlocks
+	if err := releaseRpcObservationError(err, startMatches, errors.New("decision epoch boundary differs from its pinned policy window")); err != nil {
+		return nil, err
 	}
 	wantStart := new(big.Int).Mul(new(big.Int).SetUint64(query.boundary.SettlementEpoch-policy.EffectiveEpoch), new(big.Int).SetUint64(policy.EpochBlocks))
 	wantStart.Add(wantStart, new(big.Int).SetUint64(policy.EffectiveBlock))
@@ -349,8 +350,8 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 		return nil, errors.New("decision epoch start or artifact deadline differs")
 	}
 	count, err := readUint("operatorCount", chain.coordinator.PackOperatorCount())
-	if err != nil || !count.IsUint64() || count.Uint64() > query.maxOperators || count.Uint64() != uint64(len(query.operators)) {
-		return nil, errors.Join(errors.New("decision on-chain operator census differs from complete configuration"), err)
+	if err := releaseRpcObservationError(err, count != nil && count.IsUint64() && count.Uint64() <= query.maxOperators && count.Uint64() == uint64(len(query.operators)), errors.New("decision on-chain operator census differs from complete configuration")); err != nil {
+		return nil, err
 	}
 	indices := make(map[uint64]int, len(query.operators))
 	for index, operator := range query.operators {
@@ -359,8 +360,8 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	seen := make(map[uint64]bool, len(query.operators))
 	for index := range query.operators {
 		id, err := readUint("operatorIdAt", chain.coordinator.PackOperatorIdAt(new(big.Int).SetUint64(uint64(index))))
-		if err != nil || !id.IsUint64() {
-			return nil, errors.Join(errors.New("decision registry operator id is outside uint64"), err)
+		if err := releaseRpcObservationError(err, id != nil && id.IsUint64(), errors.New("decision registry operator id is outside uint64")); err != nil {
+			return nil, err
 		}
 		if _, found := indices[id.Uint64()]; !found || seen[id.Uint64()] {
 			return nil, errors.New("decision registry substitutes or repeats a configured operator")
@@ -380,8 +381,8 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 			return nil, err
 		}
 		version, err := chain.coordinator.UnpackOperatorAt(encoded)
-		if err != nil || version.EffectiveEpoch > query.boundary.SettlementEpoch {
-			return nil, errors.Join(errors.New("decision operator version is from a later epoch"), err)
+		if err := releaseRpcObservationError(err, version.EffectiveEpoch <= query.boundary.SettlementEpoch, errors.New("decision operator version is from a later epoch")); err != nil {
+			return nil, err
 		}
 		deposit, err := readUint("epochDeposits", chain.coordinator.PackEpochDeposits(epoch, id))
 		if err != nil {
@@ -434,12 +435,12 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	// A final real canonical eth_call prevents a later header change from
 	// being hidden behind the immutable hash-to-number pairing cache.
 	rechecked, err := readUint("currentEpoch", chain.coordinator.PackCurrentEpoch())
-	if err != nil || rechecked.Cmp(epoch) != 0 {
-		return nil, errors.Join(errors.New("decision epoch changed during complete observation"), err)
+	if err := releaseRpcObservationError(err, rechecked != nil && rechecked.Cmp(epoch) == 0, errors.New("decision epoch changed during complete observation")); err != nil {
+		return nil, err
 	}
 	finalBlock, finalHash, err := chain.FinalizedBlockContext(ctx)
-	if err != nil || finalBlock < finalized || finalBlock == finalized && finalHash != finalizedHash {
-		return nil, errors.Join(errors.New("decision finality regressed during complete observation"), err)
+	if err := releaseRpcObservationError(err, finalBlock >= finalized && (finalBlock != finalized || finalHash == finalizedHash), errors.New("decision finality regressed during complete observation")); err != nil {
+		return nil, err
 	}
 	return observed, ctx.Err()
 }

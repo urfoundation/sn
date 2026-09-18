@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -20,6 +21,16 @@ type recordingHandoffLifecycle struct {
 }
 
 type recordingAttemptFaultDriver struct{ recoverCalls int }
+
+type recordingContextualLifecycle struct {
+	recordingHandoffLifecycle
+	contextCalls int
+}
+
+type rejectingResumeLifecycle struct {
+	recordingHandoffLifecycle
+	resumeCalls int
+}
 
 func (*recordingAttemptFaultDriver) Apply(context.Context, scenarioFaultSpec) ([]FaultProcessEvidence, error) {
 	return nil, errors.New("unexpected apply")
@@ -48,6 +59,22 @@ func (lifecycle *recordingHandoffLifecycle) BeginPhase(_ string, runID string) e
 	return nil
 }
 
+func (lifecycle *recordingContextualLifecycle) BeginPhaseContext(ctx context.Context, _ string, runID string) error {
+	if ctx == nil {
+		return errors.New("missing campaign context")
+	}
+	lifecycle.contextCalls++
+	lifecycle.events = append(lifecycle.events, "context-begin")
+	lifecycle.production = runID
+	return nil
+}
+
+func (lifecycle *rejectingResumeLifecycle) ValidatePhaseResume(string, string) error {
+	lifecycle.resumeCalls++
+	lifecycle.events = append(lifecycle.events, "validate-resume")
+	return errors.New("persisted lifecycle mismatch")
+}
+
 func (*recordingHandoffLifecycle) BindAcceptanceWindowForPhase(string, *ScenarioAcceptanceWindow) error {
 	return nil
 }
@@ -74,6 +101,10 @@ func bindCampaignAttemptBoundaryFixture(t *testing.T, cfg *ResolvedConfig, state
 	}
 	runDir := filepath.Join(stateDir, "runs", attempt.payload.RunID)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	observationLogPrefix, err := captureScenarioObservationLogPrefix(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
 		t.Fatal(err)
 	}
 	campaignStart := testScenarioObservation(cfg, 6)
@@ -114,7 +145,7 @@ func bindCampaignAttemptBoundaryFixture(t *testing.T, cfg *ResolvedConfig, state
 		Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", MatrixHash: definition.AdversarialMatrixHash,
 		StartedAt: started.Add(-time.Minute).Format(time.RFC3339Nano), HappyPathStartedAt: started.Format(time.RFC3339Nano), Status: "running",
 	}
-	if err := attempt.bindAcceptanceBoundary(runDir, "0x"+strings.Repeat("77", 32), definitionHash, adversary, started.Add(2*time.Minute), campaignStart, baseline, window, faults); err != nil {
+	if err := attempt.bindAcceptanceBoundary(runDir, "0x"+strings.Repeat("77", 32), definitionHash, adversary, started.Add(2*time.Minute), campaignStart, baseline, window, faults, observationLogPrefix, "0x"+strings.Repeat("88", 32)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeScenarioFaultEvidence(runDir, faults); err != nil {
@@ -186,6 +217,31 @@ func TestScenarioCampaignAttemptRetryReusesRunIDAndSkipsCompletedPreparation(t *
 	}
 	if prepareCalls != 1 {
 		t.Fatalf("completed preparation executed %d times", prepareCalls)
+	}
+}
+
+func TestScenarioCampaignPreparationKeepsPendingLifecycleInOneInvocation(t *testing.T) {
+	lifecycle := &recordingContextualLifecycle{}
+	if err := beginScenarioCampaignPreparation(t.Context(), "release-1.0", "retained-run", scenarioRunOptions{FleetLifecycle: lifecycle}); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.contextCalls != 1 || !slices.Equal(lifecycle.events, []string{"context-begin"}) || lifecycle.production != "retained-run" {
+		t.Fatalf("campaign bypassed contextual lifecycle: %+v", lifecycle)
+	}
+}
+
+func TestScenarioCampaignPreparationValidatesPersistedLifecycleBeforePrepare(t *testing.T) {
+	lifecycle := &rejectingResumeLifecycle{}
+	prepareCalls := 0
+	err := beginScenarioCampaignPreparation(t.Context(), "release-1.0", "recovery-run", scenarioRunOptions{
+		FleetLifecycle: lifecycle,
+		Prepare: func(context.Context) error {
+			prepareCalls++
+			return nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate fleet lifecycle resume before preparation") || lifecycle.resumeCalls != 1 || prepareCalls != 0 || !slices.Equal(lifecycle.events, []string{"validate-resume"}) {
+		t.Fatalf("resume validation error=%v calls=%d prepare=%d events=%v", err, lifecycle.resumeCalls, prepareCalls, lifecycle.events)
 	}
 }
 
@@ -400,6 +456,102 @@ func TestScenarioCampaignAttemptRejectsUnsignedObservationSuffixAfterAcceptance(
 	}
 }
 
+func TestScenarioCampaignAttemptAuthenticatesCurrentInvocationAfterRetainedFailure(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	runDir := filepath.Join(stateDir, "runs", "20260903T070000.000000000Z-release-1.0")
+	historical := testScenarioObservation(cfg, 5)
+	historical.ObservedAt = time.Date(2026, 9, 2, 23, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	historical.Status.Contracts = nil
+	historical.ObservationHash = ""
+	historical.ObservationHash, _ = canonicalHashHex(historical)
+	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), historical); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attempt, boundRunDir, window, faults := bindCampaignAttemptBoundaryFixture(t, cfg, stateDir)
+	boundary := attempt.payload.AcceptanceBoundary
+	if boundRunDir != runDir || boundary == nil || boundary.RetainedObservationLogBytes != uint64(len(retained)) || boundary.RetainedObservationLogContentHash != bytesSHA256(retained) {
+		t.Fatalf("retained observation cut was not signed: run=%s boundary=%+v", boundRunDir, boundary)
+	}
+	data, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(data, retained) {
+		t.Fatal("current invocation replaced retained observation evidence")
+	}
+	later := testScenarioObservation(cfg, window.BaselineEpoch)
+	later.ObservedAt = time.Date(2026, 9, 3, 7, 3, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	later.Status.Contracts.FinalizedHead = ChainHead{Number: window.BaselineHead.Number + 1, Hash: "0x" + strings.Repeat("cd", 32)}
+	later.ObservationHash, _ = canonicalHashHex(later)
+	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), later); err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.updateAuthenticatedRuntime(runDir, faults); err != nil {
+		t.Fatal(err)
+	}
+	history, campaignStart, baseline, current, _, err := attempt.loadAuthenticatedRuntimeForensics(runDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 3 || campaignStart.Status == nil || campaignStart.Status.Contracts == nil || baseline.ObservationHash != window.BaselineObservationHash || current.ObservationHash != later.ObservationHash {
+		t.Fatalf("authenticated invocation suffix is wrong: history=%d start=%+v baseline=%+v current=%+v", len(history), campaignStart, baseline, current)
+	}
+}
+
+func TestScenarioCampaignAttemptZeroCutStillRejectsIncompleteObservation(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	runDir := filepath.Join(stateDir, "runs", "20260903T070000.000000000Z-release-1.0")
+	historical := testScenarioObservation(cfg, 5)
+	historical.Status.Contracts = nil
+	historical.ObservationHash = ""
+	historical.ObservationHash, _ = canonicalHashHex(historical)
+	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), historical); err != nil {
+		t.Fatal(err)
+	}
+	attempt, _, _, _ := bindCampaignAttemptBoundaryFixture(t, cfg, stateDir)
+	data, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroCut := *attempt.payload.AcceptanceBoundary
+	zeroCut.RetainedObservationLogBytes = 0
+	zeroCut.RetainedObservationLogContentHash = bytesSHA256(nil)
+	if _, _, _, _, err := validateScenarioAttemptObservationHistory(&zeroCut, data); err == nil || !strings.Contains(err.Error(), "record 0: scenario observation has no finalized contract identity") {
+		t.Fatalf("zero-cut incomplete observation error=%v", err)
+	}
+}
+
+func TestScenarioCampaignAttemptRetainedPrefixHashRejectsIndependentSubstitution(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	runDir := filepath.Join(stateDir, "runs", "20260903T070000.000000000Z-release-1.0")
+	historical := testScenarioObservation(cfg, 5)
+	historical.Status.Contracts = nil
+	historical.ObservationHash = ""
+	historical.ObservationHash, _ = canonicalHashHex(historical)
+	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), historical); err != nil {
+		t.Fatal(err)
+	}
+	attempt, _, _, _ := bindCampaignAttemptBoundaryFixture(t, cfg, stateDir)
+	data, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] ^= 1
+	rebound := *attempt.payload.AcceptanceBoundary
+	rebound.ObservationLogContentHash = bytesSHA256(data)
+	if _, _, _, _, err := validateScenarioAttemptObservationHistory(&rebound, data); err == nil || !strings.Contains(err.Error(), "retained prefix was substituted") {
+		t.Fatalf("retained prefix substitution error=%v", err)
+	}
+}
+
 func TestScenarioCampaignAttemptRejectsSignedBaselineByteSubstitution(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	attempt, runDir, _, _ := bindCampaignAttemptBoundaryFixture(t, cfg, t.TempDir())
@@ -581,11 +733,15 @@ func TestProductionPreparationBindsExactHandoffBeforeMutationAndSuccessorAfter(t
 			prepareCalls++
 			return nil
 		},
+		BeforeFleetLifecycle: func(context.Context) error {
+			lifecycle.events = append(lifecycle.events, "prearm")
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(lifecycle.events, []string{"authenticate", "prepare", "begin"}) || prepareCalls != 1 || !attempt.payload.HandoffAuthenticated || !attempt.payload.PreparationComplete || lifecycle.handoffHash != gate.LifecycleHandoff.ContentHash || lifecycle.releaseRun != gate.RunID || lifecycle.production != attempt.payload.RunID || bytesSHA256(lifecycle.handoff) != gate.LifecycleHandoff.ContentHash {
+	if !slices.Equal(lifecycle.events, []string{"authenticate", "prepare", "prearm", "begin"}) || prepareCalls != 1 || !attempt.payload.HandoffAuthenticated || !attempt.payload.PreparationComplete || lifecycle.handoffHash != gate.LifecycleHandoff.ContentHash || lifecycle.releaseRun != gate.RunID || lifecycle.production != attempt.payload.RunID || bytesSHA256(lifecycle.handoff) != gate.LifecycleHandoff.ContentHash {
 		t.Fatalf("first production preparation events=%v prepare=%d lifecycle=%+v attempt=%+v", lifecycle.events, prepareCalls, lifecycle, attempt.payload)
 	}
 	if err := atomicWrite(filepath.Join(stateDir, "public", "fleet-lifecycle.json"), []byte("production-successor\n"), 0o644); err != nil {
@@ -595,10 +751,14 @@ func TestProductionPreparationBindsExactHandoffBeforeMutationAndSuccessorAfter(t
 	if err := beginScenarioCampaignPreparation(context.Background(), "production-soak", attempt.payload.RunID, scenarioRunOptions{
 		Attempt: attempt, FleetLifecycle: lifecycle,
 		Prepare: func(context.Context) error { prepareCalls++; return nil },
+		BeforeFleetLifecycle: func(context.Context) error {
+			lifecycle.events = append(lifecycle.events, "prearm")
+			return nil
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(lifecycle.events, []string{"authenticate", "begin"}) || prepareCalls != 1 || bytesSHA256(lifecycle.handoff) != gate.LifecycleHandoff.ContentHash {
+	if !slices.Equal(lifecycle.events, []string{"authenticate", "prearm", "begin"}) || prepareCalls != 1 || bytesSHA256(lifecycle.handoff) != gate.LifecycleHandoff.ContentHash {
 		t.Fatalf("successor retry events=%v prepare=%d handoff=%s", lifecycle.events, prepareCalls, bytesSHA256(lifecycle.handoff))
 	}
 }

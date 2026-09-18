@@ -567,6 +567,10 @@ func TestScenarioCampaignAttemptSuccessionAcceptanceUsesSuccessorBytes(t *testin
 	if err := os.MkdirAll(run, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	observationLogPrefix, err := captureScenarioObservationLogPrefix(filepath.Join(run, "observations.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, observation := range []*ScenarioObservation{campaignStart, baseline} {
 		if err := appendObservation(filepath.Join(run, "observations.jsonl"), observation); err != nil {
 			t.Fatal(err)
@@ -595,7 +599,7 @@ func TestScenarioCampaignAttemptSuccessionAcceptanceUsesSuccessorBytes(t *testin
 		}
 	}
 	adversary := &AdversaryCampaignEvidence{Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", MatrixHash: definition.AdversarialMatrixHash, StartedAt: started.Add(-time.Minute).Format(time.RFC3339Nano), HappyPathStartedAt: started.Format(time.RFC3339Nano), Status: "running"}
-	if err := next.bindAcceptanceBoundary(run, "0x"+strings.Repeat("77", 32), definitionHash, adversary, started.Add(2*time.Minute), campaignStart, baseline, window, faults); err != nil {
+	if err := next.bindAcceptanceBoundary(run, "0x"+strings.Repeat("77", 32), definitionHash, adversary, started.Add(2*time.Minute), campaignStart, baseline, window, faults, observationLogPrefix, "0x"+strings.Repeat("88", 32)); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(readCampaignSuccessionFixtureBytes(t, next.path()), readCampaignSuccessionFixtureBytes(t, filepath.Join(run, scenarioCampaignStartFilename))) || !bytes.Equal(legacy, readCampaignSuccessionFixtureBytes(t, scenarioCampaignAttemptPath(f.stateDir, "release-1.0"))) {

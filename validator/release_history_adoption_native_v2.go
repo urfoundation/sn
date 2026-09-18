@@ -30,8 +30,8 @@ func authenticateAdoptedIntentApplicationV2(ctx context.Context, native *crv4.Ch
 		return err
 	}
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, &own, crv4.ValidatorScheduleQuery{GenesisHash: own.GenesisHash, BlockHash: hash, BlockNumber: intent.ApplicationBlock, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
-	if err != nil || observed.Stake.Identity.UID != intent.SelfUID {
-		return errors.Join(errors.New("adopted application lacks its actual finalized signing identity"), err)
+	if err := releaseRpcObservationError(err, observed.Stake.Identity.UID == intent.SelfUID, errors.New("adopted application lacks its actual finalized signing identity")); err != nil {
+		return err
 	}
 	row, err := own.WeightsAtContext(ctx, cfg.Netuid, observed.Stake.Identity.UID, hash)
 	if err != nil {

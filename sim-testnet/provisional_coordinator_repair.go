@@ -618,6 +618,37 @@ func loadProvisionalCoordinatorRepair(cfg *ResolvedConfig, stateDir string, orig
 	if plan.CoordinatorUpgrade != original || plan.PlanHash != cfg.provisionalResume.Record.PlanHash {
 		return original, "", errors.New("corrective observer retained plan differs")
 	}
+	return loadProvisionalCoordinatorRepairResult(stateDir, plan, original, head, result)
+}
+
+// Selects a completed correction from either its original approval or an
+// authenticated descendant carry. The caller owns current-plan provenance.
+func loadProvisionalCoordinatorRepairResult(stateDir string, plan *SetupPlan, original CoordinatorUpgrade, head ChainHead, result signedCoordinatorRepairResult) (CoordinatorUpgrade, string, error) {
+	if plan == nil || plan.CoordinatorUpgrade != original {
+		return original, "", errors.New("corrective observer retained plan differs")
+	}
+	root := filepath.Join(stateDir, coordinatorRepairDirectory)
+	// A revision retains the correction under its original signed source plan.
+	// Authenticate that exact source, carry, journal and transaction history
+	// instead of reinterpreting the old request as a request for the descendant.
+	if plan.CoordinatorRepairCarry != nil {
+		entries, err := readJournalEntries(stateDir)
+		if err != nil {
+			return original, "", err
+		}
+		observation, err := readCoordinatorRepairCarry(stateDir, plan, entries)
+		if err != nil {
+			return original, "", err
+		}
+		if observation == nil {
+			return original, "", errors.New("corrective observer repair carry is absent")
+		}
+		carriedResult := observation.reference.Result
+		if head.Number < carriedResult.Result.ObservedHead.Number {
+			return original, "", nil
+		}
+		return observation.reference.Request.Request.Upgrade, carriedResult.Hash, nil
+	}
 	var request signedCoordinatorRepairRequest
 	if err := readJSONFile(filepath.Join(root, "request.json"), &request); err != nil {
 		return original, "", err

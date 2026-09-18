@@ -1,0 +1,638 @@
+// A recovery retires one terminal failed provisional interval and starts a new
+// generation without changing its approved plan or custody.
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const scenarioCampaignRecoverySchema = "urnetwork-sim-campaign-recovery-v1"
+
+// Signed lineage binds one replacement campaign to every retained source of
+// the exact failed predecessor. Zero generation fields encode legacy generation one.
+type scenarioCampaignRecovery struct {
+	Schema                     string `json:"schema"`
+	Generation                 uint64 `json:"generation,omitempty"`
+	PriorGeneration            uint64 `json:"prior_generation,omitempty"`
+	PriorAttemptPath           string `json:"prior_attempt_path,omitempty"`
+	PriorRunID                 string `json:"prior_run_id"`
+	PriorAttemptSha256         string `json:"prior_attempt_sha256"`
+	PriorCampaignStartSha256   string `json:"prior_campaign_start_sha256"`
+	PriorResultSha256          string `json:"prior_result_sha256"`
+	PriorObservationLogSha256  string `json:"prior_observation_log_sha256"`
+	PriorObservationLogBytes   uint64 `json:"prior_observation_log_bytes"`
+	PriorProcessLogSha256      string `json:"prior_process_log_sha256"`
+	PriorJournalSha256         string `json:"prior_journal_sha256,omitempty"`
+	PriorJournalBytes          uint64 `json:"prior_journal_bytes,omitempty"`
+	ApprovedPlanSha256         string `json:"approved_plan_sha256"`
+	InheritedPreparationSha256 string `json:"inherited_preparation_attempt_sha256,omitempty"`
+}
+
+// The first generation keeps the filename already deployed by the recovery release.
+func scenarioCampaignRecoveryPath(stateDir string) string {
+	return filepath.Join(stateDir, "campaign-attempts", "release-1.0.recovery.evidence.json")
+}
+
+// Later generations use canonical decimal suffixes without replacing earlier records.
+func scenarioCampaignRecoveryGenerationPath(stateDir string, generation uint64) string {
+	if generation <= 1 {
+		return scenarioCampaignRecoveryPath(stateDir)
+	}
+	return filepath.Join(stateDir, "campaign-attempts", fmt.Sprintf("release-1.0.recovery.%d.evidence.json", generation))
+}
+
+// Signed relative paths remain independent of the local state-directory location.
+func scenarioCampaignRecoveryRelativePath(generation uint64) string {
+	return filepath.ToSlash(filepath.Join("campaign-attempts", filepath.Base(scenarioCampaignRecoveryGenerationPath("", generation))))
+}
+
+// Generation one predates explicit lineage fields. Its fixed filename and
+// implicit successor predecessor remain its exact canonical representation.
+func scenarioCampaignRecoveryGeneration(recovery *scenarioCampaignRecovery) (uint64, error) {
+	if recovery == nil {
+		return 0, errors.New("campaign recovery lineage is unavailable")
+	}
+	if recovery.Generation == 0 {
+		if recovery.PriorGeneration != 0 || recovery.PriorAttemptPath != "" {
+			return 0, errors.New("legacy campaign recovery has future lineage fields")
+		}
+		return 1, nil
+	}
+	if recovery.Generation < 2 || recovery.PriorGeneration != recovery.Generation-1 || recovery.PriorAttemptPath != scenarioCampaignRecoveryRelativePath(recovery.PriorGeneration) {
+		return 0, errors.New("campaign recovery generation or prior path is noncanonical")
+	}
+	return recovery.Generation, nil
+}
+
+// One canonical file location corresponds to each chain generation.
+type scenarioCampaignRecoveryFile struct {
+	generation   uint64
+	path         string
+	relativePath string
+}
+
+// A validated chain link retains both its decoded attempt and exact signed bytes.
+type scenarioCampaignRecoveryRecord struct {
+	file    scenarioCampaignRecoveryFile
+	attempt *scenarioCampaignAttempt
+	raw     []byte
+}
+
+// Only a failed signed release interval can advance to another recovery generation.
+// Before acceptance, a durable result is the terminal marker; after acceptance,
+// the signed invalidation remains mandatory.
+func scenarioCampaignAttemptNeedsRecovery(attempt *scenarioCampaignAttempt) bool {
+	if attempt == nil || attempt.payload.Phase != "release-1.0" || attempt.payload.Succession == nil && attempt.payload.Recovery == nil {
+		return false
+	}
+	if attempt.payload.AcceptanceBoundary != nil {
+		return attempt.payload.AcceptanceInvalidation != ""
+	}
+	_, err := os.Lstat(filepath.Join(attempt.stateDir, "runs", attempt.payload.RunID, "result.json"))
+	return err == nil || !errors.Is(err, os.ErrNotExist)
+}
+
+// Recovery records are an append-only contiguous namespace. Rejecting gaps,
+// aliases and duplicates prevents a later file from hiding a failed link.
+func scenarioCampaignRecoveryFiles(stateDir string) ([]scenarioCampaignRecoveryFile, error) {
+	directory := filepath.Join(stateDir, "campaign-attempts")
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	const prefix = "release-1.0.recovery."
+	const suffix = ".evidence.json"
+	byGeneration := map[uint64]scenarioCampaignRecoveryFile{}
+	var noncanonicalFilename error
+	for _, entry := range entries {
+		name := entry.Name()
+		generation := uint64(0)
+		switch {
+		case name == filepath.Base(scenarioCampaignRecoveryPath(stateDir)):
+			generation = 1
+		case strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix):
+			value := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+			parsed, parseErr := strconv.ParseUint(value, 10, 64)
+			if parseErr != nil || parsed == 0 {
+				return nil, fmt.Errorf("campaign recovery filename %q has a noncanonical generation", name)
+			}
+			generation = parsed
+		default:
+			continue
+		}
+		if _, duplicate := byGeneration[generation]; duplicate {
+			return nil, fmt.Errorf("campaign recovery generation %d is duplicated", generation)
+		}
+		expected := filepath.Base(scenarioCampaignRecoveryGenerationPath(stateDir, generation))
+		if name != expected {
+			noncanonicalFilename = fmt.Errorf("campaign recovery generation %d uses noncanonical filename %q", generation, name)
+		}
+		path := filepath.Join(directory, name)
+		byGeneration[generation] = scenarioCampaignRecoveryFile{generation: generation, path: path, relativePath: scenarioCampaignRecoveryRelativePath(generation)}
+	}
+	if noncanonicalFilename != nil {
+		return nil, noncanonicalFilename
+	}
+	if len(byGeneration) == 0 {
+		return nil, nil
+	}
+	maximum := uint64(0)
+	for generation := range byGeneration {
+		if generation > maximum {
+			maximum = generation
+		}
+	}
+	if maximum != uint64(len(byGeneration)) {
+		return nil, errors.New("campaign recovery generations are not contiguous from the legacy first record")
+	}
+	files := make([]scenarioCampaignRecoveryFile, 0, len(byGeneration))
+	for generation := uint64(1); generation <= maximum; generation++ {
+		file, present := byGeneration[generation]
+		if !present {
+			return nil, errors.New("campaign recovery generations contain a gap")
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+// Only fields that existed at acceptance start must remain fixed through invalidation.
+func scenarioCampaignRecoveryStaticBoundaryMatches(start, final *scenarioCampaignAcceptanceBoundary) bool {
+	return start != nil && final != nil && start.ProcessSessionID == final.ProcessSessionID && start.AcceptanceStartedAt == final.AcceptanceStartedAt &&
+		start.ScenarioDefinitionHash == final.ScenarioDefinitionHash && start.AdversarialMatrixHash == final.AdversarialMatrixHash &&
+		start.AdversaryStartedAt == final.AdversaryStartedAt && start.AdversaryHappyPathStartedAt == final.AdversaryHappyPathStartedAt &&
+		start.CampaignStartHead == final.CampaignStartHead && start.CampaignStartEpoch == final.CampaignStartEpoch &&
+		start.CampaignStartObservationHash == final.CampaignStartObservationHash && reflect.DeepEqual(start.AcceptanceWindow, final.AcceptanceWindow) &&
+		start.RetainedObservationLogContentHash == final.RetainedObservationLogContentHash && start.RetainedObservationLogBytes == final.RetainedObservationLogBytes &&
+		start.ProcessLogBoundaryHash == final.ProcessLogBoundaryHash
+}
+
+// A recoverable result is a terminal provisional failure with no accepted descendant.
+func readScenarioCampaignRecoveryResult(cfg *ResolvedConfig, stateDir string, prior *scenarioCampaignAttempt) (*ScenarioResult, []byte, error) {
+	if prior == nil {
+		return nil, nil, errors.New("campaign recovery predecessor is unavailable")
+	}
+	preAcceptance := prior.payload.AcceptanceBoundary == nil
+	if preAcceptance {
+		if prior.payload.AcceptanceInvalidation != "" || prior.payload.AcceptanceInvalidatedAt != "" {
+			return nil, nil, errors.New("campaign recovery predecessor has a pre-acceptance invalidation")
+		}
+	} else if prior.payload.AcceptanceInvalidation == "" || prior.payload.AcceptanceInvalidatedAt == "" {
+		return nil, nil, errors.New("campaign recovery predecessor has no terminal invalidated acceptance")
+	}
+	run := filepath.Join("runs", prior.payload.RunID)
+	for _, name := range []string{"complete.json", scenarioLifecycleHandoffFilename} {
+		if _, err := os.Lstat(filepath.Join(stateDir, run, name)); err == nil {
+			return nil, nil, errors.New("campaign recovery cannot replace a completed or handed-off release")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, nil, err
+		}
+	}
+	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); err == nil {
+		return nil, nil, errors.New("campaign recovery cannot replace a release with a production descendant")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, err
+	}
+	raw, err := readValidatorEvidenceHistoricalFile(stateDir, filepath.ToSlash(filepath.Join(run, "result.json")), maximumCampaignEvidenceRawFileBytes)
+	if err != nil {
+		return nil, nil, errors.Join(errors.New("campaign recovery has no terminal failed result"), err)
+	}
+	var result ScenarioResult
+	if err := decodeStrictJSONBytes(raw, &result); err != nil {
+		return nil, nil, err
+	}
+	hash, hashErr := canonicalScenarioResultHash(&result)
+	terminalStartedAt := prior.payload.StartedAt
+	if !preAcceptance {
+		terminalStartedAt = prior.payload.AcceptanceBoundary.AcceptanceStartedAt
+	}
+	terminalStarted, startErr := time.Parse(time.RFC3339Nano, terminalStartedAt)
+	completed, completedErr := time.Parse(time.RFC3339Nano, result.CompletedAt)
+	failed := false
+	failedCount := 0
+	for _, assertion := range result.Assertions {
+		failed = failed || !assertion.Passed
+		if !assertion.Passed {
+			failedCount++
+		}
+	}
+	if hashErr != nil || hash != result.EvidenceHash || startErr != nil || completedErr != nil || completed.Before(terminalStarted) || result.StartedAt != prior.payload.StartedAt || result.Schema != "urnetwork-sim-scenario-result-v1" || result.Release != "1.0" || result.RunID != prior.payload.RunID || result.Name != "release-1.0" || result.Result != "fail" || !result.Provisional || result.FinalAcceptance == nil || *result.FinalAcceptance || result.DeploymentID != cfg.Config.Deployment.DeploymentID || result.ConfigHash != cfg.ConfigHash || result.PolicyHash != cfg.PolicyHash || result.ChainID != cfg.ChainID || result.Netuid != cfg.Netuid || !strings.EqualFold(result.GenesisHash, cfg.Public.Chain.GenesisHash) || !failed || result.AssertionCount != len(result.Assertions) || result.FailedAssertionCount != failedCount || result.LifecycleHandoff != nil || result.PriorRelease != nil {
+		return nil, nil, errors.Join(errors.New("campaign recovery result differs from its invalidated provisional source"), hashErr)
+	}
+	return &result, raw, nil
+}
+
+// Only a succession or already validated recovery may precede another generation.
+func scenarioCampaignRecoveryPredecessorIdentity(prior *scenarioCampaignAttempt) (uint64, string, error) {
+	if prior == nil {
+		return 0, "", errors.New("campaign recovery predecessor is unavailable")
+	}
+	if prior.payload.Succession != nil && prior.payload.Recovery == nil {
+		return 0, filepath.ToSlash(filepath.Join("campaign-attempts", filepath.Base(scenarioCampaignSuccessorPath("")))), nil
+	}
+	if prior.payload.Succession != nil || prior.payload.Recovery == nil {
+		return 0, "", errors.New("campaign recovery predecessor is not an invalidated succession or recovery")
+	}
+	generation, err := scenarioCampaignRecoveryGeneration(prior.payload.Recovery)
+	if err != nil {
+		return 0, "", err
+	}
+	return generation, scenarioCampaignRecoveryRelativePath(generation), nil
+}
+
+// A pre-acceptance failure has no campaign-start marker to authenticate its
+// journal cut. The next signed generation therefore freezes the complete
+// hash-chained journal prefix that existed when the failure was retired.
+func readScenarioCampaignRecoveryJournalPrefix(attempt, prior *scenarioCampaignAttempt) ([]byte, []JournalEntry, error) {
+	raw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, "journal.jsonl", maximumCampaignEvidenceRawFileBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	bound := uint64(len(raw))
+	if recovery := attempt.payload.Recovery; recovery != nil && recovery.PriorRunID == prior.payload.RunID {
+		bound = recovery.PriorJournalBytes
+	}
+	if bound == 0 || bound > uint64(len(raw)) {
+		return nil, nil, errors.New("campaign recovery journal is shorter than its signed prefix")
+	}
+	prefix := raw[:bound]
+	if prefix[len(prefix)-1] != '\n' {
+		return nil, nil, errors.New("campaign recovery journal prefix does not end at a durable record boundary")
+	}
+	entries, err := readJournalEntries(attempt.stateDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("campaign recovery journal prefix: %w", err)
+	}
+	return prefix, entries, nil
+}
+
+// Rebuild the expected lineage from the predecessor's exact authenticated sources.
+func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte) (*scenarioCampaignRecovery, time.Time, error) {
+	if attempt == nil || prior == nil || len(priorRaw) == 0 {
+		return nil, time.Time{}, errors.New("campaign recovery source is unavailable")
+	}
+	priorGeneration, expectedPriorPath, err := scenarioCampaignRecoveryPredecessorIdentity(prior)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if priorRelativePath != expectedPriorPath {
+		return nil, time.Time{}, errors.New("campaign recovery predecessor path differs from its exact generation")
+	}
+	runRelative := filepath.ToSlash(filepath.Join("runs", prior.payload.RunID))
+	startPath := filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative), scenarioCampaignStartFilename)
+	preAcceptance := prior.payload.AcceptanceBoundary == nil
+	var startRaw []byte
+	if preAcceptance {
+		if _, err := os.Lstat(startPath); err == nil {
+			return nil, time.Time{}, errors.New("campaign recovery pre-acceptance predecessor has a campaign-start marker")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, time.Time{}, err
+		}
+	} else {
+		start, raw, err := readScenarioCampaignAttemptAt(attempt.cfg, attempt.stateDir, attempt.roles, prior.payload.PlanHash, "release-1.0", startPath)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		if start.payload.RunID != prior.payload.RunID || start.payload.AcceptanceInvalidation != "" || !scenarioCampaignRecoveryStaticBoundaryMatches(start.payload.AcceptanceBoundary, prior.payload.AcceptanceBoundary) {
+			return nil, time.Time{}, errors.New("campaign recovery start marker differs from the invalidated attempt")
+		}
+		startRaw = raw
+	}
+	result, resultRaw, err := readScenarioCampaignRecoveryResult(attempt.cfg, attempt.stateDir, prior)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	observationRaw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, runRelative+"/observations.jsonl", maximumCampaignEvidenceRawFileBytes)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if preAcceptance {
+		if _, err := decodeScenarioObservationLog(observationRaw); err != nil {
+			return nil, time.Time{}, err
+		}
+	} else {
+		if _, _, _, _, _, err := prior.loadAuthenticatedRecoveryRuntimeForensics(filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative))); err != nil {
+			return nil, time.Time{}, err
+		}
+	}
+	processLogRaw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, runRelative+"/"+processLogEvidenceFilename, maximumCampaignEvidenceRawFileBytes)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	var processLogs processLogGateState
+	if err := decodeStrictJSONBytes(processLogRaw, &processLogs); err != nil {
+		return nil, time.Time{}, err
+	}
+	if processLogs.DeploymentID != attempt.cfg.Config.Deployment.DeploymentID || validatePersistedProcessLogGate(processLogs) != nil {
+		return nil, time.Time{}, errors.New("campaign recovery process-log evidence is invalid")
+	}
+	if preAcceptance {
+		if processLogs.AcceptanceBoundary != nil {
+			return nil, time.Time{}, errors.New("campaign recovery pre-acceptance process log has an acceptance boundary")
+		}
+	} else if boundaryHash := prior.payload.AcceptanceBoundary.ProcessLogBoundaryHash; boundaryHash != "" && (processLogs.AcceptanceBoundary == nil || !strings.EqualFold(processLogs.AcceptanceBoundary.ContentHash, boundaryHash)) {
+		return nil, time.Time{}, errors.New("campaign recovery process-log boundary differs from the signed acceptance")
+	}
+	plan, planRaw, err := readScenarioSuccessionPlan(attempt.stateDir, attempt.payload.PlanHash)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	completed, _ := time.Parse(time.RFC3339Nano, result.CompletedAt)
+	terminal := completed
+	var journalRaw []byte
+	if preAcceptance {
+		var entries []JournalEntry
+		journalRaw, entries, err = readScenarioCampaignRecoveryJournalPrefix(attempt, prior)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		verifiedSource := false
+		allowedPlanHashes := plan.allowedPlanHashes()
+		for _, entry := range entries {
+			verifiedSource = verifiedSource || entry.DeploymentID == plan.DeploymentID && entry.Stage == StageVerified && (entry.PlanHash == plan.PlanHash || allowedPlanHashes[entry.PlanHash])
+		}
+		if !verifiedSource {
+			return nil, time.Time{}, errors.New("campaign recovery journal prefix has no retained verified plan source")
+		}
+	} else {
+		invalidated, invalidatedErr := time.Parse(time.RFC3339Nano, prior.payload.AcceptanceInvalidatedAt)
+		if invalidatedErr != nil {
+			return nil, time.Time{}, errors.New("campaign recovery predecessor invalidation time is malformed")
+		}
+		if invalidated.After(terminal) {
+			terminal = invalidated
+		}
+	}
+	recovery := &scenarioCampaignRecovery{
+		Schema: scenarioCampaignRecoverySchema, PriorRunID: prior.payload.RunID,
+		PriorAttemptSha256:        bytesSHA256(priorRaw),
+		PriorResultSha256:         bytesSHA256(resultRaw),
+		PriorObservationLogSha256: bytesSHA256(observationRaw), PriorObservationLogBytes: uint64(len(observationRaw)),
+		PriorProcessLogSha256: bytesSHA256(processLogRaw), ApprovedPlanSha256: bytesSHA256(planRaw),
+	}
+	if preAcceptance {
+		recovery.PriorJournalSha256 = bytesSHA256(journalRaw)
+		recovery.PriorJournalBytes = uint64(len(journalRaw))
+	} else {
+		recovery.PriorCampaignStartSha256 = bytesSHA256(startRaw)
+	}
+	if priorGeneration != 0 {
+		recovery.Generation = priorGeneration + 1
+		recovery.PriorGeneration = priorGeneration
+		recovery.PriorAttemptPath = priorRelativePath
+	}
+	if attempt.payload.Recovery != nil && attempt.payload.Recovery.InheritedPreparationSha256 != "" {
+		if !preAcceptance || !prior.payload.PreparationComplete || !attempt.payload.PreparationComplete {
+			return nil, time.Time{}, errors.New("campaign recovery inherited preparation has no completed pre-acceptance predecessor")
+		}
+		recovery.InheritedPreparationSha256 = bytesSHA256(priorRaw)
+	}
+	return recovery, terminal, nil
+}
+
+// A candidate must equal the rebuilt lineage and start after both terminal times.
+func validateScenarioCampaignRecoveryFromPrior(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte) error {
+	if attempt == nil || attempt.payload.Recovery == nil || attempt.payload.Phase != "release-1.0" || attempt.payload.Succession != nil {
+		return errors.New("campaign recovery has no exact signed predecessor")
+	}
+	want, terminal, err := readScenarioCampaignRecoverySources(attempt, prior, priorRelativePath, priorRaw)
+	if err != nil {
+		return err
+	}
+	started, startErr := time.Parse(time.RFC3339Nano, attempt.payload.StartedAt)
+	if startErr != nil || !started.After(terminal) || !reflect.DeepEqual(attempt.payload.Recovery, want) || bytesSHA256(priorRaw) != want.PriorAttemptSha256 {
+		return errors.New("campaign recovery changed its retained predecessor or ordering")
+	}
+	return nil
+}
+
+// Generation one retains the exact signed succession as its implicit root.
+func readScenarioCampaignRecoveryRoot(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string) (*scenarioCampaignAttempt, []byte, string, error) {
+	path := scenarioCampaignSuccessorPath(stateDir)
+	prior, raw, err := readScenarioCampaignAttemptAt(cfg, stateDir, roles, planHash, "release-1.0", path)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if err := validateScenarioCampaignSuccession(prior); err != nil {
+		return nil, nil, "", err
+	}
+	relative := filepath.ToSlash(filepath.Join("campaign-attempts", filepath.Base(path)))
+	return prior, raw, relative, nil
+}
+
+// Every link is revalidated from the root before its successor can be selected.
+func readScenarioCampaignRecoveryChain(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile) ([]scenarioCampaignRecoveryRecord, error) {
+	prior, priorRaw, priorRelativePath, err := readScenarioCampaignRecoveryRoot(cfg, stateDir, roles, planHash)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]scenarioCampaignRecoveryRecord, 0, len(files))
+	for _, file := range files {
+		attempt, raw, err := readScenarioCampaignAttemptAt(cfg, stateDir, roles, planHash, "release-1.0", file.path)
+		if err != nil {
+			return nil, err
+		}
+		generation, err := scenarioCampaignRecoveryGeneration(attempt.payload.Recovery)
+		if err != nil || generation != file.generation {
+			return nil, errors.Join(fmt.Errorf("campaign recovery file generation %d differs from its signed payload", file.generation), err)
+		}
+		if err := validateScenarioCampaignRecoveryFromPrior(attempt, prior, priorRelativePath, priorRaw); err != nil {
+			return nil, fmt.Errorf("validate campaign recovery generation %d: %w", file.generation, err)
+		}
+		record := scenarioCampaignRecoveryRecord{file: file, attempt: attempt, raw: raw}
+		records = append(records, record)
+		prior, priorRaw, priorRelativePath = attempt, raw, file.relativePath
+	}
+	return records, nil
+}
+
+// The highest record is usable only after the full contiguous chain validates.
+func readLatestScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string) (*scenarioCampaignAttempt, bool, error) {
+	files, err := scenarioCampaignRecoveryFiles(stateDir)
+	if err != nil || len(files) == 0 {
+		return nil, false, err
+	}
+	records, err := readScenarioCampaignRecoveryChain(cfg, stateDir, roles, planHash, files)
+	if err != nil {
+		return nil, false, err
+	}
+	return records[len(records)-1].attempt, true, nil
+}
+
+// Persisted and not-yet-written candidates share the same full-chain validation.
+func validateScenarioCampaignRecovery(attempt *scenarioCampaignAttempt) error {
+	if attempt == nil || attempt.payload.Recovery == nil {
+		return errors.New("campaign recovery has no exact signed predecessor")
+	}
+	generation, err := scenarioCampaignRecoveryGeneration(attempt.payload.Recovery)
+	if err != nil {
+		return err
+	}
+	files, err := scenarioCampaignRecoveryFiles(attempt.stateDir)
+	if err != nil {
+		return err
+	}
+	if generation <= uint64(len(files)) {
+		records, err := readScenarioCampaignRecoveryChain(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, files)
+		if err != nil {
+			return err
+		}
+		if uint64(len(records)) != generation || !reflect.DeepEqual(records[generation-1].attempt.payload, attempt.payload) {
+			return errors.New("campaign recovery is not the highest exact signed generation")
+		}
+		return nil
+	}
+	if uint64(len(files)) != generation-1 {
+		return errors.New("campaign recovery predecessor generations are incomplete")
+	}
+	prior, priorRaw, priorRelativePath, err := readScenarioCampaignRecoveryRoot(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash)
+	if err != nil {
+		return err
+	}
+	if len(files) != 0 {
+		records, chainErr := readScenarioCampaignRecoveryChain(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, files)
+		if chainErr != nil {
+			return chainErr
+		}
+		last := records[len(records)-1]
+		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
+	}
+	return validateScenarioCampaignRecoveryFromPrior(attempt, prior, priorRelativePath, priorRaw)
+}
+
+// validateScenarioCampaignRecoveryAncestor permits a retained release artifact
+// to cross only an exact owner-signed recovery chain. The current attempt must
+// still be pre-acceptance, and a production descendant closes the carry path.
+func validateScenarioCampaignRecoveryAncestor(attempt *scenarioCampaignAttempt, ancestorRunID string) error {
+	if attempt == nil || attempt.payload.Recovery == nil || attempt.payload.AcceptanceBoundary != nil || ancestorRunID == "" || ancestorRunID == attempt.payload.RunID {
+		return errors.New("campaign recovery has no distinct pre-acceptance ancestor")
+	}
+	if err := validateScenarioCampaignRecovery(attempt); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(scenarioCampaignAttemptPath(attempt.stateDir, "production-soak")); err == nil {
+		return errors.New("campaign recovery ancestor has a production descendant")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	root, _, _, err := readScenarioCampaignRecoveryRoot(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash)
+	if err != nil {
+		return err
+	}
+	if root.payload.RunID == ancestorRunID {
+		return nil
+	}
+	files, err := scenarioCampaignRecoveryFiles(attempt.stateDir)
+	if err != nil {
+		return err
+	}
+	records, err := readScenarioCampaignRecoveryChain(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, files)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if record.attempt.payload.RunID == attempt.payload.RunID {
+			break
+		}
+		if record.attempt.payload.RunID == ancestorRunID {
+			return nil
+		}
+	}
+	return errors.New("retained release run is not an authenticated campaign recovery ancestor")
+}
+
+// Extend the authenticated chain by one fresh full campaign after a failed interval.
+func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, now time.Time, journal *Journal) (*scenarioCampaignAttempt, error) {
+	if cfg == nil || cfg.Config == nil || roles == nil || journal == nil || !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record == nil || cfg.provisionalResume.Record.PlanHash != planHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
+		return nil, errors.New("campaign recovery requires the exact provisional non-accepting approval")
+	}
+	journal.mu.Lock()
+	owned := journal.lock != nil && journal.file != nil && journal.path == filepath.Join(stateDir, "journal.jsonl")
+	journal.mu.Unlock()
+	if !owned {
+		return nil, errors.New("campaign recovery has no live exclusive deployment journal owner")
+	}
+	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); err == nil {
+		return nil, errors.New("campaign recovery cannot replace a release with a production descendant")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	plan, err := loadPersistedPlan(cfg, stateDir)
+	if err != nil || plan.PlanHash != planHash {
+		return nil, errors.Join(errors.New("campaign recovery approved plan is unavailable"), err)
+	}
+	retainedRoles, err := loadExistingProvisionalRoles(cfg, stateDir)
+	if err != nil || !reflect.DeepEqual(retainedRoles, roles) {
+		return nil, errors.Join(errors.New("campaign recovery retained custody changed"), err)
+	}
+	ownedSource := false
+	for _, entry := range journal.Entries() {
+		ownedSource = ownedSource || entry.DeploymentID == plan.DeploymentID && entry.Stage == StageVerified && (entry.PlanHash == planHash || plan.allowedPlanHashes()[entry.PlanHash])
+	}
+	if !ownedSource {
+		return nil, errors.New("campaign recovery has no retained verified journal source")
+	}
+	files, err := scenarioCampaignRecoveryFiles(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	prior, priorRaw, priorRelativePath, err := readScenarioCampaignRecoveryRoot(cfg, stateDir, roles, planHash)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) != 0 {
+		records, chainErr := readScenarioCampaignRecoveryChain(cfg, stateDir, roles, planHash, files)
+		if chainErr != nil {
+			return nil, chainErr
+		}
+		last := records[len(records)-1]
+		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
+	}
+	probe := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{PlanHash: planHash}}
+	recovery, terminal, err := readScenarioCampaignRecoverySources(probe, prior, priorRelativePath, priorRaw)
+	if err != nil {
+		return nil, err
+	}
+	if !now.After(terminal) {
+		return nil, errors.New("campaign recovery cannot start before predecessor completion and invalidation")
+	}
+	carryPreparation := prior.payload.AcceptanceBoundary == nil && prior.payload.PreparationComplete
+	if carryPreparation {
+		recovery.InheritedPreparationSha256 = recovery.PriorAttemptSha256
+	}
+	started := now.UTC()
+	attempt := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{
+		Schema: scenarioCampaignAttemptSchema, Phase: "release-1.0", RunID: fmt.Sprintf("%s-release-1.0", started.Format("20060102T150405.000000000Z")), StartedAt: started.Format(time.RFC3339Nano),
+		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, PlanHash: planHash, Recovery: recovery,
+		PreparationComplete: carryPreparation,
+	}}
+	generation, err := scenarioCampaignRecoveryGeneration(recovery)
+	if err != nil {
+		return nil, err
+	}
+	if generation != uint64(len(files)+1) {
+		return nil, errors.New("campaign recovery generation does not extend the contiguous lineage")
+	}
+	if _, err := os.Lstat(filepath.Join(stateDir, "runs", attempt.payload.RunID)); err == nil {
+		return nil, errors.New("campaign recovery run directory already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err := validateScenarioCampaignRecoveryFromPrior(attempt, prior, priorRelativePath, priorRaw); err != nil {
+		return nil, err
+	}
+	if err := writeScenarioCampaignAttempt(attempt); err != nil {
+		return nil, err
+	}
+	return attempt, nil
+}
