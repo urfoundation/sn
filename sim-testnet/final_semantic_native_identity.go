@@ -23,8 +23,8 @@ import (
 	gsrpcextrinsic "github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic"
 	"golang.org/x/crypto/blake2b"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 const (

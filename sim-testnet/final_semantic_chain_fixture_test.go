@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 // Counts actual decoder calls across repeated queries through all three
