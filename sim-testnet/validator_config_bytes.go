@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
