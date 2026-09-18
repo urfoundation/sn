@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 func TestFinalPayoutArtifactSeparatesProvenanceFromRootAuthorization(t *testing.T) {

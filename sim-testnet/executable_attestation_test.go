@@ -17,8 +17,8 @@ import (
 // Construct one valid build-info record which individual tests can corrupt.
 func testReleaseExecutableBuildInfo(revision string) *debug.BuildInfo {
 	return &debug.BuildInfo{
-		Path: "github.com/urfoundation/sn/sim-testnet",
-		Main: debug.Module{Path: "github.com/urfoundation/sn"},
+		Path: "github.com/urfoundation/sn/v2026/sim-testnet",
+		Main: debug.Module{Path: "github.com/urfoundation/sn/v2026"},
 		Settings: []debug.BuildSetting{
 			{Key: "vcs", Value: "git"},
 			{Key: "vcs.revision", Value: revision},
@@ -241,7 +241,7 @@ func TestParseReleaseExecutableBuildInfoAcceptsCanonicalRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if identity.Revision != revision || identity.Modified || !identity.Trimpath || identity.PackagePath != "github.com/urfoundation/sn/sim-testnet" || identity.ModulePath != "github.com/urfoundation/sn" {
+	if identity.Revision != revision || identity.Modified || !identity.Trimpath || identity.PackagePath != "github.com/urfoundation/sn/sim-testnet" || identity.ModulePath != "github.com/urfoundation/sn/v2026" {
 		t.Fatalf("build identity = %+v", identity)
 	}
 }
@@ -284,7 +284,7 @@ func TestParseReleaseExecutableBuildInfoRejectsDevelopmentAndAmbiguousBuilds(t *
 func TestReleaseExecutableIdentityAcceptsExactLockedPushedSource(t *testing.T) {
 	revision := strings.Repeat("a", 40)
 	hash := "sha256:" + strings.Repeat("b", 64)
-	build := releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: revision, Trimpath: true}
+	build := releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn/v2026", Revision: revision, Trimpath: true}
 	source := releaseExecutableSourceIdentity{Revision: revision, PushedRevision: revision, SourceHash: hash, LockedSourceHash: hash}
 	if err := validateReleaseExecutableIdentity(build, source, executableAttestationLockedSource); err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestReleaseExecutableIdentityRejectsStaleDirtyAndUnlockedBuilds(t *testing.
 	otherRevision := strings.Repeat("c", 40)
 	hash := "sha256:" + strings.Repeat("b", 64)
 	otherHash := "sha256:" + strings.Repeat("d", 64)
-	validBuild := releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: revision, Trimpath: true}
+	validBuild := releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn/v2026", Revision: revision, Trimpath: true}
 	validSource := releaseExecutableSourceIdentity{Revision: revision, PushedRevision: revision, SourceHash: hash, LockedSourceHash: hash}
 	for _, test := range []struct {
 		name   string
@@ -513,7 +513,7 @@ func TestReleaseExecutableSourceRejectsLookalikeOrigin(t *testing.T) {
 	if _, err := pushedSNRevision(context.Background(), root, func(context.Context) (string, error) {
 		t.Fatal("lookalike origin reached the public observer")
 		return "", os.ErrInvalid
-	}); err == nil || !strings.Contains(err.Error(), "github.com/urfoundation/sn") {
+	}); err == nil || !strings.Contains(err.Error(), "github.com/urfoundation/sn/v2026") {
 		t.Fatalf("lookalike origin error = %v", err)
 	}
 }
