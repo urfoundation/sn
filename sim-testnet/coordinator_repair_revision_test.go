@@ -14,8 +14,8 @@ import (
 )
 
 // The actual setup gate must consume the same completed repair observation
-// as revision rendering. Signed files alone and generic successful receipts
-// never authorize a missing postcondition or a replacement write.
+// as revision rendering. Signed files alone never authorize repair carry;
+// unrelated unresolved successes cannot inherit the repair's authentication.
 func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactions(t *testing.T) {
 	fixture := newCoordinatorRepairCarryFixture(t)
 	e := fixture.executor
@@ -102,19 +102,44 @@ func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactio
 	if err := validateCoordinatorRepairRevisionTransaction(e.plan, entries, otherSigned, receipt, transaction); err == nil {
 		t.Fatal("different signed bytes inherited repair authority")
 	}
-	// Authenticate the repair in a history that also contains an unrelated
-	// successful transaction. The default gate must still reject that intent.
-	extra := observed.reference.Result.Result.Activate
-	extra.ActionID = "unrelated.success"
-	extra.Sequence = entries[len(entries)-1].Sequence + 1
-	extraEntries := append(append([]JournalEntry(nil), entries...), extra)
-	withExtra, err := authenticateCoordinatorRepairCarry(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries, e.deployer.client, e.independentEVM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.plan.coordinatorRepairObserved = withExtra
-	if _, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries); !errors.Is(err, errPriorEVMTransactionSucceeded) {
-		t.Fatalf("repair carry accepted an unrelated successful intent: %v", err)
+	// A successful receipt without a durable finalization remains unresolved.
+	// Ordinary finalized history may use generic carry, independently of the
+	// repair authentication, but an explicit failure must still block recovery.
+	for _, test := range []struct {
+		name        string
+		stages      []JournalStage
+		wantPending bool
+	}{
+		{"included", []JournalStage{StageIncluded}, true},
+		{"finalized", []JournalStage{StageFinalized}, false},
+		{"failed-after-finalization", []JournalStage{StageFinalized, StageFailed}, true},
+		{"finalized-after-failure", []JournalStage{StageFailed, StageFinalized}, true},
+	} {
+		extraEntries := append([]JournalEntry(nil), entries...)
+		for _, stage := range test.stages {
+			extra := observed.reference.Result.Result.Activate
+			extra.ActionID = "unrelated.success"
+			extra.Stage = stage
+			extra.Sequence = extraEntries[len(extraEntries)-1].Sequence + 1
+			extraEntries = append(extraEntries, extra)
+		}
+		pending, err := pendingPlanRevisionTransactions(e.plan, extraEntries)
+		if err != nil || len(pending) != 2 && !test.wantPending || len(pending) != 3 && test.wantPending {
+			t.Fatalf("%s: unexpected pending transactions: %+v %v", test.name, pending, err)
+		}
+		withExtra, err := authenticateCoordinatorRepairCarry(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries, e.deployer.client, e.independentEVM)
+		if err != nil {
+			t.Fatalf("%s: authenticate repair: %v", test.name, err)
+		}
+		e.plan.coordinatorRepairObserved = withExtra
+		recoveries, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries)
+		if test.wantPending {
+			if !errors.Is(err, errPriorEVMTransactionSucceeded) {
+				t.Fatalf("%s: repair carry accepted an unrelated unresolved success: %v", test.name, err)
+			}
+		} else if err != nil || !reflect.DeepEqual(recoveries, planRevisionRecoveries{}) {
+			t.Fatalf("%s: ordinary finalized predecessor was not carried: %+v %v", test.name, recoveries, err)
+		}
 	}
 	journalAfter, err := os.ReadFile(journalPath)
 	if err != nil || !bytes.Equal(journalBefore, journalAfter) || !reflect.DeepEqual(entries, e.journal.Entries()) || fixture.reader.sends.Load() != 0 || fixture.independent.sends.Load() != 0 {

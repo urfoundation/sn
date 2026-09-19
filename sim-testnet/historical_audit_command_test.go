@@ -6,12 +6,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/urfoundation/sn/protocol"
 )
 
 // Observe real retained bytes; output belongs to stdout, never this tree.
@@ -206,5 +211,80 @@ func TestHistoricalAuditDoesNotPersistRecoveredDeploymentBoundary(t *testing.T) 
 	}
 	if !reflect.DeepEqual(before, historicalAuditTree(t, executor.stateDir)) {
 		t.Fatal("audit persisted a recovered deployment boundary")
+	}
+}
+
+// The real audit constructor must provide its immutable journal to every EVM
+// role. The fleet mirror path used to dereference a nil manager journal and
+// terminate the whole audit instead of reporting the next evidence defect.
+func TestHistoricalAuditFleetMirrorUsesImmutableJournalSnapshot(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			http.Error(w, "synthetic native reader unavailable", http.StatusBadRequest)
+			return
+		}
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Method != "eth_chainId" {
+			http.Error(w, "unexpected RPC", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":"0x3b1"}`, request.ID)
+	}))
+	defer server.Close()
+	cfg := testResolvedConfig(t)
+	cfg.readOnlyAudit = true
+	cfg.Config.LaunchInputs.PublicSubstrateRPCOverride = "ws" + strings.TrimPrefix(server.URL, "http")
+	cfg.Config.LaunchInputs.PublicEVMRPCOverride = server.URL
+	cfg.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute = 0
+	cfg.Public.Chain.SubstratePublicReadEndpoint = cfg.Config.LaunchInputs.PublicSubstrateRPCOverride
+	cfg.Public.Chain.EVMPublicReadEndpoint = server.URL
+	var err error
+	cfg.OperationalSubstrate, cfg.OperationalEVM, cfg.OperationalRPCMode, err = resolveOperationalRPCs(cfg.Authority, cfg.Config.LaunchInputs.PublicSubstrateRPCOverride, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := &SetupPlan{PlanHash: "snapshot-plan"}
+	action := Action{ID: "lifecycle.provider.mirror", Kind: "evm-transaction", IntentHash: "snapshot-intent"}
+	evidence := FleetLifecycleMirrorEvidence{
+		Schema: "urnetwork-sim-fleet-commitment-mirror-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		Hotkey: "0x" + strings.Repeat("11", 32), CommitmentHash: "0x" + strings.Repeat("22", 32),
+		FinalizedBlock: 10, FinalizedBlockHash: "0x" + strings.Repeat("33", 32),
+		TransactionHash: "0x" + strings.Repeat("44", 32), BlockNumber: 20, BlockHash: "0x" + strings.Repeat("55", 32),
+	}
+	entry := JournalEntry{PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized,
+		TransactionHash: evidence.TransactionHash, BlockNumber: evidence.BlockNumber, BlockHash: evidence.BlockHash,
+		RecoveryBlock: 15, RecoveryBlockHash: "0x" + strings.Repeat("66", 32)}
+	entries := []JournalEntry{entry}
+	self, closeReaders, err := newHistoricalAuditExecutor(t.Context(), cfg, cfg, t.TempDir(), plan, entries, nil)
+	if closeReaders != nil {
+		defer closeReaders()
+	}
+	if self == nil || self.oracle == nil || err == nil || !strings.Contains(err.Error(), "operational native reader") {
+		t.Fatalf("expected a working EVM audit reader beside the native finding: %+v %v", self, err)
+	}
+	entries[0].TransactionHash = "changed-after-snapshot"
+	managers := []*EvmTxManager{self.deployer, self.owner, self.guardian, self.oracle, self.keeper}
+	for _, manager := range self.deposits {
+		managers = append(managers, manager)
+	}
+	for _, manager := range managers {
+		if manager == nil || manager.journal != self.journal || manager.key != nil || manager.journal.file != nil {
+			t.Fatal("audit role lacks its signer-free immutable journal")
+		}
+		if got, found := manager.journal.LatestTransaction(plan.PlanHash, action.ID, action.IntentHash); !found || got != entry {
+			t.Fatal("caller mutation changed the audit snapshot", got)
+		}
+		if err := manager.journal.Append(entry); err == nil || !strings.Contains(err.Error(), "read-only") {
+			t.Fatal("audit role acquired journal write authority", err)
+		}
+	}
+	err = self.validateFleetLifecycleMirrorAction(t.Context(), action, fleetLifecycleVariantProvider, protocol.FleetManifest{}, [32]byte{}, FleetCommitmentEvidence{}, evidence)
+	if err == nil || err.Error() != "fleet lifecycle mirror evidence differs from its exact native commitment" {
+		t.Fatalf("mirror audit did not read the exact finalized snapshot before reporting evidence mismatch: %v", err)
 	}
 }

@@ -372,13 +372,67 @@ func provisionalVerifiedProofCounts(ctx context.Context, cfg *ResolvedConfig, st
 // Authenticate a fresh read-only setup prefix before topology or tournament
 // execution. Its journal index and immutable source cache end at this boundary.
 func (self *Executor) authenticateProvisionalSetupPrefix(ctx context.Context, plan *SetupPlan, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) (*Action, error) {
+	topology, _, err := self.provisionalSetupPrefix(ctx, plan, readEntries, readSource, false)
+	return topology, err
+}
+
+// A live topology can coexist with an approved funding repair. Authenticate
+// all retained receipts before executing any pending repair on its original
+// action/intent recovery key; never render, deploy or restart the topology.
+func (self *Executor) reconcileProvisionalSetupPrefix(ctx context.Context, plan *SetupPlan, execute func(context.Context, Action) error) (*Action, error) {
+	if self == nil || self.journal == nil || execute == nil {
+		return nil, errors.New("provisional setup repair executor is unavailable")
+	}
+	topology, pending, err := self.provisionalSetupPrefix(ctx, plan, self.journal.Entries, readValidatorEvidenceHistoricalPlan, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, action := range pending {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := self.verifyActionDependencies(action); err != nil {
+			return nil, fmt.Errorf("provisional setup repair %s dependencies: %w", action.ID, err)
+		}
+		fmt.Fprintf(os.Stderr, "sim-testnet: reconciling approved setup action %s while retaining live topology; final_acceptance=false\n", action.ID)
+		if err := execute(ctx, action); err != nil {
+			return nil, fmt.Errorf("provisional setup repair %s: %w", action.ID, err)
+		}
+		entry, verified := self.verifiedActionEntry(action)
+		if !verified {
+			return nil, fmt.Errorf("provisional setup repair %s has no verified postcondition", action.ID)
+		}
+		if err := self.authenticateProvisionalReceipt(action, entry); err != nil {
+			return nil, err
+		}
+	}
+	return topology, ctx.Err()
+}
+
+// Pending repairs affect balances only. Other unverified setup work may
+// replace contracts, identities or runtime inputs and cannot adopt a live
+// generation through this path. Doctor and ordinary execution retain their
+// budget, dependency, transaction-recovery and fresh postcondition checks.
+func provisionalLiveSetupRepair(action Action) bool {
+	if _, _, err := alphaTransferTargetFromActionID(action.ID); err != nil {
+		return false
+	}
+	return action.Kind == "substrate-extrinsic" && strings.HasPrefix(action.ID, "alpha.repair.") ||
+		action.Kind == "substrate-reconciliation" && strings.HasPrefix(action.ID, "alpha.transfer.")
+}
+
+func (self *Executor) provisionalSetupPrefix(ctx context.Context, plan *SetupPlan, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error), allowRepairs bool) (*Action, []Action, error) {
 	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || plan == nil || readEntries == nil || readSource == nil {
-		return nil, errors.New("provisional setup prefix context is unavailable")
+		return nil, nil, errors.New("provisional setup prefix context is unavailable")
+	}
+	if !provisionalResumeEnabled(self.cfg) || plan != self.plan || self.cfg.provisionalResume.Record.PlanHash != plan.PlanHash {
+		return nil, nil, errors.New("provisional setup prefix differs from the approved plan")
 	}
 	entries := readEntries()
 	verified := newCarriedPreparationIndex(self.plan, entries)
 	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
 	var topology *Action
+	var pending []Action
 	for i := range plan.Actions {
 		action := plan.Actions[i]
 		if action.ID == "topology.launch" {
@@ -386,27 +440,35 @@ func (self *Executor) authenticateProvisionalSetupPrefix(ctx context.Context, pl
 			break
 		}
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		prior, ok := verified.find(action, false)
 		if !ok {
-			return nil, fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
+			if !allowRepairs || !provisionalLiveSetupRepair(action) {
+				return nil, nil, fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
+			}
+			hash, err := actionIntentHash(action)
+			if err != nil || hash != action.IntentHash {
+				return nil, nil, stateMismatchError(err, "provisional setup repair %s intent differs from its approval", action.ID)
+			}
+			pending = append(pending, action)
+			continue
 		}
 		if err := self.authenticateProvisionalReceiptWithReader(action, prior, readPostcondition); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	if topology == nil {
-		return nil, errors.New("approved plan has no topology.launch action")
+		return nil, nil, errors.New("approved plan has no topology.launch action")
 	}
 	if !slices.Equal(entries, readEntries()) {
-		return nil, errors.New("provisional setup prefix journal changed during reconciliation")
+		return nil, nil, errors.New("provisional setup prefix journal changed during reconciliation")
 	}
-	return topology, ctx.Err()
+	return topology, pending, ctx.Err()
 }
 
 func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
-	topology, err := executor.authenticateProvisionalSetupPrefix(ctx, plan, executor.journal.Entries, readValidatorEvidenceHistoricalPlan)
+	topology, err := executor.reconcileProvisionalSetupPrefix(ctx, plan, executor.Execute)
 	if err != nil {
 		return err
 	}

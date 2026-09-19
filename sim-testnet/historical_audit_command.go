@@ -139,7 +139,7 @@ func newHistoricalAuditExecutor(ctx context.Context, cfg, transportCfg *Resolved
 			failures = append(failures, fmt.Errorf("%s: %w", reader.name, err))
 			continue
 		}
-		*reader.target = &SubstrateManager{chain: chain, cfg: transportCfg}
+		*reader.target = &SubstrateManager{chain: chain, cfg: transportCfg, journal: self.journal}
 		closers = append(closers, chain.API.Client.Close)
 	}
 	for _, reader := range []struct {
@@ -165,7 +165,7 @@ func newHistoricalAuditExecutor(ctx context.Context, cfg, transportCfg *Resolved
 				if reader.independent {
 					self.independentEVM = client
 				} else {
-					manager := &EvmTxManager{client: client, chainID: id}
+					manager := &EvmTxManager{client: client, chainID: id, journal: self.journal}
 					self.deployer, self.owner, self.guardian, self.oracle, self.keeper = manager, manager, manager, manager, manager
 					for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 						self.deposits[operator] = manager
