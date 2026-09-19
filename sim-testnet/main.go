@@ -52,7 +52,7 @@ Usage: sim-testnet <command> [options]
 Commands:
   doctor   read-only configuration, repository, tool, RPC, wallet, and subnet checks
   release-lock  render or atomically refresh observed release-lock fields from clean repositories
-  plan     print the canonical setup diff, costs, actions, and plan hash; never writes
+  plan     archive and print the exact setup review; never changes the active plan or chain
   history-adoption  capture a source-pinned request for strict startup after retained V2 history
   relay-continuation  capture or adopt one fixed continuation inside the original relay reserve
   setup    converge the existing subnet and install contracts (dry-run unless approved)
@@ -514,6 +514,10 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return printResult(o.Format, report, report.Error())
 	case "plan":
 		p, err := BuildPlanForState(ctx, resolved, stateDir)
+		if err != nil {
+			return err
+		}
+		p, err = archiveReviewedSetupPlan(stateDir, p)
 		if err != nil {
 			return err
 		}

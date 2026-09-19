@@ -43,6 +43,9 @@ func provisionalSetupActivationFixture(t *testing.T) (carriedPreparationTest, []
 	if err := atomicWrite(filepath.Join(self.stateDir, "plan.json"), source, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := archiveReviewedSetupPlan(self.stateDir, self.plan); err != nil {
+		t.Fatal(err)
+	}
 	return fixture, repairs, source
 }
 

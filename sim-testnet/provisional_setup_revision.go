@@ -41,6 +41,25 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 		return err
 	}
 	entries := self.journal.Entries()
+	if err := validateReviewedSetupRepairRetirements(source, self.plan, entries); err != nil {
+		return err
+	}
+	reviewedBytes, err := readValidatorEvidenceHistoricalFile(self.stateDir, filepath.Join("plans", stringsTrim0x(self.plan.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
+	if err != nil {
+		return err
+	}
+	reviewed, err := decodePersistedPlanWire(reviewedBytes)
+	if err != nil {
+		return err
+	}
+	wantSnapshot, err := canonicalHashHex(self.plan)
+	if err != nil {
+		return err
+	}
+	gotSnapshot, err := canonicalHashHex(reviewed)
+	if err != nil || gotSnapshot != wantSnapshot {
+		return stateMismatchError(err, "reviewed setup snapshot changed after approval loading")
+	}
 	// This is the authenticated local receipt cache, never an archive RPC
 	// replay. A cache miss authenticates every retained receipt and source.
 	if err := self.verifyProvisionalActionHistory(ctx); err != nil {
@@ -69,11 +88,13 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 		SourcePlanHash          string       `json:"source_plan_hash"`
 		SourcePlanBytesSHA256   string       `json:"source_plan_bytes_sha256"`
 		PlanHash                string       `json:"plan_hash"`
+		ReviewedPlanBytesSHA256 string       `json:"reviewed_plan_bytes_sha256"`
 		JournalBoundary         JournalEntry `json:"authenticated_journal_boundary"`
 		PendingActions          []Action     `json:"pending_setup_actions"`
 	}{Schema: "urnetwork-sim-provisional-setup-activation-v1", Provisional: true, HistoricalAuditDeferred: true,
 		SourcePlanHash: source.PlanHash, SourcePlanBytesSHA256: bytesSHA256(sourceBytes), PlanHash: self.plan.PlanHash,
-		JournalBoundary: boundary, PendingActions: pending}
+		ReviewedPlanBytesSHA256: bytesSHA256(reviewedBytes),
+		JournalBoundary:         boundary, PendingActions: pending}
 	wire, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
@@ -84,18 +105,10 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 	// Archive exact predecessor bytes before switching the active pointer. A
 	// crash after activation can resume the same plan and transaction intents.
 	if source.PlanHash != self.plan.PlanHash {
-		wire, err := json.Marshal(self.plan)
-		if err != nil {
-			return err
-		}
-		wire = append(wire, '\n')
 		if err := atomicWrite(filepath.Join(self.stateDir, "plans", stringsTrim0x(source.PlanHash)+".json"), sourceBytes, 0o600); err != nil {
 			return err
 		}
-		if err := atomicWrite(filepath.Join(self.stateDir, "plans", stringsTrim0x(self.plan.PlanHash)+".json"), wire, 0o600); err != nil {
-			return err
-		}
-		if err := atomicWrite(filepath.Join(self.stateDir, "plan.json"), wire, 0o600); err != nil {
+		if err := atomicWrite(filepath.Join(self.stateDir, "plan.json"), reviewedBytes, 0o600); err != nil {
 			return err
 		}
 	}

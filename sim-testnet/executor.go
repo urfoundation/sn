@@ -517,11 +517,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	provisionalSetupRevision := cmd == "setup" && o.ProvisionalResume
-	invocationOptions := o
 	var provisionalSetupSource []byte
 	if provisionalSetupRevision {
-		// A repair revision uses ordinary reconstruction and exact new-plan
-		// approval. It cannot bootstrap a missing or unauthenticated deployment.
+		// Keep the active predecessor separate from the exact archived review.
+		// Moving finalized facts must never regenerate the approved repair.
 		var err error
 		provisionalSetupSource, err = readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
 		if err != nil {
@@ -530,9 +529,8 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		if _, err := decodePersistedPlanWire(provisionalSetupSource); err != nil {
 			return err
 		}
-		invocationOptions.ProvisionalResume = false
 	}
-	p, planErr := loadInvocationPlan(cfg, stateDir, cmd, invocationOptions)
+	p, planErr := loadInvocationPlan(cfg, stateDir, cmd, o)
 	if o.StrictHistoryAdoption != "" {
 		if planErr != nil {
 			return fmt.Errorf("strict history adoption requires the finalized current plan: %w", planErr)
@@ -572,9 +570,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	defer j.Close()
 	entries := j.Entries()
-	if o.ProvisionalResume && !provisionalSetupRevision {
-		// Exact persisted identity and approval were checked before opening the
-		// journal. Keep all unfinished actions on their original recovery keys.
+	if o.ProvisionalResume {
+		// Resume retains the active approval; provisional setup retains its
+		// exact archived review. Neither path re-renders moving chain facts.
 	} else if mayRefreshPersistedPlan(planErr, entries) {
 		p, planErr = BuildPlan(ctx, cfg)
 	} else if errors.Is(planErr, errPersistedPlanIdentityMismatch) {
@@ -801,7 +799,17 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 	if cfg == nil || cfg.provisionalResume == nil {
 		return nil, errors.New("provisional runtime plan requires authenticated driver provenance")
 	}
-	plan, err := loadPersistedPlanIdentity(cfg, stateDir, true)
+	var plan *SetupPlan
+	var err error
+	if command == "setup" {
+		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
+		if readErr != nil {
+			return nil, fmt.Errorf("read exact reviewed setup plan %s: %w", options.PlanHash, readErr)
+		}
+		plan, err = loadPlanIdentityBytes(cfg, raw, true)
+	} else {
+		plan, err = loadPersistedPlanIdentity(cfg, stateDir, true)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -818,6 +826,12 @@ func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelea
 	if err != nil {
 		return nil, err
 	}
+	return loadPlanIdentityBytes(cfg, raw, retainRelease)
+}
+
+// Both active resumes and archived repair reviews authenticate the same
+// configuration, roles, route, allowance and pinned economic observations.
+func loadPlanIdentityBytes(cfg *ResolvedConfig, raw []byte, retainRelease bool) (*SetupPlan, error) {
 	// Authenticate the original approval before current-bytecode admission.
 	// Strict loading also requires the current release; provisional recovery
 	// records a different driver without changing the retained release identity.
