@@ -133,7 +133,13 @@ func readCoordinatorRepairCarry(stateDir string, plan *SetupPlan, entries []Jour
 	if err != nil {
 		return nil, err
 	}
-	if source.CoordinatorRepairCarry != nil || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || source.ConfigHash != plan.ConfigHash || !reflect.DeepEqual(source.Roles, plan.Roles) {
+	// The repair request remains bound to its source plan's ConfigHash. A
+	// successor may legitimately change only operational approvals (for
+	// example, a renewed testnet spending allowance) while retaining exactly
+	// the deployment, runtime bytes, roles and upgrade baseline below. Requiring
+	// the successor's whole config digest to match turned that harmless budget
+	// revision into a full historical-custody restart.
+	if source.CoordinatorRepairCarry != nil || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || !reflect.DeepEqual(source.Roles, plan.Roles) {
 		return nil, errors.New("coordinator repair source changes retained custody")
 	}
 	baseline := plan.CoordinatorUpgradeBaseline

@@ -363,6 +363,11 @@ func TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory(t *testi
 	if _, err := readCoordinatorRepairCarry(e.stateDir, e.plan, entries); err != nil {
 		t.Fatal(err)
 	}
+	allowanceRevision := *e.plan
+	allowanceRevision.ConfigHash = "0x" + strings.Repeat("cd", 32)
+	if _, err := readCoordinatorRepairCarry(e.stateDir, &allowanceRevision, entries); err != nil {
+		t.Fatalf("operational allowance revision lost retained coordinator custody: %v", err)
+	}
 	for _, name := range []string{"artifact.json", "budget.json", "request.json", "result.json"} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(e.stateDir, coordinatorRepairDirectory, name)
