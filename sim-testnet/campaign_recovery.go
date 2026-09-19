@@ -558,7 +558,7 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	plan, err := loadPersistedPlan(cfg, stateDir)
+	plan, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil || plan.PlanHash != planHash {
 		return nil, errors.Join(errors.New("campaign recovery approved plan is unavailable"), err)
 	}

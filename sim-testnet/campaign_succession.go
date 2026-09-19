@@ -167,7 +167,7 @@ func createScenarioCampaignSuccessor(cfg *ResolvedConfig, stateDir string, roles
 			return nil, err
 		}
 	}
-	current, err := loadPersistedPlan(cfg, stateDir)
+	current, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil || current.PlanHash != planHash {
 		return nil, errors.Join(errors.New("campaign succession current approval is unavailable"), err)
 	}

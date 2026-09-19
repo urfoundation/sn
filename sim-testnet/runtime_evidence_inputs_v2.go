@@ -199,7 +199,7 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 	if err != nil {
 		return nil, err
 	}
-	plan, err := loadPersistedPlan(cfg, stateDir)
+	plan, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil {
 		return nil, err
 	}

@@ -69,7 +69,7 @@ func runtimeReservedAttemptUploads(cfg *ResolvedConfig, stateDir string, contrac
 	if err := validateRuntimeReservedAttemptUploadCensus(cfg.Config); err != nil {
 		return nil, err
 	}
-	plan, err := loadPersistedPlan(cfg, stateDir)
+	plan, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil {
 		return nil, err
 	}
