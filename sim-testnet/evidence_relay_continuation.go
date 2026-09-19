@@ -300,7 +300,13 @@ func validateEvidenceRelayContinuationPlan(plan *SetupPlan) error {
 	if err != nil {
 		return err
 	}
-	if c.SourcePlanHash == plan.PlanHash || !plan.allowedPlanHashes()[c.SourcePlanHash] || !plan.allowedPlanHashes()[c.ActivationPlanHash] || c.ConfigHash != plan.ConfigHash || !validCanonicalHashHex(c.JournalHash) || len(c.Sources) != 4 || len(c.Retained) > int(continuedSlots) || uint64(len(c.Debits)) > c.debitLimit() {
+	// The continuation's configuration hash identifies the approval that
+	// created its fixed relay reserve. A later plan can legitimately have a
+	// different configuration hash for an unrelated allowance revision. The
+	// immutable source/activation plan lineage, retained reserve, and every
+	// monetary term below remain the authorization boundary; requiring the
+	// current plan's hash here would strand an already approved continuation.
+	if c.SourcePlanHash == plan.PlanHash || !plan.allowedPlanHashes()[c.SourcePlanHash] || !plan.allowedPlanHashes()[c.ActivationPlanHash] || !validCanonicalHashHex(c.ConfigHash) || !validCanonicalHashHex(c.JournalHash) || len(c.Sources) != 4 || len(c.Retained) > int(continuedSlots) || uint64(len(c.Debits)) > c.debitLimit() {
 		return errors.New("relay continuation changed its source approval or exact four-source census")
 	}
 	for _, hash := range []string{c.PreparedSHA256, c.CompletedSHA256, c.TransactionsSHA256} {
@@ -377,7 +383,11 @@ func validateEvidenceRelayContinuationBudget(plan *SetupPlan) error {
 	if err != nil {
 		return err
 	}
-	if c.ConfigHash != plan.ConfigHash || c.SourcePlanHash == plan.PlanHash || !plan.allowedPlanHashes()[c.SourcePlanHash] || plan.MaximumEVMFeePerGasWei != evidenceRelayOriginalFee {
+	// ConfigHash remains the immutable identity of the original approval. It
+	// intentionally need not equal this successor plan's hash: budget-only
+	// revisions must be able to retain a fully bounded, already approved relay
+	// continuation without recreating its evidence work.
+	if !validCanonicalHashHex(c.ConfigHash) || c.SourcePlanHash == plan.PlanHash || !plan.allowedPlanHashes()[c.SourcePlanHash] || plan.MaximumEVMFeePerGasWei != evidenceRelayOriginalFee {
 		return errors.New("relay continuation budget changed original approval identity")
 	}
 	original := *plan
