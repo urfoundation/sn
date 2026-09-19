@@ -133,7 +133,7 @@ func (self *ProvisionalActivationSetupV2) validate(cfg *ReleaseConfig, configPat
 		// Older running validators kept coordinator history beside operator
 		// state. Restore that exact owner without moving any history or stats.
 		cfg.StateDir = self.CoordinatorStateDir
-		if err := cfg.Validate(); err != nil {
+		if err := cfg.validateProvisionalActivationObservation(); err != nil {
 			return err
 		}
 	}
