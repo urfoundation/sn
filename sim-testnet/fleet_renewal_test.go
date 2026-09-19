@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -500,5 +501,56 @@ func TestFleetRenewalHistoricalScopeExcludesFundingAndUnrelatedActions(t *testin
 	}
 	if _, err := fleetRenewalHistoricalActionFleets(cfg, Action{ID: "fleet.refresh.batch.0"}); err == nil {
 		t.Fatal("invalid historical batch admitted")
+	}
+}
+
+func TestFleetRenewalSuccessorReserveFundsExactSignerCeilings(t *testing.T) {
+	fixture := newFleetRenewalTestFixture(t)
+	raw, err := fleetRenewalActions(fixture.base, fixture.renewal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spend, err := maximumActionSpend(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit, err := addDecimalUint(fixture.base.MaximumSpend.EVMGasWei, spend.EVMGasWei)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewal := cloneFleetRenewalForTest(t, fixture.renewal)
+	renewal.AllowanceExtensionWei = spend.EVMGasWei
+	renewal.AllowanceTotalEVMWei = limit
+	renewal.AllowanceTotalTAORao = 250_000_000_000
+	fixture.cfg.MaximumEVMGasWei, fixture.cfg.MaximumTAORao = limit, renewal.AllowanceTotalTAORao
+	plan, err := appendFleetRenewalPlan(fixture.base, renewal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserve := actionByID(t, plan, fleetRenewalReserveID(renewal.Round))
+	if reserve.Kind != "budget-reserve" || !reserve.Spend.EVMGasWei.IsZero() || reserve.Parameters["allowance_extension_wei"] != string(spend.EVMGasWei) {
+		t.Fatal("successor reserve did not record and consume its exact extension")
+	}
+	for _, role := range []string{"commitment-oracle", "keeper"} {
+		fund := actionByID(t, plan, fleetRenewalFundingID(renewal.Round, role))
+		if _, err := evmFundingTerms(fund, plan.LiveFacts.ExistentialDepositRao); err != nil {
+			t.Fatalf("%s funding: %v", role, err)
+		}
+	}
+	for _, action := range plan.Actions {
+		if action.Kind != "evm-transaction" || !isFleetRenewalAction(action) {
+			continue
+		}
+		role := "keeper"
+		if action.Parameters["operation"] == "mirror" {
+			role = "commitment-oracle"
+		}
+		if !slices.Contains(action.DependsOn, fleetRenewalFundingID(renewal.Round, role)) {
+			t.Fatalf("%s is not gated by its signer funding", action.ID)
+		}
+	}
+	plan.Actions = slices.DeleteFunc(plan.Actions, func(action Action) bool { return action.ID == fleetRenewalFundingID(renewal.Round, "keeper") })
+	if err := validateFleetRenewalPlan(plan); err == nil {
+		t.Fatal("renewal accepted without its keeper funding action")
 	}
 }

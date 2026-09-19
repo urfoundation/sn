@@ -96,7 +96,7 @@ func validateFleetRenewalSource(base, approved *SetupPlan, entries []JournalEntr
 	}
 	planned := map[string]string{}
 	for _, a := range approved.Actions {
-		if isFleetRenewalAction(a) {
+		if isFleetRenewalAction(a) || isFleetRenewalExtensionAction(a) {
 			planned[a.ID] = a.IntentHash
 		}
 	}
@@ -179,10 +179,19 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 	if err := validateFleetRenewalNonceCoverage(roles, exposure, renewal.EVMNonces); err != nil {
 		return err
 	}
-	actions, err := fleetRenewalActions(plan, renewal)
+	rawActions, err := fleetRenewalActions(plan, renewal)
 	if err != nil {
 		return err
 	}
+	if err := validateFleetRenewalAllowance(cfg, renewal, rawActions); err != nil {
+		return err
+	}
+	extensionActions, err := fleetRenewalPlanActions(plan, renewal)
+	if err != nil {
+		return err
+	}
+	extensionActions = extensionActions[:len(extensionActions)-len(rawActions)]
+	actions := append(append([]Action(nil), extensionActions...), rawActions...)
 	remaining := Spend{}
 	for _, a := range actions {
 		if !exactVerifiedPlanAction(plan, journal.Entries(), a.ID) {
@@ -214,14 +223,19 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 		if err := validateFleetRenewalFreshPrestate(renewal, fresh); err != nil {
 			return err
 		}
-		if err := executor.verifyFleetRenewalSignerBalances(ctx, actions); err != nil {
-			return err
-		}
 		if err := writeRunInputs(cfg, stateDir, plan, roles); err != nil {
 			return err
 		}
 	}
-	if err := executor.executeFleetRenewalPipeline(ctx, actions); err != nil {
+	for _, action := range extensionActions {
+		if err := executor.Execute(ctx, action); err != nil {
+			return err
+		}
+	}
+	if err := executor.verifyFleetRenewalSignerBalances(ctx, rawActions); err != nil {
+		return err
+	}
+	if err := executor.executeFleetRenewalPipeline(ctx, rawActions); err != nil {
 		return err
 	}
 	return printResult(o.Format, map[string]any{"command": "fleet-renew", "plan_hash": plan.PlanHash, "renewal_round": renewal.Round, "fleets": len(renewal.Fleets), "valid_from_epoch": renewal.ValidFromEpoch, "valid_to_epoch": renewal.ValidToEpoch, "status": "postcondition_verified"}, nil)

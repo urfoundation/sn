@@ -59,6 +59,13 @@ func orderFleetRenewalActions(actions []Action, renewal FleetRenewal) ([]Action,
 					keeperNonce++
 					next = append(next, a.ID)
 				}
+				if !renewal.AllowanceExtensionWei.IsZero() && a.Kind == "evm-transaction" {
+					role := "keeper"
+					if operation == "mirror" {
+						role = "commitment-oracle"
+					}
+					a.DependsOn = append(a.DependsOn, fleetRenewalFundingID(renewal.Round, role))
+				}
 				a.IntentHash, err = actionIntentHash(a)
 				if err != nil {
 					return nil, err

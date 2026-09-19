@@ -79,6 +79,15 @@ func (e *fleetRenewalBudgetError) Error() string {
 }
 
 func isFleetRenewalAction(a Action) bool { return strings.HasPrefix(a.ID, "fleet.renew.") }
+func fleetRenewalReserveID(round uint64) string {
+	return fmt.Sprintf("renewal.%d.evm-gas-reserve", round)
+}
+func fleetRenewalFundingID(round uint64, role string) string {
+	return fmt.Sprintf("evm.fund-renewal-%d-%s", round, role)
+}
+func isFleetRenewalExtensionAction(a Action) bool {
+	return strings.HasPrefix(a.ID, "renewal.") && strings.HasSuffix(a.ID, ".evm-gas-reserve") || strings.HasPrefix(a.ID, "evm.fund-renewal-")
+}
 func fleetRenewalActionID(round uint64, fleet int, operation string, member int) string {
 	id := fmt.Sprintf("fleet.renew.%d.%d.%s", round, fleet, operation)
 	if member != 0 {
@@ -248,13 +257,82 @@ func fleetRenewalActions(p *SetupPlan, renewal FleetRenewal) ([]Action, error) {
 	return orderFleetRenewalActions(actions, renewal)
 }
 
+func validateFleetRenewalAllowance(cfg *ResolvedConfig, renewal FleetRenewal, raw []Action) error {
+	if cfg == nil {
+		return errors.New("renewal allowance configuration is unavailable")
+	}
+	spend, err := maximumActionSpend(raw)
+	if err != nil {
+		return err
+	}
+	if renewal.AllowanceExtensionWei != spend.EVMGasWei || renewal.AllowanceTotalTAORao != cfg.MaximumTAORao || renewal.AllowanceTotalEVMWei != cfg.MaximumEVMGasWei {
+		return errors.New("renewal successor allowance differs from the current reviewed limits")
+	}
+	return nil
+}
+
+func fleetRenewalPlanActions(p *SetupPlan, renewal FleetRenewal) ([]Action, error) {
+	raw, err := fleetRenewalActions(p, renewal)
+	if err != nil || renewal.AllowanceExtensionWei.IsZero() {
+		return raw, err
+	}
+	spend, err := maximumActionSpend(raw)
+	if err != nil {
+		return nil, err
+	}
+	if spend.EVMGasWei != renewal.AllowanceExtensionWei || renewal.AllowanceTotalTAORao == 0 || renewal.AllowanceTotalEVMWei.IsZero() {
+		return nil, errors.New("renewal successor allowance is incomplete or does not match fleet gas")
+	}
+	totals := map[string]*big.Int{"commitment-oracle": new(big.Int), "keeper": new(big.Int)}
+	for _, action := range raw {
+		if action.Kind != "evm-transaction" {
+			continue
+		}
+		role := "keeper"
+		if action.Parameters["operation"] == "mirror" {
+			role = "commitment-oracle"
+		}
+		amount, ok := new(big.Int).SetString(string(action.Spend.EVMGasWei), 10)
+		if !ok {
+			return nil, errors.New("renewal gas amount is malformed")
+		}
+		totals[role].Add(totals[role], amount)
+	}
+	deploymentHash, err := contractDeploymentIdentityHash(p.Deployment)
+	if err != nil {
+		return nil, err
+	}
+	ext := []Action{{ID: fleetRenewalReserveID(renewal.Round), Kind: "budget-reserve", Target: p.Deployment.DeploymentID, Description: "append-only approved EVM gas reserve for this fleet renewal", Parameters: map[string]string{"round": strconv.FormatUint(renewal.Round, 10), "allowance_extension_wei": string(renewal.AllowanceExtensionWei), deploymentManifestHashParameter: deploymentHash}, Spend: Spend{}, DependsOn: nil}}
+	for _, role := range []string{"commitment-oracle", "keeper"} {
+		usable, err := ceilDivideDecimalUintToUint64(DecimalUint(totals[role].String()), evmWeiPerRao)
+		if err != nil {
+			return nil, err
+		}
+		target := renewal.Keeper
+		if role == "commitment-oracle" {
+			target = renewal.Oracle
+		}
+		a := Action{ID: fleetRenewalFundingID(renewal.Round, role), Kind: "substrate-extrinsic", Target: target.Hex(), Description: "fund the renewal signer only to its reviewed EVM gas ceiling", Parameters: map[string]string{"usable_evm_rao": strconv.FormatUint(usable, 10), "existential_deposit_rao": strconv.FormatUint(p.LiveFacts.ExistentialDepositRao, 10)}, Spend: Spend{TAORao: usable + p.LiveFacts.ExistentialDepositRao}, DependsOn: []string{fleetRenewalReserveID(renewal.Round)}}
+		a.IntentHash, err = actionIntentHash(a)
+		if err != nil {
+			return nil, err
+		}
+		ext = append(ext, a)
+	}
+	ext[0].IntentHash, err = actionIntentHash(ext[0])
+	if err != nil {
+		return nil, err
+	}
+	return append(ext, raw...), nil
+}
+
 func validateFleetRenewalPlan(p *SetupPlan) error {
 	generated := map[string]Action{}
 	for index, renewal := range p.FleetRenewals {
 		if renewal.Round != uint64(index+1) || !slices.Contains(p.PriorPlanHashes, renewal.SourcePlanHash) {
 			return errors.New("fleet renewal round has no immutable predecessor plan")
 		}
-		actions, err := fleetRenewalActions(p, renewal)
+		actions, err := fleetRenewalPlanActions(p, renewal)
 		if err != nil {
 			return err
 		}
@@ -263,7 +341,7 @@ func validateFleetRenewalPlan(p *SetupPlan) error {
 		}
 	}
 	for _, action := range p.Actions {
-		if !isFleetRenewalAction(action) {
+		if !isFleetRenewalAction(action) && !isFleetRenewalExtensionAction(action) {
 			continue
 		}
 		want, ok := generated[action.ID]
@@ -299,13 +377,28 @@ func appendFleetRenewalPlanForHistory(base *SetupPlan, renewal FleetRenewal, his
 	if renewal.SourcePlanHash != base.PlanHash || renewal.Round != uint64(len(base.FleetRenewals)+1) {
 		return nil, errors.New("renewal does not extend the current plan")
 	}
-	actions, err := fleetRenewalActions(base, renewal)
+	actions, err := fleetRenewalPlanActions(base, renewal)
 	if err != nil {
 		return nil, err
 	}
-	spend, err := maximumActionSpend(actions)
+	rawActions, err := fleetRenewalActions(base, renewal)
 	if err != nil {
 		return nil, err
+	}
+	rawSpend, err := maximumActionSpend(rawActions)
+	if err != nil {
+		return nil, err
+	}
+	if !renewal.AllowanceExtensionWei.IsZero() {
+		if renewal.AllowanceExtensionWei != rawSpend.EVMGasWei || renewal.AllowanceTotalTAORao < base.Limits.TAORao || renewal.AllowanceTotalEVMWei.IsZero() {
+			return nil, errors.New("renewal successor allowance differs from the reviewed fleet gas ceiling or lowers an existing limit")
+		}
+		if comparison, err := renewal.AllowanceTotalEVMWei.Cmp(base.Limits.EVMGasWei); err != nil || comparison < 0 {
+			return nil, errors.New("renewal successor EVM limit lowers the existing approval")
+		}
+		plan.Limits.TAORao, plan.Limits.EVMGasWei = renewal.AllowanceTotalTAORao, renewal.AllowanceTotalEVMWei
+	} else if renewal.AllowanceTotalTAORao != 0 || !renewal.AllowanceTotalEVMWei.IsZero() {
+		return nil, errors.New("renewal successor allowance fields are incomplete")
 	}
 	found := false
 	for index := range plan.Actions {
@@ -316,32 +409,34 @@ func appendFleetRenewalPlanForHistory(base *SetupPlan, renewal FleetRenewal, his
 		if action.Kind != "budget-reserve" || action.Spend.EVMGasWei != renewal.CampaignReserveBeforeWei {
 			return nil, errors.New("renewal campaign reserve differs from source approval")
 		}
-		available, availableErr := subtractDecimalUint(action.Spend.EVMGasWei, renewal.CampaignLiabilityWei)
-		if availableErr != nil {
-			available = "0"
-		}
-		comparison, comparisonErr := spend.EVMGasWei.Cmp(available)
-		if comparisonErr != nil {
-			return nil, comparisonErr
-		}
-		if comparison > 0 {
-			shortfall, err := subtractDecimalUint(spend.EVMGasWei, available)
+		if renewal.AllowanceExtensionWei.IsZero() {
+			available, availableErr := subtractDecimalUint(action.Spend.EVMGasWei, renewal.CampaignLiabilityWei)
+			if availableErr != nil {
+				available = "0"
+			}
+			comparison, comparisonErr := rawSpend.EVMGasWei.Cmp(available)
+			if comparisonErr != nil {
+				return nil, comparisonErr
+			}
+			if comparison > 0 {
+				shortfall, err := subtractDecimalUint(rawSpend.EVMGasWei, available)
+				if err != nil {
+					return nil, err
+				}
+				return nil, &fleetRenewalBudgetError{Renewal: renewal, Maximum: rawSpend, AvailableWei: available, ShortfallWei: shortfall, Actions: rawActions}
+			}
+			remaining, err := subtractDecimalUint(action.Spend.EVMGasWei, rawSpend.EVMGasWei)
 			if err != nil {
 				return nil, err
 			}
-			return nil, &fleetRenewalBudgetError{Renewal: renewal, Maximum: spend, AvailableWei: available, ShortfallWei: shortfall, Actions: actions}
-		}
-		remaining, err := subtractDecimalUint(action.Spend.EVMGasWei, spend.EVMGasWei)
-		if err != nil {
-			return nil, fmt.Errorf("renewal maximum gas %s exceeds campaign reserve %s: %w", spend.EVMGasWei, action.Spend.EVMGasWei, err)
-		}
-		if comparison, err := remaining.Cmp(renewal.CampaignLiabilityWei); err != nil || comparison < 0 {
-			return nil, fmt.Errorf("renewal gas %s leaves %s for campaign liabilities %s", spend.EVMGasWei, remaining, renewal.CampaignLiabilityWei)
-		}
-		action.Spend.EVMGasWei = remaining
-		action.IntentHash, err = actionIntentHash(*action)
-		if err != nil {
-			return nil, err
+			if comparison, err := remaining.Cmp(renewal.CampaignLiabilityWei); err != nil || comparison < 0 {
+				return nil, fmt.Errorf("renewal gas %s leaves %s for campaign liabilities %s", rawSpend.EVMGasWei, remaining, renewal.CampaignLiabilityWei)
+			}
+			action.Spend.EVMGasWei = remaining
+			action.IntentHash, err = actionIntentHash(*action)
+			if err != nil {
+				return nil, err
+			}
 		}
 		found = true
 	}
