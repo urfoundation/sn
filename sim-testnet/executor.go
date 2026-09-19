@@ -772,8 +772,9 @@ func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelea
 	if err != nil {
 		return nil, err
 	}
-	// Compare active release identity before current-bytecode admission. A
-	// different locked release can enter only the explicit revision path.
+	// Authenticate the original approval before current-bytecode admission.
+	// Strict loading also requires the current release; provisional recovery
+	// records a different driver without changing the retained release identity.
 	p, err := decodePersistedPlanWire(raw)
 	if err != nil {
 		return nil, err
@@ -790,15 +791,43 @@ func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelea
 		return nil, fmt.Errorf("hash current resolved launch inputs: %w", err)
 	}
 	if p.OwnedRPCAuthority != cfg.ownedRPCAuthority {
-		return nil, errPersistedPlanIdentityMismatch
+		return nil, fmt.Errorf("%w: owned RPC authority differs", errPersistedPlanIdentityMismatch)
 	}
 	if err := validateRuntimeConfigIdentityPlan(cfg, p); err != nil {
 		return nil, errors.Join(errPersistedPlanIdentityMismatch, err)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	if p.Schema != currentSetupPlanSchema || p.Release != "1.0" || p.ReleaseLockHash == "" || !retainRelease && p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || p.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
-		return nil, errPersistedPlanIdentityMismatch
+	var identityErrors []error
+	for _, check := range []struct {
+		field   string
+		matches bool
+	}{
+		{field: "schema", matches: p.Schema == currentSetupPlanSchema},
+		{field: "release", matches: p.Release == "1.0"},
+		{field: "release_lock_hash", matches: p.ReleaseLockHash != "" && (retainRelease || p.ReleaseLockHash == releaseLockHash)},
+		{field: "resolved_inputs_hash", matches: p.ResolvedInputsHash != "" && p.ResolvedInputsHash == resolvedHash},
+		{field: "deployment_id", matches: p.DeploymentID == cfg.Config.Deployment.DeploymentID},
+		{field: "chain_id", matches: p.ChainID == testnetChainID},
+		{field: "genesis_hash", matches: p.GenesisHash == testnetGenesis},
+		{field: "netuid", matches: p.Netuid == cfg.Netuid},
+		{field: "config_hash", matches: p.ConfigHash == cfg.ConfigHash},
+		{field: "policy_hash", matches: p.PolicyHash == cfg.PolicyHash},
+		{field: "limits", matches: p.Limits == configuredPlanLimits(cfg)},
+		{field: "registration_burn_limit_rao", matches: p.RegistrationBurnLimitRao == cfg.Config.Budgets.MaximumRegistrationBurnRao},
+		{field: "native_transaction_fee_limit_rao", matches: p.NativeTransactionFeeLimitRao == cfg.Config.Budgets.MaximumNativeTransactionFeeRao},
+		{field: "maximum_evm_fee_per_gas_wei", matches: p.MaximumEVMFeePerGasWei == cfg.Config.Budgets.MaximumEVMFeePerGasWei},
+		{field: "alpha_transfer_margin_bps", matches: p.AlphaTransferMarginBPS == cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS},
+		{field: "minimum_source_remaining_rao", matches: p.MinimumSourceRemainingRao == cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao},
+		{field: "bootstrap_burn_half_life_blocks", matches: p.BootstrapBurnHalfLifeBlocks == bootstrapBurnHalfLife},
+		{field: "production_burn_half_life_blocks", matches: p.ProductionBurnHalfLifeBlocks == productionBurnHalfLife},
+	} {
+		if !check.matches {
+			identityErrors = append(identityErrors, fmt.Errorf("%s differs", check.field))
+		}
+	}
+	if len(identityErrors) > 0 {
+		return nil, errors.Join(errPersistedPlanIdentityMismatch, errors.Join(identityErrors...))
 	}
 	roles, err := derivePublicRoles(cfg)
 	if err != nil {
@@ -1580,6 +1609,9 @@ func (e *Executor) verifyInitialRegistrationPreState(ctx context.Context, action
 }
 
 func (e *Executor) Execute(ctx context.Context, a Action) error {
+	if e != nil && e.cfg != nil && e.cfg.readOnlyAudit {
+		return errors.New("historical audit cannot execute actions")
+	}
 	if err := e.verifyActionDependencies(a); err != nil {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
@@ -2809,8 +2841,10 @@ func (self *Executor) reconcileContractDeploymentEventBoundary(ctx context.Conte
 	if !changed {
 		return false, nil
 	}
-	if err := saveContractDeployment(self.stateDir, reconciled); err != nil {
-		return false, err
+	if !self.cfg.readOnlyAudit {
+		if err := saveContractDeployment(self.stateDir, reconciled); err != nil {
+			return false, err
+		}
 	}
 	*manifest = reconciled
 	return true, nil
@@ -2954,6 +2988,9 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 			if !approvedSuperseded {
 				return fmt.Errorf("existing contract deployment %s is neither active nor approved for supersession", existingHash)
 			}
+			if e.cfg.readOnlyAudit {
+				return errors.New("historical audit found a superseded active deployment manifest requiring recovery")
+			}
 			archivePath := filepath.Join(e.stateDir, "public", "deployments", stringsTrim0x(existingHash)+".json")
 			archive, marshalErr := json.MarshalIndent(existing, "", "  ")
 			if marshalErr != nil {
@@ -2967,6 +3004,9 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 		}
 		if _, err := e.reconcileContractDeploymentEventBoundary(ctx, &p.Manifest); err != nil {
 			return fmt.Errorf("new contract deployment event boundary: %w", err)
+		}
+		if e.cfg.readOnlyAudit {
+			return errors.New("historical audit requires an existing active deployment manifest")
 		}
 		if err := saveContractDeployment(e.stateDir, p.Manifest); err != nil {
 			return err
@@ -2992,6 +3032,9 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 		p.Manifest.RuntimeHashes = existing.RuntimeHashes
 		e.payloads = p
 		return nil
+	}
+	if e.cfg.readOnlyAudit {
+		return errors.New("historical audit requires an existing active deployment manifest")
 	}
 	nonce, err := e.deployer.PendingNonce(ctx)
 	if err != nil {

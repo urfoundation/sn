@@ -26,6 +26,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	if ctx == nil || self == nil || self.plan == nil || self.journal == nil || readEntries == nil || readSource == nil {
 		return errors.New("plan/journal or preparation reader is unavailable")
 	}
+	readOnlyAudit := self.cfg != nil && self.cfg.readOnlyAudit
 	self.carriedVerificationKeys = nil
 	if provisionalResumeEnabled(self.cfg) {
 		return self.verifyProvisionalActionHistoryWithReaders(ctx, readEntries, readSource)
@@ -50,16 +51,16 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	for index, action := range self.plan.Actions {
 		actionIndexes[action.ID] = index
 		entry, ok := verified.find(action, false)
-		if !ok && action.ID == "topology.launch" {
+		if action.ID == "topology.launch" && (!ok || readOnlyAudit) {
 			entry, ok = verified.find(action, true)
-			if ok && entry.PlanHash != self.plan.PlanHash {
+			if ok && (entry.PlanHash != self.plan.PlanHash || readOnlyAudit) {
 				if _, err := readPostcondition(entry); err != nil {
 					actionErrors[index] = fmt.Errorf("action %s: persisted ancestor process receipt: %w", action.ID, err)
 				}
 			}
 			continue
 		}
-		if !ok || entry.PlanHash == self.plan.PlanHash {
+		if !ok || entry.PlanHash == self.plan.PlanHash && !readOnlyAudit {
 			continue
 		}
 		if err := ctx.Err(); err != nil {

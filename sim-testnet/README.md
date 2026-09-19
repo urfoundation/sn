@@ -12,7 +12,7 @@ operators, so the affiliated-validator self-dealing mask leaves an independent
 head and pool instead of contaminating every head UID.
 
 It never creates a subnet. Every write is bounded by an approved, content-hashed
-plan. `doctor`, `plan`, `status`, `inspect` and `analyze` are read-only. `setup`,
+plan. `doctor`, `plan`, `audit`, `status`, `inspect` and `analyze` are read-only. `setup`,
 `launch`, `resume`, `scenario` and `retire` are dry-runs unless both `--apply`
 and the exact `--plan-hash` are supplied.
 
@@ -869,12 +869,13 @@ exact action, receipt hash, recorded height, canonical hash and observed state.
 Private mode repeats the batches through the independent observer; public
 override mode requires identical detached comparison evidence. Successful
 generation-1 mirror/binding proofs are saved individually under the state directory's
-`historical-audit-cache-v1` directory, so a later failure or process restart
+`historical-audit-cache-v2` directory, so a later failure or process restart
 retains completed work. Entries authenticate the exact inputs and bind the
-plan, release, verifier executable and authorized observers. Changed inputs,
+plan, release, explicit verifier version and authorized observers. An unrelated
+driver rebuild does not invalidate a successful immutable proof. Known compatible
+authenticated v1 entries can be imported; progress logs cannot authorize reuse. Changed inputs,
 unreadable entries or authentication failures cause the original verification
-to run again. Builds predating this cache cannot contribute entries from their
-progress logs.
+to run again.
 
 Cache hits still require fresh canonical/finalized checkpoints and revalidated
 local receipts, decoder inputs and successor relationships. Current balances,
@@ -886,10 +887,34 @@ native commitments, transaction receipts and install events remain outside that
 cache boundary. No failed or canceled proof is saved, and independent observers
 must both succeed before a combined fleet proof can be reused.
 
+Run historical verification independently with:
+
+```sh
+"$SIM_TESTNET_BINARY" audit --config sim-testnet/testnet.yml \
+  --state-dir "$STATE_DIR" --plan-hash "$PLAN_HASH" \
+  --owned-rpc-authority 192.168.1.162:9944 --format json
+```
+
+`audit` authenticates the retained plan, journal prefix and verified current and
+ancestor action receipts, then aggregates the available historical checks.
+Release drift is a reported finding even when the original plan remains valid
+for provisional recovery. It opens only signer-free RPC readers, takes no writer
+lock, does not change the journal, deployment manifest, supervisor or caches,
+and tolerates new journal entries appended after its recorded snapshot. A defect
+returns a nonzero exit status after independent checks finish. Save stdout outside
+the active state directory when retaining the report. A successful audit alone
+does not grant final release acceptance.
+
 For a provisional testnet run, `resume` and `scenario` accept
 `--provisional-resume` together with `--apply` and the exact persisted plan hash.
 Retain the original configuration and repository arguments when replacing the
-driver. This mode authenticates completed receipts locally, keeps pending
+driver. If the approved plan already binds the owned LAN endpoint, keep
+`--owned-rpc-authority 192.168.1.162:9944`; the legacy
+`--provisional-rpc-authority` flag selects a different routing mode.
+The original plan and release identity remain unchanged while provenance records
+the actual hotfix executable. Runtime preparation and recovery reloads retain that
+same admitted plan; changes to operating inputs, roles or budgets still fail.
+This mode authenticates completed receipts locally, keeps pending
 transaction recovery and spending limits, and uses the admitted driver image
 for restarted components. It records actual executable provenance before work
 begins and marks scenario results provisional with `final_acceptance=false`.

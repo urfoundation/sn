@@ -57,6 +57,7 @@ type historicalAuditCacheEntry struct {
 	proof         historicalAuditCacheProof
 	key           [32]byte
 	directoryName string
+	readOnly      bool
 }
 
 var historicalAuditExecutableIdentity struct {
@@ -181,6 +182,7 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 	}
 	entry := &historicalAuditCacheEntry{
 		stateDir: e.stateDir,
+		readOnly: cfg.readOnlyAudit,
 		key:      derive32(cfg, "historical-audit-cache/v2"),
 		proof: historicalAuditCacheProof{
 			Schema: historicalAuditCacheSchema, VerifierVersion: historicalAuditCacheVerifierVersion,
@@ -358,7 +360,7 @@ func readHistoricalAuditCacheEnvelope(directory *os.File, name string) (historic
 // Concurrent successful writers publish the same authenticated proof, with
 // private temporary files and an atomic, synced replacement.
 func (entry *historicalAuditCacheEntry) saveSuccess(ctx context.Context) {
-	if entry == nil || ctx == nil || ctx.Err() != nil {
+	if entry == nil || entry.readOnly || ctx == nil || ctx.Err() != nil {
 		return
 	}
 	envelope := historicalAuditCacheEnvelope{Proof: entry.proof, MAC: hex.EncodeToString(entry.authenticationTag(entry.proof))}

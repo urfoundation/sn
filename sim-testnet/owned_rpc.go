@@ -33,7 +33,7 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
 		return errors.New("provisional owned RPC is restricted to exact-plan resume or scenario")
 	}
 	switch command {
-	case "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
+	case "audit", "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
 	default:
 		return fmt.Errorf("--owned-rpc-authority is not supported by %s", command)
 	}
