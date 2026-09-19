@@ -500,7 +500,7 @@ func dialEVMClient(ctx context.Context, endpoint string, requestsPerMinute int) 
 			return nil, err
 		}
 		if parsed.Scheme == "http" || parsed.Scheme == "https" {
-			client, err := gethRPC.DialOptions(ctx, endpoint, gethRPC.WithHTTPClient(&http.Client{Timeout: ownedEVMHTTPTimeout}))
+			client, err := gethRPC.DialOptions(ctx, endpoint, gethRPC.WithHTTPClient(&http.Client{Timeout: ownedEVMHTTPTimeout, Transport: newOwnedEvmRetryTransport(http.DefaultTransport)}))
 			if err != nil {
 				return nil, err
 			}
