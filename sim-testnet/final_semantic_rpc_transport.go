@@ -60,7 +60,7 @@ func canonicalFinalSemanticRPCTransport(public *PublicDeploymentManifest, evmReq
 	}
 	if public.OperationalRPCMode == rpcModeOwnedNode {
 		transport := finalSemanticRPCTransport{
-			profile: finalSemanticOwnedRPCTransport,
+			profile:               finalSemanticOwnedRPCTransport,
 			canonicalSubstrateRPC: public.SubstrateRPC, canonicalEVMRPC: public.EVMRPC,
 			dialSubstrateRPC: public.SubstrateRPC, dialEVMRPC: public.EVMRPC,
 		}
@@ -248,6 +248,7 @@ func retryFinalSemanticRPCCall(ctx context.Context, gate *rpcRequestGate, policy
 			}
 		}
 		attemptCtx, cancel := context.WithTimeout(ctx, policy.attemptTimeout)
+		attemptCtx = context.WithValue(attemptCtx, ownedEvmRpcRetryBudgetKey{}, true)
 		last = call(attemptCtx)
 		cancel()
 		if last == nil {
