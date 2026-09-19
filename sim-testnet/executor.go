@@ -3798,7 +3798,7 @@ func validateAlphaTransferAtSnapshot(a Action, source, destination [32]byte, liv
 		}
 		finalStake, addOK := checkedAdd(destinationStake, exact-shortfall)
 		if !addOK || !alphaShareMeets(live.Snapshot.TotalAlphaRao, finalStake, reserveMinimumShareBPS) {
-			return fmt.Errorf("reserve transfer stopped before signing: planned minimum finalized stake %d+(%d-%d) does not retain %d bps of registered alpha %d", destinationStake, exact, shortfall, reserveMinimumShareBPS, live.Snapshot.TotalAlphaRao)
+			return fmt.Errorf(reserveRepairPreSignFailureFormat, destinationStake, exact, shortfall, reserveMinimumShareBPS, live.Snapshot.TotalAlphaRao)
 		}
 	}
 	return nil

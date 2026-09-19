@@ -3688,10 +3688,9 @@ func priorReserveValidatorRepairChain(revised, prior *SetupPlan, entries []Journ
 	return repairs, nil
 }
 
-// Retire only an insufficient final reserve-share repair which never entered
-// execution. Execute fsyncs StageIntent before dispatch, including before the
-// native signer persists raw bytes. Any journal row for this action or intent
-// therefore prevents retirement, even a failed or foreign-lineage row. Apply
+// Retire an insufficient final reserve-share repair only before execution or
+// after its first attempt proved the exact reserve-share rejection before
+// signing. Any ambiguous history or transaction evidence blocks retirement. Apply
 // rebuilds this revision while holding the existing deployment journal lock.
 // The original action remains in the archived predecessor plan; only its
 // unspent reservation leaves the active set used by retirement accounting.
@@ -3731,10 +3730,8 @@ func retainExecutableReserveValidatorRepairChain(cfg *ResolvedConfig, prior *Set
 			if index != len(repairs)-1 {
 				return nil, fmt.Errorf("insufficient reserve-validator repair %s has a later repair; its chain cannot be replaced", action.ID)
 			}
-			for _, entry := range entries {
-				if entry.ActionID == action.ID || entry.IntentHash == action.IntentHash {
-					return nil, fmt.Errorf("insufficient reserve-validator repair %s has journal history; it cannot be replaced", action.ID)
-				}
+			if _, err := reserveRepairPreSignFailure(prior, action, entries); err != nil {
+				return nil, fmt.Errorf("insufficient reserve-validator repair %s cannot be replaced: %w", action.ID, err)
 			}
 			return append([]Action(nil), repairs[:index]...), nil
 		}
@@ -3870,6 +3867,29 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		parameters[alphaRepairMaximumTrancheParameter] = strconv.FormatUint(cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, 10)
 		parameters["reserve_target_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS), 10)
 		parameters["reserve_minimum_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS), 10)
+		for _, old := range prior.Actions {
+			if !strings.HasPrefix(old.ID, "alpha.repair.validator.1.") {
+				continue
+			}
+			retained := false
+			for _, carried := range repairs {
+				retained = retained || carried.ID == old.ID
+			}
+			if retained {
+				continue
+			}
+			failure, err := reserveRepairPreSignFailure(prior, old, entries)
+			if err != nil {
+				return err
+			}
+			if failure != nil {
+				parameters["retired_pre_sign_action_id"] = old.ID
+				parameters["retired_pre_sign_plan_hash"] = prior.PlanHash
+				parameters["retired_pre_sign_intent_hash"] = old.IntentHash
+				parameters["retired_pre_sign_failure_sequence"] = strconv.FormatUint(failure.Sequence, 10)
+				parameters["retired_pre_sign_failure_hash"] = failure.EntryHash
+			}
+		}
 		repair := Action{
 			ID: repairID, Kind: "substrate-extrinsic", Target: base.Target,
 			Description: "spend the remaining approved cumulative alpha tranche to restore the reserve-validator target after live-emission dilution",
