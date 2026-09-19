@@ -276,6 +276,7 @@ func TestHistoricalFleetAliasPreparationUsesRecordedBindingCall(t *testing.T) {
 func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
 	supersession := newFleetGenerationOneSupersessionFixture(t, "historical-alias-mirror")
 	cfg := supersession.cfg
+	cfg.WalletMaterial = "fleet-history-cache-fixture"
 	cfg.OperationalRPCMode = rpcModePublicOverride
 	for _, record := range []*ActionPostcondition{supersession.sourceRecord, supersession.installRecord, supersession.refreshRecord} {
 		record.OperationalRPCMode = rpcModePublicOverride

@@ -676,9 +676,15 @@ func (self *Executor) verifyFleetInstallAliasState(action Action, state map[stri
 	if !ok {
 		return JournalEntry{}, nil, nil, fmt.Errorf("fleet install source batch %d is not verified", batch)
 	}
-	sourceRecord, err := self.readPersistedPostcondition(sourceEntry)
-	if err != nil {
-		return JournalEntry{}, nil, nil, err
+	sourceRecord := self.fleetInstallAliasRecordCache[sourceEntry]
+	if sourceRecord == nil {
+		sourceRecord, err = self.readPersistedPostcondition(sourceEntry)
+		if err != nil {
+			return JournalEntry{}, nil, nil, err
+		}
+		if self.fleetInstallAliasRecordCache != nil {
+			self.fleetInstallAliasRecordCache[sourceEntry] = sourceRecord
+		}
 	}
 	if err := observedPostconditionMatches(sourceRecord.Observed, sourceRecord.IndependentObserved); err != nil {
 		return JournalEntry{}, nil, nil, fmt.Errorf("fleet install source observations differ: %w", err)

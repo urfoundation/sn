@@ -34,27 +34,28 @@ import (
 )
 
 type Executor struct {
-	cfg                       *ResolvedConfig
-	stateDir                  string
-	plan                      *SetupPlan
-	journal                   *Journal
-	roles                     *RoleSecrets
-	substrate                 *SubstrateManager
-	independentSubstrate      *SubstrateManager
-	nativeOwner               *Executor
-	independentEVM            *ethclient.Client
-	deployer, owner           *EvmTxManager
-	guardian                  *EvmTxManager
-	oracle, keeper            *EvmTxManager
-	deposits                  map[int]*EvmTxManager
-	payloads                  *DeploymentPayloads
-	releaseGate               *ReleaseCampaignGate
-	carriedVerificationKeys   map[string]bool
-	carriedFleetHistoryKeys   map[string]bool
-	auditAuthorizedConfig     *ResolvedConfig
-	fleetCommitmentHistory    *fleetCommitmentHistoryScope
-	precompileHistoryEvidence *PrecompileConformanceEvidence
-	preparationIncomplete     bool
+	cfg                          *ResolvedConfig
+	stateDir                     string
+	plan                         *SetupPlan
+	journal                      *Journal
+	roles                        *RoleSecrets
+	substrate                    *SubstrateManager
+	independentSubstrate         *SubstrateManager
+	nativeOwner                  *Executor
+	independentEVM               *ethclient.Client
+	deployer, owner              *EvmTxManager
+	guardian                     *EvmTxManager
+	oracle, keeper               *EvmTxManager
+	deposits                     map[int]*EvmTxManager
+	payloads                     *DeploymentPayloads
+	releaseGate                  *ReleaseCampaignGate
+	carriedVerificationKeys      map[string]bool
+	carriedFleetHistoryKeys      map[string]bool
+	fleetInstallAliasRecordCache map[JournalEntry]*ActionPostcondition
+	auditAuthorizedConfig        *ResolvedConfig
+	fleetCommitmentHistory       *fleetCommitmentHistoryScope
+	precompileHistoryEvidence    *PrecompileConformanceEvidence
+	preparationIncomplete        bool
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
