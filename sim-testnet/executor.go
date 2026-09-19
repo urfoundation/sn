@@ -516,7 +516,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
-	p, planErr := loadPersistedPlan(cfg, stateDir)
+	p, planErr := loadInvocationPlan(cfg, stateDir, cmd, o)
 	if o.StrictHistoryAdoption != "" {
 		if planErr != nil {
 			return fmt.Errorf("strict history adoption requires the finalized current plan: %w", planErr)
@@ -739,6 +739,35 @@ func mayRefreshPersistedPlan(planErr error, entries []JournalEntry) bool {
 }
 
 func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
+	return loadPersistedPlanIdentity(cfg, stateDir, false)
+}
+
+// Provisional runtime recovery retains its explicitly approved release identity.
+// Every configuration, role, budget and artifact check remains shared with strict
+// loading; only the current driver/release-lock equality is a separate audit.
+func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options cliOptions) (*SetupPlan, error) {
+	if !options.ProvisionalResume {
+		return loadPersistedPlan(cfg, stateDir)
+	}
+	if err := validateProvisionalResumeOptions(command, options); err != nil {
+		return nil, err
+	}
+	if cfg == nil || cfg.provisionalResume == nil {
+		return nil, errors.New("provisional runtime plan requires authenticated driver provenance")
+	}
+	plan, err := loadPersistedPlanIdentity(cfg, stateDir, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireApproved(true, options.PlanHash, plan.PlanHash); err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+// Authenticate the persisted wire and all current operational inputs before
+// admitting it. A retained release never changes or rehashes the stored plan.
+func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelease bool) (*SetupPlan, error) {
 	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
 	if err != nil {
 		return nil, err
@@ -768,7 +797,7 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	if p.Schema != currentSetupPlanSchema || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || p.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
+	if p.Schema != currentSetupPlanSchema || p.Release != "1.0" || p.ReleaseLockHash == "" || !retainRelease && p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || p.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
 		return nil, errPersistedPlanIdentityMismatch
 	}
 	roles, err := derivePublicRoles(cfg)
