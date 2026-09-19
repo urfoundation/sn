@@ -176,7 +176,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 	if exposure.Liability != renewal.CampaignLiabilityWei || exposure.SupersededCredit != renewal.SupersededGasCoveredWei {
 		return errors.New("renewal campaign liability differs from the reviewed signed transaction set")
 	}
-	if err := validateFleetRenewalNonceCoverage(roles, exposure, renewal.EVMNonces); err != nil {
+	if err := validateFleetRenewalSignerNonceCoverage(roles, exposure, renewal.EVMNonces, []common.Address{renewal.Oracle, renewal.Keeper}); err != nil {
 		return err
 	}
 	rawActions, err := fleetRenewalActions(plan, renewal)
