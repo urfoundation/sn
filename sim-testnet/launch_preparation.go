@@ -66,6 +66,10 @@ func collectLaunchRuntimePreparation(report *launchPreparationReport, command st
 	if report == nil || executor == nil || executor.plan == nil {
 		return
 	}
+	if command == "setup" && provisionalResumeEnabled(executor.cfg) {
+		report.Checks = append(report.Checks, Check{Name: "launch-runtime-inputs", Hard: false, Detail: "provisional setup retains runtime inputs; authenticated config-render deferral remains unverified; final_acceptance=false"})
+		return
+	}
 	if command != "launch" && command != "resume" {
 		action, err := executor.planAction("config.render")
 		if err != nil {

@@ -27,7 +27,7 @@ func provisionalResumeTestContext(t *testing.T) (*ResolvedConfig, *SetupPlan, st
 
 func TestProvisionalResumeRequiresExplicitExactApprovalAndCommand(t *testing.T) {
 	_, plan, _, options := provisionalResumeTestContext(t)
-	for _, command := range []string{"resume", "scenario"} {
+	for _, command := range []string{"setup", "resume", "scenario"} {
 		if err := validateProvisionalResumeOptions(command, options); err != nil {
 			t.Fatal(err)
 		}
@@ -38,7 +38,7 @@ func TestProvisionalResumeRequiresExplicitExactApprovalAndCommand(t *testing.T) 
 			t.Fatalf("strict default changed to %d", got)
 		}
 	}
-	for _, command := range []string{"setup", "launch", "release-lock", "retire", "stop", "doctor"} {
+	for _, command := range []string{"launch", "release-lock", "retire", "stop", "doctor"} {
 		if err := validateProvisionalResumeOptions(command, options); err == nil {
 			t.Fatalf("provisional flag accepted on %s", command)
 		}

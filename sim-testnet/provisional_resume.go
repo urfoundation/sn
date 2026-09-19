@@ -54,8 +54,11 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 	if !options.ProvisionalResume {
 		return nil
 	}
-	if command != "resume" && command != "scenario" && command != "coordinator-repair" {
-		return errors.New("--provisional-resume is valid only for resume, scenario or coordinator-repair")
+	if command != "setup" && command != "resume" && command != "scenario" && command != "coordinator-repair" {
+		return errors.New("--provisional-resume is valid only for setup, resume, scenario or coordinator-repair")
+	}
+	if command == "setup" && (options.Detach || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "") {
+		return errors.New("provisional setup can activate an approved repair plan only; it cannot launch or accept a release")
 	}
 	if !options.Apply || !validCanonicalHashHex(options.PlanHash) {
 		return errors.New("--provisional-resume requires --apply and the exact persisted --plan-hash")
@@ -64,8 +67,9 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 }
 
 // Persist unique provenance before the journal, host services, or transaction
-// managers are opened. No approved plan, release input or used evidence is
-// rewritten. A later failed attempt leaves an honest record of its invocation.
+// managers are opened. A setup revision records its newly approved identity
+// after reconstruction under the journal lock, before activating that plan.
+// A later failed attempt leaves an honest record of its invocation.
 func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir, command string, options cliOptions, plan *SetupPlan) error {
 	if err := validateProvisionalResumeOptions(command, options); err != nil {
 		return err

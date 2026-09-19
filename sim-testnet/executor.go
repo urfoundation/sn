@@ -516,7 +516,23 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
-	p, planErr := loadInvocationPlan(cfg, stateDir, cmd, o)
+	provisionalSetupRevision := cmd == "setup" && o.ProvisionalResume
+	invocationOptions := o
+	var provisionalSetupSource []byte
+	if provisionalSetupRevision {
+		// A repair revision uses ordinary reconstruction and exact new-plan
+		// approval. It cannot bootstrap a missing or unauthenticated deployment.
+		var err error
+		provisionalSetupSource, err = readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		if err != nil {
+			return err
+		}
+		if _, err := decodePersistedPlanWire(provisionalSetupSource); err != nil {
+			return err
+		}
+		invocationOptions.ProvisionalResume = false
+	}
+	p, planErr := loadInvocationPlan(cfg, stateDir, cmd, invocationOptions)
 	if o.StrictHistoryAdoption != "" {
 		if planErr != nil {
 			return fmt.Errorf("strict history adoption requires the finalized current plan: %w", planErr)
@@ -525,7 +541,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return err
 		}
 	}
-	if o.ProvisionalResume {
+	if o.ProvisionalResume && !provisionalSetupRevision {
 		// A provisional successor adopts this exact used plan. It may not
 		// generate a replacement approval or alter activation/prepared inputs.
 		if planErr != nil {
@@ -556,7 +572,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	defer j.Close()
 	entries := j.Entries()
-	if o.ProvisionalResume {
+	if o.ProvisionalResume && !provisionalSetupRevision {
 		// Exact persisted identity and approval were checked before opening the
 		// journal. Keep all unfinished actions on their original recovery keys.
 	} else if mayRefreshPersistedPlan(planErr, entries) {
@@ -582,6 +598,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err := requireApproved(true, o.PlanHash, p.PlanHash); err != nil {
 		return err
 	}
+	if provisionalSetupRevision {
+		if err := prepareProvisionalResume(ctx, cfg, stateDir, cmd, o, p); err != nil {
+			return err
+		}
+		if err := prepareProvisionalRPCOverride(cfg, stateDir, o.ProvisionalRPCAuthority); err != nil {
+			return err
+		}
+	}
 	remaining, err := remainingPlanSpend(p, entries)
 	if err != nil {
 		return err
@@ -589,12 +613,19 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	report := &launchPreparationReport{Schema: "urnetwork-sim-launch-preparation-v1", Command: cmd, PlanHash: p.PlanHash, PrepareOnly: o.PrepareOnly, Ready: true}
 	report.add("attempt-upload-budget", nil)
 	liveAdoption, liveAdoptionErr := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
+	if provisionalSetupRevision && liveAdoption == nil && liveAdoptionErr == nil {
+		liveAdoptionErr = errors.New("provisional setup revision requires the existing live topology")
+	}
 	report.add("provisional-live-topology", liveAdoptionErr)
 	needsDoctor, provisionalHistoryChecked := true, false
 	if liveAdoption != nil {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 		provisionalHistoryChecked = true
 		if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
+			if provisionalSetupRevision {
+				_, _, prefixErr := local.provisionalSetupPrefix(ctx, p, j.Entries, readValidatorEvidenceHistoricalPlan, true)
+				report.add("provisional-revision-setup-prefix", prefixErr)
+			}
 			needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
 			if !report.add("provisional-live-spend", err) {
 				needsDoctor = true
@@ -663,6 +694,21 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	collectLaunchRuntimePreparation(report, cmd, ex)
 	report.add("preparation-context", ctx.Err())
 	return finishLaunchPreparation(report, func(result *launchPreparationReport, err error) error { return printResult(o.Format, result, err) }, func() error {
+		if provisionalSetupRevision {
+			live, err := liveRecordedSupervisor(stateDir)
+			if err != nil || live == nil {
+				return stateMismatchError(err, "provisional setup live topology stopped before activation")
+			}
+			if err := provisionalAdoptionGeneration(liveAdoption, *live); err != nil {
+				return err
+			}
+			if err := ex.activateProvisionalSetupRevision(ctx, provisionalSetupSource, ex.Execute); err != nil {
+				return err
+			}
+			return printResult(o.Format, map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd,
+				"plan_hash": p.PlanHash, "provisional": true, "final_acceptance": false, "historical_audit_deferred": true,
+				"topology_retained": true, "provisional_resume_record": cfg.provisionalResume.RecordPath}, nil)
+		}
 		// Chain/environment setup always stops at the disabled configuration
 		// boundary. LaunchDeployment then starts temporary operator APIs, provisions
 		// their server-assigned client identities, anchors the fleet, and only then
