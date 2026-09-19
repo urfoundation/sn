@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urnetwork/server/controller"
+	"github.com/urnetwork/server/v2026/controller"
 )
 
 func TestValidatorStateNamespacePreparationCollectsEveryValidatorFailure(t *testing.T) {

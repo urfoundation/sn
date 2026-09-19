@@ -19,8 +19,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 func TestLiveNativeMirrorBalances(t *testing.T) {
