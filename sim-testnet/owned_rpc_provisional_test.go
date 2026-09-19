@@ -51,7 +51,7 @@ func TestOwnedRpcProvisionalResumePreservesStoppedPlanAndPrivateRoutes(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"resume", "scenario"} {
+	for _, command := range []string{"setup", "resume", "scenario"} {
 		args := []string{command, "--provisional-resume", "--apply", "--plan-hash", plan.PlanHash, "--owned-rpc-authority", cfg.ownedRPCAuthority}
 		if command == "scenario" {
 			args = append(args, "--name", "release-candidate")
@@ -140,5 +140,51 @@ func TestOwnedRpcProvisionalResumePreservesStoppedPlanAndPrivateRoutes(t *testin
 	encoded, err := json.Marshal(plan)
 	if err != nil || !bytes.Equal(approval, encoded) {
 		t.Fatal("route checks changed in-memory approval", err)
+	}
+}
+
+func TestOwnedRPCProvisionalSetupRequiresExactApprovalAndKeepsUnpacedRoute(t *testing.T) {
+	fixture := newCarriedPreparationTest(t, 1)
+	self := fixture.executor
+	options := cliOptions{Apply: true, ProvisionalResume: true, PlanHash: self.plan.PlanHash, OwnedRPCAuthority: self.cfg.ownedRPCAuthority}
+	if err := validateOwnedRPCOptions("setup", options); err != nil {
+		t.Fatal("approved provisional setup could not retain its owned route", err)
+	}
+	if _, _, err := parseCLI([]string{"setup", "--provisional-resume", "--apply", "--plan-hash", options.PlanHash, "--owned-rpc-authority", options.OwnedRPCAuthority}); err != nil {
+		t.Fatal("the real setup command rejected its approved owned route", err)
+	}
+	if err := validateOwnedRPCPlan(self.cfg, self.plan); err != nil || configuredEVMRequestsPerMinute(self.cfg, self.cfg.OperationalEVM) != 0 ||
+		verificationEVMEndpoint(self.cfg) != self.cfg.OperationalEVM || verificationSubstrateEndpoint(self.cfg) != self.cfg.OperationalSubstrate {
+		t.Fatal("setup changed approved route identity or imposed a request limit", err)
+	}
+	for _, fault := range []string{"no-apply", "no-plan", "malformed-plan", "detach", "other-route", "manifest", "launch", "wrong-approved-route"} {
+		changed := options
+		command := "setup"
+		switch fault {
+		case "no-apply":
+			changed.Apply = false
+		case "no-plan":
+			changed.PlanHash = ""
+		case "malformed-plan":
+			changed.PlanHash = "approximate"
+		case "detach":
+			changed.Detach = true
+		case "other-route":
+			changed.ProvisionalRPCAuthority = options.OwnedRPCAuthority
+		case "manifest":
+			changed.Manifest = "synthetic-manifest.json"
+		case "launch":
+			command = "launch"
+		case "wrong-approved-route":
+			plan := *self.plan
+			plan.OwnedRPCAuthority = ""
+			if validateOwnedRPCPlan(self.cfg, &plan) == nil {
+				t.Fatal("setup accepted another plan's route")
+			}
+			continue
+		}
+		if err := validateOwnedRPCOptions(command, changed); err == nil {
+			t.Fatal("owned setup accepted an unapproved invocation", fault)
+		}
 	}
 }
