@@ -113,7 +113,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		s = nativeOwner.substrate
 	} else {
 		var err error
-		s, err = DialSubstrateManager(runtimeCfg, stateDir, j)
+		s, err = DialSubstrateManagerContext(ctx, runtimeCfg, stateDir, j)
 		if err != nil {
 			return nil, err
 		}

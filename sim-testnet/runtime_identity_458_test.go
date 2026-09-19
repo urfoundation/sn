@@ -232,3 +232,17 @@ func TestRuntime458HistoryAllowlistReachesArtifactReader(t *testing.T) {
 		t.Fatalf("complete release history did not reach its exact artifact reader: calls=%d error=%v", calls, err)
 	}
 }
+
+// Setup must not retain the deployment lock behind an unanswered native RPC.
+// The manager path uses this context-aware release dial before any journal or
+// transaction action, so cancellation remains an immediately recoverable
+// preparation failure.
+func TestReleaseSubstrateDialHonorsCanceledContext(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := dialReleaseSubstrateChainContext(ctx, cfg, "ws://127.0.0.1:1")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled release dial error=%v, want context cancellation", err)
+	}
+}

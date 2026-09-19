@@ -177,7 +177,7 @@ func newLaunchPreparationExecutor(ctx context.Context, cfg *ResolvedConfig, stat
 	self := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: plan, journal: journal, roles: roles, deposits: map[int]*EvmTxManager{}, auditAuthorizedConfig: cfg}
 	var failures []error
 	var err error
-	self.substrate, err = DialSubstrateManager(runtimeCfg, stateDir, journal)
+	self.substrate, err = DialSubstrateManagerContext(ctx, runtimeCfg, stateDir, journal)
 	if err != nil {
 		failures = append(failures, fmt.Errorf("operational native reader: %w", err))
 	}

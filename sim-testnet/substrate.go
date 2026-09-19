@@ -437,7 +437,7 @@ func decodeAlphaPriceQ9(value *big.Int) (uint64, error) {
 // the supplied testnet wallet. A single source position is intentional: each
 // planned transfer is then atomic, bounded, and trivially resumable.
 func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, error) {
-	chain, authenticated, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
+	chain, authenticated, err := dialReleaseSubstrateChainContext(ctx, cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		return nil, err
 	}
@@ -688,8 +688,8 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	return facts, nil
 }
 
-func DialSubstrateManager(cfg *ResolvedConfig, stateDir string, j *Journal) (*SubstrateManager, error) {
-	chain, _, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
+func DialSubstrateManagerContext(ctx context.Context, cfg *ResolvedConfig, stateDir string, j *Journal) (*SubstrateManager, error) {
+	chain, _, err := dialReleaseSubstrateChainContext(ctx, cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		return nil, err
 	}
@@ -703,6 +703,11 @@ func DialSubstrateManager(cfg *ResolvedConfig, stateDir string, j *Journal) (*Su
 		return nil, err
 	}
 	return &SubstrateManager{chain: chain, signer: signer, stateDir: stateDir, journal: j, cfg: cfg}, nil
+}
+
+// Compatibility wrapper for callers that do not yet own a lifecycle context.
+func DialSubstrateManager(cfg *ResolvedConfig, stateDir string, j *Journal) (*SubstrateManager, error) {
+	return DialSubstrateManagerContext(context.Background(), cfg, stateDir, j)
 }
 
 func DialIndependentSubstrateManager(cfg *ResolvedConfig) (*SubstrateManager, error) {

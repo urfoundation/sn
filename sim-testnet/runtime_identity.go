@@ -405,16 +405,30 @@ func verifyReleaseHistoryFinalizedExtrinsicContext(ctx context.Context, chain *c
 	})
 }
 
+// An owned-node response can stall even after the WebSocket connects. Bound the
+// complete metadata/genesis/runtime admission so setup returns a recoverable
+// error instead of holding the deployment lock indefinitely. Callers with an
+// earlier deadline retain it.
+const releaseSubstrateDialTimeout = 45 * time.Second
+
 // Dial one release endpoint, authenticate genesis, then bind metadata and all
 // runtime versions from a single finalized hash.
-func dialReleaseSubstrateChain(cfg *ResolvedConfig, endpoint string) (*crv4.Chain, authenticatedRuntimeMetadata, error) {
+func dialReleaseSubstrateChainContext(ctx context.Context, cfg *ResolvedConfig, endpoint string) (*crv4.Chain, authenticatedRuntimeMetadata, error) {
+	if ctx == nil {
+		return nil, authenticatedRuntimeMetadata{}, errors.New("release substrate dial context is unavailable")
+	}
+	if _, bounded := ctx.Deadline(); !bounded {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, releaseSubstrateDialTimeout)
+		defer cancel()
+	}
 	if err := validateOwnedRPCDialEndpoint(cfg, endpoint); err != nil {
 		return nil, authenticatedRuntimeMetadata{}, err
 	}
 	if cfg == nil || cfg.Public == nil {
 		return nil, authenticatedRuntimeMetadata{}, errors.New("release public manifest is unavailable")
 	}
-	chain, err := crv4.DialChain(endpoint)
+	chain, err := crv4.DialChainContext(ctx, endpoint)
 	if err != nil {
 		return nil, authenticatedRuntimeMetadata{}, err
 	}
@@ -425,14 +439,20 @@ func dialReleaseSubstrateChain(cfg *ResolvedConfig, endpoint string) (*crv4.Chai
 	if !strings.EqualFold(chain.GenesisHash.Hex(), cfg.Public.Chain.GenesisHash) {
 		return closeWithError(fmt.Errorf("genesis %s, want %s", chain.GenesisHash.Hex(), cfg.Public.Chain.GenesisHash))
 	}
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	finalized, err := crv4.FinalizedHeadContext(ctx, chain)
 	if err != nil {
 		return closeWithError(err)
 	}
-	authenticated, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalized)
+	authenticated, err := readAuthenticatedRuntimeMetadataAtContext(ctx, chain, cfg, finalized)
 	if err != nil {
 		return closeWithError(err)
 	}
 	bindAuthenticatedRuntime(chain, authenticated)
 	return chain, authenticated, nil
+}
+
+// Preserves the contextless compatibility surface for legacy callers. New
+// release work must call dialReleaseSubstrateChainContext.
+func dialReleaseSubstrateChain(cfg *ResolvedConfig, endpoint string) (*crv4.Chain, authenticatedRuntimeMetadata, error) {
+	return dialReleaseSubstrateChainContext(context.Background(), cfg, endpoint)
 }
