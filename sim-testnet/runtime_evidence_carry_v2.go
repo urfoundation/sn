@@ -37,10 +37,18 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 	if err := validatorEvidenceSourcePlanMatches(plan, source); err != nil {
 		return nil, err
 	}
-	if source.ConfigHash != plan.ConfigHash || source.ConfigHash != cfg.ConfigHash || source.PolicyHash != plan.PolicyHash || source.PolicyHash != cfg.PolicyHash {
+	// The prepared evidence is signed against the source approval. A successor
+	// may change only an independent allowance and therefore has a different
+	// full config hash; its current config must still match its own plan and its
+	// policy must remain identical. Revalidate the signature using the archived
+	// source identity below, then retain the exact source actions and receipts.
+	if !validCanonicalHashHex(source.ConfigHash) || cfg.ConfigHash != plan.ConfigHash || source.PolicyHash != plan.PolicyHash || source.PolicyHash != cfg.PolicyHash {
 		return nil, errors.New("activation setup carry changed its approved configuration or policy")
 	}
-	if err := validateRuntimeEvidencePreparedInputsV2(cfg, source, roles, prepared); err != nil {
+	sourceConfig := *cfg
+	sourceConfig.ConfigHash = source.ConfigHash
+	sourceConfig.PolicyHash = source.PolicyHash
+	if err := validateRuntimeEvidencePreparedInputsV2(&sourceConfig, source, roles, prepared); err != nil {
 		return nil, err
 	}
 	preparedHash := fmt.Sprintf("0x%x", sha256.Sum256(encoded))

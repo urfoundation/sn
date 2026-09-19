@@ -283,6 +283,20 @@ func TestRuntimeEvidenceSetupCarryV2RejectsForeignLineageAndDomain(t *testing.T)
 	}
 }
 
+func TestRuntimeEvidenceSetupCarryV2RetainsSourceAcrossAllowanceRevision(t *testing.T) {
+	fixture := newRuntimeEvidenceProvisionV2TestFixture(t)
+	revised, entries := prepareRuntimeEvidenceSetupCarryV2Test(t, fixture)
+	// Model a successor whose only changed approval dimension is a spend
+	// allowance. The archived signed preparation remains bound to its source
+	// config hash, while the current resolved config matches the successor.
+	revised.ConfigHash = common.Hash{0x83}.Hex()
+	configured := *fixture.cfg
+	configured.ConfigHash = revised.ConfigHash
+	if _, err := runtimeEvidenceSetupSourcePlanV2(&configured, revised, fixture.stateDir, fixture.roles, fixture.prepared, fixture.preparedBytes, fixture.completed, entries); err != nil {
+		t.Fatalf("allowance successor stranded original signed activation: %v", err)
+	}
+}
+
 func TestRuntimeEvidenceSetupCarryV2RejectsPartialAndCompetingProgress(t *testing.T) {
 	t.Parallel()
 	for _, fault := range []string{"activation-finality", "activation-verified", "boundary-verified", "boundary-order", "new-plan-progress", "missing-prepared", "missing-completed"} {
