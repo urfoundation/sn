@@ -1438,7 +1438,12 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				return planRevisionRecoveries{}, err
 			}
 		}
-		receipt, receiptErr := canonicalFinalizedEVMRevisionReceiptFromReader(ctx, ethEVMReceiptFinalityReader{client: evmClient}, transaction)
+		// A revision can inspect many historic receipts. Bound each complete
+		// receipt/head/canonicality observation even when a transport ignores
+		// its client-level deadline.
+		receiptCtx, cancelReceipt := context.WithTimeout(ctx, ownedEVMHTTPTimeout)
+		receipt, receiptErr := canonicalFinalizedEVMRevisionReceiptFromReader(receiptCtx, ethEVMReceiptFinalityReader{client: evmClient}, transaction)
+		cancelReceipt()
 		if receiptErr != nil {
 			return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, receiptErr)
 		}
