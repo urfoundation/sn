@@ -348,8 +348,13 @@ func appendFleetRenewalPlanForHistory(base *SetupPlan, renewal FleetRenewal, his
 	plan.PriorPlanHashes = append(plan.PriorPlanHashes, base.PlanHash)
 	plan.FleetRenewals = append(plan.FleetRenewals, renewal)
 	plan.Actions = append(plan.Actions, actions...)
-	if err := rebindFleetLifecycleRenewalPlan(&plan, &renewal); err != nil {
-		return nil, err
+	// A lifecycle handoff is sealed evidence for its original approved round.
+	// A later ordinary renewal extends binding expiry without changing the
+	// historical takeover/provider/terminal generation named by that proof.
+	if plan.FleetLifecycleRenewal == nil {
+		if err := rebindFleetLifecycleRenewalPlan(&plan, &renewal); err != nil {
+			return nil, err
+		}
 	}
 	plan.MaximumSpend, err = maximumActionSpend(plan.Actions)
 	if err != nil {

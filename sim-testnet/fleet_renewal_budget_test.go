@@ -74,6 +74,21 @@ func TestFleetRenewalBudgetAccountsAllSignedAttemptsAndNonceGaps(t *testing.T) {
 		t.Fatalf("missing owned nonce was not diagnosed exactly: %v", err)
 	}
 	points[0].Pending = 3
+	claimKey, err := crypto.HexToECDSA(strings.Repeat("8", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimAddress := crypto.PubkeyToAddress(claimKey.PublicKey)
+	roles.EVM["claim-relayer"] = EVMRoleSecret{Address: claimAddress.Hex()}
+	points = append(points, FleetRenewalNonce{Role: "claim-relayer", Address: claimAddress, Finalized: 2, Latest: 2, Pending: 2})
+	if err := validateFleetRenewalSignerNonceCoverage(roles, exposure, points, []common.Address{address}); err != nil {
+		t.Fatalf("unrelated historical nonce blocked renewal signer coverage: %v", err)
+	}
+	if err := validateFleetRenewalNonceCoverage(roles, exposure, points); err == nil || !strings.Contains(err.Error(), "role claim-relayer nonce 0") {
+		t.Fatalf("full historical accounting lost its strict gap check: %v", err)
+	}
+	roles.EVM = map[string]EVMRoleSecret{"keeper": {Address: address.Hex()}}
+	points = points[:1]
 	points[0].Address = common.Address{1}
 	if err := validateFleetRenewalNonceCoverage(roles, exposure, points); err == nil {
 		t.Fatal("changed role custody admitted")

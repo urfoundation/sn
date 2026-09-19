@@ -173,6 +173,42 @@ func TestFleetLifecycleRenewalAdmitsOnlyApprovedSuccessor(t *testing.T) {
 	}
 }
 
+func TestFleetLifecycleHandoffAllowsLaterOrdinaryBindingRenewal(t *testing.T) {
+	fixture := newFleetRenewalTestFixture(t)
+	first, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := fixture.renewal
+	second.Round = 2
+	second.SourcePlanHash = first.PlanHash
+	second.CampaignReserveBeforeWei = actionByID(t, first, "campaign.evm-gas-reserve").Spend.EVMGasWei
+	second.JournalHash = common.Hash{0x78}.Hex()
+	secondPlan, err := appendFleetRenewalPlan(first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fleetLifecycleCanonicalEqual(secondPlan.FleetLifecycleRenewal, first.FleetLifecycleRenewal) {
+		t.Fatal("later binding renewal rewrote sealed lifecycle handoff")
+	}
+	if err := validateFleetLifecycleRenewalPlan(secondPlan); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(fixture.stateDir, "public"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handoff := &FleetLifecycleEvidence{Schema: fleetLifecycleEvidenceSchema, DeploymentID: first.DeploymentID, PlanHash: first.PlanHash, RunID: "sealed-release", Stage: fleetLifecycleStageReleaseHandoff, Renewal: cloneFleetLifecycleRenewal(first.FleetLifecycleRenewal)}
+	if err := writePublicJSON(filepath.Join(fixture.stateDir, "public", "fleet-lifecycle.json"), handoff); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateFleetLifecycleRenewalPending(fixture.stateDir, secondPlan, []JournalEntry{{PlanHash: first.PlanHash, ActionID: "lifecycle.provider.commitment", Stage: StageFinalized}}); err != nil {
+		t.Fatalf("sealed historical lifecycle blocked ordinary renewal: %v", err)
+	}
+	if err := validateFleetLifecycleRenewalPending(fixture.stateDir, secondPlan, []JournalEntry{{PlanHash: secondPlan.PlanHash, ActionID: "lifecycle.provider.commitment", Stage: StageIntent}}); err == nil {
+		t.Fatal("current lifecycle action was rebound")
+	}
+}
+
 func TestFleetLifecycleRenewalDescriptorsKeepLaterWaves(t *testing.T) {
 	fixture := newFleetRenewalTestFixture(t)
 	plan, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)

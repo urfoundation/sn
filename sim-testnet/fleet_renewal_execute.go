@@ -129,7 +129,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 	if err := requireApproved(true, o.PlanHash, plan.PlanHash); err != nil {
 		return err
 	}
-	current, err := loadPersistedPlan(cfg, stateDir)
+	current, err := loadFleetRenewalBase(cfg, stateDir)
 	if err != nil {
 		return err
 	}

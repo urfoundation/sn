@@ -333,7 +333,7 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	if err != nil {
 		return result, err
 	}
-	if err := validateFleetRenewalNonceCoverage(roles, exposure, result.Renewal.EVMNonces); err != nil {
+	if err := validateFleetRenewalSignerNonceCoverage(roles, exposure, result.Renewal.EVMNonces, []common.Address{result.Renewal.Oracle, result.Renewal.Keeper}); err != nil {
 		return result, err
 	}
 	if result.Renewal.MaximumFeePerGasWei == 0 {
@@ -431,7 +431,7 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 }
 
 func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) (*SetupPlan, error) {
-	base, err := loadPersistedPlan(cfg, stateDir)
+	base, err := loadFleetRenewalBase(cfg, stateDir)
 	if err != nil {
 		return nil, fmt.Errorf("renewal requires an admitted current setup plan: %w", err)
 	}
@@ -455,6 +455,54 @@ func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir st
 		return nil, err
 	}
 	return appendFleetRenewalPlan(base, renewal)
+}
+
+// Fleet renewal is the one successor which must outlive the release which
+// installed its fleets.  The source plan remains byte-authenticated and its
+// immutable chain, policy, RPC route, and public custody identities must
+// still agree with this invocation.  A changed release-lock or operational
+// configuration fingerprint alone cannot force an expired binding generation
+// to be abandoned.  Current runtime approval and every live predecessor are
+// checked again before planning and before the first write.
+func loadFleetRenewalBase(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
+	base, err := loadPersistedPlan(cfg, stateDir)
+	if err == nil {
+		return base, nil
+	}
+	if !errors.Is(err, errPersistedPlanIdentityMismatch) {
+		return nil, err
+	}
+	base, readErr := readPersistedPlan(stateDir)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if cfg == nil || cfg.Config == nil || cfg.Public == nil ||
+		base.Schema != currentSetupPlanSchema || base.Release != "1.0" ||
+		base.DeploymentID != cfg.Config.Deployment.DeploymentID ||
+		base.ChainID != testnetChainID || base.GenesisHash != testnetGenesis ||
+		base.Netuid != cfg.Netuid || base.PolicyHash != cfg.PolicyHash ||
+		base.OwnedRPCAuthority != cfg.ownedRPCAuthority {
+		return nil, errors.New("retained renewal source differs in immutable testnet identity")
+	}
+	if err := validateRuntimeConfigIdentityPlan(cfg, base); err != nil {
+		return nil, err
+	}
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		return nil, err
+	}
+	roleHash, err := canonicalHashHex(roles)
+	if err != nil {
+		return nil, err
+	}
+	baseRoleHash, err := canonicalHashHex(base.Roles)
+	if err != nil || roleHash != baseRoleHash {
+		return nil, errors.New("retained renewal source differs in public custody identity")
+	}
+	if err := validatePlanBudget(base); err != nil {
+		return nil, fmt.Errorf("retained renewal source budget: %w", err)
+	}
+	return base, nil
 }
 
 // Use both deterministic public roles and the unchanged key store on apply.

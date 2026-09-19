@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -26,6 +27,32 @@ import (
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
+
+func TestFleetRenewalRetainsAuthenticatedSourceAcrossReleaseFingerprint(t *testing.T) {
+	fixture := newFleetRenewalTestFixture(t)
+	wire, err := json.Marshal(fixture.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.stateDir, "plan.json"), wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A later release changes its operational fingerprint, but has not changed
+	// the deployment, policy, route, runtime approval, or public custody.
+	fixture.cfg.ConfigHash = common.Hash{0x91}.Hex()
+	if _, err := loadPersistedPlan(fixture.cfg, fixture.stateDir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
+		t.Fatalf("strict active-plan load error=%v, want retained identity mismatch", err)
+	}
+	base, err := loadFleetRenewalBase(fixture.cfg, fixture.stateDir)
+	if err != nil || base.PlanHash != fixture.base.PlanHash {
+		t.Fatalf("retained renewal source=%v/%v", base, err)
+	}
+
+	fixture.cfg.PolicyHash = common.Hash{0x92}.Hex()
+	if _, err := loadFleetRenewalBase(fixture.cfg, fixture.stateDir); err == nil {
+		t.Fatal("renewal accepted a changed policy identity")
+	}
+}
 
 type fleetRenewalTestFixture struct {
 	cfg      *ResolvedConfig

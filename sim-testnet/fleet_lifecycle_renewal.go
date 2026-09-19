@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -79,8 +78,8 @@ func validateFleetLifecycleRenewalPlan(plan *SetupPlan) error {
 		return nil
 	}
 	reference := plan.FleetLifecycleRenewal
-	if reference.Round == 0 || reference.Round != uint64(len(plan.FleetRenewals)) {
-		return errors.New("lifecycle renewal must bind the last approved round")
+	if reference.Round == 0 || reference.Round > uint64(len(plan.FleetRenewals)) {
+		return errors.New("lifecycle renewal must bind an approved round")
 	}
 	want, err := fleetLifecycleRenewalReference(plan, &plan.FleetRenewals[reference.Round-1])
 	if err != nil {
@@ -150,14 +149,23 @@ func validateFleetLifecycleRenewalPending(stateDir string, plan *SetupPlan, entr
 		return errors.New("lifecycle renewal source plan is absent")
 	}
 	if stateDir != "" {
-		if _, err := os.Lstat(filepath.Join(stateDir, "public", "fleet-lifecycle.json")); err == nil {
-			return errors.New("fleet renewal cannot replace an already recorded lifecycle run")
+		evidence, err := loadFleetLifecycleEvidence(stateDir)
+		if err == nil {
+			// A prior release handoff is immutable evidence, not an active
+			// lifecycle operation.  Its exact reference remains in the current
+			// plan while a later ordinary fleet-binding round extends expiry.
+			if evidence.DeploymentID != plan.DeploymentID ||
+				!plan.allowedPlanHashes()[evidence.PlanHash] ||
+				(evidence.Stage != fleetLifecycleStageReleaseHandoff && evidence.Stage != fleetLifecycleStageComplete) ||
+				!fleetLifecycleCanonicalEqual(evidence.Renewal, plan.FleetLifecycleRenewal) {
+				return errors.New("fleet renewal cannot replace an already recorded lifecycle run")
+			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
 	for _, entry := range entries {
-		if plan.allowedPlanHashes()[entry.PlanHash] && (fleetLifecycleRenewalFutureAction(entry.ActionID) || strings.HasPrefix(entry.ActionID, "lifecycle.fallback.")) {
+		if entry.PlanHash == plan.PlanHash && (fleetLifecycleRenewalFutureAction(entry.ActionID) || strings.HasPrefix(entry.ActionID, "lifecycle.fallback.")) {
 			return errors.New("fleet renewal cannot rebind a lifecycle action already in the journal")
 		}
 	}
