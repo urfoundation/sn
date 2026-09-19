@@ -83,7 +83,11 @@ func readOwnedEvidenceRelayRequest(ctx context.Context, stateDir string, scope *
 		}
 	}
 	action, err := validateEvidenceRelayRequest(owner, entries, raw)
-	if err != nil || action.ID != actionID || owner.DeploymentID != scope.DeploymentID || owner.ConfigHash != scope.ConfigHash || owner.ValidatorEvidence == nil || scope.ValidatorEvidence == nil || !reflect.DeepEqual(owner.ValidatorEvidence, scope.ValidatorEvidence) {
+	// The immutable request is validated against its owner plan. A successor's
+	// full config hash may differ solely because an operational spend allowance
+	// was renewed; deployment and validator-evidence identities below are the
+	// custody boundary that must remain unchanged.
+	if err != nil || action.ID != actionID || owner.DeploymentID != scope.DeploymentID || owner.ValidatorEvidence == nil || scope.ValidatorEvidence == nil || !reflect.DeepEqual(owner.ValidatorEvidence, scope.ValidatorEvidence) {
 		return nil, record, nil, errors.Join(errors.New("relay retained request changed original source/deployment authority"), err)
 	}
 	return owner, record, raw, nil
