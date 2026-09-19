@@ -386,6 +386,20 @@ func TestFleetRenewalHistoricalAliasReplaysOriginalMirrorAndBinding(t *testing.T
 }
 
 // Both observers must replay their own checkpoint through the same adapter.
+// A carried reconciliation authenticates its operational finalized head once.
+// Historical receipts still replay their checkpoint and state at that head.
+func TestFleetRenewalHistoricalAliasReusesAuthenticatedOperationalHead(t *testing.T) {
+	fixture := newFleetHistoricalAliasFixture(t, false)
+	head := &ChainHead{Number: 110, Hash: fleetHistoryBatchBlockHash(110)}
+	for index, action := range fixture.actions {
+		if err := fixture.executor.verifyHistoricalEVMPostcondition(t.Context(), action, fixture.records[index], head); err != nil {
+			t.Errorf("%s cached-head replay: %v", action.ID, err)
+		}
+	}
+	fixture.operational.assertReads(t, []string{"0x6e", "0x6e"}, []uint64{110, 110})
+	fixture.independent.assertReads(t, nil, nil)
+}
+
 func TestFleetRenewalHistoricalAliasReplaysIndependentCheckpoint(t *testing.T) {
 	fixture := newFleetHistoricalAliasFixture(t, true)
 	for index, action := range fixture.actions {

@@ -993,7 +993,7 @@ func (self *Executor) historicalActionPostState(ctx context.Context, action Acti
 // action intentionally supersedes its live state. V3+ receipts bind the exact
 // EVM-RPC hash domain, so both finalized observations must remain canonical
 // and byte-equivalent to their persisted values.
-func (e *Executor) verifyHistoricalEVMPostcondition(ctx context.Context, action Action, record *ActionPostcondition) error {
+func (e *Executor) verifyHistoricalEVMPostcondition(ctx context.Context, action Action, record *ActionPostcondition, authenticatedHead ...*ChainHead) error {
 	if record == nil || (record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") {
 		return errors.New("historical EVM action has no replayable v3+ postcondition")
 	}
@@ -1003,9 +1003,15 @@ func (e *Executor) verifyHistoricalEVMPostcondition(ctx context.Context, action 
 	if e.deployer == nil || e.deployer.client == nil {
 		return errors.New("operational EVM history client is unavailable")
 	}
-	finalized, err := finalizedEVMHead(ctx, e.deployer.client)
-	if err != nil {
-		return fmt.Errorf("operational finalized EVM head: %w", err)
+	var finalized ChainHead
+	if len(authenticatedHead) > 0 && authenticatedHead[0] != nil {
+		finalized = *authenticatedHead[0]
+	} else {
+		var err error
+		finalized, err = finalizedEVMHead(ctx, e.deployer.client)
+		if err != nil {
+			return fmt.Errorf("operational finalized EVM head: %w", err)
+		}
 	}
 	if err := verifyEVMCheckpoint(ctx, e.deployer.client, finalized, record.EVMFinalized); err != nil {
 		return fmt.Errorf("operational historical EVM checkpoint: %w", err)
@@ -1304,12 +1310,12 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		if err != nil {
 			return err
 		}
-		return source.verifyHistoricalEVMPostcondition(ctx, action, record)
+		return source.verifyHistoricalEVMPostcondition(ctx, action, record, sharedEVMHead)
 	}
 	if source, handled, err := e.fleetRenewalHistoricalSource(action, verified, record); err != nil {
 		return err
 	} else if handled {
-		return source.verifyHistoricalEVMPostcondition(ctx, action, record)
+		return source.verifyHistoricalEVMPostcondition(ctx, action, record, sharedEVMHead)
 	}
 	if e.plan.CoordinatorRepairCarry != nil && coordinatorRepairOriginalAction(action.ID) {
 		return e.verifyCoordinatorRepairOriginalAction(ctx, action, verified, record)
@@ -1344,7 +1350,7 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		return fmt.Errorf("fleet generation-1 successor: %w", err)
 	}
 	if generationOneSuperseded {
-		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record); err != nil {
+		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record, sharedEVMHead); err != nil {
 			return fmt.Errorf("historical fleet generation-1 postcondition: %w", err)
 		}
 		return nil
@@ -1354,7 +1360,7 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		return fmt.Errorf("fleet refresh oracle successor: %w", err)
 	}
 	if oracleSuperseded {
-		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record); err != nil {
+		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record, sharedEVMHead); err != nil {
 			return fmt.Errorf("historical fleet refresh oracle postcondition: %w", err)
 		}
 		return nil
