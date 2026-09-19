@@ -472,6 +472,12 @@ var publicEVMRequestGates = struct {
 	values map[string]*rpcRequestGate
 }{values: map[string]*rpcRequestGate{}}
 
+// A local owned node has no request pacing, but it must still have a bounded
+// response lifetime. Without a client deadline one stuck JSON-RPC response can
+// hold plan revision forever and prevent its normal retry/recovery path from
+// reporting the transient failure.
+const ownedEVMHTTPTimeout = 45 * time.Second
+
 func sharedPublicEVMRequestGate(endpoint string, requestsPerMinute int) (*rpcRequestGate, error) {
 	key := fmt.Sprintf("%s\x00%d", endpoint, requestsPerMinute)
 	publicEVMRequestGates.Lock()
@@ -489,6 +495,17 @@ func sharedPublicEVMRequestGate(endpoint string, requestsPerMinute int) (*rpcReq
 
 func dialEVMClient(ctx context.Context, endpoint string, requestsPerMinute int) (*ethclient.Client, error) {
 	if requestsPerMinute == 0 {
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, err
+		}
+		if parsed.Scheme == "http" || parsed.Scheme == "https" {
+			client, err := gethRPC.DialOptions(ctx, endpoint, gethRPC.WithHTTPClient(&http.Client{Timeout: ownedEVMHTTPTimeout}))
+			if err != nil {
+				return nil, err
+			}
+			return ethclient.NewClient(client), nil
+		}
 		return ethclient.DialContext(ctx, endpoint)
 	}
 	parsed, err := url.Parse(endpoint)
