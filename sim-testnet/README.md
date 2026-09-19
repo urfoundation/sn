@@ -165,6 +165,13 @@ Resume at the first incomplete or invalidated checkpoint. A failed attempt
 does not erase its completed independent phases, finalized transactions,
 adopted approvals, migrations, artifacts or valid preparation results.
 
+During plan revision, a hash-chained finalized ordinary transaction is carried
+from its durable journal coordinate instead of being reread with every older
+receipt. Unresolved, explicitly failed and coordinator-upgrade transactions
+remain recovery blockers. The final acceptance interval independently replays
+the historical evidence, so this recovery optimization never promotes a
+provisional continuation to final acceptance.
+
 For the user's 2026-09-16 run-first instruction, prefer explicit provisional
 testnet continuation when strict startup repeatedly audits retained history.
 Run the actual campaign while preserving its approved plan, signed records,

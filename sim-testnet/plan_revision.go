@@ -991,6 +991,8 @@ func pendingPlanRevisionTransactions(prior *SetupPlan, entries []JournalEntry) (
 	type transactionState struct {
 		transaction planRevisionTransaction
 		verified    bool
+		finalized   bool
+		failed      bool
 	}
 	states := map[string]*transactionState{}
 	allowedPlans := prior.allowedPlanHashes()
@@ -1006,6 +1008,9 @@ func pendingPlanRevisionTransactions(prior *SetupPlan, entries []JournalEntry) (
 		}
 		if entry.Stage == StageVerified {
 			state.verified = true
+		}
+		if entry.Stage == StageFailed {
+			state.failed = true
 		}
 		if entry.TransactionHash == "" {
 			continue
@@ -1037,10 +1042,25 @@ func pendingPlanRevisionTransactions(prior *SetupPlan, entries []JournalEntry) (
 			state.transaction.BlockNumber = entry.BlockNumber
 			state.transaction.BlockHash = entry.BlockHash
 		}
+		if entry.Stage == StageFinalized && entry.TransactionHash != "" && entry.BlockNumber != 0 && entry.BlockHash != "" {
+			state.finalized = true
+		}
 	}
 	var pending []planRevisionTransaction
 	for _, state := range states {
-		if !state.verified && state.transaction.TransactionHash != "" {
+		// A hash-chained finalized journal coordinate is a durable carried
+		// completion for ordinary predecessor work.  Re-reading every such
+		// receipt on every plan revision made recovery proportional to the
+		// entire campaign history (and restarted that work after any harmless
+		// interruption).  Keep unresolved and explicitly failed transactions
+		// in the recovery gate; the final acceptance audit remains responsible
+		// for the full independent historical replay.  Coordinator repairs are
+		// deliberately excluded because their separate carry authenticator
+		// binds the implementation transition before it may be adopted.
+		carriedFinalization := state.finalized && !state.failed &&
+			state.transaction.ActionID != "repair.coordinator-rounding.deploy" &&
+			state.transaction.ActionID != "repair.coordinator-rounding.activate"
+		if !state.verified && state.transaction.TransactionHash != "" && !carriedFinalization {
 			pending = append(pending, state.transaction)
 		}
 	}

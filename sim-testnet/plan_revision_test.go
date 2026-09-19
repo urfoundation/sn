@@ -735,6 +735,8 @@ func TestPlanRevisionFindsEveryUnverifiedTransactionAcrossLineage(t *testing.T) 
 		{PlanHash: ancestor, ActionID: "reverted", IntentHash: "intent-reverted", Stage: StageBroadcast, TransactionHash: "0x03", RecoveryBlock: 11, RecoveryBlockHash: "0xbb"},
 		{PlanHash: ancestor, ActionID: "reverted", IntentHash: "intent-reverted", Stage: StageIncluded, TransactionHash: "0x03", BlockNumber: 12, BlockHash: "0xcc"},
 		{PlanHash: ancestor, ActionID: "reverted", IntentHash: "intent-reverted", Stage: StageFailed, Error: "dispatch failed"},
+		{PlanHash: ancestor, ActionID: "carried-finalized", IntentHash: "intent-carried", Stage: StageBroadcast, TransactionHash: "0x05"},
+		{PlanHash: ancestor, ActionID: "carried-finalized", IntentHash: "intent-carried", Stage: StageFinalized, TransactionHash: "0x05", BlockNumber: 13, BlockHash: "0xdd"},
 		{PlanHash: prior.PlanHash, ActionID: "local-failure", IntentHash: "intent-local", Stage: StageFailed, Error: "preflight"},
 		{PlanHash: "0x" + strings.Repeat("33", 32), ActionID: "outsider", IntentHash: "intent-outsider", Stage: StageBroadcast, TransactionHash: "0x04"},
 	}
