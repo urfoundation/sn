@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.9.18
+  version: 2026.9.19
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -11,14 +11,19 @@ info:
     Round workload seeds and score results are never returned while a round is
     active or grading. The API publishes a seed commitment and the generated
     providers.yml SHA-256 until every admitted job is terminal and the winner
-    is finalized after ordered honesty review, then exposes the seed, immutable
-    workload, and results.
+    is finalized (after ordered honesty review in production), then exposes
+    the seed, immutable workload, and results.
     Identical canonical patch bytes in one round map to one durable job/result.
     Before production epoch one, an operator may run an independently numbered
     staging era beginning at epoch zero. Staging submissions are fee-free but
     traverse the same durable FIFO and evaluator as production. Each staging
     epoch publishes its poll results after admission closes and all accepted
-    work drains; it never selects a winner or changes evaluated source.
+    work drains. It automatically names the highest-ranked placeable,
+    statistically significant candidate passing every gate, or no winner if
+    none qualifies. Staging has no honesty review or source promotion, and
+    even its winner has honesty_review=not_reviewed. A named staging winner
+    is not an honesty or safety approval and never changes evaluated source
+    or the significance threshold. Historical finalized results are preserved.
     Every epoch measures one nine-run control before the first submitted build,
     freezes its exact baseline.json bytes and SHA-256, and reuses that control
     for every candidate in the epoch. Candidate ranking uses absolute raw
@@ -104,8 +109,10 @@ paths:
       description: |
         Returns only finalized production epochs by default. Set
         include_staging=true to also return finalized staging epochs through
-        the same reconciliation shape. Staging epochs are explicitly marked,
-        never select a winner, and publish winner_job_id as null. Entries are
+        the same reconciliation shape. Staging epochs are explicitly marked
+        and automatically name the highest-ranked eligible significant winner,
+        or publish winner_job_id as null if none qualifies. Even a staging
+        winner has honesty_review=not_reviewed and is never promoted. Entries are
         deterministically ordered by absolute raw score ascending, submission
         time, and job id for shared-control epochs. Historical per-job-control
         epochs retain normalized score descending before those tie breakers;
@@ -169,8 +176,10 @@ paths:
         epoch zero. Staging submissions exercise authenticated patch
         validation, immutable artifact retention, cache identity, the real
         evaluator FIFO, embargo, and result publication without charging a fee
-        or selecting/promoting a winner. Every job retains an authenticated
-        same append-only one-control-per-epoch baseline path as production,
+        or promoting source. After close and drain, staging automatically names
+        its highest-ranked eligible significant winner, or no winner, without
+        honesty review. Every job uses the authenticated
+        append-only one-control-per-epoch baseline path used by production,
         while the separately promoted production host-readiness rebaseline
         identity is not required. A prior staging epoch must be
         finalized unless replace_current explicitly supersedes it; replacement
@@ -206,8 +215,11 @@ paths:
       description: |
         Atomically stops accepting submissions for the current open staging
         epoch without canceling accepted jobs. The evaluator continues in FIFO
-        order until every accepted job is terminal, then finalizes and reveals
-        the staging epoch. Repeating the operation while grading or after
+        order until every accepted job is terminal, then automatically names
+        the highest-ranked eligible significant winner (or no winner), finalizes,
+        and reveals the staging epoch without honesty review or promotion.
+        This can precede scheduled reveal_at; the committed schedule is unchanged.
+        Repeating the operation while grading or after
         finalization is idempotent.
       responses:
         "200":
@@ -273,7 +285,8 @@ paths:
         forwarding a production admission. A response with `staging: true`
         is fee-free but otherwise enters the same FIFO evaluator. Its score or
         full evaluation error remains embargoed until that staging epoch
-        closes, drains, and finalizes without a winner; execution status and a
+        closes, drains, and automatically finalizes with an eligible significant
+        winner or no winner, without honesty review; execution status and a
         reviewed message-free terminal failure code remain visible. An
         explicitly superseded staging epoch, or
         one interrupted by production epoch one, exposes only a non-retriable
@@ -343,7 +356,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Current durable processing state. evaluation_status exposes only the outcome-neutral evaluator lifecycle and a sanitized terminal failure code; score, gates, diagnostics, and full eval_error remain embargoed until post-review epoch finalization.
+          description: Current durable processing state. evaluation_status exposes only the evaluator lifecycle and a sanitized terminal failure code; score, gates, diagnostics, and full eval_error remain embargoed until epoch finalization (after honesty review in production, automatic after close and drain in staging).
           content:
             application/json:
               schema:
@@ -737,18 +750,19 @@ components:
               format: date-time
             - type: "null"
         winner_job_id:
+          description: Named automatic staging winner or approved production winner after publication; null when no candidate qualifies. Historical finalized winners are unchanged.
           oneOf:
             - type: string
               format: uuid
             - type: "null"
         revealed_seed:
-          description: Present only after reveal_at and atomic post-review epoch finalization.
+          description: Production requires reveal_at and atomic post-review finalization. Staging requires actual admission close, complete FIFO drain, and automatic finalization, which may precede scheduled reveal_at after an explicit early close.
           oneOf:
             - type: string
               pattern: "^[0-9a-f]{64}$"
             - type: "null"
         providers_url:
-          description: Present only after reveal_at and atomic post-review epoch finalization.
+          description: Production requires reveal_at and atomic post-review finalization. Staging requires actual admission close, complete FIFO drain, and automatic finalization, which may precede scheduled reveal_at after an explicit early close.
           type: string
           pattern: "^/competition/round/[0-9a-f-]+/providers\\.yml$"
 
@@ -790,7 +804,7 @@ components:
           type: string
           format: date-time
         winner_job_id:
-          description: Always null for staging and for production epochs with no winner.
+          description: Automatically selected eligible significant staging winner or honesty-approved production winner; null when there is no winner. Historical finalized results are preserved.
           oneOf:
             - type: string
               format: uuid
@@ -822,8 +836,10 @@ components:
           type: string
           enum: [approved, rejected, not_reviewed]
           description: >-
-            Final operator honesty-review disposition. Rejected significant
-            candidates remain visible after the epoch embargo lifts but cannot
+            Final production operator honesty-review disposition. Staging is
+            always not_reviewed, including a named winner, and never promotes
+            source; a staging winner is not an honesty or safety approval.
+            Rejected significant candidates remain visible after the epoch embargo lifts but cannot
             be selected or promoted as the winner.
         score:
           $ref: "#/components/schemas/CompetitionScoreResult"
@@ -980,11 +996,11 @@ components:
           type: integer
           const: 1
         raw_score:
-          description: Absolute candidate median of replicate p95 request latency in milliseconds; lower is better and this is the ranking key. Present only after atomic post-review epoch finalization.
+          description: Absolute candidate median of replicate p95 request latency in milliseconds; lower is better and this is the ranking key. Present only after atomic epoch finalization (after honesty review in production, automatic in staging).
           type: number
           exclusiveMinimum: 0
         normalized_score:
-          description: Display-only ratio derived from the epoch's shared control; it is never a ranking input. Present only after atomic post-review epoch finalization.
+          description: Display-only ratio derived from the epoch's shared control; it is never a ranking input. Present only after atomic epoch finalization (after honesty review in production, automatic in staging).
           type: number
           minimum: 1
           maximum: 200
