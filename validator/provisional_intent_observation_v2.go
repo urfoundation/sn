@@ -17,10 +17,13 @@ import (
 
 type ProvisionalIntentObservationV2Options struct {
 	ConfigPath, HandoffSHA256, PlanHash, DeploymentID string
-	Handoff                                           []byte
-	ValidatorID                                       uint64
-	Netuid                                            uint16
-	Hotkey                                            [32]byte
+	// AcceptedPlanHashes is the current simulator plan and its authenticated
+	// predecessor lineage. A retained handoff may name only one of these.
+	AcceptedPlanHashes []string
+	Handoff            []byte
+	ValidatorID        uint64
+	Netuid             uint16
+	Hotkey             [32]byte
 }
 
 // Receipts are recorded runtime claims, not independently verified chain facts.
@@ -56,6 +59,29 @@ type ProvisionalIntentObservationV2 struct {
 	Error                    string                       `json:"error,omitempty"`
 }
 
+func validateProvisionalIntentPlanLineage(current string, accepted []string, handoff string) error {
+	if _, err := canonicalAttemptHex32("provisional intent current plan", current, false); err != nil {
+		return err
+	}
+	if _, err := canonicalAttemptHex32("provisional intent handoff plan", handoff, false); err != nil {
+		return err
+	}
+	allowed := make(map[string]bool, len(accepted))
+	for _, hash := range accepted {
+		if _, err := canonicalAttemptHex32("provisional intent accepted plan", hash, false); err != nil {
+			return err
+		}
+		allowed[hash] = true
+	}
+	if !allowed[current] {
+		return errors.New("local intent observation lineage omits the current approved plan")
+	}
+	if !allowed[handoff] {
+		return errors.New("local intent observation handoff is outside the approved plan lineage")
+	}
+	return nil
+}
+
 func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentObservationV2Options) (result *ProvisionalIntentObservationV2, resultErr error) {
 	result = &ProvisionalIntentObservationV2{Scope: "local-runtime-observation", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), State: "unknown"}
 	defer func() {
@@ -75,8 +101,11 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		return result, err
 	}
 	canonical, err := json.MarshalIndent(setup, "", "  ")
-	if err != nil || !bytes.Equal(options.Handoff, append(canonical, '\n')) || setup.ApprovedPlanHash != options.PlanHash || setup.DeploymentID != options.DeploymentID || setup.ValidatorID != options.ValidatorID {
+	if err != nil || !bytes.Equal(options.Handoff, append(canonical, '\n')) || setup.DeploymentID != options.DeploymentID || setup.ValidatorID != options.ValidatorID {
 		return result, errors.New("local intent observation handoff differs from its approved identity")
+	}
+	if err := validateProvisionalIntentPlanLineage(options.PlanHash, options.AcceptedPlanHashes, setup.ApprovedPlanHash); err != nil {
+		return result, err
 	}
 	setup.contentHash = options.HandoffSHA256
 	cfg, err := LoadReleaseConfig(options.ConfigPath)

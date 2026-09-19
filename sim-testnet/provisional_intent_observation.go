@@ -35,6 +35,10 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 	if !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record == nil {
 		return fail(errors.New("provisional intent observation has no admitted plan"))
 	}
+	acceptedPlanHashes := cfg.provisionalResume.AcceptedPlanHashes
+	if len(acceptedPlanHashes) == 0 || !slices.Contains(acceptedPlanHashes, cfg.provisionalResume.Record.PlanHash) {
+		return fail(errors.New("provisional intent observation has no authenticated plan lineage"))
+	}
 	var adoption provisionalLiveTopology
 	if err := readJSONFile(filepath.Join(stateDir, "provisional-resumes", "live-topology.json"), &adoption); err != nil {
 		return fail(err)
@@ -112,7 +116,7 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 		}
 		observed, err := validatorpkg.ObserveProvisionalIntentsV2(ctx, validatorpkg.ProvisionalIntentObservationV2Options{
 			ConfigPath: configPath, Handoff: handoff, HandoffSHA256: handoffHash, PlanHash: cfg.provisionalResume.Record.PlanHash,
-			DeploymentID: manifest.DeploymentID, ValidatorID: uint64(validatorID), Netuid: cfg.Netuid, Hotkey: hotkey,
+			AcceptedPlanHashes: slices.Clone(acceptedPlanHashes), DeploymentID: manifest.DeploymentID, ValidatorID: uint64(validatorID), Netuid: cfg.Netuid, Hotkey: hotkey,
 		})
 		result.LocalRuntimeIntents = observed
 		if err != nil {

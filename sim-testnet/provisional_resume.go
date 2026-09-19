@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -38,16 +39,39 @@ type provisionalResumeRecord struct {
 }
 
 type provisionalResumeState struct {
-	Driver     provisionalDriverProvenance
-	Record     *provisionalResumeRecord
-	RecordPath string
-	RecordHash string
+	Driver             provisionalDriverProvenance
+	Record             *provisionalResumeRecord
+	RecordPath         string
+	RecordHash         string
+	AcceptedPlanHashes []string
 }
 
 type provisionalScenarioProvenance struct {
 	ResumeRecordHash string                         `json:"resume_record_hash"`
 	ExecutableSHA256 string                         `json:"executable_sha256"`
 	Build            releaseExecutableBuildIdentity `json:"build"`
+}
+
+// provisionalAcceptedPlanHashes turns the authenticated immutable plan lineage
+// into the narrowly scoped admission passed to retained validator handoffs. It
+// is invocation-only state; the plan remains the source of authorization.
+func provisionalAcceptedPlanHashes(plan *SetupPlan) ([]string, error) {
+	if plan == nil {
+		return nil, errors.New("provisional plan lineage is unavailable")
+	}
+	allowed := plan.allowedPlanHashes()
+	if !allowed[plan.PlanHash] || !validCanonicalHashHex(plan.PlanHash) {
+		return nil, errors.New("provisional plan has no canonical current identity")
+	}
+	result := make([]string, 0, len(allowed))
+	for hash := range allowed {
+		if !validCanonicalHashHex(hash) {
+			return nil, errors.New("provisional plan lineage contains a noncanonical identity")
+		}
+		result = append(result, hash)
+	}
+	sort.Strings(result)
+	return result, nil
 }
 
 func validateProvisionalResumeOptions(command string, options cliOptions) error {
@@ -84,6 +108,10 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return errors.New("provisional resume is restricted to the existing pinned Bittensor testnet")
 	}
 	if err := requireApproved(true, options.PlanHash, plan.PlanHash); err != nil {
+		return err
+	}
+	acceptedPlanHashes, err := provisionalAcceptedPlanHashes(plan)
+	if err != nil {
 		return err
 	}
 	driver := cfg.provisionalResume.Driver
@@ -139,6 +167,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		}
 	}
 	cfg.provisionalResume.Record = record
+	cfg.provisionalResume.AcceptedPlanHashes = acceptedPlanHashes
 	cfg.provisionalResume.RecordPath = path
 	cfg.provisionalResume.RecordHash = bytesSHA256(encoded)
 	fmt.Fprintf(os.Stderr, "sim-testnet: provisional testnet resume; final_acceptance=false; retained plan %s; actual driver SHA256 %s; provenance %s\n", plan.PlanHash, driver.ExecutableSHA256, path)

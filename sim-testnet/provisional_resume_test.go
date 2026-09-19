@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -259,5 +260,25 @@ func TestProvisionalResumeHonestBuildAndNoFinalAcceptance(t *testing.T) {
 	encoded, err := json.Marshal(strict)
 	if err != nil || strings.Contains(string(encoded), "provisional") || strings.Contains(string(encoded), "final_acceptance") {
 		t.Fatalf("strict result wire format changed: %s %v", encoded, err)
+	}
+}
+
+func TestProvisionalResumeAdmitsExactAuthenticatedPlanLineage(t *testing.T) {
+	cfg, plan, dir, options := provisionalResumeTestContext(t)
+	predecessor := "0x" + strings.Repeat("57", 32)
+	plan.PriorPlanHashes = []string{predecessor}
+	if err := prepareProvisionalResume(context.Background(), cfg, dir, "scenario", options, plan); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.provisionalResume.AcceptedPlanHashes, []string{plan.PlanHash, predecessor}) {
+		t.Fatalf("accepted plan lineage=%v", cfg.provisionalResume.AcceptedPlanHashes)
+	}
+	cfg, plan, dir, options = provisionalResumeTestContext(t)
+	plan.PriorPlanHashes = []string{"not-a-hash"}
+	if err := prepareProvisionalResume(context.Background(), cfg, dir, "scenario", options, plan); err == nil {
+		t.Fatal("noncanonical predecessor was admitted")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "provisional-resumes")); !os.IsNotExist(err) {
+		t.Fatalf("rejected lineage wrote provenance: %v", err)
 	}
 }
