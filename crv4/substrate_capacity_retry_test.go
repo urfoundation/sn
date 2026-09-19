@@ -297,3 +297,20 @@ func TestSubstrateReadCapacityDoesNotReplenishNetworkBudget(t *testing.T) {
 		t.Fatalf("network-budget attempts=%d want2", len(requests))
 	}
 }
+
+func TestContextSubstrateClientRecognizesOnlyPrivateIPv4AsOwnedRoute(t *testing.T) {
+	for _, check := range []struct {
+		url  string
+		want bool
+	}{
+		{url: "ws://192.168.1.162:9944", want: true},
+		{url: "ws://10.0.0.1:9944", want: true},
+		{url: "ws://127.0.0.1:9944", want: false},
+		{url: "wss://test.finney.opentensor.ai", want: false},
+	} {
+		client := &contextSubstrateClient{url: check.url}
+		if got := client.ownedPrivateEndpoint(); got != check.want {
+			t.Fatalf("owned private route %q=%t, want %t", check.url, got, check.want)
+		}
+	}
+}

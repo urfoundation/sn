@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"syscall"
@@ -45,6 +46,22 @@ func substrateRPCDisconnected(err error) bool {
 // Route GSRPC's contextless storage helpers through the same bounded read path.
 func (self *contextSubstrateClient) Call(result any, method string, args ...any) error {
 	return self.CallContext(context.Background(), result, method, args...)
+}
+
+// An explicit private-IP endpoint is the operator-owned LAN route. It has no
+// provider capacity quota, so a generic historical-capacity cooldown would
+// only turn a recoverable response into minutes of idle plan time.
+func (self *contextSubstrateClient) ownedPrivateEndpoint() bool {
+	if self == nil {
+		return false
+	}
+	parsed, err := url.Parse(self.url)
+	if err != nil || parsed == nil {
+		return false
+	}
+	host := parsed.Hostname()
+	ip := net.ParseIP(host)
+	return ip != nil && ip.To4() != nil && ip.IsPrivate()
 }
 
 // A capacity refusal pauses every read client for the same endpoint. It does
@@ -139,10 +156,12 @@ func (self *contextSubstrateClient) CallContext(ctx context.Context, result any,
 		}
 		frozen[index] = json.RawMessage(encoded)
 	}
-	gate, closed := substrateCapacityGate(self.url), self.readClosed()
+	owned, gate, closed := self.ownedPrivateEndpoint(), substrateCapacityGate(self.url), self.readClosed()
 	for attempt := 0; ; attempt++ {
-		if err := gate.wait(ctx, closed); err != nil {
-			return err
+		if !owned {
+			if err := gate.wait(ctx, closed); err != nil {
+				return err
+			}
 		}
 		if networkRemaining <= 0 {
 			return context.DeadlineExceeded
@@ -152,7 +171,7 @@ func (self *contextSubstrateClient) CallContext(ctx context.Context, result any,
 		err := self.Client.CallContext(callCtx, result, method, frozen...)
 		networkRemaining -= time.Since(started)
 		stop()
-		if substrateRPCHistoricalCapacity(err) {
+		if substrateRPCHistoricalCapacity(err) && !owned {
 			gate.refuse()
 			if attempt == 3 {
 				return err
