@@ -146,7 +146,13 @@ func inspectProvisionalValidatorIntentObserved(ctx context.Context, cfg *Resolve
 	}
 	before, generation := observe()
 	local := before.LocalRuntimeIntents
-	if before.Error != "" || before.ValidatorID != validatorId || generation == "" || local == nil || local.Scope != "local-runtime-observation" || local.FinalAcceptance || local.Error != "" || (local.State != "observed" && local.State != "absent") {
+	if before.Error != "" {
+		return failure(fmt.Errorf("local intent observation: %s", before.Error))
+	}
+	if local != nil && local.Error != "" {
+		return failure(fmt.Errorf("local intent observation: %s", local.Error))
+	}
+	if before.ValidatorID != validatorId || generation == "" || local == nil || local.Scope != "local-runtime-observation" || local.FinalAcceptance || (local.State != "observed" && local.State != "absent") {
 		return failure(errors.New("local intent projection has no authenticated observation"))
 	}
 	result := ValidatorObservation{ValidatorID: validatorId}
