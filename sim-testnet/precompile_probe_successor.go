@@ -655,6 +655,7 @@ func (self *Executor) precompileProbeNativeSource(action Action, verified Journa
 		}
 		source.plan = original
 	}
+	source.cfg = historicalPlanConfig(self.cfg, source.plan)
 	payloads := *self.payloads
 	payloads.PrecompileProbeAddress = common.HexToAddress(successor.RetiredProbe)
 	source.payloads = &payloads

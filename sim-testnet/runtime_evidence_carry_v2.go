@@ -20,6 +20,19 @@ import (
 
 // Resolve a completed ancestor without changing its signatures, first epoch,
 // quotas or runtime domain. Same-plan setup keeps its existing fresh admission.
+// historicalPlanConfig retains the live transport and runtime readers but binds
+// immutable replay to the archived approval identity. It is used only after
+// lineage, deployment, role and receipt authentication has selected that plan.
+func historicalPlanConfig(cfg *ResolvedConfig, plan *SetupPlan) *ResolvedConfig {
+	if cfg == nil || plan == nil {
+		return cfg
+	}
+	copy := *cfg
+	copy.ConfigHash = plan.ConfigHash
+	copy.PolicyHash = plan.PolicyHash
+	return &copy
+}
+
 func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stateDir string, roles *RoleSecrets, prepared *runtimeEvidenceActivationPreparedV2, encoded []byte, completed *runtimeEvidenceActivationCompletedV2, entries []JournalEntry) (*SetupPlan, error) {
 	if cfg == nil || cfg.Config == nil || plan == nil || roles == nil || prepared == nil {
 		return nil, errors.New("activation setup carry owners are incomplete")
@@ -45,10 +58,8 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 	if !validCanonicalHashHex(source.ConfigHash) || cfg.ConfigHash != plan.ConfigHash || source.PolicyHash != plan.PolicyHash || source.PolicyHash != cfg.PolicyHash {
 		return nil, errors.New("activation setup carry changed its approved configuration or policy")
 	}
-	sourceConfig := *cfg
-	sourceConfig.ConfigHash = source.ConfigHash
-	sourceConfig.PolicyHash = source.PolicyHash
-	if err := validateRuntimeEvidencePreparedInputsV2(&sourceConfig, source, roles, prepared); err != nil {
+	sourceConfig := historicalPlanConfig(cfg, source)
+	if err := validateRuntimeEvidencePreparedInputsV2(sourceConfig, source, roles, prepared); err != nil {
 		return nil, err
 	}
 	preparedHash := fmt.Sprintf("0x%x", sha256.Sum256(encoded))
