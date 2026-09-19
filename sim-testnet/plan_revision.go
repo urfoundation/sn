@@ -1430,7 +1430,10 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 			return planRevisionRecoveries{}, fmt.Errorf("prior EVM transaction artifact hash does not match %s", transaction.TransactionHash)
 		}
 		if evmClient == nil {
-			evmClient, err = ethclient.DialContext(ctx, cfg.OperationalEVM)
+			// Keep historical revision receipt reads on the configured transport.
+			// In particular, an owned LAN node has no pacing but does have the
+			// bounded HTTP response lifetime enforced by dialConfiguredEVMClient.
+			evmClient, err = dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
 			if err != nil {
 				return planRevisionRecoveries{}, err
 			}
