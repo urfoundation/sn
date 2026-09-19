@@ -394,6 +394,12 @@ func (self *Executor) reconcileProvisionalSetupPrefix(ctx context.Context, plan 
 		if err := self.verifyActionDependencies(action); err != nil {
 			return nil, fmt.Errorf("provisional setup repair %s dependencies: %w", action.ID, err)
 		}
+		if action.ID == "config.render" {
+			if err := self.deferProvisionalConfigRender(action); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		fmt.Fprintf(os.Stderr, "sim-testnet: reconciling approved setup action %s while retaining live topology; final_acceptance=false\n", action.ID)
 		if err := execute(ctx, action); err != nil {
 			return nil, fmt.Errorf("provisional setup repair %s: %w", action.ID, err)
@@ -414,6 +420,12 @@ func (self *Executor) reconcileProvisionalSetupPrefix(ctx context.Context, plan 
 // generation through this path. Doctor and ordinary execution retain their
 // budget, dependency, transaction-recovery and fresh postcondition checks.
 func provisionalLiveSetupRepair(action Action) bool {
+	if action.ID == "validator.reserve-majority" {
+		return action.Kind == "substrate-read" && spendIsZero(action.Spend)
+	}
+	if action.ID == "config.render" {
+		return action.Kind == "local" && spendIsZero(action.Spend)
+	}
 	if _, _, err := alphaTransferTargetFromActionID(action.ID); err != nil {
 		return false
 	}
@@ -450,6 +462,11 @@ func (self *Executor) provisionalSetupPrefix(ctx context.Context, plan *SetupPla
 			hash, err := actionIntentHash(action)
 			if err != nil || hash != action.IntentHash {
 				return nil, nil, stateMismatchError(err, "provisional setup repair %s intent differs from its approval", action.ID)
+			}
+			if action.ID == "config.render" {
+				if _, err := self.provisionalConfigRenderDeferral(action, entries); err != nil {
+					return nil, nil, err
+				}
 			}
 			pending = append(pending, action)
 			continue
