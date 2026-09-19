@@ -108,7 +108,7 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		return result, err
 	}
 	setup.contentHash = options.HandoffSHA256
-	cfg, err := LoadReleaseConfig(options.ConfigPath)
+	cfg, err := LoadProvisionalActivationObservationConfig(options.ConfigPath)
 	if err != nil {
 		return result, err
 	}

@@ -75,6 +75,18 @@ type ReleaseConfig struct {
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
+	return loadReleaseConfig(path, false)
+}
+
+// LoadProvisionalActivationObservationConfig admits a retained testnet config
+// only for a hash-pinned, read-only activation observation. It accepts an
+// exact reviewed predecessor runtime, but never grants producer or archive
+// authority.
+func LoadProvisionalActivationObservationConfig(path string) (*ReleaseConfig, error) {
+	return loadReleaseConfig(path, true)
+}
+
+func loadReleaseConfig(path string, provisionalActivationObservation bool) (*ReleaseConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("validator config path is empty")
 	}
@@ -86,12 +98,16 @@ func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeReleaseConfigBytes(abs, b)
+	return decodeReleaseConfigBytesMode(abs, b, provisionalActivationObservation)
 }
 
 // The adoption caller must parse the same immutable bytes that its request
 // pins, rather than pair a prior parse with a later pathname read.
 func decodeReleaseConfigBytes(abs string, b []byte) (*ReleaseConfig, error) {
+	return decodeReleaseConfigBytesMode(abs, b, false)
+}
+
+func decodeReleaseConfigBytesMode(abs string, b []byte, provisionalActivationObservation bool) (*ReleaseConfig, error) {
 	var cfg ReleaseConfig
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -111,7 +127,11 @@ func decodeReleaseConfigBytes(abs string, b []byte) (*ReleaseConfig, error) {
 	if err := cfg.normalize(filepath.Dir(abs)); err != nil {
 		return nil, err
 	}
-	if err := cfg.Validate(); err != nil {
+	if provisionalActivationObservation {
+		if err := cfg.validateProvisionalActivationObservation(); err != nil {
+			return nil, fmt.Errorf("validator config %s: %w", abs, err)
+		}
+	} else if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validator config %s: %w", abs, err)
 	}
 	// Config accepts checksum-case addresses, while signed measurement identities
@@ -236,9 +256,20 @@ func (self ReleaseConfig) ValidateHistorical() error {
 	return self.validate(true)
 }
 
+// A retained provisional activation config is validated as an exact reviewed
+// predecessor. Its compatibility profile is permitted only for this read-only
+// observer, whose caller has already verified the immutable handoff.
+func (c ReleaseConfig) validateProvisionalActivationObservation() error {
+	return c.validateWithMode(true, true)
+}
+
 // Public archive replay authenticates an original configuration without
 // authorizing it as a current producer or changing its serialized identity.
 func (c ReleaseConfig) validate(historical bool) error {
+	return c.validateWithMode(historical, false)
+}
+
+func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObservation bool) error {
 	if c.SchemaVersion != ReleaseValidatorSchemaVersion || c.Release != "1.0" {
 		return errors.New("schema_version must be 1 and release must be 1.0")
 	}
@@ -251,7 +282,7 @@ func (c ReleaseConfig) validate(historical bool) error {
 	if err := validateReleaseProvisionalRuntimeCompatibility(&c); err != nil {
 		return err
 	}
-	if historical && c.ProvisionalRuntimeCompatibility != "" {
+	if historical && c.ProvisionalRuntimeCompatibility != "" && !provisionalActivationObservation {
 		return errors.New("provisional runtime compatibility cannot authorize a final historical archive")
 	}
 	if strings.TrimSpace(c.DeploymentID) == "" || strings.ContainsAny(c.DeploymentID, "/\\.") {
