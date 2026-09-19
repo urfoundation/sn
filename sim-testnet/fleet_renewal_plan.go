@@ -39,6 +39,9 @@ type FleetRenewal struct {
 	CampaignLiabilityWei     DecimalUint         `json:"campaign_committed_or_pending_max_wei"`
 	SupersededGasCoveredWei  DecimalUint         `json:"gas_already_covered_by_superseded_allowance_wei"`
 	CampaignReserveBeforeWei DecimalUint         `json:"campaign_reserve_before_wei"`
+	AllowanceExtensionWei    DecimalUint         `json:"allowance_extension_wei,omitempty"`
+	AllowanceTotalTAORao     uint64              `json:"allowance_total_tao_rao,omitempty"`
+	AllowanceTotalEVMWei     DecimalUint         `json:"allowance_total_evm_wei,omitempty"`
 	TransactionEvidence      []string            `json:"external_signed_transactions"`
 	EVMNonces                []FleetRenewalNonce `json:"evm_nonce_checkpoints"`
 	Fleets                   []FleetRenewalFleet `json:"fleets"`

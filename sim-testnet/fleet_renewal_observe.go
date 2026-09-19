@@ -454,6 +454,17 @@ func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir st
 	if err != nil {
 		return nil, err
 	}
+	actions, err := fleetRenewalActions(base, renewal)
+	if err != nil {
+		return nil, err
+	}
+	spend, err := maximumActionSpend(actions)
+	if err != nil {
+		return nil, err
+	}
+	renewal.AllowanceExtensionWei = spend.EVMGasWei
+	renewal.AllowanceTotalTAORao = cfg.MaximumTAORao
+	renewal.AllowanceTotalEVMWei = cfg.MaximumEVMGasWei
 	return appendFleetRenewalPlan(base, renewal)
 }
 
