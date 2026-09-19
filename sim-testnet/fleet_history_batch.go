@@ -460,6 +460,8 @@ func (self *Executor) verifyHistoricalFleetGenerationOneCalls(ctx context.Contex
 // and both configured observers succeed for each action. Failed or blocked
 // actions never receive a key; independent successful actions remain reusable.
 func (self *Executor) verifyCarriedFleetGenerationOneHistory(ctx context.Context, audits []carriedActionAudit) (map[string]bool, error) {
+	self.carriedJournalEntries = self.journal.Entries()
+	defer func() { self.carriedJournalEntries = nil }()
 	self.fleetInstallAliasRecordCache = make(map[JournalEntry]*ActionPostcondition)
 	defer func() { self.fleetInstallAliasRecordCache = nil }()
 	calls := make([]historicalFleetGenerationOneCall, 0)

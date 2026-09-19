@@ -51,6 +51,7 @@ type Executor struct {
 	releaseGate                  *ReleaseCampaignGate
 	carriedVerificationKeys      map[string]bool
 	carriedFleetHistoryKeys      map[string]bool
+	carriedJournalEntries        []JournalEntry
 	fleetInstallAliasRecordCache map[JournalEntry]*ActionPostcondition
 	auditAuthorizedConfig        *ResolvedConfig
 	fleetCommitmentHistory       *fleetCommitmentHistoryScope
@@ -2025,7 +2026,10 @@ func (e *Executor) expectedBootstrapPolicyMigrationAccounting() (policyRevisionR
 	if e == nil || e.cfg == nil || e.plan == nil || e.journal == nil {
 		return policyRevisionReserveAccounting{}, errors.New("policy migration accounting context is incomplete")
 	}
-	entries := e.journal.Entries()
+	entries := e.carriedJournalEntries
+	if entries == nil {
+		entries = e.journal.Entries()
+	}
 	required := false
 	for _, action := range e.plan.Actions {
 		if action.ID == voluntaryConvictionReconciliationActionID {
