@@ -229,7 +229,10 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 			return nil, err
 		}
 	}
-	values, inputs, err := runtimeEvidenceFixedInputsV2(cfg, plan, stateDir, roles, &prepared, &completed)
+	// The selected source has authenticated lineage, receipts and signatures.
+	// Its immutable files retain that original configuration identity even when
+	// the current approval changed an independent allowance.
+	values, inputs, err := runtimeEvidenceFixedInputsV2(historicalPlanConfig(cfg, plan), plan, stateDir, roles, &prepared, &completed)
 	if err != nil {
 		return nil, err
 	}

@@ -284,16 +284,63 @@ func TestRuntimeEvidenceSetupCarryV2RejectsForeignLineageAndDomain(t *testing.T)
 }
 
 func TestRuntimeEvidenceSetupCarryV2RetainsSourceAcrossAllowanceRevision(t *testing.T) {
-	fixture := newRuntimeEvidenceProvisionV2TestFixture(t)
-	revised, entries := prepareRuntimeEvidenceSetupCarryV2Test(t, fixture)
-	// Model a successor whose only changed approval dimension is a spend
-	// allowance. The archived signed preparation remains bound to its source
-	// config hash, while the current resolved config matches the successor.
-	revised.ConfigHash = common.Hash{0x83}.Hex()
+	fixture := newRuntimeEvidenceSetupOriginalCarryV2Test(t)
+	_, entries := prepareRuntimeEvidenceSetupCarryV2Test(t, fixture)
+	// Model a successor whose independent allowance changed its config hash,
+	// using the actual revision builder to retain executable source authority.
 	configured := *fixture.cfg
-	configured.ConfigHash = revised.ConfigHash
+	configured.ConfigHash = common.Hash{0x83}.Hex()
+	current := fixture.plan.LiveFacts
+	current.DeployerNonce = fixture.plan.ValidatorEvidence.DeployerNonce + 1
+	revised, err := buildPlanRevisionFromFacts(&configured, fixture.stateDir, fixture.plan, &current, entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runtimeEvidenceSetupSourcePlanV2(&configured, revised, fixture.stateDir, fixture.roles, fixture.prepared, fixture.preparedBytes, fixture.completed, entries); err != nil {
 		t.Fatalf("allowance successor stranded original signed activation: %v", err)
+	}
+	revised.PlanHash, err = revised.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(revised)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.stateDir, "plan.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := validatorNamespaceTreeSnapshot(t, fixture.stateDir)
+	resolved, err := runtimeEvidenceV2ResolvedConfig(&configured, fixture.stateDir)
+	if err != nil {
+		t.Fatalf("runtime reader lost authenticated source identity: %v", err)
+	}
+	expected, _, err := runtimeEvidenceFixedInputsV2(fixture.cfg, fixture.plan, fixture.stateDir, fixture.roles, fixture.prepared, fixture.completed)
+	if err != nil || !reflect.DeepEqual(resolved.Config.ValidatorEvidenceV2, expected) || resolved.ConfigHash != configured.ConfigHash {
+		t.Fatalf("runtime source reconstruction changed original files or current config: %v", err)
+	}
+	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, fixture.stateDir)) {
+		t.Fatal("read-only source reconstruction rewrote retained evidence")
+	}
+	configured.provisionalResume = &provisionalResumeState{
+		Record:     &provisionalResumeRecord{PlanHash: revised.PlanHash, Provisional: true},
+		RecordPath: filepath.Join(fixture.stateDir, "provisional-resumes", "synthetic", "provenance.json"),
+	}
+	var specs []ProcessSpec
+	for validatorId := 1; validatorId <= configured.Config.Topology.Validators; validatorId++ {
+		id := fmt.Sprintf("validator-%d", validatorId)
+		if err := atomicWrite(filepath.Join(fixture.stateDir, "runtime", id, "validator.yml"), []byte("synthetic retained validator config\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		specs = append(specs, ProcessSpec{ID: id, Role: "validator"})
+	}
+	if err := attachProvisionalActivationSetup(&configured, fixture.stateDir, revised, fixture.roles, specs); err != nil {
+		t.Fatalf("validator handoff lost authenticated source identity: %v", err)
+	}
+	for _, spec := range specs {
+		if len(spec.Args) != 2 || !strings.HasPrefix(spec.Args[0], "--provisional-activation-setup=") {
+			t.Fatalf("validator handoff missing original setup: %+v", spec)
+		}
 	}
 }
 
