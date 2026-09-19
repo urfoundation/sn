@@ -77,6 +77,7 @@ type fleetCensusCache struct {
 	key           [32]byte
 	proof         fleetCensusCacheProof
 	dirty         bool
+	readOnly      bool
 	usedFleetKVs  map[int]fleetCensusProof
 	readFile      func(string) ([]byte, error)
 	beforeRecheck func()
@@ -89,6 +90,7 @@ func newFleetCensusCache(cfg *ResolvedConfig, stateDir string, coordinator commo
 	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || cfg.WalletMaterial == "" {
 		return self
 	}
+	self.readOnly = cfg.readOnlyAudit
 	contextHash, err := canonicalHashHex(struct {
 		DeploymentId  string
 		ConfigHash    string
@@ -334,7 +336,7 @@ func (self *fleetCensusCache) load() {
 // Descriptor-relative creation and rename prevent substituted cache paths
 // from redirecting a write; concurrent writers can only lose an optimization.
 func (self *fleetCensusCache) save() {
-	if !self.dirty || self.name == "" {
+	if self.readOnly || !self.dirty || self.name == "" {
 		return
 	}
 	envelope := fleetCensusCacheEnvelope{Proof: self.proof, Mac: hex.EncodeToString(self.authenticationTag(self.proof))}

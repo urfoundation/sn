@@ -73,6 +73,6 @@ func newFleetCensusPlanCacheEntry(cfg *ResolvedConfig, stateDir string, raw []by
 	if err != nil {
 		return nil
 	}
-	return &historicalAuditCacheEntry{stateDir: stateDir, name: strings.TrimPrefix(nameHash, "0x") + ".json",
+	return &historicalAuditCacheEntry{stateDir: stateDir, readOnly: cfg.readOnlyAudit, name: strings.TrimPrefix(nameHash, "0x") + ".json",
 		key: derive32(cfg, "fleet-census-plan-cache/v1"), proof: proof}
 }

@@ -272,6 +272,9 @@ func (self *Journal) rememberValidationEntry(entry JournalEntry) {
 func (j *Journal) Append(e JournalEntry) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.file == nil {
+		return errors.New("journal is read-only or closed")
+	}
 	if err := j.validateEntry(e); err != nil {
 		return err
 	}

@@ -532,6 +532,9 @@ func legacyRegistrationBalancePostconditionHash(record *ActionPostcondition) (st
 }
 
 func (e *Executor) persistActionPostcondition(record *ActionPostcondition) (string, string, error) {
+	if e != nil && e.cfg != nil && e.cfg.readOnlyAudit {
+		return "", "", errors.New("historical audit cannot persist action postconditions")
+	}
 	if record == nil {
 		return "", "", errors.New("action postcondition is unavailable")
 	}

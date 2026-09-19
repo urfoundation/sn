@@ -371,7 +371,7 @@ func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := validateCoordinatorRepairOptions("coordinator-repair", o); err != nil {
 		return err
 	}
-	plan, err := loadPersistedPlan(cfg, stateDir)
+	plan, err := loadInvocationPlan(cfg, stateDir, "coordinator-repair", o)
 	if err != nil {
 		return err
 	}

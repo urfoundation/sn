@@ -356,6 +356,7 @@ type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
+	readOnlyAudit           bool
 	provisionalResume       *provisionalResumeState
 	strictHistoryAdoption   *strictHistoryAdoptionState
 	provisionalRPCAuthority string

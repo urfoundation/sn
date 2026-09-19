@@ -17,7 +17,19 @@ import (
 // Persist a fully budget-validated real plan before changing only release source.
 func provisionalRuntimePlanFixture(t *testing.T) (*ResolvedConfig, *SetupPlan, string, cliOptions, []byte) {
 	t.Helper()
+	return provisionalRuntimePlanFixtureWithOwnedRpc(t, "")
+}
+
+// Owned routing is selected before approval, independently of driver identity.
+func provisionalRuntimePlanFixtureWithOwnedRpc(t *testing.T, authority string) (*ResolvedConfig, *SetupPlan, string, cliOptions, []byte) {
+	t.Helper()
 	cfg, _, stateDir, options := provisionalResumeTestContext(t)
+	var err error
+	cfg, err = prepareOwnedRPCConfiguration(cfg, authority)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.OwnedRPCAuthority = authority
 	roles, err := derivePublicRoles(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +61,7 @@ func TestProvisionalRuntimePlanRetainsApprovalAcrossReleaseHotfix(t *testing.T) 
 	if _, err := loadPersistedPlan(cfg, stateDir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
 		t.Fatalf("strict release audit did not detect drift: %v", err)
 	}
-	for _, command := range []string{"resume", "scenario"} {
+	for _, command := range []string{"resume", "scenario", "coordinator-repair"} {
 		retained, err := loadInvocationPlan(cfg, stateDir, command, options)
 		if err != nil {
 			t.Fatalf("%s lost retained approval after hotfix: %v", command, err)
@@ -113,5 +125,28 @@ func TestProvisionalRuntimePlanRejectsTamperedPersistedApproval(t *testing.T) {
 	}
 	if _, err := loadInvocationPlan(cfg, stateDir, "resume", options); err == nil {
 		t.Fatal("provisional loader accepted tampered wire")
+	}
+}
+
+// An already-approved owned route uses the owned flag even during provisional
+// recovery; the legacy provisional override is not the plan's identity.
+func TestProvisionalRuntimePlanRetainsApprovedOwnedRpcAfterHotfix(t *testing.T) {
+	cfg, plan, stateDir, options, _ := provisionalRuntimePlanFixtureWithOwnedRpc(t, "192.168.1.162:9944")
+	retained, err := loadInvocationPlan(cfg, stateDir, "resume", options)
+	if err != nil || retained.OwnedRPCAuthority != plan.OwnedRPCAuthority {
+		t.Fatalf("approved owned route lost across hotfix: %v", err)
+	}
+	if err := validateOwnedRPCPlan(cfg, retained); err != nil {
+		t.Fatal(err)
+	}
+	wrongRoute := *cfg
+	wrongRoute.ownedRPCAuthority = ""
+	if _, err := loadInvocationPlan(&wrongRoute, stateDir, "resume", options); !errors.Is(err, errPersistedPlanIdentityMismatch) || !strings.Contains(err.Error(), "owned RPC authority") {
+		t.Fatalf("wrong route did not identify its exact mismatch: %v", err)
+	}
+	wrongInputs := *cfg
+	wrongInputs.ObjectStoreHost += "-changed"
+	if _, err := loadInvocationPlan(&wrongInputs, stateDir, "resume", options); !errors.Is(err, errPersistedPlanIdentityMismatch) || !strings.Contains(err.Error(), "resolved_inputs_hash") {
+		t.Fatalf("resolved-input drift did not identify its exact mismatch: %v", err)
 	}
 }

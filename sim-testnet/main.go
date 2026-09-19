@@ -57,6 +57,7 @@ Commands:
   relay-continuation  capture or adopt one fixed continuation inside the original relay reserve
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
+  audit    read-only retained-plan and action-history checks; reports all findings
   resume   reconcile the journal and continue an interrupted approved action
   coordinator-repair  apply one bounded provisional coordinator implementation correction
   fleet-renew  plan or resume an exact next-generation renewal of existing fleets
@@ -106,7 +107,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", cliOptions{}, errors.New("missing command")
 	}
 	cmd := args[0]
-	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -173,6 +174,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if err := validateStrictResumeCampaignOptions(cmd, o); err != nil {
 		return "", o, err
+	}
+	if cmd == "audit" && (o.Apply || o.Detach || o.ProvisionalResume || o.PrepareOnly || o.Manifest != "") {
+		return "", o, errors.New("audit is read-only and cannot apply, detach, prepare, resume provisionally, or override the manifest")
 	}
 	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
 		return "", o, errors.New("--run-id is valid only for public analyze with --manifest")
@@ -451,7 +455,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
+	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -490,6 +494,9 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 	}
 	switch cmd {
+	case "audit":
+		report, err := runHistoricalAudit(ctx, resolved, readResolved, stateDir, o.PlanHash)
+		return printResult(o.Format, report, err)
 	case "relay-continuation":
 		return runEvidenceRelayContinuation(ctx, resolved, stateDir, o)
 	case "fleet-renew":
@@ -535,7 +542,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 // Identifies the read-only commands which may run concurrently with a live
 // campaign and therefore must share its single public-provider egress gate.
 func commandUsesCampaignEgress(command string) bool {
-	return command == "status" || command == "inspect" || command == "analyze"
+	return command == "audit" || command == "status" || command == "inspect" || command == "analyze"
 }
 
 // Selects the exact internally derived transport copy only while the
