@@ -430,6 +430,23 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	return result, nil
 }
 
+func bindFleetRenewalRuntimeIdentity(cfg *ResolvedConfig, plan *SetupPlan) (*SetupPlan, error) {
+	if cfg == nil || plan == nil {
+		return nil, errors.New("renewal runtime identity is unavailable")
+	}
+	hash, err := resolvedInputsHash(cfg)
+	if err != nil {
+		return nil, err
+	}
+	plan.ConfigHash, plan.PolicyHash, plan.ResolvedInputsHash, plan.OwnedRPCAuthority = cfg.ConfigHash, cfg.PolicyHash, hash, cfg.ownedRPCAuthority
+	plan.PlanHash = ""
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
 func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) (*SetupPlan, error) {
 	base, err := loadFleetRenewalBase(cfg, stateDir)
 	if err != nil {
@@ -465,7 +482,11 @@ func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir st
 	renewal.AllowanceExtensionWei = spend.EVMGasWei
 	renewal.AllowanceTotalTAORao = cfg.MaximumTAORao
 	renewal.AllowanceTotalEVMWei = cfg.MaximumEVMGasWei
-	return appendFleetRenewalPlan(base, renewal)
+	plan, err := appendFleetRenewalPlan(base, renewal)
+	if err != nil {
+		return nil, err
+	}
+	return bindFleetRenewalRuntimeIdentity(cfg, plan)
 }
 
 // Fleet renewal is the one successor which must outlive the release which

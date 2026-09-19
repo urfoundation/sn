@@ -334,11 +334,11 @@ func TestFleetRenewalRejectsChangedPrestateAndPreservesApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := []JournalEntry{{EntryHash: fixture.renewal.JournalHash}}
-	if err := validateFleetRenewalSource(fixture.base, plan, entries); err != nil {
+	if err := validateFleetRenewalSource(fixture.cfg, fixture.base, plan, entries); err != nil {
 		t.Fatal(err)
 	}
 	entries = append(entries, JournalEntry{PlanHash: fixture.base.PlanHash, ActionID: "external-new-action"})
-	if err := validateFleetRenewalSource(fixture.base, plan, entries); err == nil {
+	if err := validateFleetRenewalSource(fixture.cfg, fixture.base, plan, entries); err == nil {
 		t.Fatal("unreviewed journal advance accepted")
 	}
 	path := filepath.Join(fixture.stateDir, "public", "retained.json")

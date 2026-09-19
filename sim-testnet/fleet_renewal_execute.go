@@ -69,12 +69,16 @@ func readFleetRenewalPlan(path string) (*SetupPlan, error) {
 	return plan, nil
 }
 
-func validateFleetRenewalSource(base, approved *SetupPlan, entries []JournalEntry) error {
+func validateFleetRenewalSource(cfg *ResolvedConfig, base, approved *SetupPlan, entries []JournalEntry) error {
 	if approved == nil || len(approved.FleetRenewals) == 0 || base == nil {
 		return errors.New("renewal source is unavailable")
 	}
 	renewal := approved.FleetRenewals[len(approved.FleetRenewals)-1]
 	want, err := appendFleetRenewalPlan(base, renewal)
+	if err != nil {
+		return err
+	}
+	want, err = bindFleetRenewalRuntimeIdentity(cfg, want)
 	if err != nil {
 		return err
 	}
@@ -153,7 +157,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 		return err
 	}
 	defer journal.Close()
-	if err := validateFleetRenewalSource(base, plan, journal.Entries()); err != nil {
+	if err := validateFleetRenewalSource(cfg, base, plan, journal.Entries()); err != nil {
 		return err
 	}
 	if err := validateFleetLifecycleRenewalPending(stateDir, base, journal.Entries()); err != nil {
