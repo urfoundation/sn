@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -273,6 +274,41 @@ func TestCarriedPreparationReadOnlyBatchesRetainAllFailures(t *testing.T) {
 	if maximum.Load() > 3 || len(errs) != 9 {
 		t.Fatalf("unbounded or incomplete read-only batches: max=%d results=%d", maximum.Load(), len(errs))
 	}
+	for index, err := range errs {
+		if err == nil || err.Error() != fmt.Sprintf("independent-%d", index) {
+			t.Fatalf("canonical independent failure %d was discarded: %v", index, err)
+		}
+	}
+}
+
+func TestCarriedPreparationReadOnlyAuditsDoNotWaitForSlowBatchPeer(t *testing.T) {
+	slowStarted := make(chan struct{})
+	allowSlow := make(chan struct{})
+	advanced := make(chan int, 1)
+	done := make(chan []error, 1)
+	go func() {
+		done <- collectOrderedReadOnlyAudits(t.Context(), 4, 2, func(index int) error {
+			if index == 0 {
+				close(slowStarted)
+				<-allowSlow
+			}
+			if index == 2 {
+				advanced <- index
+			}
+			return fmt.Errorf("independent-%d", index)
+		})
+	}()
+	<-slowStarted
+	select {
+	case index := <-advanced:
+		if index != 2 {
+			t.Fatalf("advanced audit index = %d, want 2", index)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a slow audit stranded an available worker behind its batch")
+	}
+	close(allowSlow)
+	errs := <-done
 	for index, err := range errs {
 		if err == nil || err.Error() != fmt.Sprintf("independent-%d", index) {
 			t.Fatalf("canonical independent failure %d was discarded: %v", index, err)

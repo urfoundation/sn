@@ -119,26 +119,34 @@ func finishLaunchPreparation(report *launchPreparationReport, publish func(*laun
 }
 
 // Transaction dispatch deliberately keeps runOrderedConcurrentAudits. This
-// read-only counterpart completes every independent batch in canonical order;
-// cancellation prevents new reads and records the remaining work as blocked.
+// read-only counterpart retains results in canonical order while a bounded
+// worker pool immediately advances past a slow independent read. Cancellation
+// prevents new reads and records the remaining work as blocked.
 func collectOrderedReadOnlyAudits(ctx context.Context, count, workers int, audit func(int) error) []error {
 	if ctx == nil || count < 0 || workers <= 0 || audit == nil {
 		return []error{errors.New("read-only audit configuration is invalid")}
 	}
 	errs := make([]error, count)
-	for first := 0; first < count; first += workers {
-		last := min(first+workers, count)
-		var wait sync.WaitGroup
-		for index := first; index < last; index++ {
-			if err := ctx.Err(); err != nil {
-				errs[index] = fmt.Errorf("audit %d blocked by canceled preparation: %w", index, err)
-				continue
+	jobs := make(chan int)
+	var wait sync.WaitGroup
+	for worker := 0; worker < min(workers, count); worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for index := range jobs {
+				if err := ctx.Err(); err != nil {
+					errs[index] = fmt.Errorf("audit %d blocked by canceled preparation: %w", index, err)
+					continue
+				}
+				errs[index] = audit(index)
 			}
-			wait.Add(1)
-			go func(index int) { defer wait.Done(); errs[index] = audit(index) }(index)
-		}
-		wait.Wait()
+		}()
 	}
+	for index := 0; index < count; index++ {
+		jobs <- index
+	}
+	close(jobs)
+	wait.Wait()
 	return errs
 }
 
