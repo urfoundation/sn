@@ -709,7 +709,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	// Host operations remain reversible and independent of read-only chain
 	// history. Their failures are collected before the single action gate.
-	if liveAdoption == nil && liveAdoptionErr == nil && requiresManagedDependencies(cmd) {
+	if liveAdoption == nil && liveAdoptionErr == nil && stoppedAdoption == nil && requiresManagedDependencies(cmd) {
 		report.add("operator-config-overlays", ensureOperatorConfigOverlays(cfg, stateDir))
 		report.add("managed-dependencies", startDependencies(ctx, cfg))
 	}
