@@ -2683,7 +2683,10 @@ func (self ethEVMBlockReader) EVMBlockByNumber(ctx context.Context, number *big.
 		argument = "0x" + number.Text(16)
 	}
 	var block *evmRPCBlock
-	if err := self.client.Client().CallContext(ctx, &block, "eth_getBlockByNumber", argument, false); err != nil {
+	if err := retryFinalSemanticRPCCall(ctx, nil, defaultFinalSemanticRPCRetryPolicy(), func(attempt context.Context) error {
+		block = nil
+		return self.client.Client().CallContext(attempt, &block, "eth_getBlockByNumber", argument, false)
+	}); err != nil {
 		return ChainHead{}, err
 	}
 	return decodeEVMRPCBlock(block, number)
