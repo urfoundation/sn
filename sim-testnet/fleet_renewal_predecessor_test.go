@@ -10,6 +10,8 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +21,25 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/urfoundation/sn/stabi"
 )
+
+func TestFleetRenewalHistoricalPlanDecodeIsReused(t *testing.T) {
+	fixture := newCarriedPreparationTest(t, 1)
+	first, err := readCachedFleetRenewalHistoricalPlan(fixture.executor.stateDir, fixture.source.PlanHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(fixture.executor.stateDir, "plans", stringsTrim0x(fixture.source.PlanHash)+".json")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := readCachedFleetRenewalHistoricalPlan(fixture.executor.stateDir, fixture.source.PlanHash)
+	if err != nil {
+		t.Fatalf("cached immutable renewal plan was reread after admission: %v", err)
+	}
+	if first != second {
+		t.Fatal("cached immutable renewal plan did not retain its admitted decode")
+	}
+}
 
 // The finalized head is already authenticated, so allocation counts isolate
 // local history work without RPC, timing thresholds, or scheduler dependence.

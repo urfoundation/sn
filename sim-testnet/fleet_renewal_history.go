@@ -5,7 +5,32 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+type fleetRenewalHistoricalPlanCacheKey struct {
+	stateDir string
+	planHash string
+}
+
+// Historical plans are content-addressed and authenticated by their embedded
+// hash. A renewal can refer to the same predecessor plan thousands of times;
+// retain one verified decode for the lifetime of the process instead of
+// repeatedly reading and decoding that immutable source during recovery.
+var fleetRenewalHistoricalPlans sync.Map // map[fleetRenewalHistoricalPlanCacheKey]*SetupPlan
+
+func readCachedFleetRenewalHistoricalPlan(stateDir, planHash string) (*SetupPlan, error) {
+	key := fleetRenewalHistoricalPlanCacheKey{stateDir: stateDir, planHash: planHash}
+	if cached, ok := fleetRenewalHistoricalPlans.Load(key); ok {
+		return cached.(*SetupPlan), nil
+	}
+	plan, err := readValidatorEvidenceHistoricalPlan(stateDir, planHash)
+	if err != nil {
+		return nil, err
+	}
+	actual, _ := fleetRenewalHistoricalPlans.LoadOrStore(key, plan)
+	return actual.(*SetupPlan), nil
+}
 
 // The renewal authorizes a new generation only after every predecessor is
 // pinned in its signed snapshot. Previous fleet postconditions therefore replay
@@ -126,7 +151,7 @@ func (e *Executor) fleetRenewalHistoricalSource(action Action, verified JournalE
 		if !complete {
 			continue
 		}
-		source, err := readValidatorEvidenceHistoricalPlan(e.stateDir, verified.PlanHash)
+		source, err := readCachedFleetRenewalHistoricalPlan(e.stateDir, verified.PlanHash)
 		if err != nil {
 			return nil, false, err
 		}
