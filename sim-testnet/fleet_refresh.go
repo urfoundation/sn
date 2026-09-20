@@ -504,6 +504,13 @@ func (self *Executor) awaitFleetRefreshOracle(ctx context.Context, action Action
 // also be the current finalized pallet value. A consumed generation remains
 // replayable after a successor or the bounded precompile drill replaces it.
 func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generation uint64) (protocol.FleetManifest, [32]byte, *FleetCommitmentEvidence, [32]byte, error) {
+	return self.validatedFleetCommitmentGenerationContext(context.Background(), fleetIndex, generation)
+}
+
+func (self *Executor) validatedFleetCommitmentGenerationContext(ctx context.Context, fleetIndex int, generation uint64) (protocol.FleetManifest, [32]byte, *FleetCommitmentEvidence, [32]byte, error) {
+	if ctx == nil {
+		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, errors.New("fleet commitment context is unavailable")
+	}
 	manifest, _, commitmentHash, err := fleetManifestForGeneration(self.cfg, self.stateDir, self.roles, fleetIndex, generation)
 	if err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
@@ -520,11 +527,11 @@ func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generat
 	if err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
 	}
-	canonicalHash, err := self.substrate.chain.API.RPC.Chain.GetBlockHash(evidence.FinalizedBlock)
+	canonicalHash, err := self.substrate.blockHashAtContext(ctx, evidence.FinalizedBlock)
 	if err != nil || canonicalHash != finalizedHash {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, stateMismatchError(err, "fleet %d generation %d commitment block is not canonical", fleetIndex, generation)
 	}
-	historical, err := self.substrate.fleetCommitmentAt(manifest.Hotkey, finalizedHash)
+	historical, err := self.substrate.fleetCommitmentAtContext(ctx, manifest.Hotkey, finalizedHash)
 	if err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
 	}
@@ -538,7 +545,7 @@ func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generat
 	if consumed {
 		return manifest, commitmentHash, evidence, [32]byte(finalizedHash), nil
 	}
-	current, err := self.substrate.fleetCommitmentFinalized(manifest.Hotkey)
+	current, err := self.substrate.fleetCommitmentFinalizedContext(ctx, manifest.Hotkey)
 	if err != nil || current.Hash != commitmentHash || current.CommitmentBlock != evidence.CommitmentBlock {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, stateMismatchError(err, "fleet %d generation %d is not the exact current finalized commitment", fleetIndex, generation)
 	}

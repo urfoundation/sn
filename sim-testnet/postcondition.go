@@ -962,7 +962,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case strings.HasPrefix(a.ID, "operator.register."):
 		return e.verifyOperatorPostState(ctx, a, state)
 	case strings.HasPrefix(a.ID, "fleet.commitment."):
-		return e.verifyFleetCommitmentPostState(a, suffixInt(a.ID), state)
+		return e.verifyFleetCommitmentPostState(ctx, a, suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.mirror."):
 		if a.Parameters["batch_installed"] == "true" {
 			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
@@ -1939,8 +1939,8 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, s
 	return state, nil
 }
 
-func (e *Executor) verifyFleetCommitmentPostState(action Action, fleet int, state map[string]any) (map[string]any, error) {
-	_, commitmentHash, evidence, _, err := e.validatedFleetCommitmentGeneration(fleet, 1)
+func (e *Executor) verifyFleetCommitmentPostState(ctx context.Context, action Action, fleet int, state map[string]any) (map[string]any, error) {
+	_, commitmentHash, evidence, _, err := e.validatedFleetCommitmentGenerationContext(ctx, fleet, 1)
 	if err != nil {
 		return nil, err
 	}

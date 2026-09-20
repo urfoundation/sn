@@ -145,6 +145,39 @@ func TestAppendRecoveredFinalityPropagatesCallerContext(t *testing.T) {
 	}
 }
 
+// A carried fleet proof reads historical runtime metadata before its storage
+// item. It must retain the action deadline at that first, potentially stalled
+// RPC boundary so the remaining audit workers can report their own findings.
+func TestFleetCommitmentHistoryPropagatesCallerContext(t *testing.T) {
+	type callerContextKey struct{}
+	const callerContextValue = "fleet-commitment-history"
+	var reachedOnce sync.Once
+	reached := make(chan struct{})
+	client := &releaseRuntimeTestClient{callContext: func(ctx context.Context, _ any, method string, _ ...any) error {
+		if method != "state_getRuntimeVersion" {
+			return errors.New("unexpected fleet commitment history RPC")
+		}
+		reachedOnce.Do(func() { close(reached) })
+		if ctx.Value(callerContextKey{}) != callerContextValue {
+			return errors.New("fleet commitment history lost caller context")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	manager := &SubstrateManager{chain: &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}}, cfg: testResolvedConfig(t)}
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), callerContextKey{}, callerContextValue))
+	done := make(chan error, 1)
+	go func() {
+		_, err := manager.fleetCommitmentAtContext(ctx, [32]byte{1}, types.Hash{1})
+		done <- err
+	}()
+	<-reached
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "lost caller context") {
+		t.Fatalf("canceled fleet commitment history error=%v", err)
+	}
+}
+
 // Uses the exact authenticated metadata on a private chain copy, leaving the
 // shared signing metadata untouched while proving the receipt.
 func TestAuthenticatedFinalizedExtrinsicBindsExactMetadataAndContext(t *testing.T) {

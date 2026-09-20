@@ -1403,21 +1403,33 @@ func (self *SubstrateManager) releaseHistoryChainAtContext(ctx context.Context, 
 }
 
 func (m *SubstrateManager) fleetCommitmentAt(hotkey [32]byte, blockHash types.Hash) (*crv4.FinalizedCommitment, error) {
-	chain, err := m.releaseHistoryChainAt(blockHash)
+	return m.fleetCommitmentAtContext(context.Background(), hotkey, blockHash)
+}
+
+// fleetCommitmentAtContext retains the caller's deadline through exact-block
+// runtime authentication and storage reads. Carried-action reconciliation must
+// be able to abandon one stalled historical proof and continue reporting its
+// other independent findings.
+func (m *SubstrateManager) fleetCommitmentAtContext(ctx context.Context, hotkey [32]byte, blockHash types.Hash) (*crv4.FinalizedCommitment, error) {
+	chain, err := m.releaseHistoryChainAtContext(ctx, blockHash)
 	if err != nil {
 		return nil, err
 	}
-	return chain.FleetCommitmentAt(m.cfg.Netuid, hotkey, blockHash)
+	return chain.FleetCommitmentAtContext(ctx, m.cfg.Netuid, hotkey, blockHash)
 }
 
 // Read the current commitment only after authenticating the complete runtime
 // identity at that same finalized state root.
 func (m *SubstrateManager) fleetCommitmentFinalized(hotkey [32]byte) (*crv4.FinalizedCommitment, error) {
-	hash, _, err := m.finalizedHead()
+	return m.fleetCommitmentFinalizedContext(context.Background(), hotkey)
+}
+
+func (m *SubstrateManager) fleetCommitmentFinalizedContext(ctx context.Context, hotkey [32]byte) (*crv4.FinalizedCommitment, error) {
+	hash, _, err := m.finalizedHeadContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return m.fleetCommitmentAt(hotkey, hash)
+	return m.fleetCommitmentAtContext(ctx, hotkey, hash)
 }
 
 // Read the release scheduler only after authenticating the complete runtime
