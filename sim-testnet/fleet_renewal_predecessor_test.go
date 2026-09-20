@@ -41,6 +41,31 @@ func TestFleetRenewalHistoricalPlanDecodeIsReused(t *testing.T) {
 	}
 }
 
+func TestFleetRenewalSuccessorJournalLookupsReuseSuccessfulReceipts(t *testing.T) {
+	fixture := newCarriedPreparationTest(t, 1)
+	executor, action := fixture.executor, fixture.source.Actions[0]
+	verified, ok := executor.cachedFleetRenewalVerifiedSuccessor(action)
+	if !ok {
+		t.Fatal("initial verified successor lookup failed")
+	}
+	finalized := verified
+	finalized.Stage = StageFinalized
+	finalized.TransactionHash = common.Hash{0x51}.Hex()
+	finalized.BlockNumber = 1
+	finalized.BlockHash = common.Hash{0x52}.Hex()
+	executor.journal.entries = append(executor.journal.entries, finalized)
+	if _, err := executor.cachedFleetRenewalFinalizedSuccessor(action); err != nil {
+		t.Fatal(err)
+	}
+	executor.journal.entries = nil
+	if got, ok := executor.cachedFleetRenewalVerifiedSuccessor(action); !ok || got != verified {
+		t.Fatal("verified successor cache reread the journal")
+	}
+	if got, err := executor.cachedFleetRenewalFinalizedSuccessor(action); err != nil || got != finalized {
+		t.Fatalf("finalized successor cache reread the journal: entry=%+v err=%v", got, err)
+	}
+}
+
 // The finalized head is already authenticated, so allocation counts isolate
 // local history work without RPC, timing thresholds, or scheduler dependence.
 func TestFleetRenewalPredecessorsDoNotRebuildLineageForJournalRows(t *testing.T) {

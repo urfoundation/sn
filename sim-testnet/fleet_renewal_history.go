@@ -19,6 +19,70 @@ type fleetRenewalHistoricalPlanCacheKey struct {
 // repeatedly reading and decoding that immutable source during recovery.
 var fleetRenewalHistoricalPlans sync.Map // map[fleetRenewalHistoricalPlanCacheKey]*SetupPlan
 
+type fleetRenewalSuccessorCacheKey struct {
+	stateDir string
+	planHash string
+	actionID string
+	intent   string
+}
+
+// These caches retain only successful immutable journal lookups. A miss or a
+// malformed entry is never cached, so a later completed action remains visible
+// to the same executor. The cache prevents every carried predecessor from
+// rescanning the complete journal for the same renewal successor receipts.
+var fleetRenewalVerifiedSuccessors sync.Map      // map[fleetRenewalSuccessorCacheKey]JournalEntry
+var fleetRenewalFinalizedSuccessors sync.Map     // map[fleetRenewalSuccessorCacheKey]JournalEntry
+var fleetRenewalPostconditionSuccessors sync.Map // map[string]struct{}
+
+func (e *Executor) fleetRenewalSuccessorCacheKey(action Action) fleetRenewalSuccessorCacheKey {
+	key := fleetRenewalSuccessorCacheKey{actionID: action.ID, intent: action.IntentHash}
+	if e != nil {
+		key.stateDir = e.stateDir
+		if e.plan != nil {
+			key.planHash = e.plan.PlanHash
+		}
+	}
+	return key
+}
+
+func (e *Executor) cachedFleetRenewalVerifiedSuccessor(action Action) (JournalEntry, bool) {
+	key := e.fleetRenewalSuccessorCacheKey(action)
+	if cached, ok := fleetRenewalVerifiedSuccessors.Load(key); ok {
+		return cached.(JournalEntry), true
+	}
+	entry, ok := e.verifiedActionEntry(action)
+	if !ok {
+		return JournalEntry{}, false
+	}
+	actual, _ := fleetRenewalVerifiedSuccessors.LoadOrStore(key, entry)
+	return actual.(JournalEntry), true
+}
+
+func (e *Executor) cachedFleetRenewalFinalizedSuccessor(action Action) (JournalEntry, error) {
+	key := e.fleetRenewalSuccessorCacheKey(action)
+	if cached, ok := fleetRenewalFinalizedSuccessors.Load(key); ok {
+		return cached.(JournalEntry), nil
+	}
+	entry, err := e.fleetRenewalFinalized(action)
+	if err != nil {
+		return JournalEntry{}, err
+	}
+	actual, _ := fleetRenewalFinalizedSuccessors.LoadOrStore(key, entry)
+	return actual.(JournalEntry), nil
+}
+
+func (e *Executor) cachedFleetRenewalSuccessorPostcondition(entry JournalEntry) error {
+	key := carriedVerificationKey(entry)
+	if _, ok := fleetRenewalPostconditionSuccessors.Load(key); ok {
+		return nil
+	}
+	if _, err := e.readPersistedPostcondition(entry); err != nil {
+		return err
+	}
+	fleetRenewalPostconditionSuccessors.Store(key, struct{}{})
+	return nil
+}
+
 func readCachedFleetRenewalHistoricalPlan(stateDir, planHash string) (*SetupPlan, error) {
 	key := fleetRenewalHistoricalPlanCacheKey{stateDir: stateDir, planHash: planHash}
 	if cached, ok := fleetRenewalHistoricalPlans.Load(key); ok {
@@ -128,15 +192,15 @@ func (e *Executor) fleetRenewalHistoricalSource(action Action, verified JournalE
 					if err != nil {
 						return nil, false, err
 					}
-					entry, ok := e.verifiedActionEntry(next)
+					entry, ok := e.cachedFleetRenewalVerifiedSuccessor(next)
 					if !ok || entry.Sequence <= verified.Sequence {
 						complete = false
 						break
 					}
-					if _, err := e.readPersistedPostcondition(entry); err != nil {
+					if err := e.cachedFleetRenewalSuccessorPostcondition(entry); err != nil {
 						return nil, false, fmt.Errorf("renewal successor %s: %w", id, err)
 					}
-					if _, err := e.fleetRenewalFinalized(next); err != nil {
+					if _, err := e.cachedFleetRenewalFinalizedSuccessor(next); err != nil {
 						return nil, false, err
 					}
 				}
