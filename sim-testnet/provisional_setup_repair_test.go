@@ -36,6 +36,29 @@ func provisionalSetupRepairFixture(t *testing.T) (carriedPreparationTest, []Acti
 	return fixture, repairs
 }
 
+func TestProvisionalLiveSetupRepairAllowsOnlyBoundedSuccessorFunding(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		action Action
+		want   bool
+	}{
+		{name: "evm role funding", action: Action{ID: "evm.fund-keeper", Kind: "substrate-extrinsic", Spend: Spend{TAORao: 1}}, want: true},
+		{name: "evm role funding cannot carry alpha", action: Action{ID: "evm.fund-keeper", Kind: "substrate-extrinsic", Spend: Spend{TAORao: 1, AlphaRao: 1}}},
+		{name: "evm role funding cannot register", action: Action{ID: "evm.fund-keeper", Kind: "substrate-extrinsic", Spend: Spend{TAORao: 1, Registrations: 1}}},
+		{name: "evm role funding must transfer tao", action: Action{ID: "evm.fund-keeper", Kind: "substrate-extrinsic"}},
+		{name: "unrelated funding remains blocked", action: Action{ID: "unrelated.fund-keeper", Kind: "substrate-extrinsic", Spend: Spend{TAORao: 1}}},
+		{name: "evm reserve accounting", action: Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Spend: Spend{EVMGasWei: DecimalUint("1")}}, want: true},
+		{name: "evm reserve cannot transfer tao", action: Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Spend: Spend{TAORao: 1, EVMGasWei: DecimalUint("1")}}},
+		{name: "evm reserve must reserve gas", action: Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := provisionalLiveSetupRepair(test.action); got != test.want {
+				t.Fatalf("allowed=%t want=%t action=%+v", got, test.want, test.action)
+			}
+		})
+	}
+}
+
 // The execution boundary retains the real journal and content-addressed
 // postcondition formats while replacing only chain observation/submission.
 func persistProvisionalRepairTestReceipt(t *testing.T, fixture carriedPreparationTest, action Action) {

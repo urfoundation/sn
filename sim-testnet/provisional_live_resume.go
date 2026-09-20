@@ -460,16 +460,31 @@ func (self *Executor) reconcileProvisionalSetupPrefix(ctx context.Context, plan 
 	return topology, ctx.Err()
 }
 
-// Pending repairs affect balances only. Other unverified setup work may
-// replace contracts, identities or runtime inputs and cannot adopt a live
-// generation through this path. Doctor and ordinary execution retain their
-// budget, dependency, transaction-recovery and fresh postcondition checks.
+// Pending repairs may replenish the already-derived EVM roles or restore a
+// bounded native reserve. They cannot replace contracts, identities, or
+// runtime inputs: those remain a fresh deployment boundary. Doctor and
+// ordinary execution retain their budget, dependency, transaction-recovery,
+// and fresh postcondition checks.
 func provisionalLiveSetupRepair(action Action) bool {
 	if action.ID == "validator.reserve-majority" {
 		return action.Kind == "substrate-read" && spendIsZero(action.Spend)
 	}
 	if action.ID == "config.render" {
 		return action.Kind == "local" && spendIsZero(action.Spend)
+	}
+	// A successor plan can increase a pre-existing role's bounded gas
+	// allowance after the original funding receipt has been finalized. The
+	// role addresses are derived before plan approval, and Execute still binds
+	// the exact approved target, amount, budget, and postcondition. Treating
+	// this as a repair avoids rejecting a live topology solely because an old
+	// funding intent had a smaller allowance.
+	if strings.HasPrefix(action.ID, "evm.fund-") {
+		return action.Kind == "substrate-extrinsic" && action.Spend.TAORao > 0 && action.Spend.AlphaRao == 0 && action.Spend.EVMGasWei.IsZero() && action.Spend.Registrations == 0 && action.Spend.SubnetCreations == 0
+	}
+	// This is an accounting reservation only; it has no chain side effect and
+	// its approved EVM ceiling is checked again before every transaction.
+	if action.ID == "campaign.evm-gas-reserve" {
+		return action.Kind == "budget-reserve" && action.Spend.TAORao == 0 && action.Spend.AlphaRao == 0 && !action.Spend.EVMGasWei.IsZero() && action.Spend.Registrations == 0 && action.Spend.SubnetCreations == 0
 	}
 	if _, _, err := alphaTransferTargetFromActionID(action.ID); err != nil {
 		return false
