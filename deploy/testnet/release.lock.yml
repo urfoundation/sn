@@ -62,7 +62,7 @@ repositories:
     sdk_go_source_hash: sha256:5cbe111d703ab888d704d2d08950bb3aef0abd0336b99ce3026414bb115c6575
     sdk_mobile_build_tree_hash: sha256:62d09e3553d744f681f4e0bd0fa640a4e7019367a73dae0ea616b45b27f27aa4
     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
-    server_go_source_hash: sha256:4b1dbce02c82cd91688fb14d390d1541a256c043d25e4796160734b0437146b8
+    server_go_source_hash: sha256:785519223b1df899466d1486a49f8cc0f28f2fc4cd4e939de5795b7649498e8e
     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
     sn_go_source_hash: sha256:2dc1b9353d27afef00ac5987d94b299be648e126db3b38ba8a8c2c32cd89d859
     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
