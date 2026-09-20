@@ -11,6 +11,7 @@ import (
 	"time"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/urfoundation/sn/protocol"
 )
 
 // Only conditions that can recover without a configuration change are retried.
@@ -256,6 +257,26 @@ func TestReleaseNativeEndpointTimeoutReservesMetadataHeadroom(t *testing.T) {
 	} {
 		if got := releaseNativeEndpointTimeout(test.cfg); got != test.wantTimeout {
 			t.Errorf("%s: native endpoint timeout=%s, want %s", test.name, got, test.wantTimeout)
+		}
+	}
+}
+
+func TestReleaseSteeringOperationTimeoutPreservesAdmittedClientKeyBatch(t *testing.T) {
+	batch := time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
+	for _, test := range []struct {
+		name string
+		cfg  *ReleaseConfig
+		want time.Duration
+	}{
+		{name: "nil config", want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second},
+		{name: "ordinary polling", cfg: &ReleaseConfig{PollSeconds: 15}, want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second},
+		{name: "slow polling", cfg: &ReleaseConfig{PollSeconds: 60}, want: batch + 4*time.Minute},
+	} {
+		if got := releaseSteeringOperationTimeout(test.cfg); got != test.want {
+			t.Errorf("%s: steering operation timeout=%s, want %s", test.name, got, test.want)
+		}
+		if test.want <= batch {
+			t.Errorf("%s: steering timeout %s does not outlive batch %s", test.name, test.want, batch)
 		}
 	}
 }

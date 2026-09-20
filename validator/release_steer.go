@@ -16,6 +16,7 @@ import (
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -1126,11 +1127,22 @@ func runReleaseSteeringOperation(ctx context.Context, timeout time.Duration, ope
 	return operation(operationCtx)
 }
 
+// A steering decision includes authenticated client-key capture. Its admitted
+// batch envelope is longer than the native-only observation window, so the
+// enclosing deadline must never cancel a valid batch before that envelope
+// expires. The additional native window covers the pinned reads before and
+// after the capture while keeping the whole retry finite.
+func releaseSteeringOperationTimeout(cfg *ReleaseConfig) time.Duration {
+	native := releaseNativeEndpointTimeout(cfg)
+	batch := time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
+	return max(native, batch+native)
+}
+
 // Run supervises release steering until cancellation or a process-fatal state
 // error. The caller must propagate a non-nil result to its service supervisor.
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
-	operationTimeout := releaseNativeEndpointTimeout(s.cfg)
+	operationTimeout := releaseSteeringOperationTimeout(s.cfg)
 	return runReleaseSteeringLoopWithDeferral(ctx, poll, func() (uint64, error) {
 		var epoch uint64
 		err := runReleaseSteeringOperation(ctx, operationTimeout, func(operationCtx context.Context) error {
