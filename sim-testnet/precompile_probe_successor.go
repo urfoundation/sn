@@ -692,6 +692,20 @@ func (self *Executor) precompileProbeHistoricalReadSource(action Action, verifie
 	return &source, true, nil
 }
 
+// Resolve the action from the same authenticated source plan as the retired
+// probe. Successor plans intentionally bind replacement probe parameters and
+// therefore cannot replay an old battery observation.
+func precompileBatteryHistoricalSourceAction(source *Executor, action Action) (Action, error) {
+	if source == nil || source.plan == nil {
+		return Action{}, errors.New("precompile battery historical source action is unavailable")
+	}
+	sourceAction, err := exactPlanActionByID(source.plan, action.ID)
+	if err != nil {
+		return Action{}, fmt.Errorf("precompile battery historical source action: %w", err)
+	}
+	return sourceAction, nil
+}
+
 // Reads only the original phase after the successor constructor authenticated it.
 func (self *Executor) historicalPrecompileEvidence() (*PrecompileConformanceEvidence, error) {
 	if self.precompileHistoryEvidence != nil {

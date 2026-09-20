@@ -1429,7 +1429,14 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		if err != nil {
 			return err
 		}
-		return source.verifyHistoricalEVMPostcondition(ctx, action, record, sharedEVMHead)
+		// A successor rewrites the live probe parameters. The retained battery
+		// observation belongs to the source plan, so replay that source action
+		// as well as its source executor and configuration.
+		sourceAction, err := precompileBatteryHistoricalSourceAction(source, action)
+		if err != nil {
+			return err
+		}
+		return source.verifyHistoricalEVMPostcondition(ctx, sourceAction, record, sharedEVMHead)
 	}
 	if source, handled, err := e.precompileProbeNativeSource(action, verified, record); handled {
 		if err != nil {
@@ -4307,6 +4314,7 @@ const (
 	carriedActionVerificationWorkers      = 8
 	carriedActionOwnedVerificationWorkers = 4
 	carriedActionVerificationTimeout      = 5 * time.Minute
+	carriedActionOwnedVerificationTimeout = 15 * time.Minute
 	carriedActionProgressInterval         = 50
 )
 

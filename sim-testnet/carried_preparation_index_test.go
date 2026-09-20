@@ -496,3 +496,20 @@ func TestCarriedPreparationCanceledSourceReadRequiresFreshRetry(t *testing.T) {
 		t.Error("canceled read or retry changed the retained journal")
 	}
 }
+
+func TestVerifyCarriedActionWithTimeoutExtendsOwnedLANHistoricalReads(t *testing.T) {
+	err := verifyCarriedActionWithTimeoutFor(t.Context(), &ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}, func(ctx context.Context) error {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return errors.New("owned historical verification has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining > carriedActionOwnedVerificationTimeout || remaining < carriedActionOwnedVerificationTimeout-time.Second {
+			return fmt.Errorf("owned deadline remaining=%s, want about %s", remaining, carriedActionOwnedVerificationTimeout)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

@@ -149,7 +149,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		}()
 		blocked := func(stage string) error { return fmt.Errorf("action %s: blocked by %s", audit.action.ID, stage) }
 		if self.carriedFleetHistoryKeys[carriedVerificationKey(audit.entry)] {
-			return verifyCarriedActionWithTimeout(ctx, func(auditCtx context.Context) error {
+			return verifyCarriedActionWithTimeoutFor(ctx, self.cfg, func(auditCtx context.Context) error {
 				return self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
 			})
 		}
@@ -209,7 +209,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 				}
 			}
 		}
-		if err := verifyCarriedActionWithTimeout(ctx, func(auditCtx context.Context) error {
+		if err := verifyCarriedActionWithTimeoutFor(ctx, self.cfg, func(auditCtx context.Context) error {
 			return self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
 		}); err != nil {
 			return fmt.Errorf("action %s: %w", audit.action.ID, err)
@@ -243,10 +243,21 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 // so one slow archive response reaches the retry/recovery path instead of
 // holding the preparation collector indefinitely.
 func verifyCarriedActionWithTimeout(ctx context.Context, verify func(context.Context) error) error {
+	return verifyCarriedActionWithTimeoutFor(ctx, nil, verify)
+}
+
+// The dedicated LAN archive is unpaced but may take longer to materialize a
+// large historical EVM proof. Keep that transient capacity condition inside a
+// recoverable read-only window instead of treating it as failed evidence.
+func verifyCarriedActionWithTimeoutFor(ctx context.Context, cfg *ResolvedConfig, verify func(context.Context) error) error {
 	if ctx == nil || verify == nil {
 		return errors.New("carried action verification context or callback is unavailable")
 	}
-	auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
+	timeout := carriedActionVerificationTimeout
+	if cfg != nil && cfg.OperationalRPCMode == rpcModeOwnedNode {
+		timeout = carriedActionOwnedVerificationTimeout
+	}
+	auditCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	return verify(auditCtx)
 }
