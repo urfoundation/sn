@@ -109,6 +109,21 @@ func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.
 	allowed := []crv4.RuntimeArtifactIdentity{expected}
 	if historical {
 		allowed = HistoricalReleaseRuntimeArtifacts(expected)
+	} else if cfg.ProvisionalRuntimeCompatibility != "" {
+		// A retained testnet config may name an exact reviewed predecessor.
+		// Its explicit profile admits only the current exact reviewed artifact
+		// as a successor; a later unknown version remains subject to the
+		// connection-bound provisional metadata checks.
+		current, ok := crv4.ReviewedRuntimeArtifact(crv4.RuntimeVersionIdentity{
+			SpecName: "node-subtensor", SpecVersion: crv4.ReviewedRuntimeSpecVersion,
+			TransactionVersion: releaseRuntimeTransactionVersion, StateVersion: releaseRuntimeStateVersion,
+		})
+		if !ok {
+			return errors.New("reviewed current runtime artifact is unavailable")
+		}
+		if current != expected {
+			allowed = append(allowed, current)
+		}
 	}
 	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, chain, finalized, allowed...)
 	if err != nil {

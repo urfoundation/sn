@@ -16,3 +16,10 @@ func releaseHistorical460TestArtifact() crv4.RuntimeArtifactIdentity {
 	cfg := runtime460ValidatorTestConfig()
 	return crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1}, CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash}
 }
+
+// The current reviewed artifact is kept separate from retained 461 owners.
+func runtime467ValidatorTestConfig() ReleaseConfig {
+	return ReleaseConfig{RuntimeSpec: 467, TransactionVersion: 1, StateVersion: 1,
+		RuntimeCodeHash:     "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2",
+		RuntimeMetadataHash: "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf"}
+}

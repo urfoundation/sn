@@ -30,10 +30,10 @@ func runtime459ValidatorTestConfig() ReleaseConfig {
 	}
 }
 
-// The one reviewed461 pair is accepted; every adjacent version or artifact
+// The one reviewed467 pair is accepted; every adjacent version or artifact
 // mismatch is refused before its configured bytes can become signing authority.
-func TestReleaseRuntime461RequiresExactReviewedArtifact(t *testing.T) {
-	cfg := runtime461ValidatorTestConfig()
+func TestReleaseRuntime467RequiresExactReviewedArtifact(t *testing.T) {
+	cfg := runtime467ValidatorTestConfig()
 	if err := validateReleaseNativeRuntimeConfig(&cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestReleaseRuntime461RequiresExactReviewedArtifact(t *testing.T) {
 		func(value *ReleaseConfig) { value.RuntimeSpec = 458 },
 		func(value *ReleaseConfig) { value.RuntimeSpec = 459 },
 		func(value *ReleaseConfig) { value.RuntimeSpec = 460 },
-		func(value *ReleaseConfig) { value.RuntimeSpec = 462 },
+		func(value *ReleaseConfig) { value.RuntimeSpec = 466 },
 		func(value *ReleaseConfig) {
 			value.RuntimeCodeHash = "0x3708442dc6aae2ea654d827d8b9985d36b6640b2447cfd48125a1a0205c8f1d3"
 		},
