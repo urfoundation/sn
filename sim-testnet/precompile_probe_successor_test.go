@@ -656,6 +656,9 @@ func TestPrecompileProbeSuccessorConstructsOriginalBatteryReplay(t *testing.T) {
 	if err != nil || !handled || source == nil || source.plan.PlanHash != fixture.source.PlanHash || source.payloads.PrecompileProbeAddress.Hex() != fixture.plan.PrecompileProbeSuccessor.RetiredProbe || !reflect.DeepEqual(source.precompileHistoryEvidence, &fixture.plan.PrecompileProbeSuccessor.Evidence) {
 		t.Fatalf("battery replay lost original source: handled=%t error=%v", handled, err)
 	}
+	if source.cfg.ConfigHash != fixture.plan.PrecompileProbeSuccessor.Evidence.ConfigHash || source.cfg.PolicyHash != fixture.plan.PrecompileProbeSuccessor.Evidence.PolicyHash {
+		t.Fatalf("battery replay config=%s/%s, want authenticated evidence identity=%s/%s", source.cfg.ConfigHash, source.cfg.PolicyHash, fixture.plan.PrecompileProbeSuccessor.Evidence.ConfigHash, fixture.plan.PrecompileProbeSuccessor.Evidence.PolicyHash)
+	}
 	replayedAction, err := precompileBatteryHistoricalSourceAction(source, action)
 	if err != nil || replayedAction.IntentHash != sourceAction.IntentHash || !reflect.DeepEqual(replayedAction.Parameters, sourceAction.Parameters) {
 		t.Fatalf("battery replay used successor action instead of retained source: action=%+v error=%v", replayedAction, err)

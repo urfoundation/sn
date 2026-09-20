@@ -655,11 +655,11 @@ func (self *Executor) precompileProbeNativeSource(action Action, verified Journa
 		}
 		source.plan = original
 	}
-	source.cfg = historicalPlanConfig(self.cfg, source.plan)
+	evidence := successor.Evidence
+	source.cfg = historicalPrecompileEvidenceConfig(self.cfg, source.plan, &evidence)
 	payloads := *self.payloads
 	payloads.PrecompileProbeAddress = common.HexToAddress(successor.RetiredProbe)
 	source.payloads = &payloads
-	evidence := successor.Evidence
 	source.precompileHistoryEvidence = &evidence
 	return &source, true, nil
 }
@@ -683,13 +683,28 @@ func (self *Executor) precompileProbeHistoricalReadSource(action Action, verifie
 	}
 	source := *self
 	source.plan = original
-	source.cfg = historicalPlanConfig(self.cfg, original)
+	evidence := self.plan.PrecompileProbeSuccessor.Evidence
+	source.cfg = historicalPrecompileEvidenceConfig(self.cfg, original, &evidence)
 	payloads := *self.payloads
 	payloads.PrecompileProbeAddress = common.HexToAddress(self.plan.PrecompileProbeSuccessor.RetiredProbe)
 	source.payloads = &payloads
-	evidence := self.plan.PrecompileProbeSuccessor.Evidence
 	source.precompileHistoryEvidence = &evidence
 	return &source, true, nil
+}
+
+// historicalPrecompileEvidenceConfig binds a replay to the immutable evidence
+// identity which validatePrecompileProbeSuccessorSource has already matched to
+// its archived source plan. A later allowance-only approval may carry an
+// intermediate plan identity, but it cannot change this retired probe proof.
+func historicalPrecompileEvidenceConfig(cfg *ResolvedConfig, plan *SetupPlan, evidence *PrecompileConformanceEvidence) *ResolvedConfig {
+	source := historicalPlanConfig(cfg, plan)
+	if source == nil || evidence == nil {
+		return source
+	}
+	copy := *source
+	copy.ConfigHash = evidence.ConfigHash
+	copy.PolicyHash = evidence.PolicyHash
+	return &copy
 }
 
 // Resolve the action from the same authenticated source plan as the retired
