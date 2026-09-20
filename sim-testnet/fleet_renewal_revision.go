@@ -113,7 +113,14 @@ func validateFleetRenewalReservedLiability(plan *SetupPlan) error {
 	if plan == nil || len(plan.FleetRenewals) == 0 {
 		return nil
 	}
-	liability := plan.FleetRenewals[len(plan.FleetRenewals)-1].CampaignLiabilityWei
+	latest := plan.FleetRenewals[len(plan.FleetRenewals)-1]
+	liability := latest.CampaignLiabilityWei
+	// A reviewed allowance extension funds the renewal signers separately. Its
+	// signed transaction exposure must not be charged to the campaign reserve a
+	// second time; retain the exact campaign reserve that approved the extension.
+	if !latest.AllowanceExtensionWei.IsZero() {
+		liability = latest.CampaignReserveBeforeWei
+	}
 	for _, action := range plan.Actions {
 		if action.ID != "campaign.evm-gas-reserve" {
 			continue

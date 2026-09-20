@@ -116,6 +116,25 @@ func TestFleetRenewalRevisionRestoresCompletedHistoricalActions(t *testing.T) {
 	}
 }
 
+func TestFleetRenewalRevisionKeepsExtensionBackedLiabilityOutOfCampaignReserve(t *testing.T) {
+	fixture := newFleetRenewalTestFixture(t)
+	approved, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserve := actionByID(t, approved, "campaign.evm-gas-reserve").Spend.EVMGasWei
+	approved.FleetRenewals[len(approved.FleetRenewals)-1].AllowanceExtensionWei = "1"
+	approved.FleetRenewals[len(approved.FleetRenewals)-1].CampaignReserveBeforeWei = reserve
+	approved.FleetRenewals[len(approved.FleetRenewals)-1].CampaignLiabilityWei = reserve + "1"
+	if err := validateFleetRenewalReservedLiability(approved); err != nil {
+		t.Fatalf("extension-backed renewal charged its campaign reserve twice: %v", err)
+	}
+	approved.FleetRenewals[len(approved.FleetRenewals)-1].AllowanceExtensionWei = ""
+	if err := validateFleetRenewalReservedLiability(approved); err == nil {
+		t.Fatal("unfunded renewal liability bypassed the campaign reserve")
+	}
+}
+
 func TestFleetRenewalRevisionRefusesCustodyFeeOrLiabilityChanges(t *testing.T) {
 	fixture := newFleetRenewalTestFixture(t)
 	prior, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)
