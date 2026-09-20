@@ -67,3 +67,36 @@ func TestReleaseSteeringLoopFailsOnMissedOrPersistentlyBrokenEpoch(t *testing.T)
 		t.Fatalf("persistent failure attempts=%d err=%v", attempts, err)
 	}
 }
+
+func TestReleaseSteeringOperationDeadlineReturnsToRetryLoop(t *testing.T) {
+	t.Parallel()
+	attempts := 0
+	err := runReleaseSteeringLoopWithWaitAndDeferral(t.Context(), func() (uint64, error) {
+		return 42, nil
+	}, func() error {
+		attempts++
+		return runReleaseSteeringOperation(t.Context(), time.Millisecond, func(ctx context.Context) error {
+			if attempts == 1 {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
+		})
+	}, func() bool { return attempts < 2 }, true)
+	if err != nil || attempts != 2 {
+		t.Fatalf("deadline did not retry the retained steering operation: attempts=%d err=%v", attempts, err)
+	}
+}
+
+func TestReleaseSteeringOperationHonorsServiceCancellation(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := runReleaseSteeringOperation(ctx, time.Second, func(context.Context) error {
+		t.Fatal("canceled service context started a steering operation")
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled service context = %v, want context cancellation", err)
+	}
+}

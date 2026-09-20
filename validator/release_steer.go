@@ -1110,21 +1110,43 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 	}
 }
 
+// runReleaseSteeringOperation bounds one RPC-bearing steering operation. The
+// outer service context remains responsible for shutdown; an operation deadline
+// returns transport stalls to the loop so retained intent state can be retried
+// without restarting the validator or duplicating a prepared submission.
+func runReleaseSteeringOperation(ctx context.Context, timeout time.Duration, operation func(context.Context) error) error {
+	if ctx == nil || timeout <= 0 || operation == nil {
+		return errors.New("release steering operation configuration is incomplete")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	operationCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return operation(operationCtx)
+}
+
 // Run supervises release steering until cancellation or a process-fatal state
 // error. The caller must propagate a non-nil result to its service supervisor.
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
+	operationTimeout := releaseNativeEndpointTimeout(s.cfg)
 	return runReleaseSteeringLoopWithDeferral(ctx, poll, func() (uint64, error) {
-		finalized, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
-		if err != nil {
-			return 0, err
-		}
-		state, err := s.native.EpochScheduleStateAtContext(ctx, s.cfg.Netuid, finalized)
-		if err != nil {
-			return 0, err
-		}
-		return state.SubnetEpochIndex, nil
+		var epoch uint64
+		err := runReleaseSteeringOperation(ctx, operationTimeout, func(operationCtx context.Context) error {
+			finalized, err := authenticatePinnedNativeRuntimeContext(operationCtx, s.native, s.cfg)
+			if err != nil {
+				return err
+			}
+			state, err := s.native.EpochScheduleStateAtContext(operationCtx, s.cfg.Netuid, finalized)
+			if err != nil {
+				return err
+			}
+			epoch = state.SubnetEpochIndex
+			return nil
+		})
+		return epoch, err
 	}, func() error {
-		return s.SubmitOnce(ctx)
+		return runReleaseSteeringOperation(ctx, operationTimeout, s.SubmitOnce)
 	}, provisionalClosedNativeInputEnabled(s.cfg))
 }
