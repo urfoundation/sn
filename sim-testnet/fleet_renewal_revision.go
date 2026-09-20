@@ -19,6 +19,29 @@ func carryFleetRenewalRevision(revised, prior *SetupPlan) error {
 	if len(revised.FleetRenewals) != 0 || revised.FleetLifecycleRenewal != nil {
 		return errors.New("fleet renewal revision was already applied")
 	}
+	// A completed live renewal persists its signed renewal record and receipts;
+	// successor reconstruction must deterministically restore its executable
+	// actions before validating the append-only lineage.
+	priorForValidation := prior
+	if !hasFleetRenewalActions(prior) {
+		raw, err := json.Marshal(prior)
+		if err != nil {
+			return err
+		}
+		var restored SetupPlan
+		if err := json.Unmarshal(raw, &restored); err != nil {
+			return err
+		}
+		for _, renewal := range restored.FleetRenewals {
+			actions, err := fleetRenewalPlanActions(&restored, renewal)
+			if err != nil {
+				return err
+			}
+			restored.Actions = append(restored.Actions, actions...)
+		}
+		priorForValidation = &restored
+	}
+	prior = priorForValidation
 	if err := validateFleetRenewalPlan(prior); err != nil {
 		return err
 	}
@@ -116,4 +139,13 @@ func validateFleetRenewalReservedLiability(plan *SetupPlan) error {
 		return nil
 	}
 	return errors.New("renewed plan lost its signed campaign liability reserve")
+}
+
+func hasFleetRenewalActions(plan *SetupPlan) bool {
+	for _, action := range plan.Actions {
+		if isFleetRenewalAction(action) {
+			return true
+		}
+	}
+	return false
 }

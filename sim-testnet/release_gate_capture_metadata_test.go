@@ -26,7 +26,7 @@ const releaseGateCaptureTypedPriorRoot = "TestFinalCaptureCapacityPriorCarrierDe
 const releaseGateCaptureLifecycleRoot = "TestFleetLifecycleRenewalDescriptorsKeepLaterWaves"
 const releaseGateCaptureEvidencePattern = "TestCampaignEvidence.*"
 const releaseGateCaptureRenewalPattern = "Test(FleetRenewal(Budget(AccountsAllSignedAttemptsAndNonceGaps|DoesNotChargeRetiredGasTwice)|CLIRequiresExactImportedApproval|ExactEVMRecoveryDoesNotResignOrRebroadcast|FeeQuoteUsesExactApprovedCeiling|HistoricalScopeExcludesFundingAndUnrelatedActions|Pipeline(JoinsCanceledWorkers|SubmitsExactNoncesBeforeFinality)|PlansExpiredAndLiveMixedGenerations|RejectsChangedPrestateAndPreservesApproval)|FleetLifecycleRenewalAdmitsOnlyApprovedSuccessor)"
-const releaseGateCaptureRevisionPattern = "TestFleetRenewalRevision(PreservesApprovedRoundsAndChargesOnce|RefusesCustodyFeeOrLiabilityChanges)"
+const releaseGateCaptureRevisionPattern = "TestFleetRenewalRevision(PreservesApprovedRoundsAndChargesOnce|RestoresCompletedHistoricalActions|RefusesCustodyFeeOrLiabilityChanges)"
 const releaseGateCaptureEvidenceSkip = " -skip '^TestCampaignEvidence(CapacityV2MetadataFullCensusMaterializesFlatWireAndCarrier|PopulationV2StreamsPhaseCensusWithBoundedOwners)$'"
 const releaseGateCaptureOwnerSkip = " -skip '^(" + releaseGateCaptureEvidencePattern + "|" + releaseGateCapturePrivatePattern + "|" + releaseGateCapturePriorRoot + "|" + releaseGateCaptureTypedPriorRoot + "|" + releaseGateCaptureLifecycleRoot + "|" + releaseGateCaptureRenewalPattern + "|" + releaseGateCaptureRevisionPattern + ")$'"
 

@@ -65,6 +65,46 @@ func TestFleetRenewalRevisionPreservesApprovedRoundsAndChargesOnce(t *testing.T)
 	}
 }
 
+func TestFleetRenewalRevisionRestoresCompletedHistoricalActions(t *testing.T) {
+	fixture := newFleetRenewalTestFixture(t)
+	approved, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The live completion record keeps the signed renewal and receipts, while
+	// executable actions are deliberately omitted from the compact successor
+	// input. A later recovery must rebuild only those deterministic actions.
+	historical := *approved
+	historical.Actions = make([]Action, 0, len(approved.Actions))
+	for _, action := range approved.Actions {
+		if !isFleetRenewalAction(action) {
+			historical.Actions = append(historical.Actions, action)
+		}
+	}
+	if hasFleetRenewalActions(&historical) {
+		t.Fatal("test fixture retained completed renewal actions")
+	}
+	roles, err := derivePublicRoles(fixture.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised, err := buildPlan(fixture.cfg, testSetupFacts(), roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised.PriorPlanHashes = append(append([]string(nil), historical.PriorPlanHashes...), historical.PlanHash)
+	if err := carryFleetRenewalRevision(revised, &historical); err != nil {
+		t.Fatalf("restore completed historical renewal: %v", err)
+	}
+	for _, action := range approved.Actions {
+		if isFleetRenewalAction(action) {
+			if !finalJSONEqual(action, actionByID(t, revised, action.ID)) {
+				t.Fatalf("restored action %s differs from its signed deterministic generation", action.ID)
+			}
+		}
+	}
+}
+
 func TestFleetRenewalRevisionRefusesCustodyFeeOrLiabilityChanges(t *testing.T) {
 	fixture := newFleetRenewalTestFixture(t)
 	prior, err := appendFleetRenewalPlan(fixture.base, fixture.renewal)
