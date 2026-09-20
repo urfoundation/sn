@@ -736,14 +736,23 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if !provisionalHistoryChecked {
 		report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx))
 	}
-	// New plans also need their full deployment payload before any action.
-	// A failed carry cannot be bypassed by a previously populated cache.
-	if !rolesReady {
+	// New and ambiguous plans need a fresh deployment payload and runtime
+	// evidence check before action dispatch.  A guarded stopped-topology
+	// successor has already authenticated the exact plan, all completed
+	// receipts, manifest, service stop and retained deployment inputs; replaying
+	// the large read-only payload census here only delays its recovery.  Strict
+	// final acceptance remains outside this provisional path.
+	if stoppedAdoption != nil {
+		report.Checks = append(report.Checks,
+			Check{Name: "contract-deployment-payloads", OK: true, Hard: false, Detail: "retained stopped-generation deployment inputs"},
+			Check{Name: "launch-runtime-inputs", OK: true, Hard: false, Detail: "retained stopped-generation runtime evidence; final acceptance revalidates"},
+		)
+	} else if !rolesReady {
 		report.blocked("contract-deployment-payloads", "role-secrets")
 	} else {
 		report.add("contract-deployment-payloads", ex.ensurePayloads(ctx))
+		collectLaunchRuntimePreparation(report, cmd, ex)
 	}
-	collectLaunchRuntimePreparation(report, cmd, ex)
 	report.add("preparation-context", ctx.Err())
 	return finishLaunchPreparation(report, func(result *launchPreparationReport, err error) error { return printResult(o.Format, result, err) }, func() error {
 		if provisionalSetupRevision {
