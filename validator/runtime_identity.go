@@ -89,7 +89,12 @@ func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.
 		validate = validateReleaseHistoricalNativeRuntimeConfig
 	}
 	if err := validate(cfg); err != nil {
-		return err
+		// The explicit testnet provisional profile authenticates a successor
+		// artifact on this connection from the reviewed configured anchor.
+		// Historical replay remains exact-pinned and cannot use this path.
+		if historical || cfg.ProvisionalRuntimeCompatibility == "" {
+			return err
+		}
 	}
 	expected := crv4.RuntimeArtifactIdentity{
 		Version: crv4.RuntimeVersionIdentity{

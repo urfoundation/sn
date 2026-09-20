@@ -313,7 +313,9 @@ func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObserva
 		validateRuntime = validateReleaseHistoricalNativeRuntimeConfig
 	}
 	if err := validateRuntime(&c); err != nil {
-		return err
+		if historical || c.ProvisionalRuntimeCompatibility == "" || validateReleaseProvisionalRuntimeCompatibility(&c) != nil {
+			return err
+		}
 	}
 	configuredPolicyHash, err := parseHash32("policy_hash", c.PolicyHash)
 	if err != nil {
