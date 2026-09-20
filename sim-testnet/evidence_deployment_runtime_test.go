@@ -189,9 +189,32 @@ func TestValidatorEvidenceInstallReadbackRejectsRuntimeBeforeViews(t *testing.T)
 			fixture.code = make([]byte, 24*1024+1)
 		}
 		got, err := readValidatorEvidenceDeploymentAtHead(context.Background(), fixture.client(t), payloads, fixture.head, true)
-		if err == nil || got != (common.Address{}) || fixture.calls.Load() != 1 {
+		wantCalls := uint64(1)
+		if fault == "absent" {
+			wantCalls = finalSemanticRPCMaximumAttempts
+		}
+		if err == nil || got != (common.Address{}) || fixture.calls.Load() != wantCalls {
 			t.Fatalf("%s runtime reached views or passed: %s %v calls%d", fault, got, err, fixture.calls.Load())
 		}
+	}
+}
+
+func TestValidatorEvidenceInstallReadbackRetriesTransientEmptyCode(t *testing.T) {
+	_, _, deployment := validatorEvidenceInstallTest(t)
+	payloads := deployment.ValidatorEvidence
+	fixture := validatorEvidenceInstallRPCTest(t, payloads)
+	var attempts atomic.Uint64
+	fixture.codeHook = func(context.Context) error {
+		if attempts.Add(1) == 1 {
+			fixture.code = nil
+		} else {
+			fixture.code = bytes.Clone(payloads.Runtime)
+		}
+		return nil
+	}
+	got, err := readValidatorEvidenceDeploymentAtHead(context.Background(), fixture.client(t), payloads, fixture.head, true)
+	if err != nil || got != payloads.Manifest.Address || attempts.Load() != 2 {
+		t.Fatalf("transient empty code recovery: address=%s attempts=%d error=%v", got, attempts.Load(), err)
 	}
 }
 

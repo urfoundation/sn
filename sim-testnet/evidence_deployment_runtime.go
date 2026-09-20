@@ -33,13 +33,26 @@ func readValidatorEvidenceDeploymentAtHead(ctx context.Context, client *ethclien
 	selector := finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true}
 	manifest := payloads.Manifest
 	var code hexutil.Bytes
-	if err := client.Client().CallContext(ctx, &code, "eth_getCode", manifest.Address, selector); err != nil {
+	if err := retryFinalSemanticRPCCall(ctx, nil, defaultFinalSemanticRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		code = nil
+		if err := client.Client().CallContext(attemptCtx, &code, "eth_getCode", manifest.Address, selector); err != nil {
+			return err
+		}
+		// A healthy deployed contract cannot become empty. Owned archive nodes
+		// have nevertheless returned a transient empty code result while their
+		// historical state backend is busy. Retry that observation; a nonempty
+		// foreign runtime remains a hard approval mismatch below.
+		if len(code) == 0 {
+			return fmt.Errorf("validator evidence deployment code is temporarily empty: %w", context.DeadlineExceeded)
+		}
+		return nil
+	}); err != nil {
 		return common.Address{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return common.Address{}, err
 	}
-	if len(code) == 0 || len(code) > 24*1024 || !bytes.Equal(code, payloads.Runtime) || crypto.Keccak256Hash(code) != manifest.RuntimeCodeHash {
+	if len(code) > 24*1024 || !bytes.Equal(code, payloads.Runtime) || crypto.Keccak256Hash(code) != manifest.RuntimeCodeHash {
 		return common.Address{}, errors.New("validator evidence deployment runtime does not match approval")
 	}
 	getters := validatorEvidenceDeploymentGetters(manifest)
