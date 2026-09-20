@@ -51,8 +51,12 @@ type releaseExecutableAuthenticator func(context.Context, *ResolvedConfig, execu
 // consulting repositories, secrets, or public services.
 type resolvedConfigLoader func(LoadOptions) (*ResolvedConfig, error)
 
-// Bound the one public source-freshness request made before an apply.
-const currentSNMainQueryTimeout = 10 * time.Second
+// Bound each public source-freshness request made before an apply. A brief
+// forge outage is retried without allowing cached source state to authorize it.
+const (
+	currentSNMainQueryTimeout  = 10 * time.Second
+	currentSNMainQueryAttempts = 3
+)
 
 // Supply the independently observed public origin/main tip in deterministic
 // tests without weakening the production network boundary.
@@ -238,6 +242,34 @@ func parseCurrentSNRevision(output []byte) (string, error) {
 // deadline and config redirects disabled. One process authenticates exactly
 // once, so no cross-command freshness cache can authorize a later mutation.
 func observeCurrentSNRevision(ctx context.Context) (string, error) {
+	if ctx == nil {
+		return "", errors.New("current SN origin/main context is unavailable")
+	}
+	var last error
+	for attempt := 1; attempt <= currentSNMainQueryAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		revision, err := observeCurrentSNRevisionOnce(ctx)
+		if err == nil {
+			return revision, nil
+		}
+		last = err
+		if attempt == currentSNMainQueryAttempts || !errors.Is(err, context.DeadlineExceeded) {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt) * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return "", last
+}
+
+func observeCurrentSNRevisionOnce(ctx context.Context) (string, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, currentSNMainQueryTimeout)
 	defer cancel()
 	workDir, err := os.MkdirTemp("", "sim-testnet-sn-origin-")
