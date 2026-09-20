@@ -906,10 +906,10 @@ func supersededVerifiedSpend(prior *SetupPlan, entries []JournalEntry) (Spend, e
 	return result, nil
 }
 
-// Charge superseded EVM reservations against the flexible live-campaign
-// reserve. Superseded pool-registration counts and verified operator alpha
-// from a pre-campaign migration remain explicit so every cumulative budget
-// dimension stays approval-bound.
+// Record superseded effects as historical budget. The subsequent cumulative
+// limit reconciliation trims the fungible live-campaign reserve exactly once;
+// subtracting here as well would charge prior spend twice and can reject a
+// valid retained campaign whose remaining reserve is smaller than history.
 func applySupersededSpend(plan *SetupPlan, spend Spend) error {
 	if plan == nil {
 		return errors.New("replacement plan is unavailable")
@@ -917,29 +917,13 @@ func applySupersededSpend(plan *SetupPlan, spend Spend) error {
 	if spend.TAORao != 0 || spend.SubnetCreations != 0 {
 		return fmt.Errorf("automatic plan recovery cannot supersede TAO or subnet creations: %+v", spend)
 	}
-	if spend.EVMGasWei.IsZero() {
-		plan.SupersededSpend = spend
-		return nil
-	}
-	for index := range plan.Actions {
-		action := &plan.Actions[index]
-		if action.ID != "campaign.evm-gas-reserve" {
-			continue
-		}
-		remaining, err := subtractDecimalUint(action.Spend.EVMGasWei, spend.EVMGasWei)
-		if err != nil || remaining.IsZero() {
-			return stateMismatchError(err, "superseded EVM spend %s exhausts campaign reserve %s", spend.EVMGasWei, action.Spend.EVMGasWei)
-		}
-		action.Spend.EVMGasWei = remaining
-		action.IntentHash, err = actionIntentHash(*action)
-		if err != nil {
-			return err
-		}
-		plan.SupersededSpend = spend
-		plan.MaximumSpend, err = maximumActionSpend(plan.Actions)
+	plan.SupersededSpend = spend
+	maximum, err := maximumActionSpend(plan.Actions)
+	if err != nil {
 		return err
 	}
-	return errors.New("replacement plan has no live-campaign EVM reserve")
+	plan.MaximumSpend = maximum
+	return trimLiveCampaignEVMReserveToLimit(plan)
 }
 
 // Shrink only the fungible live-campaign reserve when carried historical gas
