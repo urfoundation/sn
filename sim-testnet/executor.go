@@ -626,6 +626,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	report.add("provisional-live-topology", liveAdoptionErr)
 	needsDoctor, provisionalHistoryChecked := true, false
+	var stoppedAdoption *provisionalStoppedTopology
 	if liveAdoption != nil {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 		provisionalHistoryChecked = true
@@ -666,6 +667,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			report.add("provisional-stopped-topology", nil)
 		}
 		if stopped != nil {
+			stoppedAdoption = stopped
 			local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 			provisionalHistoryChecked = true
 			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
@@ -681,8 +683,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		report.Doctor = &doctor
 		report.add("doctor", doctor.Error())
 	} else {
-		liveAdoption.FullDoctorSkipped = true
-		report.add("provisional-live-doctor-record", writeProvisionalLiveTopologyRecord(liveAdoption))
+		if liveAdoption != nil {
+			liveAdoption.FullDoctorSkipped = true
+			report.add("provisional-live-doctor-record", writeProvisionalLiveTopologyRecord(liveAdoption))
+		} else if stoppedAdoption != nil {
+			report.Checks = append(report.Checks, Check{Name: "provisional-stopped-doctor-record", OK: true, Hard: false, Detail: "retained stopped generation recorded before successor launch"})
+		} else {
+			return errors.New("full doctor was skipped without a provisional topology boundary")
+		}
 		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
 	}
 	var roles *RoleSecrets
