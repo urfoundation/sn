@@ -364,8 +364,10 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 	coordinator := stabi.NewSTCoordinator()
 	receipts := map[string]*ethTypes.Receipt{}
 	finalized := map[string]bool{}
+	// The approval lineage is immutable throughout this journal snapshot.
+	allowedPlanHashKVs := base.allowedPlanHashes()
 	for _, entry := range e.journal.Entries() {
-		if base.allowedPlanHashes()[entry.PlanHash] && entry.Stage == StageFinalized {
+		if entry.Stage == StageFinalized && allowedPlanHashKVs[entry.PlanHash] {
 			finalized[entry.TransactionHash+"/"+strconv.FormatUint(entry.BlockNumber, 10)+"/"+entry.BlockHash] = true
 		}
 	}
