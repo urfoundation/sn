@@ -23,6 +23,19 @@ type carriedPreparationTest struct {
 	records  []*ActionPostcondition
 }
 
+func TestCarriedActionVerificationWorkersSerializeOwnedLANArchiveReads(t *testing.T) {
+	t.Parallel()
+	if got := carriedActionVerificationWorkersFor(&ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}); got != 1 {
+		t.Fatalf("owned LAN verification workers=%d want=1", got)
+	}
+	if got := carriedActionVerificationWorkersFor(&ResolvedConfig{OperationalRPCMode: rpcModePublicOverride}); got != carriedActionVerificationWorkers {
+		t.Fatalf("public verification workers=%d want=%d", got, carriedActionVerificationWorkers)
+	}
+	if got := carriedActionVerificationWorkersFor(nil); got != carriedActionVerificationWorkers {
+		t.Fatalf("default verification workers=%d want=%d", got, carriedActionVerificationWorkers)
+	}
+}
+
 // The archived v1 approval exercises the real historical decoder and owned
 // receipt migration without unrelated deployment or network prerequisites.
 func newCarriedPreparationTest(t *testing.T, count int) carriedPreparationTest {

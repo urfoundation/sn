@@ -139,7 +139,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		break
 	}
 	var completed atomic.Uint64
-	results := collectOrderedReadOnlyAudits(ctx, len(audits), carriedActionVerificationWorkers, func(index int) error {
+	results := collectOrderedReadOnlyAudits(ctx, len(audits), carriedActionVerificationWorkersFor(self.cfg), func(index int) error {
 		audit := audits[index]
 		defer func() {
 			count := completed.Add(1)
@@ -234,6 +234,18 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		self.carriedVerificationKeys = verifiedKeys
 	}
 	return errors.Join(errors.Join(append(stages, actionErrors...)...), ctx.Err())
+}
+
+// An owned LAN archive node has no request-rate gate, but several concurrent
+// historical eth_call requests can contend for its state backend long enough
+// to exhaust otherwise healthy per-call retry budgets. Keep its expensive
+// historical reads serial; public or independent backends retain the normal
+// parallel verifier pool.
+func carriedActionVerificationWorkersFor(cfg *ResolvedConfig) int {
+	if cfg != nil && cfg.OperationalRPCMode == rpcModeOwnedNode {
+		return 1
+	}
+	return carriedActionVerificationWorkers
 }
 
 // Share only authenticated immutable source decoding within one read-only
