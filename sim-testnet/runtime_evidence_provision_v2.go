@@ -529,7 +529,8 @@ func (self *Executor) runtimeEvidenceActivationPostStateV2(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if prepared.PlanHash != self.plan.PlanHash {
+	historicalSource := prepared.PlanHash != self.plan.PlanHash
+	if historicalSource {
 		var completed runtimeEvidenceActivationCompletedV2
 		if _, err := readRuntimeEvidenceSetupV2(ctx, filepath.Join(self.stateDir, "evidence-v2-setup", "completed.json"), limit, &completed); err != nil {
 			return nil, err
@@ -576,8 +577,15 @@ func (self *Executor) runtimeEvidenceActivationPostStateV2(ctx context.Context, 
 		if retained != *expected {
 			return nil, errors.New("retained activation boundary differs from actual public history")
 		}
-		if _, err := runtimeEvidenceV2ResolvedConfig(self.cfg, self.stateDir); err != nil {
-			return nil, err
+		// The current persisted plan may be a successor whose independent
+		// allowance changed its config hash. Its retained activation files
+		// have already been authenticated against the archived source above;
+		// reloading them through the current-plan renderer would reject that
+		// valid source identity and repeat unrelated setup work.
+		if !historicalSource {
+			if _, err := runtimeEvidenceV2ResolvedConfig(self.cfg, self.stateDir); err != nil {
+				return nil, err
+			}
 		}
 		state["boundary"], state["pair_count"] = retained.Boundary, len(prepared.Members)
 	} else {

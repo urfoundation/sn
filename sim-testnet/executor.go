@@ -1425,6 +1425,12 @@ func (e *Executor) fleetInstallBatchSuperseded(action Action) (bool, error) {
 }
 
 func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead, sharedNativeHead *ChainHead) error {
+	if source, handled, err := e.precompileProbeHistoricalReadSource(action, verified, record); handled {
+		if err != nil {
+			return err
+		}
+		return source.verifyHistoricalEVMPostcondition(ctx, action, record, sharedEVMHead)
+	}
 	if source, handled, err := e.precompileProbeNativeSource(action, verified, record); handled {
 		if err != nil {
 			return err

@@ -644,6 +644,25 @@ func TestPrecompileProbeSuccessorConstructsOriginalNativeReplay(t *testing.T) {
 	}
 }
 
+func TestPrecompileProbeSuccessorConstructsOriginalBatteryReplay(t *testing.T) {
+	fixture := newArchivedPrecompileProbeSuccessorFixture(t)
+	owner := &Executor{cfg: fixture.cfg, stateDir: fixture.stateDir, plan: fixture.plan, payloads: fixture.payloads, journal: &Journal{entries: fixture.entries}}
+	action := actionByID(t, fixture.plan, "precompile.read-battery")
+	sourceAction := actionByID(t, fixture.source, action.ID)
+	verified := JournalEntry{PlanHash: fixture.source.PlanHash, ActionID: action.ID, IntentHash: sourceAction.IntentHash}
+	record := *fixture.writeRecord
+	record.PlanHash, record.ActionID, record.IntentHash = verified.PlanHash, verified.ActionID, verified.IntentHash
+	source, handled, err := owner.precompileProbeHistoricalReadSource(action, verified, &record)
+	if err != nil || !handled || source == nil || source.plan.PlanHash != fixture.source.PlanHash || source.payloads.PrecompileProbeAddress.Hex() != fixture.plan.PrecompileProbeSuccessor.RetiredProbe || !reflect.DeepEqual(source.precompileHistoryEvidence, &fixture.plan.PrecompileProbeSuccessor.Evidence) {
+		t.Fatalf("battery replay lost original source: handled=%t error=%v", handled, err)
+	}
+	changed := record
+	changed.IntentHash = common.Hash{50}.Hex()
+	if _, handled, err := owner.precompileProbeHistoricalReadSource(action, verified, &changed); !handled || err == nil {
+		t.Fatal("battery replay accepted a substituted source record")
+	}
+}
+
 // The public generation validator authenticates the signed corrective upgrade
 // while retaining the earlier v4 probe baseline and explicit successor source.
 func TestPrecompileProbeSuccessorPublishesSignedBaselineIdentity(t *testing.T) {

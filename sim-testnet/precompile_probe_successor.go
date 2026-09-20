@@ -664,6 +664,34 @@ func (self *Executor) precompileProbeNativeSource(action Action, verified Journa
 	return &source, true, nil
 }
 
+// The battery read has no native receipt, but its persisted postcondition is
+// still an immutable observation of the retired probe. Replay it with the
+// archived plan/configuration rather than the successor's replacement probe.
+func (self *Executor) precompileProbeHistoricalReadSource(action Action, verified JournalEntry, record *ActionPostcondition) (*Executor, bool, error) {
+	if self == nil || self.plan == nil || self.plan.PrecompileProbeSuccessor == nil || action.ID != "precompile.read-battery" || verified.PlanHash == self.plan.PlanHash {
+		return nil, false, nil
+	}
+	if self.payloads == nil || self.journal == nil || record == nil || record.PlanHash != verified.PlanHash || record.ActionID != action.ID || record.IntentHash != verified.IntentHash {
+		return nil, true, errors.New("precompile battery historical source identity is absent")
+	}
+	if _, err := readPrecompileProbeSuccessorSource(self.cfg, self.stateDir, self.plan, self.journal.Entries()); err != nil {
+		return nil, true, err
+	}
+	original, err := readValidatorEvidenceHistoricalPlan(self.stateDir, verified.PlanHash)
+	if err != nil {
+		return nil, true, err
+	}
+	source := *self
+	source.plan = original
+	source.cfg = historicalPlanConfig(self.cfg, original)
+	payloads := *self.payloads
+	payloads.PrecompileProbeAddress = common.HexToAddress(self.plan.PrecompileProbeSuccessor.RetiredProbe)
+	source.payloads = &payloads
+	evidence := self.plan.PrecompileProbeSuccessor.Evidence
+	source.precompileHistoryEvidence = &evidence
+	return &source, true, nil
+}
+
 // Reads only the original phase after the successor constructor authenticated it.
 func (self *Executor) historicalPrecompileEvidence() (*PrecompileConformanceEvidence, error) {
 	if self.precompileHistoryEvidence != nil {
