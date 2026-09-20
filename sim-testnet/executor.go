@@ -37,6 +37,7 @@ type Executor struct {
 	cfg                          *ResolvedConfig
 	stateDir                     string
 	plan                         *SetupPlan
+	planActions                  map[string]Action
 	journal                      *Journal
 	roles                        *RoleSecrets
 	substrate                    *SubstrateManager
@@ -177,7 +178,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, planActions: planActionIndex(p), journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
 	if nativeOwner != nil && provisionalResumeEnabled(runtimeCfg) && nativeOwner.payloads != nil {
 		// The exact parent guard above binds this already authenticated result
 		// to the same plan, configuration and journal for provisional continuation.
@@ -4229,12 +4230,31 @@ func (e *Executor) planAction(id string) (Action, error) {
 	if e.plan == nil {
 		return Action{}, errors.New("approved plan is unavailable")
 	}
+	if action, ok := e.planActions[id]; ok {
+		return action, nil
+	}
 	for _, action := range e.plan.Actions {
 		if action.ID == id {
 			return action, nil
 		}
 	}
 	return Action{}, fmt.Errorf("approved plan has no action %s", id)
+}
+
+// planActionIndex is immutable after plan approval. Executors make thousands
+// of dependency lookups while reconciling carried fleet receipts; preserve
+// the established first-action behavior if an invalid plan has duplicate IDs.
+func planActionIndex(plan *SetupPlan) map[string]Action {
+	if plan == nil {
+		return nil
+	}
+	index := make(map[string]Action, len(plan.Actions))
+	for _, action := range plan.Actions {
+		if _, exists := index[action.ID]; !exists {
+			index[action.ID] = action
+		}
+	}
+	return index
 }
 
 func (e *Executor) actionVerified(id string) bool {
@@ -4278,9 +4298,10 @@ func (e *Executor) verifiedActionEntryForScope(action Action, includeAncestorTop
 }
 
 const (
-	carriedActionVerificationWorkers = 8
-	carriedActionVerificationTimeout = 5 * time.Minute
-	carriedActionProgressInterval    = 50
+	carriedActionVerificationWorkers      = 8
+	carriedActionOwnedVerificationWorkers = 4
+	carriedActionVerificationTimeout      = 5 * time.Minute
+	carriedActionProgressInterval         = 50
 )
 
 // Execute independent read-only audits in bounded concurrent batches, but

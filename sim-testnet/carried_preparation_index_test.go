@@ -24,16 +24,28 @@ type carriedPreparationTest struct {
 	records  []*ActionPostcondition
 }
 
-func TestCarriedActionVerificationWorkersSerializeOwnedLANArchiveReads(t *testing.T) {
+func TestCarriedActionVerificationWorkersBoundOwnedLANArchiveReads(t *testing.T) {
 	t.Parallel()
-	if got := carriedActionVerificationWorkersFor(&ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}); got != 1 {
-		t.Fatalf("owned LAN verification workers=%d want=1", got)
+	if got := carriedActionVerificationWorkersFor(&ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}); got != carriedActionOwnedVerificationWorkers {
+		t.Fatalf("owned LAN verification workers=%d want=%d", got, carriedActionOwnedVerificationWorkers)
 	}
 	if got := carriedActionVerificationWorkersFor(&ResolvedConfig{OperationalRPCMode: rpcModePublicOverride}); got != carriedActionVerificationWorkers {
 		t.Fatalf("public verification workers=%d want=%d", got, carriedActionVerificationWorkers)
 	}
 	if got := carriedActionVerificationWorkersFor(nil); got != carriedActionVerificationWorkers {
 		t.Fatalf("default verification workers=%d want=%d", got, carriedActionVerificationWorkers)
+	}
+}
+
+func TestPlanActionIndexUsesApprovedFirstAction(t *testing.T) {
+	first := Action{ID: "fleet.renew.1.1.commitment", IntentHash: "first"}
+	second := Action{ID: first.ID, IntentHash: "second"}
+	index := planActionIndex(&SetupPlan{Actions: []Action{first, second}})
+	if got, ok := index[first.ID]; !ok || got.ID != first.ID || got.IntentHash != first.IntentHash {
+		t.Fatalf("indexed action=%+v found=%t, want first approved action", got, ok)
+	}
+	if got := planActionIndex(nil); got != nil {
+		t.Fatalf("nil plan index=%v, want nil", got)
 	}
 }
 

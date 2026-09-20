@@ -251,14 +251,13 @@ func verifyCarriedActionWithTimeout(ctx context.Context, verify func(context.Con
 	return verify(auditCtx)
 }
 
-// An owned LAN archive node has no request-rate gate, but several concurrent
-// historical eth_call requests can contend for its state backend long enough
-// to exhaust otherwise healthy per-call retry budgets. Keep its expensive
-// historical reads serial; public or independent backends retain the normal
-// parallel verifier pool.
+// The owned LAN archive node has no request-rate gate. Bound its historical
+// reads to a modest pool so recovery is substantially faster without turning
+// a transiently slow archive response into an unbounded fan-out. Each action
+// still has its own cancellation deadline and retry budget.
 func carriedActionVerificationWorkersFor(cfg *ResolvedConfig) int {
 	if cfg != nil && cfg.OperationalRPCMode == rpcModeOwnedNode {
-		return 1
+		return carriedActionOwnedVerificationWorkers
 	}
 	return carriedActionVerificationWorkers
 }
