@@ -828,8 +828,11 @@ func (e *Executor) verifyFleetRenewalPostState(ctx context.Context, action Actio
 			validTo = renewal.ValidFromEpoch - 1
 		}
 		count, record, err := readFleetBindingVersionAt(ctx, manager, address, coordinator, manifestMember.ClientID, version, transaction.BlockNumber)
-		if err != nil || count == nil || !count.IsUint64() || count.Uint64() != version+1 || !fleetBindingRecordMatches(record, binding, validTo, fleet.UID) {
-			return nil, stateMismatchError(err, "renewal member exact inclusion postcondition differs")
+		if err != nil {
+			return nil, fmt.Errorf("read renewal member exact inclusion: %w", err)
+		}
+		if count == nil || !count.IsUint64() || count.Uint64() != version+1 || !fleetBindingRecordMatches(record, binding, validTo, fleet.UID) {
+			return nil, stateMismatchError(nil, "renewal member exact inclusion postcondition differs")
 		}
 		if action.Parameters["operation"] == "bind" {
 			matched := 0

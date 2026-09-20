@@ -101,7 +101,7 @@ func (self *ownedEvmReplayBody) Close() error {
 }
 
 // Each retry has a fresh bounded context covering headers and buffered body.
-// The enclosing owned HTTP client retains its existing 45-second total ceiling.
+// The enclosing operation context owns the complete retry budget.
 func (self *ownedEvmRetryTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	request, readOnly, err := ownedEvmReplayRequest(request)
 	if err != nil {
