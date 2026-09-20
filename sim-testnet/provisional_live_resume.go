@@ -3,6 +3,7 @@ package main
 // A provisional controller may adopt a live generation it did not create.
 // It never rebuilds its images, rewrites runtime inputs, or owns its teardown.
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -106,7 +107,11 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 	if err := validateSupervisorGeneration(*live); err != nil {
 		return nil, err
 	}
-	baseline, err := releaseTopologyProofCounts(cfg, stateDir)
+	// Provisional admission records this as an explicitly unverified baseline.
+	// Do not decode every historical proof here: strict acceptance owns that
+	// semantic validation, while this live controller must reach traffic using
+	// the retained topology without replaying hundreds of megabytes of old work.
+	baseline, err := releaseTopologyObservedProofCounts(cfg, stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +167,7 @@ func adoptStartedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, s
 		return true, err
 	}
 	adoption.ProofBaseline = baseline
-	return true, adoptProvisionalLiveTopology(ctx, cfg, stateDir, plan, roles, executor, adoption)
+	return true, adoptProvisionalLiveTopology(ctx, cfg, stateDir, plan, roles, executor, adoption, false)
 }
 
 func loadExistingProvisionalRoles(cfg *ResolvedConfig, stateDir string) (*RoleSecrets, error) {
@@ -267,6 +272,46 @@ func provisionalProofsAdvanced(baseline, current map[string]int) bool {
 		}
 	}
 	return true
+}
+
+// Provisional startup exposes fresh proof counts as observations, explicitly
+// without asserting semantic proof validity. Count only newline-terminated
+// records so an interrupted final append is not presented as a completed
+// observation. Strict readiness continues to use releaseTopologyProofCounts,
+// which decodes and validates every proof record.
+func releaseTopologyObservedProofCounts(cfg *ResolvedConfig, stateDir string) (map[string]int, error) {
+	counts := map[string]int{}
+	for identity, path := range releaseTopologyProofPaths(cfg, stateDir) {
+		count, err := observedReleaseProofLineCount(path)
+		if err != nil {
+			return nil, fmt.Errorf("read %s observed release proofs: %w", identity, err)
+		}
+		counts[identity] = count
+	}
+	return counts, nil
+}
+
+func observedReleaseProofLineCount(path string) (int, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	buffer := make([]byte, 1<<20)
+	count := 0
+	for {
+		n, readErr := file.Read(buffer)
+		count += bytes.Count(buffer[:n], []byte{'\n'})
+		if errors.Is(readErr, io.EOF) {
+			return count, nil
+		}
+		if readErr != nil {
+			return 0, readErr
+		}
+	}
 }
 
 func newProvisionalProcessLogGate(stateDir string, adoption *provisionalLiveTopology) (*processLogGate, error) {
@@ -484,8 +529,41 @@ func (self *Executor) provisionalSetupPrefix(ctx context.Context, plan *SetupPla
 	return topology, pending, ctx.Err()
 }
 
-func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology) error {
-	topology, err := executor.reconcileProvisionalSetupPrefix(ctx, plan, executor.Execute)
+// A retained scenario never executes setup actions. It only needs the exact
+// topology receipt that anchors the live supervisor it is about to observe;
+// requiring every superseded predecessor setup receipt again would turn a
+// read-only traffic continuation into a deployment replay.
+func (self *Executor) authenticateProvisionalTopology(ctx context.Context, plan *SetupPlan, readEntries func() []JournalEntry, readSource func(string, string) (*SetupPlan, error)) (*Action, error) {
+	if ctx == nil || self == nil || self.plan != plan || self.journal == nil || plan == nil || readEntries == nil || readSource == nil || !provisionalResumeEnabled(self.cfg) || self.cfg.provisionalResume.Record.PlanHash != plan.PlanHash {
+		return nil, errors.New("provisional topology authentication context is unavailable")
+	}
+	entries := readEntries()
+	verified := newCarriedPreparationIndex(plan, entries)
+	topology, err := self.planAction("topology.launch")
+	if err != nil {
+		return nil, err
+	}
+	entry, ok := verified.find(topology, true)
+	if !ok {
+		return nil, errors.New("retained scenario has no verified topology receipt")
+	}
+	if err := self.authenticateProvisionalReceiptWithReader(topology, entry, self.carriedPreparationPostconditionReader(ctx, readSource)); err != nil {
+		return nil, err
+	}
+	if !slices.Equal(entries, readEntries()) {
+		return nil, errors.New("provisional topology journal changed during authentication")
+	}
+	return &topology, ctx.Err()
+}
+
+func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, executor *Executor, adoption *provisionalLiveTopology, scenarioOnly bool) error {
+	var topology *Action
+	var err error
+	if scenarioOnly {
+		topology, err = executor.authenticateProvisionalTopology(ctx, plan, executor.journal.Entries, readValidatorEvidenceHistoricalPlan)
+	} else {
+		topology, err = executor.reconcileProvisionalSetupPrefix(ctx, plan, executor.Execute)
+	}
 	if err != nil {
 		return err
 	}
@@ -521,7 +599,7 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 		if bytesSHA256(raw) != adoption.ManifestBytesSHA256 {
 			return errors.New("adopted supervisor manifest bytes changed")
 		}
-		current, err := releaseTopologyProofCounts(cfg, stateDir)
+		current, err := releaseTopologyObservedProofCounts(cfg, stateDir)
 		if err != nil {
 			return err
 		}
@@ -570,13 +648,20 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 	if err := gate.RequireClean(false); err != nil {
 		return err
 	}
-	if err := executor.Execute(ctx, *topology); err != nil {
-		return err
-	}
-	// Keep the approved tournament writes, while omitting its strict second
-	// proof-generation wait under the explicit provisional testnet waiver.
-	if err := executePostTopologyTournament(ctx, plan, executor); err != nil {
-		return err
+	if !scenarioOnly {
+		if err := executor.Execute(ctx, *topology); err != nil {
+			return err
+		}
+		// Keep the approved tournament writes, while omitting its strict second
+		// proof-generation wait under the explicit provisional testnet waiver.
+		if err := executePostTopologyTournament(ctx, plan, executor); err != nil {
+			return err
+		}
+	} else {
+		// The scenario has authenticated this retained topology above. Replaying
+		// its local action would walk historical setup dependencies and can emit
+		// new transactions, neither of which belongs to traffic observation.
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional scenario retained topology observed without setup or tournament replay; final_acceptance=false")
 	}
 	// Public deployment publication revalidates superseded historical evidence.
 	// The provisional run-first waiver preserves those files and prior errors

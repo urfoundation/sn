@@ -228,7 +228,7 @@ func TestProvisionalScenarioAdoptsChangedGenerationWithoutLogGap(t *testing.T) {
 	if ready, err := provisionalLiveTopologyAdoptionCurrent(executor.cfg, fixture.dir, current); err != nil || ready {
 		t.Fatal("prior generation was reused by the scenario", ready, err)
 	}
-	if err := adoptProvisionalLiveTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, current); err != nil {
+	if err := adoptProvisionalLiveTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, current, false); err != nil {
 		t.Fatal("changed live generation was not adopted", err)
 	}
 	if ready, err := provisionalLiveTopologyAdoptionCurrent(executor.cfg, fixture.dir, current); err != nil || !ready {

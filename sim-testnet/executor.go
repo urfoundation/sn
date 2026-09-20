@@ -625,9 +625,18 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 				_, _, prefixErr := local.provisionalSetupPrefix(ctx, p, j.Entries, readValidatorEvidenceHistoricalPlan, true)
 				report.add("provisional-revision-setup-prefix", prefixErr)
 			}
-			needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
-			if !report.add("provisional-live-spend", err) {
-				needsDoctor = true
+			if cmd == "scenario" {
+				// A retained provisional scenario neither applies pending setup
+				// actions nor spends their reserves. Its own action paths retain
+				// approval and budget enforcement, so a strict whole-plan doctor
+				// must remain an observation rather than prevent live traffic.
+				needsDoctor = false
+				report.Checks = append(report.Checks, Check{Name: "provisional-scenario-doctor", Hard: false, Detail: "deferred: retained scenario uses authenticated receipts and its own approved budget paths; final_acceptance=false"})
+			} else {
+				needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+				if !report.add("provisional-live-spend", err) {
+					needsDoctor = true
+				}
 			}
 		}
 	}
@@ -720,7 +729,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 					return err
 				}
 				if !current {
-					if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
+					if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption, true); err != nil {
 						return fmt.Errorf("adopt current provisional scenario topology: %w", err)
 					}
 				}
@@ -731,7 +740,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
 		}
 		if liveAdoption != nil {
-			if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
+			if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption, false); err != nil {
 				return err
 			}
 		} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {

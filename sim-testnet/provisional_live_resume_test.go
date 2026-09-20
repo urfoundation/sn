@@ -127,6 +127,21 @@ func TestProvisionalLiveAdoptionKeepsGenerationAndEveryProofDomain(t *testing.T)
 	}
 }
 
+func TestObservedReleaseProofLineCountIgnoresPartialFinalObservation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proofs.jsonl")
+	if err := os.WriteFile(path, []byte("first\nsecond\npartial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	count, err := observedReleaseProofLineCount(path)
+	if err != nil || count != 2 {
+		t.Fatalf("observed complete proof lines=%d err=%v, want 2", count, err)
+	}
+	missing, err := observedReleaseProofLineCount(filepath.Join(t.TempDir(), "missing.jsonl"))
+	if err != nil || missing != 0 {
+		t.Fatalf("missing observed proof lines=%d err=%v, want 0", missing, err)
+	}
+}
+
 func TestProvisionalLiveAdoptionDoctorGuardPreservesFutureBudgetsAndPendingWrites(t *testing.T) {
 	makeExecutor := func() *Executor {
 		plan := &SetupPlan{PlanHash: "active", MaximumSpend: Spend{TAORao: 1000}, Actions: []Action{
