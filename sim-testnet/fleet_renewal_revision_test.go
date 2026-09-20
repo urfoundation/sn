@@ -76,13 +76,24 @@ func TestFleetRenewalRevisionRestoresCompletedHistoricalActions(t *testing.T) {
 	// input. A later recovery must rebuild only those deterministic actions.
 	historical := *approved
 	historical.Actions = make([]Action, 0, len(approved.Actions))
-	for _, action := range approved.Actions {
-		if !isFleetRenewalAction(action) {
+	for index, action := range approved.Actions {
+		// Leave a valid subset behind to cover the real compacted-history
+		// shape: recovery must restore missing primary and extension actions,
+		// while retaining and authenticating those still present.
+		if !isFleetRenewalAction(action) && !isFleetRenewalExtensionAction(action) || index%3 == 0 {
 			historical.Actions = append(historical.Actions, action)
 		}
 	}
-	if hasFleetRenewalActions(&historical) {
-		t.Fatal("test fixture retained completed renewal actions")
+	tampered := historical
+	tampered.Actions = append([]Action(nil), historical.Actions...)
+	for index := range tampered.Actions {
+		if isFleetRenewalAction(tampered.Actions[index]) {
+			tampered.Actions[index].Target = "0x0000000000000000000000000000000000000001"
+			break
+		}
+	}
+	if _, err := restoreFleetRenewalActions(&tampered); err == nil {
+		t.Fatal("compacted history accepted a tampered retained renewal action")
 	}
 	roles, err := derivePublicRoles(fixture.cfg)
 	if err != nil {

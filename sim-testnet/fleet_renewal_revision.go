@@ -20,26 +20,12 @@ func carryFleetRenewalRevision(revised, prior *SetupPlan) error {
 		return errors.New("fleet renewal revision was already applied")
 	}
 	// A completed live renewal persists its signed renewal record and receipts;
-	// successor reconstruction must deterministically restore its executable
-	// actions before validating the append-only lineage.
-	priorForValidation := prior
-	if !hasFleetRenewalActions(prior) {
-		raw, err := json.Marshal(prior)
-		if err != nil {
-			return err
-		}
-		var restored SetupPlan
-		if err := json.Unmarshal(raw, &restored); err != nil {
-			return err
-		}
-		for _, renewal := range restored.FleetRenewals {
-			actions, err := fleetRenewalPlanActions(&restored, renewal)
-			if err != nil {
-				return err
-			}
-			restored.Actions = append(restored.Actions, actions...)
-		}
-		priorForValidation = &restored
+	// successor reconstruction restores any compacted deterministic actions before
+	// validating the append-only lineage. Existing actions must still match
+	// exactly, so compaction cannot authorize a modified action.
+	priorForValidation, err := restoreFleetRenewalActions(prior)
+	if err != nil {
+		return err
 	}
 	prior = priorForValidation
 	if err := validateFleetRenewalPlan(prior); err != nil {
@@ -141,11 +127,51 @@ func validateFleetRenewalReservedLiability(plan *SetupPlan) error {
 	return errors.New("renewed plan lost its signed campaign liability reserve")
 }
 
-func hasFleetRenewalActions(plan *SetupPlan) bool {
-	for _, action := range plan.Actions {
-		if isFleetRenewalAction(action) {
-			return true
+func restoreFleetRenewalActions(plan *SetupPlan) (*SetupPlan, error) {
+	if plan == nil || len(plan.FleetRenewals) == 0 {
+		return plan, nil
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var restored SetupPlan
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		return nil, err
+	}
+	expected := map[string]Action{}
+	for _, renewal := range restored.FleetRenewals {
+		actions, err := fleetRenewalPlanActions(&restored, renewal)
+		if err != nil {
+			return nil, err
+		}
+		for _, action := range actions {
+			expected[action.ID] = action
 		}
 	}
-	return false
+	seen := map[string]bool{}
+	for _, action := range restored.Actions {
+		if !isFleetRenewalAction(action) && !isFleetRenewalExtensionAction(action) {
+			continue
+		}
+		want, ok := expected[action.ID]
+		gotHash, _ := canonicalHashHex(action)
+		wantHash, _ := canonicalHashHex(want)
+		if !ok || gotHash != wantHash {
+			return nil, fmt.Errorf("renewal action %s differs from its approved generation", action.ID)
+		}
+		seen[action.ID] = true
+	}
+	for _, renewal := range restored.FleetRenewals {
+		actions, err := fleetRenewalPlanActions(&restored, renewal)
+		if err != nil {
+			return nil, err
+		}
+		for _, action := range actions {
+			if !seen[action.ID] {
+				restored.Actions = append(restored.Actions, action)
+			}
+		}
+	}
+	return &restored, nil
 }
