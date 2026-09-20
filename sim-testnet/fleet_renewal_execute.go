@@ -363,18 +363,16 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 	}
 	coordinator := stabi.NewSTCoordinator()
 	receipts := map[string]*ethTypes.Receipt{}
-	entries := e.journal.Entries()
+	finalized := map[string]bool{}
+	for _, entry := range e.journal.Entries() {
+		if base.allowedPlanHashes()[entry.PlanHash] && entry.Stage == StageFinalized {
+			finalized[entry.TransactionHash+"/"+strconv.FormatUint(entry.BlockNumber, 10)+"/"+entry.BlockHash] = true
+		}
+	}
 	for _, fleet := range renewal.Fleets {
 		for _, member := range fleet.Members {
 			prior := member.Prior
-			found := false
-			for _, entry := range entries {
-				if base.allowedPlanHashes()[entry.PlanHash] && entry.Stage == StageFinalized && entry.TransactionHash == prior.TransactionHash && entry.BlockNumber == prior.BlockNumber && entry.BlockHash == prior.BlockHash {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !finalized[prior.TransactionHash+"/"+strconv.FormatUint(prior.BlockNumber, 10)+"/"+prior.BlockHash] {
 				return fmt.Errorf("fleet %d predecessor has no finalized approved journal lineage", fleet.Fleet)
 			}
 			receipt := receipts[prior.TransactionHash]
