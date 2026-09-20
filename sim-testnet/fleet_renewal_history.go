@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,28 @@ type fleetRenewalSuccessorCacheKey struct {
 	intent   string
 }
 
+// A completed renewal proof has a fixed source plan and fleet scope. The
+// carried-action collector may ask for that same proof once for every
+// predecessor member, so retain successful resolutions for the process rather
+// than repeatedly walking the complete action plan and journal. The key binds
+// both sides of the exact receipt lineage; failures are deliberately never
+// cached because a concurrently completed successor must remain discoverable.
+type fleetRenewalHistoricalSourceCacheKey struct {
+	stateDir          string
+	activePlanHash    string
+	actionID          string
+	actionIntent      string
+	verifiedPlanHash  string
+	verifiedIntent    string
+	verifiedSequence  uint64
+	postconditionHash string
+}
+
+type fleetRenewalHistoricalSourceCacheValue struct {
+	plan   *SetupPlan
+	fleets []int
+}
+
 // These caches retain only successful immutable journal lookups. A miss or a
 // malformed entry is never cached, so a later completed action remains visible
 // to the same executor. The cache prevents every carried predecessor from
@@ -33,6 +56,41 @@ type fleetRenewalSuccessorCacheKey struct {
 var fleetRenewalVerifiedSuccessors sync.Map      // map[fleetRenewalSuccessorCacheKey]JournalEntry
 var fleetRenewalFinalizedSuccessors sync.Map     // map[fleetRenewalSuccessorCacheKey]JournalEntry
 var fleetRenewalPostconditionSuccessors sync.Map // map[string]struct{}
+var fleetRenewalHistoricalSources sync.Map       // map[fleetRenewalHistoricalSourceCacheKey]fleetRenewalHistoricalSourceCacheValue
+
+func (e *Executor) fleetRenewalHistoricalSourceCacheKey(action Action, verified JournalEntry) fleetRenewalHistoricalSourceCacheKey {
+	key := fleetRenewalHistoricalSourceCacheKey{
+		actionID: action.ID, actionIntent: action.IntentHash,
+		verifiedPlanHash: verified.PlanHash, verifiedIntent: verified.IntentHash,
+		verifiedSequence:  verified.Sequence,
+		postconditionHash: verified.PostconditionHash,
+	}
+	if e != nil {
+		key.stateDir = e.stateDir
+		if e.plan != nil {
+			key.activePlanHash = e.plan.PlanHash
+		}
+	}
+	return key
+}
+
+func (e *Executor) cachedFleetRenewalHistoricalSource(key fleetRenewalHistoricalSourceCacheKey) (*Executor, bool) {
+	if e == nil || e.plan == nil {
+		return nil, false
+	}
+	value, ok := fleetRenewalHistoricalSources.Load(key)
+	if !ok {
+		return nil, false
+	}
+	cached := value.(fleetRenewalHistoricalSourceCacheValue)
+	if cached.plan == nil || len(cached.fleets) == 0 {
+		return nil, false
+	}
+	copy := *e
+	copy.plan = cached.plan
+	copy.fleetCommitmentHistory = &fleetCommitmentHistoryScope{plan: e.plan, fleets: slices.Clone(cached.fleets)}
+	return &copy, true
+}
 
 func (e *Executor) fleetRenewalSuccessorCacheKey(action Action) fleetRenewalSuccessorCacheKey {
 	key := fleetRenewalSuccessorCacheKey{actionID: action.ID, intent: action.IntentHash}
@@ -171,6 +229,10 @@ func (e *Executor) fleetRenewalHistoricalSource(action Action, verified JournalE
 	if err != nil || hash != verified.PostconditionHash {
 		return nil, false, errors.New("renewed historical postcondition hash differs from journal")
 	}
+	cacheKey := e.fleetRenewalHistoricalSourceCacheKey(action, verified)
+	if source, ok := e.cachedFleetRenewalHistoricalSource(cacheKey); ok {
+		return source, true, nil
+	}
 	for _, renewal := range e.plan.FleetRenewals {
 		complete := true
 		for _, fleet := range fleets {
@@ -229,6 +291,7 @@ func (e *Executor) fleetRenewalHistoricalSource(action Action, verified JournalE
 		copy := *e
 		copy.plan = source
 		copy.fleetCommitmentHistory = &fleetCommitmentHistoryScope{plan: e.plan, fleets: fleets}
+		fleetRenewalHistoricalSources.Store(cacheKey, fleetRenewalHistoricalSourceCacheValue{plan: source, fleets: slices.Clone(fleets)})
 		return &copy, true, nil
 	}
 	return nil, false, nil

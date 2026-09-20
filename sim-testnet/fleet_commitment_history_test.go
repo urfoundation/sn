@@ -283,6 +283,14 @@ func TestFleetCommitmentHistoryScopeRequiresCompletedRenewal(t *testing.T) {
 	if hash, err := canonicalHashHex(sourceRecord); err != nil || hash != sourceEntry.PostconditionHash {
 		t.Fatal("historical source changed the exact receipt hash")
 	}
+	// A completed immutable resolution is safe to reuse inside this collector:
+	// its cache must reconstruct a fresh scoped executor instead of rescanning
+	// the complete successor journal for every carried predecessor.
+	executor.journal = nil
+	cached, handled, err := executor.fleetRenewalHistoricalSource(fixture.action, sourceEntry, sourceRecord)
+	if err != nil || !handled || cached == nil || cached == source || cached.plan.PlanHash != fixture.plan.PlanHash || cached.fleetCommitmentHistory == nil || cached.fleetCommitmentHistory.plan != &current || !slices.Equal(cached.fleetCommitmentHistory.fleets, []int{1}) {
+		t.Fatalf("completed renewal cache lost immutable source scope: handled=%t err=%v", handled, err)
+	}
 }
 
 // Mirrors, member bindings, lifecycle, and batches retain exact fleet scope;
