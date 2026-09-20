@@ -37,7 +37,7 @@ SN_REPO="$(pwd -P)"
 WORKSPACE="$(dirname "$SN_REPO")"
 release_head="$(git rev-parse HEAD)"
 build_utc="$(date -u +%Y%m%dT%H%M%SZ)"
-SIM_TESTNET_RELEASE_DIR="$WORKSPACE/temp/sim-testnet-${release_head}-${build_utc}"
+SIM_TESTNET_RELEASE_DIR="/mnt/data/sn-testnet/temp/sim-testnet-${release_head}-${build_utc}"
 SIM_TESTNET_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet"
 SIM_TESTNET_STATE_DIR="$SN_REPO/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4"
 mkdir -p "$SIM_TESTNET_RELEASE_DIR"
@@ -53,7 +53,7 @@ sha256sum "$SIM_TESTNET_BINARY"
 "$SIM_TESTNET_BINARY" plan \
   --config sim-testnet/testnet.yml \
   --state-dir "$SIM_TESTNET_STATE_DIR" \
-  --format json > /home/by/urnetwork/temp/ur-subnet-testnet-plan.json
+  --format json > /mnt/data/sn-testnet/temp/ur-subnet-testnet-plan.json
 ```
 
 Both commands are read-only. Review every action, dependency and maximum spend in

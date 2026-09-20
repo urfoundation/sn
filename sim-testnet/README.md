@@ -1142,7 +1142,7 @@ sha256sum "$SIM_TESTNET_BINARY" "$SIM_TESTNET_LIGHT_BINARY"
 "$SIM_TESTNET_BINARY" plan \
   --config sim-testnet/testnet.yml \
   --state-dir "$SIM_TESTNET_STATE_DIR" \
-  --format json > /home/by/urnetwork/temp/ur-subnet-testnet-plan.json
+  --format json > /mnt/data/sn-testnet/temp/ur-subnet-testnet-plan.json
 ```
 
 `doctor` checks the release lock, repository source hashes, wallet proof,
