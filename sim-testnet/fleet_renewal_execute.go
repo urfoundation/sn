@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	nativeTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -354,36 +355,71 @@ func (e *Executor) fleetRenewalFinalized(action Action) (JournalEntry, error) {
 	return result, nil
 }
 
-// Re-authenticate every old receipt and signed binding at its historical block.
-// Revocation and later renewal may change current state but never this proof.
+const fleetRenewalPredecessorReadConcurrency = 16
+
+// Authenticate one journal snapshot, then recheck independent historical
+// receipts with bounded workers. Every worker joins before returning, and
+// failures are selected in plan order instead of RPC completion order.
 func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal FleetRenewal, base *SetupPlan) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	head, err := finalizedEVMHead(ctx, e.keeper.client)
 	if err != nil {
 		return err
 	}
-	coordinator := stabi.NewSTCoordinator()
-	receipts := map[string]*ethTypes.Receipt{}
-	finalized := map[string]bool{}
+	type checkpoint struct {
+		transactionHash string
+		blockNumber     uint64
+		blockHash       string
+	}
+	type proof struct {
+		checkpoint checkpoint
+		fleet      int
+		members    []FleetBindingEvidence
+	}
+	finalizedKVs := map[checkpoint]bool{}
 	// The approval lineage is immutable throughout this journal snapshot.
 	allowedPlanHashKVs := base.allowedPlanHashes()
 	for _, entry := range e.journal.Entries() {
 		if entry.Stage == StageFinalized && allowedPlanHashKVs[entry.PlanHash] {
-			finalized[entry.TransactionHash+"/"+strconv.FormatUint(entry.BlockNumber, 10)+"/"+entry.BlockHash] = true
+			finalizedKVs[checkpoint{transactionHash: entry.TransactionHash, blockNumber: entry.BlockNumber, blockHash: entry.BlockHash}] = true
 		}
 	}
+	var proofs []proof
+	proofIndexKVs := map[checkpoint]int{}
 	for _, fleet := range renewal.Fleets {
 		for _, member := range fleet.Members {
 			prior := member.Prior
-			if !finalized[prior.TransactionHash+"/"+strconv.FormatUint(prior.BlockNumber, 10)+"/"+prior.BlockHash] {
+			key := checkpoint{transactionHash: prior.TransactionHash, blockNumber: prior.BlockNumber, blockHash: prior.BlockHash}
+			if !finalizedKVs[key] {
 				return fmt.Errorf("fleet %d predecessor has no finalized approved journal lineage", fleet.Fleet)
 			}
-			receipt := receipts[prior.TransactionHash]
-			if receipt == nil {
-				receipt, err = verifyFinalizedEVMReceipt(ctx, e.keeper.client, head, prior.TransactionHash, prior.BlockNumber, prior.BlockHash)
-				if err != nil {
-					return err
-				}
-				receipts[prior.TransactionHash] = receipt
+			index, ok := proofIndexKVs[key]
+			if !ok {
+				index = len(proofs)
+				proofIndexKVs[key] = index
+				proofs = append(proofs, proof{checkpoint: key, fleet: fleet.Fleet})
+			}
+			proofs[index].members = append(proofs[index].members, prior)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(proofs) == 0 {
+		return nil
+	}
+	coordinator := stabi.NewSTCoordinator()
+	verify := func(item proof) error {
+		key := item.checkpoint
+		receipt, err := verifyFinalizedEVMReceipt(ctx, e.keeper.client, head, key.transactionHash, key.blockNumber, key.blockHash)
+		if err != nil {
+			return err
+		}
+		for _, prior := range item.members {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 			matched := 0
 			for _, log := range receipt.Logs {
@@ -398,6 +434,41 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 			if matched != 1 {
 				return errors.New("renewal predecessor receipt lacks exactly one matching FleetBound event")
 			}
+		}
+		return nil
+	}
+	proofErrors := make([]error, len(proofs))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for range min(fleetRenewalPredecessorReadConcurrency, len(proofs)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				// Each index has one writer; the caller reads after joining.
+				proofErrors[index] = verify(proofs[index])
+			}
+		}()
+	}
+dispatch:
+	for index := range proofs {
+		select {
+		case <-ctx.Done():
+			break dispatch
+		case jobs <- index:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for index, err := range proofErrors {
+		if err != nil {
+			return fmt.Errorf("fleet %d predecessor %s: %w", proofs[index].fleet, proofs[index].checkpoint.transactionHash, err)
 		}
 	}
 	return nil
