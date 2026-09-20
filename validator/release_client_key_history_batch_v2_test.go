@@ -485,7 +485,7 @@ func TestReleaseClientKeyHistoryBatchRealHttpPreservesDeadlineOwnership(t *testi
 		t.Fatal(err)
 	}
 	earlier := <-observed
-	if plural.path != "/sn/client-key/observations" || plural.remaining <= 30*time.Second || plural.remaining > time.Duration(protocol.ClientKeyObservationBatchOperationSeconds)*time.Second || singleton.path != "/sn/client-key/observation" || singleton.remaining <= 0 || singleton.remaining > 30*time.Second || !earlier.deadline.Equal(parentDeadline) || reader.client.Timeout != 30*time.Second {
+	if plural.path != "/sn/client-key/observations" || plural.remaining <= 30*time.Second || plural.remaining > time.Duration(protocol.ClientKeyObservationBatchOperationSeconds)*time.Second || singleton.path != "/sn/client-key/observation" || singleton.remaining <= 0 || singleton.remaining > clientKeyHistoryHTTPTimeout || !earlier.deadline.Equal(parentDeadline) || reader.client.Timeout != clientKeyHistoryHTTPTimeout {
 		t.Fatalf("actual deadline ownership differs: plural=%+v singleton=%+v earlier=%+v original=%s", plural, singleton, earlier, reader.client.Timeout)
 	}
 }
