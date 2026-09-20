@@ -149,7 +149,9 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		}()
 		blocked := func(stage string) error { return fmt.Errorf("action %s: blocked by %s", audit.action.ID, stage) }
 		if self.carriedFleetHistoryKeys[carriedVerificationKey(audit.entry)] {
-			return self.verifyVerifiedActionStateWithRecord(ctx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
+			return verifyCarriedActionWithTimeout(ctx, func(auditCtx context.Context) error {
+				return self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
+			})
 		}
 		consumed := false
 		if !actionRequiresCurrentPostcondition(audit.action) {
@@ -207,9 +209,9 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 				}
 			}
 		}
-		auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
-		defer cancel()
-		if err := self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead); err != nil {
+		if err := verifyCarriedActionWithTimeout(ctx, func(auditCtx context.Context) error {
+			return self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
+		}); err != nil {
 			return fmt.Errorf("action %s: %w", audit.action.ID, err)
 		}
 		return nil
@@ -234,6 +236,19 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		self.carriedVerificationKeys = verifiedKeys
 	}
 	return errors.Join(errors.Join(append(stages, actionErrors...)...), ctx.Err())
+}
+
+// Every carried receipt can trigger historical RPC reads, including entries
+// already classified by the fleet-history cache. Bound each action uniformly
+// so one slow archive response reaches the retry/recovery path instead of
+// holding the preparation collector indefinitely.
+func verifyCarriedActionWithTimeout(ctx context.Context, verify func(context.Context) error) error {
+	if ctx == nil || verify == nil {
+		return errors.New("carried action verification context or callback is unavailable")
+	}
+	auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
+	defer cancel()
+	return verify(auditCtx)
 }
 
 // An owned LAN archive node has no request-rate gate, but several concurrent

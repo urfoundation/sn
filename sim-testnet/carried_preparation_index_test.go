@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type carriedPreparationTest struct {
@@ -33,6 +34,27 @@ func TestCarriedActionVerificationWorkersSerializeOwnedLANArchiveReads(t *testin
 	}
 	if got := carriedActionVerificationWorkersFor(nil); got != carriedActionVerificationWorkers {
 		t.Fatalf("default verification workers=%d want=%d", got, carriedActionVerificationWorkers)
+	}
+}
+
+func TestVerifyCarriedActionWithTimeoutBoundsCachedFleetReads(t *testing.T) {
+	start := time.Now()
+	err := verifyCarriedActionWithTimeout(t.Context(), func(ctx context.Context) error {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return errors.New("cached fleet verification has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining > carriedActionVerificationTimeout || remaining < carriedActionVerificationTimeout-time.Second {
+			return fmt.Errorf("cached fleet verification deadline remaining=%s, want about %s", remaining, carriedActionVerificationTimeout)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("bounded cached fleet verification returned too slowly: %s", elapsed)
 	}
 }
 
