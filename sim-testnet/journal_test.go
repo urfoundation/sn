@@ -63,6 +63,36 @@ func TestJournalHashChainAndExclusiveLock(t *testing.T) {
 	}
 }
 
+func TestJournalSnapshotDoesNotBlockWriterOrPermitAppend(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	entry := JournalEntry{DeploymentID: "d", PlanHash: "p", ActionID: "a", IntentHash: "i", Stage: StageIntent}
+	if err := writer.Append(entry); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := OpenJournalSnapshot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Close()
+	if got := len(snapshot.Entries()); got != 1 {
+		t.Fatalf("snapshot entries = %d, want 1", got)
+	}
+	if err := snapshot.Append(entry); err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("snapshot append error = %v, want read-only", err)
+	}
+	if err := writer.Append(JournalEntry{DeploymentID: "d", PlanHash: "p", ActionID: "b", IntentHash: "i", Stage: StageIntent}); err != nil {
+		t.Fatalf("writer was blocked by snapshot: %v", err)
+	}
+}
+
 func TestJournalRejectsUnlinkedOrEscapingPostcondition(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o700); err != nil {

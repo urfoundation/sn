@@ -98,6 +98,29 @@ func OpenJournal(stateDir string) (*Journal, error) {
 	}
 	return j, nil
 }
+
+// OpenJournalSnapshot authenticates the current journal without acquiring the
+// deployment writer lock. It is for a caller that is mechanically incapable
+// of dispatching an action: Append fails because the snapshot has no writable
+// file. This lets an observation-only provisional epoch keep recording live
+// traffic while an independently authenticated setup repair owns the writer.
+func OpenJournalSnapshot(stateDir string) (*Journal, error) {
+	path := filepath.Join(stateDir, "journal.jsonl")
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return &Journal{path: path}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	j := &Journal{path: path}
+	if err := j.loadReader(f); err != nil {
+		return nil, err
+	}
+	return j, nil
+}
+
 func (j *Journal) Close() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()

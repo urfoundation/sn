@@ -565,7 +565,16 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err := ensurePrivateDir(stateDir); err != nil {
 		return err
 	}
-	j, err := OpenJournal(stateDir)
+	// A provisional epoch scenario observes a retained topology and has no
+	// setup or campaign action path. Give it an authenticated immutable journal
+	// snapshot so a successor setup repair can obtain the exclusive writer lock
+	// during the observation interval. Any accidental action still fails at
+	// Journal.Append because snapshots are read-only.
+	openJournal := OpenJournal
+	if cmd == "scenario" && o.ProvisionalResume && o.Name == "epoch" {
+		openJournal = OpenJournalSnapshot
+	}
+	j, err := openJournal(stateDir)
 	if err != nil {
 		return err
 	}
