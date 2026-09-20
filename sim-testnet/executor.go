@@ -649,6 +649,33 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
+	// A controlled stop for a release-hotfix successor has the same retained
+	// approval and authenticated receipt boundary as a live adoption.  It is
+	// intentionally narrower than a fresh launch: the owned service must be
+	// fully inactive and its exact prior generation/inventory must still be
+	// recorded.  LaunchDeployment below still creates and gates a new process
+	// generation.
+	if liveAdoption == nil && liveAdoptionErr == nil && o.ProvisionalResume && cmd == "resume" {
+		stopped, stoppedErr := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
+		if stoppedErr != nil {
+			// This is an optimization boundary, not an additional admission
+			// requirement.  A fresh or ambiguous stopped state falls back to
+			// the ordinary full doctor below.
+			report.Checks = append(report.Checks, Check{Name: "provisional-stopped-topology", Hard: false, Detail: "not reusable: " + stoppedErr.Error()})
+		} else {
+			report.add("provisional-stopped-topology", nil)
+		}
+		if stopped != nil {
+			local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
+			provisionalHistoryChecked = true
+			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
+				needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+				if !report.add("provisional-stopped-spend", err) {
+					needsDoctor = true
+				}
+			}
+		}
+	}
 	if needsDoctor {
 		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
 		report.Doctor = &doctor

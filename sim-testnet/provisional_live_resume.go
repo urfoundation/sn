@@ -45,6 +45,24 @@ type provisionalLiveTopology struct {
 	manifest                            SupervisorFile
 }
 
+// A deliberately stopped, previously authenticated supervisor is a recovery
+// boundary, not a fresh deployment.  It is used only by `resume` after the
+// exact owned service has reached inactive/dead.  The subsequent launch still
+// creates a new supervisor generation and performs its normal readiness gate.
+// This prevents a release-hotfix handoff from replaying the broad pre-launch
+// doctor after the retained-plan receipt audit has already authenticated every
+// completed action.
+type provisionalStoppedTopology struct {
+	Schema                   string `json:"schema"`
+	PlanHash                 string `json:"plan_hash"`
+	ManifestHash             string `json:"supervisor_manifest_hash"`
+	ManifestBytesSHA256      string `json:"supervisor_manifest_bytes_sha256"`
+	SupervisorBinarySHA256   string `json:"supervisor_binary_sha256"`
+	SupervisorPID            int    `json:"stopped_supervisor_pid"`
+	SupervisorStartTimeTicks uint64 `json:"stopped_supervisor_start_time_ticks"`
+	StoppedAt                string `json:"observed_at"`
+}
+
 // The full plan retains campaign/retirement reserves after setup is done.
 // This guard instead covers every action live adoption can execute. The
 // caller has authenticated all verified receipts before consulting it.
@@ -135,6 +153,79 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 		return nil, err
 	}
 	return adoption, nil
+}
+
+func provisionalStoppedTopologyEligible(cfg *ResolvedConfig, command string, manifest SupervisorFile, manifestHash string, state SupervisorState, service supervisorServiceStatus) error {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || command != "resume" {
+		return errors.New("stopped topology recovery is not provisionally admitted")
+	}
+	if manifest.Schema != "urnetwork-sim-supervisor-v1" || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID || manifestHash == "" || state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != manifestHash || state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks == 0 {
+		return errors.New("stopped topology identity is incomplete")
+	}
+	if service.ActiveState != "inactive" || service.SubState != "dead" {
+		return fmt.Errorf("owned supervisor service is %s/%s, not inactive/dead", service.ActiveState, service.SubState)
+	}
+	if err := validateInstalledSupervisorInventory(state, manifestHash, manifest.Specs); err != nil {
+		return fmt.Errorf("stopped topology inventory: %w", err)
+	}
+	return nil
+}
+
+// prepareStoppedProvisionalTopology authenticates only a controlled stop of
+// the retained supervisor.  It neither starts a process nor makes a chain
+// read; ordinary launch paths and every ambiguous service state still use the
+// full doctor.
+func prepareStoppedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, stateDir, command string) (*provisionalStoppedTopology, error) {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || command != "resume" {
+		return nil, nil
+	}
+	live, err := liveRecordedSupervisor(stateDir)
+	if err != nil || live != nil {
+		return nil, err
+	}
+	held, err := supervisorLockHeld(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	if held {
+		return nil, errors.New("stopped topology retains a live supervisor lock")
+	}
+	raw, err := os.ReadFile(filepath.Join(stateDir, "supervisor.json"))
+	if err != nil {
+		return nil, err
+	}
+	var manifest SupervisorFile
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, err
+	}
+	manifestHash, err := canonicalHashHex(manifest)
+	if err != nil {
+		return nil, err
+	}
+	var state SupervisorState
+	if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
+		return nil, err
+	}
+	name, err := persistentSupervisorServiceName(manifest.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	service, err := readSupervisorServiceStatus(ctx, SupervisorService{Schema: "urnetwork-sim-supervisor-service-v1", Name: name})
+	if err != nil {
+		return nil, err
+	}
+	if err := provisionalStoppedTopologyEligible(cfg, command, manifest, manifestHash, state, service); err != nil {
+		return nil, err
+	}
+	stopped := &provisionalStoppedTopology{Schema: "urnetwork-sim-provisional-stopped-topology-v1", PlanHash: cfg.provisionalResume.Record.PlanHash, ManifestHash: manifestHash, ManifestBytesSHA256: bytesSHA256(raw), SupervisorBinarySHA256: manifest.BinaryHash, SupervisorPID: state.SupervisorPID, SupervisorStartTimeTicks: state.SupervisorStartTimeTicks, StoppedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	encoded, err := json.MarshalIndent(stopped, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := atomicWrite(filepath.Join(filepath.Dir(cfg.provisionalResume.RecordPath), "stopped-topology.json"), append(encoded, '\n'), 0o600); err != nil {
+		return nil, err
+	}
+	return stopped, nil
 }
 
 func provisionalProcessLogGatePath(recordPath, manifestHash string, supervisorPID int, supervisorStartTimeTicks uint64) string {
