@@ -53,7 +53,7 @@ func carryFleetRenewalRevision(revised, prior *SetupPlan) error {
 	var renewalActions []Action
 	future := map[string]Action{}
 	for _, action := range retained.Actions {
-		if isFleetRenewalAction(action) {
+		if isFleetRenewalAction(action) || isFleetRenewalExtensionAction(action) {
 			renewalActions = append(renewalActions, action)
 		}
 		if fleetLifecycleRenewalFutureAction(action.ID) {

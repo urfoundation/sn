@@ -31,7 +31,7 @@ func TestFleetRenewalRevisionPreservesApprovedRoundsAndChargesOnce(t *testing.T)
 			t.Fatal("revision changed exact approved round or successor generation")
 		}
 		for _, action := range prior.Actions {
-			if isFleetRenewalAction(action) || fleetLifecycleRenewalFutureAction(action.ID) {
+			if isFleetRenewalAction(action) || isFleetRenewalExtensionAction(action) || fleetLifecycleRenewalFutureAction(action.ID) {
 				if !finalJSONEqual(action, actionByID(t, revised, action.ID)) {
 					t.Fatalf("revision rewrote approved action %s", action.ID)
 				}
@@ -108,7 +108,7 @@ func TestFleetRenewalRevisionRestoresCompletedHistoricalActions(t *testing.T) {
 		t.Fatalf("restore completed historical renewal: %v", err)
 	}
 	for _, action := range approved.Actions {
-		if isFleetRenewalAction(action) {
+		if isFleetRenewalAction(action) || isFleetRenewalExtensionAction(action) {
 			if !finalJSONEqual(action, actionByID(t, revised, action.ID)) {
 				t.Fatalf("restored action %s differs from its signed deterministic generation", action.ID)
 			}
