@@ -796,6 +796,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption, false); err != nil {
 				return err
 			}
+		} else if stoppedAdoption != nil {
+			// The stopped-generation boundary above authenticated every carried
+			// receipt before this callback. Re-executing its setup prefix would
+			// only replay historical reads; LaunchDeployment below owns the new
+			// supervisor generation and fresh readiness proof.
 		} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
 			return err
 		}
