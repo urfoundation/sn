@@ -937,7 +937,10 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	if e.payloads == nil {
 		return nil, errors.New("precompile deployment payloads are unavailable")
 	}
-	evidence, err := loadPrecompileEvidence(e.stateDir)
+	// Historical battery replay carries its authenticated retired-probe evidence.
+	// Current state files describe the successor probe and cannot validate a
+	// checkpoint recorded before replacement.
+	evidence, err := e.historicalPrecompileEvidence()
 	if err != nil {
 		return nil, err
 	}
