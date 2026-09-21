@@ -982,6 +982,68 @@ verify accounting, policy, both validator duties and graceful shutdown. A clean
 test log, peer review of an earlier run, or report publication alone does not
 complete mainnet readiness.
 
+### PH-19 — Retained snapshots use historical runtime authority
+
+**Lesson.** The 2026-09-21 provisional resume reached a retained relay
+continuation recorded at reviewed runtime `node-subtensor/461/1/1`. Its reader
+misclassified that immutable block as a current snapshot and applied the
+current-only compatibility fallback, rejecting it before campaign activation.
+The current finalized node was runtime 468; no current signing authority was
+missing. The correction is SN `d3bbc8f5` and its local
+Terra qualification record is `/mnt/data/sn-testnet/qualification/terra-runtime-461-20260921/`:
+seven targeted roots pass normally and under race, while the old classification
+reproduces the exact 461 rejection.
+
+**Production change.** Give every native read an explicit purpose: immutable
+activation/continuation history, newly selected finalized snapshot, or current
+head/signing. Historical reads may use only the exact reviewed artifact for
+their pinned block; they must not inherit a current-runtime requirement.
+New snapshots, writes and signing retain current capability and approval
+checks. Imported continuation pins must be canonical and finalized before they
+are classified as history. No historical compatibility result may authorize a
+new action.
+
+**Closure.** Exercise historical continuation and activation snapshots across
+compatible upgrades, including imported pins, changed metadata/code, noncanonical
+hashes, cancelled reads, changed hotkeys, stake and permit. Prove a current
+read and signing operation still reject the historical artifact. Cover both
+validators, miner, bootstrap, settlement and archive readers in normal and
+race qualification. This is an implementation input to RT-01, RT-02, RT-05,
+RT-06 and PH-18; it is not complete for mainnet merely because the simulator
+correction passed.
+
+### PH-20 — Capacity accounting separates approved slots from scan pages
+
+**Lesson.** Immediately after PH-19 passed in the same 2026-09-21 resume, the
+relay startup inventory stopped before historical reads with `observed manifest
+slots exceed 1024`. The retained continuation has an approved `new_slots=1024`
+and four sources; the scanner used a fixed 1,024-entry directory read ceiling
+as though it were the aggregate monetary/slot approval. That conflates a safe
+per-page enumeration bound with total authenticated work and prevents a
+legitimate retained campaign from reaching its release interval. No transaction
+or journal entry was added by this failure. Investigation and correction are
+active in the sim-testnet run.
+
+**Production change.** Represent separately: (1) immutable aggregate approved
+slot/spend capacity, (2) source/member slot cost, (3) bounded directory/page
+read size, and (4) bounded resident memory/byte budget. Enumerate large
+retained histories in authenticated pages with a stable snapshot cut, aggregate
+against the approved slot capacity using checked arithmetic, and retain only
+bounded witnesses or streamed verification state. A malformed directory that
+exceeds the approved aggregate, changes during its cut, escapes ownership,
+violates byte bounds or has a gap/duplicate still fails precisely. Do not solve
+this by lifting a global constant or silently increasing the approved spend.
+
+**Closure.** Add deterministic pre-fix and fixed tests for exactly-full and
+one-over aggregate capacity; more-than-one-page but valid retained history;
+per-source/member multiplication; changed directory during scan; duplicate and
+missing pages; cancellation/restart; imported continuation; malformed entry and
+byte exhaustion. Run normal and race tests at the startup, continuation,
+archive-replay and final-acceptance consumers. A controlled production-path
+rehearsal must resume a large authenticated history without redoing completed
+work, while refusing unapproved extra work. Link the completed sim-testnet
+fix, its Terra evidence and actual resume record before marking PH-20 done.
+
 ### Closing and maintaining this hardening plan
 
 For each PH item record the implementation/review commit, affected production
