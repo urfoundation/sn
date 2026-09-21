@@ -10,7 +10,7 @@ import (
 )
 
 func validateEvidenceRelayContinuationOptions(command string, o cliOptions) error {
-	used := o.RelayContinuationPlan != "" || o.RelayEndBlock != 0
+	used := o.RelayContinuationPlan != "" || o.RelayEndBlock != 0 || o.RelaySlots != 0
 	if command != "relay-continuation" {
 		if used {
 			return errors.New("relay continuation options require relay-continuation")
@@ -20,8 +20,11 @@ func validateEvidenceRelayContinuationOptions(command string, o cliOptions) erro
 	if o.ProvisionalResume || o.Detach || o.Name != "" || o.Manifest != "" {
 		return errors.New("relay continuation requires strict stopped operation and cannot start a topology")
 	}
+	if o.RelaySlots != 0 && o.RelaySlots != evidenceRelayContinuationExpandedSlots {
+		return errors.New("relay funding revision requires exactly --relay-slots 2048")
+	}
 	if o.RelayContinuationPlan != "" {
-		if !filepath.IsAbs(o.RelayContinuationPlan) || filepath.Clean(o.RelayContinuationPlan) != o.RelayContinuationPlan || o.RelayEndBlock != 0 {
+		if !filepath.IsAbs(o.RelayContinuationPlan) || filepath.Clean(o.RelayContinuationPlan) != o.RelayContinuationPlan || o.RelayEndBlock != 0 || o.RelaySlots != 0 {
 			return errors.New("imported relay continuation requires one canonical absolute plan and no replacement end")
 		}
 	} else if o.RelayEndBlock == 0 || o.Apply {
@@ -43,7 +46,7 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 	}
 	var plan *SetupPlan
 	if o.RelayContinuationPlan == "" {
-		plan, err = captureEvidenceRelayContinuation(ctx, cfg, stateDir, base, o.RelayEndBlock)
+		plan, err = captureEvidenceRelayContinuationWithSlotsAt(ctx, cfg, stateDir, base, o.RelayEndBlock, o.RelaySlots, nil)
 	} else {
 		info, statErr := os.Lstat(o.RelayContinuationPlan)
 		if statErr != nil {

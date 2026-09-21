@@ -138,7 +138,7 @@ func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied val
 		if err := validateEvidenceRelayContinuationBudget(self.plan); err != nil {
 			return Action{}, err
 		}
-		if self.cfg.ConfigHash != self.plan.EvidenceRelayContinuation.ConfigHash || reserve.Spend != actual.Spend {
+		if self.cfg.ConfigHash != self.plan.ConfigHash || reserve.Spend != self.plan.EvidenceRelayContinuation.OriginalReserve.Spend {
 			return Action{}, errors.New("relay continuation changed the original configured monetary reserve")
 		}
 		reserve = *actual
