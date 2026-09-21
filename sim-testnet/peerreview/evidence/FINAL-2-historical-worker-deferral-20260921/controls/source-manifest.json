@@ -1,0 +1,98 @@
+[
+  {
+    "name": "old-census",
+    "selector": "^TestHistoricalPreparationReportsExhaustedCensusWithoutRestarting$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/old-census.json",
+    "overlay_sha256": "9f7bf5e88d330273735491378af9d7d21e3ceb439fffe63b3676cfdd7dcd69f7",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/historical_preparation_retry.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/historical_preparation_retry.before.go",
+        "source_sha256": "8056191bd0ae5ea391d6576b0c7a1773748007eded26065b6329f223501a18c5"
+      }
+    ]
+  },
+  {
+    "name": "old-action-window",
+    "selector": "^TestVerifyCarriedActionWithTimeoutReturnsOwnedLANDeadlineWithoutRestarting$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/old-action-window.json",
+    "overlay_sha256": "4ed1047851b9fb33f369e46e1a3447dc600648e935ce5ea87819257efb55e6d8",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/carried_preparation.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/carried_preparation.before.go",
+        "source_sha256": "01b8c3dfddd29d5abb54bb34f0f53073cde40e04b07408d8eb97c3573655b194"
+      }
+    ]
+  },
+  {
+    "name": "discard-completed-groups",
+    "selector": "^TestHistoricalPreparationResumesOnlyUnresolvedPinnedGroups$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/discard-completed-groups.json",
+    "overlay_sha256": "517f3fe2e6992aa26874dad9460814ad097d50d356dbb0a1b67cc4ef02487e57",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/fleet_install.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/discard-completed-groups.control.go",
+        "source_sha256": "7bdf359032cc671ed7132017b3f448e1bf537c6fca553a2eb5ff2393abaf0cdd"
+      }
+    ]
+  },
+  {
+    "name": "old-output-leaf",
+    "selector": "^TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/old-output-leaf.json",
+    "overlay_sha256": "139dbd2c8e474c19148b2049cbbecc536620a53da7f203940b4c1500a56e57e2",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/provisional_history_deferral.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/provisional_history_deferral.missing-leaf.go",
+        "source_sha256": "4a7fc265c1cfc63fc862dc9d3197ef4b110b82f5bdbc067ca9caf9f9313a1b98"
+      }
+    ]
+  },
+  {
+    "name": "strict-in-provisional",
+    "selector": "^TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/strict-in-provisional.json",
+    "overlay_sha256": "bafeb1838629c83e9d4746c04e4455da989b1576a596da6f494a5ebc7ff3f6d8",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/carried_preparation.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/strict-in-provisional.control.go",
+        "source_sha256": "ea4eca695b018568e0fe7ce4f0de4ddb435382b92a46d0294069f2e65ac82109"
+      }
+    ]
+  },
+  {
+    "name": "archive-candidate",
+    "selector": "^TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/archive-candidate.json",
+    "overlay_sha256": "91089210c979cf145b7bb21fe1139eb48573be47860a1b7382c3ef08ac6a6a9d",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/provisional_history_deferral_test.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/provisional_history_deferral.audit-fixture.go",
+        "source_sha256": "dc1a883c0ed6d095fa67b6ab7e06d4b0724d59fe5651b09bf9847791bb6edc7f"
+      }
+    ]
+  },
+  {
+    "name": "strict-archive-control",
+    "selector": "^TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept$",
+    "overlay_path": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/strict-archive-control.json",
+    "overlay_sha256": "e1ff44e1fae9c25b8109635d85e6776b62d0bccb6af54bd4ce642fe87b92a168",
+    "replacements": [
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/carried_preparation.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/strict-in-provisional.control.go",
+        "source_sha256": "ea4eca695b018568e0fe7ce4f0de4ddb435382b92a46d0294069f2e65ac82109"
+      },
+      {
+        "target": "/mnt/data/sn-testnet/temp/astra-historical-worker-retry-20260921/sn/sim-testnet/provisional_history_deferral_test.go",
+        "source": "/mnt/data/sn-testnet/qualification/historical-worker-deferral-20260921/controls/provisional_history_deferral.audit-fixture.go",
+        "source_sha256": "dc1a883c0ed6d095fa67b6ab7e06d4b0724d59fe5651b09bf9847791bb6edc7f"
+      }
+    ]
+  }
+]

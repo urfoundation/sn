@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 )
 
 // A bounded read window may end without disproving historical evidence.
@@ -41,40 +40,23 @@ func historicalPreparationReadIsTransient(err error) bool {
 	return evmReadRpcErrorIsTransient(err)
 }
 
-// Reconcile again after transient read exhaustion, keeping authenticated cache
-// successes on disk. Each pass freshly validates current state, receipt bytes
-// and canonical checkpoints; unresolved immutable groups alone need replay.
+// Each preparation invocation owns one census. Pinned reads already retry
+// within their bounded budgets, and completed immutable groups are durable.
+// An exhausted census is reported exactly once; a separate audit invocation
+// can retry it while explicit provisional startup uses local receipt authority.
 func continueHistoricalPreparation(ctx context.Context, verify func(context.Context) error) error {
-	return continueHistoricalPreparationWithWait(ctx, verify, waitFinalSemanticRPCRetry)
-}
-
-func continueHistoricalPreparationWithWait(ctx context.Context, verify func(context.Context) error, wait func(context.Context, time.Duration) error) error {
-	if ctx == nil || verify == nil || wait == nil {
+	if ctx == nil || verify == nil {
 		return errors.New("historical preparation continuation is incomplete")
 	}
-	delay := 5 * time.Second
-	for round := uint64(1); ; round++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		err := verify(ctx)
-		if parentErr := ctx.Err(); parentErr != nil {
-			return errors.Join(err, parentErr)
-		}
-		if !historicalPreparationReadIsTransient(err) {
-			return err
-		}
-		// A large census can report the same outage for thousands of actions.
-		// Keep the log bounded without discarding the typed failure returned on
-		// cancellation or the complete next-pass integrity checks.
-		detail := err.Error()
-		if len(detail) > 512 {
-			detail = detail[:512] + "..."
-		}
-		fmt.Fprintf(os.Stderr, "sim-testnet: historical preparation deferred after read window %d; retained proofs will resume in %s: %s\n", round, delay, detail)
-		if waitErr := wait(ctx, delay); waitErr != nil {
-			return errors.Join(err, waitErr)
-		}
-		delay = min(2*delay, 30*time.Second)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	err := verify(ctx)
+	if parentErr := ctx.Err(); parentErr != nil {
+		return errors.Join(err, parentErr)
+	}
+	if historicalPreparationReadIsTransient(err) {
+		fmt.Fprintln(os.Stderr, "sim-testnet: historical preparation deferred after bounded read retries; retained proofs remain reusable by audit; explicit provisional resume keeps final_acceptance=false")
+	}
+	return err
 }

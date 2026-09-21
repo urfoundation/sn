@@ -933,13 +933,20 @@ RPC timeout therefore retains earlier authenticated groups across continuation
 and compatible runner updates. Every group binds the original action, install
 evidence, observer, canonical checkpoint and all of its decoder inputs.
 
-When historical preparation fails only on transient reads, setup keeps its
-approved action gate closed and retries after a 5–30 second backoff. Each pass
-rechecks current state and canonical checkpoints, while completed immutable
-groups reuse their authenticated proofs. Canceling preserves those proofs for
-the next invocation. Permanent errors, mixed evidence/transport failures and
-other failed preparation prerequisites still return the collected failures.
-The separate `audit` command and final acceptance retain their bounded checks.
+Historical preparation owns one census; each RPC retains its bounded timeout
+retries. Exhausted reads return their exact ordered action errors instead of
+reopening the whole census or repeating an action's complete deadline. The
+strict action gate stays closed. A later independent `audit` retries unresolved
+work while authenticated complete groups remain reusable.
+
+Explicit `--provisional-resume` starts from authenticated local receipts without
+historical archive reads. Its invocation records `historical-audit-deferred.json`
+with every exact action/receipt identity, route, deferral reason and
+`final_acceptance=false`. This record grants no transaction or acceptance
+authority: plan approval, ambiguous-transaction reconciliation, current custody,
+spending limits and deployment checks still apply. Run the separate `audit`
+command alongside the provisional campaign. Permanent or mixed integrity errors
+remain hard, and strict final acceptance refuses provisional results.
 
 Compatible descendant approvals may reuse native inclusion/success proofs as
 well as fleet proofs. Native inputs bind the exact transaction,

@@ -1,0 +1,15 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.GRGH0TqF; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:12:31.626778 3496995 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:12:31.627004 3496995 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:12:31.627142 3496995 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:12:31.627181 3496995 env.go:78] [env]settings = map[]
+sim-testnet: coordinator eth_call batch 0-44 blocks 100-100 transient read attempt 1/4 (timeout 30s); retry in 1s: 503 Service Unavailable
+sim-testnet: coordinator eth_call batch 0-44 blocks 100-100 transient read attempt 2/4 (timeout 30s); retry in 2s: 503 Service Unavailable
+sim-testnet: coordinator eth_call batch 0-44 blocks 100-100 transient read attempt 3/4 (timeout 30s); retry in 4s: 503 Service Unavailable
+sim-testnet: historical preparation deferred after bounded read retries; retained proofs remain reusable by audit; explicit provisional resume keeps final_acceptance=false
+--- FAIL: TestHistoricalPreparationResumesOnlyUnresolvedPinnedGroups (7.06s)
+    historical_preparation_retry_test.go:114: resume repeated completed proof or skipped fresh finality: reads/batches/finalized/canonical=135/7/2/2
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	7.146s
+FAIL

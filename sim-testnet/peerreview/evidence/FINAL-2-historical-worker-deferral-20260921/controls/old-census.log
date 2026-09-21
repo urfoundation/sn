@@ -1,0 +1,13 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.9icqBAcP; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:09:37.733655 3492272 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:09:37.733854 3492272 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:09:37.733959 3492272 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:09:37.734002 3492272 env.go:78] [env]settings = map[]
+sim-testnet: historical preparation deferred after read window 1; retained proofs will resume in 5s: action synthetic.a: synthetic pinned read read retries exhausted after 4 attempts (per-attempt timeout 30s): context deadline exceeded
+action synthetic.b: synthetic pinned read read retries exhausted after 4 attempts (per-attempt timeout 30s): context deadline exceeded
+--- FAIL: TestHistoricalPreparationReportsExhaustedCensusWithoutRestarting (5.00s)
+    historical_preparation_retry_test.go:47: restarted or admitted deferred census: reads=2 applications=1 published=false error=<nil>
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	5.080s
+FAIL

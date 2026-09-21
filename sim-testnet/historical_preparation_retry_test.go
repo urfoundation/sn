@@ -20,48 +20,42 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-func TestHistoricalPreparationContinuesExhaustedReadWithoutOpeningGate(t *testing.T) {
+// Each inner call exhausts deterministically; returning success on a second
+// census would prove the old controller hid the original deferred boundary.
+func TestHistoricalPreparationReportsExhaustedCensusWithoutRestarting(t *testing.T) {
 	exhausted := &evmReadRpcExhaustedError{operation: "synthetic pinned read", attempts: 4, attemptTimeout: 30 * time.Second, cause: context.DeadlineExceeded}
-	reads, waits, applications := 0, 0, 0
-	err := continueHistoricalPreparationWithWait(t.Context(), func(context.Context) error {
+	failure := errors.Join(fmt.Errorf("action synthetic.a: %w", exhausted), fmt.Errorf("action synthetic.b: %w", exhausted))
+	reads, applications := 0, 0
+	err := continueHistoricalPreparation(t.Context(), func(context.Context) error {
 		reads++
-		if applications != 0 {
-			t.Fatal("action gate opened before historical verification completed")
+		if reads > 1 {
+			return nil
 		}
-		if reads == 1 {
-			return fmt.Errorf("synthetic retained action: %w", exhausted)
-		}
-		return nil
-	}, func(ctx context.Context, delay time.Duration) error {
-		waits++
-		if delay != 5*time.Second || reads != 1 || ctx.Err() != nil {
-			t.Fatalf("unexpected continuation boundary: reads=%d delay=%s error=%v", reads, delay, ctx.Err())
-		}
-		return nil
+		return failure
 	})
 	report := &launchPreparationReport{Ready: true}
 	report.add("carried history", err)
-	err = finishLaunchPreparation(report, func(_ *launchPreparationReport, err error) error { return err }, func() error { applications++; return nil })
-	if err != nil || reads != 2 || waits != 1 || applications != 1 || evmReadRpcErrorIsTransient(exhausted) {
-		t.Fatalf("continuation reads/waits/applications=%d/%d/%d error=%v", reads, waits, applications, err)
+	published := false
+	err = finishLaunchPreparation(report, func(got *launchPreparationReport, err error) error {
+		published = true
+		if !got.StoppedBeforeActions || got.Ready || len(got.Checks) != 1 || got.Checks[0].Detail != failure.Error() {
+			t.Fatalf("strict preparation lost exact deferred actions: %+v", got)
+		}
+		return err
+	}, func() error { applications++; return nil })
+	if reads != 1 || applications != 0 || !published || err == nil || !strings.Contains(err.Error(), "action synthetic.a:") || !strings.Contains(err.Error(), "action synthetic.b:") {
+		t.Fatalf("restarted or admitted deferred census: reads=%d applications=%d published=%t error=%v", reads, applications, published, err)
 	}
 }
 
 func TestHistoricalPreparationCancellationRetainsUnresolvedFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	var delays []time.Duration
-	reads := 0
 	exhausted := &evmReadRpcExhaustedError{operation: "synthetic retained read", attempts: 4, cause: context.DeadlineExceeded}
-	err := continueHistoricalPreparationWithWait(ctx, func(context.Context) error { reads++; return exhausted }, func(ctx context.Context, delay time.Duration) error {
-		delays = append(delays, delay)
-		if len(delays) == 5 {
-			cancel()
-		}
-		return ctx.Err()
-	})
-	if reads != 5 || !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) || !slices.Equal(delays, []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 30 * time.Second, 30 * time.Second}) {
-		t.Fatalf("canceled continuation reads=%d delays=%v error=%v", reads, delays, err)
+	reads := 0
+	err := continueHistoricalPreparation(ctx, func(context.Context) error { reads++; cancel(); return exhausted })
+	if reads != 1 || !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("canceled census lost unresolved failure: reads=%d error=%v", reads, err)
 	}
 }
 
@@ -76,10 +70,7 @@ func TestHistoricalPreparationNeverDefersPermanentOrMixedFailures(t *testing.T) 
 		context.Canceled,
 	} {
 		reads := 0
-		err := continueHistoricalPreparationWithWait(t.Context(), func(context.Context) error { reads++; return failure }, func(context.Context, time.Duration) error {
-			t.Fatalf("permanent or mixed failure was deferred: %v", failure)
-			return nil
-		})
+		err := continueHistoricalPreparation(t.Context(), func(context.Context) error { reads++; return failure })
 		if reads != 1 || !errors.Is(err, failure) {
 			t.Errorf("permanent failure reads=%d error=%v want=%v", reads, err, failure)
 		}
@@ -101,21 +92,21 @@ func TestHistoricalPreparationClassifiesEveryJoinedCause(t *testing.T) {
 func TestHistoricalPreparationResumesOnlyUnresolvedPinnedGroups(t *testing.T) {
 	f := newFleetInstallHistoryCacheFixture(t)
 	f.rpc.transientFromBatch, f.rpc.transientFailures = 2, 4
-	passes, waits := 0, 0
-	err := continueHistoricalPreparationWithWait(t.Context(), func(ctx context.Context) error {
+	passes := 0
+	verify := func(ctx context.Context) error {
 		passes++
 		return f.reopenedExecutor().verifyFleetInstallPinnedState(ctx, f.action, f.head, f.evidence, f.snapshots)
-	}, func(ctx context.Context, delay time.Duration) error {
-		waits++
-		f.rpc.mu.Lock()
-		defer f.rpc.mu.Unlock()
-		if passes != 1 || f.rpc.transientFailures != 0 || f.rpc.contractReads != 45 {
-			t.Fatalf("first proof group was lost or failed bytes counted: passes=%d faults=%d reads=%d", passes, f.rpc.transientFailures, f.rpc.contractReads)
-		}
-		return ctx.Err()
-	})
-	if err != nil || passes != 2 || waits != 1 {
-		t.Fatalf("resume passes/waits=%d/%d error=%v", passes, waits, err)
+	}
+	if err := continueHistoricalPreparation(t.Context(), verify); !historicalPreparationReadIsTransient(err) || passes != 1 {
+		t.Fatalf("exhausted census did not return its retained boundary: passes=%d error=%v", passes, err)
+	}
+	f.rpc.mu.Lock()
+	if f.rpc.transientFailures != 0 || f.rpc.contractReads != 45 {
+		t.Errorf("first proof group was lost or failed bytes counted: faults=%d reads=%d", f.rpc.transientFailures, f.rpc.contractReads)
+	}
+	f.rpc.mu.Unlock()
+	if err := continueHistoricalPreparation(t.Context(), verify); err != nil || passes != 2 {
+		t.Fatalf("independent retry failed: passes=%d error=%v", passes, err)
 	}
 	f.rpc.mu.Lock()
 	defer f.rpc.mu.Unlock()
