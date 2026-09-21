@@ -1023,7 +1023,10 @@ prospective member slots. The retained continuation authorizes only
 scanner ceiling exposed the excess early, but merely raising it would later
 admit unapproved work and is unsafe. No transaction or journal entry was added
 by this failure. Investigation is tracing which entries are historical versus
-eligible new work; the correction is active in the sim-testnet run.
+eligible new work; the correction is active in the sim-testnet run. On 2026-09-21
+we selected an explicit 2,048-slot continuation allowance: a 2x margin over
+the measured backlog. It must be a newly bound finite resource/spend revision,
+not a scanner-default change.
 
 **Production change.** Represent separately: (1) immutable aggregate approved
 slot/spend capacity, (2) source/member slot cost, (3) historical/previously
@@ -1031,14 +1034,18 @@ admitted evidence, (4) bounded directory/page read size, and (5) bounded
 resident memory/byte budget. Enumerate large retained histories in authenticated
 pages with a stable snapshot cut. Reconcile every candidate to a retained,
 exactly approved slot before it can consume send authority; aggregate genuinely
-new work against the approved slot capacity using checked arithmetic. Retain
-only bounded witnesses or streamed verification state. A malformed directory,
+new work against the approved slot capacity using checked arithmetic. The
+selected testnet 2,048-slot allowance is an explicit revision with exact gas,
+fee and aggregate-spend bounds; production derives its own approved allowance
+from a census plus reviewed margin. Retain only bounded witnesses or streamed
+verification state. A malformed directory,
 unapproved candidate, changed scan cut, ownership escape, byte violation or
 gap/duplicate fails precisely. Do not solve this by lifting a global constant
 or silently increasing the approved spend.
 
 **Closure.** Add deterministic pre-fix and fixed tests for exactly-full and
-one-over aggregate new-work capacity; more-than-one-page retained history;
+one-over aggregate new-work capacity; the exact selected 2,048 allowance;
+more-than-one-page retained history;
 per-source/member multiplication; retained-versus-new classification; changed
 directory during scan; duplicate and missing pages; cancellation/restart;
 imported continuation; malformed entry and byte exhaustion. Run normal and race tests at the startup, continuation,
