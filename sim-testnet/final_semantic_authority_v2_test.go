@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/yaml.v3"
 )
 
@@ -33,20 +32,7 @@ func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
 			cfg.Release = validatorEvidenceRuntime455TestLock(t)
 		}
 	})
-	executor := &Executor{cfg: fixture.cfg, plan: fixture.plan, roles: fixture.roles, stateDir: fixture.stateDir}
-	if err := executor.retainRuntimeEvidenceInputsV2(t.Context(), fixture.prepared, fixture.preparedBytes, fixture.completed); err != nil {
-		t.Fatal(err)
-	}
-	deployment := fixture.plan.Deployment
-	deployment.DeployBlock, deployment.CoordinatorEventStartBlock = 100, 100
-	deployment.DeployBlockHash = common.Hash{8}.Hex()
-	deployment.CoordinatorEventStartBlockHash = deployment.DeployBlockHash
-	if err := saveContractDeployment(fixture.stateDir, deployment); err != nil {
-		t.Fatal(err)
-	}
-	if err := renderValidatorMinerConfigs(fixture.cfg, fixture.stateDir, fixture.roles, &deployment); err != nil {
-		t.Fatal(err)
-	}
+	deployment := renderFinalValidatorFixtureTest(t, fixture)
 	authority, err := captureFinalValidatorAuthorityV2(t.Context(), fixture.cfg, fixture.stateDir)
 	if err != nil {
 		t.Fatal(err)

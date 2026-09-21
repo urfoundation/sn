@@ -463,6 +463,15 @@ Measure native body duration at its actual start and finish. Offline
 conversion, not the earlier test execution. Individual test elapsed records
 can describe that test; the final test's duration is not the suite duration.
 
+Go's paused parallel tests wait for the serial roots to finish before starting.
+On a package timeout, inspect the running root and its stack before treating
+many `testing.T.Parallel` waits as worker starvation. Keep process-wide memory
+measurements and full census owners serial. Validator authority and capture
+fixtures use the actual admitted validator-rendering stage with the complete
+signed topology; full runtime-loader tests own the 1,000-miner payout seeds,
+miner configurations and swarms. The fixture regression withholds miner keys
+to detect accidental full-fleet rendering without a disk-speed threshold.
+
 ### Compact Go qualification workflow
 
 The reusable Go implementation is `scripts/qualification`. Build it once to a

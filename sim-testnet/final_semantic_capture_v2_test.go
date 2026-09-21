@@ -68,21 +68,7 @@ func TestFinalCaptureV2ReadsActualRenderedSetupAndRejectsChangedSource(t *testin
 	if err != nil || approved.PlanHash != fixture.plan.PlanHash {
 		t.Fatalf("original approved setup plan: %v", err)
 	}
-	executor := &Executor{cfg: fixture.cfg, plan: fixture.plan, roles: fixture.roles, stateDir: fixture.stateDir}
-	if err := executor.retainRuntimeEvidenceInputsV2(t.Context(), fixture.prepared, fixture.preparedBytes, fixture.completed); err != nil {
-		t.Fatal(err)
-	}
-	deployment := fixture.plan.Deployment
-	deployment.DeployBlock = 100
-	deployment.DeployBlockHash = common.Hash{8}.Hex()
-	deployment.CoordinatorEventStartBlock = 100
-	deployment.CoordinatorEventStartBlockHash = deployment.DeployBlockHash
-	if err := saveContractDeployment(fixture.stateDir, deployment); err != nil {
-		t.Fatal(err)
-	}
-	if err := renderValidatorMinerConfigs(fixture.cfg, fixture.stateDir, fixture.roles, &deployment); err != nil {
-		t.Fatal(err)
-	}
+	renderFinalValidatorFixtureTest(t, fixture)
 	supervisor := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: fixture.plan.DeploymentID}
 	for id := 1; id <= 2; id++ {
 		supervisor.Specs = append(supervisor.Specs, ProcessSpec{ID: fmt.Sprintf("validator-%d", id), Role: "validator"})

@@ -4900,50 +4900,62 @@ func copyTree(src, dst string, mode os.FileMode) error {
 	})
 }
 
-func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) error {
+// renderValidatorConfigs retains the complete approved topology and performs
+// the shared admission checks before writing only validator-owned inputs. The
+// full renderer continues with the same resolved configuration and base map;
+// validator authority fixtures need not materialize unrelated miner custody.
+func renderValidatorConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) (*ResolvedConfig, map[string]any, error) {
 	resolved, resolveErr := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
 	if resolveErr != nil {
-		return resolveErr
+		return nil, nil, resolveErr
 	}
 	cfg = resolved
 	if err := preflightRuntimeEvidenceV2(cfg, stateDir); err != nil {
-		return err
+		return nil, nil, err
 	}
 	if err := validateRuntimeOperatorApiOrigins(cfg); err != nil {
-		return err
+		return nil, nil, err
 	}
 	if err := prepareSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
-		return err
+		return nil, nil, err
 	}
 	eventSyncBlock, err := contractDeploymentEventSyncBlock(c)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	base := runtimeComponentConfigBase(cfg, c, eventSyncBlock)
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		b, err := marshalRuntimeValidatorConfig(cfg, stateDir, roles, base, i)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", i), "validator.yml")
 		if err := atomicWrite(path, b, 0o600); err != nil {
-			return err
+			return nil, nil, err
 		}
 		seed, _ := hex.DecodeString(roles.Substrate[validatorHotkeyLabel(i)].SeedHex)
 		if err := atomicWrite(filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", i)), append([]byte("0x"), []byte(hex.EncodeToString(seed))...), 0o600); err != nil {
-			return err
+			return nil, nil, err
 		}
 		for op := 1; op <= cfg.Config.Topology.Operators; op++ {
 			label := fmt.Sprintf("validator-%d-no-%d", i, op)
 			clientSeed, err := hex.DecodeString(roles.Clients[label].SeedHex)
 			if err != nil || len(clientSeed) != 32 {
-				return fmt.Errorf("%s client seed is invalid", label)
+				return nil, nil, fmt.Errorf("%s client seed is invalid", label)
 			}
 			clientSeedPath := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", i), "state", "operators", fmt.Sprintf("no-%d", op), "client.key")
 			if err := atomicWrite(clientSeedPath, clientSeed, 0o600); err != nil {
-				return err
+				return nil, nil, err
 			}
 		}
+	}
+	return cfg, base, nil
+}
+
+func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) error {
+	cfg, base, err := renderValidatorConfigs(cfg, stateDir, roles, c)
+	if err != nil {
+		return err
 	}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		claimKey, ok := roles.EVM[fmt.Sprintf("operator-%d-claim-relayer", operator)]
