@@ -63,12 +63,13 @@ type ProcessState struct {
 	ExitError string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
-	Schema                                    string        `json:"schema"`
-	DeploymentID                              string        `json:"deployment_id"`
-	BinaryHash                                string        `json:"binary_hash"`
-	Specs                                     []ProcessSpec `json:"specs"`
-	ProviderStartupWaveSize                   int           `json:"provider_startup_wave_size,omitempty"`
-	ProvisionalProviderStartupObservationOnly bool          `json:"provisional_provider_startup_observation_only,omitempty"`
+	Schema                                    string                 `json:"schema"`
+	DeploymentID                              string                 `json:"deployment_id"`
+	BinaryHash                                string                 `json:"binary_hash"`
+	Specs                                     []ProcessSpec          `json:"specs"`
+	ProviderStartupWaveSize                   int                    `json:"provider_startup_wave_size,omitempty"`
+	ProvisionalProviderStartupObservationOnly bool                   `json:"provisional_provider_startup_observation_only,omitempty"`
+	Dependencies                              []supervisorDependency `json:"dependencies,omitempty"`
 }
 type SupervisorState struct {
 	Schema                   string         `json:"schema"`
@@ -840,7 +841,11 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return err
 	}
-	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg), ProvisionalProviderStartupObservationOnly: provisionalResumeEnabled(cfg)}
+	dependencies, err := captureSupervisorDependencies(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("capture supervisor dependency ownership: %w", err)
+	}
+	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg), ProvisionalProviderStartupObservationOnly: provisionalResumeEnabled(cfg), Dependencies: dependencies}
 	b, _ := json.MarshalIndent(sf, "", "  ")
 	specPath := filepath.Join(stateDir, "supervisor.json")
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
@@ -3241,6 +3246,8 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	}
 	childCtx, cancelChildren := supervisorChildContext(ctx)
 	defer cancelChildren()
+	stopDependencyRecovery := startSupervisorDependencyRecovery(ctx, stateDir, sf.Dependencies, os.Stderr)
+	defer stopDependencyRecovery()
 	type running struct {
 		spec         ProcessSpec
 		cmd          *exec.Cmd

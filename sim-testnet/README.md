@@ -1317,7 +1317,15 @@ journaled approval lineage.
 
 Host reboot is an intentional stop boundary. The supervisor unit is started but
 never enabled, managed PostgreSQL/Redis containers use Docker restart policy
-`no`, and loginctl linger is not required. After a reboot, run `resume` explicitly;
+`no`, and loginctl linger is not required. While the supervisor is alive, it
+repairs a Docker-daemon restart by starting only the existing dependency
+container IDs captured in its manifest. It checks their names, release images,
+creation-spec labels and restart policy on every cycle; it never recreates
+containers or volumes. A shared lock and the active-fault ledger preserve
+deliberate PostgreSQL/Redis outage tests. Temporary Docker failures are logged
+and retried independently while the other processes continue. Older supervisor
+manifests without captured dependency IDs retain their prior behavior.
+After a reboot, run `resume` explicitly;
 it re-runs doctor and reconciles the journal and finalized chain before starting
 any dependency or process. Provisioning helpers also persist PID, process-group,
 kernel start-time, executable-hash and argv-hash ownership. If the parent exits

@@ -598,6 +598,13 @@ func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spe
 }
 
 func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	if spec.Kind == "container-restart" {
+		unlock, err := lockSupervisorDependencyFault(ctx, d.stateDir)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+	}
 	active, err := readActiveFaultFile(d.activePath())
 	if err != nil {
 		return nil, err
@@ -668,6 +675,13 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 }
 
 func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	if spec.Kind == "container-restart" {
+		unlock, err := lockSupervisorDependencyFault(ctx, d.stateDir)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+	}
 	active, err := readActiveFaultFile(d.activePath())
 	if err != nil {
 		return nil, err
