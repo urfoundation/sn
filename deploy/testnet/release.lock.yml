@@ -38,14 +38,14 @@ evm_build:
     openzeppelin_contracts_upgradeable_commit: 7bf4727aacdbfaa0f36cbd664654d0c9e1dc52bf
     optimizer: true
     optimizer_runs: 200
-    precompile_probe_artifact_hash: 0xd1bb47fb62160f13d7d5047d78c1dbac981aa6b05e9c6901fedf83b6a9217f94
-    precompile_probe_runtime_hash: 0x33b8312e02ca185c11e9c9503a8a519cf38230af340d78d53925113be9bc9f4e
+    precompile_probe_artifact_hash: 0x28d6d4b683ab031d4e3adcd62f87a26ab61c70f1490e0242b5c3df6389e3e023
+    precompile_probe_runtime_hash: 0x795f7d5f5cb284179eb9f15ec5c773963cfa83db0a3f384c0188ba6485ab1ba3
     reserve_sink_artifact_hash: 0x64556aa42d0d4ba778ce19aa1e79a761afa6fd7ebe713a0d37ced5f238dc381f
     reserve_sink_runtime_hash: 0x6ab5910b1106e788d9a52836a1513f611929e3f5d4bebbf00283ad2fa01db243
     settlement_vault_artifact_hash: 0x4a539608be2239feea39ffd15d31048d928645cc248f13d6e8abfef229a2ec7a
     settlement_vault_runtime_hash: 0x121eaad356183f9f131a1671447999d46943f6400bed44e740ba6edb559cb9a1
     solidity: 0.8.24
-    source_hash: sha256:101428c4da92eab1c01704ac28a730b33f0e53391b32daa2e7ea32c83db25f24
+    source_hash: sha256:384de49b79c1cf88ca837b74b62cabd70a5cf9c4c38d89951014daa209ad8254
     validator_evidence_artifact_hash: 0xa18512f49457ddc61e6ab7bb1d099047a0e7a60b80b31f74afb48e16a3ce9a37
     validator_evidence_runtime_hash: 0x9a0a8bd024d86b7586986061dec5c644f5c26a9e685385c5044dbf79df799b74
     validator_evidence_storage_layout_hash: sha256:c7b1d4c69d489d880dad1eb8f79de12f6af04f9abfb0bdf7f7f4b60ad045204e
@@ -64,7 +64,7 @@ repositories:
     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
     server_go_source_hash: sha256:785519223b1df899466d1486a49f8cc0f28f2fc4cd4e939de5795b7649498e8e
     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
-    sn_go_source_hash: sha256:2911c2d270742194f8afe050141f1f92240b566b2edb20b48b2ce775e94e5f21
+    sn_go_source_hash: sha256:1680a57387a83620d02da7a76d1de06dc315ea0a0efb72b9cc0806cdb9144e29
     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
     vault_audited_base_commit: 992f69a4ba744dabf43c71401a3f355f05f46428
 dependencies:
