@@ -1,0 +1,3 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.tBgkTkiH; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+ok  	github.com/urfoundation/sn/scripts/qualification	1.338s
+elapsed=3.23 exit=0

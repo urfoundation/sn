@@ -55,6 +55,7 @@ type suiteSpec struct {
 	Mode            string `json:"mode"`
 	Outcomes        string `json:"outcomes"`
 	FailureLiterals string `json:"failure_literals"`
+	RootsPerShard   int    `json:"roots_per_shard,omitempty"`
 }
 type planSpec struct {
 	Version    int           `json:"version"`
@@ -124,7 +125,11 @@ func uniqueJSONDepth(decoder *json.Decoder, depth int) error {
 }
 
 func decodeJSON(data []byte, value any) error {
-	if len(data) > metadataLimit || !utf8.Valid(data) {
+	return decodeJSONLimit(data, value, metadataLimit)
+}
+
+func decodeJSONLimit(data []byte, value any, maximum int) error {
+	if maximum < 0 || maximum > capturedJSONLimit || len(data) > maximum || !utf8.Valid(data) {
 		return errors.New("JSON metadata exceeds bound or is not UTF-8")
 	}
 	tokens := json.NewDecoder(bytes.NewReader(data))
@@ -545,6 +550,9 @@ func validatePlan(plan planSpec) error {
 	suites := map[string]bool{}
 	memberships := map[string]map[string]bool{}
 	for _, item := range plan.Suites {
+		if item.RootsPerShard < 0 || item.RootsPerShard > 1024 {
+			return errors.New("invalid roots per shard")
+		}
 		if !namePattern.MatchString(item.Id) || suites[item.Id] || packages[item.Package].Id == "" || (item.Mode != "normal" && item.Mode != "race") {
 			return errors.New("invalid or duplicate suite identity")
 		}

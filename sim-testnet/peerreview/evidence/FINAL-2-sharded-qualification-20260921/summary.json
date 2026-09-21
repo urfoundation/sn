@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "scope": "selected broad and focused root union; not a complete release gate",
+  "source_base": "5e582939",
+  "raw_capture": "/mnt/data/sn-testnet/qualification/sharded-qualification-20260921/union147",
+  "original_driver_exit": 1,
+  "original_checker_refusals": [
+    "suite-union-normal-s0001",
+    "suite-union-normal-s0002",
+    "suite-union-normal-s0003",
+    "suite-union-normal-s0005",
+    "suite-union-normal-s0012",
+    "suite-union-normal-s0015",
+    "suite-union-normal-s0017",
+    "suite-union-race-s0001",
+    "suite-union-race-s0002",
+    "suite-union-race-s0003",
+    "suite-union-race-s0005",
+    "suite-union-race-s0012",
+    "suite-union-race-s0015",
+    "suite-union-race-s0017"
+  ],
+  "source_unchanged": true,
+  "modes": {
+    "normal": {
+      "body_count": 37,
+      "successful_joined_bodies": 37,
+      "matched_retained_replays": 37,
+      "roots_passed": 147,
+      "descendants_passed": 54,
+      "maximum_body_seconds": 39.448377956,
+      "total_body_seconds": 192.485075621
+    },
+    "race": {
+      "body_count": 37,
+      "successful_joined_bodies": 37,
+      "matched_retained_replays": 37,
+      "roots_passed": 147,
+      "descendants_passed": 54,
+      "maximum_body_seconds": 127.413760434,
+      "total_body_seconds": 1322.687588404
+    }
+  },
+  "retained_body_events_manifest_sha256": "bae67580ab087dfd830b0efba766cf81d43b411d9b70dbebfffb70bf0dee1625",
+  "final_harness_source_manifest_sha256": "32162699fa799343fc1a4218a439131fde6515402d9e76087b9d5f3f60d95040",
+  "final_harness_checks": {
+    "normal_seconds": 1.338,
+    "race_seconds": 7.011,
+    "source_manifest_unchanged": true
+  },
+  "limits": {
+    "roots_per_shard": 4,
+    "jobs": 2,
+    "parallel": 4,
+    "gomaxprocs": 4,
+    "test_seconds": 600,
+    "outer_seconds": 660
+  },
+  "causal_controls": {
+    "partitioning": "expected failure when partition disabled",
+    "retained_seed": "expected failure when completed stages discarded",
+    "lock_inheritance": "expected failure when child lock inheritance removed"
+  }
+}
