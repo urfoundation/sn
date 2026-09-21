@@ -355,10 +355,14 @@ type scenarioProbe interface {
 }
 
 type liveScenarioProbe struct {
-	cfg                  *ResolvedConfig
-	stateDir             string
-	client               *http.Client
-	pathProofs           *scenarioPathProofCache
+	cfg        *ResolvedConfig
+	stateDir   string
+	client     *http.Client
+	pathProofs *scenarioPathProofCache
+	// payoutArtifacts retains artifacts already authenticated by this live
+	// probe. The cache is scoped to one scenario process: every new hash still
+	// reaches the operator, and strict final acceptance creates a fresh probe.
+	payoutArtifacts      map[string]payoutArtifact
 	trustedEvidenceOwner common.Address
 	publicManifestURI    string
 	finalSemanticVerify  campaignFinalSemanticVerifier
@@ -1525,15 +1529,27 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 				continue
 			}
 			seen[hash] = true
-			artifactBytes, _, artifactErr := p.get(ctx, base+"/sn/artifact?hash=sha256:"+hash, 32*1024*1024)
-			if artifactErr != nil {
-				problems = append(problems, "artifact "+hash+": "+artifactErr.Error())
-				continue
+			cacheKey := fmt.Sprintf("%d/%s", noID, hash)
+			artifact, cached := payoutArtifact{}, false
+			if provisionalResumeEnabled(p.cfg) && p.payoutArtifacts != nil {
+				artifact, cached = p.payoutArtifacts[cacheKey]
 			}
-			var artifact payoutArtifact
-			if json.Unmarshal(artifactBytes, &artifact) != nil || verifyPayoutArtifact(&artifact) != nil {
-				problems = append(problems, "artifact "+hash+": integrity failure")
-				continue
+			if !cached {
+				artifactBytes, _, artifactErr := p.get(ctx, base+"/sn/artifact?hash=sha256:"+hash, 32*1024*1024)
+				if artifactErr != nil {
+					problems = append(problems, "artifact "+hash+": "+artifactErr.Error())
+					continue
+				}
+				if json.Unmarshal(artifactBytes, &artifact) != nil || verifyPayoutArtifact(&artifact) != nil || artifact.ContentHash != "sha256:"+hash {
+					problems = append(problems, "artifact "+hash+": integrity failure")
+					continue
+				}
+				if provisionalResumeEnabled(p.cfg) {
+					if p.payoutArtifacts == nil {
+						p.payoutArtifacts = map[string]payoutArtifact{}
+					}
+					p.payoutArtifacts[cacheKey] = artifact
+				}
 			}
 			if artifact.DeploymentID != p.cfg.Config.Deployment.DeploymentID || artifact.ChainID != p.cfg.ChainID || artifact.Netuid != p.cfg.Netuid || artifact.NoID != uint64(noID) || !strings.EqualFold(artifact.GenesisHash, p.cfg.Public.Chain.GenesisHash) || !strings.EqualFold(artifact.PolicyHash, p.cfg.PolicyHash) || (expectedSigner != "" && !strings.EqualFold(artifact.Signer.Hex(), expectedSigner)) {
 				problems = append(problems, "artifact "+hash+": deployment identity mismatch")
