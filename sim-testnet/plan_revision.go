@@ -4460,6 +4460,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		return nil, fmt.Errorf("retain retired alpha spend: %w", err)
 	}
 	if !deploymentSuperseded {
+		if err := preserveRetainedCampaignAllocations(revised, prior); err != nil {
+			return nil, fmt.Errorf("retain campaign allocation envelopes: %w", err)
+		}
 		supersededSpend, err = addRetiredVerifiedEVMGas(prior, revised, entries, supersededSpend)
 		if err != nil {
 			return nil, fmt.Errorf("retain retired EVM gas: %w", err)
