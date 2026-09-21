@@ -259,4 +259,7 @@ func applyProvisionalScenarioProvenance(cfg *ResolvedConfig, result *ScenarioRes
 		ExecutableSHA256: cfg.provisionalResume.Driver.ExecutableSHA256,
 		Build:            cfg.provisionalResume.Driver.Build,
 	}
+	if result.Name == "epoch" {
+		result.ProvisionalEpoch = &provisionalEpochOutcome{Status: "incomplete"}
+	}
 }

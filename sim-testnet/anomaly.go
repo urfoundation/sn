@@ -322,4 +322,5 @@ func attachScenarioAnomalyGate(result *ScenarioResult, generatedAt time.Time, st
 	if result.FailedAssertionCount != 0 {
 		result.Result = "fail"
 	}
+	refreshProvisionalEpochOutcome(result)
 }

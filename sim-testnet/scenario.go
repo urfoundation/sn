@@ -36,13 +36,14 @@ import (
 // assertions.json and junit.xml. ObservationHash points at the exact snapshot
 // on which the assertion was evaluated.
 type AssertionRecord struct {
-	ID              string  `json:"id"`
-	Passed          bool    `json:"passed"`
-	Message         string  `json:"message"`
-	StartedAt       string  `json:"started_at"`
-	CompletedAt     string  `json:"completed_at"`
-	DurationSeconds float64 `json:"duration_seconds"`
-	ObservationHash string  `json:"observation_hash"`
+	ID                        string  `json:"id"`
+	Passed                    bool    `json:"passed"`
+	DeferredToFinalAcceptance bool    `json:"deferred_to_final_acceptance,omitempty"`
+	Message                   string  `json:"message"`
+	StartedAt                 string  `json:"started_at"`
+	CompletedAt               string  `json:"completed_at"`
+	DurationSeconds           float64 `json:"duration_seconds"`
+	ObservationHash           string  `json:"observation_hash"`
 }
 
 type VerifyKeyObservation struct {
@@ -287,6 +288,7 @@ type ScenarioResult struct {
 	Provisional          bool                           `json:"provisional,omitempty"`
 	FinalAcceptance      *bool                          `json:"final_acceptance,omitempty"`
 	ProvisionalDriver    *provisionalScenarioProvenance `json:"provisional_driver,omitempty"`
+	ProvisionalEpoch     *provisionalEpochOutcome       `json:"provisional_epoch,omitempty"`
 	Schema               string                         `json:"schema"`
 	Release              string                         `json:"release"`
 	RunID                string                         `json:"run_id"`
@@ -3300,6 +3302,9 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 	case "epoch":
 		definition.GoalEpochs = 1
 		definition.Checks = append(definition.Checks, epochChecks...)
+		if provisionalResumeEnabled(cfg) {
+			definition.Checks = append(definition.Checks, scenarioCheck{ID: provisionalEpochActivityAssertionID, Check: provisionalEpochActivity})
+		}
 		return definition, nil
 	case "release-1.0":
 		if cfg.Config.Scenarios.ShortEpochs < 1 {
@@ -3578,7 +3583,7 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 	assertions := make([]AssertionRecord, 0, len(definition.Checks))
 	for _, check := range definition.Checks {
 		passed, message := check.Check(evaluation)
-		assertions = append(assertions, AssertionRecord{ID: check.ID, Passed: passed, Message: message, StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash})
+		assertions = append(assertions, AssertionRecord{ID: check.ID, Passed: passed, DeferredToFinalAcceptance: provisionalEpochEnabled(cfg, definition.Name) && provisionalEpochDeferredAssertion(check.ID), Message: message, StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash})
 	}
 	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
 	return assertions
@@ -3704,6 +3709,7 @@ func writeInitialScenarioFailure(cfg *ResolvedConfig, runDir, runID, definitionH
 		Assertions: []AssertionRecord{assertion}, Result: "fail",
 	}
 	applyProvisionalScenarioProvenance(cfg, result)
+	markProvisionalEpochInterruption(result, failure)
 	applyScenarioAttemptBinding(result, attempt)
 	attachScenarioAnomalyGate(result, completed, nil, observation)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
@@ -4211,6 +4217,8 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	}
 	assertions := appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
 	assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
+	provisionalFindings := map[string]string{}
+	logProvisionalEpochFindings(assertions, provisionalFindings)
 	// Preparation actions have their own bounded waits. Give the exact accepted
 	// interval its complete timeout instead of consuming it during preparation.
 	deadline := options.Now().Add(options.Timeout)
@@ -4219,7 +4227,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	var runtimeAssertions []AssertionRecord
 	snapshotFailureCount := 0
 scenarioLoop:
-	for (!assertionsPass(assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
+	for (!scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
 		var heartbeatErr error
 		next, snapshotErr := waitScenarioSnapshot(ctx, probe, options.PollInterval, func(heartbeatCtx context.Context, head ChainHead) error {
 			if len(faults) == 0 {
@@ -4362,11 +4370,12 @@ scenarioLoop:
 		}
 		assertions = appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
 		assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
+		logProvisionalEpochFindings(assertions, provisionalFindings)
 		if faultErr != nil {
 			break
 		}
 	}
-	acceptanceIncomplete := terminalErr != nil || faultErr != nil || !assertionsPass(assertions) || !faultsComplete(faults) || options.FleetLifecycle != nil && !options.FleetLifecycle.Complete() || options.Adversaries != nil && !options.Adversaries.Ready()
+	acceptanceIncomplete := terminalErr != nil || faultErr != nil || !scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || options.FleetLifecycle != nil && !options.FleetLifecycle.Complete() || options.Adversaries != nil && !options.Adversaries.Ready()
 	if !acceptanceIncomplete && options.Publish && (definition.Name == "release-1.0" || definition.Name == "production-soak") {
 		waitClosures := options.WaitFinalSettlementClosures
 		if waitClosures == nil {
@@ -4469,11 +4478,15 @@ scenarioLoop:
 	}
 	result.LifecycleHandoff = lifecycleHandoff
 	applyProvisionalScenarioProvenance(cfg, result)
+	markProvisionalEpochInterruption(result, errors.Join(terminalErr, ctx.Err()))
 	applyScenarioAttemptBinding(result, options.Attempt)
 	attachScenarioAnomalyGate(result, completed, campaignStart, current, observationHistory...)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 	if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 		return nil, err
+	}
+	if provisionalEpochEnabled(cfg, definition.Name) {
+		return finishProvisionalEpochObservation(ctx, cfg, stateDir, runDir, result, campaignStart, current, observationHistory, options)
 	}
 	publishedBundlePayloadHash := ""
 	publishedBundleResultHash := ""
