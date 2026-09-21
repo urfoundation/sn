@@ -18,9 +18,14 @@ type provisionalLifecycleAncestorApproval struct {
 // adoption, this check grants no permission to resume an old acceptance window.
 func authenticateProvisionalLifecycleAncestor(attempt *scenarioCampaignAttempt, evidence *FleetLifecycleEvidence) (*SetupPlan, error) {
 	if attempt == nil || evidence == nil || attempt.payload.Phase != "release-1.0" || attempt.payload.Recovery == nil ||
-		evidence.ProvisionalBypass == nil || evidence.Stage != fleetLifecycleStageReleaseHandoff || evidence.RunID == "" ||
-		evidence.RunID == attempt.payload.RunID || fleetLifecycleHasProductionState(evidence) {
+		evidence.ProvisionalBypass == nil || evidence.RunID == "" || evidence.RunID == attempt.payload.RunID {
 		return nil, errors.New("provisional lifecycle has no distinct non-mutating release ancestor")
+	}
+	if evidence.Stage != fleetLifecycleStageReleaseHandoff {
+		return nil, errors.New("release fleet lifecycle provisional bypass has not reached its handoff stage")
+	}
+	if fleetLifecycleHasProductionState(evidence) {
+		return nil, errors.New("release fleet lifecycle provisional bypass contains production successor state")
 	}
 	if err := validateFleetLifecycleProvisionalBypassAuthority(attempt.cfg, &SetupPlan{PlanHash: attempt.payload.PlanHash}); err != nil {
 		return nil, err

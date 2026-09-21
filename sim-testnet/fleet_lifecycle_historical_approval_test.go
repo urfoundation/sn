@@ -157,6 +157,7 @@ func TestFleetLifecycleHistoricalApprovalRejectsChangedIdentityAfterWarmAdmissio
 	for _, mutation := range []struct {
 		name string
 		edit func(*liveFleetLifecycle, *FleetLifecycleEvidence)
+		want string
 	}{
 		{name: "strict", edit: func(l *liveFleetLifecycle, _ *FleetLifecycleEvidence) { l.cfg.provisionalResume = nil }},
 		{name: "acceptance", edit: func(l *liveFleetLifecycle, _ *FleetLifecycleEvidence) {
@@ -176,7 +177,8 @@ func TestFleetLifecycleHistoricalApprovalRejectsChangedIdentityAfterWarmAdmissio
 		}},
 		{name: "run", edit: func(_ *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.RunID = "synthetic-foreign-run" }},
 		{name: "source-approval", edit: func(l *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.PlanHash = l.executor.plan.PlanHash }},
-		{name: "production", edit: func(_ *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.ProductionRunID = "synthetic-production-run" }},
+		{name: "stage", edit: func(_ *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.Stage = fleetLifecycleStageComplete }, want: "handoff stage"},
+		{name: "production", edit: func(_ *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.ProductionRunID = "synthetic-production-run" }, want: "production successor state"},
 		{name: "mutation", edit: func(_ *liveFleetLifecycle, e *FleetLifecycleEvidence) { e.ProviderEffectiveEpoch = 1 }},
 	} {
 		lifecycle, cfg, executor, plan := *f.lifecycle, *f.lifecycle.cfg, *f.lifecycle.executor, *f.lifecycle.executor.plan
@@ -185,8 +187,8 @@ func TestFleetLifecycleHistoricalApprovalRejectsChangedIdentityAfterWarmAdmissio
 		lifecycle.cfg, lifecycle.executor, executor.plan = &cfg, &executor, &plan
 		evidence := *f.evidence
 		mutation.edit(&lifecycle, &evidence)
-		if err := lifecycle.validateProvisionalBypassState("release-1.0", evidence.RunID, &evidence); err == nil {
-			t.Fatalf("warm historical admission accepted changed %s", mutation.name)
+		if err := lifecycle.validateProvisionalBypassState("release-1.0", evidence.RunID, &evidence); err == nil || mutation.want != "" && !strings.Contains(err.Error(), mutation.want) {
+			t.Fatalf("warm historical admission changed %s rejection: %v", mutation.name, err)
 		}
 	}
 	if err := writePublicJSON(scenarioCampaignAttemptPath(f.campaign.stateDir, "production-soak"), map[string]any{"synthetic": true}); err != nil {
