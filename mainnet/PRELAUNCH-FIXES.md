@@ -1016,29 +1016,32 @@ correction passed.
 
 **Lesson.** Immediately after PH-19 passed in the same 2026-09-21 resume, the
 relay startup inventory stopped before historical reads with `observed manifest
-slots exceed 1024`. The retained continuation has an approved `new_slots=1024`
-and four sources; the scanner used a fixed 1,024-entry directory read ceiling
-as though it were the aggregate monetary/slot approval. That conflates a safe
-per-page enumeration bound with total authenticated work and prevents a
-legitimate retained campaign from reaching its release interval. No transaction
-or journal entry was added by this failure. Investigation and correction are
-active in the sim-testnet run.
+slots exceed 1024`. Read-only census found 271 closed manifests for each of two
+validators with two members per manifest, plus three validator-2 audits: 1,090
+prospective member slots. The retained continuation authorizes only
+`new_slots=1024` and has no approved journal debits. The fixed 1,024-entry
+scanner ceiling exposed the excess early, but merely raising it would later
+admit unapproved work and is unsafe. No transaction or journal entry was added
+by this failure. Investigation is tracing which entries are historical versus
+eligible new work; the correction is active in the sim-testnet run.
 
 **Production change.** Represent separately: (1) immutable aggregate approved
-slot/spend capacity, (2) source/member slot cost, (3) bounded directory/page
-read size, and (4) bounded resident memory/byte budget. Enumerate large
-retained histories in authenticated pages with a stable snapshot cut, aggregate
-against the approved slot capacity using checked arithmetic, and retain only
-bounded witnesses or streamed verification state. A malformed directory that
-exceeds the approved aggregate, changes during its cut, escapes ownership,
-violates byte bounds or has a gap/duplicate still fails precisely. Do not solve
-this by lifting a global constant or silently increasing the approved spend.
+slot/spend capacity, (2) source/member slot cost, (3) historical/previously
+admitted evidence, (4) bounded directory/page read size, and (5) bounded
+resident memory/byte budget. Enumerate large retained histories in authenticated
+pages with a stable snapshot cut. Reconcile every candidate to a retained,
+exactly approved slot before it can consume send authority; aggregate genuinely
+new work against the approved slot capacity using checked arithmetic. Retain
+only bounded witnesses or streamed verification state. A malformed directory,
+unapproved candidate, changed scan cut, ownership escape, byte violation or
+gap/duplicate fails precisely. Do not solve this by lifting a global constant
+or silently increasing the approved spend.
 
 **Closure.** Add deterministic pre-fix and fixed tests for exactly-full and
-one-over aggregate capacity; more-than-one-page but valid retained history;
-per-source/member multiplication; changed directory during scan; duplicate and
-missing pages; cancellation/restart; imported continuation; malformed entry and
-byte exhaustion. Run normal and race tests at the startup, continuation,
+one-over aggregate new-work capacity; more-than-one-page retained history;
+per-source/member multiplication; retained-versus-new classification; changed
+directory during scan; duplicate and missing pages; cancellation/restart;
+imported continuation; malformed entry and byte exhaustion. Run normal and race tests at the startup, continuation,
 archive-replay and final-acceptance consumers. A controlled production-path
 rehearsal must resume a large authenticated history without redoing completed
 work, while refusing unapproved extra work. Link the completed sim-testnet
