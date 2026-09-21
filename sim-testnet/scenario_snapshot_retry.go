@@ -124,6 +124,17 @@ func (self *scenarioSnapshotRetryState) load() error {
 		if record.ID != fmt.Sprintf("scenario_snapshot_retry_%06d", index+1) || record.Message == "" || record.StartedAt == "" || record.CompletedAt == "" || record.DurationSeconds < 0 {
 			return errors.New("scenario snapshot retry evidence is malformed")
 		}
+		started, startErr := time.Parse(time.RFC3339Nano, record.StartedAt)
+		completed, completeErr := time.Parse(time.RFC3339Nano, record.CompletedAt)
+		if startErr != nil || completeErr != nil || completed.Before(started) || record.DurationSeconds != completed.Sub(started).Seconds() {
+			return errors.New("scenario snapshot retry evidence has invalid chronology")
+		}
+		if !record.Passed && (!completed.Equal(started) || record.DurationSeconds != 0) {
+			return errors.New("scenario snapshot pending retry evidence is malformed")
+		}
+		if index != 0 && !evidence.Records[index-1].Passed && record.Passed {
+			return errors.New("scenario snapshot retry evidence skips an unresolved incident")
+		}
 	}
 	self.records = evidence.Records
 	self.terminalError = evidence.TerminalError
@@ -164,6 +175,36 @@ func (self *scenarioSnapshotRetryState) priorTerminal() error {
 		return &scenarioSnapshotTerminalError{cause: errors.New(self.terminalError)}
 	}
 	return nil
+}
+
+// A crash can occur after a failed read is durable but before either the retry
+// or its terminal verdict is written. Reopen that pending retry with only its
+// original remaining time and attempt, never as a new initial observation.
+func (self *scenarioSnapshotRetryState) pendingRetryBudget() (time.Duration, bool, error) {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	var pending []AssertionRecord
+	for _, record := range self.records {
+		if !record.Passed {
+			pending = append(pending, record)
+		}
+	}
+	if len(self.records) > scenarioSnapshotMaximumRecoveries || len(pending) > 1 {
+		return 0, false, errors.New("scenario snapshot transport retry budget exhausted before restart")
+	}
+	if len(pending) == 0 {
+		return 0, false, nil
+	}
+	started, err := time.Parse(time.RFC3339Nano, pending[0].StartedAt)
+	now := self.now().UTC()
+	if err != nil || now.Before(started) {
+		return 0, false, errors.New("scenario snapshot retry evidence has invalid chronology")
+	}
+	remaining := scenarioSnapshotRetryTimeout - now.Sub(started)
+	if remaining <= 0 {
+		return 0, false, fmt.Errorf("scenario snapshot transport retry deadline elapsed before restart: %w", context.DeadlineExceeded)
+	}
+	return remaining, true, nil
 }
 
 func (self *scenarioSnapshotRetryState) record(failure error) (bool, error) {
@@ -217,7 +258,18 @@ func (self *scenarioSnapshotRetryProbe) Snapshot(ctx context.Context) (*Scenario
 		return nil, err
 	}
 	readCtx := ctx
-	for attempt := 0; attempt < 2; attempt++ {
+	firstAttempt := 0
+	remaining, pending, err := self.retries.pendingRetryBudget()
+	if err != nil {
+		return nil, self.retries.terminal(err)
+	}
+	if pending {
+		firstAttempt = 1
+		var cancel context.CancelFunc
+		readCtx, cancel = context.WithTimeout(ctx, remaining)
+		defer cancel()
+	}
+	for attempt := firstAttempt; attempt < 2; attempt++ {
 		observation, err := self.source.Snapshot(readCtx)
 		if readCtx.Err() != nil {
 			return nil, self.retries.terminal(readCtx.Err())
