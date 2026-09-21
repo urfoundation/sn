@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -174,10 +175,42 @@ type evmRpcReadResult[T any] struct {
 	err   error
 }
 
-// Retry only missing or transient elements. Successful and permanent results
-// stay in their original positions; callers can persist independent successes
-// even when another element exhausts its budget. Each attempt decodes into
-// fresh storage, never into bytes partially filled by a failed transport.
+// A timed-out archive batch may exceed the provider's per-request work budget.
+// Other transient failures retain their request shape: splitting a connection
+// reset or a rate limit would add requests without evidence of oversized work.
+func evmReadRpcBatchTimedOut(err error) bool {
+	if !evmReadRpcErrorIsTransient(err) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, cause := range joined.Unwrap() {
+			if evmReadRpcBatchTimedOut(cause) {
+				return true
+			}
+		}
+		return false
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		if cause := wrapped.Unwrap(); cause != nil {
+			return evmReadRpcBatchTimedOut(cause)
+		}
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return true
+	}
+	var rpcError rpc.Error
+	return errors.As(err, &rpcError) && rpcError.ErrorCode() == -32002
+}
+
+// Retry only missing or transient elements. A timeout halves the next batch
+// width; every chunk in that retry round shares the same attempt deadline, so
+// splitting does not multiply the four-attempt budget. Successful and permanent
+// results stay in their original positions, including completed chunks before
+// a later chunk fails. Failed transports never contribute partially read bytes.
 func readEvmRpcBatchWithPolicy[T any](ctx context.Context, operation string, reads []evmRpcRead, policy finalSemanticRPCRetryPolicy, call func(context.Context, []rpc.BatchElem) error) ([]evmRpcReadResult[T], error) {
 	if ctx == nil || operation == "" || len(reads) == 0 || len(reads) > maximumEVMRPCBatchCalls || call == nil {
 		return nil, errors.New("EVM read batch is unavailable or unbounded")
@@ -193,30 +226,52 @@ func readEvmRpcBatchWithPolicy[T any](ctx context.Context, operation string, rea
 		}
 		pending[index] = index
 	}
+	batchWidth := len(reads)
+	priorWidth := batchWidth
+	finishRound := func(err error) error {
+		if evmReadRpcBatchTimedOut(err) && len(pending) > 1 {
+			batchWidth = (min(batchWidth, len(pending)) + 1) / 2
+		}
+		return err
+	}
 	err := retryEvmReadRpcCall(ctx, operation, policy, func(attemptCtx context.Context) error {
-		outputs := make([]T, len(pending))
-		batch := make([]rpc.BatchElem, len(pending))
-		for index, resultIndex := range pending {
-			read := reads[resultIndex]
-			batch[index] = rpc.BatchElem{Method: read.method, Args: read.args, Result: &outputs[index]}
+		if batchWidth < priorWidth {
+			fmt.Fprintf(os.Stderr, "sim-testnet: %s retry %d pending reads with batch width %d (previous %d)\n", operation, len(pending), batchWidth, priorWidth)
+			priorWidth = batchWidth
 		}
-		if err := call(attemptCtx, batch); err != nil {
-			return err
-		}
-		next := make([]int, 0, len(pending))
+		current := pending
+		pending = make([]int, 0, len(current))
 		var transient []error
-		for index, resultIndex := range pending {
-			result := &results[resultIndex]
-			result.err = batch[index].Error
-			if result.err == nil {
-				result.value = outputs[index]
-			} else if evmReadRpcErrorIsTransient(result.err) {
-				next = append(next, resultIndex)
-				transient = append(transient, fmt.Errorf("batch element %d: %w", resultIndex, result.err))
+		for start := 0; start < len(current); start += batchWidth {
+			end := min(start+batchWidth, len(current))
+			outputs := make([]T, end-start)
+			batch := make([]rpc.BatchElem, end-start)
+			for index, resultIndex := range current[start:end] {
+				read := reads[resultIndex]
+				batch[index] = rpc.BatchElem{Method: read.method, Args: read.args, Result: &outputs[index]}
+			}
+			callErr := attemptCtx.Err()
+			if callErr == nil {
+				callErr = call(attemptCtx, batch)
+			}
+			if callErr != nil {
+				// Earlier completed chunks are durable in results. Neither the
+				// failed chunk nor the unstarted suffix has authenticated bytes.
+				pending = append(pending, current[start:]...)
+				return finishRound(errors.Join(append(transient, callErr)...))
+			}
+			for index, resultIndex := range current[start:end] {
+				result := &results[resultIndex]
+				result.err = batch[index].Error
+				if result.err == nil {
+					result.value = outputs[index]
+				} else if evmReadRpcErrorIsTransient(result.err) {
+					pending = append(pending, resultIndex)
+					transient = append(transient, fmt.Errorf("batch element %d: %w", resultIndex, result.err))
+				}
 			}
 		}
-		pending = next
-		return errors.Join(transient...)
+		return finishRound(errors.Join(transient...))
 	})
 	if err != nil {
 		if len(pending) == 0 {

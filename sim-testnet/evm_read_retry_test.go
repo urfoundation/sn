@@ -389,6 +389,7 @@ func TestHistoricalEvmOracleReadRetriesTimeoutAndRejectsChangedState(t *testing.
 		Params []json.RawMessage `json:"params"`
 	}
 	batchAttempts := 0
+	var batchSelectors [][]string
 	transport := newOwnedEvmRetryTransport(roundTripFunc(func(httpRequest *http.Request) (*http.Response, error) {
 		raw, err := io.ReadAll(httpRequest.Body)
 		httpRequest.Body.Close()
@@ -402,10 +403,12 @@ func TestHistoricalEvmOracleReadRetriesTimeoutAndRejectsChangedState(t *testing.
 				return nil, err
 			}
 			batchAttempts++
-			if len(batch) != 5 {
-				t.Fatalf("oracle batch lost fields: %d", len(batch))
+			widths := []int{5, 3, 2, 5}
+			if batchAttempts > len(widths) || len(batch) != widths[batchAttempts-1] {
+				t.Fatalf("oracle batch did not preserve its bounded partition: attempt=%d width=%d", batchAttempts, len(batch))
 			}
 			responses := make([]map[string]any, len(batch))
+			selectors := make([]string, len(batch))
 			for index, call := range batch {
 				var target struct {
 					To   common.Address `json:"to"`
@@ -414,8 +417,13 @@ func TestHistoricalEvmOracleReadRetriesTimeoutAndRejectsChangedState(t *testing.
 				if call.Method != "eth_call" || len(call.Params) != 2 || string(call.Params[1]) != `"0x7b"` || json.Unmarshal(call.Params[0], &target) != nil || target.To != address || outputs[target.Data] == "" {
 					t.Fatalf("historical request identity changed: %+v", call)
 				}
+				if slices.Contains(selectors[:index], target.Data) {
+					t.Fatal("historical oracle field was duplicated")
+				}
+				selectors[index] = target.Data
 				responses[index] = map[string]any{"jsonrpc": "2.0", "id": call.Id, "result": outputs[target.Data]}
 			}
+			batchSelectors = append(batchSelectors, selectors)
 			if batchAttempts == 1 {
 				return nil, context.DeadlineExceeded
 			}
@@ -449,11 +457,17 @@ func TestHistoricalEvmOracleReadRetriesTimeoutAndRejectsChangedState(t *testing.
 	state := map[string]any{"kind": action.Kind, "target": action.Target, "current_epoch": uint64(9), "immutable_oracle": immutable.Hex(), "active_oracle": active.Hex(), "pending_oracle": active.Hex(), "pending_epoch": uint64(9), "target_oracle": active.Hex()}
 	record := &ActionPostcondition{Schema: "urnetwork-sim-action-postcondition-v4", PlanHash: "synthetic-source-plan", ActionID: action.ID, IntentHash: action.IntentHash, EVMFinalized: head, IndependentEVMFinalized: head, Observed: state, IndependentObserved: state}
 	executor := &Executor{cfg: &ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}, plan: &SetupPlan{PlanHash: "synthetic-current-plan", PriorPlanHashes: []string{record.PlanHash}}, owner: manager, deployer: manager, payloads: &DeploymentPayloads{Manifest: ContractDeployment{CoordinatorProxy: address}, FleetBatcherAddress: active, CommitmentOracle: immutable}}
-	if err := executor.verifyHistoricalEVMPostcondition(t.Context(), action, record, &head); err != nil || batchAttempts != 2 {
+	if err := executor.verifyHistoricalEVMPostcondition(t.Context(), action, record, &head); err != nil || batchAttempts != 3 {
 		t.Fatalf("historical timeout recovery: attempts=%d error=%v", batchAttempts, err)
 	}
+	if !slices.Equal(batchSelectors[0], append(slices.Clone(batchSelectors[1]), batchSelectors[2]...)) {
+		t.Fatalf("oracle split lost or reordered fields: %v", batchSelectors)
+	}
 	outputs[hexutil.Encode(coordinator.PackCurrentEpoch())] = fleetRefreshTestOutput(t, parsed, "currentEpoch", big.NewInt(10))
-	if err := executor.verifyHistoricalEVMPostcondition(t.Context(), action, record, &head); err == nil || !strings.Contains(err.Error(), "operational historical EVM state") || batchAttempts != 3 {
+	if err := executor.verifyHistoricalEVMPostcondition(t.Context(), action, record, &head); err == nil || !strings.Contains(err.Error(), "operational historical EVM state") || batchAttempts != 4 {
 		t.Fatalf("changed historical evidence was retried or accepted: attempts=%d error=%v", batchAttempts, err)
+	}
+	if !slices.Equal(batchSelectors[0], batchSelectors[3]) {
+		t.Fatalf("changed-state check did not read the full original oracle: %v", batchSelectors[3])
 	}
 }
