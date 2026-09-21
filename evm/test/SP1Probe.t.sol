@@ -65,6 +65,7 @@ contract SP1ProbeTest is Test {
         vm.etch(INeuron_ADDRESS, address(new MockNeuron()).code);
         vm.etch(address(0x080c), address(new MockAddressMapping()).code);
 
+        vm.deal(deployer, 1 ether);
         vm.prank(deployer);
         probe = new STSubnetProbe(NETUID);
         probeColdkey = Blake2b.mirror(address(probe));
@@ -232,7 +233,7 @@ contract SP1ProbeTest is Test {
         _runtime455Mapping();
         bytes32 destination = keccak256("runtime455-recovery-coldkey");
         vm.startPrank(deployer);
-        probe.seedFromTao(HOTKEY_A, 1_000);
+        probe.seedFromTao{value: 1_000 * 1e9}(HOTKEY_A, 1_000);
         assertEq(probe.selfStake(HOTKEY_A), 1_000);
         probe.moveRoundTrip(HOTKEY_A, HOTKEY_B, 400);
         assertEq(probe.selfStake(HOTKEY_A), 600);
@@ -329,16 +330,87 @@ contract SP1ProbeTest is Test {
 
     function test_seedFromTao_custodyIsContractColdkey() public {
         vm.prank(deployer);
-        probe.seedFromTao(HOTKEY_A, 1_000);
+        probe.seedFromTao{value: 1_000 * 1e9}(HOTKEY_A, 1_000);
         // the α landed under the CONTRACT's coldkey, not the deployer's
         assertEq(probe.selfStake(HOTKEY_A), 1_000);
         assertEq(staking.stakes(HOTKEY_A, probeColdkey), 1_000);
         assertEq(staking.stakes(HOTKEY_A, Blake2b.mirror(deployer)), 0);
     }
 
+    /// @dev Reproduces the LAN failure at block 8053712: forwarding all of
+    ///      msg.value leaves the caller's native account empty before staking.
+    ///      Registration already retains funds for the same native debit.
+    function test_seedFromTao_retainsFundingForNativeDebit() public {
+        uint256 amountRao = 20_000_000;
+        uint256 amountWei = amountRao * 1e9;
+        uint256 deployerBefore = deployer.balance;
+        uint256 precompileBefore = ISTAKING_ADDRESS.balance;
+        assertEq(address(probe).balance, 0, "probe starts unfunded");
+
+        vm.expectEmit(true, false, false, true, address(probe));
+        emit STSubnetProbe.Seeded(HOTKEY_A, amountRao, amountWei, amountRao);
+        vm.prank(deployer);
+        probe.seedFromTao{value: amountWei}(HOTKEY_A, amountRao);
+
+        assertEq(probe.selfStake(HOTKEY_A), amountRao, "stake belongs to probe");
+        assertEq(deployer.balance, deployerBefore - amountWei, "single funding debit");
+        assertEq(address(probe).balance, 0, "native stake consumed supplied funding");
+        assertEq(ISTAKING_ADDRESS.balance, precompileBefore, "no funds stranded at precompile");
+    }
+
+    /// @dev Owner-supplied prefunding remains usable, and only the requested
+    ///      amount is consumed even when the account contains surplus funds.
+    function test_seedFromTao_usesPrefundingWithoutForwardingSurplus() public {
+        uint256 amountRao = 1_000;
+        uint256 surplusWei = 777 * 1e9;
+        vm.deal(address(probe), amountRao * 1e9 + surplusWei);
+        uint256 deployerBefore = deployer.balance;
+        uint256 precompileBefore = ISTAKING_ADDRESS.balance;
+
+        vm.prank(deployer);
+        probe.seedFromTao(HOTKEY_A, amountRao);
+
+        assertEq(probe.selfStake(HOTKEY_A), amountRao);
+        assertEq(address(probe).balance, surplusWei);
+        assertEq(deployer.balance, deployerBefore);
+        assertEq(ISTAKING_ADDRESS.balance, precompileBefore);
+    }
+
+    /// @dev Supplied value cannot fabricate stake when it is below the native
+    ///      amount; a refused call rolls funding and stake back together.
+    function test_seedFromTao_rejectsInsufficientNativeFunding() public {
+        uint256 amountRao = 1_000;
+        uint256 amountWei = amountRao * 1e9;
+        uint256 deployerBefore = deployer.balance;
+        vm.startPrank(deployer);
+        vm.expectRevert("NotEnoughBalanceToStake");
+        probe.seedFromTao(HOTKEY_A, amountRao);
+        vm.expectRevert("NotEnoughBalanceToStake");
+        probe.seedFromTao{value: amountWei - 1}(HOTKEY_A, amountRao);
+        vm.stopPrank();
+        assertEq(probe.selfStake(HOTKEY_A), 0);
+        assertEq(address(probe).balance, 0);
+        assertEq(deployer.balance, deployerBefore);
+    }
+
+    /// @dev Value attached by an unauthorized caller cannot alter probe
+    ///      funding, existing custody, or native-precompile balances.
+    function test_seedFromTao_rejectsUnauthorizedFunding() public {
+        address intruder = makeAddr("funded-intruder");
+        uint256 amountWei = 1_000 * 1e9;
+        vm.deal(intruder, amountWei);
+        vm.deal(address(probe), amountWei);
+        vm.prank(intruder);
+        vm.expectRevert("probe: not owner");
+        probe.seedFromTao{value: amountWei}(HOTKEY_A, 1_000);
+        assertEq(intruder.balance, amountWei);
+        assertEq(address(probe).balance, amountWei);
+        assertEq(probe.selfStake(HOTKEY_A), 0);
+    }
+
     function test_moveRoundTrip_slippageFreeAndAttributed() public {
         vm.startPrank(deployer);
-        probe.seedFromTao(HOTKEY_A, 1_000);
+        probe.seedFromTao{value: 1_000 * 1e9}(HOTKEY_A, 1_000);
         (uint256 fromBefore, uint256 toBefore, uint256 fromAfter, uint256 toAfter) =
             probe.moveRoundTrip(HOTKEY_A, HOTKEY_B, 400);
         vm.stopPrank();
@@ -355,7 +427,7 @@ contract SP1ProbeTest is Test {
     function test_transferOut_recoversDustFromContract() public {
         bytes32 dest = keccak256("recover-coldkey");
         vm.startPrank(deployer);
-        probe.seedFromTao(HOTKEY_A, 1_000);
+        probe.seedFromTao{value: 1_000 * 1e9}(HOTKEY_A, 1_000);
         probe.transferOut(dest, HOTKEY_A, 250);
         vm.stopPrank();
         assertEq(staking.stakes(HOTKEY_A, dest), 250);
@@ -364,7 +436,7 @@ contract SP1ProbeTest is Test {
 
     function test_dividendTwoStep_detectsCompounding() public {
         vm.startPrank(deployer);
-        probe.seedFromTao(SAMPLE_HOTKEY, 1_000);
+        probe.seedFromTao{value: 1_000 * 1e9}(SAMPLE_HOTKEY, 1_000);
         probe.snapshot(SAMPLE_HOTKEY);
         vm.stopPrank();
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {Vm} from "forge-std/Vm.sol";
+
 /// @dev vm.etch-able mocks of the subtensor precompiles (SP-1: real ABIs are
 ///      unverified; STSubnet reaches them only through virtual accessors, and
 ///      these mocks pin the v3.2.7 vendored interface shapes).
@@ -12,6 +14,7 @@ pragma solidity 0.8.24;
 ///      stake. The caller's coldkey (the EVM mirror the runtime would derive)
 ///      must be registered with setColdkey.
 contract MockStakingV2 {
+    Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     mapping(bytes32 => mapping(bytes32 => uint256)) public stakes; // hotkey -> coldkey -> rao
     mapping(address => bytes32) public callerColdkey;
     bool public failMoveStake;
@@ -120,12 +123,17 @@ contract MockStakingV2 {
     }
 
     /// @dev SP-1 probe support: TAO->α at 1:1 (the mock has no AMM slippage;
-    ///      it exists to test the probe's harness logic, not economics). Credits
-    ///      `amount` at (hotkey, caller's coldkey).
+    ///      it exists to test the probe's harness logic, not economics). The
+    ///      runtime withdraws native funds from the caller's mapped account;
+    ///      EVM value sent to 0x805 cannot fund that withdrawal. Model this
+    ///      native debit with a cheatcode because Solidity cannot debit callers.
     function addStake(bytes32 hotkey, uint256 amount, uint256) external payable {
         require(address(this) == address(0x805), "runtime453: foreign staking frame");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
+        uint256 amountWei = amount * 1e9;
+        require(msg.sender.balance >= amountWei, "NotEnoughBalanceToStake");
+        VM.deal(msg.sender, msg.sender.balance - amountWei);
         stakes[hotkey][ck] += amount;
     }
 
