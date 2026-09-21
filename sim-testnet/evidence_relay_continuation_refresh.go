@@ -18,6 +18,9 @@ import (
 // Initial fee repartition owns only original debits. A refresh can also retain
 // the lower-fee slots already admitted by its authenticated predecessors.
 func (self *EvidenceRelayContinuation) debitLimit() uint64 {
+	if self != nil && self.Schema == evidenceRelayContinuationExpansionSchema {
+		return evidenceRelayContinuationExpandedSlots
+	}
 	if self != nil && self.Schema == evidenceRelayContinuationRefreshSchema {
 		return evidenceRelayContinuationSlots
 	}
@@ -27,11 +30,11 @@ func (self *EvidenceRelayContinuation) debitLimit() uint64 {
 // Pure append admission preserves the predecessor's economic and historical
 // obligations. Actual prefix bytes and signed records are rechecked by capture.
 func validateEvidenceRelayContinuationRefresh(base *SetupPlan, current *EvidenceRelayContinuation) error {
-	if base == nil || base.EvidenceRelayContinuation == nil || current == nil || current.Schema != evidenceRelayContinuationRefreshSchema || current.SourcePlanHash != base.PlanHash {
+	if base == nil || base.EvidenceRelayContinuation == nil || current == nil || (current.Schema != evidenceRelayContinuationRefreshSchema && current.Schema != evidenceRelayContinuationExpansionSchema) || current.SourcePlanHash != base.PlanHash {
 		return errors.New("relay refresh requires its exact adopted continuation predecessor")
 	}
 	prior := base.EvidenceRelayContinuation
-	if prior.Schema != evidenceRelayContinuationSchema && prior.Schema != evidenceRelayContinuationRefreshSchema {
+	if prior.Schema != evidenceRelayContinuationSchema && prior.Schema != evidenceRelayContinuationRefreshSchema && prior.Schema != evidenceRelayContinuationExpansionSchema {
 		return errors.New("relay refresh cannot change an older approved fee version")
 	}
 	if err := validateEvidenceRelayContinuationPlan(base); err != nil {
@@ -74,7 +77,13 @@ func validateEvidenceRelayContinuationRefresh(base *SetupPlan, current *Evidence
 		}
 	}
 	remaining, liability, err := current.remainingSlots()
-	if err != nil || current.NewSlots != remaining || current.HistoricalLiabilityWei != liability || current.NewSlots > prior.NewSlots {
+	_, priorSlots, priorErr := prior.feeTerms()
+	_, currentSlots, currentErr := current.feeTerms()
+	if priorErr != nil || currentErr != nil || currentSlots < priorSlots {
+		return errors.New("relay refresh cannot reduce its adopted aggregate capacity")
+	}
+	maximumRemaining, ok := checkedAdd(prior.NewSlots, currentSlots-priorSlots)
+	if err != nil || !ok || current.NewSlots != remaining || current.HistoricalLiabilityWei != liability || current.NewSlots > maximumRemaining {
 		return errors.Join(errors.New("relay refresh restored spent slot allowance"), err)
 	}
 	return nil

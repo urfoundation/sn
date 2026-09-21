@@ -34,7 +34,8 @@ const (
 	evidenceRelayStartupCacheVerifierVersion = "exact-plan-prefix-v1"
 	evidenceRelayStartupCacheDirectoryName   = "relay-startup-cache-v2"
 	evidenceRelayStartupCacheMaximumBytes    = 16 * 1024 * 1024
-	evidenceRelayStartupCacheMaximumSlots    = uint64(1024)
+	evidenceRelayStartupCacheMaximumSlots    = evidenceRelayContinuationExpandedSlots
+	evidenceRelayStartupDirectoryPageEntries = uint64(128)
 )
 
 type evidenceRelayStartupFileWitness struct {
@@ -627,16 +628,26 @@ func readEvidenceRelayStartupDirectory(ctx context.Context, stateDir, path strin
 		return nil, errors.Join(errors.New("relay startup manifest directory is unsafe"), identityErr)
 	}
 	maximumFiles := *remainingSlots / slotsPerFile
-	readLimit := maximumFiles + 1
-	if readLimit > evidenceRelayStartupCacheMaximumSlots+1 {
-		readLimit = evidenceRelayStartupCacheMaximumSlots + 1
+	if *remainingSlots > evidenceRelayStartupCacheMaximumSlots {
+		return nil, errors.New("relay startup discovery exceeds its finite aggregate slot bound")
 	}
-	entries, readErr := directory.ReadDir(int(readLimit))
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return nil, readErr
-	}
-	if uint64(len(entries)) > maximumFiles || readErr == nil && uint64(len(entries)) == readLimit {
-		return nil, fmt.Errorf("evidence relay observed manifest slots exceed %d before historical reads", evidenceRelayStartupCacheMaximumSlots)
+	var entries []os.DirEntry
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		readLimit := min(evidenceRelayStartupDirectoryPageEntries, maximumFiles-uint64(len(entries))+1)
+		page, readErr := directory.ReadDir(int(readLimit))
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, readErr
+		}
+		if uint64(len(entries))+uint64(len(page)) > maximumFiles {
+			return nil, errors.New("evidence relay observed manifest slots exceed remaining approved capacity before historical reads")
+		}
+		entries = append(entries, page...)
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
 	}
 	used := uint64(len(entries)) * slotsPerFile
 	*remainingSlots -= used
@@ -657,11 +668,11 @@ func readEvidenceRelayStartupDirectory(ctx context.Context, stateDir, path strin
 }
 
 // Count the complete configured-member slots before opening any historical
-// locator object. The monetary approval is capped at 1024 even if a malformed
-// directory claims a larger configured history bound.
+// locator object. Each approval supplies its own monetary cap; the separate
+// page and process bounds do not increase old 1024-slot approvals.
 func (self *evidenceRelayRuntime) evidenceRelayStartupInventories(ctx context.Context, maximum uint64) (map[uint64]evidenceRelayStartupSourceInventory, error) {
 	if maximum == 0 || maximum > evidenceRelayStartupCacheMaximumSlots {
-		return nil, errors.New("relay startup slot bound is absent or exceeds 1024")
+		return nil, errors.New("relay startup slot bound is absent or exceeds 2048")
 	}
 	remaining := maximum
 	result := map[uint64]evidenceRelayStartupSourceInventory{}

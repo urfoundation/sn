@@ -291,13 +291,13 @@ func TestEvidenceRelayStartupCacheStrictModeIgnoresPersistedOptimization(t *test
 func TestEvidenceRelayStartupCacheRejectsMoreThan1024SlotsBeforeObjectRead(t *testing.T) {
 	fixture := newEvidenceRelayStartupCacheTestFixture(t)
 	directory := filepath.Join(fixture.runtime.sources[0].stateDir, "evidence-publications")
-	for index := 0; index < int(evidenceRelayStartupCacheMaximumSlots)+1; index++ {
+	for index := 0; index < int(evidenceRelayContinuationSlots)+1; index++ {
 		path := filepath.Join(directory, "unread-"+strconv.Itoa(index))
 		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := fixture.runtime.evidenceRelayStartupInventories(t.Context(), evidenceRelayStartupCacheMaximumSlots); err == nil || !strings.Contains(err.Error(), "slots exceed") {
+	if _, err := fixture.runtime.evidenceRelayStartupInventories(t.Context(), evidenceRelayContinuationSlots); err == nil || !strings.Contains(err.Error(), "slots exceed") {
 		t.Fatal("oversized manifest census reached historical object reads", err)
 	}
 }

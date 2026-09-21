@@ -30,6 +30,7 @@ var defaultConfigPath = "sim-testnet/testnet.yml"
 type cliOptions struct {
 	RelayContinuationPlan                                                                                                           string
 	RelayEndBlock                                                                                                                   uint64
+	RelaySlots                                                                                                                      uint64
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
@@ -83,6 +84,7 @@ Common options:
   --provisional-resume  reuse authenticated testnet receipts; setup may activate the exact approved repair revision; no final release acceptance
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
+  --relay-slots 2048  capture an explicit doubled aggregate relay funding revision
   --relay-continuation-plan PATH  exact saved continuation plan for adoption
   --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
   --then-release-candidate  strict detached resume continues the full campaign under the same writer; returns only after the campaign
@@ -134,6 +136,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
 	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
 	fs.Uint64Var(&o.RelayEndBlock, "relay-end-block", 0, "")
+	fs.Uint64Var(&o.RelaySlots, "relay-slots", 0, "")
 	fs.StringVar(&o.StrictHistoryAdoption, "strict-history-adoption", "", "")
 	fs.StringVar(&o.StrictHistoryAdoptionSHA256, "strict-history-adoption-sha256", "", "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
