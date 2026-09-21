@@ -54,26 +54,27 @@ type runtimeEvidenceNativeKeyV2 struct {
 // Test mutations are serialized with individual raw responses; tests alter
 // state only after the previous complete production call has returned.
 type runtimeEvidenceActivationRpcV2TestFixture struct {
-	base               *runtimeEvidenceProvisionV2TestFixture
-	executor           *Executor
-	chain              *validatorcomponent.ChainClient
-	stateLock          sync.Mutex
-	metadataHex        string
-	nativeRuntime      crv4.RuntimeArtifactIdentity
-	nativeHash         types.Hash
-	nativeNumber       uint64
-	genesis            types.Hash
-	evmHash            common.Hash
-	evmNumber          uint64
-	finalizedEvmNumber uint64
-	finalizedEvmHash   common.Hash
-	hotkeys            [3][32]byte
-	permits            [3]bool
-	totalStake         [3]uint64
-	threshold          uint64
-	storageKeys        map[string]runtimeEvidenceNativeKeyV2
-	views              map[string]string
-	calls              map[string]uint64
+	base                   *runtimeEvidenceProvisionV2TestFixture
+	executor               *Executor
+	chain                  *validatorcomponent.ChainClient
+	stateLock              sync.Mutex
+	metadataHex            string
+	provisionalRuntimeAPIs bool
+	nativeRuntime          crv4.RuntimeArtifactIdentity
+	nativeHash             types.Hash
+	nativeNumber           uint64
+	genesis                types.Hash
+	evmHash                common.Hash
+	evmNumber              uint64
+	finalizedEvmNumber     uint64
+	finalizedEvmHash       common.Hash
+	hotkeys                [3][32]byte
+	permits                [3]bool
+	totalStake             [3]uint64
+	threshold              uint64
+	storageKeys            map[string]runtimeEvidenceNativeKeyV2
+	views                  map[string]string
+	calls                  map[string]uint64
 }
 
 // Both validators inhabit one real three-entry census. Storage keys use the
@@ -330,6 +331,10 @@ func (self *runtimeEvidenceActivationRpcV2TestFixture) dispatchWithLock(ctx cont
 	case "state_getRuntimeVersion":
 		if err := check(self.nativeHash.Hex()); err != nil {
 			return nil, err
+		}
+		if self.provisionalRuntimeAPIs {
+			v := self.nativeRuntime.Version
+			return map[string]any{"specName": v.SpecName, "specVersion": v.SpecVersion, "transactionVersion": v.TransactionVersion, "stateVersion": v.StateVersion, "apis": []any{[]any{"0x8375104b299b74c5", 2}}}, nil
 		}
 		return self.nativeRuntime.Version, nil
 	case "state_getStorageHash":

@@ -112,6 +112,9 @@ func evidenceRelayAdmissionCount(entries []JournalEntry, planHash string, action
 // Only its one relay worker may admit dynamic slots; account nonce ownership
 // remains in EvmTxManager and is shared with the ordinary keeper actions.
 func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied validatorcomponent.ValidatorEvidenceTransactionV2Expected) (Action, error) {
+	if self != nil && self.cfg != nil && self.cfg.readOnlyAudit {
+		return Action{}, errors.New("read-only observation cannot admit relay actions")
+	}
 	if ctx == nil || ctx.Err() != nil {
 		return Action{}, errors.New("evidence relay admission context is absent or canceled")
 	}

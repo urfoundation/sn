@@ -27,6 +27,7 @@ type provisionalResumeRecord struct {
 	Schema          string                      `json:"schema"`
 	Provisional     bool                        `json:"provisional"`
 	FinalAcceptance bool                        `json:"final_acceptance"`
+	ReadOnly        bool                        `json:"read_only,omitempty"`
 	StartedAt       string                      `json:"started_at"`
 	Command         string                      `json:"command"`
 	Scenario        string                      `json:"scenario,omitempty"`
@@ -75,6 +76,9 @@ func provisionalAcceptedPlanHashes(plan *SetupPlan) ([]string, error) {
 }
 
 func validateProvisionalResumeOptions(command string, options cliOptions) error {
+	if options.ProvisionalCapture {
+		return validateProvisionalRelayCaptureOptions(command, options)
+	}
 	if !options.ProvisionalResume {
 		return nil
 	}
@@ -98,7 +102,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 	if err := validateProvisionalResumeOptions(command, options); err != nil {
 		return err
 	}
-	if !options.ProvisionalResume {
+	if !options.ProvisionalResume && !options.ProvisionalCapture {
 		return nil
 	}
 	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.Release == nil || plan == nil || cfg.provisionalResume == nil {
@@ -122,7 +126,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return err
 	}
 	record := &provisionalResumeRecord{
-		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false,
+		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture,
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Command: command, Scenario: options.Name,
 		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ConfigHash: cfg.ConfigHash,
 		ReleaseLockHash: plan.ReleaseLockHash, RetainedSNRepo: cfg.Repos.SN, Driver: driver,

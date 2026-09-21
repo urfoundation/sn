@@ -1126,6 +1126,7 @@ func max64(a, b uint64) uint64 {
 // Independent role managers remain concurrent. Close is an owner-only action
 // after all callers have joined; the manager must not be copied after use.
 type EvmTxManager struct {
+	readOnly     bool
 	stateLock    sync.Mutex
 	nonceTurn    chan struct{}
 	client       *ethclient.Client
@@ -1160,7 +1161,7 @@ func DialEvmTxManager(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		client.Close()
 		return nil, err
 	}
-	return &EvmTxManager{client: client, chainID: id, deploymentID: cfg.Config.Deployment.DeploymentID, stateDir: stateDir, journal: j, key: key}, nil
+	return &EvmTxManager{readOnly: cfg.readOnlyAudit, client: client, chainID: id, deploymentID: cfg.Config.Deployment.DeploymentID, stateDir: stateDir, journal: j, key: key}, nil
 }
 func (m *EvmTxManager) Close() { m.client.Close() }
 func (m *EvmTxManager) PendingNonce(ctx context.Context) (uint64, error) {
@@ -1272,6 +1273,9 @@ func validateApprovedEVMTransactionFields(action Action, signer common.Address, 
 }
 
 func (m *EvmTxManager) Send(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
+	if m != nil && m.readOnly {
+		return nil, errors.New("read-only observation cannot send EVM transactions")
+	}
 	release, err := m.acquireNonceTurn(ctx)
 	if err != nil {
 		return nil, err
@@ -1294,6 +1298,9 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 // The caller owns the account turn; ordinary sends retain it through finality.
 // Only the relay's exact slot/header authentication supplies a nonzero cap.
 func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte, validatedRelayFeeCap uint64) (*types.Transaction, error) {
+	if m != nil && m.readOnly {
+		return nil, errors.New("read-only observation cannot sign EVM transactions")
+	}
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".rlp")
 		raw, err := os.ReadFile(rawPath)
@@ -1418,6 +1425,9 @@ func knownEVMTxError(err error) bool {
 }
 
 func (m *EvmTxManager) waitExactTransaction(ctx context.Context, planHash string, a Action, signed *types.Transaction) (*types.Receipt, error) {
+	if m != nil && m.readOnly {
+		return nil, errors.New("read-only observation cannot broadcast EVM transactions")
+	}
 	if signed == nil {
 		return nil, errors.New("nil persisted EVM transaction")
 	}

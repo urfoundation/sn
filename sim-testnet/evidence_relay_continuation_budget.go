@@ -97,6 +97,9 @@ func readOwnedEvidenceRelayRequest(ctx context.Context, stateDir string, scope *
 // No revision re-signs it or overwrites its immutable request file. New slots
 // debit the aggregate remaining allowance across every continuation descendant.
 func (e *Executor) admitOwnedEvidenceRelayAction(ctx context.Context, supplied validatorcomponent.ValidatorEvidenceTransactionV2Expected) (Action, string, error) {
+	if e != nil && e.cfg != nil && e.cfg.readOnlyAudit {
+		return Action{}, "", errors.New("read-only observation cannot admit relay actions")
+	}
 	if e == nil || e.plan == nil || e.journal == nil {
 		return Action{}, "", errors.New("relay slot owner is absent")
 	}
@@ -170,10 +173,19 @@ func validateEvidenceRelayContinuationSource(stateDir string, current *SetupPlan
 			return errors.New("relay continuation predecessor chain is cyclic or incomplete")
 		}
 		seen[current.PlanHash] = true
+		if err := validateProvisionalRelayCaptureSource(stateDir, current); err != nil {
+			return err
+		}
 		c := current.EvidenceRelayContinuation
 		base, err := readValidatorEvidenceHistoricalPlan(stateDir, c.SourcePlanHash)
 		if err != nil {
 			return err
+		}
+		if c.ProvisionalCapture != nil {
+			record := c.ProvisionalCapture.Record
+			if record.ConfigHash != base.ConfigHash || record.ReleaseLockHash != base.ReleaseLockHash || record.DeploymentID != base.DeploymentID || current.OwnedRPCAuthority != base.OwnedRPCAuthority {
+				return errors.New("relay preview changed original source provenance")
+			}
 		}
 		want, err := appendEvidenceRelayContinuationPlan(base, *c)
 		if err != nil {

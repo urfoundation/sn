@@ -42,7 +42,7 @@ type cliOptions struct {
 	OwnedRPCAuthority                                                                                                               string
 	ThenReleaseCandidate                                                                                                            bool
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
-	Apply, Detach, ProvisionalResume, PrepareOnly                                                                                   bool
+	Apply, Detach, ProvisionalResume, ProvisionalCapture, PrepareOnly                                                               bool
 	AllowanceOnly                                                                                                                   bool
 }
 
@@ -87,6 +87,7 @@ Common options:
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
   --relay-slots 2048  capture an explicit doubled aggregate relay funding revision
+  --provisional-capture  read-only non-accepting relay capture against the exact active plan
   --relay-continuation-plan PATH  exact saved continuation plan for adoption
   --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
   --then-release-candidate  strict detached resume continues the full campaign under the same writer; returns only after the campaign
@@ -135,6 +136,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ThenReleaseCandidate, "then-release-candidate", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
+	fs.BoolVar(&o.ProvisionalCapture, "provisional-capture", false, "")
 	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
 	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
 	fs.Uint64Var(&o.RelayEndBlock, "relay-end-block", 0, "")

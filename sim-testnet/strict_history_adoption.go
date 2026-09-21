@@ -76,7 +76,13 @@ func validateStrictHistoryAdoptionOptions(command string, options cliOptions) er
 // reader, then build the same bytes the actual renderer will use. No signer,
 // setup input, coordinator state or process file is changed here.
 func strictHistoryAdoptionInputs(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan) (*ResolvedConfig, *RoleSecrets, map[string]any, string, string, string, error) {
-	if ctx == nil || cfg == nil || cfg.Config == nil || plan == nil || provisionalResumeEnabled(cfg) || !cfg.Config.ProvisionValidatorEvidenceV2 || cfg.ChainID != testnetChainID || cfg.Config.Topology.Validators != 2 {
+	return historyAdoptionInputs(ctx, cfg, stateDir, plan, false)
+}
+
+// Provisional capture has its own exact read-only admission; strict callers
+// never inherit that authority from the mere presence of a resume record.
+func historyAdoptionInputs(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, capture bool) (*ResolvedConfig, *RoleSecrets, map[string]any, string, string, string, error) {
+	if ctx == nil || cfg == nil || cfg.Config == nil || plan == nil || provisionalResumeEnabled(cfg) && !capture || !cfg.Config.ProvisionValidatorEvidenceV2 || cfg.ChainID != testnetChainID || cfg.Config.Topology.Validators != 2 {
 		return nil, nil, nil, "", "", "", errors.New("strict history adoption requires the existing two-validator testnet V2 setup")
 	}
 	if err := strictHistorySupervisorStopped(stateDir); err != nil {
@@ -87,7 +93,12 @@ func strictHistoryAdoptionInputs(ctx context.Context, cfg *ResolvedConfig, state
 			return nil, nil, nil, "", "", "", err
 		}
 	}
-	current, err := loadPersistedPlan(cfg, stateDir)
+	if capture {
+		if err := validateProvisionalRelayCaptureContext(cfg, plan); err != nil {
+			return nil, nil, nil, "", "", "", err
+		}
+	}
+	current, err := loadPersistedPlanIdentity(cfg, stateDir, capture)
 	if err != nil || current.PlanHash != plan.PlanHash {
 		return nil, nil, nil, "", "", "", errors.Join(errors.New("strict history adoption current approved plan changed"), err)
 	}

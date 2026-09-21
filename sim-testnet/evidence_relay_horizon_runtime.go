@@ -28,6 +28,7 @@ const (
 	evidenceRelayNativeCurrentHead
 	evidenceRelayNativeCurrentSnapshot
 	evidenceRelayNativeContinuationSnapshot
+	evidenceRelayNativePreviewSnapshot
 )
 
 // Both persisted snapshots retain their exact reviewed runtime after an
@@ -44,8 +45,15 @@ func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activat
 	if chain.API == nil || chain.API.Client == nil {
 		return 0, errors.New("evidence relay native horizon client is absent")
 	}
-	if mode != evidenceRelayNativeOriginalSnapshot && mode != evidenceRelayNativeCurrentHead && mode != evidenceRelayNativeCurrentSnapshot && mode != evidenceRelayNativeContinuationSnapshot {
+	if mode != evidenceRelayNativeOriginalSnapshot && mode != evidenceRelayNativeCurrentHead && mode != evidenceRelayNativeCurrentSnapshot && mode != evidenceRelayNativeContinuationSnapshot && mode != evidenceRelayNativePreviewSnapshot {
 		return 0, errors.New("evidence relay native horizon mode is invalid")
+	}
+	if mode == evidenceRelayNativePreviewSnapshot {
+		if err := validateProvisionalRelayCaptureContext(self.executor.cfg, self.executor.plan); err != nil {
+			return 0, err
+		}
+	} else if self.executor.cfg.readOnlyAudit && provisionalRelayCaptureEnabled(self.executor.cfg) && (mode == evidenceRelayNativeCurrentHead || mode == evidenceRelayNativeCurrentSnapshot) {
+		return 0, errors.New("read-only relay capture cannot authorize a current native operation")
 	}
 	hash, block := types.Hash(activation.NativeHash), activation.NativeBlock
 	if mode == evidenceRelayNativeCurrentHead {

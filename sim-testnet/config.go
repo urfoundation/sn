@@ -356,7 +356,9 @@ type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
-	readOnlyAudit           bool
+	readOnlyAudit bool
+	// Only the stopped relay capture reader may reconcile a pending marker.
+	relayCapturePlanHash    string
 	provisionalResume       *provisionalResumeState
 	strictHistoryAdoption   *strictHistoryAdoptionState
 	provisionalRPCAuthority string

@@ -270,8 +270,17 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 // Capture permits one explicit aggregate expansion; the imported plan fixes
 // the same schema on re-capture, preserving every clock and approval byte.
 func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, endBlock, slots uint64, pin *EvidenceRelayContinuation) (result *SetupPlan, resultErr error) {
-	if ctx == nil || cfg == nil || base == nil || provisionalResumeEnabled(cfg) || endBlock == 0 {
+	if ctx == nil || cfg == nil || base == nil || endBlock == 0 {
 		return nil, errors.New("relay continuation requires one explicit strict end and original source approval")
+	}
+	capture := provisionalResumeEnabled(cfg)
+	if capture {
+		if err := validateProvisionalRelayCaptureContext(cfg, base); err != nil {
+			return nil, err
+		}
+		if pin != nil {
+			return nil, errors.New("provisional relay capture cannot apply or recertify an imported plan")
+		}
 	}
 	schema, err := evidenceRelayContinuationCaptureSchema(base, slots, pin)
 	if err != nil {
@@ -283,7 +292,7 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 			result = nil
 		}
 	}()
-	resolved, roles, renderBase, activationPlan, prepared, completed, err := strictHistoryAdoptionInputs(ctx, cfg, stateDir, base)
+	resolved, roles, renderBase, activationPlan, prepared, completed, err := historyAdoptionInputs(ctx, cfg, stateDir, base, capture)
 	if err != nil {
 		return nil, err
 	}
@@ -325,6 +334,9 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 		return nil, err
 	}
 	nativeMode := evidenceRelayNativeCurrentSnapshot
+	if capture {
+		nativeMode = evidenceRelayNativePreviewSnapshot
+	}
 	if pin != nil {
 		if pin.SourcePlanHash != base.PlanHash || pin.EndBlock != endBlock || pin.EVMHead.Number > block || pin.NativeHead.Number > nativeBlock {
 			return nil, errors.New("relay continuation imported snapshot is not finalized in its original source")
@@ -518,6 +530,9 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 	}
 	if current > endBlock || c.RequiredWorkBlocks > endBlock-current {
 		return nil, errors.New("relay continuation capture exhausted its fixed remaining-work runway")
+	}
+	if capture {
+		c.ProvisionalCapture = &EvidenceRelayProvisionalCapture{Record: *cfg.provisionalResume.Record, RecordPath: cfg.provisionalResume.RecordPath, RecordSHA256: cfg.provisionalResume.RecordHash}
 	}
 	return appendEvidenceRelayContinuationPlan(base, c)
 }

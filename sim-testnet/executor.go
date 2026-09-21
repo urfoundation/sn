@@ -1019,6 +1019,7 @@ func loadPlanIdentityBytes(cfg *ResolvedConfig, raw []byte, retainRelease bool) 
 		matches bool
 	}{
 		{field: "schema", matches: p.Schema == currentSetupPlanSchema},
+		{field: "relay_capture_requires_strict_reconciliation", matches: retainRelease || p.EvidenceRelayContinuation == nil || p.EvidenceRelayContinuation.ProvisionalCapture == nil || cfg.readOnlyAudit && cfg.relayCapturePlanHash == p.PlanHash},
 		{field: "release", matches: p.Release == "1.0"},
 		{field: "release_lock_hash", matches: p.ReleaseLockHash != "" && (retainRelease || p.ReleaseLockHash == releaseLockHash)},
 		{field: "resolved_inputs_hash", matches: p.ResolvedInputsHash != "" && p.ResolvedInputsHash == resolvedHash},

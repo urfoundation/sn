@@ -29,6 +29,7 @@ const evidenceRelayOriginalFee uint64 = 100_000_000_000
 // approved plan and retains its full liability and activation ancestry. Ordinary
 // restart never moves an end; capture and exact import authenticate a new one.
 type EvidenceRelayContinuation struct {
+	ProvisionalCapture     *EvidenceRelayProvisionalCapture                            `json:"provisional_capture,omitempty"`
 	Schema                 string                                                      `json:"schema"`
 	SourcePlanHash         string                                                      `json:"source_plan_hash"`
 	ConfigHash             string                                                      `json:"config_hash"`
@@ -318,6 +319,9 @@ func appendEvidenceRelayContinuationPlan(base *SetupPlan, c EvidenceRelayContinu
 }
 
 func validateEvidenceRelayContinuationPlan(plan *SetupPlan) error {
+	if err := validateProvisionalRelayCaptureMarker(plan); err != nil {
+		return err
+	}
 	if plan == nil {
 		return errors.New("relay continuation plan is absent")
 	}

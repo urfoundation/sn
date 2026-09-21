@@ -10,12 +10,15 @@ import (
 )
 
 func validateEvidenceRelayContinuationOptions(command string, o cliOptions) error {
-	used := o.RelayContinuationPlan != "" || o.RelayEndBlock != 0 || o.RelaySlots != 0
+	used := o.RelayContinuationPlan != "" || o.RelayEndBlock != 0 || o.RelaySlots != 0 || o.ProvisionalCapture
 	if command != "relay-continuation" {
 		if used {
 			return errors.New("relay continuation options require relay-continuation")
 		}
 		return nil
+	}
+	if err := validateProvisionalRelayCaptureOptions(command, o); err != nil {
+		return err
 	}
 	if o.ProvisionalResume || o.Detach || o.Name != "" || o.Manifest != "" {
 		return errors.New("relay continuation requires strict stopped operation and cannot start a topology")
@@ -40,7 +43,14 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 	if err := validateEvidenceRelayContinuationOptions("relay-continuation", o); err != nil {
 		return err
 	}
-	base, err := loadPersistedPlan(cfg, stateDir)
+	commandConfig := cfg
+	var base *SetupPlan
+	var err error
+	if o.ProvisionalCapture {
+		cfg, base, err = prepareProvisionalRelayCapture(ctx, cfg, stateDir, o)
+	} else {
+		cfg, base, err = prepareStrictRelayCapture(cfg, stateDir)
+	}
 	if err != nil {
 		return err
 	}
@@ -68,6 +78,11 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 		return err
 	}
 	if !o.Apply {
+		if o.ProvisionalCapture {
+			if _, err := archiveReviewedSetupPlan(stateDir, plan); err != nil {
+				return err
+			}
+		}
 		return printResult(o.Format, plan, nil)
 	}
 	if err := requireApproved(true, o.PlanHash, plan.PlanHash); err != nil {
@@ -112,7 +127,7 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := writeRunInputs(cfg, stateDir, plan, roles); err != nil {
+	if err := writeRunInputs(commandConfig, stateDir, plan, roles); err != nil {
 		return err
 	}
 	return printResult(o.Format, map[string]any{"command": "relay-continuation", "plan_hash": plan.PlanHash, "end_block": plan.EvidenceRelayContinuation.EndBlock, "status": "adopted", "chain_transactions": 0}, nil)

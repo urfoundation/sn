@@ -702,6 +702,12 @@ func DialSubstrateManagerContext(ctx context.Context, cfg *ResolvedConfig, state
 		chain.API.Client.Close()
 		return nil, err
 	}
+	if provisionalRelayCaptureEnabled(cfg) {
+		// Snapshot metadata remains available to read storage, but this connection
+		// cannot provide a current native signing identity.
+		chain.Runtime = nil
+		signer = signature.KeyringPair{}
+	}
 	return &SubstrateManager{chain: chain, signer: signer, stateDir: stateDir, journal: j, cfg: cfg}, nil
 }
 
@@ -1758,6 +1764,9 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 // than silently blessing later state. Ordinary callers retain SendAs's exact
 // behavior through a nil callback.
 func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair, precondition func(types.Hash, uint64) error) (types.Hash, uint64, error) {
+	if m != nil && m.cfg != nil && m.cfg.readOnlyAudit {
+		return types.Hash{}, 0, errors.New("read-only observation cannot sign or broadcast native transactions")
+	}
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".scale")
 		raw, err := os.ReadFile(rawPath)

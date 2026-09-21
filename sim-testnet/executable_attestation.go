@@ -67,7 +67,7 @@ type currentSNRevisionObserver func(context.Context) (string, error)
 // which does not otherwise consume it. Stop remains available during source
 // repair and relies on its exact process-ownership fence for safe teardown.
 func executableAttestationModeForCommand(command string, options cliOptions) executableAttestationMode {
-	if options.ProvisionalResume {
+	if options.ProvisionalResume || options.ProvisionalCapture {
 		return executableAttestationProvisionalResume
 	}
 	if command == "stop" {
