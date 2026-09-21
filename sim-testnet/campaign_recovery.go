@@ -4,8 +4,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -252,25 +254,64 @@ func scenarioCampaignRecoveryPredecessorIdentity(prior *scenarioCampaignAttempt)
 // A pre-acceptance failure has no campaign-start marker to authenticate its
 // journal cut. The next signed generation therefore freezes the complete
 // hash-chained journal prefix that existed when the failure was retired.
-func readScenarioCampaignRecoveryJournalPrefix(attempt, prior *scenarioCampaignAttempt) ([]byte, []JournalEntry, error) {
-	raw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, "journal.jsonl", maximumCampaignEvidenceRawFileBytes)
+func readScenarioCampaignRecoveryJournalPrefix(attempt, prior *scenarioCampaignAttempt) (prefix []byte, entries []JournalEntry, resultErr error) {
+	file, err := openFinalCollectedFile(attempt.stateDir, "journal.jsonl")
 	if err != nil {
 		return nil, nil, err
 	}
-	bound := uint64(len(raw))
+	defer func() {
+		resultErr = errors.Join(resultErr, file.Close())
+		if resultErr != nil {
+			prefix, entries = nil, nil
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 {
+		return nil, nil, errors.New("campaign recovery journal is not a nonempty regular file")
+	}
+	bound := uint64(info.Size())
+	var expectedHash string
 	if recovery := attempt.payload.Recovery; recovery != nil && recovery.PriorRunID == prior.payload.RunID {
 		bound = recovery.PriorJournalBytes
+		expectedHash = recovery.PriorJournalSha256
+		if !validSHA256String(expectedHash) {
+			return nil, nil, errors.New("campaign recovery journal signed prefix hash is malformed")
+		}
 	}
-	if bound == 0 || bound > uint64(len(raw)) {
+	if bound == 0 || bound > maximumCampaignEvidenceRawFileBytes {
+		return nil, nil, errors.New("campaign recovery journal requested prefix exceeds its bound or is empty")
+	}
+	if bound > uint64(info.Size()) {
 		return nil, nil, errors.New("campaign recovery journal is shorter than its signed prefix")
 	}
-	prefix := raw[:bound]
+	// Later append-only growth is outside the signed byte range. Read the
+	// exact prefix from one no-follow descriptor, never the entire raw file.
+	prefix = make([]byte, int(bound))
+	if _, err := io.ReadFull(file, prefix); err != nil {
+		return nil, nil, err
+	}
+	if expectedHash != "" && bytesSHA256(prefix) != expectedHash {
+		return nil, nil, errors.New("campaign recovery journal signed prefix hash mismatch")
+	}
 	if prefix[len(prefix)-1] != '\n' {
 		return nil, nil, errors.New("campaign recovery journal prefix does not end at a durable record boundary")
 	}
-	entries, err := readJournalEntries(attempt.stateDir)
-	if err != nil {
+	journal := &Journal{}
+	if err := journal.loadReader(bytes.NewReader(prefix)); err != nil {
 		return nil, nil, fmt.Errorf("campaign recovery journal prefix: %w", err)
+	}
+	entries = append([]JournalEntry(nil), journal.entries...)
+	// Authenticate the current suffix from that same descriptor, but only
+	// entries inside the signed prefix may establish predecessor provenance.
+	if err := journal.loadReader(io.LimitReader(file, info.Size()-int64(bound))); err != nil {
+		return nil, nil, fmt.Errorf("campaign recovery journal suffix: %w", err)
+	}
+	after, err := file.Stat()
+	if err != nil || !after.Mode().IsRegular() || after.Size() < info.Size() {
+		return nil, nil, errors.Join(errors.New("campaign recovery journal was truncated while reading"), err)
 	}
 	return prefix, entries, nil
 }
