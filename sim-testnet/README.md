@@ -108,10 +108,10 @@ Release qualification assigns all test and gate execution to Terra
 normal and race suites, confirmation runs, and reruns. If a test or gate fails
 or shows suspected flakiness, retain its exact output and assign root-cause
 diagnosis, adjacent-path review, implementation, and the deterministic
-regression to Sol (`gpt-5.6-sol`) with reasoning effort `max`. Test execution
-stays with Terra while Sol owns debugging and fixes; preserve these roles
-across agent handoffs. The user's September 17, 2026 update changes future
-test execution to Terra medium and debugging/fixes to Sol max; retain completed
+regression to Astra (`gpt-6-astra`) with reasoning effort `max`. Test execution
+stays with Terra while Astra owns debugging and fixes; preserve these roles
+across agent handoffs. The user's subsequent update changes future
+test execution to Terra medium and debugging/fixes to Astra max; retain completed
 evidence and let active commands finish without restarting them for a model
 change.
 Follow [Connect's bug-fix and test policy](../../connect/CODESTYLE.md):
@@ -133,20 +133,33 @@ Retain `-test.v` in every body and confirmation command passed through
 qualify those tests. If the command needs correction, preserve the original
 result and reuse the unchanged binary and source for a fresh execution.
 
-Create each command's private `TMPDIR` and `GOTMPDIR` before execution;
-setting their environment variables does not create them. When a missing
+Start new standalone test and build commands through
+`bash scripts/with-test-storage.sh COMMAND [ARG ...]`, for example
+`bash scripts/with-test-storage.sh go test ./sim-testnet -v -count=1 -timeout 45m`.
+The adapter creates each command's private `TMPDIR` and `GOTMPDIR` before
+execution; setting their environment variables alone does not create them. When a missing
 directory causes a refusal, preserve that attempt, repair the same paths in
 adjacent prepared commands, and retry the affected command with the retained
 binary, plan and history. This operational correction does not require a
 rebuild or a repeated qualification suite.
 
 On this execution host, the added USB data volume is mounted at `/mnt/data`.
-Use `/mnt/data/sn-testnet/qualification/<run-id>` for new qualification captures
-and each run's private `tmp` and `gotmp` directories. The reusable Go build
-cache location is `/mnt/data/sn-testnet/gocache`; set `TMPDIR`, `GOTMPDIR`
-and `GOCACHE` explicitly for the new command owner. Confirm `/mnt/data` is
-actually mounted before creating a run so an absent drive cannot silently
-send test data back to the root filesystem. The private `sn-testnet` parent
+Use `/mnt/data/sn-testnet/qualification/<run-id>` for new qualification captures.
+The storage adapter places private temporary/build owners under
+`/mnt/data/sn-testnet/temp`, keeps the warm Go build cache at
+`/mnt/data/sn-testnet/gocache`, and directs module downloads and tool caches to
+`gomodcache` and `cache` under that same data-volume root. Both release gates
+initialize this environment before preflights or compilers run; each child
+owns a separate existing `tmp` and `gotmp` directory. The adapter verifies
+that `/mnt/data` is mounted and refuses an absent drive before creating data,
+so release commands cannot silently fall back to `/tmp` on the root volume.
+Every invocation prints its chosen root and private owner to stderr and
+preserves the wrapped command's arguments, exit status, umask and signal owner.
+For another developer/CI host, explicitly set `SN_TEST_STORAGE_ROOT` to an
+absolute writable storage directory; ordinary `go test` does not require this
+host's mount. Warm a newly selected module cache by copying the existing cache
+into `gomodcache` before launching a large build; leave active cache owners and
+their paths intact. The private `sn-testnet` parent
 is owned by `by` with mode `0700`. The existing global Go cache was copied
 and checksum-verified there, retaining its metadata; `/home/by/.cache/go-build`
 now links to `/mnt/data/sn-testnet/gocache`. Keep active campaign state, admitted binaries

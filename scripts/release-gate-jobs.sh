@@ -237,7 +237,7 @@ release_gate_start() {
   [[ "$label" =~ ^[a-z0-9-]+$ ]] && declare -F "$function" >/dev/null || return 1
   while (( release_gate_active >= release_gate_limit )); do release_gate_wait_one || return 1; done
   index="${#release_gate_pids[@]}"
-  mkdir -m 700 "$release_gate_root/job-$index" "$release_gate_root/job-$index/tmp" || return 1
+  mkdir -m 700 "$release_gate_root/job-$index" "$release_gate_root/job-$index/tmp" "$release_gate_root/job-$index/gotmp" || return 1
   mkfifo -m 600 "$release_gate_root/job-$index/ack" || return 1
   exec {ack_fd}<>"$release_gate_root/job-$index/ack"
   export -f "$function"

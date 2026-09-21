@@ -73,7 +73,7 @@ func newReleaseGateChildFixture(t *testing.T, function string) *releaseGateChild
 			self.readers.Wait()
 		}
 	}()
-	for _, directory := range []string{"job-0", "job-0/tmp"} {
+	for _, directory := range []string{"job-0", "job-0/tmp", "job-0/gotmp"} {
 		if err := os.Mkdir(filepath.Join(self.root, directory), 0o700); err != nil {
 			t.Fatal(err)
 		}

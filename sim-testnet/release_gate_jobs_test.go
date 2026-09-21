@@ -300,6 +300,23 @@ release_gate_complete
 	self.join(t, 0)
 }
 
+// An inherited compiler scratch directory must not escape the phase owner.
+// Real child execution proves both directory creation and environment routing.
+func TestReleaseGateJobsOwnEachCompilerTemporaryDirectory(t *testing.T) {
+	t.Setenv("GOTMPDIR", t.TempDir())
+	self := newReleaseGateJobsFixture(t, `
+phase_check() {
+  [[ "$TMPDIR" == "$release_gate_root/job-0/tmp" && "$TMP" == "$TMPDIR" && "$TEMP" == "$TMPDIR" ]]
+  [[ "$GOTMPDIR" == "$release_gate_root/job-0/gotmp" && -d "$GOTMPDIR" ]]
+  printf 'compiler scratch owned\n' > "$GOTMPDIR/witness"
+}
+release_gate_start compiler phase_check
+release_gate_complete
+[[ "$(< "$release_gate_root/job-0/gotmp/witness")" == 'compiler scratch owned' ]]
+`)
+	self.join(t, 0)
+}
+
 func TestReleaseGateJobsTwoForegroundOwnersHaveDisjointMutableRoots(t *testing.T) {
 	body := `
 phase_hold() { printf '%s\n' "$release_gate_root" > "$RELEASE_GATE_QUEUE_FIXTURE_ROOT/events"; read -r release < "$RELEASE_GATE_QUEUE_FIXTURE_ROOT/control-a"; }

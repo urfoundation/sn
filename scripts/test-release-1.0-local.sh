@@ -7,6 +7,8 @@ export WARP_TEST_ENV_FAIL_FAST=1
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
 release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard warp vault xops config)
+source "$sn_repo/scripts/test-storage.sh"
+sn_test_storage_init
 source "$sn_repo/scripts/release-gate-jobs.sh"
 release_gate_jobs_init
 
@@ -56,6 +58,8 @@ release_phase_isolation_regressions() {
   cd "$sn_repo"
   go test ./scripts/server-fixture -count=1
   go test -race ./scripts/server-fixture -count=1
+  go test ./scripts/test-storage -count=1
+  go test -race ./scripts/test-storage -count=1
   go test ./sim-testnet -run '^TestReleaseGate(Child|Jobs|Isolation)' -count=1 -parallel=4 -timeout 3m
   go test -race ./sim-testnet -run '^TestReleaseGate(Child|Jobs|Isolation)' -count=1 -parallel=4 -timeout 3m
   cd "$workspace/server"

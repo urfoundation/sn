@@ -117,6 +117,9 @@ def own_phase(root, index, function):
     job = root / f"job-{index}"
     environment = os.environ.copy()
     environment["TMPDIR"] = str(job / "tmp")
+    environment["TMP"] = environment["TMPDIR"]
+    environment["TEMP"] = environment["TMPDIR"]
+    environment["GOTMPDIR"] = str(job / "gotmp")
     # Root directories provide privacy. Preserve ordinary tool output modes;
     # inheriting umask 077 breaks explicit portable-mode fixture contracts.
     os.umask(0o022)
