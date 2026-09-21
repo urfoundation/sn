@@ -60,6 +60,7 @@ type liveFleetLifecycle struct {
 	authenticatedReleaseHandoffHash string
 	attempt                         *scenarioCampaignAttempt
 	retainedProvisionalRelease      bool
+	retainedProvisionalApproval     *provisionalLifecycleAncestorApproval
 }
 
 func fleetLifecycleReleaseProjection(evidence *FleetLifecycleEvidence) *FleetLifecycleEvidence {
@@ -204,11 +205,15 @@ func (self *liveFleetLifecycle) validateProvisionalBypassState(phase, runID stri
 	if err := validateFleetLifecycleProvisionalBypassAuthority(self.cfg, self.executor.plan); err != nil {
 		return err
 	}
+	sourcePlan, err := self.provisionalLifecycleEvidencePlan(phase, evidence)
+	if err != nil {
+		return err
+	}
 	want, err := fleetLifecycleProvisionalBypass(self.cfg, self.executor.plan, self.executor.roles, *evidence.LaunchPrune)
 	if err != nil || *evidence.ProvisionalBypass != *want {
 		return stateMismatchError(err, "fleet lifecycle provisional bypass differs from its launch census")
 	}
-	if evidence.Schema != fleetLifecycleEvidenceSchema || evidence.DeploymentID != self.cfg.Config.Deployment.DeploymentID || evidence.PlanHash != self.executor.plan.PlanHash || evidence.RunID == "" || evidence.TakeoverEffectiveEpoch == 0 {
+	if evidence.Schema != fleetLifecycleEvidenceSchema || evidence.DeploymentID != self.cfg.Config.Deployment.DeploymentID || evidence.PlanHash != sourcePlan.PlanHash || evidence.RunID == "" || evidence.TakeoverEffectiveEpoch == 0 {
 		return errors.New("fleet lifecycle provisional bypass changed its run, deployment, plan, or takeover")
 	}
 	if evidence.ReleaseHandoffSchedule != nil || evidence.ReleaseEVMEvidenceDeadlineBlock != 0 || evidence.ProductionNativeSchedule != nil || evidence.ProductionEVMEvidenceDeadlineBlock != 0 || evidence.FallbackEffectiveEpoch != 0 || evidence.ProviderEffectiveEpoch != 0 || evidence.TerminalEffectiveEpoch != 0 || evidence.PostRegistrationRewardBaseline != (ChainHead{}) || evidence.FallbackRegistration != nil || evidence.ProviderRegistration != nil || evidence.TerminalRegistration != nil || len(evidence.TargetCleanup) != 0 || len(evidence.CompanionCleanup) != 0 || len(evidence.FallbackCleanup) != 0 || len(evidence.Payouts) != 0 || len(evidence.CandidateCensuses) != 0 {
@@ -317,7 +322,7 @@ func (self *liveFleetLifecycle) retainedProvisionalReleaseRunID(phase, runID str
 	if evidence.ProvisionalBypass == nil {
 		return runID, false, nil
 	}
-	if self.attempt == nil || self.attempt.payload.RunID != runID || self.attempt.payload.Phase != phase || self.attempt.payload.ConfigHash != self.cfg.ConfigHash || self.attempt.payload.PolicyHash != self.cfg.PolicyHash || self.attempt.payload.PlanHash != evidence.PlanHash {
+	if self.attempt == nil || self.attempt.payload.RunID != runID || self.attempt.payload.Phase != phase || self.attempt.payload.ConfigHash != self.cfg.ConfigHash || self.attempt.payload.PolicyHash != self.cfg.PolicyHash || self.executor == nil || self.executor.plan == nil || self.attempt.payload.PlanHash != self.executor.plan.PlanHash {
 		return "", false, errors.New("release fleet lifecycle predecessor differs from the current signed recovery")
 	}
 	if err := validateScenarioCampaignRecoveryAncestor(self.attempt, evidence.RunID); err != nil {

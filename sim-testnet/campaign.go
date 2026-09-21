@@ -53,6 +53,7 @@ type ScenarioLifecycleHandoff struct {
 	ConfigHash            string `json:"config_hash,omitempty"`
 	PolicyHash            string `json:"policy_hash,omitempty"`
 	PlanHash              string `json:"plan_hash,omitempty"`
+	InheritedPlanHash     string `json:"inherited_plan_hash,omitempty"`
 	Stage                 string `json:"stage"`
 	File                  string `json:"file"`
 	ContentHash           string `json:"content_hash"`
@@ -83,7 +84,7 @@ type scenarioCompletePayload struct {
 // scenarioLifecycleHandoffInherited reports whether a binding carries the
 // explicit provenance required for historical lifecycle bytes.
 func scenarioLifecycleHandoffInherited(binding ScenarioLifecycleHandoff) bool {
-	return binding.CurrentRunID != "" || binding.InheritedReleaseRunID != "" || binding.ConfigHash != "" || binding.PolicyHash != "" || binding.PlanHash != ""
+	return binding.CurrentRunID != "" || binding.InheritedReleaseRunID != "" || binding.ConfigHash != "" || binding.PolicyHash != "" || binding.PlanHash != "" || binding.InheritedPlanHash != ""
 }
 
 // validateScenarioLifecycleHandoffProvenance restricts inherited bytes to the
@@ -92,8 +93,11 @@ func validateScenarioLifecycleHandoffProvenance(cfg *ResolvedConfig, binding Sce
 	if !scenarioLifecycleHandoffInherited(binding) {
 		return nil
 	}
-	if !provisionalResumeEnabled(cfg) || cfg == nil || cfg.provisionalResume.Record.PlanHash != binding.PlanHash || binding.CurrentRunID == "" || binding.CurrentRunID != binding.ReleaseRunID || binding.InheritedReleaseRunID == "" || binding.InheritedReleaseRunID == binding.CurrentRunID || binding.ConfigHash != cfg.ConfigHash || binding.PolicyHash != cfg.PolicyHash || !validCanonicalHashHex(binding.PlanHash) {
+	if !provisionalResumeEnabled(cfg) || cfg == nil || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance || cfg.provisionalResume.Record.PlanHash != binding.PlanHash || binding.CurrentRunID == "" || binding.CurrentRunID != binding.ReleaseRunID || binding.InheritedReleaseRunID == "" || binding.InheritedReleaseRunID == binding.CurrentRunID || binding.ConfigHash != cfg.ConfigHash || binding.PolicyHash != cfg.PolicyHash || !validCanonicalHashHex(binding.PlanHash) {
 		return errors.New("inherited release lifecycle handoff provenance is incomplete or inconsistent")
+	}
+	if binding.InheritedPlanHash != "" && (!validCanonicalHashHex(binding.InheritedPlanHash) || binding.InheritedPlanHash == binding.PlanHash || !slices.Contains(cfg.provisionalResume.AcceptedPlanHashes, binding.InheritedPlanHash)) {
+		return errors.New("inherited release lifecycle handoff has no admitted original approval")
 	}
 	return nil
 }
@@ -405,7 +409,11 @@ func validateScenarioLifecycleHandoffBinding(cfg *ResolvedConfig, binding Scenar
 	if err := validateScenarioLifecycleHandoffProvenance(cfg, binding); err != nil {
 		return err
 	}
-	if lifecycle.RunID != binding.InheritedReleaseRunID || binding.PlanHash != lifecycle.PlanHash || lifecycle.ProvisionalBypass == nil || fleetLifecycleHasProductionState(&lifecycle) || lifecycle.FirstAcceptedEpoch == 0 {
+	sourcePlanHash := binding.PlanHash
+	if binding.InheritedPlanHash != "" {
+		sourcePlanHash = binding.InheritedPlanHash
+	}
+	if lifecycle.RunID != binding.InheritedReleaseRunID || sourcePlanHash != lifecycle.PlanHash || lifecycle.ProvisionalBypass == nil || fleetLifecycleHasProductionState(&lifecycle) || lifecycle.FirstAcceptedEpoch == 0 {
 		return errors.New("inherited release lifecycle handoff provenance is incomplete or inconsistent")
 	}
 	if err := validateFleetLifecycleWindow(lifecycle.AcceptanceStartBlock, lifecycle.AcceptanceEndBlock, lifecycle.AcceptanceTerminalBlock, 5, 300, 150); err != nil {
@@ -428,10 +436,10 @@ func captureScenarioLifecycleHandoff(cfg *ResolvedConfig, stateDir, runDir, runI
 		File: scenarioLifecycleHandoffFilename, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data)),
 	}
 	if lifecycle.RunID != runID {
-		if attempt == nil || attempt.payload.RunID != runID || lifecycle.PlanHash != attempt.payload.PlanHash {
+		if attempt == nil || attempt.payload.RunID != runID {
 			return nil, errors.New("inherited release lifecycle handoff differs from the current signed attempt")
 		}
-		if err := validateScenarioCampaignRecoveryAncestor(attempt, lifecycle.RunID); err != nil {
+		if _, err := authenticateProvisionalLifecycleAncestor(attempt, &lifecycle); err != nil {
 			return nil, fmt.Errorf("authenticate inherited release lifecycle handoff: %w", err)
 		}
 		binding.CurrentRunID = runID
@@ -439,6 +447,9 @@ func captureScenarioLifecycleHandoff(cfg *ResolvedConfig, stateDir, runDir, runI
 		binding.ConfigHash = attempt.payload.ConfigHash
 		binding.PolicyHash = attempt.payload.PolicyHash
 		binding.PlanHash = attempt.payload.PlanHash
+		if lifecycle.PlanHash != binding.PlanHash {
+			binding.InheritedPlanHash = lifecycle.PlanHash
+		}
 	}
 	if err := validateScenarioLifecycleHandoffBinding(cfg, *binding, data); err != nil {
 		return nil, err
