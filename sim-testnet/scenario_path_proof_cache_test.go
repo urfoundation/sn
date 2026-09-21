@@ -111,3 +111,88 @@ func TestScenarioPathProofCacheRevalidatesChangedVerifierAndRejectsDuplicateAppe
 		t.Fatalf("failed append entered the cache: %+v", prefix)
 	}
 }
+
+// Appending from verification forces the writer to advance after the reader's
+// size cut, without depending on a goroutine's scheduling or a wall-clock delay.
+func TestScenarioPathProofCacheRetainsFixedCutDuringConcurrentAppend(t *testing.T) {
+	t.Parallel()
+	for _, retained := range []bool{false, true} {
+		path := filepath.Join(t.TempDir(), "proofs.jsonl")
+		cache, verified := newScenarioPathProofCache(), 0
+		verifierHash := "0x" + strings.Repeat("75", 32)
+		baseline := 0
+		if retained {
+			appendScenarioPathProofCacheRecord(t, path, connect.NewId())
+			if _, err := scenarioPathProofCacheTestInspect(cache, path, verifierHash, &verified); err != nil {
+				t.Fatal(err)
+			}
+			baseline = 1
+		}
+		appendScenarioPathProofCacheRecord(t, path, connect.NewId())
+		cut, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		appended := false
+		limits := scenarioPathProofLimits{maximumBytes: 1024 * 1024, maximumProofs: 16, maximumLine: 64 * 1024}
+		count, err := cache.inspect(context.Background(), path, verifierHash, limits, func(*validatorpkg.ProofRecord, int) error {
+			verified++
+			if !appended {
+				appendScenarioPathProofCacheRecord(t, path, connect.NewId())
+				appended = true
+			}
+			return nil
+		})
+		if err != nil || count != baseline+1 || verified != baseline+1 || cache.prefixes[path].bytes != cut.Size() {
+			t.Fatalf("retained=%v: snapshot followed appended bytes: count=%d verified=%d prefix=%d cut=%d err=%v", retained, count, verified, cache.prefixes[path].bytes, cut.Size(), err)
+		}
+		if count, err = scenarioPathProofCacheTestInspect(cache, path, verifierHash, &verified); err != nil || count != baseline+2 || verified != baseline+2 {
+			t.Fatalf("retained=%v: later snapshot lost or replayed the deferred append: count=%d verified=%d err=%v", retained, count, verified, err)
+		}
+	}
+}
+
+// A newline written after the size cut must not complete a partial proof in the
+// current observation; the next observation authenticates that complete record.
+func TestScenarioPathProofCacheDefersPartialTailCompletedAfterCut(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "proofs.jsonl")
+	appendScenarioPathProofCacheRecord(t, path, connect.NewId())
+	completeCut, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendScenarioPathProofCacheRecord(t, path, connect.NewId())
+	withTail, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, withTail.Size()-1); err != nil {
+		t.Fatal(err)
+	}
+	cache, verified := newScenarioPathProofCache(), 0
+	verifierHash := "0x" + strings.Repeat("86", 32)
+	limits := scenarioPathProofLimits{maximumBytes: 1024 * 1024, maximumProofs: 16, maximumLine: 64 * 1024}
+	count, err := cache.inspect(context.Background(), path, verifierHash, limits, func(*validatorpkg.ProofRecord, int) error {
+		verified++
+		if verified == 1 {
+			file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				return err
+			}
+			_, writeErr := file.Write([]byte{'\n'})
+			closeErr := file.Close()
+			if writeErr != nil {
+				return writeErr
+			}
+			return closeErr
+		}
+		return nil
+	})
+	if err != nil || count != 1 || verified != 1 || cache.prefixes[path].bytes != completeCut.Size() {
+		t.Fatalf("snapshot included a tail completed after its cut: count=%d verified=%d prefix=%d cut=%d err=%v", count, verified, cache.prefixes[path].bytes, completeCut.Size(), err)
+	}
+	if count, err = scenarioPathProofCacheTestInspect(cache, path, verifierHash, &verified); err != nil || count != 2 || verified != 2 {
+		t.Fatalf("later snapshot lost or replayed the completed tail: count=%d verified=%d err=%v", count, verified, err)
+	}
+}

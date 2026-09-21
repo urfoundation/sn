@@ -136,7 +136,9 @@ func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifier
 
 	trailIDs := cloneScenarioTrailIDs(prefix.trailIDs)
 	proofs, completedBytes := prefix.proofs, prefix.bytes
-	reader := bufio.NewReaderSize(file, int(min(limits.maximumLine, 64*1024)))
+	// A live validator can append faster than signatures are checked. Retain the
+	// initial size cut so this snapshot finishes; later bytes belong to the next.
+	reader := bufio.NewReaderSize(io.LimitReader(file, info.Size()-prefix.bytes), int(min(limits.maximumLine, 64*1024)))
 	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err
