@@ -21,6 +21,12 @@ type evmReadBatchCapacityKey struct {
 	method string
 }
 
+// A fixed semantic group can adapt within one read without borrowing or
+// changing the learned grouping of unrelated historical work on its client.
+// The derived context is confined to that operation; ordinary callers retain
+// the per-client/method capacity below.
+type evmReadBatchLocalCapacityKey struct{}
+
 type evmReadBatchCapacityEntry struct {
 	capacity *evmReadBatchCapacity
 	lastUsed time.Time
@@ -163,6 +169,11 @@ func (self evmReadBatchCapacityLease) succeeded() {
 func readEvmRpcBatchForClientWithPolicy[T any](ctx context.Context, operation string, reads []evmRpcRead, policy finalSemanticRPCRetryPolicy, client *rpc.Client) ([]evmRpcReadResult[T], error) {
 	if client == nil {
 		return readEvmRpcBatchWithPolicy[T](ctx, operation, reads, policy, nil)
+	}
+	if ctx != nil {
+		if local, _ := ctx.Value(evmReadBatchLocalCapacityKey{}).(bool); local {
+			return readEvmRpcBatchWithPolicy[T](ctx, operation, reads, policy, client.BatchCallContext)
+		}
 	}
 	return readEvmRpcBatchWithCapacity[T](ctx, operation, reads, policy, client.BatchCallContext, evmReadBatchCapacities.forReads(client, reads))
 }

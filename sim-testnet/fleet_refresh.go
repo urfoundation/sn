@@ -172,9 +172,13 @@ func fleetRefreshActionRange(cfg *ResolvedConfig, action Action, batch int) (int
 // pending oracle generations in a single decision.
 func readFleetRefreshOracleStateAt(ctx context.Context, manager *EvmTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, block uint64) (fleetRefreshOracleState, error) {
 	var state fleetRefreshOracleState
-	if coordinator == nil {
+	if ctx == nil || coordinator == nil {
 		return state, errors.New("fleet refresh oracle reader is unavailable")
 	}
+	// Each oracle observation starts from its complete five-field group. A
+	// timeout may split this read's retry, but must neither inherit a prior
+	// history census partition nor shrink unrelated fleet history batches.
+	ctx = context.WithValue(ctx, evmReadBatchLocalCapacityKey{}, true)
 	outputs, err := rawCoordinatorBatchCallAt(ctx, manager, coordinatorAddress, [][]byte{
 		coordinator.PackCurrentEpoch(),
 		coordinator.PackCommitmentOracle(),

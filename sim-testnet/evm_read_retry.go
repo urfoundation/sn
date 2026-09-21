@@ -266,6 +266,12 @@ func readEvmRpcBatchWithCapacity[T any](ctx context.Context, operation string, r
 			if callErr == nil {
 				callErr = call(attemptCtx, batch)
 			}
+			// A late nil response cannot consume the pending set before the
+			// outer retry owner notices its expired attempt. Earlier completed
+			// chunks remain retained; this chunk and its suffix must be retried.
+			if callErr == nil && errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+				callErr = attemptCtx.Err()
+			}
 			if callErr != nil {
 				// Earlier completed chunks are durable in results. Neither the
 				// failed chunk nor the unstarted suffix has authenticated bytes.
