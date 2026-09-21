@@ -632,22 +632,50 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	report := &launchPreparationReport{Schema: "urnetwork-sim-launch-preparation-v1", Command: cmd, PlanHash: p.PlanHash, PrepareOnly: o.PrepareOnly, Ready: true}
 	report.add("attempt-upload-budget", nil)
+	if cmd == "resume" && o.ProvisionalResume {
+		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
+		if err := recoverRetainedProvisionalPublication(ctx, local); err != nil {
+			return err
+		}
+	}
+	var stoppedAdoption *provisionalStoppedTopology
 	liveAdoption, liveAdoptionErr := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
 	if provisionalSetupRevision && liveAdoption == nil && liveAdoptionErr == nil {
-		liveAdoptionErr = errors.New("provisional setup revision requires the existing live topology")
+		stoppedAdoption, liveAdoptionErr = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
+		if stoppedAdoption == nil && liveAdoptionErr == nil {
+			liveAdoptionErr = errors.New("provisional setup revision requires an authenticated live or stopped topology")
+		}
 	}
 	report.add("provisional-live-topology", liveAdoptionErr)
 	needsDoctor, provisionalHistoryChecked := true, false
-	var stoppedAdoption *provisionalStoppedTopology
-	if liveAdoption != nil {
+	planOnlyAdoption, retainedPlanResume := false, false
+	if liveAdoption != nil || (provisionalSetupRevision && stoppedAdoption != nil) {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 		provisionalHistoryChecked = true
 		if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
 			if provisionalSetupRevision {
-				_, _, prefixErr := local.provisionalSetupPrefix(ctx, p, j.Entries, readValidatorEvidenceHistoricalPlan, true)
-				report.add("provisional-revision-setup-prefix", prefixErr)
+				var allowanceErr error
+				planOnlyAdoption, allowanceErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, provisionalSetupSource)
+				if allowanceErr != nil {
+					report.add("provisional-plan-adoption", allowanceErr)
+				} else if !planOnlyAdoption && stoppedAdoption != nil {
+					report.add("provisional-plan-adoption", errors.New("stopped setup permits only exact zero-transaction allowance or relay approval"))
+				} else if !planOnlyAdoption {
+					_, _, prefixErr := local.provisionalSetupPrefix(ctx, p, j.Entries, readValidatorEvidenceHistoricalPlan, true)
+					report.add("provisional-revision-setup-prefix", prefixErr)
+				}
 			}
-			if cmd == "scenario" {
+			if cmd == "resume" {
+				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+				if readErr == nil {
+					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+				}
+				report.add("provisional-retained-plan-resume", readErr)
+			}
+			if planOnlyAdoption || retainedPlanResume {
+				needsDoctor = false
+				report.Checks = append(report.Checks, Check{Name: "provisional-plan-adoption", OK: true, Hard: false, Detail: "exact non-transaction approval; retained receipts/release authenticated; pending actions remain unverified and undispatched; final_acceptance=false"})
+			} else if cmd == "scenario" {
 				// A retained provisional scenario neither applies pending setup
 				// actions nor spends their reserves. Its own action paths retain
 				// approval and budget enforcement, so a strict whole-plan doctor
@@ -683,9 +711,18 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 			provisionalHistoryChecked = true
 			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
-				needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
-				if !report.add("provisional-stopped-spend", err) {
-					needsDoctor = true
+				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+				if readErr == nil {
+					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+				}
+				report.add("provisional-retained-plan-resume", readErr)
+				if retainedPlanResume {
+					needsDoctor = false
+				} else {
+					needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+					if !report.add("provisional-stopped-spend", err) {
+						needsDoctor = true
+					}
 				}
 			}
 		}
@@ -706,7 +743,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
 	}
 	var roles *RoleSecrets
-	if liveAdoption != nil || liveAdoptionErr != nil {
+	if liveAdoption != nil || liveAdoptionErr != nil || retainedPlanResume || (provisionalSetupRevision && stoppedAdoption != nil) {
 		roles, err = loadExistingProvisionalRoles(cfg, stateDir)
 	} else {
 		roles, err = LoadOrWriteRoleSecrets(cfg, stateDir)
@@ -737,10 +774,17 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			report.blocked("release-host", "provisional-live-topology")
 		}
 	}
-	ex, executorErr := newLaunchPreparationExecutor(ctx, cfg, stateDir, p, j, roles)
-	report.add("execution-readers", executorErr)
-	if ex != nil {
-		defer ex.Close()
+	var ex *Executor
+	if planOnlyAdoption || retainedPlanResume {
+		ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles}
+		report.Checks = append(report.Checks, Check{Name: "execution-readers", OK: true, Hard: false, Detail: "plan-only local activation opens no chain reader or transaction dispatcher"})
+	} else {
+		var executorErr error
+		ex, executorErr = newLaunchPreparationExecutor(ctx, cfg, stateDir, p, j, roles)
+		report.add("execution-readers", executorErr)
+		if ex != nil {
+			defer ex.Close()
+		}
 	}
 	if ex == nil {
 		ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, preparationIncomplete: true}
@@ -760,7 +804,12 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// receipts, manifest, service stop and retained deployment inputs; replaying
 	// the large read-only payload census here only delays its recovery.  Strict
 	// final acceptance remains outside this provisional path.
-	if stoppedAdoption != nil {
+	if planOnlyAdoption || retainedPlanResume {
+		report.Checks = append(report.Checks,
+			Check{Name: "contract-deployment-payloads", OK: true, Hard: false, Detail: "unchanged approved actions and retained release; no deployment dispatch"},
+			Check{Name: "launch-runtime-inputs", OK: true, Hard: false, Detail: "plan-only activation preserves existing runtime inputs; final_acceptance=false"},
+		)
+	} else if stoppedAdoption != nil {
 		report.Checks = append(report.Checks,
 			Check{Name: "contract-deployment-payloads", OK: true, Hard: false, Detail: "retained stopped-generation deployment inputs"},
 			Check{Name: "launch-runtime-inputs", OK: true, Hard: false, Detail: "retained stopped-generation runtime evidence; final acceptance revalidates"},
@@ -774,19 +823,32 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	report.add("preparation-context", ctx.Err())
 	return finishLaunchPreparation(report, func(result *launchPreparationReport, err error) error { return printResult(o.Format, result, err) }, func() error {
 		if provisionalSetupRevision {
-			live, err := liveRecordedSupervisor(stateDir)
-			if err != nil || live == nil {
-				return stateMismatchError(err, "provisional setup live topology stopped before activation")
-			}
-			if err := provisionalAdoptionGeneration(liveAdoption, *live); err != nil {
-				return err
+			if liveAdoption != nil {
+				live, err := liveRecordedSupervisor(stateDir)
+				if err != nil || live == nil {
+					return stateMismatchError(err, "provisional setup live topology stopped before activation")
+				}
+				if err := provisionalAdoptionGeneration(liveAdoption, *live); err != nil {
+					return err
+				}
+			} else {
+				if !planOnlyAdoption {
+					return errors.New("stopped setup cannot dispatch a repair")
+				}
+				current, err := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
+				if err != nil {
+					return err
+				}
+				if err := provisionalStoppedAdoptionGeneration(stoppedAdoption, current); err != nil {
+					return err
+				}
 			}
 			if err := ex.activateProvisionalSetupRevision(ctx, provisionalSetupSource, ex.Execute); err != nil {
 				return err
 			}
 			return printResult(o.Format, map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd,
 				"plan_hash": p.PlanHash, "provisional": true, "final_acceptance": false, "historical_audit_deferred": true,
-				"topology_retained": true, "provisional_resume_record": cfg.provisionalResume.RecordPath}, nil)
+				"topology_retained": true, "topology_stopped": stoppedAdoption != nil, "plan_only": planOnlyAdoption, "provisional_resume_record": cfg.provisionalResume.RecordPath}, nil)
 		}
 		// Chain/environment setup always stops at the disabled configuration
 		// boundary. LaunchDeployment then starts temporary operator APIs, provisions
@@ -809,6 +871,18 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 				return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
 			}
 			return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
+		}
+		if retainedPlanResume {
+			if liveAdoption != nil {
+				if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption, true); err != nil {
+					return err
+				}
+			} else if err := executeRetainedProvisionalResume(ctx, ex, stoppedAdoption, bins, launchRetainedProvisionalTopology); err != nil {
+				return err
+			}
+			return printResult(o.Format, map[string]any{"command": cmd, "plan_hash": p.PlanHash, "provisional": true,
+				"final_acceptance": false, "setup_actions_dispatched": 0, "retained_runtime": true,
+				"provisional_resume_record": cfg.provisionalResume.RecordPath}, nil)
 		}
 		if liveAdoption != nil {
 			if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption, false); err != nil {

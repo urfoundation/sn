@@ -46,6 +46,24 @@ func buildAllowanceOnlyPlan(ctx context.Context, cfg *ResolvedConfig, stateDir, 
 	if err != nil || source.PlanHash != sourceHash {
 		return nil, errors.Join(errors.New("allowance review source differs from its exact active hash"), err)
 	}
+	plan, err := buildAllowanceOnlyPlanFromSource(cfg, raw, sourceHash)
+	if err != nil {
+		return nil, err
+	}
+	latest, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	if err != nil || !bytes.Equal(latest, raw) || ctx.Err() != nil {
+		return nil, errors.Join(errors.New("allowance review source changed during construction"), err, ctx.Err())
+	}
+	return plan, nil
+}
+
+// The same deterministic source transform authenticates read-only review and
+// zero-dispatch adoption; neither may interpret a cap increase as new funding.
+func buildAllowanceOnlyPlanFromSource(cfg *ResolvedConfig, raw []byte, sourceHash string) (*SetupPlan, error) {
+	source, err := decodePersistedPlanWire(raw)
+	if err != nil || source.PlanHash != sourceHash {
+		return nil, errors.Join(errors.New("allowance source differs from its exact approval"), err)
+	}
 	target := configuredPlanLimits(cfg)
 	comparison, err := target.EVMGasWei.Cmp(source.Limits.EVMGasWei)
 	if err != nil || comparison < 0 || target.TAORao < source.Limits.TAORao || target.AlphaRao != source.Limits.AlphaRao || target.Registrations != source.Limits.Registrations || target.SubnetCreations != source.Limits.SubnetCreations {
@@ -87,10 +105,6 @@ func buildAllowanceOnlyPlan(ctx context.Context, cfg *ResolvedConfig, stateDir, 
 	// reviewed result. It retains the original release; it grants no acceptance.
 	if _, err := loadPlanIdentityBytes(cfg, wire, true); err != nil {
 		return nil, err
-	}
-	latest, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
-	if err != nil || !bytes.Equal(latest, raw) || ctx.Err() != nil {
-		return nil, errors.Join(errors.New("allowance review source changed during construction"), err, ctx.Err())
 	}
 	return &plan, nil
 }

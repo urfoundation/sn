@@ -46,8 +46,8 @@ type provisionalLiveTopology struct {
 }
 
 // A deliberately stopped, previously authenticated supervisor is a recovery
-// boundary, not a fresh deployment.  It is used only by `resume` after the
-// exact owned service has reached inactive/dead.  The subsequent launch still
+// boundary, not a fresh deployment. Resume and a zero-dispatch setup approval
+// require the exact owned service to be inactive/dead. A subsequent launch still
 // creates a new supervisor generation and performs its normal readiness gate.
 // This prevents a release-hotfix handoff from replaying the broad pre-launch
 // doctor after the retained-plan receipt audit has already authenticated every
@@ -156,8 +156,14 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 }
 
 func provisionalStoppedTopologyEligible(cfg *ResolvedConfig, command string, manifest SupervisorFile, manifestHash string, state SupervisorState, service supervisorServiceStatus) error {
-	if cfg == nil || !provisionalResumeEnabled(cfg) || command != "resume" {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup") {
 		return errors.New("stopped topology recovery is not provisionally admitted")
+	}
+	if command == "setup" {
+		record := cfg.provisionalResume.Record
+		if record.Command != "setup" || !record.Provisional || record.FinalAcceptance || record.PlanHash == "" {
+			return errors.New("stopped setup requires explicit non-accepting approval")
+		}
 	}
 	if manifest.Schema != "urnetwork-sim-supervisor-v1" || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID || manifestHash == "" || state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != manifestHash || state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks == 0 {
 		return errors.New("stopped topology identity is incomplete")
@@ -176,7 +182,7 @@ func provisionalStoppedTopologyEligible(cfg *ResolvedConfig, command string, man
 // read; ordinary launch paths and every ambiguous service state still use the
 // full doctor.
 func prepareStoppedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, stateDir, command string) (*provisionalStoppedTopology, error) {
-	if cfg == nil || !provisionalResumeEnabled(cfg) || command != "resume" {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup") {
 		return nil, nil
 	}
 	live, err := liveRecordedSupervisor(stateDir)
@@ -189,6 +195,16 @@ func prepareStoppedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig,
 	}
 	if held {
 		return nil, errors.New("stopped topology retains a live supervisor lock")
+	}
+	if command == "setup" {
+		if err := strictHistorySupervisorStopped(stateDir); err != nil {
+			return nil, err
+		}
+		for id := 1; id <= cfg.Config.Topology.Validators; id++ {
+			if err := requireValidatorStateStopped(stateDir, id); err != nil {
+				return nil, err
+			}
+		}
 	}
 	raw, err := os.ReadFile(filepath.Join(stateDir, "supervisor.json"))
 	if err != nil {
@@ -226,6 +242,20 @@ func prepareStoppedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig,
 		return nil, err
 	}
 	return stopped, nil
+}
+
+// Recheck the stopped generation immediately before changing a plan pointer.
+// A later observation timestamp is harmless; all process/input identity is exact.
+func provisionalStoppedAdoptionGeneration(previous, current *provisionalStoppedTopology) error {
+	if previous == nil || current == nil {
+		return errors.New("stopped setup lost its authenticated topology boundary")
+	}
+	a, b := *previous, *current
+	a.StoppedAt, b.StoppedAt = "", ""
+	if a != b {
+		return errors.New("stopped setup topology generation changed before activation")
+	}
+	return nil
 }
 
 func provisionalProcessLogGatePath(recordPath, manifestHash string, supervisorPID int, supervisorStartTimeTicks uint64) string {

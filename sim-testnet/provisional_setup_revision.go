@@ -65,9 +65,26 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 	if err := self.verifyProvisionalActionHistory(ctx); err != nil {
 		return err
 	}
-	_, pending, err := self.provisionalSetupPrefix(ctx, self.plan, self.journal.Entries, readValidatorEvidenceHistoricalPlan, true)
+	planOnly, err := self.authenticateProvisionalPlanOnlyAdoption(ctx, sourceBytes)
 	if err != nil {
 		return err
+	}
+	var pending, deferred []Action
+	if planOnly {
+		verified := newCarriedPreparationIndex(self.plan, entries)
+		for _, action := range self.plan.Actions {
+			if action.ID == "topology.launch" {
+				break
+			}
+			if _, ok := verified.find(action, false); !ok {
+				deferred = append(deferred, action)
+			}
+		}
+	} else {
+		_, pending, err = self.provisionalSetupPrefix(ctx, self.plan, self.journal.Entries, readValidatorEvidenceHistoricalPlan, true)
+		if err != nil {
+			return err
+		}
 	}
 	current, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
 	if err != nil || !bytes.Equal(current, sourceBytes) || !slices.Equal(entries, self.journal.Entries()) {
@@ -91,10 +108,12 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 		ReviewedPlanBytesSHA256 string       `json:"reviewed_plan_bytes_sha256"`
 		JournalBoundary         JournalEntry `json:"authenticated_journal_boundary"`
 		PendingActions          []Action     `json:"pending_setup_actions"`
+		PlanOnly                bool         `json:"plan_only,omitempty"`
+		DeferredSetupActions    []Action     `json:"deferred_setup_actions,omitempty"`
 	}{Schema: "urnetwork-sim-provisional-setup-activation-v1", Provisional: true, HistoricalAuditDeferred: true,
 		SourcePlanHash: source.PlanHash, SourcePlanBytesSHA256: bytesSHA256(sourceBytes), PlanHash: self.plan.PlanHash,
 		ReviewedPlanBytesSHA256: bytesSHA256(reviewedBytes),
-		JournalBoundary:         boundary, PendingActions: pending}
+		JournalBoundary:         boundary, PendingActions: pending, PlanOnly: planOnly, DeferredSetupActions: deferred}
 	wire, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
@@ -113,6 +132,10 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 		}
 	}
 	fmt.Fprintln(os.Stderr, "sim-testnet: provisional setup approval activated; historical_audit_deferred=true; runtime files retained; final_acceptance=false")
+	if planOnly {
+		fmt.Fprintln(os.Stderr, "sim-testnet: plan-only adoption dispatched no actions; pending setup remains deferred; final_acceptance=false")
+		return ctx.Err()
+	}
 	_, err = self.reconcileProvisionalSetupPrefix(ctx, self.plan, execute)
 	return err
 }

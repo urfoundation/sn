@@ -1045,6 +1045,26 @@ transaction recovery and spending limits, and uses the admitted driver image
 for restarted components. It records actual executable provenance before work
 begins and marks scenario results provisional with `final_acceptance=false`.
 Strict release acceptance cannot consume those provisional results.
+An exact reviewed allowance-only or relay-reserve successor can be adopted with
+`setup --provisional-resume --apply --plan-hash HASH` while the authenticated
+topology is live or fully stopped. This local approval change reports
+`plan_only=true`, lists unfinished setup work as deferred, and dispatches zero
+setup actions. It preserves the original release, funding intents, receipts and
+runtime files. An ordinary repair that changes a transaction still uses action
+reconciliation; it cannot borrow this exemption.
+
+After that successor is active, provisional `resume` reuses authenticated
+runtime inputs and starts the owned persistent supervisor with the admitted
+driver. It refreshes only the explicit process approval and validator handoff,
+without repeating account provisioning, `config.render`, pending probes or
+tournament actions. The result reports `setup_actions_dispatched=0`; run the
+release-candidate scenario separately. Keep a relay capture's supervisor and
+validators stopped until its reviewed successor is adopted. Restarting the old
+capacity plan to satisfy a live-only guard is unnecessary. Startup retains the
+original manifest and a publication checkpoint; retry can restore an unstarted
+publication only while the exact old stopped state and inactive service remain
+unchanged. A new or live generation is never rolled back by that recovery.
+
 Treat a healthy child restart before the next signed campaign boundary as
 retained supervisor history, not as a reason to repeat setup or discard the
 campaign predecessor. A provisional successor authenticates the same supervisor
