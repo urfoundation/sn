@@ -135,7 +135,11 @@ func scenarioCampaignRecoveryProofJournal(stateDir string, prefix []byte) bool {
 // authenticated small envelopes then extracts ancestor identities without a
 // second plan/observation traversal; before/after witnesses bind those reads.
 func scenarioCampaignRecoveryAncestorSources(attempt *scenarioCampaignAttempt) (map[string]bool, bool, error) {
-	root, _, err := readScenarioCampaignAttemptAt(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, "release-1.0", scenarioCampaignSuccessorPath(attempt.stateDir))
+	reader, err := newScenarioCampaignLineageReader(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash)
+	if err != nil {
+		return nil, false, err
+	}
+	root, _, err := reader.read(scenarioCampaignSuccessorPath(attempt.stateDir))
 	if err != nil {
 		return nil, false, err
 	}
@@ -146,7 +150,7 @@ func scenarioCampaignRecoveryAncestorSources(attempt *scenarioCampaignAttempt) (
 		return nil, false, err
 	}
 	for _, file := range files {
-		prior, _, err := readScenarioCampaignAttemptAt(attempt.cfg, attempt.stateDir, attempt.roles, attempt.payload.PlanHash, "release-1.0", file.path)
+		prior, _, err := reader.read(file.path)
 		if err != nil {
 			return nil, false, err
 		}
@@ -167,6 +171,9 @@ func scenarioCampaignRecoveryAncestorSources(attempt *scenarioCampaignAttempt) (
 func scenarioCampaignRecoveryAncestors(attempt *scenarioCampaignAttempt, validate func(*scenarioCampaignAttempt) error) (map[string]bool, error) {
 	if attempt == nil || attempt.payload.Recovery == nil {
 		return nil, errors.New("campaign recovery has no exact signed predecessor")
+	}
+	if err := validateScenarioCampaignLineageAdmission(attempt.cfg, attempt.payload.PlanHash); err != nil {
+		return nil, err
 	}
 	scenarioCampaignRecoveryProofLock.Lock()
 	if attempt.recoveryProof == nil {
