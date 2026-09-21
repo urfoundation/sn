@@ -369,6 +369,11 @@ type liveScenarioProbe struct {
 	publicManifestURI    string
 	finalSemanticVerify  campaignFinalSemanticVerifier
 	campaignResultVerify func(*ResolvedConfig, *ScenarioResult, string) error
+	// One scenario retains its authenticated immutable source approval. Each
+	// new observation still validates its current evidence and completion state.
+	precompilePlan       *SetupPlan
+	precompileJournal    *Journal
+	precompileSourcePlan *SetupPlan
 }
 
 // FinalizedHead is the bounded scheduler read paired with Snapshot. It avoids
@@ -629,7 +634,7 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 			observation.PrecompileConformanceError = "contract deployment is unavailable"
 		} else {
 			probe := contractViewPrecompileProbe(status.Contracts)
-			if validateErr := validatePrecompileEvidenceIdentity(p.cfg, probe, evidence); validateErr != nil {
+			if validateErr := p.validatePrecompileEvidence(probe, evidence); validateErr != nil {
 				observation.PrecompileConformanceError = validateErr.Error()
 			} else {
 				observation.PrecompileConformanceValid = precompileEvidenceComplete(evidence)
@@ -5150,7 +5155,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 				if scenarioExecutor.payloads == nil {
 					return errors.New("release scenario requires installed deployment payloads")
 				}
-				if identityErr := validatePrecompileEvidenceIdentity(cfg, scenarioExecutor.payloads.PrecompileProbeAddress, precompile); identityErr != nil {
+				if identityErr := scenarioExecutor.validatePrecompileEvidence(scenarioExecutor.payloads.PrecompileProbeAddress, precompile); identityErr != nil {
 					return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
 				}
 				if !precompileEvidenceComplete(precompile) {
@@ -5202,6 +5207,9 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		return nil
 	}
 	probe := &liveScenarioProbe{cfg: runtimeCfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
+	if scenarioExecutor != nil {
+		probe.precompilePlan, probe.precompileJournal = scenarioExecutor.plan, journal
+	}
 	var fleetLifecycle scenarioFleetLifecycle
 	if name == "release-1.0" || name == "production-soak" {
 		if scenarioExecutor == nil {

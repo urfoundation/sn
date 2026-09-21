@@ -664,31 +664,59 @@ func (self *Executor) precompileProbeNativeSource(action Action, verified Journa
 	return &source, true, nil
 }
 
-// The battery read has no native receipt, but its persisted postcondition is
-// still an immutable observation of the retired probe. Replay it with the
-// archived plan/configuration rather than the successor's replacement probe.
+// A battery receipt belongs to its archived probe generation. Later allowance
+// revisions can retain receipts for the current successor as well as the
+// retired probe; the original action decides which evidence to replay.
 func (self *Executor) precompileProbeHistoricalReadSource(action Action, verified JournalEntry, record *ActionPostcondition) (*Executor, bool, error) {
-	if self == nil || self.plan == nil || self.plan.PrecompileProbeSuccessor == nil || action.ID != "precompile.read-battery" || verified.PlanHash == self.plan.PlanHash {
+	if self == nil || self.plan == nil || action.ID != "precompile.read-battery" || verified.PlanHash == self.plan.PlanHash {
 		return nil, false, nil
 	}
 	if self.payloads == nil || self.journal == nil || record == nil || record.PlanHash != verified.PlanHash || record.ActionID != action.ID || record.IntentHash != verified.IntentHash {
 		return nil, true, errors.New("precompile battery historical source identity is absent")
 	}
-	if _, err := readPrecompileProbeSuccessorSource(self.cfg, self.stateDir, self.plan, self.journal.Entries()); err != nil {
-		return nil, true, err
-	}
 	original, err := readValidatorEvidenceHistoricalPlan(self.stateDir, verified.PlanHash)
 	if err != nil {
 		return nil, true, err
 	}
+	originalAction, err := exactPlanActionByID(original, action.ID)
+	if err != nil || originalAction.IntentHash != verified.IntentHash || !self.plan.allowedPlanHashes()[original.PlanHash] {
+		return nil, true, errors.New("precompile battery receipt differs from its archived action")
+	}
+	probe := approvedPrecompileProbe(original)
+	var evidence *PrecompileConformanceEvidence
+	if probe == approvedPrecompileProbe(self.plan) {
+		if err := validatePrecompileEvidenceCarryScope(self.plan, original, probe); err != nil {
+			return nil, true, err
+		}
+		evidence, err = loadPrecompileEvidence(self.stateDir)
+		if err != nil {
+			return nil, true, err
+		}
+		if err := self.validatePrecompileEvidence(probe, evidence); err != nil {
+			return nil, true, err
+		}
+		evidence, err = precompileBatteryHistoricalEvidence(originalAction, evidence, record)
+		if err != nil {
+			return nil, true, err
+		}
+	} else {
+		successor := self.plan.PrecompileProbeSuccessor
+		if successor == nil || probe != common.HexToAddress(successor.RetiredProbe) {
+			return nil, true, errors.New("precompile battery receipt names an unapproved probe generation")
+		}
+		if _, err := readPrecompileProbeSuccessorSource(self.cfg, self.stateDir, self.plan, self.journal.Entries()); err != nil {
+			return nil, true, err
+		}
+		copy := successor.Evidence
+		evidence = &copy
+	}
 	source := *self
 	source.plan = original
-	evidence := self.plan.PrecompileProbeSuccessor.Evidence
-	source.cfg = historicalPrecompileEvidenceConfig(self.cfg, original, &evidence)
+	source.cfg = historicalPrecompileEvidenceConfig(self.cfg, original, evidence)
 	payloads := *self.payloads
-	payloads.PrecompileProbeAddress = common.HexToAddress(self.plan.PrecompileProbeSuccessor.RetiredProbe)
+	payloads.PrecompileProbeAddress = probe
 	source.payloads = &payloads
-	source.precompileHistoryEvidence = &evidence
+	source.precompileHistoryEvidence = evidence
 	return &source, true, nil
 }
 

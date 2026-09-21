@@ -253,7 +253,8 @@ func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return err
 	}
-	if err := validatePrecompileEvidenceIdentity(cfg, common.HexToAddress(plan.PrecompileProbeSuccessor.Probe), evidence); err != nil {
+	owner := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, journal: &Journal{entries: entries}}
+	if err := owner.validatePrecompileEvidence(common.HexToAddress(plan.PrecompileProbeSuccessor.Probe), evidence); err != nil {
 		return err
 	}
 	if _, err := precompileProbeSuccessorEvidence(plan, evidence, evidence); err != nil {
@@ -263,7 +264,6 @@ func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfi
 	if evidence.Owner != old.Owner || evidence.SampleHotkey != old.SampleHotkey || evidence.SampleUID != old.SampleUID || evidence.AbsentHotkey != old.AbsentHotkey || evidence.MoveHotkey != old.MoveHotkey || evidence.RecoveryColdkey != old.RecoveryColdkey {
 		return errors.New("successor call evidence changed the original approved roles")
 	}
-	owner := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, journal: &Journal{entries: entries}}
 	for index, entry := range prefix[1:] {
 		action, err := exactPlanActionByID(plan, entry.ActionID)
 		if err != nil {

@@ -280,7 +280,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 	if err != nil {
 		return err
 	}
-	if err := validatePrecompileEvidenceIdentity(e.cfg, e.payloads.PrecompileProbeAddress, evidence); err != nil {
+	if err := e.validatePrecompileEvidence(e.payloads.PrecompileProbeAddress, evidence); err != nil {
 		return err
 	}
 	probe := e.payloads.PrecompileProbeAddress
@@ -716,7 +716,7 @@ func exactIncrease(before, after, amount uint64) bool {
 func hexBytesValue(value []byte) string { return "0x" + hex.EncodeToString(value) }
 
 func validatePrecompileEvidenceIdentity(cfg *ResolvedConfig, probe common.Address, evidence *PrecompileConformanceEvidence) error {
-	if evidence == nil || probe == (common.Address{}) {
+	if cfg == nil || cfg.Config == nil || evidence == nil || probe == (common.Address{}) {
 		return errors.New("precompile conformance evidence/probe is unavailable")
 	}
 	if evidence.Schema != "urnetwork-precompile-conformance-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.ConfigHash != cfg.ConfigHash || evidence.PolicyHash != cfg.PolicyHash || evidence.ChainID != testnetChainID || strings.ToLower(evidence.GenesisHash) != testnetGenesis || evidence.Netuid != cfg.Netuid || !strings.EqualFold(evidence.ProbeAddress, probe.Hex()) {
@@ -944,7 +944,7 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePrecompileEvidenceIdentity(e.cfg, e.payloads.PrecompileProbeAddress, evidence); err != nil {
+	if err := e.validatePrecompileEvidence(e.payloads.PrecompileProbeAddress, evidence); err != nil {
 		return nil, err
 	}
 	if e.plan.PrecompileProbeSuccessor != nil {
