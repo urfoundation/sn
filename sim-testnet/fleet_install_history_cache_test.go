@@ -28,17 +28,20 @@ import (
 // Serve the actual ABI for each pinned request, with controllable current
 // finality, historical drift and a separately failing receipt endpoint.
 type fleetInstallHistoryCacheRPC struct {
-	mu              sync.Mutex
-	t               *testing.T
-	finalized       uint64
-	noncanonical    bool
-	badState        bool
-	outputs         map[string]string
-	finalizedReads  int
-	canonicalReads  int
-	contractReads   int
-	contractBatches int
-	receiptReads    int
+	mu                 sync.Mutex
+	t                  *testing.T
+	finalized          uint64
+	noncanonical       bool
+	badState           bool
+	outputs            map[string]string
+	finalizedReads     int
+	canonicalReads     int
+	contractReads      int
+	contractReadData   []string
+	contractBatches    int
+	receiptReads       int
+	transientFromBatch int
+	transientFailures  int
 }
 
 func (f *fleetInstallHistoryCacheRPC) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -58,6 +61,11 @@ func (f *fleetInstallHistoryCacheRPC) ServeHTTP(writer http.ResponseWriter, requ
 			return
 		}
 		f.contractBatches++
+		if f.transientFailures > 0 && f.contractBatches >= f.transientFromBatch {
+			f.transientFailures--
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		responses := make([]map[string]any, len(calls))
 		for index, call := range calls {
 			if call.Method != "eth_call" || len(call.Params) != 2 {
@@ -78,6 +86,7 @@ func (f *fleetInstallHistoryCacheRPC) ServeHTTP(writer http.ResponseWriter, requ
 				return
 			}
 			f.contractReads++
+			f.contractReadData = append(f.contractReadData, hexutil.Encode(message.Data))
 			output := f.outputs[hexutil.Encode(message.Data)]
 			if output == "" || f.badState {
 				output = "0x00"
@@ -298,22 +307,23 @@ func TestFleetInstallHistoryCacheCurrentCheckpointChangeRequiresNewState(t *test
 
 func TestFleetInstallHistoryCacheBindsEveryDecoderAndActionInput(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		change func(*fleetInstallHistoryCacheFixture)
+		name      string
+		change    func(*fleetInstallHistoryCacheFixture)
+		wantReads int
 	}{
-		{"member-uid", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Evidence.UID++ }},
-		{"member-binding", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Binding.ValidToEpoch++ }},
-		{"member-signature", func(f *fleetInstallHistoryCacheFixture) {
+		{name: "member-uid", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Evidence.UID++ }, wantReads: 135},
+		{name: "member-binding", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Binding.ValidToEpoch++ }, wantReads: 135},
+		{name: "member-signature", change: func(f *fleetInstallHistoryCacheFixture) {
 			f.snapshots[0].Members[0].Evidence.ClientSignature = "changed"
-		}},
-		{"mirror-native-block", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].CommitmentEvidence.FinalizedBlock++ }},
-		{"mirror-hash", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].CommitmentHash[0] ^= 1 }},
-		{"mirror-block-hash", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].FinalizedBlockHash[0] ^= 1 }},
-		{"hotkey-calldata", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Hotkey[0] ^= 1 }},
-		{"client-calldata", func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Binding.ClientID[0] ^= 1 }},
-		{"batch-evidence", func(f *fleetInstallHistoryCacheFixture) { f.evidence.CalldataHash = "changed" }},
-		{"action-intent", func(f *fleetInstallHistoryCacheFixture) { f.action.IntentHash = "changed" }},
-		{"contract-target", func(f *fleetInstallHistoryCacheFixture) { f.executor.payloads.Manifest.CoordinatorProxy[0] ^= 1 }},
+		}, wantReads: 135},
+		{name: "mirror-native-block", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].CommitmentEvidence.FinalizedBlock++ }, wantReads: 135},
+		{name: "mirror-hash", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].CommitmentHash[0] ^= 1 }, wantReads: 135},
+		{name: "mirror-block-hash", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].FinalizedBlockHash[0] ^= 1 }, wantReads: 135},
+		{name: "hotkey-calldata", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Hotkey[0] ^= 1 }, wantReads: 135},
+		{name: "client-calldata", change: func(f *fleetInstallHistoryCacheFixture) { f.snapshots[0].Members[0].Binding.ClientID[0] ^= 1 }, wantReads: 135},
+		{name: "batch-evidence", change: func(f *fleetInstallHistoryCacheFixture) { f.evidence.CalldataHash = "changed" }, wantReads: 180},
+		{name: "action-intent", change: func(f *fleetInstallHistoryCacheFixture) { f.action.IntentHash = "changed" }, wantReads: 180},
+		{name: "contract-target", change: func(f *fleetInstallHistoryCacheFixture) { f.executor.payloads.Manifest.CoordinatorProxy[0] ^= 1 }, wantReads: 180},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newFleetInstallHistoryCacheFixture(t)
@@ -329,8 +339,8 @@ func TestFleetInstallHistoryCacheBindsEveryDecoderAndActionInput(t *testing.T) {
 			}
 			f.rpc.mu.Lock()
 			defer f.rpc.mu.Unlock()
-			if f.rpc.contractReads != 180 {
-				t.Fatalf("changed input did not replay the pinned batch: %d reads", f.rpc.contractReads)
+			if f.rpc.contractReads != test.wantReads {
+				t.Fatalf("changed input did not replay its affected groups: %d reads want %d", f.rpc.contractReads, test.wantReads)
 			}
 		})
 	}

@@ -746,7 +746,13 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		ex = &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, preparationIncomplete: true}
 	}
 	if !provisionalHistoryChecked {
-		report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx))
+		if report.Error() == nil && !cfg.readOnlyAudit {
+			report.add("carried plan history preflight", continueHistoricalPreparation(ctx, ex.verifyCarriedActionHistory))
+		} else {
+			// Collect history once when another prerequisite already blocks
+			// dispatch; a transport outage must not hide those concrete failures.
+			report.add("carried plan history preflight", ex.verifyCarriedActionHistory(ctx))
+		}
 	}
 	// New and ambiguous plans need a fresh deployment payload and runtime
 	// evidence check before action dispatch.  A guarded stopped-topology

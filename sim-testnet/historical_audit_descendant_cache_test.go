@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -284,8 +285,17 @@ func TestHistoricalAuditDescendantRechecksChangedExactInputs(t *testing.T) {
 			t.Fatalf("changed %s inherited old success", mutation)
 		}
 		fixture.rpc.mu.Lock()
-		if fixture.rpc.contractReads != 180 {
-			t.Errorf("%s: contract reads=%d want180", mutation, fixture.rpc.contractReads)
+		wantReads := 180
+		if mutation == "binding" {
+			// Only the first five-fleet group changed. Require its exact
+			// requests again while retaining the untouched group's proof.
+			wantReads = 135
+			if len(fixture.rpc.contractReadData) != wantReads || !slices.Equal(fixture.rpc.contractReadData[90:], fixture.rpc.contractReadData[:45]) {
+				t.Error("changed binding did not recheck its exact proof group")
+			}
+		}
+		if fixture.rpc.contractReads != wantReads {
+			t.Errorf("%s: contract reads=%d want%d", mutation, fixture.rpc.contractReads, wantReads)
 		}
 		fixture.rpc.mu.Unlock()
 	}

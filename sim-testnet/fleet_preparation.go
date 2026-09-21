@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 func collectHistoricalFleetCheckpoints(ctx context.Context, client *ethclient.Client, calls []historicalFleetGenerationOneCall, independent bool) []error {
@@ -59,26 +58,22 @@ func collectHistoricalFleetCheckpoints(ctx context.Context, client *ethclient.Cl
 	headerErrors := make([]error, len(numbers))
 	for first := 0; first < len(numbers); first += maximumEVMRPCBatchCalls {
 		last := min(first+maximumEVMRPCBatchCalls, len(numbers))
-		blocks := make([]*evmRPCBlock, last-first)
-		batch := make([]rpc.BatchElem, last-first)
+		reads := make([]evmRpcRead, last-first)
 		for index := first; index < last; index++ {
-			batch[index-first] = rpc.BatchElem{Method: "eth_getBlockByNumber", Args: []any{hexutil.EncodeUint64(numbers[index]), false}, Result: &blocks[index-first]}
+			reads[index-first] = evmRpcRead{method: "eth_getBlockByNumber", args: []any{hexutil.EncodeUint64(numbers[index]), false}}
 		}
-		var batchErr error
-		if batchErr = ctx.Err(); batchErr == nil {
-			batchErr = client.Client().BatchCallContext(ctx, batch)
-		}
-		for index := range batch {
+		blocks, batchErr := readEvmRpcBatchForClientWithPolicy[*evmRPCBlock](ctx, "historical fleet checkpoint batch", reads, defaultFinalSemanticRPCRetryPolicy(), client.Client())
+		for index := range reads {
 			position := first + index
 			if batchErr != nil {
 				headerErrors[position] = batchErr
 				continue
 			}
-			if batch[index].Error != nil {
-				headerErrors[position] = batch[index].Error
+			if blocks[index].err != nil {
+				headerErrors[position] = blocks[index].err
 				continue
 			}
-			heads[position], headerErrors[position] = decodeEVMRPCBlock(blocks[index], new(big.Int).SetUint64(numbers[position]))
+			heads[position], headerErrors[position] = decodeEVMRPCBlock(blocks[index].value, new(big.Int).SetUint64(numbers[position]))
 		}
 	}
 	for index, checkpoint := range checkpoints {

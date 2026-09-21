@@ -792,6 +792,19 @@ type fleetInstallPinnedSnapshot struct {
 	Members            []fleetInstallPinnedMember `json:"members"`
 }
 
+// Bind a complete immutable group to its original install and observer.
+type fleetInstallPinnedProofInput struct {
+	Action     Action                       `json:"action"`
+	Evidence   FleetInstallBatchEvidence    `json:"evidence"`
+	Checkpoint ChainHead                    `json:"checkpoint"`
+	HashDomain string                       `json:"hash_domain"`
+	Observer   string                       `json:"observer"`
+	Endpoint   string                       `json:"endpoint"`
+	Target     common.Address               `json:"target"`
+	Calls      [][]byte                     `json:"calls"`
+	Snapshots  []fleetInstallPinnedSnapshot `json:"snapshots"`
+}
+
 // Reuse only the pinned mirror/binding comparison. Native/current commitment
 // checks and local member authentication happen before this boundary; receipt
 // and event verification happens afterwards. A later receipt failure therefore
@@ -828,46 +841,63 @@ func (self *Executor) verifyFleetInstallPinnedState(ctx context.Context, action 
 	if self.independentEVM != nil && self.oracle.client == self.independentEVM {
 		observer, endpoint = "independent", verificationEVMEndpoint(self.cfg)
 	}
-	_, err = self.withHistoricalAuditCache(ctx, "fleet-install-pinned-state-v1", struct {
-		Action     Action                       `json:"action"`
-		Evidence   FleetInstallBatchEvidence    `json:"evidence"`
-		Checkpoint ChainHead                    `json:"checkpoint"`
-		HashDomain string                       `json:"hash_domain"`
-		Observer   string                       `json:"observer"`
-		Endpoint   string                       `json:"endpoint"`
-		Target     common.Address               `json:"target"`
-		Calls      [][]byte                     `json:"calls"`
-		Snapshots  []fleetInstallPinnedSnapshot `json:"snapshots"`
-	}{
+	input := fleetInstallPinnedProofInput{
 		Action: action, Evidence: evidence, Checkpoint: evmHead, HashDomain: "evm-rpc",
 		Observer: observer, Endpoint: endpoint, Target: self.payloads.Manifest.CoordinatorProxy,
 		Calls: calls, Snapshots: snapshots,
-	}, func(auditCtx context.Context) error {
-		outputs, err := rawCoordinatorBatchCallAt(auditCtx, self.oracle, self.payloads.Manifest.CoordinatorProxy, calls, evmHead.Number)
-		if err != nil {
-			return err
-		}
-		outputIndex := 0
-		for _, snapshot := range snapshots {
-			mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
-			outputIndex++
-			if err != nil || !fleetMirrorMatches(mirror, snapshot.CommitmentHash, snapshot.CommitmentEvidence.FinalizedBlock, snapshot.FinalizedBlockHash) {
-				return stateMismatchError(err, "fleet %d install postcondition mirror mismatch", snapshot.Fleet)
+	}
+	_, err = self.withHistoricalAuditCache(ctx, "fleet-install-pinned-state-v1", input, func(auditCtx context.Context) error {
+		// A late timeout must not discard earlier authenticated fleets. Keep
+		// complete mirror/count/binding comparisons together, at most one RPC
+		// batch per group unless a single fleet itself exceeds that width.
+		callOffset := 0
+		var failures []error
+		for first := 0; first < len(snapshots); {
+			last, callCount := first, 0
+			for last < len(snapshots) {
+				count := 1 + 2*len(snapshots[last].Members)
+				if last > first && callCount+count > maximumEVMRPCBatchCalls {
+					break
+				}
+				callCount += count
+				last++
 			}
-			for memberIndex, member := range snapshot.Members {
-				count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
-				outputIndex++
+			group := input
+			group.Snapshots = snapshots[first:last]
+			group.Calls = calls[callOffset : callOffset+callCount]
+			_, groupErr := self.withHistoricalAuditCache(auditCtx, "fleet-install-pinned-group-v1", group, func(auditCtx context.Context) error {
+				outputs, err := rawCoordinatorBatchCallAt(auditCtx, self.oracle, self.payloads.Manifest.CoordinatorProxy, group.Calls, evmHead.Number)
 				if err != nil {
 					return err
 				}
-				record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
-				outputIndex++
-				if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, member.Binding, member.Binding.ValidToEpoch, member.Evidence.UID) {
-					return stateMismatchError(err, "fleet %d member %d install postcondition mismatch", snapshot.Fleet, memberIndex+1)
+				outputIndex := 0
+				for _, snapshot := range group.Snapshots {
+					mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
+					outputIndex++
+					if err != nil || !fleetMirrorMatches(mirror, snapshot.CommitmentHash, snapshot.CommitmentEvidence.FinalizedBlock, snapshot.FinalizedBlockHash) {
+						return stateMismatchError(err, "fleet %d install postcondition mirror mismatch", snapshot.Fleet)
+					}
+					for memberIndex, member := range snapshot.Members {
+						count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
+						outputIndex++
+						if err != nil {
+							return err
+						}
+						record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+						outputIndex++
+						if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, member.Binding, member.Binding.ValidToEpoch, member.Evidence.UID) {
+							return stateMismatchError(err, "fleet %d member %d install postcondition mismatch", snapshot.Fleet, memberIndex+1)
+						}
+					}
 				}
+				return nil
+			})
+			if groupErr != nil {
+				failures = append(failures, fmt.Errorf("fleet install pinned group %d-%d: %w", first+1, last, groupErr))
 			}
+			first, callOffset = last, callOffset+callCount
 		}
-		return nil
+		return errors.Join(failures...)
 	})
 	return err
 }

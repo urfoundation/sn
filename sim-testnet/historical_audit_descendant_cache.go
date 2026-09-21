@@ -82,7 +82,7 @@ func (self *historicalAuditPlanReader) read(ctx context.Context, stateDir, hash 
 // These immutable comparisons do not depend on unrelated runner source.
 // A new verifier contract must change historicalAuditCacheVerifierVersion.
 func (self *Executor) historicalAuditCompatibilityHash(cfg *ResolvedConfig, kind string, input any) (string, bool) {
-	if kind != "fleet-install-pinned-state-v1" && kind != historicalFleetGenerationOneCacheKind && kind != historicalNativeExtrinsicCacheKind {
+	if kind != "fleet-install-pinned-state-v1" && kind != "fleet-install-pinned-group-v1" && kind != historicalFleetGenerationOneCacheKind && kind != historicalNativeExtrinsicCacheKind {
 		return "", false
 	}
 	if self == nil || self.plan == nil || cfg == nil || cfg.Release == nil || cfg.Config == nil ||

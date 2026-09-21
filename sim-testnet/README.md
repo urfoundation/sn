@@ -928,8 +928,21 @@ native commitments, transaction receipts and install events remain outside that
 cache boundary. No failed or canceled proof is saved, and independent observers
 must both succeed before a combined fleet proof can be reused.
 
+Install comparisons checkpoint complete groups of fleets as they pass. A late
+RPC timeout therefore retains earlier authenticated groups across continuation
+and compatible runner updates. Every group binds the original action, install
+evidence, observer, canonical checkpoint and all of its decoder inputs.
+
+When historical preparation fails only on transient reads, setup keeps its
+approved action gate closed and retries after a 5–30 second backoff. Each pass
+rechecks current state and canonical checkpoints, while completed immutable
+groups reuse their authenticated proofs. Canceling preserves those proofs for
+the next invocation. Permanent errors, mixed evidence/transport failures and
+other failed preparation prerequisites still return the collected failures.
+The separate `audit` command and final acceptance retain their bounded checks.
+
 Compatible descendant approvals may reuse native inclusion/success proofs as
-well as the two fleet proof kinds. Native inputs bind the exact transaction,
+well as fleet proofs. Native inputs bind the exact transaction,
 block, observer and reviewed runtime catalogue; archived approval provenance
 and the proof MAC must still authenticate. Provisional proofs and old native
 entries without that runtime binding remain misses. Source-plan decoding is

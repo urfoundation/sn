@@ -83,7 +83,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	var payloadErr error
 	if len(audits) > 0 && planUsesContractDeploymentEnvelope(self.plan.Schema) {
 		if carryErr != nil {
-			payloadErr = errors.New("blocked by validator evidence immutable source history")
+			payloadErr = fmt.Errorf("blocked by validator evidence immutable source history: %w", carryErr)
 		} else if self.payloads == nil && self.roles == nil {
 			payloadErr = errors.New("blocked by role secrets")
 		} else {
@@ -97,7 +97,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	if payloadErr == nil {
 		self.carriedFleetHistoryKeys, fleetErr = self.verifyCarriedFleetGenerationOneHistory(ctx, audits)
 	} else {
-		fleetErr = errors.New("blocked by carried contract payloads")
+		fleetErr = fmt.Errorf("blocked by carried contract payloads: %w", payloadErr)
 	}
 	if fleetErr != nil {
 		stages = append(stages, fmt.Errorf("prepare carried fleet history: %w", fleetErr))
@@ -153,7 +153,12 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 				fmt.Fprintf(os.Stderr, "sim-testnet: carried action audit %d/%d\n", count, len(audits))
 			}
 		}()
-		blocked := func(stage string) error { return fmt.Errorf("action %s: blocked by %s", audit.action.ID, stage) }
+		blocked := func(stage string, causes ...error) error {
+			if cause := errors.Join(causes...); cause != nil {
+				return fmt.Errorf("action %s: blocked by %s: %w", audit.action.ID, stage, cause)
+			}
+			return fmt.Errorf("action %s: blocked by %s", audit.action.ID, stage)
+		}
 		if self.carriedFleetHistoryKeys[carriedVerificationKey(audit.entry)] {
 			return verifyCarriedActionWithTimeoutFor(ctx, self.cfg, func(auditCtx context.Context) error {
 				return self.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEvmHead, sharedNativeHead)
@@ -165,7 +170,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 			consumed = err == nil
 		}
 		if consumed && nativeErr != nil {
-			return blocked("carried native checkpoint")
+			return blocked("carried native checkpoint", nativeErr)
 		}
 		needsNative := consumed || strings.HasPrefix(audit.action.Kind, "substrate-") || audit.action.ID == "config.render" || strings.HasPrefix(audit.action.ID, "evidence.activate.") || audit.action.ID == runtimeEvidenceActivationBoundaryActionId || isFleetRenewalAction(audit.action) || strings.HasPrefix(audit.action.ID, "operator.register.") || strings.HasPrefix(audit.action.ID, "alpha.") || strings.HasPrefix(audit.action.ID, "precompile.") && audit.action.ID != "precompile.probe-deploy"
 		if self.preparationIncomplete && independentRPCRequired(self.cfg) {
@@ -178,10 +183,10 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 		}
 		needsPayloads := !consumed && (actionPostStateRequiresEVMCheckpoint(audit.action) || audit.action.ID == "config.render" || strings.HasPrefix(audit.action.ID, "fleet.mirror.") || strings.HasPrefix(audit.action.ID, "fleet.bind."))
 		if needsPayloads && payloadErr != nil {
-			return blocked("carried contract payloads")
+			return blocked("carried contract payloads", payloadErr)
 		}
 		if !consumed && actionPostStateRequiresEVMCheckpoint(audit.action) && evmErr != nil {
-			return blocked("carried EVM checkpoint")
+			return blocked("carried EVM checkpoint", evmErr)
 		}
 		if self.roles == nil && !carriedActionWithoutRoles(audit.action) {
 			return blocked("role secrets")
@@ -211,7 +216,7 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 					return fmt.Errorf("action %s generation-1 successor: %w", audit.action.ID, err)
 				}
 				if superseded {
-					return blocked("carried fleet history")
+					return blocked("carried fleet history", fleetErr)
 				}
 			}
 		}
