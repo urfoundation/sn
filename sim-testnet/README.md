@@ -596,6 +596,21 @@ failure. After its root cause is resolved, use the affected checks and any
 specifically justified repetitions in the incremental recovery policy above.
 Keep a short active-work index linking to detailed history.
 
+### Continuation decision before a manual stop
+
+Before any operator stops a live supervisor, campaign, validator, or release
+interval, first determine whether the run can continue safely while the issue
+is recorded. Treat an RPC timeout, unavailable optional audit, checker-only
+refusal, isolated worker failure, or repairable historical discrepancy as a
+continuation candidate: retain completed work, retry or defer only the affected
+unit, and run its audit or repair in parallel. Ask the operator whether to
+continue when a stop is not required by an irreversible safety boundary. Stop
+only when continued execution could submit an uncertain or unauthorized action,
+corrupt retained evidence/state, exceed an approved bound, or violate a final
+acceptance requirement. Record the reason, affected scope, and why isolation
+could not preserve progress before issuing `stop`; a root cause alone is not a
+reason to terminate an otherwise safe run.
+
 Validate the exact filenames and invocation consumed by the frozen body, not
 only a staging convention: a package-prefixed `sim-testnet.expected.txt` does
 not satisfy a runner that opens `expected.txt`. Any adapter must explicitly
