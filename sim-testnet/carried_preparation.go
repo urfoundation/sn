@@ -268,30 +268,14 @@ func verifyCarriedActionWithTimeoutFor(ctx context.Context, cfg *ResolvedConfig,
 	if cfg != nil && cfg.OperationalRPCMode == rpcModeOwnedNode {
 		timeout = carriedActionOwnedVerificationTimeout
 	}
-	// Historical verification is read-only. A single fresh context lets a
-	// transient archive timeout recover without discarding the completed audit
-	// prefix or restarting setup. Persistent failures still surface promptly.
-	attempts := 1
-	if cfg != nil && cfg.OperationalRPCMode == rpcModeOwnedNode {
-		attempts = 2
-	}
-	var last error
-	for attempt := 0; attempt < attempts; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		auditCtx, cancel := context.WithTimeout(ctx, timeout)
-		err := verify(auditCtx)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		last = err
-		if evmReadRpcRetriesExhausted(err) || !evmReadRpcErrorIsTransient(err) || !errors.Is(err, context.DeadlineExceeded) || attempt+1 == attempts {
-			return err
-		}
-	}
-	return last
+	// Each RPC owns its retry budget. Reopening this entire action after its
+	// deadline repeats successful reads and occupies the same worker again.
+	// Return the exact unfinished result for independent audit continuation.
+	auditCtx, cancel := context.WithTimeout(ctx, timeout)
+	err := verify(auditCtx)
+	deadlineErr := auditCtx.Err()
+	cancel()
+	return errors.Join(err, deadlineErr, ctx.Err())
 }
 
 // The owned LAN archive node has no request-rate gate. Bound its historical

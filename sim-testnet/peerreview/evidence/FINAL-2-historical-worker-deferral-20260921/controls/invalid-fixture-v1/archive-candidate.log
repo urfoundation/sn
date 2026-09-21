@@ -1,0 +1,12 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.JHpH11yL; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:16:10.266014 3504025 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:16:10.266385 3504025 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:16:10.266525 3504025 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:16:10.266574 3504025 env.go:78] [env]settings = map[]
+sim-testnet: provisional testnet resume; final_acceptance=false; retained plan 0x5656565656565656565656565656565656565656565656565656565656565656; actual driver SHA256 sha256:1212121212121212121212121212121212121212121212121212121212121212; provenance /mnt/data/sn-testnet/temp/command.JHpH11yL/gotmp/TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccep1243985268/001/provisional-resumes/invocation-4030352001/provenance.json
+--- FAIL: TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept (0.02s)
+    provisional_history_deferral_test.go:36: historical audit cannot persist action postconditions
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.088s
+FAIL

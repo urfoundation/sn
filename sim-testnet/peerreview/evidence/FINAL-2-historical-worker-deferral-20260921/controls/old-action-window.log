@@ -1,0 +1,11 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.6tyyj98M; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:11:03.719715 3494475 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:11:03.720090 3494475 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:11:03.720209 3494475 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:11:03.720247 3494475 env.go:78] [env]settings = map[]
+--- FAIL: TestVerifyCarriedActionWithTimeoutReturnsOwnedLANDeadlineWithoutRestarting (0.00s)
+    carried_preparation_index_test.go:527: owned deadline repeated its action: error=<nil> calls=2
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.097s
+FAIL

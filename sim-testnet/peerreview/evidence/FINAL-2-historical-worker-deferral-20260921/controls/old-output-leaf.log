@@ -1,0 +1,13 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.3RLPutFL; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:14:22.189182 3500449 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:14:22.189495 3500449 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:14:22.189673 3500449 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:14:22.189726 3500449 env.go:78] [env]settings = map[]
+sim-testnet: provisional testnet resume; final_acceptance=false; retained plan 0x5656565656565656565656565656565656565656565656565656565656565656; actual driver SHA256 sha256:1212121212121212121212121212121212121212121212121212121212121212; provenance /mnt/data/sn-testnet/temp/command.3RLPutFL/gotmp/TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccep3776248424/001/provisional-resumes/invocation-2332907716/provenance.json
+sim-testnet: provisional resume authenticated 2 verified local receipts; current topology readiness remains required
+--- FAIL: TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept (0.08s)
+    provisional_history_deferral_test.go:62: lstat /mnt/data/sn-testnet/temp/command.3RLPutFL/gotmp/TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccep3776248424/001/provisional-resumes/invocation-2332907716/historical-audit-deferred.json: no such file or directory
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.159s
+FAIL

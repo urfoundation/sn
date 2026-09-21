@@ -1,0 +1,3 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.tCu0l5H0; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+ok  	github.com/urfoundation/sn/sim-testnet	0.825s
+elapsed=62.09 exit=0

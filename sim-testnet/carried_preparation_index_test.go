@@ -514,7 +514,7 @@ func TestVerifyCarriedActionWithTimeoutExtendsOwnedLANHistoricalReads(t *testing
 	}
 }
 
-func TestVerifyCarriedActionWithTimeoutRetriesOwnedLANDeadline(t *testing.T) {
+func TestVerifyCarriedActionWithTimeoutReturnsOwnedLANDeadlineWithoutRestarting(t *testing.T) {
 	calls := 0
 	err := verifyCarriedActionWithTimeoutFor(t.Context(), &ResolvedConfig{OperationalRPCMode: rpcModeOwnedNode}, func(context.Context) error {
 		calls++
@@ -523,7 +523,7 @@ func TestVerifyCarriedActionWithTimeoutRetriesOwnedLANDeadline(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil || calls != 2 {
-		t.Fatalf("owned deadline retry error=%v calls=%d, want success after two calls", err, calls)
+	if !errors.Is(err, context.DeadlineExceeded) || calls != 1 {
+		t.Fatalf("owned deadline repeated its action: error=%v calls=%d", err, calls)
 	}
 }

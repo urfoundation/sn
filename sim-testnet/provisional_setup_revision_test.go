@@ -35,6 +35,17 @@ func provisionalSetupActivationFixture(t *testing.T) (carriedPreparationTest, []
 	self.cfg.provisionalResume.Record.PlanHash = self.plan.PlanHash
 	self.cfg.provisionalResume.Record.Command = "setup"
 	self.cfg.provisionalResume.RecordPath = filepath.Join(self.stateDir, "provisional-resumes", "synthetic-invocation", "provenance.json")
+	// The command creates immutable provenance before activation. Supply its
+	// real bytes and digest as well as the path in this local activation fixture.
+	provenance, err := json.MarshalIndent(self.cfg.provisionalResume.Record, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance = append(provenance, '\n')
+	if err := atomicWrite(self.cfg.provisionalResume.RecordPath, provenance, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	self.cfg.provisionalResume.RecordHash = bytesSHA256(provenance)
 	source, err := json.MarshalIndent(fixture.source, "", "  ")
 	if err != nil {
 		t.Fatal(err)

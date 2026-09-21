@@ -1,0 +1,18 @@
+[test storage] root=/mnt/data/sn-testnet; owner=/mnt/data/sn-testnet/temp/command.7LrEZRq1; go-cache=/mnt/data/sn-testnet/gocache; go-modules=/mnt/data/sn-testnet/gomodcache
+[env]glog not configured from command line. Using default configuration.
+I0921 19:32:43.933588 3526396 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0921 19:32:43.934048 3526396 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0921 19:32:43.934349 3526396 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0921 19:32:43.934504 3526396 env.go:78] [env]settings = map[]
+sim-testnet: provisional testnet resume; final_acceptance=false; retained plan 0x5656565656565656565656565656565656565656565656565656565656565656; actual driver SHA256 sha256:1212121212121212121212121212121212121212121212121212121212121212; provenance /mnt/data/sn-testnet/temp/command.7LrEZRq1/gotmp/TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccep1337656001/001/provisional-resumes/invocation-560850767/provenance.json
+sim-testnet: eth_getBlockByNumber finalized transient read attempt 1/4 (timeout 30s); retry in 1s: 503 Service Unavailable
+sim-testnet: eth_getBlockByNumber finalized transient read attempt 2/4 (timeout 30s); retry in 2s: 503 Service Unavailable
+sim-testnet: eth_getBlockByNumber finalized transient read attempt 3/4 (timeout 30s); retry in 4s: 503 Service Unavailable
+sim-testnet: carried action audit 2/2
+--- FAIL: TestProvisionalHistoryDeferralStartsWithoutArchiveAndCannotAccept (7.08s)
+    provisional_history_deferral_test.go:63: prepare carried EVM checkpoint: eth_getBlockByNumber finalized read retries exhausted after 4 attempts (per-attempt timeout 30s): 503 Service Unavailable
+        action evidence.activate.1: blocked by carried EVM checkpoint: eth_getBlockByNumber finalized read retries exhausted after 4 attempts (per-attempt timeout 30s): 503 Service Unavailable
+        action evidence.activate.2: blocked by carried EVM checkpoint: eth_getBlockByNumber finalized read retries exhausted after 4 attempts (per-attempt timeout 30s): 503 Service Unavailable
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	7.505s
+FAIL

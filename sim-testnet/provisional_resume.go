@@ -210,7 +210,7 @@ func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Cont
 	entries := readEntries()
 	if self.reuseProvisionalPreparationPersistentCache(ctx, entries) {
 		fmt.Fprintf(os.Stderr, "sim-testnet: provisional resume reused authenticated local receipt audit; current topology readiness remains required\n")
-		return nil
+		return self.recordProvisionalHistoryDeferral(ctx, entries)
 	}
 	verified := newCarriedPreparationIndex(self.plan, entries)
 	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
@@ -243,6 +243,7 @@ func (self *Executor) verifyProvisionalActionHistoryWithReaders(ctx context.Cont
 	err := errors.Join(errors.Join(failures...), ctx.Err())
 	if err == nil {
 		self.saveProvisionalPreparationPersistentCache(entries, verifiedEntries)
+		err = self.recordProvisionalHistoryDeferral(ctx, entries)
 	}
 	return err
 }
