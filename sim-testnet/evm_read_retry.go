@@ -128,6 +128,9 @@ func retryEvmReadRpcCall(ctx context.Context, operation string, policy finalSema
 		attemptCtx, cancel := context.WithTimeout(ctx, policy.attemptTimeout)
 		attemptCtx = context.WithValue(attemptCtx, ownedEvmRpcRetryBudgetKey{}, true)
 		err := call(attemptCtx)
+		if err == nil {
+			err = attemptCtx.Err()
+		}
 		cancel()
 		if parentErr := ctx.Err(); parentErr != nil {
 			return parentErr

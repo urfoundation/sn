@@ -11,12 +11,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
+	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
@@ -25,6 +22,7 @@ import (
 	gsrpcrpc "github.com/centrifuge/go-substrate-rpc-client/v4/rpc"
 	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -236,6 +234,20 @@ func retryFinalSemanticRPCCall(ctx context.Context, gate *rpcRequestGate, policy
 	if err := policy.validate(); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// A higher read/authentication loop already owns the attempt deadline and
+	// retries. Native adapters must honor the same ownership as the EVM path;
+	// otherwise one four-attempt read can become sixteen downstream requests.
+	if managed, _ := ctx.Value(ownedEvmRpcRetryBudgetKey{}).(bool); managed {
+		if gate != nil {
+			if err := gate.wait(ctx); err != nil {
+				return err
+			}
+		}
+		return errors.Join(call(ctx), ctx.Err())
+	}
 	delay := policy.initialRetryDelay
 	var last error
 	for attempt := 1; attempt <= policy.maximumAttempts; attempt++ {
@@ -250,12 +262,15 @@ func retryFinalSemanticRPCCall(ctx context.Context, gate *rpcRequestGate, policy
 		attemptCtx, cancel := context.WithTimeout(ctx, policy.attemptTimeout)
 		attemptCtx = context.WithValue(attemptCtx, ownedEvmRpcRetryBudgetKey{}, true)
 		last = call(attemptCtx)
-		cancel()
 		if last == nil {
-			return nil
+			last = attemptCtx.Err()
 		}
+		cancel()
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if last == nil {
+			return nil
 		}
 		if attempt == policy.maximumAttempts || !finalSemanticRPCErrorIsTransient(last) {
 			return last
@@ -281,39 +296,45 @@ func finalSemanticRPCErrorIsTransient(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || evmReadRpcRetriesExhausted(err) {
 		return false
 	}
-	message := strings.ToLower(strings.TrimSpace(err.Error()))
-	for _, permanent := range []string{"pruned", "archive", "state already discarded", "unknown block", "header not found", "missing trie", "state unavailable"} {
-		if strings.Contains(message, permanent) {
+	if _, fileError := err.(*os.PathError); fileError {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
 			return false
 		}
-	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) {
+		for _, cause := range causes {
+			if !finalSemanticRPCErrorIsTransient(cause) {
+				return false
+			}
+		}
 		return true
 	}
-	var networkError net.Error
-	if errors.As(err, &networkError) && (networkError.Timeout() || networkError.Temporary()) {
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		if cause := wrapped.Unwrap(); cause != nil {
+			return finalSemanticRPCErrorIsTransient(cause)
+		}
+	}
+	if evmReadRpcErrorIsTransient(err) {
 		return true
 	}
-	var httpError gethrpc.HTTPError
-	if errors.As(err, &httpError) {
-		switch httpError.StatusCode {
-		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-			return true
-		default:
-			return false
-		}
+	// Provider codes and HTTP status take precedence over their message. In
+	// particular, a revert or invalid-params response mentioning a timeout is
+	// permanent even when a plain legacy transport message would be retryable.
+	switch err.(type) {
+	case finalSemanticRPCCodeError, gethrpc.HTTPError, *gethrpc.HTTPError:
+		return false
 	}
-	var rpcError finalSemanticRPCCodeError
-	if errors.As(err, &rpcError) {
-		switch rpcError.ErrorCode() {
-		case -32002, -32005, -32016:
-			return true
-		}
+	if closed, ok := err.(*websocket.CloseError); ok {
+		return closed.Code == websocket.CloseAbnormalClosure
 	}
-	for _, transient := range []string{"upstream overloaded", "rate limit", "too many requests", "temporarily unavailable", "try again", "request timed out", "timeout", "429", "502 bad gateway", "503 service unavailable", "504 gateway timeout", "connection reset by peer", "broken pipe", "unexpected eof", "use of closed network connection", "websocket: close 1006"} {
-		if strings.Contains(message, transient) {
-			return true
-		}
+	// Older native adapters erase provider error types. Retain only their exact
+	// known messages, rather than allowing an integrity error containing one of
+	// these phrases to be retried as transient.
+	switch strings.ToLower(strings.TrimSpace(err.Error())) {
+	case "upstream overloaded", "historical work rate limit exceeded", "rate limit", "too many requests", "temporarily unavailable", "try again", "request timed out", "timeout", "429", "502 bad gateway", "503 service unavailable", "504 gateway timeout", "connection reset by peer", "broken pipe", "unexpected eof", "use of closed network connection":
+		return true
 	}
 	return false
 }

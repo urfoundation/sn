@@ -120,7 +120,24 @@ func (self *ownedEvmRetryTransport) RoundTrip(request *http.Request) (*http.Resp
 		return nil, err
 	}
 	if !readOnly {
-		return base.RoundTrip(request)
+		// A submission has an unknown outcome after a transport failure and is
+		// never replayed here. It still needs a deadline: callers retain exact
+		// signed bytes in their journal and reconcile them on the next invocation.
+		attemptCtx, cancel := context.WithTimeout(request.Context(), ownedEVMHTTPTimeout)
+		response, err := base.RoundTrip(request.Clone(attemptCtx))
+		if err = errors.Join(err, attemptCtx.Err()); err != nil {
+			if response != nil && response.Body != nil {
+				response.Body.Close()
+			}
+			cancel()
+			return nil, err
+		}
+		if response == nil || response.Body == nil {
+			cancel()
+			return nil, errors.New("owned EVM RPC returned an empty HTTP response")
+		}
+		response.Body = &ownedEvmReplayBody{Reader: response.Body, source: response.Body, cancel: cancel}
+		return response, nil
 	}
 	if err := self.policy.validate(); err != nil {
 		request.Body.Close()
