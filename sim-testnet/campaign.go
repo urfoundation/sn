@@ -157,11 +157,12 @@ type scenarioCampaignAttemptPayload struct {
 }
 
 type scenarioCampaignAttempt struct {
-	payload       scenarioCampaignAttemptPayload
-	cfg           *ResolvedConfig
-	stateDir      string
-	roles         *RoleSecrets
-	recoveryProof *scenarioCampaignRecoveryProofCache
+	payload            scenarioCampaignAttemptPayload
+	cfg                *ResolvedConfig
+	stateDir           string
+	roles              *RoleSecrets
+	recoveryProof      *scenarioCampaignRecoveryProofCache
+	historicalEvidence bool
 }
 
 func scenarioCampaignAttemptPath(stateDir, phase string) string {
@@ -237,6 +238,12 @@ func scenarioObservationIdentity(observation *ScenarioObservation) (ChainHead, u
 }
 
 func validateScenarioCampaignAcceptanceBoundary(cfg *ResolvedConfig, phase string, boundary *scenarioCampaignAcceptanceBoundary) error {
+	return validateScenarioCampaignAcceptanceBoundaryContext(cfg, phase, boundary, false)
+}
+
+// Failed historical boundaries retain their signed definition commitments;
+// current acceptance always checks the executable definition as well.
+func validateScenarioCampaignAcceptanceBoundaryContext(cfg *ResolvedConfig, phase string, boundary *scenarioCampaignAcceptanceBoundary, historical bool) error {
 	if boundary == nil {
 		return nil
 	}
@@ -254,6 +261,12 @@ func validateScenarioCampaignAcceptanceBoundary(cfg *ResolvedConfig, phase strin
 		return errors.New("scenario campaign attempt observation boundary is not monotonic")
 	}
 	wantEpochs := uint64(cfg.Config.Scenarios.ShortEpochs)
+	if historical {
+		if phase != "release-1.0" || window.EpochCount == 0 {
+			return errors.New("historical campaign boundary has no failed release geometry")
+		}
+		wantEpochs = window.EpochCount
+	}
 	wantBlocks := cfg.Policy.Settlement.EpochBlocks
 	wantFinalize := cfg.Policy.Settlement.FinalizeOffsetBlocks
 	if phase == "production-soak" {
@@ -270,6 +283,9 @@ func validateScenarioCampaignAcceptanceBoundary(cfg *ResolvedConfig, phase strin
 	terminalBlock, terminalOK := checkedAdd(endBlock, wantFinalize)
 	if !firstOK || !spanOK || !endOK || !terminalOK || window.FirstEpoch != firstEpoch || window.EpochCount != wantEpochs || window.EpochBlocks != wantBlocks || window.FinalizeOffsetBlocks != wantFinalize || window.StartBlock <= window.BaselineHead.Number || window.StartBlock-window.BaselineHead.Number > wantBlocks || window.EndBlock != endBlock || window.TerminalBlock != terminalBlock {
 		return errors.New("scenario campaign attempt acceptance geometry is not exact")
+	}
+	if historical {
+		return validateHistoricalScenarioCampaignFaults(window, boundary.Faults)
 	}
 	definition, err := scenarioDefinitionFor(cfg, phase)
 	if err != nil {
@@ -330,33 +346,42 @@ func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *
 		}
 		legacyImpactSchedule = legacyImpactSchedule || legacy
 		seen[record.ID] = true
-		if record.PreAcceptance {
-			if record.ArmedBlock == 0 || record.ArmedBlock >= window.StartBlock || !validCanonicalHashHex(record.ArmedBlockHash) {
-				return false, fmt.Errorf("scenario campaign pre-acceptance fault %q has no exact armed boundary", record.ID)
-			}
-		} else if record.ArmedBlock != 0 || record.ArmedBlockHash != "" {
-			return false, fmt.Errorf("scenario campaign fault %q has foreign pre-acceptance state", record.ID)
-		}
-		switch record.Status {
-		case "pending":
-			if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != 0 || len(record.RestoredProcesses) != 0 || record.Error != "" {
-				return false, fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
-			}
-		case "active":
-			if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != len(record.Targets) || len(record.RestoredProcesses) != 0 || record.Error != "" {
-				return false, fmt.Errorf("scenario campaign active fault %q has malformed transition evidence", record.ID)
-			}
-		case "restored":
-			if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock < record.AppliedBlock || !validCanonicalHashHex(record.RestoredBlockHash) || len(record.Processes) != len(record.Targets) || record.Error != "" {
-				return false, fmt.Errorf("scenario campaign restored fault %q has malformed transition evidence", record.ID)
-			}
-		case "failed":
-			return false, fmt.Errorf("scenario campaign fault %q is terminally failed", record.ID)
-		default:
-			return false, fmt.Errorf("scenario campaign fault %q has unknown status %q", record.ID, record.Status)
+		if err := validateScenarioCampaignFaultState(window, record); err != nil {
+			return false, err
 		}
 	}
 	return legacyImpactSchedule, nil
+}
+
+// Both current schedules and historical signed schedules enforce identical
+// state-transition evidence and reject failed or malformed fault state.
+func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record ScenarioFaultRecord) error {
+	if record.PreAcceptance {
+		if record.ArmedBlock == 0 || record.ArmedBlock >= window.StartBlock || !validCanonicalHashHex(record.ArmedBlockHash) {
+			return fmt.Errorf("scenario campaign pre-acceptance fault %q has no exact armed boundary", record.ID)
+		}
+	} else if record.ArmedBlock != 0 || record.ArmedBlockHash != "" {
+		return fmt.Errorf("scenario campaign fault %q has foreign pre-acceptance state", record.ID)
+	}
+	switch record.Status {
+	case "pending":
+		if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != 0 || len(record.RestoredProcesses) != 0 || record.Error != "" {
+			return fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
+		}
+	case "active":
+		if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != len(record.Targets) || len(record.RestoredProcesses) != 0 || record.Error != "" {
+			return fmt.Errorf("scenario campaign active fault %q has malformed transition evidence", record.ID)
+		}
+	case "restored":
+		if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock < record.AppliedBlock || !validCanonicalHashHex(record.RestoredBlockHash) || len(record.Processes) != len(record.Targets) || record.Error != "" {
+			return fmt.Errorf("scenario campaign restored fault %q has malformed transition evidence", record.ID)
+		}
+	case "failed":
+		return fmt.Errorf("scenario campaign fault %q is terminally failed", record.ID)
+	default:
+		return fmt.Errorf("scenario campaign fault %q has unknown status %q", record.ID, record.Status)
+	}
+	return nil
 }
 
 func validateScenarioLifecycleHandoffBinding(cfg *ResolvedConfig, binding ScenarioLifecycleHandoff, data []byte) error {
@@ -449,6 +474,12 @@ func validateReleaseCampaignGateShape(cfg *ResolvedConfig, gate *ReleaseCampaign
 }
 
 func validateScenarioCampaignAttemptPayload(cfg *ResolvedConfig, planHash, phase string, payload *scenarioCampaignAttemptPayload) error {
+	return validateScenarioCampaignAttemptPayloadContext(cfg, planHash, phase, payload, false)
+}
+
+// Historical mode is private to an authenticated ancestor read and never
+// changes the phase, config, policy, plan or signature identity checks.
+func validateScenarioCampaignAttemptPayloadContext(cfg *ResolvedConfig, planHash, phase string, payload *scenarioCampaignAttemptPayload, historical bool) error {
 	if cfg == nil || cfg.Config == nil || payload == nil || payload.Schema != scenarioCampaignAttemptSchema || payload.Phase != phase || payload.RunID == "" || !strings.EqualFold(payload.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(payload.PolicyHash, cfg.PolicyHash) || !strings.EqualFold(payload.PlanHash, planHash) || !validCanonicalHashHex(payload.PlanHash) {
 		return errors.New("scenario campaign attempt differs from the approved phase, configuration, policy, or plan")
 	}
@@ -478,7 +509,7 @@ func validateScenarioCampaignAttemptPayload(cfg *ResolvedConfig, planHash, phase
 		if !payload.PreparationComplete {
 			return errors.New("scenario campaign attempt acceptance boundary precedes completed preparation")
 		}
-		if err := validateScenarioCampaignAcceptanceBoundary(cfg, phase, payload.AcceptanceBoundary); err != nil {
+		if err := validateScenarioCampaignAcceptanceBoundaryContext(cfg, phase, payload.AcceptanceBoundary, historical); err != nil {
 			return err
 		}
 		if (payload.AcceptanceInvalidatedAt == "") != (payload.AcceptanceInvalidation == "") {
@@ -522,6 +553,16 @@ func readScenarioCampaignAttempt(cfg *ResolvedConfig, stateDir string, roles *Ro
 			return nil, err
 		}
 	}
+	if phase == "release-1.0" && path == scenarioCampaignSuccessorPath(stateDir) {
+		attempt, _, _, err := readScenarioCampaignRecoveryRoot(cfg, stateDir, roles, planHash)
+		if err != nil {
+			return nil, err
+		}
+		if attempt.payload.PlanHash != planHash || attempt.payload.ConfigHash != cfg.ConfigHash {
+			return nil, errScenarioCampaignHistoricalLineage
+		}
+		return attempt, nil
+	}
 	attempt, _, err := readScenarioCampaignAttemptAt(cfg, stateDir, roles, planHash, phase, path)
 	if err != nil {
 		return nil, err
@@ -537,6 +578,12 @@ func readScenarioCampaignAttempt(cfg *ResolvedConfig, stateDir string, roles *Ro
 }
 
 func readScenarioCampaignAttemptAt(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash, phase, path string) (*scenarioCampaignAttempt, []byte, error) {
+	return readScenarioCampaignAttemptAtContext(cfg, stateDir, roles, planHash, phase, path, false)
+}
+
+// The ancestor reader opts into failed-evidence interpretation after checking
+// current approval ancestry. Public/current attempt readers remain strict.
+func readScenarioCampaignAttemptAtContext(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash, phase, path string, historical bool) (*scenarioCampaignAttempt, []byte, error) {
 	if roles == nil {
 		return nil, nil, errors.New("scenario campaign attempt has no owner roles")
 	}
@@ -573,10 +620,10 @@ func readScenarioCampaignAttemptAt(cfg *ResolvedConfig, stateDir string, roles *
 	if envelope.RunID != payload.RunID {
 		return nil, nil, errors.New("scenario campaign attempt envelope run differs from its payload")
 	}
-	if err := validateScenarioCampaignAttemptPayload(cfg, planHash, phase, &payload); err != nil {
+	if err := validateScenarioCampaignAttemptPayloadContext(cfg, planHash, phase, &payload, historical); err != nil {
 		return nil, nil, err
 	}
-	return &scenarioCampaignAttempt{payload: payload, cfg: cfg, stateDir: stateDir, roles: roles}, raw, nil
+	return &scenarioCampaignAttempt{payload: payload, cfg: cfg, stateDir: stateDir, roles: roles, historicalEvidence: historical}, raw, nil
 }
 
 func writeScenarioCampaignAttempt(attempt *scenarioCampaignAttempt) error {
@@ -616,12 +663,18 @@ func loadOrCreateScenarioCampaignAttempt(cfg *ResolvedConfig, stateDir string, r
 			result = attempt
 			return nil
 		}
+		if errors.Is(err, errScenarioCampaignHistoricalLineage) && phase == "release-1.0" && prior == nil && len(owners) == 1 {
+			result, err = createScenarioCampaignRecovery(cfg, stateDir, roles, planHash, now, owners[0])
+			return err
+		}
 		// A missing dependency of an existing signed record is not an absent
 		// attempt. It must never enter the ordinary new-record overwrite path.
 		existing := false
+		successorExists := false
 		for _, path := range []string{scenarioCampaignAttemptPath(stateDir, phase), scenarioCampaignSuccessorPath(stateDir)} {
 			if _, statErr := os.Lstat(path); statErr == nil {
 				existing = true
+				successorExists = successorExists || path == scenarioCampaignSuccessorPath(stateDir)
 			} else if !errors.Is(statErr, os.ErrNotExist) {
 				return statErr
 			}
@@ -630,7 +683,7 @@ func loadOrCreateScenarioCampaignAttempt(cfg *ResolvedConfig, stateDir string, r
 		if recoveryErr != nil {
 			return recoveryErr
 		}
-		if len(recoveryFiles) != 0 {
+		if len(recoveryFiles) != 0 || phase == "release-1.0" && successorExists {
 			return err
 		}
 		if !errors.Is(err, os.ErrNotExist) || existing && phase == "release-1.0" {
