@@ -33,6 +33,25 @@ func provisionalRelayCaptureEnabled(cfg *ResolvedConfig) bool {
 	return provisionalResumeEnabled(cfg) && cfg.provisionalResume.Record.ReadOnly && cfg.provisionalResume.Record.Command == "relay-continuation"
 }
 
+// Old local intent bytes are checked against the original policy/custody view.
+// The current observer's compatibility permission is not a historical config
+// fact. This view is never written or handed to a running validator; the hashed
+// continuation separately retains the real non-accepting observer provenance.
+func relayContinuationHistoryConfig(cfg *ResolvedConfig) (*ResolvedConfig, error) {
+	if cfg == nil {
+		return nil, errors.New("relay history configuration is unavailable")
+	}
+	if !provisionalResumeEnabled(cfg) {
+		return cfg, nil
+	}
+	if !cfg.readOnlyAudit || !provisionalRelayCaptureEnabled(cfg) {
+		return nil, errors.New("relay history view cannot remove live provisional authority")
+	}
+	history := *cfg
+	history.provisionalResume = nil
+	return &history, nil
+}
+
 func validateProvisionalRelayCaptureContext(cfg *ResolvedConfig, plan *SetupPlan) error {
 	if !provisionalRelayCaptureEnabled(cfg) || !cfg.readOnlyAudit || cfg.Config == nil || cfg.Public == nil || plan == nil || !ownedRPCOnly(cfg) {
 		return errors.New("relay preview has no exact read-only owned-node admission")

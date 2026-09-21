@@ -320,3 +320,73 @@ func TestProvisionalRelayCaptureStrictReconciliationDoesNotGrantFinalAcceptance(
 		t.Fatal("fixture lost its authenticated source journal")
 	}
 }
+
+func TestProvisionalRelayCaptureHistoricalPrefixUsesOriginalConfigWithoutWriting(t *testing.T) {
+	cfg, stateDir, roles := runtimeConfigNativeRenderFixtureTest(t)
+	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contracts, err := loadContractDeployment(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventStart, err := contractDeploymentEventSyncBlock(contracts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := runtimeComponentConfigBase(resolved, contracts, eventStart)
+	original, err := marshalRuntimeValidatorConfig(resolved, stateDir, roles, base, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(stateDir, "runtime", "validator-1", "validator.yml")
+	root := filepath.Join(filepath.Dir(configPath), "coordinator-state-v2")
+	if err := ensurePrivateDir(root); err != nil {
+		t.Fatal(err)
+	}
+	before := validatorNamespaceTreeSnapshot(t, stateDir)
+	provisional := *resolved
+	provisional.readOnlyAudit = true
+	provisional.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{ReadOnly: true, Command: "relay-continuation"}}
+	mixed, err := marshalRuntimeValidatorConfig(&provisional, stateDir, roles, base, 1)
+	if err != nil || bytes.Equal(mixed, original) {
+		t.Fatal("causal fixture did not add actual invocation mode", err)
+	}
+	approved, source := "0x"+strings.Repeat("ab", 32), "0x"+strings.Repeat("cd", 32)
+	mixedRequest, err := validatorcomponent.CaptureReleaseHistoryAdoptionV2(t.Context(), configPath, mixed, approved, source, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatorcomponent.CheckReleaseHistoryAdoptionV2Source(t.Context(), configPath, mixed, mixedRequest, bytesSHA256(mixedRequest)); err == nil || !strings.Contains(err.Error(), "testnet owner") {
+		t.Fatal("strict source reader unexpectedly accepted provisional runtime authority", err)
+	}
+	history, err := relayContinuationHistoryConfig(&provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := marshalRuntimeValidatorConfig(history, stateDir, roles, base, 1)
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatal("history view changed any original policy/custody/config byte", err)
+	}
+	request, err := validatorcomponent.CaptureReleaseHistoryAdoptionV2(t.Context(), configPath, got, approved, source, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatorcomponent.CheckReleaseHistoryAdoptionV2Source(t.Context(), configPath, got, request, bytesSHA256(request)); err != nil {
+		t.Fatal("original history could not be authenticated", err)
+	}
+	if !provisionalResumeEnabled(&provisional) || provisionalResumeEnabled(history) || !history.readOnlyAudit {
+		t.Fatal("local history view changed observer mode or acquired write authority")
+	}
+	provisional.readOnlyAudit = false
+	if _, err := relayContinuationHistoryConfig(&provisional); err == nil {
+		t.Fatal("history view stripped a live runtime mode")
+	}
+	after := validatorNamespaceTreeSnapshot(t, stateDir)
+	originalTree, _ := json.Marshal(before)
+	currentTree, _ := json.Marshal(after)
+	if !bytes.Equal(originalTree, currentTree) {
+		t.Fatal("local history preview rewrote retained source bytes")
+	}
+}

@@ -296,6 +296,10 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 	if err != nil {
 		return nil, err
 	}
+	historyConfig, err := relayContinuationHistoryConfig(resolved)
+	if err != nil {
+		return nil, err
+	}
 	entries, err := readJournalEntries(stateDir)
 	if err != nil || len(entries) == 0 {
 		return nil, errors.Join(errors.New("relay continuation requires the original deployment journal"), err)
@@ -397,7 +401,7 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 	}
 	for index, configured := range resolved.Config.ValidatorEvidenceV2 {
 		id := int(configured.ValidatorID)
-		configBytes, err := marshalRuntimeValidatorConfig(resolved, stateDir, roles, renderBase, id)
+		configBytes, err := marshalRuntimeValidatorConfig(historyConfig, stateDir, roles, renderBase, id)
 		if err != nil {
 			return nil, err
 		}
