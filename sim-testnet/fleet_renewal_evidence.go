@@ -6,6 +6,22 @@ import (
 	"os"
 )
 
+// Epoch selection is shared with lifecycle composition so a future successor
+// cannot suppress the still-current handoff generation.
+func fleetRenewalForEpoch(plan *SetupPlan, epoch uint64) *FleetRenewal {
+	if plan == nil {
+		return nil
+	}
+	var selected *FleetRenewal
+	for index := range plan.FleetRenewals {
+		renewal := &plan.FleetRenewals[index]
+		if renewal.ValidFromEpoch <= epoch {
+			selected = renewal
+		}
+	}
+	return selected
+}
+
 // A completed, journal-authenticated renewal replaces current observation
 // paths at its exact activation boundary; all prior public files remain intact.
 func fleetRenewalEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epoch uint64, prior []fleetLifecycleEvidenceDescriptor) ([]fleetLifecycleEvidenceDescriptor, error) {
@@ -35,13 +51,7 @@ func fleetRenewalEvidenceDescriptorsForPlan(cfg *ResolvedConfig, stateDir string
 	if err != nil {
 		return nil, err
 	}
-	var selected *FleetRenewal
-	for index := range plan.FleetRenewals {
-		renewal := &plan.FleetRenewals[index]
-		if renewal.ValidFromEpoch <= epoch {
-			selected = renewal
-		}
-	}
+	selected := fleetRenewalForEpoch(plan, epoch)
 	if selected == nil {
 		return prior, nil
 	}

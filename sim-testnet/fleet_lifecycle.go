@@ -630,8 +630,18 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if lifecycle != nil && plan != nil && (lifecycle.PlanHash != plan.PlanHash || !fleetLifecycleCanonicalEqual(lifecycle.Renewal, plan.FleetLifecycleRenewal)) {
-		return nil, errors.New("lifecycle observation differs from its current approved renewal plan")
+	sealedLifecycle := lifecycle != nil && (lifecycle.Stage == fleetLifecycleStageReleaseHandoff || lifecycle.Stage == fleetLifecycleStageComplete)
+	if lifecycle != nil && lifecycle.DeploymentID != cfg.Config.Deployment.DeploymentID {
+		return nil, errors.New("lifecycle observation belongs to a different deployment")
+	}
+	if lifecycle != nil && plan != nil {
+		// Ordinary renewal preserves the sealed lifecycle as an immutable
+		// ancestor. Apply the same lineage/reference boundary as renewal
+		// admission; an active lifecycle must still belong to this exact plan.
+		owned := lifecycle.PlanHash == plan.PlanHash || sealedLifecycle && plan.allowedPlanHashes()[lifecycle.PlanHash]
+		if !owned || lifecycle.DeploymentID != plan.DeploymentID || !fleetLifecycleCanonicalEqual(lifecycle.Renewal, plan.FleetLifecycleRenewal) {
+			return nil, errors.New("lifecycle observation differs from its current approved renewal plan")
+		}
 	}
 	descriptors := make([]fleetLifecycleEvidenceDescriptor, 0, cfg.Config.Topology.fleetCandidates())
 	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
@@ -645,6 +655,13 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 		return nil, err
 	}
 	if lifecycle == nil {
+		return descriptors, nil
+	}
+	// Once effective and fully journal-verified above, an ordinary successor
+	// renews the entire retained population, including the lifecycle fleets.
+	// The sealed handoff still describes its own historical round, whose older
+	// takeover/provider files must not overwrite the new generation.
+	if selected := fleetRenewalForEpoch(plan, epoch); sealedLifecycle && lifecycle.Renewal != nil && selected != nil && selected.Round > lifecycle.Renewal.Round {
 		return descriptors, nil
 	}
 	fallbackActive := lifecycle.FallbackEffectiveEpoch != 0 && epoch >= lifecycle.FallbackEffectiveEpoch
