@@ -152,6 +152,16 @@ func newProvisionalRelayRuntime468Test(t *testing.T) (*runtimeEvidenceActivation
 	cfg.Release = testReleaseLockFixture(t)
 	cfg.Public.Chain.ExpectedRuntimeSpec = reviewedRuntimeSpecVersion
 	executor.plan.OwnedRPCAuthority = cfg.ownedRPCAuthority
+	// The synthetic owned route is part of the approval identity, not merely
+	// a test transport switch. Bind it before creating reader provenance.
+	executor.plan.ResolvedInputsHash, err = resolvedInputsHash(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.plan.PlanHash, err = executor.plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
 	provisional, _, _, _ := provisionalResumeTestContext(t)
 	cfg.provisionalResume = provisional.provisionalResume
 	cfg.readOnlyAudit = true
@@ -257,6 +267,11 @@ func TestProvisionalRelayCaptureStrictReconciliationDoesNotGrantFinalAcceptance(
 		t.Fatal(err)
 	}
 	cfg.provisionalResume = nil
+	// The RPC fixture installs tiny transport runtime pins after building its
+	// plan. This local strict-reader test must retain the actual archived lock,
+	// not invent a source archive matching those unrelated transport pins.
+	locked := *executor.plan.ValidatorEvidenceSource.ReleaseLock
+	cfg.Release = &locked
 	plan := *executor.plan
 	plan.OwnedRPCAuthority = cfg.ownedRPCAuthority
 	plan.ResolvedInputsHash, err = resolvedInputsHash(cfg)
