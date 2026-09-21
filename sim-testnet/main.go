@@ -43,6 +43,7 @@ type cliOptions struct {
 	ThenReleaseCandidate                                                                                                            bool
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume, PrepareOnly                                                                                   bool
+	AllowanceOnly                                                                                                                   bool
 }
 
 func usage() {
@@ -81,6 +82,7 @@ Common options:
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
+  --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
   --provisional-resume  reuse authenticated testnet receipts; setup may activate the exact approved repair revision; no final release acceptance
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
@@ -137,6 +139,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
 	fs.Uint64Var(&o.RelayEndBlock, "relay-end-block", 0, "")
 	fs.Uint64Var(&o.RelaySlots, "relay-slots", 0, "")
+	fs.BoolVar(&o.AllowanceOnly, "allowance-only", false, "")
 	fs.StringVar(&o.StrictHistoryAdoption, "strict-history-adoption", "", "")
 	fs.StringVar(&o.StrictHistoryAdoptionSHA256, "strict-history-adoption-sha256", "", "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
@@ -188,6 +191,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
 	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateAllowanceOnlyOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
@@ -516,7 +522,12 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		report := RunDoctorForState(ctx, resolved, stateDir)
 		return printResult(o.Format, report, report.Error())
 	case "plan":
-		p, err := BuildPlanForState(ctx, resolved, stateDir)
+		var p *SetupPlan
+		if o.AllowanceOnly {
+			p, err = buildAllowanceOnlyPlan(ctx, resolved, stateDir, o.PlanHash)
+		} else {
+			p, err = BuildPlanForState(ctx, resolved, stateDir)
+		}
 		if err != nil {
 			return err
 		}
