@@ -147,6 +147,10 @@ func restoreFleetRenewalActions(plan *SetupPlan) (*SetupPlan, error) {
 		return nil, err
 	}
 	expected := map[string]Action{}
+	presentActionKVs := make(map[string]bool, len(restored.Actions))
+	for _, action := range restored.Actions {
+		presentActionKVs[action.ID] = true
+	}
 	for _, renewal := range restored.FleetRenewals {
 		actions, err := fleetRenewalPlanActions(&restored, renewal)
 		if err != nil {
@@ -154,9 +158,14 @@ func restoreFleetRenewalActions(plan *SetupPlan) (*SetupPlan, error) {
 		}
 		for _, action := range actions {
 			expected[action.ID] = action
+			// A later round can authenticate a prior revocation by action id.
+			// Restore each earlier round before deriving that successor.
+			if !presentActionKVs[action.ID] {
+				restored.Actions = append(restored.Actions, action)
+				presentActionKVs[action.ID] = true
+			}
 		}
 	}
-	seen := map[string]bool{}
 	for _, action := range restored.Actions {
 		if !isFleetRenewalAction(action) && !isFleetRenewalExtensionAction(action) {
 			continue
@@ -166,18 +175,6 @@ func restoreFleetRenewalActions(plan *SetupPlan) (*SetupPlan, error) {
 		wantHash, _ := canonicalHashHex(want)
 		if !ok || gotHash != wantHash {
 			return nil, fmt.Errorf("renewal action %s differs from its approved generation", action.ID)
-		}
-		seen[action.ID] = true
-	}
-	for _, renewal := range restored.FleetRenewals {
-		actions, err := fleetRenewalPlanActions(&restored, renewal)
-		if err != nil {
-			return nil, err
-		}
-		for _, action := range actions {
-			if !seen[action.ID] {
-				restored.Actions = append(restored.Actions, action)
-			}
 		}
 	}
 	return &restored, nil

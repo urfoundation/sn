@@ -20,11 +20,12 @@ import (
 )
 
 type fleetRenewalObservation struct {
-	Renewal  FleetRenewal
-	Records  map[[16]byte]fleetBindingVersionRead
-	Native   map[[32]byte]ExistingUIDFact
-	Accounts map[[32]byte]subtensorAccountInfo
-	Evidence map[[16]byte][]FleetBindingEvidence
+	Renewal        FleetRenewal
+	Records        map[[16]byte]fleetBindingVersionRead
+	Native         map[[32]byte]ExistingUIDFact
+	Accounts       map[[32]byte]subtensorAccountInfo
+	Evidence       map[[16]byte][]FleetBindingEvidence
+	JournalEntries []JournalEntry
 }
 
 // STCoordinator retains an effective oracle schedule in its pending fields.
@@ -187,7 +188,7 @@ func prepareFleetRenewal(cfg *ResolvedConfig, stateDir string, base *SetupPlan, 
 					continue
 				}
 				binding, err := fleetRenewalBinding(priorManifest, member, candidate)
-				if err != nil || !fleetBindingRecordMatches(read.Record, binding, candidate.ValidToEpoch, candidate.UID) {
+				if err != nil || read.Record.ValidToEpoch > candidate.ValidToEpoch || !fleetBindingRecordMatches(read.Record, binding, read.Record.ValidToEpoch, candidate.UID) {
 					continue
 				}
 				if prior != nil && (prior.TransactionHash != candidate.TransactionHash || prior.BindingDigest != candidate.BindingDigest) {
@@ -198,6 +199,10 @@ func prepareFleetRenewal(cfg *ResolvedConfig, stateDir string, base *SetupPlan, 
 			}
 			if prior == nil {
 				return renewal, fmt.Errorf("fleet %d member %x has no exact retained signed predecessor", fleet, member.ClientID)
+			}
+			priorRevocation, err := fleetRenewalObservedPriorRevocation(base, observation.JournalEntries, fleet, member, *prior, read.Record.ValidToEpoch, renewal.EVMHead.Number)
+			if err != nil {
+				return renewal, err
 			}
 			miner := 0
 			for index := 1; index <= cfg.Config.Topology.ClientsPerHeadFleet; index++ {
@@ -232,8 +237,8 @@ func prepareFleetRenewal(cfg *ResolvedConfig, stateDir string, base *SetupPlan, 
 				return renewal, err
 			}
 			next := FleetBindingEvidence{Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: fleetLifecycleHex16(member.ClientID), ClientKey: fleetLifecycleHex(member.ClientKey), FleetID: fleetLifecycleHex(manifest.FleetID), Hotkey: fleetLifecycleHex(manifest.Hotkey), Generation: manifest.Generation, ValidFromEpoch: renewal.ValidFromEpoch, ValidToEpoch: renewal.ValidToEpoch, CommitmentHash: fleetLifecycleHex(binding.CommitmentHash), BindingDigest: fleetLifecycleHex(digest), ClientSignature: "0x" + hex.EncodeToString(clientSig), HotkeySignature: "0x" + hex.EncodeToString(hotSig), UID: prepared.UID}
-			preparedMember := FleetRenewalMember{Miner: miner, VersionCount: read.Count.Uint64(), Prior: *prior, Binding: next}
-			if prior.ValidToEpoch >= renewal.ValidFromEpoch {
+			preparedMember := FleetRenewalMember{Miner: miner, VersionCount: read.Count.Uint64(), Prior: *prior, PriorRevocation: priorRevocation, Binding: next}
+			if read.Record.ValidToEpoch >= renewal.ValidFromEpoch {
 				revoke := protocol.FleetRevoke{ChainID: manifest.ChainID, Netuid: manifest.Netuid, Coordinator: manifest.Coordinator, ClientID: member.ClientID, Generation: prior.Generation, EffectiveEpoch: renewal.ValidFromEpoch}
 				sig, err := revoke.SignClient(private)
 				if err != nil {
@@ -249,7 +254,7 @@ func prepareFleetRenewal(cfg *ResolvedConfig, stateDir string, base *SetupPlan, 
 }
 
 func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, roles *RoleSecrets, entries []JournalEntry, o cliOptions) (fleetRenewalObservation, error) {
-	result := fleetRenewalObservation{Records: map[[16]byte]fleetBindingVersionRead{}, Native: map[[32]byte]ExistingUIDFact{}, Accounts: map[[32]byte]subtensorAccountInfo{}}
+	result := fleetRenewalObservation{Records: map[[16]byte]fleetBindingVersionRead{}, Native: map[[32]byte]ExistingUIDFact{}, Accounts: map[[32]byte]subtensorAccountInfo{}, JournalEntries: entries}
 	if len(entries) == 0 {
 		return result, errors.New("renewal requires the retained deployment journal")
 	}
@@ -434,17 +439,14 @@ func bindFleetRenewalRuntimeIdentity(cfg *ResolvedConfig, plan *SetupPlan) (*Set
 	if cfg == nil || plan == nil {
 		return nil, errors.New("renewal runtime identity is unavailable")
 	}
+	if cfg.PolicyHash != plan.PolicyHash || cfg.ownedRPCAuthority != plan.OwnedRPCAuthority {
+		return nil, errors.New("renewal runtime identity cannot change policy or owned Rpc authority")
+	}
 	hash, err := resolvedInputsHash(cfg)
 	if err != nil {
 		return nil, err
 	}
-	plan.ConfigHash, plan.PolicyHash, plan.ResolvedInputsHash, plan.OwnedRPCAuthority = cfg.ConfigHash, cfg.PolicyHash, hash, cfg.ownedRPCAuthority
-	plan.PlanHash = ""
-	plan.PlanHash, err = plan.hash()
-	if err != nil {
-		return nil, err
-	}
-	return plan, nil
+	return rebindFleetRenewalRuntimePlan(plan, cfg.ConfigHash, hash)
 }
 
 func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) (*SetupPlan, error) {
@@ -473,6 +475,14 @@ func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir st
 	}
 	actions, err := fleetRenewalActions(base, renewal)
 	if err != nil {
+		return nil, err
+	}
+	manager, err := DialEvmTxManager(ctx, cfg, stateDir, nil, roles, "commitment-oracle")
+	if err != nil {
+		return nil, err
+	}
+	defer manager.Close()
+	if err := verifyFleetRenewalDeadline(ctx, manager, base.Deployment.CoordinatorProxy, renewal, "", actions, nil); err != nil {
 		return nil, err
 	}
 	spend, err := maximumActionSpend(actions)

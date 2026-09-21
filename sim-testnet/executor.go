@@ -457,7 +457,18 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 	if executor == nil {
 		return errors.New("setup action executor is unavailable")
 	}
+	superseded := map[string]bool{}
+	if executor.journal != nil {
+		superseded = fleetRenewalSupersededUnsignedActions(executor.plan, executor.journal.Entries())
+	}
 	for index := 0; index < len(actions); {
+		if superseded[actions[index].ID] {
+			if actions[index].ID == limitID {
+				return nil
+			}
+			index++
+			continue
+		}
 		end, grouped, err := fleetCommitmentParallelRange(actions, index)
 		if err != nil {
 			return err

@@ -30,16 +30,17 @@ const (
 // lineage independently of the raw RPC transcript. It makes an omitted batch
 // or predecessor history set structurally visible to an offline reviewer.
 type FinalPublicFleetGenerationAudit struct {
-	Schema               string `json:"schema"`
-	SetupFleets          uint64 `json:"setup_fleets"`
-	Generations          uint64 `json:"generations"`
-	Batches              uint64 `json:"batches"`
-	CarriedWrites        uint64 `json:"carried_writes"`
-	ChallengerFleets     uint64 `json:"challenger_fleets"`
-	RenewalRounds        uint64 `json:"renewal_rounds,omitempty"`
-	RenewedFleetVersions uint64 `json:"renewed_fleet_versions,omitempty"`
-	RenewalWrites        uint64 `json:"renewal_writes,omitempty"`
-	ProjectionHash       string `json:"projection_hash"`
+	Schema                  string `json:"schema"`
+	SetupFleets             uint64 `json:"setup_fleets"`
+	Generations             uint64 `json:"generations"`
+	Batches                 uint64 `json:"batches"`
+	CarriedWrites           uint64 `json:"carried_writes"`
+	ChallengerFleets        uint64 `json:"challenger_fleets"`
+	RenewalRounds           uint64 `json:"renewal_rounds,omitempty"`
+	RenewedFleetVersions    uint64 `json:"renewed_fleet_versions,omitempty"`
+	IncompleteFleetVersions uint64 `json:"incomplete_fleet_versions,omitempty"`
+	RenewalWrites           uint64 `json:"renewal_writes,omitempty"`
+	ProjectionHash          string `json:"projection_hash"`
 }
 
 // finalFleetGenerationAuditProjection is the compact deterministic preimage
@@ -109,8 +110,12 @@ func finalPublicFleetGenerationAuditForEvidence(evidence *FinalSemanticEvidence)
 	}
 	audit.RenewalRounds = uint64(len(lineage.Renewals))
 	for _, renewal := range lineage.Renewals {
-		audit.RenewedFleetVersions += uint64(len(renewal.Fleets))
 		for _, fleet := range renewal.Fleets {
+			if !fleet.Incomplete {
+				audit.RenewedFleetVersions++
+			} else {
+				audit.IncompleteFleetVersions++
+			}
 			audit.RenewalWrites += uint64(len(finalFleetRenewalWrites(fleet)))
 		}
 	}
@@ -123,7 +128,8 @@ func verifyFinalPublicFleetGenerationAuditShape(audit FinalPublicFleetGeneration
 	if audit.Schema != finalPublicFleetGenerationAuditSchema || audit.SetupFleets != finalFleetGenerationSetupFleetCount || audit.Generations != finalFleetGenerationSetupFleetCount*2 || audit.Batches != finalFleetGenerationBatchCount*2 || audit.ChallengerFleets != finalFleetGenerationChallengerFleetCount {
 		return errors.New("public ordinary fleet generation audit summary is incomplete")
 	}
-	if audit.RenewalRounds > ^uint64(0)/(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || audit.RenewedFleetVersions != audit.RenewalRounds*(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || audit.RenewalRounds == 0 && audit.RenewalWrites != 0 || audit.RenewalRounds > 0 && audit.RenewalWrites < audit.RenewedFleetVersions {
+	totalVersions, ok := checkedAdd(audit.RenewedFleetVersions, audit.IncompleteFleetVersions)
+	if !ok || audit.RenewalRounds > ^uint64(0)/(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || totalVersions != audit.RenewalRounds*(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || audit.RenewalRounds == 0 && audit.RenewalWrites != 0 || audit.RenewalRounds > 0 && (audit.RenewedFleetVersions < finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount || audit.RenewalWrites < audit.RenewedFleetVersions) {
 		return errors.New("public fleet renewal audit summary is incomplete")
 	}
 	return requireFinalHex32("public ordinary fleet generation audit projection hash", audit.ProjectionHash)

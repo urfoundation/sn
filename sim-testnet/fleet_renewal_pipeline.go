@@ -206,10 +206,7 @@ func (e *Executor) finishFleetRenewalPipelineAction(ctx context.Context, action 
 func (e *Executor) executeFleetRenewalPipeline(ctx context.Context, actions []Action) error {
 	for offset := 0; offset < len(actions); {
 		operation := actions[offset].Parameters["operation"]
-		end := offset
-		for end < len(actions) && end-offset < int(fleetRenewalMaximumInFlight) && actions[end].Parameters["operation"] == operation {
-			end++
-		}
+		end := fleetRenewalWaveEnd(actions, offset)
 		wave := actions[offset:end]
 		if operation == "commitment" {
 			jobs := make([]func(context.Context) error, 0, len(wave))

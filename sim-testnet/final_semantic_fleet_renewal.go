@@ -22,6 +22,7 @@ type FinalFleetRenewalRoundEvidence struct {
 
 type FinalFleetRenewalFleetEvidence struct {
 	FleetID        uint64                               `json:"fleet_id"`
+	Incomplete     bool                                 `json:"incomplete,omitempty"`
 	Previous       *FinalFleetGenerationVersionEvidence `json:"previous_lifecycle_generation,omitempty"`
 	PreviousWrites []FinalFleetGenerationWriteEvidence  `json:"previous_lifecycle_writes,omitempty"`
 	Version        FinalFleetGenerationVersionEvidence  `json:"version"`
@@ -109,12 +110,16 @@ func finalFleetRenewalDirectOperation(id string) string {
 
 func finalFleetRenewalWrites(fleet FinalFleetRenewalFleetEvidence) []FinalFleetGenerationWriteEvidence {
 	writes := append([]FinalFleetGenerationWriteEvidence(nil), fleet.PreviousWrites...)
-	writes = append(writes, fleet.Mirror)
+	if !fleet.Incomplete || fleet.Mirror.Action.ActionID != "" {
+		writes = append(writes, fleet.Mirror)
+	}
 	for _, member := range fleet.Members {
 		if member.Revocation != nil {
 			writes = append(writes, *member.Revocation)
 		}
-		writes = append(writes, member.Binding)
+		if !fleet.Incomplete || member.Binding.Action.ActionID != "" {
+			writes = append(writes, member.Binding)
+		}
 	}
 	return writes
 }
@@ -124,7 +129,10 @@ func finalFleetRenewalVersions(fleet FinalFleetRenewalFleetEvidence) []FinalFlee
 	if fleet.Previous != nil {
 		versions = append(versions, *fleet.Previous)
 	}
-	return append(versions, fleet.Version)
+	if !fleet.Incomplete || fleet.Version.CommitmentAction.ActionID != "" {
+		versions = append(versions, fleet.Version)
+	}
+	return versions
 }
 
 func finalFleetRenewalMemberEqual(left, right FinalFleetGenerationMemberEvidence) bool {
@@ -134,6 +142,7 @@ func finalFleetRenewalMemberEqual(left, right FinalFleetGenerationMemberEvidence
 
 func verifyFinalFleetRenewalRounds(evidence *FinalSemanticEvidence, lineage *FinalFleetGenerationLineageEvidence) error {
 	latest := map[uint64]FinalFleetGenerationVersionEvidence{}
+	latestNativeAttemptKVs := map[uint64]uint64{}
 	for _, fleet := range lineage.SetupFleets {
 		latest[fleet.FleetID] = fleet.Refresh
 	}
@@ -175,6 +184,32 @@ func verifyFinalFleetRenewalRounds(evidence *FinalSemanticEvidence, lineage *Fin
 				before = *fleet.Previous
 			} else if len(fleet.PreviousWrites) != 0 {
 				return errors.New("fleet renewal has orphan predecessor writes")
+			}
+			if fleet.Version.CommitmentAction.ActionID != "" {
+				if fleet.Version.NativeHead.Number <= latestNativeAttemptKVs[fleet.FleetID] {
+					return errors.New("fleet renewal native commitment does not advance its incomplete predecessor attempt")
+				}
+				latestNativeAttemptKVs[fleet.FleetID] = fleet.Version.NativeHead.Number
+			}
+			if fleet.Incomplete {
+				if index == len(lineage.Renewals)-1 {
+					return errors.New("terminal fleet renewal is incomplete")
+				}
+				next, err := verifyFinalIncompleteFleetRenewal(evidence, renewal, fleet, before)
+				if err != nil {
+					return err
+				}
+				for _, write := range finalFleetRenewalWrites(fleet) {
+					if seenWrites[write.Receipt.TransactionHash] {
+						return errors.New("incomplete fleet renewal reused another generation's write")
+					}
+					seenWrites[write.Receipt.TransactionHash] = true
+					if err := verifyFinalFleetGenerationWrite(evidence, write); err != nil {
+						return err
+					}
+				}
+				latest[fleet.FleetID] = next
+				continue
 			}
 			version := fleet.Version
 			if before.Generation == ^uint64(0) || version.Generation != before.Generation+1 || version.Hotkey != before.Hotkey || version.CommitmentHash == before.CommitmentHash || version.NativeHead.Number <= before.NativeHead.Number || version.CommitmentAction.PlanHash != renewal.ApprovedPlanHash {

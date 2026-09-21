@@ -331,7 +331,13 @@ is read-only and requires an admitted current setup plan, retained client keys,
 exact current UID/coldkey custody, and a future validity window. For example,
 pass `--renewal-valid-from-epoch N --renewal-valid-to-epoch M
 --renewal-max-fee-per-gas-wei 25000000000 --format json` and retain the JSON
-output. Set the start epoch to allow all journaled transactions to finalize.
+output. Planning and apply check the actual activation block at the latest
+chain head against the remaining joined waves (four blocks per wave plus the
+sixteen-block inclusion margin). This is a preparation floor, not a completion
+guarantee; allow additional time for slow I/O. Fresh signatures also recheck
+the latest activation boundary after predecessor reads. Completed actions are
+excluded from the forecast, and replay-only recovery retains the original
+signed transactions even after activation.
 The direct path uses the retained original oracle. Batches of ten independent
 native signers run together; each EVM phase submits exact nonces in order and
 reconciles at most ten transactions concurrently. Every started worker joins
@@ -358,6 +364,19 @@ and balances before the first write. Interrupted actions recover their exact
 persisted signed bytes. The previous plan is archived, and every old signed
 manifest, binding, receipt and runtime queue is retained. Renewal alone does not
 launch or rerender a campaign; strict startup admission remains a separate step.
+
+If an interrupted round already revoked some predecessors, the successor keeps
+their original signed bindings and attaches the exact client-authorized,
+finalized revocation separately. It does not rewrite the signed expiry or revoke
+the same shortened lease again. Historical rounds that stopped before a fleet's
+replacement bindings retain their real commitment, mirror and revocation writes
+in final evidence. Only a complete, finalized and verified later fleet renewal
+retires unsigned old actions; signed transactions still require reconciliation.
+The final renewal must cover every fleet. A fleet containing a mixture of old
+and new binding generations still requires an explicit recovery before planning.
+Renewal approval reconstruction uses the archived approval's operational
+fingerprints. New plans bind the matching local render/launch intents without
+executing those actions; exact earlier approvals remain recoverable.
 
 For local qualification captures, freeze the runner before launch and invoke
 `bash scripts/run-qualification-capture.sh SOURCE_ROOT SOURCE_MANIFEST FROZEN_RUNNER`

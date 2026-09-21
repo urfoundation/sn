@@ -54,6 +54,7 @@ func captureFinalFleetRenewalTransactionEntries(ctx context.Context, stateRoot s
 		}
 	}
 	allowed := plan.allowedPlanHashes()
+	superseded := fleetRenewalSupersededUnsignedActions(plan, entries)
 	result := []FinalCollectedFileBundleEntry{}
 	seen := map[string]bool{}
 	completed := map[string]bool{}
@@ -83,6 +84,9 @@ func captureFinalFleetRenewalTransactionEntries(ctx context.Context, stateRoot s
 		completed[entry.ActionID] = true
 		result = append(result, files[0])
 		delete(wanted, entry.ActionID)
+	}
+	for actionId := range superseded {
+		delete(wanted, actionId)
 	}
 	if len(wanted) != 0 {
 		missing := make([]string, 0, len(wanted))

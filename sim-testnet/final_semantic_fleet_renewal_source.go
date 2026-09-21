@@ -240,6 +240,31 @@ func (self *finalFleetGenerationSource) buildRenewalRounds(lineage *FinalFleetGe
 			if err != nil {
 				return err
 			}
+			bound := 0
+			for index := range planned.Members {
+				if self.renewalHasFinalizedAction(fleetRenewalActionID(renewal.Round, planned.Fleet, "bind", index+1), approved.PlanHash) {
+					bound++
+				}
+			}
+			if bound != len(planned.Members) {
+				if bound != 0 || renewal.Round == uint64(len(self.current.FleetRenewals)) {
+					return fmt.Errorf("fleet %d renewal %d has %d/%d bindings and requires an explicit complete successor", planned.Fleet, renewal.Round, bound, len(planned.Members))
+				}
+				if err := self.buildIncompleteFleetRenewal(renewal, approved, planned, &fleet); err != nil {
+					return err
+				}
+				before := latest[fleet.FleetID]
+				if fleet.Previous != nil {
+					before = *fleet.Previous
+				}
+				next, err := verifyFinalIncompleteFleetRenewal(self.evidence, round, fleet, before)
+				if err != nil {
+					return err
+				}
+				latest[fleet.FleetID] = next
+				round.Fleets = append(round.Fleets, fleet)
+				continue
+			}
 			manifest, err := protocol.ParseFleetManifest(planned.Manifest)
 			if err != nil {
 				return err
@@ -272,6 +297,10 @@ func (self *finalFleetGenerationSource) buildRenewalRounds(lineage *FinalFleetGe
 					return errors.New("fleet renewal public binding does not name its exact approved receipt")
 				}
 				row := FinalFleetRenewalMemberEvidence{Member: uint64(number), Prior: finalFleetRenewalMemberProjection(uint64(number), member.Prior), Binding: write}
+				row.Prior.ValidToEpoch, err = member.priorEffectiveValidTo()
+				if err != nil {
+					return err
+				}
 				if member.RevokeSignature != "" {
 					signature, err := hex.DecodeString(stringsTrim0x(member.RevokeSignature))
 					if err != nil {
@@ -307,10 +336,31 @@ func (self *finalFleetGenerationSource) renewalApproval(renewal FleetRenewal) (F
 	if err != nil {
 		return FinalFleetRenewalRoundEvidence{}, nil, err
 	}
-	if !self.current.allowedPlanHashes()[expected.PlanHash] {
+	// Live planning binds the current release fingerprints after appending
+	// economic actions. Recover that exact archived approval even when a later
+	// config revision has different fingerprints again.
+	approvedHash := ""
+	allowedPlanHashKVs := self.current.allowedPlanHashes()
+	for hash, candidate := range self.plans {
+		if !allowedPlanHashKVs[hash] || candidate == nil || candidate.PlanHash != hash {
+			continue
+		}
+		matches, matchErr := finalFleetRenewalApprovalMatches(expected, candidate)
+		if matchErr != nil {
+			return FinalFleetRenewalRoundEvidence{}, nil, matchErr
+		}
+		if !matches {
+			continue
+		}
+		if approvedHash != "" {
+			return FinalFleetRenewalRoundEvidence{}, nil, errors.New("fleet renewal exact append approval is ambiguous in current lineage")
+		}
+		approvedHash = hash
+	}
+	if approvedHash == "" {
 		return FinalFleetRenewalRoundEvidence{}, nil, errors.New("fleet renewal exact append approval is missing from current lineage")
 	}
-	approved, err := self.recordPlan(expected.PlanHash)
+	approved, err := self.recordPlan(approvedHash)
 	if err != nil {
 		return FinalFleetRenewalRoundEvidence{}, nil, err
 	}

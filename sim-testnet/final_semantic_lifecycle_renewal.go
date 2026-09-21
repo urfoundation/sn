@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,19 +22,48 @@ func finalFleetLifecycleRenewalApproval(plan *SetupPlan, files map[string][]byte
 	if err != nil || source.PlanHash != renewal.SourcePlanHash {
 		return nil, stateMismatchError(err, "lifecycle renewal original plan is unavailable")
 	}
-	approved, err := appendFleetRenewalPlanForHistory(source, renewal, true)
+	expected, err := appendFleetRenewalPlanForHistory(source, renewal, true)
 	if err != nil {
 		return nil, err
 	}
-	if !plan.allowedPlanHashes()[approved.PlanHash] {
+	approvedHash, approvedPath := "", ""
+	for hash := range plan.allowedPlanHashes() {
+		path := "plan-history/" + stringsTrim0x(hash) + ".json"
+		if hash == plan.PlanHash {
+			path = "launch-foundation/plan.json"
+		}
+		// Decode only the lookup fields here. The sole matching byte stream
+		// is fully authenticated below; unrelated ancestors need no repeated
+		// action derivation or historical semantic validation.
+		var identity struct {
+			PlanHash           string   `json:"plan_hash"`
+			ConfigHash         string   `json:"config_hash"`
+			ResolvedInputsHash string   `json:"resolved_inputs_hash"`
+			PolicyHash         string   `json:"policy_hash"`
+			OwnedRpcAuthority  string   `json:"owned_rpc_authority"`
+			PriorPlanHashes    []string `json:"prior_plan_hashes"`
+		}
+		if err := json.Unmarshal(files[path], &identity); err != nil || identity.PlanHash != hash {
+			continue
+		}
+		candidate := &SetupPlan{PlanHash: hash, ConfigHash: identity.ConfigHash, ResolvedInputsHash: identity.ResolvedInputsHash, PolicyHash: identity.PolicyHash, OwnedRPCAuthority: identity.OwnedRpcAuthority, PriorPlanHashes: identity.PriorPlanHashes}
+		matches, matchErr := finalFleetRenewalApprovalMatches(expected, candidate)
+		if matchErr != nil {
+			return nil, matchErr
+		}
+		if !matches {
+			continue
+		}
+		if approvedHash != "" {
+			return nil, errors.New("lifecycle renewal exact approval is ambiguous in current lineage")
+		}
+		approvedHash, approvedPath = hash, path
+	}
+	if approvedHash == "" {
 		return nil, errors.New("lifecycle renewal exact approval is not in current lineage")
 	}
-	path := "plan-history/" + stringsTrim0x(approved.PlanHash) + ".json"
-	if approved.PlanHash == plan.PlanHash {
-		path = "launch-foundation/plan.json"
-	}
-	retained, err := decodeFinalHistoricalPlanBytes(files[path])
-	if err != nil || retained.PlanHash != approved.PlanHash {
+	retained, err := decodeFinalHistoricalPlanBytes(files[approvedPath])
+	if err != nil || retained.PlanHash != approvedHash {
 		return nil, stateMismatchError(err, "lifecycle renewal exact approved plan bytes are unavailable")
 	}
 	return retained, nil

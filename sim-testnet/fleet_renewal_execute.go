@@ -79,12 +79,20 @@ func validateFleetRenewalSource(cfg *ResolvedConfig, base, approved *SetupPlan, 
 	if err != nil {
 		return err
 	}
+	legacy := *want
 	want, err = bindFleetRenewalRuntimeIdentity(cfg, want)
 	if err != nil {
 		return err
 	}
 	if want.PlanHash != approved.PlanHash {
-		return errors.New("renewal alters source actions, identities, or economic limits outside its exact append")
+		// Earlier releases rebound only the plan fingerprints. An exact
+		// already-approved import remains recoverable; fresh plans now bind
+		// the corresponding local runtime actions as well.
+		legacy.ConfigHash, legacy.ResolvedInputsHash = want.ConfigHash, want.ResolvedInputsHash
+		hash, hashErr := legacy.hash()
+		if hashErr != nil || hash != approved.PlanHash {
+			return stateMismatchError(hashErr, "renewal alters source actions, identities, or economic limits outside its exact append")
+		}
 	}
 	checkpoint := -1
 	for index, entry := range entries {
@@ -228,6 +236,11 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 		if err := validateFleetRenewalFreshPrestate(renewal, fresh); err != nil {
 			return err
 		}
+	}
+	if err := verifyFleetRenewalDeadline(ctx, executor.oracle, plan.Deployment.CoordinatorProxy, renewal, plan.PlanHash, rawActions, journal.Entries()); err != nil {
+		return err
+	}
+	if current.PlanHash != plan.PlanHash {
 		if err := writeRunInputs(cfg, stateDir, plan, roles); err != nil {
 			return err
 		}
@@ -279,7 +292,11 @@ func validateFleetRenewalFreshPrestate(renewal FleetRenewal, fresh fleetRenewalO
 				return err
 			}
 			read, ok := fresh.Records[binding.ClientID]
-			if !ok || read.Count == nil || !read.Count.IsUint64() || read.Count.Uint64() != member.VersionCount || !fleetBindingRecordMatches(read.Record, binding, member.Prior.ValidToEpoch, fleet.UID) {
+			validTo, err := member.priorEffectiveValidTo()
+			if err != nil {
+				return err
+			}
+			if !ok || read.Count == nil || !read.Count.IsUint64() || read.Count.Uint64() != member.VersionCount || !fleetBindingRecordMatches(read.Record, binding, validTo, fleet.UID) {
 				return fmt.Errorf("renewal fleet %d predecessor changed since approval", fleet.Fleet)
 			}
 		}
@@ -288,9 +305,22 @@ func validateFleetRenewalFreshPrestate(renewal FleetRenewal, fresh fleetRenewalO
 }
 
 func (e *Executor) verifyFleetRenewalSignerBalances(ctx context.Context, actions []Action) error {
+	finalizedActionKVs := map[string]bool{}
+	intentKVs := make(map[string]string, len(actions))
+	for _, action := range actions {
+		intentKVs[action.ID] = action.IntentHash
+	}
+	if e.journal != nil {
+		allowedPlanHashKVs := e.plan.allowedPlanHashes()
+		for _, entry := range e.journal.Entries() {
+			if allowedPlanHashKVs[entry.PlanHash] && intentKVs[entry.ActionID] == entry.IntentHash && (entry.Stage == StageFinalized || entry.Stage == StageVerified) {
+				finalizedActionKVs[entry.ActionID] = true
+			}
+		}
+	}
 	totals := map[common.Address]*big.Int{}
 	for _, action := range actions {
-		if action.Kind != "evm-transaction" {
+		if action.Kind != "evm-transaction" || finalizedActionKVs[action.ID] {
 			continue
 		}
 		address := common.HexToAddress(action.Parameters["renewal_expected_signer"])
@@ -374,16 +404,20 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 		blockHash       string
 	}
 	type proof struct {
-		checkpoint checkpoint
-		fleet      int
-		members    []FleetBindingEvidence
+		checkpoint  checkpoint
+		fleet       int
+		members     []FleetBindingEvidence
+		revocations []FleetRenewalMember
 	}
 	finalizedKVs := map[checkpoint]bool{}
+	finalizedEntriesKVs := map[checkpoint][]JournalEntry{}
 	// The approval lineage is immutable throughout this journal snapshot.
 	allowedPlanHashKVs := base.allowedPlanHashes()
 	for _, entry := range e.journal.Entries() {
 		if entry.Stage == StageFinalized && allowedPlanHashKVs[entry.PlanHash] {
-			finalizedKVs[checkpoint{transactionHash: entry.TransactionHash, blockNumber: entry.BlockNumber, blockHash: entry.BlockHash}] = true
+			key := checkpoint{transactionHash: entry.TransactionHash, blockNumber: entry.BlockNumber, blockHash: entry.BlockHash}
+			finalizedKVs[key] = true
+			finalizedEntriesKVs[key] = append(finalizedEntriesKVs[key], entry)
 		}
 	}
 	var proofs []proof
@@ -402,6 +436,23 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 				proofs = append(proofs, proof{checkpoint: key, fleet: fleet.Fleet})
 			}
 			proofs[index].members = append(proofs[index].members, prior)
+			if revocation := member.PriorRevocation; revocation != nil {
+				key := checkpoint{transactionHash: revocation.TransactionHash, blockNumber: revocation.BlockNumber, blockHash: revocation.BlockHash}
+				owned := false
+				for _, entry := range finalizedEntriesKVs[key] {
+					owned = owned || entry.PlanHash == revocation.PlanHash && entry.ActionID == revocation.ActionId && entry.IntentHash == revocation.IntentHash
+				}
+				if !owned || revocation.BlockNumber > renewal.EVMHead.Number {
+					return fmt.Errorf("fleet %d predecessor revocation has no exact finalized source journal lineage", fleet.Fleet)
+				}
+				index, ok := proofIndexKVs[key]
+				if !ok {
+					index = len(proofs)
+					proofIndexKVs[key] = index
+					proofs = append(proofs, proof{checkpoint: key, fleet: fleet.Fleet})
+				}
+				proofs[index].revocations = append(proofs[index].revocations, member)
+			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -433,6 +484,21 @@ func (e *Executor) verifyFleetRenewalPredecessors(ctx context.Context, renewal F
 			}
 			if matched != 1 {
 				return errors.New("renewal predecessor receipt lacks exactly one matching FleetBound event")
+			}
+		}
+		for _, member := range item.revocations {
+			matched := 0
+			for _, log := range receipt.Logs {
+				if log == nil || log.Address != e.plan.Deployment.CoordinatorProxy {
+					continue
+				}
+				event, err := coordinator.UnpackFleetBindingRevokedEvent(log)
+				if err == nil && fleetLifecycleHex16(event.ClientId) == member.Prior.ClientID && event.Generation == member.Prior.Generation && event.EffectiveEpoch == member.PriorRevocation.EffectiveEpoch {
+					matched++
+				}
+			}
+			if matched != 1 {
+				return errors.New("renewal predecessor receipt lacks exactly one matching FleetBindingRevoked event")
 			}
 		}
 		return nil
@@ -551,7 +617,7 @@ func (e *Executor) fleetRenewalCommitment(ctx context.Context, renewal *FleetRen
 	return &evidence, nil
 }
 
-func (e *Executor) verifyFleetRenewalLiveIdentity(ctx context.Context, renewal *FleetRenewal, fleet *FleetRenewalFleet, head ChainHead) error {
+func (e *Executor) verifyFleetRenewalLiveIdentity(ctx context.Context, renewal *FleetRenewal, fleet *FleetRenewalFleet) error {
 	manifest, err := protocol.ParseFleetManifest(fleet.Manifest)
 	if err != nil {
 		return err
@@ -564,17 +630,18 @@ func (e *Executor) verifyFleetRenewalLiveIdentity(ctx context.Context, renewal *
 	if err != nil || fleetLifecycleHex(owner) != fleet.Coldkey {
 		return stateMismatchError(err, "renewal fleet %d coldkey custody changed", fleet.Fleet)
 	}
-	state, err := readFleetRefreshOracleStateAt(ctx, e.oracle, e.plan.Deployment.CoordinatorProxy, stabi.NewSTCoordinator(), head.Number)
+	head, activation, err := readFleetRenewalDeadline(ctx, e.oracle, e.plan.Deployment.CoordinatorProxy, renewal.ValidFromEpoch)
+	if err != nil {
+		return err
+	}
+	state, err := readFleetRefreshOracleStateAt(ctx, e.oracle, e.plan.Deployment.CoordinatorProxy, stabi.NewSTCoordinator(), head)
 	if err != nil {
 		return err
 	}
 	if !fleetRenewalOriginalOracleReady(state, renewal.Oracle) {
 		return errors.New("renewal oracle routing changed")
 	}
-	if state.CurrentEpoch >= renewal.ValidFromEpoch {
-		return fmt.Errorf("renewal inclusion window closed at epoch %d; exact pending transactions remain recoverable", renewal.ValidFromEpoch)
-	}
-	return nil
+	return validateFleetRenewalDeadline(renewal.ValidFromEpoch, head, activation, 1, futureEpochInclusionSafetyBlocks)
 }
 
 func (e *Executor) executeFleetRenewalAction(ctx context.Context, action Action) error {
@@ -598,7 +665,7 @@ func (e *Executor) executeFleetRenewalActionWithSender(ctx context.Context, acti
 	}
 	_, persisted := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash)
 	if !persisted {
-		if err := e.verifyFleetRenewalLiveIdentity(ctx, renewal, fleet, head); err != nil {
+		if err := e.verifyFleetRenewalLiveIdentity(ctx, renewal, fleet); err != nil {
 			return err
 		}
 	}
@@ -685,7 +752,10 @@ func (e *Executor) executeFleetRenewalActionWithSender(ctx context.Context, acti
 			if err != nil {
 				return err
 			}
-			validTo := prior.Prior.ValidToEpoch
+			validTo, err := fleetRenewalPriorValidTo(e.plan, *manifest, manifest.Members[member-1], prior)
+			if err != nil {
+				return err
+			}
 			if action.Parameters["operation"] == "bind" && prior.RevokeSignature != "" {
 				revokeAction, err := e.planAction(fleetRenewalActionID(renewal.Round, fleet.Fleet, "revoke", member))
 				if err != nil {
@@ -699,6 +769,13 @@ func (e *Executor) executeFleetRenewalActionWithSender(ctx context.Context, acti
 			if read.Count.Uint64() != prior.VersionCount || !fleetBindingRecordMatches(read.Record, binding, validTo, fleet.UID) {
 				return errors.New("renewal predecessor changed before the exact mutation")
 			}
+		}
+		latest, activation, err := readFleetRenewalDeadline(ctx, manager, address, renewal.ValidFromEpoch)
+		if err != nil {
+			return err
+		}
+		if err := validateFleetRenewalDeadline(renewal.ValidFromEpoch, latest, activation, 1, futureEpochInclusionSafetyBlocks); err != nil {
+			return err
 		}
 	}
 	var receipt *ethTypes.Receipt

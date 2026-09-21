@@ -58,11 +58,12 @@ type FleetRenewalFleet struct {
 }
 
 type FleetRenewalMember struct {
-	Miner           int                  `json:"miner"`
-	VersionCount    uint64               `json:"prior_version_count"`
-	Prior           FleetBindingEvidence `json:"prior_binding"`
-	Binding         FleetBindingEvidence `json:"binding"`
-	RevokeSignature string               `json:"revoke_signature,omitempty"`
+	Miner           int                          `json:"miner"`
+	VersionCount    uint64                       `json:"prior_version_count"`
+	Prior           FleetBindingEvidence         `json:"prior_binding"`
+	PriorRevocation *FleetRenewalPriorRevocation `json:"prior_revocation,omitempty"`
+	Binding         FleetBindingEvidence         `json:"binding"`
+	RevokeSignature string                       `json:"revoke_signature,omitempty"`
 }
 
 type fleetRenewalBudgetError struct {
@@ -216,7 +217,11 @@ func fleetRenewalActions(p *SetupPlan, renewal FleetRenewal) ([]Action, error) {
 			if err != nil {
 				return nil, err
 			}
-			if member.Prior.ValidToEpoch >= renewal.ValidFromEpoch {
+			priorValidTo, err := fleetRenewalPriorValidTo(p, manifest, manifestMember, member)
+			if err != nil {
+				return nil, err
+			}
+			if priorValidTo >= renewal.ValidFromEpoch {
 				revoke := protocol.FleetRevoke{ChainID: manifest.ChainID, Netuid: manifest.Netuid, Coordinator: manifest.Coordinator, ClientID: manifestMember.ClientID, Generation: member.Prior.Generation, EffectiveEpoch: renewal.ValidFromEpoch}
 				sig, ok := evidenceFixedHex(member.RevokeSignature, 64)
 				if !ok || !revoke.VerifyClient(manifestMember.ClientKey[:], sig) {
