@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"math"
 	"math/big"
@@ -2931,6 +2932,12 @@ func preserveVerifiedEVMGasReallocations(stateDir string, revised, prior *SetupP
 	}
 	for index := range revised.Actions {
 		current := revised.Actions[index]
+		// Only transactions and these legacy batch proofs can inherit gas.
+		// Loading native-action archives here repeats their renewal audits but
+		// cannot produce a carry; their own recovery paths verify those receipts.
+		if current.Kind != "evm-transaction" && (current.Kind != "evm-read" || current.Parameters["batch_installed"] != "true" || (!strings.HasPrefix(current.ID, "fleet.mirror.") && !strings.HasPrefix(current.ID, "fleet.bind."))) {
+			continue
+		}
 		candidates := verifiedEntries[current.ID]
 		for entryIndex := len(candidates) - 1; entryIndex >= 0; entryIndex-- {
 			entry := candidates[entryIndex]
@@ -2969,6 +2976,12 @@ func preserveVerifiedEVMGasReallocations(stateDir string, revised, prior *SetupP
 // action retains its own executable ceiling. This keeps cumulative approval
 // conservative across repeated upgrades and fleet-batcher replacements.
 func addRetiredVerifiedEVMGas(prior, revised *SetupPlan, entries []JournalEntry, spend Spend) (Spend, error) {
+	return retiredVerifiedEvmGasFromJournal(prior, revised, slices.Values(entries), spend)
+}
+
+// Consume the approved journal once before pricing retired transaction intents.
+// The iterator keeps the single-pass contract observable without timing tests.
+func retiredVerifiedEvmGasFromJournal(prior, revised *SetupPlan, entries iter.Seq[JournalEntry], spend Spend) (Spend, error) {
 	if prior == nil || revised == nil {
 		return Spend{}, errors.New("revised and prior plans are required to retain retired EVM gas")
 	}
@@ -2980,27 +2993,36 @@ func addRetiredVerifiedEVMGas(prior, revised *SetupPlan, entries []JournalEntry,
 		revisedActions[action.ID] = action
 	}
 	allowedPlans := prior.allowedPlanHashes()
+	verifiedActionIntents := map[string]map[string]bool{}
+	for entry := range entries {
+		if entry.Stage != StageVerified || !allowedPlans[entry.PlanHash] {
+			continue
+		}
+		intents := verifiedActionIntents[entry.ActionID]
+		if intents == nil {
+			intents = map[string]bool{}
+			verifiedActionIntents[entry.ActionID] = intents
+		}
+		intents[entry.IntentHash] = true
+	}
 	for _, action := range prior.Actions {
 		if action.Kind != "evm-transaction" || action.Spend.EVMGasWei.IsZero() {
 			continue
 		}
-		verifiedIntents := map[string]bool{}
-		for _, entry := range entries {
-			if allowedPlans[entry.PlanHash] && entry.Stage == StageVerified && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) {
-				verifiedIntents[entry.IntentHash] = true
-			}
-		}
-		if len(verifiedIntents) == 0 {
-			continue
-		}
-		if replacement, found := revisedActions[action.ID]; found {
-			carried := false
-			for intent := range verifiedIntents {
-				carried = carried || actionAcceptsIntent(replacement, intent)
-			}
-			if carried {
+		replacement, found := revisedActions[action.ID]
+		verified, carried := false, false
+		for intent := range verifiedActionIntents[action.ID] {
+			if !actionAcceptsIntent(action, intent) {
 				continue
 			}
+			verified = true
+			if found && actionAcceptsIntent(replacement, intent) {
+				carried = true
+				break
+			}
+		}
+		if !verified || carried {
+			continue
 		}
 		var err error
 		spend.EVMGasWei, err = addDecimalUint(spend.EVMGasWei, action.Spend.EVMGasWei)
