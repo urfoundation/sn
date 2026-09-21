@@ -36,7 +36,8 @@ func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, non
 	consumed := int(nonce - successor.DeployerNonce)
 	allowed := plan.allowedPlanHashes()
 	prefix := make([]JournalEntry, 0, consumed)
-	previous := successor.JournalSequence
+	boundary := precompileProbeSuccessorJournalBoundary(successor)
+	previous := boundary
 	for index, actionId := range ids {
 		action, err := exactPlanActionByID(plan, actionId)
 		if err != nil {
@@ -44,7 +45,7 @@ func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, non
 		}
 		var matched *JournalEntry
 		for _, entry := range entries {
-			if entry.Sequence <= successor.JournalSequence || entry.ActionID != actionId || entry.Stage != StageFinalized {
+			if entry.Sequence <= boundary || entry.ActionID != actionId || entry.Stage != StageFinalized {
 				continue
 			}
 			if entry.DeploymentID != plan.DeploymentID || !allowed[entry.PlanHash] || entry.IntentHash != action.IntentHash {
