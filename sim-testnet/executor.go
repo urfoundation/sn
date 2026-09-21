@@ -1005,15 +1005,7 @@ func decodePersistedPlanBytes(b []byte) (*SetupPlan, error) {
 // History decoding is separate from active-plan loading. The private flag
 // permits only authenticated original artifact validation, never execution.
 func decodePersistedPlanBytesForHistory(b []byte, historical bool) (*SetupPlan, error) {
-	p, err := decodePersistedPlanWire(b)
-	if err != nil {
-		return nil, err
-	}
-	p.validatorEvidenceHistorical = historical
-	if err := validatePlanBudget(p); err != nil {
-		return nil, fmt.Errorf("persisted setup plan: %w", err)
-	}
-	return p, nil
+	return persistedPlanRenewalValidations.decode(b, historical, validateFleetRenewalPlan)
 }
 
 // Exact wire hashing precedes identity dispatch or interpretation of history.

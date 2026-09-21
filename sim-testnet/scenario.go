@@ -639,9 +639,7 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		observation.PrecompileConformanceError = readErr.Error()
 	}
 	observation.DishonestDeposit, observation.DishonestDepositValid, observation.DishonestDepositError = inspectDishonestDepositEvidence(ctx, p.cfg, p.stateDir, status.Contracts)
-	for noID := 1; noID <= p.cfg.Config.Topology.Operators; noID++ {
-		observation.Operators = append(observation.Operators, p.inspectOperator(ctx, status.Contracts, noID, expectedSigners[noID], minerClients))
-	}
+	observation.Operators = p.inspectOperators(ctx, status.Contracts, expectedSigners, minerClients)
 	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
 		var validator ValidatorObservation
 		if provisionalResumeEnabled(p.cfg) {
@@ -1417,6 +1415,11 @@ func (p *liveScenarioProbe) inspectOperator(ctx context.Context, contracts *Cont
 }
 
 func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *ContractView, noID int, expectedSigner, base string, minerClients map[[16]byte]int) OperatorObservation {
+	surfaces := p.readOperatorSurfaces(ctx, []string{base})
+	return p.inspectOperatorWithSurfaces(ctx, contracts, noID, expectedSigner, base, minerClients, surfaces[0])
+}
+
+func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, contracts *ContractView, noID int, expectedSigner, base string, minerClients map[[16]byte]int, surfaces scenarioOperatorSurfaces) OperatorObservation {
 	base = strings.TrimSuffix(base, "/")
 	o := OperatorObservation{NoID: noID, APIURL: base}
 	if contracts != nil {
@@ -1428,14 +1431,14 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 			}
 		}
 	}
-	_, statusCode, statusErr := p.get(ctx, base+"/status", 1*1024*1024)
+	statusCode, statusErr := surfaces[scenarioOperatorStatus].status, surfaces[scenarioOperatorStatus].err
 	o.StatusCode = statusCode
 	o.Healthy = statusErr == nil
 	var problems []string
 	if statusErr != nil {
 		problems = append(problems, "status: "+statusErr.Error())
 	}
-	keysBytes, _, err := p.get(ctx, base+"/verify/keys", 1*1024*1024)
+	keysBytes, err := surfaces[scenarioOperatorKeys].data, surfaces[scenarioOperatorKeys].err
 	if err != nil {
 		problems = append(problems, "verify keys: "+err.Error())
 	} else {
@@ -1462,7 +1465,7 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 			sort.Slice(o.VerifyKeys, func(i, j int) bool { return o.VerifyKeys[i].ServerKeyID < o.VerifyKeys[j].ServerKeyID })
 		}
 	}
-	statsBytes, _, err := p.get(ctx, base+"/verify/stats?limit=100000", 32*1024*1024)
+	statsBytes, err := surfaces[scenarioOperatorStats].data, surfaces[scenarioOperatorStats].err
 	if err != nil {
 		problems = append(problems, "stats: "+err.Error())
 	} else {
@@ -1485,7 +1488,7 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 			o.ReliabilityPPM = protocol.ReliabilityPPM(o.Confirmations, o.Assignments, p.cfg.Policy.Verify.ReliabilityAMin)
 		}
 	}
-	proofBytes, _, err := p.get(ctx, base+"/verify/proofs?limit=10000", 32*1024*1024)
+	proofBytes, err := surfaces[scenarioOperatorProofs].data, surfaces[scenarioOperatorProofs].err
 	if err != nil {
 		problems = append(problems, "proofs: "+err.Error())
 	} else {
