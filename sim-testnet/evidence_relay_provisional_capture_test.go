@@ -390,3 +390,34 @@ func TestProvisionalRelayCaptureHistoricalPrefixUsesOriginalConfigWithoutWriting
 		t.Fatal("local history preview rewrote retained source bytes")
 	}
 }
+
+func TestProvisionalRelayCaptureRetainsCompletePredecessorWork(t *testing.T) {
+	fixture, _ := provisionalRelayContinuationRuntimeTest(t)
+	cfg, plan := fixture.executor.cfg, fixture.executor.plan
+	before := cfg.provisionalResume
+	work, err := evidenceRelayApprovalWork(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := work.remaining("release-1.0", false)
+	if err != nil || full != plan.EvidenceRelayContinuation.RequiredWorkBlocks || work.releaseWarmup == 0 || work.productionWarmup == 0 {
+		t.Fatalf("preview changed approved complete work: got=%d approved=%d work=%+v err=%v", full, plan.EvidenceRelayContinuation.RequiredWorkBlocks, work, err)
+	}
+	legacy, err := evidenceRelayConfiguredWork(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, err := legacy.remaining("release-1.0", false)
+	if err != nil || short >= full {
+		t.Fatal("causal fixture did not reproduce waived provisional warmup", err)
+	}
+	if cfg.provisionalResume != before || !provisionalResumeEnabled(cfg) {
+		t.Fatal("approval clock calculation changed the observer's actual mode")
+	}
+	strict := *cfg
+	strict.provisionalResume = nil
+	want, err := evidenceRelayConfiguredWork(&strict)
+	if err != nil || want != work {
+		t.Fatal("preview changed an approved clock or fault allowance", err)
+	}
+}

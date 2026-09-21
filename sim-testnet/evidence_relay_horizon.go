@@ -26,6 +26,18 @@ type evidenceRelayWork struct {
 	nativeCadence         uint64
 }
 
+// Continuation approval funds the complete strict workload even when its
+// observer is provisional. Only the invocation-only warmup waiver is removed;
+// clocks, fault schedules, capacities and policy remain the exact inputs.
+func evidenceRelayApprovalWork(cfg *ResolvedConfig) (evidenceRelayWork, error) {
+	if cfg == nil {
+		return evidenceRelayConfiguredWork(nil)
+	}
+	approval := *cfg
+	approval.provisionalResume = nil
+	return evidenceRelayConfiguredWork(&approval)
+}
+
 // Use the actual scenario definitions/watchdogs, including fault schedules,
 // and existing preparation waits. Residual approved slots own all other I/O.
 func evidenceRelayConfiguredWork(cfg *ResolvedConfig) (evidenceRelayWork, error) {

@@ -321,7 +321,7 @@ func captureEvidenceRelayContinuationWithSlotsAt(ctx context.Context, cfg *Resol
 	}
 	defer runtime.cancel()
 	defer runtime.chain.Close()
-	work, err := evidenceRelayConfiguredWork(cfg)
+	work, err := evidenceRelayApprovalWork(cfg)
 	if err != nil {
 		return nil, err
 	}
