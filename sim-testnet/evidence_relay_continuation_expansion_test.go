@@ -33,8 +33,45 @@ func evidenceRelayExpansionRequestTest(t *testing.T, executor *Executor) Evidenc
 	return current
 }
 
-func TestEvidenceRelayExpansionBinds2048SlotsAndCumulativeMoney(t *testing.T) {
+// The separately approved cap revision preserves current actions and funding;
+// the subsequent continuation owns only the exact 25.6 TAO reserve increase.
+func newEvidenceRelayExpansionTest(t *testing.T) (*runtimeEvidenceProvisionV2TestFixture, *Executor) {
+	t.Helper()
 	fixture, executor := newEvidenceRelayRefreshTest(t)
+	original := executor.plan
+	raw, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var funded SetupPlan
+	if err := json.Unmarshal(raw, &funded); err != nil {
+		t.Fatal(err)
+	}
+	fixture.cfg.MaximumEVMGasWei = "512000000000000000000"
+	fixture.cfg.MaximumTAORao = 512_000_000_000
+	funded.PriorPlanHashes = append(funded.PriorPlanHashes, original.PlanHash)
+	funded.Limits = configuredPlanLimits(fixture.cfg)
+	funded.EVMFundingAllocationWei, err = planRevisionEVMFundingAllocation(fixture.cfg, original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	funded.ResolvedInputsHash, err = resolvedInputsHash(fixture.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	funded.PlanHash, err = funded.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRunInputs(fixture.cfg, fixture.stateDir, &funded, fixture.roles); err != nil {
+		t.Fatal(err)
+	}
+	executor.plan = &funded
+	return fixture, executor
+}
+
+func TestEvidenceRelayExpansionBinds2048SlotsAndCumulativeMoney(t *testing.T) {
+	fixture, executor := newEvidenceRelayExpansionTest(t)
 	before, err := json.Marshal(executor.plan)
 	if err != nil {
 		t.Fatal(err)
@@ -60,9 +97,9 @@ func TestEvidenceRelayExpansionBinds2048SlotsAndCumulativeMoney(t *testing.T) {
 	}
 	oldCampaign, _ := exactPlanActionByID(executor.plan, "campaign.evm-gas-reserve")
 	newCampaign, _ := exactPlanActionByID(plan, "campaign.evm-gas-reserve")
-	delta, err := subtractDecimalUint(oldCampaign.Spend.EVMGasWei, newCampaign.Spend.EVMGasWei)
-	if err != nil || delta != "25600000000000000000" {
-		t.Fatalf("fungible campaign allocation did not fund the exact extra reserve: delta=%s error=%v", delta, err)
+	delta, err := subtractDecimalUint(plan.MaximumSpend.EVMGasWei, executor.plan.MaximumSpend.EVMGasWei)
+	if err != nil || delta != "25600000000000000000" || !reflect.DeepEqual(oldCampaign, newCampaign) {
+		t.Fatalf("approved headroom did not fund only the exact extra reserve: delta=%s error=%v", delta, err)
 	}
 	after, err := json.Marshal(executor.plan)
 	if err != nil || !bytes.Equal(before, after) {
@@ -90,7 +127,7 @@ func TestEvidenceRelayExpansionBinds2048SlotsAndCumulativeMoney(t *testing.T) {
 }
 
 func TestEvidenceRelayExpansionRefreshCannotDoubleAgainOrRefundDebits(t *testing.T) {
-	fixture, executor := newEvidenceRelayRefreshTest(t)
+	fixture, executor := newEvidenceRelayExpansionTest(t)
 	current := evidenceRelayExpansionRequestTest(t, executor)
 	plan, err := appendEvidenceRelayContinuationPlan(executor.plan, current)
 	if err != nil {
@@ -126,7 +163,7 @@ func TestEvidenceRelayExpansionRefreshCannotDoubleAgainOrRefundDebits(t *testing
 }
 
 func TestEvidenceRelayExpansionStrictValidationRejectsForgedTerms(t *testing.T) {
-	_, executor := newEvidenceRelayRefreshTest(t)
+	_, executor := newEvidenceRelayExpansionTest(t)
 	current := evidenceRelayExpansionRequestTest(t, executor)
 	plan, err := appendEvidenceRelayContinuationPlan(executor.plan, current)
 	if err != nil {
@@ -176,7 +213,7 @@ func TestEvidenceRelayExpansionStrictValidationRejectsForgedTerms(t *testing.T) 
 }
 
 func TestEvidenceRelayExpansionAdmissionRetainsOriginalConfigAcrossBudgetRevision(t *testing.T) {
-	fixture, executor := newEvidenceRelayRefreshTest(t)
+	fixture, executor := newEvidenceRelayExpansionTest(t)
 	current := evidenceRelayExpansionRequestTest(t, executor)
 	plan, err := appendEvidenceRelayContinuationPlan(executor.plan, current)
 	if err != nil {
@@ -329,5 +366,15 @@ func TestEvidenceRelayExpansionInventoryRejectsActual2049thSlot(t *testing.T) {
 	}
 	if _, err := fixture.runtime.evidenceRelayStartupInventories(t.Context(), 2048); err == nil || !strings.Contains(err.Error(), "slots exceed") {
 		t.Fatal("expanded directory census reached out-of-budget payload reads", err)
+	}
+}
+
+// A v5 request does not grant new outside funding by itself. Insufficient
+// approved gas and campaign allocation still reject before any transaction.
+func TestEvidenceRelayExpansionRejectsUnfundedOriginalCap(t *testing.T) {
+	_, executor := newEvidenceRelayRefreshTest(t)
+	current := evidenceRelayExpansionRequestTest(t, executor)
+	if _, err := appendEvidenceRelayContinuationPlan(executor.plan, current); err == nil {
+		t.Fatal("unfunded expansion raised its own hard cap")
 	}
 }
