@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -209,6 +210,17 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 	if err != nil {
 		t.Fatalf("fixture has no retained activation inputs: %v", err)
 	}
+	var expectedActivationContexts []validatorpkg.ReleaseEvidenceV2File
+	if provisional {
+		for _, validator := range expectedEvidence.Config.ValidatorEvidenceV2 {
+			for _, operator := range validator.Evidence.Operators {
+				expectedActivationContexts = append(expectedActivationContexts, operator.Context)
+			}
+		}
+		if len(expectedActivationContexts) != cfg.Config.Topology.Operators*cfg.Config.Topology.Validators {
+			t.Fatal("provisional fixture omitted an authenticated retained activation context")
+		}
+	}
 	expectedReservedUploads, err := runtimeReservedAttemptUploads(cfg, stateDir, &deployment)
 	if err != nil {
 		t.Fatalf("fixture has no retained upload authority: %v", err)
@@ -266,8 +278,12 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 		if coordinatorSettings.ReservedAttemptUpload == nil || !reflect.DeepEqual(*coordinatorSettings.ReservedAttemptUpload, expectedReserved) || coordinatorSettings.MainnetReservedAttemptUpload != nil {
 			t.Fatalf("operator %d did not render its exact approved protected staging capacity and authority", operator)
 		}
-		if len(expectedReserved.Admission.ActivationContexts) != 0 || expectedReserved.Admission.Deployment.DeploymentBlock > reserved.creation.BlockNumber {
-			t.Fatal("renderer used future validator allowlisting or omitted the retained creation boundary")
+		admission := coordinatorSettings.ReservedAttemptUpload.Admission
+		if !slices.Equal(admission.ActivationContexts, expectedActivationContexts) || admission.ProvisionalSeededDiscoveryOnly != provisional || admission.ProvisionalRetainedContextAuthority != provisional {
+			t.Fatalf("operator %d staging authority differs from its retained activation inputs and mode", operator)
+		}
+		if admission.Deployment.DeploymentBlock > reserved.creation.BlockNumber {
+			t.Fatal("renderer omitted the retained creation boundary")
 		}
 		path := filepath.Join(root, "config", "provider_egress_probe.yml")
 		var settings struct {

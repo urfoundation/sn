@@ -23,6 +23,10 @@ import (
 	"github.com/urfoundation/sn/crv4"
 )
 
+// A synthetic next runtime retains the reviewed consumed interface while
+// changing its signing domain. It must remain newer after a release upgrade.
+const provisionalRuntimeSuccessorTestSpec = reviewedRuntimeSpecVersion + 1
+
 func provisionalRuntimeConfigTest(t *testing.T) *ResolvedConfig {
 	t.Helper()
 	cfg := testResolvedConfig(t)
@@ -30,12 +34,9 @@ func provisionalRuntimeConfigTest(t *testing.T) *ResolvedConfig {
 	return cfg
 }
 
-func provisionalRuntimeFixtureTest(t *testing.T, version uint32) (string, *types.Metadata) {
+func provisionalRuntimeFixtureTest(t *testing.T) (string, *types.Metadata) {
 	t.Helper()
-	path := "../crv4/testdata/runtime463-metadata.scale.gz.base64"
-	if version == 461 {
-		path = "../miner/testdata/runtime461-metadata.scale.gz.base64"
-	}
+	path := "../crv4/runtime-profile-v1.scale.gz.base64"
 	encoded, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +64,8 @@ func provisionalRuntimeFixtureTest(t *testing.T, version uint32) (string, *types
 
 func provisionalRuntimeChainTest(t *testing.T, cfg *ResolvedConfig) *crv4.Chain {
 	t.Helper()
-	current, _ := provisionalRuntimeFixtureTest(t, 463)
-	prior, _ := provisionalRuntimeFixtureTest(t, 461)
+	current, _ := provisionalRuntimeFixtureTest(t)
+	prior := current
 	genesis := types.Hash{}
 	if err := genesis.UnmarshalJSON([]byte(fmt.Sprintf("%q", testnetGenesis))); err != nil {
 		t.Fatal(err)
@@ -73,11 +74,11 @@ func provisionalRuntimeChainTest(t *testing.T, cfg *ResolvedConfig) *crv4.Chain 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		version := uint32(463)
+		version := uint32(provisionalRuntimeSuccessorTestSpec)
 		code := types.Hash{9}.Hex()
 		metadata := current
 		if len(args) != 0 && args[len(args)-1] == (types.Hash{1}).Hex() {
-			version = 461
+			version = cfg.Public.Chain.ExpectedRuntimeSpec
 			code = cfg.Release.Runtime.CodeHash
 			metadata = prior
 		}
@@ -112,7 +113,7 @@ func provisionalRuntimeChainTest(t *testing.T, cfg *ResolvedConfig) *crv4.Chain 
 	}}
 	dialMetadata := types.NewMetadataV14()
 	dialMetadata.MagicNumber = types.MagicNumber
-	return &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client, RPC: &gsrpcrpc.RPC{State: gsrpcstate.NewState(client)}}, GenesisHash: genesis, Meta: dialMetadata, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1}}
+	return &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client, RPC: &gsrpcrpc.RPC{State: gsrpcstate.NewState(client)}}, GenesisHash: genesis, Meta: dialMetadata, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: types.U32(cfg.Public.Chain.ExpectedRuntimeSpec), TransactionVersion: 1}}
 }
 
 func TestProvisionalRuntimeCompatibilityCurrentHistoricalAndDurableEvidence(t *testing.T) {
@@ -121,12 +122,12 @@ func TestProvisionalRuntimeCompatibilityCurrentHistoricalAndDurableEvidence(t *t
 	originalMetadata, originalRuntime := chain.Meta, chain.Runtime
 	for _, read := range []func(context.Context, *crv4.Chain, *ResolvedConfig, types.Hash) (authenticatedRuntimeMetadata, error){readAuthenticatedRuntimeMetadataAtContext, readReleaseHistoryRuntimeMetadataAtContext} {
 		current, err := read(t.Context(), chain, cfg, types.Hash{2})
-		if err != nil || current.Version.SpecVersion != 463 || current.CompatibilityProfile != crv4.ProvisionalRuntimeCompatibilityProfile {
-			t.Fatalf("current463: %+v %v", current, err)
+		if err != nil || current.Version.SpecVersion != provisionalRuntimeSuccessorTestSpec || current.CompatibilityProfile != crv4.ProvisionalRuntimeCompatibilityProfile {
+			t.Fatalf("compatible successor runtime: %+v %v", current, err)
 		}
 		prior, err := read(t.Context(), chain, cfg, types.Hash{1})
-		if err != nil || prior.Version.SpecVersion != 461 || prior.CompatibilityProfile != "" || prior.CodeHash != cfg.Release.Runtime.CodeHash {
-			t.Fatalf("historical461: %+v %v", prior, err)
+		if err != nil || prior.Version.SpecVersion != cfg.Public.Chain.ExpectedRuntimeSpec || prior.CompatibilityProfile != "" || prior.CodeHash != cfg.Release.Runtime.CodeHash {
+			t.Fatalf("historical reviewed runtime: %+v %v", prior, err)
 		}
 	}
 	if chain.Meta != originalMetadata || chain.Runtime != originalRuntime {
@@ -177,7 +178,7 @@ func TestProvisionalRuntimeCompatibilityRejectsStrictAndInvalidApproval(t *testi
 			}
 		}
 		if _, err := readAuthenticatedRuntimeMetadataAtContext(t.Context(), chain, cfg, types.Hash{2}); err == nil {
-			t.Fatalf("%s admitted463", fault)
+			t.Fatalf("%s admitted the compatible successor", fault)
 		}
 	}
 }
@@ -188,7 +189,7 @@ func TestProvisionalRuntimeCompatibilityFinalizedStorageUsesPrivateView(t *testi
 	originalMetadata, originalRuntime := chain.Meta, chain.Runtime
 	manager := &SubstrateManager{chain: chain, cfg: cfg}
 	view, hash, number, err := manager.finalizedManagerContext(t.Context())
-	if err != nil || view == manager || view.chain == chain || view.chain.Meta == originalMetadata || view.chain.Runtime.SpecVersion != 463 || hash != (types.Hash{2}) || number != 200 {
+	if err != nil || view == manager || view.chain == chain || view.chain.Meta == originalMetadata || view.chain.Runtime.SpecVersion != types.U32(provisionalRuntimeSuccessorTestSpec) || hash != (types.Hash{2}) || number != 200 {
 		t.Fatalf("private finalized view: %+v %s %d %v", view, hash.Hex(), number, err)
 	}
 	// The deliberately empty dial metadata has no SubnetworkN. The original
@@ -242,7 +243,7 @@ func TestProvisionalRuntimeCompatibilityNativeSigningArtifactFence(t *testing.T)
 	}
 }
 
-// Exercise the real no-receipt recovery path across a compatible 461→463
+// Exercise the real no-receipt recovery path across a compatible successor
 // boundary. It must reject old bytes before fee quotation or transport submit.
 func TestProvisionalRuntimeCompatibilityNativeRebroadcastRejectsUpgrade(t *testing.T) {
 	cfg := provisionalRuntimeConfigTest(t)

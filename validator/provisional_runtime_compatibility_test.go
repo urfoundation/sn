@@ -28,6 +28,9 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+// Preserve the future-runtime branch when the reviewed release advances.
+const provisionalValidatorSuccessorTestSpec = crv4.ReviewedRuntimeSpecVersion + 1
+
 // Metadata is public protocol data, independently content-addressed here.
 func provisionalValidatorMetadataTest(t *testing.T, path, expectedHash string) (*types.Metadata, string) {
 	t.Helper()
@@ -83,19 +86,19 @@ type provisionalValidatorRuntimeFixture struct {
 	storageReads   int
 }
 
-// Both sides of an upgrade are real metadata with independent synthetic
-// block authority. Unsupported calls fail rather than inventing chain state.
+// Both sides of a synthetic upgrade consume the reviewed metadata, with
+// distinct code hashes and signing domains. Unsupported calls fail explicitly.
 func newProvisionalValidatorRuntimeFixture(t *testing.T) *provisionalValidatorRuntimeFixture {
 	t.Helper()
-	self := &provisionalValidatorRuntimeFixture{cfg: validReleaseConfig(t), block: types.Hash{0xa1}, oldBlock: types.Hash{0xa0}, code: types.Hash{0x77}.Hex(), version: 463, transaction: 1}
+	self := &provisionalValidatorRuntimeFixture{cfg: validReleaseConfig(t), block: types.Hash{0xa1}, oldBlock: types.Hash{0xa0}, code: types.Hash{0x77}.Hex(), version: provisionalValidatorSuccessorTestSpec, transaction: 1}
 	self.cfg.ProvisionalRuntimeCompatibility = crv4.ProvisionalRuntimeCompatibilityProfile
-	self.metadata, self.metadataHex = provisionalValidatorMetadataTest(t, "../crv4/testdata/runtime463-metadata.scale.gz.base64", "0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c")
-	self.oldMetadata, self.oldMetadataHex = provisionalValidatorMetadataTest(t, "../miner/testdata/runtime461-metadata.scale.gz.base64", "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68")
+	self.metadata, self.metadataHex = provisionalValidatorMetadataTest(t, "../crv4/runtime-profile-v1.scale.gz.base64", "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf")
+	self.oldMetadata, self.oldMetadataHex = provisionalValidatorMetadataTest(t, "../crv4/runtime-profile-v1.scale.gz.base64", "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf")
 	genesis, err := types.NewHashFromHexString(self.cfg.GenesisHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	self.chain = &crv4.Chain{GenesisHash: genesis, Meta: self.oldMetadata, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1}}
+	self.chain = &crv4.Chain{GenesisHash: genesis, Meta: self.oldMetadata, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: types.U32(self.cfg.RuntimeSpec), TransactionVersion: 1}}
 	client := &provisionalValidatorRuntimeClient{submissions: &self.submissions}
 	client.validatorRuntimeIdentityTestClient = &validatorRuntimeIdentityTestClient{callContext: func(ctx context.Context, result any, method string, args ...any) error {
 		if err := ctx.Err(); err != nil {
@@ -144,7 +147,7 @@ func newProvisionalValidatorRuntimeFixture(t *testing.T) *provisionalValidatorRu
 		case "state_getRuntimeVersion":
 			version, transaction := self.version, self.transaction
 			if old {
-				version, transaction = 461, 1
+				version, transaction = self.cfg.RuntimeSpec, self.cfg.TransactionVersion
 			}
 			return setReleaseHistoricalTestResult(result, map[string]any{"specName": "node-subtensor", "specVersion": version, "transactionVersion": transaction, "stateVersion": 1, "apis": []any{[]any{"0x8375104b299b74c5", 2}}})
 		case "state_getStorageHash":
@@ -187,7 +190,7 @@ func TestReleaseProvisionalRuntimeConfigRequiresSeparateExactAuthority(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.RuntimeSpec != 461 || loaded.RuntimeCodeHash != cfg.RuntimeCodeHash {
+	if loaded.RuntimeSpec != cfg.RuntimeSpec || loaded.RuntimeCodeHash != cfg.RuntimeCodeHash {
 		t.Fatal("provisional profile relabeled original config")
 	}
 	if err := loaded.ValidateHistorical(); err == nil {
@@ -230,7 +233,7 @@ func TestReleaseProvisionalRuntimeBindsObservedVersionWithoutRelabelingConfig(t 
 	if _, err := authenticatePinnedNativeRuntimeContext(t.Context(), fixture.chain, &strict); err == nil {
 		t.Fatal("closed-input permission enabled future runtime")
 	}
-	if fixture.chain.Runtime.SpecVersion != 461 {
+	if fixture.chain.Runtime.SpecVersion != types.U32(fixture.cfg.RuntimeSpec) {
 		t.Fatal("strict refusal changed signing view")
 	}
 	if err := enableReleaseProvisionalRuntimeCompatibility(fixture.chain, &fixture.cfg); err != nil {
@@ -240,7 +243,7 @@ func TestReleaseProvisionalRuntimeBindsObservedVersionWithoutRelabelingConfig(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hash != fixture.block || fixture.chain.Runtime.SpecVersion != 463 || fixture.chain.Meta == fixture.oldMetadata || fixture.cfg.RuntimeSpec != 461 {
+	if hash != fixture.block || fixture.chain.Runtime.SpecVersion != types.U32(provisionalValidatorSuccessorTestSpec) || fixture.chain.Meta == fixture.oldMetadata || fixture.cfg.RuntimeSpec != crv4.ReviewedRuntimeSpecVersion {
 		t.Fatal("actual runtime was not bound independently from original config")
 	}
 	if err := validateReleaseNativeSigningRuntime(fixture.chain, &fixture.cfg); err != nil {
@@ -257,7 +260,7 @@ func TestReleaseProvisionalRuntimeBindsObservedVersionWithoutRelabelingConfig(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{fixture.cfg.GenesisHash, fixture.block.Hex(), fixture.code, `"specVersion": 463`, `"provisional": true`, `"final_acceptance": false`} {
+	for _, value := range []string{fixture.cfg.GenesisHash, fixture.block.Hex(), fixture.code, fmt.Sprintf(`"specVersion": %d`, provisionalValidatorSuccessorTestSpec), `"provisional": true`, `"final_acceptance": false`} {
 		if !bytes.Contains(raw, []byte(value)) {
 			t.Fatalf("observation omitted %s", value)
 		}
@@ -285,17 +288,17 @@ func TestReleaseProvisionalRuntimeRejectsWrongGenesisAndObservationFailure(t *te
 		if err == nil {
 			_, err = authenticatePinnedNativeRuntimeContext(t.Context(), fixture.chain, &fixture.cfg)
 		}
-		if err == nil || fixture.chain.Runtime.SpecVersion != 461 || fixture.submissions != 0 {
+		if err == nil || fixture.chain.Runtime.SpecVersion != types.U32(fixture.cfg.RuntimeSpec) || fixture.submissions != 0 {
 			t.Fatalf("%s admitted or changed signing view: %v", fault, err)
 		}
 	}
 }
 
-// Sign a retained461 batch with real metadata; its original domain is never
-// rewritten to the463 observation while recovering an absent receipt.
-func provisionalValidatorPending461Test(t *testing.T, fixture *provisionalValidatorRuntimeFixture) *SteeringIntent {
+// A retained batch keeps its reviewed signing domain while an absent receipt
+// is recovered under the independently authenticated successor observation.
+func provisionalValidatorPendingReviewedTest(t *testing.T, fixture *provisionalValidatorRuntimeFixture) *SteeringIntent {
 	t.Helper()
-	signer := &crv4.Chain{Meta: fixture.oldMetadata, GenesisHash: fixture.chain.GenesisHash, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1}}
+	signer := &crv4.Chain{Meta: fixture.oldMetadata, GenesisHash: fixture.chain.GenesisHash, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: types.U32(fixture.cfg.RuntimeSpec), TransactionVersion: 1}}
 	return provisionalValidatorSignedSourceTest(t, fixture, signer)
 }
 
@@ -306,7 +309,7 @@ func provisionalValidatorSignedSourceTest(t *testing.T, fixture *provisionalVali
 	retained := newReleaseHistoricalSourceTestFixture(t)
 	prepared := retained.intent.Prepared
 	prepared.PreparedAtBlock, prepared.PreparedAtBlockHash = 100, fixture.oldBlock.Hex()
-	if signer.Runtime.SpecVersion == 463 {
+	if signer.Runtime.SpecVersion == types.U32(provisionalValidatorSuccessorTestSpec) {
 		prepared.PreparedAtBlock, prepared.PreparedAtBlockHash = 101, fixture.block.Hex()
 	}
 	prepared.SourceCommitment.GenesisHash = fixture.chain.GenesisHash.Hex()
@@ -352,7 +355,7 @@ func provisionalValidatorSignedSourceTest(t *testing.T, fixture *provisionalVali
 	return retained.intent
 }
 
-func TestReleaseProvisionalRuntimeSourceUsesActual463SignedDomain(t *testing.T) {
+func TestReleaseProvisionalRuntimeSourceUsesActualSuccessorSignedDomain(t *testing.T) {
 	fixture := newProvisionalValidatorRuntimeFixture(t)
 	if err := enableReleaseProvisionalRuntimeCompatibility(fixture.chain, &fixture.cfg); err != nil {
 		t.Fatal(err)
@@ -361,27 +364,27 @@ func TestReleaseProvisionalRuntimeSourceUsesActual463SignedDomain(t *testing.T) 
 		t.Fatal(err)
 	}
 	intent := provisionalValidatorSignedSourceTest(t, fixture, fixture.chain)
-	if intent.Prepared.SourceCommitment.RuntimeSpec != 463 || intent.Prepared.SourceCommitment.CompatibilityProfile != crv4.ProvisionalRuntimeCompatibilityProfile || fixture.cfg.RuntimeSpec != 461 {
+	if intent.Prepared.SourceCommitment.RuntimeSpec != provisionalValidatorSuccessorTestSpec || intent.Prepared.SourceCommitment.CompatibilityProfile != crv4.ProvisionalRuntimeCompatibilityProfile || fixture.cfg.RuntimeSpec != crv4.ReviewedRuntimeSpecVersion {
 		t.Fatal("actual signed domain replaced config authority")
 	}
-	intent.Prepared.SourceCommitment.RuntimeSpec = 461
+	intent.Prepared.SourceCommitment.RuntimeSpec = fixture.cfg.RuntimeSpec
 	if err := fixture.chain.ValidatePreparedSource(intent.Prepared); err == nil {
-		t.Fatal("current463 signature was relabeled as461")
+		t.Fatal("successor signature was relabeled with the reviewed signing domain")
 	}
-	intent.Prepared.SourceCommitment.RuntimeSpec = 463
+	intent.Prepared.SourceCommitment.RuntimeSpec = provisionalValidatorSuccessorTestSpec
 	intent.Prepared.SourceCommitment.CompatibilityProfile = ""
 	if err := fixture.chain.ValidatePreparedSource(intent.Prepared); err == nil {
 		t.Fatal("future source without explicit profile was admitted")
 	}
 }
 
-func TestReleaseProvisionalRuntimePending461RefusesReplayInBothIntentOwners(t *testing.T) {
+func TestReleaseProvisionalRuntimePendingReviewedRefusesReplayInBothIntentOwners(t *testing.T) {
 	for _, version := range []string{"v1", "v2"} {
 		fixture := newProvisionalValidatorRuntimeFixture(t)
 		if err := enableReleaseProvisionalRuntimeCompatibility(fixture.chain, &fixture.cfg); err != nil {
 			t.Fatal(err)
 		}
-		intent := provisionalValidatorPending461Test(t, fixture)
+		intent := provisionalValidatorPendingReviewedTest(t, fixture)
 		originalBytes := intent.Prepared.ExtrinsicHex
 		steerer := &ReleaseSteerer{cfg: &fixture.cfg, native: fixture.chain}
 		var done bool
@@ -394,7 +397,7 @@ func TestReleaseProvisionalRuntimePending461RefusesReplayInBothIntentOwners(t *t
 		if done || err == nil || !strings.Contains(err.Error(), "signing runtime differs") || fixture.blocks != 2 || fixture.submissions != 0 || fixture.storageReads != 0 {
 			t.Fatalf("%s recovery done=%t blocks=%d submit=%d storage=%d error=%v", version, done, fixture.blocks, fixture.submissions, fixture.storageReads, err)
 		}
-		if intent.Prepared.SourceCommitment.RuntimeSpec != 461 || intent.Prepared.ExtrinsicHex != originalBytes || fixture.chain.Runtime.SpecVersion != 463 {
+		if intent.Prepared.SourceCommitment.RuntimeSpec != fixture.cfg.RuntimeSpec || intent.Prepared.ExtrinsicHex != originalBytes || fixture.chain.Runtime.SpecVersion != types.U32(provisionalValidatorSuccessorTestSpec) {
 			t.Fatalf("%s changed retained authority or live signing runtime", version)
 		}
 	}
@@ -408,7 +411,7 @@ func TestReleaseProvisionalRuntimeFreshSubmissionRejectsUpgradeBeforeBroadcast(t
 		if err := enableReleaseProvisionalRuntimeCompatibility(fixture.chain, &fixture.cfg); err != nil {
 			t.Fatal(err)
 		}
-		prepared := provisionalValidatorPending461Test(t, fixture).Prepared
+		prepared := provisionalValidatorPendingReviewedTest(t, fixture).Prepared
 		if version == "v1" {
 			prepared.Schema, prepared.SourceCommitment = crv4.PreparedSubmissionSchema, nil
 			ciphertext, err := hexutil.Decode(prepared.CiphertextHex)
@@ -423,7 +426,7 @@ func TestReleaseProvisionalRuntimeFreshSubmissionRejectsUpgradeBeforeBroadcast(t
 			if err != nil {
 				t.Fatal(err)
 			}
-			signer := &crv4.Chain{Meta: fixture.oldMetadata, GenesisHash: fixture.chain.GenesisHash, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1}}
+			signer := &crv4.Chain{Meta: fixture.oldMetadata, GenesisHash: fixture.chain.GenesisHash, Runtime: &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: types.U32(fixture.cfg.RuntimeSpec), TransactionVersion: 1}}
 			signed, err := signer.NewSignedExtrinsic(key, call, prepared.AccountNonce)
 			if err != nil {
 				t.Fatal(err)
@@ -445,7 +448,7 @@ func TestReleaseProvisionalRuntimeFreshSubmissionRejectsUpgradeBeforeBroadcast(t
 	}
 }
 
-// This reaches the real transport submission boundary for an actual463 SDK
+// This reaches the real transport submission boundary for a successor SDK
 // source, then stops at a deterministic transport refusal without live I/O.
 func TestReleaseProvisionalRuntimeFreshCurrentSourceReachesSubmissionBoundary(t *testing.T) {
 	fixture := newProvisionalValidatorRuntimeFixture(t)
@@ -479,7 +482,7 @@ func TestValidatorUploadProvisionalRuntimeInstallsIndependentObservedOwner(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observer.Hash != fixture.block || observer.Number != 101 || observer.TimestampMillis != 120000 || fixture.storageReads != 1 || cfg.Deployment.NativeRuntime.Version.SpecVersion != 461 {
+	if observer.Hash != fixture.block || observer.Number != 101 || observer.TimestampMillis != 120000 || fixture.storageReads != 1 || cfg.Deployment.NativeRuntime.Version.SpecVersion != fixture.cfg.RuntimeSpec {
 		t.Fatal("upload observation did not preserve current state and original deployment authority")
 	}
 	for _, fault := range []string{"profile", "directory", "chain", "genesis"} {

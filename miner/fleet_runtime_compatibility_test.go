@@ -25,6 +25,9 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
+// Preserve the future-runtime branch when the reviewed release advances.
+const provisionalFleetSuccessorTestSpec = crv4.ReviewedRuntimeSpecVersion + 1
+
 type provisionalFleetRuntimeFixture struct {
 	chain        *crv4.Chain
 	block        types.Hash
@@ -45,7 +48,7 @@ func setProvisionalFleetRuntimeResult(result any, value any) error {
 
 func newProvisionalFleetRuntimeFixture(t *testing.T) *provisionalFleetRuntimeFixture {
 	t.Helper()
-	encoded, err := os.ReadFile("../crv4/testdata/runtime463-metadata.scale.gz.base64")
+	encoded, err := os.ReadFile("../crv4/runtime-profile-v1.scale.gz.base64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,14 +60,14 @@ func newProvisionalFleetRuntimeFixture(t *testing.T) *provisionalFleetRuntimeFix
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := io.ReadAll(io.LimitReader(reader, 338397))
-	if err := errors.Join(err, reader.Close()); err != nil || len(raw) != 338396 {
+	raw, err := io.ReadAll(io.LimitReader(reader, 347305))
+	if err := errors.Join(err, reader.Close()); err != nil || len(raw) != 347304 {
 		t.Fatalf("metadata bytes=%d: %v", len(raw), err)
 	}
 	self := &provisionalFleetRuntimeFixture{block: types.Hash{0xb1}, metadataHex: codec.HexEncodeToString(raw), code: types.Hash{0x75}.Hex()}
 	var hash string
 	self.metadata, hash, err = crv4.DecodeRuntimeMetadata(self.metadataHex)
-	if err != nil || hash != "0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c" {
+	if err != nil || hash != "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf" {
 		t.Fatalf("metadata hash=%s: %v", hash, err)
 	}
 	genesis, err := types.NewHashFromHexString(fleetProvisionalTestnetGenesis)
@@ -104,7 +107,7 @@ func newProvisionalFleetRuntimeFixture(t *testing.T) *provisionalFleetRuntimeFix
 		}
 		switch method {
 		case "state_getRuntimeVersion":
-			return setProvisionalFleetRuntimeResult(result, map[string]any{"specName": "node-subtensor", "specVersion": 463, "transactionVersion": 1, "stateVersion": 1, "apis": []any{[]any{"0x8375104b299b74c5", 2}}})
+			return setProvisionalFleetRuntimeResult(result, map[string]any{"specName": "node-subtensor", "specVersion": provisionalFleetSuccessorTestSpec, "transactionVersion": 1, "stateVersion": 1, "apis": []any{[]any{"0x8375104b299b74c5", 2}}})
 		case "state_getStorageHash":
 			if len(args) != 2 || args[0] != "0x3a636f6465" {
 				return errors.New("runtime code key changed")
@@ -132,7 +135,7 @@ func newProvisionalFleetRuntimeFixture(t *testing.T) *provisionalFleetRuntimeFix
 	}}
 	self.chain = fleetRuntimeTestChain(client)
 	self.chain.GenesisHash = genesis
-	self.chain.Runtime = &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: 461, TransactionVersion: 1}
+	self.chain.Runtime = &types.RuntimeVersion{SpecName: "node-subtensor", SpecVersion: types.U32(crv4.ReviewedRuntimeSpecVersion), TransactionVersion: 1}
 	return self
 }
 
@@ -176,7 +179,7 @@ func TestFleetProvisionalRuntimeAuthenticatesCurrentStatusAndSigningBinding(t *t
 	fixture := newProvisionalFleetRuntimeFixture(t)
 	var hotkey [32]byte
 	copy(hotkey[:], bytes.Repeat([]byte{0x22}, 32))
-	if _, err := pinnedFleetCommitmentFinalizedContext(t.Context(), fixture.chain, 7, hotkey); err == nil || fixture.storageReads != 0 || fixture.chain.Runtime.SpecVersion != 461 {
+	if _, err := pinnedFleetCommitmentFinalizedContext(t.Context(), fixture.chain, 7, hotkey); err == nil || fixture.storageReads != 0 || fixture.chain.Runtime.SpecVersion != types.U32(crv4.ReviewedRuntimeSpecVersion) {
 		t.Fatal("strict fleet admitted future runtime")
 	}
 	directory := filepath.Join(t.TempDir(), "observations")
@@ -187,8 +190,8 @@ func TestFleetProvisionalRuntimeAuthenticatesCurrentStatusAndSigningBinding(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observed.Hash != ([32]byte{0x66}) || observed.FinalizedHash != fixture.block || observed.CommitmentBlock != 42 || fixture.storageReads != 2 || fixture.chain.Runtime.SpecVersion != 463 {
-		t.Fatal("fleet status did not bind exact current463 state")
+	if observed.Hash != ([32]byte{0x66}) || observed.FinalizedHash != fixture.block || observed.CommitmentBlock != 42 || fixture.storageReads != 2 || fixture.chain.Runtime.SpecVersion != types.U32(provisionalFleetSuccessorTestSpec) {
+		t.Fatal("fleet status did not bind exact successor state")
 	}
 	if fixture.chain.CurrentRuntimeCompatibilityProfile() != crv4.ProvisionalRuntimeCompatibilityProfile {
 		t.Fatal("actual signing metadata lacks authenticated profile")
@@ -204,7 +207,7 @@ func TestFleetProvisionalRuntimeAuthenticatesCurrentStatusAndSigningBinding(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{fixture.chain.GenesisHash.Hex(), fixture.block.Hex(), fixture.code, `"specVersion": 463`, `"provisional": true`, `"final_acceptance": false`} {
+	for _, value := range []string{fixture.chain.GenesisHash.Hex(), fixture.block.Hex(), fixture.code, fmt.Sprintf(`"specVersion": %d`, provisionalFleetSuccessorTestSpec), `"provisional": true`, `"final_acceptance": false`} {
 		if !bytes.Contains(raw, []byte(value)) {
 			t.Fatalf("fleet observation omitted %s", value)
 		}
@@ -220,11 +223,11 @@ func TestFleetProvisionalRuntimeRefusesForgedBindingAndUndurableObservation(t *t
 	if err := enableFleetProvisionalRuntimeCompatibility(fixture.chain, &protocol.FleetManifest{ChainID: 945}, crv4.ProvisionalRuntimeCompatibilityProfile, directory); err != nil {
 		t.Fatal(err)
 	}
-	forged := crv4.AuthenticatedRuntimeArtifact{BlockHash: fixture.block, GenesisHash: fixture.chain.GenesisHash, Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 463, TransactionVersion: 1, StateVersion: 1}, CodeHash: fixture.code, MetadataHash: "0xe9af0fcab804e08c0f6cc2c13715b1e366a916eda6a61aec6fb2601bc2a66b4c", Metadata: fixture.metadata, CompatibilityProfile: crv4.ProvisionalRuntimeCompatibilityProfile}
+	forged := crv4.AuthenticatedRuntimeArtifact{BlockHash: fixture.block, GenesisHash: fixture.chain.GenesisHash, Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: provisionalFleetSuccessorTestSpec, TransactionVersion: 1, StateVersion: 1}, CodeHash: fixture.code, MetadataHash: "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf", Metadata: fixture.metadata, CompatibilityProfile: crv4.ProvisionalRuntimeCompatibilityProfile}
 	if err := bindFleetRuntime(fixture.chain, forged); err == nil {
 		t.Fatal("caller supplied compatibility marker authorized metadata")
 	}
-	if _, err := authenticateAndBindFleetRuntimeFinalizedContext(t.Context(), fixture.chain); err == nil || fixture.chain.Runtime.SpecVersion != 461 || fixture.chain.Meta != nil {
+	if _, err := authenticateAndBindFleetRuntimeFinalizedContext(t.Context(), fixture.chain); err == nil || fixture.chain.Runtime.SpecVersion != types.U32(crv4.ReviewedRuntimeSpecVersion) || fixture.chain.Meta != nil {
 		t.Fatal("failed durable observation changed fleet signing view")
 	}
 }

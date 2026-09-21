@@ -98,11 +98,8 @@ func newHistoricalFleetCacheFixture(t *testing.T, count int, independent bool) h
 	}
 	planHash := "0x" + strings.Repeat("88", 32)
 	fixture.executor = &Executor{
-		cfg: cfg, stateDir: t.TempDir(), plan: &SetupPlan{PlanHash: planHash},
+		cfg: cfg, stateDir: historicalAuditCacheTestStateDir(t), plan: &SetupPlan{PlanHash: planHash},
 		deployer: &EvmTxManager{client: operationalClient}, independentEVM: independentClient,
-	}
-	if err := os.Chmod(fixture.executor.stateDir, 0o700); err != nil {
-		t.Fatal(err)
 	}
 	fixture.calls = make([]historicalFleetGenerationOneCall, count)
 	for index := range fixture.calls {

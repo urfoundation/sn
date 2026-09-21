@@ -293,7 +293,7 @@ func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
 		role.ClientIDHex = fmt.Sprintf("%032x", member)
 		roles.Clients[label] = role
 	}
-	stateDir := t.TempDir()
+	stateDir := historicalAuditCacheTestStateDir(t)
 	if err := os.MkdirAll(stateDir+"/public", 0o755); err != nil {
 		t.Fatal(err)
 	}

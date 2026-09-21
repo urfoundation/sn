@@ -17,11 +17,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func historicalAuditCacheTestExecutor(t *testing.T) *Executor {
+// Cache fixtures need the same private, physical state directory as an actual
+// deployment, independently of the process umask or temporary root aliases.
+func historicalAuditCacheTestStateDir(t *testing.T) string {
 	t.Helper()
-	cfg := testResolvedConfig(t)
-	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://independent-native.example"
-	cfg.Public.Chain.EVMPublicReadEndpoint = "https://independent-evm.example"
 	stateDir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -29,6 +28,15 @@ func historicalAuditCacheTestExecutor(t *testing.T) *Executor {
 	if err := os.Chmod(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	return stateDir
+}
+
+func historicalAuditCacheTestExecutor(t *testing.T) *Executor {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://independent-native.example"
+	cfg.Public.Chain.EVMPublicReadEndpoint = "https://independent-evm.example"
+	stateDir := historicalAuditCacheTestStateDir(t)
 	return &Executor{
 		cfg: cfg, stateDir: stateDir,
 		plan: &SetupPlan{
@@ -305,6 +313,28 @@ func TestHistoricalAuditCacheDisabledInputsStillExecuteOriginalVerifier(t *testi
 				}
 			}
 		})
+	}
+}
+
+// A permissive temporary directory must exercise the uncached verifier rather
+// than make a silently disabled cache look like a successful persistence test.
+func TestHistoricalAuditCacheUnprotectedStateRootRemainsCold(t *testing.T) {
+	executor := historicalAuditCacheTestExecutor(t)
+	if err := os.Chmod(executor.stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	for attempt := 0; attempt < 2; attempt++ {
+		hit, err := executor.withHistoricalAuditCache(t.Context(), "native-receipt", historicalAuditCacheTestInput(), func(context.Context) error {
+			calls++
+			return nil
+		})
+		if err != nil || hit || calls != attempt+1 {
+			t.Fatalf("unprotected state root cached verification: hit=%t calls=%d err=%v", hit, calls, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(executor.stateDir, historicalAuditCacheDirectoryName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unprotected state root acquired a cache: %v", err)
 	}
 }
 

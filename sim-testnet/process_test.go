@@ -2234,15 +2234,26 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 		if spec.Role != "operator-connect" {
 			if spec.Role == "operator-api" || spec.Role == "operator-taskworker" {
 				port := 0
-				if len(spec.Args) != 2 {
-					t.Fatalf("%s has invalid server arguments: %v", spec.ID, spec.Args)
+				for _, arg := range spec.Args {
+					if value, ok := strings.CutPrefix(arg, "--port="); ok {
+						parsed, err := strconv.Atoi(value)
+						if err != nil || parsed <= 0 || parsed > 65535 || port != 0 {
+							t.Fatalf("%s has invalid or duplicate server port: %v", spec.ID, spec.Args)
+						}
+						port = parsed
+					}
 				}
-				if _, err := fmt.Sscanf(spec.Args[1], "--port=%d", &port); err != nil || port == 0 {
-					t.Fatalf("%s has invalid server port: %v", spec.ID, spec.Args)
+				if port == 0 {
+					t.Fatalf("%s has no server port: %v", spec.ID, spec.Args)
 				}
 				if spec.Env["WARP_HOST"] != "127.0.0.1" || spec.Env["WARP_HOST_IPV4"] != "127.0.0.1" || spec.Env["WARP_PORTS"] != fmt.Sprintf("%d:%d", port, port) || spec.HealthURL != fmt.Sprintf("http://127.0.0.1:%d/status", port) {
 					t.Fatalf("%s is not directly loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
 				}
+				listenAddress := net.JoinHostPort(spec.Env["WARP_HOST_IPV4"], strconv.Itoa(port))
+				if owner := seenListenAddresses[listenAddress]; owner != "" {
+					t.Fatalf("operator listener %s is shared by %s and %s", listenAddress, owner, spec.ID)
+				}
+				seenListenAddresses[listenAddress] = spec.ID
 			}
 			continue
 		}

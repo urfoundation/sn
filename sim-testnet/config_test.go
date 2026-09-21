@@ -722,21 +722,30 @@ func TestResolvedConfigBindsAllRuntimeVersions(t *testing.T) {
 	}
 }
 
+// Artifact rejection is stable across reviewed runtime upgrades; diagnostics
+// may name the current version without making an older version the assertion.
 func TestResolvedConfigPinsReviewedRuntimeArtifactIdentity(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*ReleaseRuntimeLock)
 	}{
+		{name: "source repository", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceRepository += "/fork" }},
+		{name: "source ref kind", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceRefKind = "unreviewed-fixture" }},
+		{name: "source ref name", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceRefName += "-unreviewed" }},
+		{name: "source tag", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceTag += "-unreviewed" }},
 		{name: "source commit", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceCommit = strings.Repeat("0", 40) }},
 		{name: "code hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.CodeHash = "0x" + strings.Repeat("00", 32) }},
 		{name: "metadata hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.MetadataHash = "0x" + strings.Repeat("00", 32) }},
+		{name: "compressed wasm hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.CompressedWasmSHA256 = "0x" + strings.Repeat("00", 32) }},
+		{name: "release call hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.UpstreamReleaseCallHash = "0x" + strings.Repeat("00", 32) }},
+		{name: "release timepoint", mutate: func(runtime *ReleaseRuntimeLock) { runtime.UpstreamReleaseTimepoint += "-unreviewed" }},
 	}
 	for _, test := range tests {
 		cfg := testResolvedConfig(t)
 		cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
 		test.mutate(&cfg.Release.Runtime)
-		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 461") {
-			t.Errorf("%s runtime artifact drift was accepted: %v", test.name, err)
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "release lock runtime identity is not the reviewed testnet runtime") {
+			t.Errorf("%s runtime artifact drift returned %v, want reviewed runtime identity rejection", test.name, err)
 		}
 	}
 }
