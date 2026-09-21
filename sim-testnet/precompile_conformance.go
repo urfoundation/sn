@@ -830,11 +830,13 @@ func (self *Executor) verifySubstrateTransactionEvidenceAtHead(ctx context.Conte
 	}
 	// The finalized head and canonical block check above are always fresh. Only
 	// the immutable inclusion/success proof inside that exact block is reusable.
-	_, err = self.withHistoricalAuditCache(ctx, "finalized-native-extrinsic", struct {
-		Recorded    ChainHead `json:"recorded"`
-		Transaction string    `json:"transaction"`
-		Observer    string    `json:"observer"`
-	}{Recorded: recorded, Transaction: txHash.Hex(), Observer: self.substrate.chain.API.Client.URL()}, func(auditCtx context.Context) error {
+	input, inputErr := nativeHistoryCacheInput(self.cfg, recorded, txHash.Hex(), self.substrate.chain.API.Client.URL())
+	if inputErr != nil {
+		// Provisional observations are useful to recovery but cannot seed a
+		// strict native proof, even when the approved plan remains unchanged.
+		return verifyReleaseHistoryFinalizedExtrinsicContext(ctx, self.substrate.chain, self.cfg, blockHash, txHash)
+	}
+	_, err = self.withHistoricalAuditCache(ctx, historicalNativeExtrinsicCacheKind, input, func(auditCtx context.Context) error {
 		return verifyReleaseHistoryFinalizedExtrinsicContext(auditCtx, self.substrate.chain, self.cfg, blockHash, txHash)
 	})
 	return err

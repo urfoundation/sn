@@ -176,6 +176,16 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.Release == nil || cfg.WalletMaterial == "" || cfg.Config.Deployment.DeploymentID == "" {
 		return nil, false
 	}
+	if kind == historicalNativeExtrinsicCacheKind {
+		proofInput, ok := input.(historicalNativeExtrinsicCacheInput)
+		if !ok || provisionalResumeEnabled(e.cfg) {
+			return nil, false
+		}
+		expected, err := nativeHistoryCacheInput(cfg, proofInput.Recorded, proofInput.Transaction, proofInput.Observer)
+		if err != nil || expected != proofInput {
+			return nil, false
+		}
+	}
 	contextHash, err := e.historicalAuditContextHash(cfg)
 	if err != nil {
 		return nil, false

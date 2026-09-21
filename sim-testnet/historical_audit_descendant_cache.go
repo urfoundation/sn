@@ -1,4 +1,4 @@
-// Only complete immutable fleet proof inputs can cross a compatible runner
+// Only complete immutable proof inputs can cross a compatible runner
 // revision. Current state, local evidence and canonical checks stay outside
 // the cache, and the prior approval must belong to the admitted plan lineage.
 package main
@@ -77,12 +77,12 @@ func (self *historicalAuditPlanReader) read(ctx context.Context, stateDir, hash 
 	return pending.plan, err
 }
 
-// The two admitted callers include every ABI selector, expected value,
-// checkpoint, observer and authenticated local decoder input in InputHash.
-// Their contract-state comparison does not depend on unrelated runner source.
+// Fleet callers bind every selector, expected value and decoder input. Native
+// callers bind the exact block, transaction, observer and reviewed runtimes.
+// These immutable comparisons do not depend on unrelated runner source.
 // A new verifier contract must change historicalAuditCacheVerifierVersion.
 func (self *Executor) historicalAuditCompatibilityHash(cfg *ResolvedConfig, kind string, input any) (string, bool) {
-	if kind != "fleet-install-pinned-state-v1" && kind != historicalFleetGenerationOneCacheKind {
+	if kind != "fleet-install-pinned-state-v1" && kind != historicalFleetGenerationOneCacheKind && kind != historicalNativeExtrinsicCacheKind {
 		return "", false
 	}
 	if self == nil || self.plan == nil || cfg == nil || cfg.Release == nil || cfg.Config == nil ||
@@ -90,33 +90,44 @@ func (self *Executor) historicalAuditCompatibilityHash(cfg *ResolvedConfig, kind
 		self.plan.DeploymentID != cfg.Config.Deployment.DeploymentID || self.plan.ChainID != cfg.ChainID || self.plan.Netuid != cfg.Netuid || self.plan.Owner != cfg.WalletPublic {
 		return "", false
 	}
-	wire, err := json.Marshal(input)
-	if err != nil {
-		return "", false
-	}
-	var identity struct {
-		Action Action `json:"action"`
-	}
-	if json.Unmarshal(wire, &identity) != nil || identity.Action.ID == "" {
-		return "", false
-	}
-	actionHash, err := canonicalHashHex(identity.Action)
-	if err != nil {
-		return "", false
-	}
-	matched := 0
-	for _, action := range self.plan.Actions {
-		if action.ID != identity.Action.ID {
-			continue
-		}
-		approvedHash, err := canonicalHashHex(action)
-		if err != nil || approvedHash != actionHash {
+	if kind == historicalNativeExtrinsicCacheKind {
+		proofInput, ok := input.(historicalNativeExtrinsicCacheInput)
+		if !ok || provisionalResumeEnabled(self.cfg) {
 			return "", false
 		}
-		matched++
-	}
-	if matched != 1 {
-		return "", false
+		expected, err := nativeHistoryCacheInput(cfg, proofInput.Recorded, proofInput.Transaction, proofInput.Observer)
+		if err != nil || expected != proofInput {
+			return "", false
+		}
+	} else {
+		wire, err := json.Marshal(input)
+		if err != nil {
+			return "", false
+		}
+		var identity struct {
+			Action Action `json:"action"`
+		}
+		if json.Unmarshal(wire, &identity) != nil || identity.Action.ID == "" {
+			return "", false
+		}
+		actionHash, err := canonicalHashHex(identity.Action)
+		if err != nil {
+			return "", false
+		}
+		matched := 0
+		for _, action := range self.plan.Actions {
+			if action.ID != identity.Action.ID {
+				continue
+			}
+			approvedHash, err := canonicalHashHex(action)
+			if err != nil || approvedHash != actionHash {
+				return "", false
+			}
+			matched++
+		}
+		if matched != 1 {
+			return "", false
+		}
 	}
 	// Retain the complete release contract except the two runner build pins.
 	// Runtime, ABI, dependencies, protocol and every other repository pin stay
@@ -184,13 +195,24 @@ func (self *Executor) historicalAuditApprovalCompatible(ctx context.Context, pro
 	if proof.ApprovalPlanHash == self.plan.PlanHash {
 		return proof.ApprovalReleaseLockHash == self.plan.ReleaseLockHash
 	}
-	readSource := readValidatorEvidenceHistoricalPlan
-	if sources, ok := ctx.Value(historicalAuditPlanReaderKey{}).(*historicalAuditPlanReader); ok {
-		readSource = func(stateDir, hash string) (*SetupPlan, error) { return sources.read(ctx, stateDir, hash) }
-	}
-	source, err := readSource(self.stateDir, proof.ApprovalPlanHash)
+	source, err := readHistoricalAuditSourcePlan(ctx, self.stateDir, proof.ApprovalPlanHash)
 	return err == nil && source != nil && source.PlanHash == proof.ApprovalPlanHash && source.ReleaseLockHash == proof.ApprovalReleaseLockHash &&
 		source.DeploymentID == self.plan.DeploymentID && source.ChainID == self.plan.ChainID && source.GenesisHash == self.plan.GenesisHash && source.Netuid == self.plan.Netuid && source.Owner == self.plan.Owner
+}
+
+// Share authenticated source decoding within one reconciliation. Ordinary
+// calls and later reconciliations still reopen and authenticate the archive.
+func readHistoricalAuditSourcePlan(ctx context.Context, stateDir, hash string) (*SetupPlan, error) {
+	if ctx == nil {
+		return nil, errors.New("historical audit source context is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if sources, ok := ctx.Value(historicalAuditPlanReaderKey{}).(*historicalAuditPlanReader); ok {
+		return sources.read(ctx, stateDir, hash)
+	}
+	return readValidatorEvidenceHistoricalPlan(stateDir, hash)
 }
 
 type historicalAuditDescendantIndexKey struct{ stateDir, contextHash, compatibilityHash string }

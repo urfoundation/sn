@@ -38,6 +38,7 @@ type Executor struct {
 	stateDir                     string
 	plan                         *SetupPlan
 	planActions                  map[string]Action
+	planActionsOwner             *SetupPlan
 	journal                      *Journal
 	roles                        *RoleSecrets
 	substrate                    *SubstrateManager
@@ -178,7 +179,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, planActions: planActionIndex(p), journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, planActions: planActionIndex(p), planActionsOwner: p, journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
 	if nativeOwner != nil && provisionalResumeEnabled(runtimeCfg) && nativeOwner.payloads != nil {
 		// The exact parent guard above binds this already authenticated result
 		// to the same plan, configuration and journal for provisional continuation.
@@ -1436,14 +1437,17 @@ func exactCarriedFleetBatchSourceAction(cfg *ResolvedConfig, currentPlan, source
 	return *source, nil
 }
 
-func (e *Executor) carriedFleetBatchSourceExecutor(action Action, verified JournalEntry) (*Executor, Action, error) {
-	if e == nil || e.plan == nil {
+func (e *Executor) carriedFleetBatchSourceExecutor(ctx context.Context, action Action, verified JournalEntry) (*Executor, Action, error) {
+	if ctx == nil || e == nil || e.plan == nil {
 		return nil, Action{}, errors.New("carried fleet batch executor is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, Action{}, err
 	}
 	if verified.PlanHash == e.plan.PlanHash {
 		return e, action, nil
 	}
-	sourcePlan, err := readValidatorEvidenceHistoricalPlan(e.stateDir, verified.PlanHash)
+	sourcePlan, err := readHistoricalAuditSourcePlan(ctx, e.stateDir, verified.PlanHash)
 	if err != nil {
 		return nil, Action{}, fmt.Errorf("read carried fleet batch source plan: %w", err)
 	}
@@ -1453,6 +1457,8 @@ func (e *Executor) carriedFleetBatchSourceExecutor(action Action, verified Journ
 	}
 	sourceExecutor := *e
 	sourceExecutor.plan = sourcePlan
+	sourceExecutor.planActions = planActionIndex(sourcePlan)
+	sourceExecutor.planActionsOwner = sourcePlan
 	return &sourceExecutor, sourceAction, nil
 }
 
@@ -1530,7 +1536,7 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 	verifier, verifiedAction := e, action
 	if verified.PlanHash != e.plan.PlanHash && (strings.HasPrefix(action.ID, "fleet.install.batch.") || strings.HasPrefix(action.ID, "fleet.refresh.batch.")) {
 		var err error
-		verifier, verifiedAction, err = e.carriedFleetBatchSourceExecutor(action, verified)
+		verifier, verifiedAction, err = e.carriedFleetBatchSourceExecutor(ctx, action, verified)
 		if err != nil {
 			return fmt.Errorf("carried fleet batch source: %w", err)
 		}
@@ -4308,8 +4314,12 @@ func (e *Executor) planAction(id string) (Action, error) {
 	if e.plan == nil {
 		return Action{}, errors.New("approved plan is unavailable")
 	}
-	if action, ok := e.planActions[id]; ok {
-		return action, nil
+	// Historical readers copy the executor and replace its approved plan.
+	// Their inherited index belongs to the original immutable plan object.
+	if e.planActionsOwner == e.plan {
+		if action, ok := e.planActions[id]; ok {
+			return action, nil
+		}
 	}
 	for _, action := range e.plan.Actions {
 		if action.ID == id {

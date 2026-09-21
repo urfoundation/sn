@@ -212,6 +212,12 @@ func evmReadRpcBatchTimedOut(err error) bool {
 // results stay in their original positions, including completed chunks before
 // a later chunk fails. Failed transports never contribute partially read bytes.
 func readEvmRpcBatchWithPolicy[T any](ctx context.Context, operation string, reads []evmRpcRead, policy finalSemanticRPCRetryPolicy, call func(context.Context, []rpc.BatchElem) error) ([]evmRpcReadResult[T], error) {
+	return readEvmRpcBatchWithCapacity[T](ctx, operation, reads, policy, call, nil)
+}
+
+// Learned route capacity changes grouping only; each operation retains its
+// own result array and the existing bounded retry/finality contract.
+func readEvmRpcBatchWithCapacity[T any](ctx context.Context, operation string, reads []evmRpcRead, policy finalSemanticRPCRetryPolicy, call func(context.Context, []rpc.BatchElem) error, capacity *evmReadBatchCapacity) ([]evmRpcReadResult[T], error) {
 	if ctx == nil || operation == "" || len(reads) == 0 || len(reads) > maximumEVMRPCBatchCalls || call == nil {
 		return nil, errors.New("EVM read batch is unavailable or unbounded")
 	}
@@ -226,15 +232,18 @@ func readEvmRpcBatchWithPolicy[T any](ctx context.Context, operation string, rea
 		}
 		pending[index] = index
 	}
-	batchWidth := len(reads)
+	lease := capacity.begin(len(reads))
+	batchWidth := lease.width
 	priorWidth := batchWidth
 	finishRound := func(err error) error {
-		if evmReadRpcBatchTimedOut(err) && len(pending) > 1 {
+		if ctx.Err() == nil && evmReadRpcBatchTimedOut(err) && len(pending) > 1 {
 			batchWidth = (min(batchWidth, len(pending)) + 1) / 2
+			capacity.timedOut(batchWidth)
 		}
 		return err
 	}
 	err := retryEvmReadRpcCall(ctx, operation, policy, func(attemptCtx context.Context) error {
+		batchWidth = lease.limit(batchWidth)
 		if batchWidth < priorWidth {
 			fmt.Fprintf(os.Stderr, "sim-testnet: %s retry %d pending reads with batch width %d (previous %d)\n", operation, len(pending), batchWidth, priorWidth)
 			priorWidth = batchWidth
@@ -279,6 +288,14 @@ func readEvmRpcBatchWithPolicy[T any](ctx context.Context, operation string, rea
 		}
 		for _, index := range pending {
 			results[index].err = err
+		}
+	} else if ctx.Err() == nil {
+		complete := true
+		for _, result := range results {
+			complete = complete && result.err == nil
+		}
+		if complete {
+			lease.succeeded()
 		}
 	}
 	return results, nil

@@ -639,9 +639,23 @@ func TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan(t *testing.
 	}
 	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &current}
 	entry := JournalEntry{PlanHash: source.PlanHash, ActionID: sourceAction.ID, IntentHash: sourceAction.IntentHash, Stage: StageVerified}
-	archivedExecutor, archivedAction, err := executor.carriedFleetBatchSourceExecutor(sourceAction, entry)
+	archivedExecutor, archivedAction, err := executor.carriedFleetBatchSourceExecutor(t.Context(), sourceAction, entry)
 	if err != nil || archivedExecutor.plan.PlanHash != source.PlanHash || archivedAction.IntentHash != sourceAction.IntentHash {
 		t.Fatalf("hash-authenticated archived plan rejected: executor=%+v action=%+v err=%v", archivedExecutor, archivedAction, err)
+	}
+	reads := 0
+	reader := &historicalAuditPlanReader{readSource: func(stateDir, hash string) (*SetupPlan, error) {
+		reads++
+		return readValidatorEvidenceHistoricalPlan(stateDir, hash)
+	}}
+	ctx := context.WithValue(t.Context(), historicalAuditPlanReaderKey{}, reader)
+	for index := 0; index < qualificationFleetBatchCount; index++ {
+		if _, _, err := executor.carriedFleetBatchSourceExecutor(ctx, sourceAction, entry); err != nil {
+			t.Fatalf("shared immutable source read: %v", err)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("forty carried fleet readers decoded one source %d times, want1", reads)
 	}
 	tampered := *source
 	tampered.Actions = append([]Action(nil), source.Actions...)
@@ -653,7 +667,7 @@ func TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan(t *testing.
 	if err := atomicWrite(path, append(wire, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := executor.carriedFleetBatchSourceExecutor(sourceAction, entry); err == nil {
+	if _, _, err := executor.carriedFleetBatchSourceExecutor(t.Context(), sourceAction, entry); err == nil {
 		t.Fatal("carried executor accepted a modified archived plan under its old hash")
 	}
 }

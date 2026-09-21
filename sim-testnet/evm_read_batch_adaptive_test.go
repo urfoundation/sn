@@ -224,6 +224,7 @@ func TestEvmReadRpcBatchSplitsExplicitElementTimeouts(t *testing.T) {
 
 func TestCoordinatorBatchCallsSplitTimeoutsThroughOwnedTransport(t *testing.T) {
 	t.Parallel()
+	wantBlock := `"0x7b"`
 	address := common.HexToAddress("0x1234")
 	requests := make([]coordinatorCallAt, 90)
 	for index := range requests {
@@ -248,7 +249,7 @@ func TestCoordinatorBatchCallsSplitTimeoutsThroughOwnedTransport(t *testing.T) {
 				To   common.Address `json:"to"`
 				Data hexutil.Bytes  `json:"data"`
 			}
-			if element.Method != "eth_call" || len(element.Params) != 2 || string(element.Params[1]) != `"0x7b"` || json.Unmarshal(element.Params[0], &target) != nil || target.To != address || len(target.Data) != 2 || target.Data[0] != 1 {
+			if element.Method != "eth_call" || len(element.Params) != 2 || string(element.Params[1]) != wantBlock || json.Unmarshal(element.Params[0], &target) != nil || target.To != address || len(target.Data) != 2 || target.Data[0] != 1 {
 				t.Fatalf("pinned request changed: %+v", element)
 			}
 			responses[index] = map[string]any{"jsonrpc": "2.0", "id": element.ID, "result": hexutil.Encode(target.Data)}
@@ -272,12 +273,27 @@ func TestCoordinatorBatchCallsSplitTimeoutsThroughOwnedTransport(t *testing.T) {
 	}
 	t.Cleanup(rawClient.Close)
 	outputs, err := rawCoordinatorBatchCallsAt(t.Context(), ethclient.NewClient(rawClient), requests)
-	if err != nil || !slices.Equal(widths, []int{50, 25, 25, 40, 20, 20}) || len(outputs) != len(requests) {
+	if err != nil || !slices.Equal(widths, []int{50, 25, 25, 25, 15}) || len(outputs) != len(requests) {
 		t.Fatalf("real coordinator split recovery: widths=%v outputs=%d error=%v", widths, len(outputs), err)
 	}
 	for index, output := range outputs {
 		if !slices.Equal(output, requests[index].Data) {
 			t.Fatalf("coordinator output %d changed: %x", index, output)
+		}
+	}
+	requests = requests[:50]
+	for index := range requests {
+		requests[index].Block = 124
+	}
+	wantBlock = `"0x7c"`
+	widths = nil
+	outputs, err = rawCoordinatorBatchCallsAt(t.Context(), ethclient.NewClient(rawClient), requests)
+	if err != nil || !slices.Equal(widths, []int{25, 25}) || len(outputs) != len(requests) {
+		t.Fatalf("new historical block repeated capacity timeouts: widths=%v error=%v", widths, err)
+	}
+	for index, output := range outputs {
+		if !slices.Equal(output, requests[index].Data) {
+			t.Fatalf("new pinned block output %d changed: %x", index, output)
 		}
 	}
 }

@@ -499,7 +499,7 @@ func rawCoordinatorBatchCallsAt(ctx context.Context, client *ethclient.Client, c
 			}
 		}
 		operation := fmt.Sprintf("coordinator eth_call batch %d-%d blocks %d-%d", start, end-1, calls[start].Block, calls[end-1].Block)
-		results, err := readEvmRpcBatchWithPolicy[hexutil.Bytes](ctx, operation, reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+		results, err := readEvmRpcBatchForClientWithPolicy[hexutil.Bytes](ctx, operation, reads, defaultFinalSemanticRPCRetryPolicy(), client.Client())
 		if err != nil {
 			return nil, err
 		}

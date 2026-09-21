@@ -80,7 +80,7 @@ func batchEVMBlocksByNumber(ctx context.Context, client *ethclient.Client, numbe
 				args:   []any{hexutil.EncodeUint64(numbers[index]), false},
 			}
 		}
-		results, err := readEvmRpcBatchWithPolicy[*evmRPCBlock](ctx, fmt.Sprintf("historical EVM block batch %d-%d", start, end-1), reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+		results, err := readEvmRpcBatchForClientWithPolicy[*evmRPCBlock](ctx, fmt.Sprintf("historical EVM block batch %d-%d", start, end-1), reads, defaultFinalSemanticRPCRetryPolicy(), client.Client())
 		if err != nil {
 			return nil, err
 		}
@@ -322,7 +322,7 @@ func readHistoricalFleetGenerationOneBatch(ctx context.Context, client *ethclien
 			},
 		}
 	}
-	observed, err := readEvmRpcBatchWithPolicy[hexutil.Bytes](ctx, "historical fleet eth_call batch", reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+	observed, err := readEvmRpcBatchForClientWithPolicy[hexutil.Bytes](ctx, "historical fleet eth_call batch", reads, defaultFinalSemanticRPCRetryPolicy(), client.Client())
 	if err != nil {
 		return nil, err
 	}

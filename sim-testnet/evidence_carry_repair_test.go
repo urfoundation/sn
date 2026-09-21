@@ -178,7 +178,7 @@ func TestValidatorEvidenceCarryHistoricalActionRecovery(t *testing.T) {
 	}
 	executor := *fixture.executor
 	executor.plan = current
-	borrowed, action, err := executor.carriedFleetBatchSourceExecutor(batchAction, entries[1])
+	borrowed, action, err := executor.carriedFleetBatchSourceExecutor(t.Context(), batchAction, entries[1])
 	if err != nil || borrowed == nil || borrowed == &executor || borrowed.plan.PlanHash != source.PlanHash || !finalJSONEqual(action, batchAction) {
 		t.Fatalf("historical source executor was rejected: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestValidatorEvidenceCarryHistoricalActionRecovery(t *testing.T) {
 		case "target":
 			candidate.Target = common.HexToAddress("0xf3").Hex()
 		}
-		if owner, _, err := executor.carriedFleetBatchSourceExecutor(candidate, entry); err == nil || owner != nil {
+		if owner, _, err := executor.carriedFleetBatchSourceExecutor(t.Context(), candidate, entry); err == nil || owner != nil {
 			t.Fatalf("%s source executor drift was accepted", fault)
 		}
 	}

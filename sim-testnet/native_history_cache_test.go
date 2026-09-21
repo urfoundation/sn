@@ -67,11 +67,11 @@ func newNativeHistoryCacheFixture(t *testing.T) *nativeHistoryCacheFixture {
 // cache API, then exercise the production caller with a freshly built executor.
 func (f *nativeHistoryCacheFixture) retain(t *testing.T) {
 	t.Helper()
-	hit, err := f.executor.withHistoricalAuditCache(context.Background(), "finalized-native-extrinsic", struct {
-		Recorded    ChainHead `json:"recorded"`
-		Transaction string    `json:"transaction"`
-		Observer    string    `json:"observer"`
-	}{f.recorded, f.transaction, f.client.URL()}, func(context.Context) error { return nil })
+	input, err := nativeHistoryCacheInput(f.executor.cfg, f.recorded, f.transaction, f.client.URL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hit, err := f.executor.withHistoricalAuditCache(context.Background(), historicalNativeExtrinsicCacheKind, input, func(context.Context) error { return nil })
 	if err != nil || hit {
 		t.Fatalf("cold successful proof: hit=%t err=%v", hit, err)
 	}

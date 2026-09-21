@@ -295,6 +295,9 @@ func readAuthenticatedRuntimeMetadataAtContext(ctx context.Context, chain *crv4.
 		return result, err
 	}
 	if result.CompatibilityProfile == crv4.ProvisionalRuntimeCompatibilityProfile {
+		if !provisionalResumeEnabled(cfg) {
+			return result, errors.New("provisional runtime artifact cannot authorize a strict runtime read")
+		}
 		return result, nil
 	}
 	if err := validateRuntimeVersionIdentity(result.Version, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); err != nil {
@@ -343,6 +346,9 @@ func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4
 		return result, err
 	}
 	if result.CompatibilityProfile == crv4.ProvisionalRuntimeCompatibilityProfile {
+		if !provisionalResumeEnabled(cfg) {
+			return result, errors.New("provisional runtime artifact cannot authorize strict historical evidence")
+		}
 		return result, nil
 	}
 	if currentErr := validateRuntimeVersionIdentity(result.Version, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); currentErr == nil {

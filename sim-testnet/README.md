@@ -928,6 +928,15 @@ native commitments, transaction receipts and install events remain outside that
 cache boundary. No failed or canceled proof is saved, and independent observers
 must both succeed before a combined fleet proof can be reused.
 
+Compatible descendant approvals may reuse native inclusion/success proofs as
+well as the two fleet proof kinds. Native inputs bind the exact transaction,
+block, observer and reviewed runtime catalogue; archived approval provenance
+and the proof MAC must still authenticate. Provisional proofs and old native
+entries without that runtime binding remain misses. Source-plan decoding is
+shared only inside one reconciliation and starts fresh on the next invocation.
+The carried-action progress counter includes cached and local checks; it does
+not count only new archive queries.
+
 Run historical verification independently with:
 
 ```sh
@@ -1302,6 +1311,14 @@ the public endpoint's enforced limit. The individual mirror/member plan actions
 then derive their receipts from the authenticated batch receipt and their
 canonical signed artifacts; they do not repeat the batch's live RPC surface.
 Resume still revalidates the source batch on chain before any new mutation.
+
+Typed batch timeouts halve the retry width within the existing four-attempt
+budget. The reader remembers that width for the same RPC connection and method,
+so subsequent blocks do not repeat the oversized request. After five quiet
+minutes one caller may probe twice the learned width; a newer timeout defeats
+an older successful probe. These bounded, process-local hints change grouping
+only, preserve successful elements, and add no request-rate limit. Every retry
+round retains one shared deadline across its chunks.
 
 Generation-2 refreshes use the same rule on both execution and replay. Before a
 fresh atomic refresh is signed, all 40 predecessor count/record pairs are read
