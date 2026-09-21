@@ -34,13 +34,16 @@ const (
 )
 
 type historicalAuditCacheProof struct {
-	Schema           string `json:"schema"`
-	VerifierVersion  string `json:"verifier_version"`
-	ExecutableSHA256 string `json:"executable_sha256,omitempty"` // Authenticated v1 import only.
-	ContextHash      string `json:"context_hash"`
-	Kind             string `json:"kind"`
-	InputHash        string `json:"input_hash"`
-	Success          bool   `json:"success"`
+	Schema                  string `json:"schema"`
+	VerifierVersion         string `json:"verifier_version"`
+	ExecutableSHA256        string `json:"executable_sha256,omitempty"` // Authenticated v1 import only.
+	ContextHash             string `json:"context_hash"`
+	Kind                    string `json:"kind"`
+	InputHash               string `json:"input_hash"`
+	Success                 bool   `json:"success"`
+	ApprovalPlanHash        string `json:"approval_plan_hash,omitempty"`
+	ApprovalReleaseLockHash string `json:"approval_release_lock_hash,omitempty"`
+	CompatibilityHash       string `json:"compatibility_hash,omitempty"`
 }
 
 type historicalAuditCacheEnvelope struct {
@@ -105,8 +108,9 @@ func historicalAuditExecutableSHA256() (string, error) {
 
 // Bind the authenticated plan identity without reserializing thousands of
 // actions on every lookup. Exact action and dependency inputs belong in the
-// caller's proof input. A changed lineage, release lock, policy, role identity
-// or RPC authorization cannot inherit an earlier success. The
+// caller's proof input. This exact identity does not cross changed lineage,
+// release lock, policy, role or RPC authorization. The narrow fleet descendant
+// path separately authenticates compatible immutable inputs. The
 // validated campaign loopback hop is not a new authorized RPC domain; callers
 // include the actual observer role/domain in input when a proof is per reader.
 func (e *Executor) historicalAuditContextHash(cfg *ResolvedConfig) (string, error) {
@@ -156,8 +160,8 @@ func (e *Executor) historicalAuditContextHash(cfg *ResolvedConfig) (string, erro
 	})
 }
 
-// Lookup performs no new verification. A compatible authenticated v1 success
-// may be promoted to the stable v2 identity without repeating its verifier.
+// Lookup performs no new chain verification. Exact authenticated v1 successes
+// or admitted immutable descendant proofs may be promoted without replaying.
 // A nonnil miss is a prepared entry whose saveSuccess may be called only once
 // all immutable checks required by its exact input have succeeded. In
 // particular, dual-observer action proofs require both observers to succeed.
@@ -190,13 +194,18 @@ func (e *Executor) lookupHistoricalAuditCache(ctx context.Context, kind string, 
 			InputHash: inputHash, Success: true,
 		},
 	}
+	if compatibilityHash, ok := e.historicalAuditCompatibilityHash(cfg, kind, input); ok {
+		entry.proof.ApprovalPlanHash = e.plan.PlanHash
+		entry.proof.ApprovalReleaseLockHash = e.plan.ReleaseLockHash
+		entry.proof.CompatibilityHash = compatibilityHash
+	}
 	nameHash, err := canonicalHashHex(entry.proof)
 	if err != nil {
 		return nil, false
 	}
 	entry.name = strings.TrimPrefix(nameHash, "0x") + ".json"
 	hit := entry.readSuccess()
-	if !hit && entry.readCompatibleSuccess(ctx, derive32(cfg, "historical-audit-cache/v1")) {
+	if !hit && e.readHistoricalAuditCompatibleSuccess(ctx, entry, derive32(cfg, "historical-audit-cache/v1")) {
 		entry.saveSuccess(ctx)
 		hit = true
 	}

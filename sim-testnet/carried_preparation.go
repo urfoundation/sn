@@ -31,9 +31,15 @@ func (self *Executor) collectCarriedActionHistoryWithReaders(ctx context.Context
 	if provisionalResumeEnabled(self.cfg) {
 		return self.verifyProvisionalActionHistoryWithReaders(ctx, readEntries, readSource)
 	}
+	// One immutable source-plan decoder belongs to this reconciliation, shared
+	// by receipt admission and authenticated descendant-cache checks.
+	sources := &historicalAuditPlanReader{readSource: readSource, plans: map[string]*SetupPlan{}}
+	ctx = context.WithValue(ctx, historicalAuditPlanReaderKey{}, sources)
 	entries := readEntries()
 	verified := newCarriedPreparationIndex(self.plan, entries)
-	readPostcondition := self.carriedPreparationPostconditionReader(ctx, readSource)
+	readPostcondition := self.carriedPreparationPostconditionReader(ctx, func(stateDir, hash string) (*SetupPlan, error) {
+		return sources.read(ctx, stateDir, hash)
+	})
 	var stages []error
 	var carryErr error
 	if self.plan.ValidatorEvidenceCarry != nil {
