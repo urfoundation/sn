@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 func TestLiveNativeTransactionFeeQuote(t *testing.T) {

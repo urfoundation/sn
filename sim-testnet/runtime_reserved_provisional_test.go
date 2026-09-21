@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/controller"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/controller"
 	"gopkg.in/yaml.v3"
 )
 

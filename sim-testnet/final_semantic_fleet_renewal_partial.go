@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Before any replacement binding, a partial wave can only shorten existing

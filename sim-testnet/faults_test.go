@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	servercontroller "github.com/urnetwork/server/controller"
+	servercontroller "github.com/urnetwork/server/v2026/controller"
 )
 
 type fakeFaultDriver struct {
