@@ -213,3 +213,40 @@ func TestFleetLifecycleHistoricalApprovalReopensArchivedPlanOnNewOwner(t *testin
 		t.Fatal("failed adoption changed lifecycle evidence")
 	}
 }
+
+func TestFleetLifecycleHistoricalApprovalArchiveRechecksCurrentBypassBytes(t *testing.T) {
+	f := newHistoricalLifecycleFixture(t)
+	if err := f.lifecycle.BeginPhase("release-1.0", f.attempt.payload.RunID); err != nil {
+		t.Fatal(err)
+	}
+	runDir := bindFailedRecoveryGeneration(t, f.campaign, f.attempt, 200)
+	path := filepath.Join(f.campaign.stateDir, "public", "fleet-lifecycle.json")
+	for _, mutation := range []struct {
+		name string
+		edit func(*FleetLifecycleEvidence)
+	}{
+		{name: "acceptance", edit: func(e *FleetLifecycleEvidence) { e.ProvisionalBypass.FinalAcceptance = true }},
+		{name: "provisional", edit: func(e *FleetLifecycleEvidence) { e.ProvisionalBypass.Provisional = false }},
+		{name: "census", edit: func(e *FleetLifecycleEvidence) { e.ProvisionalBypass.RuntimePruneUid++ }},
+		{name: "mutation", edit: func(e *FleetLifecycleEvidence) { e.ProviderEffectiveEpoch = 1 }},
+	} {
+		evidence, bypass := *f.evidence, *f.evidence.ProvisionalBypass
+		evidence.ProvisionalBypass = &bypass
+		mutation.edit(&evidence)
+		if err := writePublicJSON(path, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := captureScenarioLifecycleHandoff(f.campaign.cfg, f.campaign.stateDir, runDir, f.attempt.payload.RunID, f.attempt); err == nil {
+			t.Fatalf("archive accepted changed %s after warm startup", mutation.name)
+		}
+		if _, err := os.Stat(filepath.Join(runDir, scenarioLifecycleHandoffFilename)); !os.IsNotExist(err) {
+			t.Fatalf("rejected %s published lifecycle evidence: %v", mutation.name, err)
+		}
+	}
+	if err := os.WriteFile(path, f.original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := captureScenarioLifecycleHandoff(f.campaign.cfg, f.campaign.stateDir, runDir, f.attempt.payload.RunID, f.attempt); err != nil {
+		t.Fatalf("original authenticated bytes did not remain usable: %v", err)
+	}
+}

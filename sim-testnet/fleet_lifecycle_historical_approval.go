@@ -61,6 +61,20 @@ func authenticateProvisionalLifecycleAncestor(attempt *scenarioCampaignAttempt, 
 			!fleetLifecycleCanonicalEqual(evidence.Renewal, plan.FleetLifecycleRenewal) {
 			return nil, errors.New("provisional lifecycle changed its approved custody, deployment, policy or renewal")
 		}
+		// A final archive can be captured long after BeginPhase. Recheck all
+		// census, bypass, phase and no-mutation fields in the bytes now being
+		// archived; prior startup success cannot authenticate changed bytes.
+		checker := &liveFleetLifecycle{
+			cfg: attempt.cfg, stateDir: attempt.stateDir, attempt: attempt,
+			executor: &Executor{cfg: attempt.cfg, stateDir: attempt.stateDir, plan: reader.current, roles: attempt.roles},
+			retainedProvisionalApproval: &provisionalLifecycleAncestorApproval{
+				CurrentPlanHash: reader.current.PlanHash, CurrentConfigHash: attempt.cfg.ConfigHash,
+				SourceRunId: evidence.RunID, SourcePlan: plan,
+			},
+		}
+		if err := checker.validateProvisionalBypassState("release-1.0", evidence.RunID, evidence); err != nil {
+			return nil, err
+		}
 		return plan, nil
 	}
 	return nil, errors.New("provisional lifecycle has no exact signed source run")
