@@ -1025,8 +1025,9 @@ admit unapproved work and is unsafe. No transaction or journal entry was added
 by this failure. Investigation is tracing which entries are historical versus
 eligible new work; the correction is active in the sim-testnet run. On 2026-09-21
 we selected an explicit 2,048-slot continuation allowance: a 2x margin over
-the measured backlog. It must be a newly bound finite resource/spend revision,
-not a scanner-default change.
+the measured backlog. At the existing 1,000,000-gas / 25-gwei cap it binds
+51.2 EVM TAO total, a 25.6 EVM TAO increase over 1,024 slots. It must be a
+newly bound finite resource/spend revision, not a scanner-default change.
 
 **Production change.** Represent separately: (1) immutable aggregate approved
 slot/spend capacity, (2) source/member slot cost, (3) historical/previously
