@@ -1,7 +1,7 @@
 # Mainnet bootstrap program design
 
 Track required prelaunch corrections in
-[PRELAUNCH-FIXES.md](../mainnnet/PRELAUNCH-FIXES.md). Its first workstream replaces
+[PRELAUNCH-FIXES.md](../mainnet/PRELAUNCH-FIXES.md). Its first workstream replaces
 the version-by-version runtime migration requirement below with automatic
 compatible-upgrade handling. Those fixes are proposed and remain unimplemented.
 
