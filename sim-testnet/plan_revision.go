@@ -4380,7 +4380,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err != nil {
 		return nil, err
 	}
-	revised, err := buildPlanWithRegistrationGeneration(cfg, &normalized, roles, generatedAt, registrationGeneration)
+	allocation, err := planRevisionEVMFundingAllocation(cfg, prior)
+	if err != nil {
+		return nil, err
+	}
+	revised, err := buildPlanWithFundingAllocation(cfg, &normalized, roles, generatedAt, registrationGeneration, allocation)
 	if err != nil {
 		return nil, err
 	}

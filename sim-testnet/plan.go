@@ -77,6 +77,7 @@ type SetupPlan struct {
 	RegistrationBurnLimitRao     uint64                     `json:"registration_burn_limit_rao"`
 	NativeTransactionFeeLimitRao uint64                     `json:"native_transaction_fee_limit_rao,omitempty"`
 	MaximumEVMFeePerGasWei       uint64                     `json:"maximum_evm_fee_per_gas_wei,omitempty"`
+	EVMFundingAllocationWei      DecimalUint                `json:"evm_funding_allocation_wei,omitempty"`
 	AlphaTransferMarginBPS       uint16                     `json:"alpha_transfer_margin_bps,omitempty"`
 	MinimumSourceRemainingRao    uint64                     `json:"minimum_source_remaining_alpha_rao,omitempty"`
 	BootstrapBurnHalfLifeBlocks  uint16                     `json:"bootstrap_burn_half_life_blocks,omitempty"`
@@ -807,8 +808,22 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 }
 
 func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time, generation uint64) (*SetupPlan, error) {
+	if cfg == nil {
+		return nil, errors.New("setup plan configuration is absent")
+	}
+	return buildPlanWithFundingAllocation(cfg, facts, roles, generatedAt, generation, cfg.MaximumEVMGasWei)
+}
+
+// An allocation funds concrete role actions; the configured maximum remains
+// the independent lifetime cap. Revisions may raise that cap without funding
+// every newly available wei or changing the original role allocations.
+func buildPlanWithFundingAllocation(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time, generation uint64, allocation DecimalUint) (*SetupPlan, error) {
 	if cfg == nil || cfg.Config == nil {
 		return nil, errors.New("setup plan configuration is absent")
+	}
+	comparison, err := allocation.Cmp(cfg.MaximumEVMGasWei)
+	if err != nil || allocation.IsZero() || comparison > 0 {
+		return nil, errors.Join(errors.New("EVM funding allocation is absent or exceeds its configured hard cap"), err)
 	}
 	if err := validateRuntimeEvidenceProvisionTemplateV2(cfg.Config); err != nil {
 		return nil, err
@@ -872,6 +887,9 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
 	p := &SetupPlan{Schema: currentSetupPlanSchema, Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, MaximumEVMFeePerGasWei: cfg.Config.Budgets.MaximumEVMFeePerGasWei, AlphaTransferMarginBPS: cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS, MinimumSourceRemainingRao: cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, Deployment: payloads.Manifest, CoordinatorUpgrade: payloads.CoordinatorUpgrade, ValidatorEvidence: &evidenceManifest, GeneratedAt: generatedAt.Format(time.RFC3339)}
+	if comparison != 0 {
+		p.EVMFundingAllocationWei = allocation
+	}
 	p.OwnedRPCAuthority = cfg.ownedRPCAuthority
 	p.ConfigIdentityRuntimeSpec = cfg.Public.Chain.ConfigIdentityRuntimeSpec
 	if err := validateRuntimeConfigIdentityPlan(cfg, p); err != nil {
@@ -1041,11 +1059,11 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 			return nil, fmt.Errorf("EVM setup gas total: %w", addErr)
 		}
 	}
-	setupComparison, err := allocatedSetupGas.Cmp(cfg.MaximumEVMGasWei)
+	setupComparison, err := allocatedSetupGas.Cmp(allocation)
 	if err != nil || allocatedSetupGas.IsZero() || setupComparison >= 0 {
-		return nil, stateMismatchError(err, "EVM gas ceiling %s does not cover setup %s plus a live campaign reserve", cfg.MaximumEVMGasWei, allocatedSetupGas)
+		return nil, stateMismatchError(err, "EVM gas allocation %s does not cover setup %s plus a live campaign reserve", allocation, allocatedSetupGas)
 	}
-	runtimeGas, err := subtractDecimalUint(cfg.MaximumEVMGasWei, allocatedSetupGas)
+	runtimeGas, err := subtractDecimalUint(allocation, allocatedSetupGas)
 	if err != nil {
 		return nil, fmt.Errorf("EVM runtime gas reserve: %w", err)
 	}
@@ -1298,8 +1316,8 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 			Spend: Spend{TAORao: maximumTransferRao}, DependsOn: []string{"subnet.verify-owner"},
 		})
 	}
-	if fundedComparison, fundedErr := fundedGas.Cmp(cfg.MaximumEVMGasWei); fundedErr != nil || fundedComparison != 0 {
-		return nil, stateMismatchError(fundedErr, "EVM role gas funding %s does not equal campaign ceiling %s", fundedGas, cfg.MaximumEVMGasWei)
+	if fundedComparison, fundedErr := fundedGas.Cmp(allocation); fundedErr != nil || fundedComparison != 0 {
+		return nil, stateMismatchError(fundedErr, "EVM role gas funding %s does not equal approved allocation %s", fundedGas, allocation)
 	}
 
 	keys := make([]string, 0, len(cfg.Hyperparameters.OwnerControlled))
@@ -2032,6 +2050,12 @@ func validatePlanBudget(p *SetupPlan) error {
 func validatePlanBudgetWithFleetRenewalVerifier(p *SetupPlan, verifyRenewal func(*SetupPlan) error) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
+	}
+	if !p.EVMFundingAllocationWei.IsZero() {
+		comparison, err := p.EVMFundingAllocationWei.Cmp(p.Limits.EVMGasWei)
+		if err != nil || comparison > 0 {
+			return errors.Join(errors.New("plan EVM funding allocation exceeds its hard lifetime cap"), err)
+		}
 	}
 	if verifyRenewal == nil {
 		return errors.New("setup plan renewal verifier is unavailable")
