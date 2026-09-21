@@ -1,9 +1,10 @@
 # Mainnet prelaunch fixes
 
-Updated 2026-09-16. This is the canonical tracker for fixes to complete before
+Updated 2026-09-21. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
-Subtensor runtime upgrades. Implementation and qualification remain incomplete;
-no completed fix is claimed.
+Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)
+adds the lessons from the wider testnet finalization. Implementation and
+qualification remain incomplete; no completed production fix is claimed.
 
 For each item, record its implementation commit and relevant test or operational
 evidence before marking it done. Add newly discovered adjacent issues here.
@@ -366,10 +367,14 @@ live runtime is not itself a reason to revalidate old facts. Continue checking
 fresh balances, permits, fees and nonce state when an operation needs them.
 
 The durable [historical audit cache](../sim-testnet/historical_audit_cache.go)
-currently includes plan, release and executable identity. Eliminating routine
-rebuilds and plan migrations preserves those existing cache hits. Any later
-narrowing of cache keys must separately prove that verifier and authority
-changes still invalidate affected proofs.
+originally included plan, release and executable identity in every reuse key.
+The 2026-09-21 [descendant-cache correction](../sim-testnet/historical_audit_descendant_cache.go)
+admits compatible revisions for two immutable fleet proof kinds while retaining
+authenticated authority, input and verifier dependencies. PH-05 below tracks
+production adoption and the remaining scope. Eliminating routine rebuilds and
+plan migrations also preserves existing exact-context hits; broader reuse still
+requires proof that changed verifier and authority inputs invalidate affected
+results.
 
 Replace the [metadata cache](../crv4/runtime_identity.go)'s catalog-sized lifetime
 ceiling with fixed memory/byte limits and safe eviction. Runtime discovery and
@@ -408,3 +413,540 @@ The final integration exercise upgrades a controlled runtime while the
 subnet is active and demonstrates continued required observations, reconciled
 transactions and unchanged approvals. This architecture work is not an extra
 preparation gate for the currently running testnet recovery.
+
+## Production hardening from sim-testnet
+
+Reviewed 2026-09-21 by Astra (`gpt-6-astra`, effort `max`) against source through
+SN `eb926565`, the [full finalization requirements](../FINALIZE.md),
+[incremental recovery policy](../sim-testnet/README.md#incremental-recovery-and-acceptance),
+[first report](../sim-testnet/FINAL.md),
+[independent peer review](../sim-testnet/peerreview/verify/README.md), retained
+failure bundles, and the corrective commits cited below. The
+[September 17 handoff](../FINALIZE-HANDOFF.md) is historical evidence of a stopped
+qualification, not the current execution instruction. The testnet run and its
+remaining acceptance work continue separately.
+
+The recurring production risk is that an ordinary interruption can cross too
+many ownership boundaries: an RPC failure invalidates startup, startup stops
+healthy services, a patch changes approval/cache identity, and recovery repeats
+history or financial preparation. Mainnet services must retain authenticated
+progress, retry their own recoverable work, and suspend only operations whose
+required safety conditions are unavailable. Passing final acceptance remains a
+separate claim requiring complete evidence.
+
+This section is a production implementation backlog. A committed simulator
+repair is supporting evidence, not proof that the operator, miner, validator,
+bootstrap or deployed mainnet path has the same protection. All PH items start
+`Planned`; existing RT/RL/PF IDs retain their recorded status and evidence.
+Do not copy testnet provisional flags or import the `sim-testnet` executable
+into production. Extract required generic facilities into neutral packages and
+qualify the production consumers described in [MAINNET.md](../mainnet/MAINNET.md#integration-with-this-repository).
+
+### Priority, ownership and parallel delivery
+
+`P0` protects funds, authority or required production liveness and must close
+before mainnet activation. `P1` is required operational hardening before an
+unattended mainnet launch; it can proceed alongside the P0 implementation.
+Neither label adds a new gate to the current testnet run. Astra authors and
+reviews the implementation; Terra (`gpt-5.6-terra`, effort `medium`) runs the
+affected tests and initial triage. The component column identifies the code
+owner boundary, not an additional agent or approval requirement.
+
+| ID | Priority | Production component and outcome | Existing work / dependencies | Status |
+| --- | --- | --- | --- | --- |
+| PH-01 | P0 | Operator, validators, bootstrap: durable recovery with independent audit and runtime owners | PF-01, PH-02 | Planned |
+| PH-02 | P0 | Native/EVM submitters: one logical action, reconciled signed attempts and exact custody | RT-03, PF-03 | Planned |
+| PH-03 | P0 | RPC, artifact and HTTP clients: bounded transient recovery without duplicate writes | PH-02 for submission recovery | Planned |
+| PH-04 | P0 | Native-chain consumers: compatible upgrades and block-correct historical decoding | RT-01 through RT-08 | Planned |
+| PH-05 | P1 | Historical verifiers: durable, dependency-bound successful proof reuse | RT-06, PF-01; PH-04 interfaces | Planned |
+| PH-06 | P0 | Release/configuration tooling: explicit release identity and lossless plan migration | RL-01; PH-01, PH-02 | Planned |
+| PH-07 | P0 | Service supervision: independent restart, single ownership and meaningful readiness | PF-02, PF-04; PH-01, PH-03 | Planned |
+| PH-08 | P1 | Replay and workload scheduling: bounded work, memory and foreground latency | PF-01, PF-02; PH-05 | Planned |
+| PH-09 | P1 | State and artifact storage: explicit durable volume, atomic publication and recovery | PH-01; storage adapter precedent | Planned |
+| PH-10 | P0 | Epoch, fleet and evidence scheduling: resumable partial renewals and correct windows | PH-01, PH-02, PH-04 | Planned |
+| PH-11 | P0 | Treasury and bootstrap: conserved lifetime spend, reserve and funding semantics | PH-02, PH-06 | Planned |
+| PH-12 | P0 | Contracts, operator and claims: complete settlement conservation and authorization | PH-02, PH-04, PH-11 | Planned |
+| PH-13 | P0 | Provider, operator and validator protocol: identity isolation and durable proof progress | PH-01, PH-03, PH-07 | Planned |
+| PH-14 | P0 | Governance/bootstrap: actual capabilities, activated policy and both validator roles | RT-02; PH-10 through PH-12 | Planned |
+| PH-15 | P1 | Status/operations: actionable failure classes, progress and evidence-based ETA | All runtime owners | Planned |
+| PH-16 | P0 | Qualification and evidence: deterministic faults, composed coverage and independent replay | Every affected implementation | Planned |
+
+Work in parallel on transaction/recovery (PH-01/02/06/11), chain access and
+proofs (PH-03/04/05), service/storage (PH-07/08/09/13), and scheduling/economics
+(PH-10/12/14). Agree on action, runtime-view and evidence identities first;
+independent changes can then be integrated without rebuilding their consumers
+repeatedly. PH-15 and PH-16 follow each change rather than waiting for a final
+large cleanup. Mainnet economics and destructive UID operations retain the
+specific unresolved choices and capability checks in MAINNET.md.
+
+### PH-01 — Durable progress and separate audit/run ownership
+
+**Lesson.** Setup served as deployment, historical audit, repair controller and
+runtime launcher. A later read failure repeated already completed preparation.
+The corrections include `31cfaf84` ([read-only audit](../sim-testnet/historical_audit_command.go)),
+`fa8f84e4` (traffic independent of setup replay), `3541b3e0`
+([durable accounted traffic](../sim-testnet/paid_traffic.go)) and `2269906e`
+(provisional epoch completion distinct from strict acceptance).
+
+**Production change.** Persist a dependency graph of logical actions and
+per-component checkpoints. Commit each successful independent unit before
+moving on. Let the run command resume the first pending unit and let a
+read-only audit inspect a consistent immutable snapshot in parallel. Route an
+audit-discovered repair through the existing transaction owner and a specific
+repair action. A read-only audit cannot acquire a signer, mutate deployment
+state or stop unrelated processes. Fresh authority, custody, chain identity,
+spend, finality and value-conservation checks remain mandatory at the operation
+that depends on them. Deferrable historical review remains visible until final
+acceptance; invalid signatures or accounting never become soft failures.
+
+**Closure.** Interrupt after every checkpoint, restart only one component, run
+an audit concurrently, and inject a later audit failure. Completed actions and
+observations must survive; independent traffic continues; only the invalidated
+dependency is suspended. A required continuous epoch interrupted by the fault
+must be reacquired with its dependent observations, without discarding earlier
+valid phases or financial history. Verify that final acceptance cannot consume
+a provisional, missing, canceled or failed result.
+
+### PH-02 — Transaction idempotency, partial failure and custody
+
+**Lesson.** Original signatures were missing from the simulator even though
+their transactions finalized; superseded attempts, cancellations and partially
+completed generations also escaped narrower recovery scans. See PF-03 and the
+[signature census](../sim-testnet/peerreview/evidence/FINAL-2-signature-recovery-20260916/README.md),
+`a2f0e12d` (carry finalized transactions), `0da3b1e1` (reconcile superseded spend
+once) and `aa8f18e2` ([authenticate probe retirement](../sim-testnet/precompile_probe_retirement.go)).
+
+**Production change.** Fsync logical intent and exact signed bytes before
+broadcast; retain all original/replacement/cancellation attempts independently
+of database status. Bind chain, signer, nonce, action, destination, value and
+fee limits. Enforce one owner per signing/nonce domain across services,
+including any native/EVM account aliasing. On uncertain submission, reconcile
+the exact hash, canonical inclusion, successful dispatch and postcondition
+before rebroadcasting or replacing. Record each batched child outcome. Retire
+an unsubmitted action only with evidence that no signed/in-flight attempt
+exists; an immutable deployed predecessor requires a proved successor, not
+rewritten history. Evidence discovery alone never authorizes broadcasting.
+
+**Closure.** Inject crashes before/after intent fsync, signing, send, lost
+response, inclusion, finality and postcondition publication. Cover two operators,
+same-nonce replacements, cancellation, rejected dispatch, partial batches,
+compacted journals and conflicting receipts. Assert at most one logical economic
+effect, complete attempt/fee accounting, preserved original bytes and no
+automatic nonce reset or duplicate deposit, stake, registration or claim.
+
+### PH-03 — Retry at the actual failing I/O boundary
+
+**Lesson.** A healthy owned node still produced transport timeouts; repeatedly
+sending a large archive batch exhausted its budget. `f57e8d46` added bounded
+[EVM reads](../sim-testnet/evm_read_retry.go); `da67c494` split failed historical
+batches. `114c9173`/`561ae3bc` addressed nested retry budgets; validator steering
+and publication required their own corrections. The
+[relay-stream incident](../sim-testnet/peerreview/evidence/FINAL-2-relay-stream-failure-20260916/README.md)
+also shows that a successful later read does not establish the original stall's
+root cause.
+
+**Production change.** Inventory every direct native/EVM call, response-body
+read, artifact upload/download, publication and readiness call. Apply a shared
+typed error policy and a single end-to-end budget per logical operation, with
+bounded attempts, cancellation, backoff and jitter. On an explicitly owned
+unlimited RPC, retain zero request-quota pacing and no public fallback; bounded
+in-flight work and recovery delay are still needed to avoid overload. Provider
+rate responses must not impose a generic minutes-long cooldown on this route.
+Split retryable failed batches, retain successful members, match response IDs
+and pinned blocks, and keep all sub-batches inside their parent's deadline.
+Do not multiply budgets through nested wrappers. Validate complete streamed
+objects before publication; retry an idempotent object by its content hash.
+
+Exhausted transient work becomes a persisted retryable operation with a next
+attempt and alert. It must not kill unrelated services or count as success.
+Cancellation, malformed data, wrong identity, permanent contract revert and
+unavailable pruned history have distinct outcomes. Integrity errors containing
+the word "timeout" remain integrity errors. Writes use PH-02 reconciliation,
+not the read-retry loop.
+
+**Closure.** Deterministically inject disconnect, DNS/HTTP failures, timeout
+during body read, missing/reordered batch responses, partial success and a
+large-batch refusal that succeeds when split. Verify exact call/attempt bounds,
+shared deadlines, cancellation joins, preserved successes, correct permanent
+classification and eventual continuation after a network outage. Exercise the
+real caller layers, including both validator paths and the artifact reader.
+
+### PH-04 — Runtime changes and historical archive compatibility
+
+**Lesson.** Repeated version-specific admission fixes for 455/458/459/460/461
+and later runtimes blocked execution even when consumed interfaces were
+compatible. Some historical reads incorrectly demanded the live artifact.
+The [runtime/config migration evidence](../sim-testnet/peerreview/evidence/FINAL-2-runtime-config-identity-20260915/README.md)
+preserves the original signing identity rather than relabeling it.
+
+**Production change.** Deliver RT-01 through RT-08 across miner, operator, both
+validator roles and bootstrap. Construct and sign from one immutable runtime
+view; validate consumed call/storage/API/precompile/signing capabilities.
+Separate block execution from post-state context at upgrade boundaries. Store
+observed runtime versions as evidence, separate from stable deployment policy.
+Historical reads bind genesis, block hash, original runtime/metadata and decoder
+version. An archive-capability refusal identifies the missing proof and blocks
+only dependent work; never substitute a current-state read for a historical
+one. Keep artifact caches bounded independently of the number of known versions.
+
+**Closure.** Use the RT-08 controlled upgrade plus historical reads on both
+sides of the upgrade, concurrent signing, stale subscriptions, evicted metadata,
+wrong genesis and pruned-state responses. A compatible update requires no
+manual version entry or repeated funding; an incompatible consumed interface
+halts that operation with a precise capability error. An ABI match alone does
+not establish unchanged economic semantics.
+
+### PH-05 — Reusable proofs with explicit invalidation
+
+**Lesson.** Executable, release and plan changes invalidated otherwise identical
+historical proofs. `67c614f4` added dependency-bound reuse for exactly two fleet
+proof kinds in [historical_audit_descendant_cache.go](../sim-testnet/historical_audit_descendant_cache.go).
+Earlier fixes indexed journals and authenticated source plans once per
+reconciliation; they did not authorize reuse of arbitrary current state.
+
+**Production change.** Cache completed immutable proof units by full consumed
+input: chain/checkpoint, action/receipt, target/calldata, expected decoder result,
+verifier version, authority/observer profile and authenticated approval lineage.
+Store provenance inside the authenticated envelope, write atomically, and
+invalidate only changed dependencies. Recheck canonical/finalized identity and
+local evidence as required. Re-read live nonce, balance, permit, fee, reserve
+and lease observations when their operation needs them. Indexes are lookup
+hints, not authority. Retain successful groups when a later group fails; do
+not cache transient failures as successful decisions or share failed singleflight
+results indefinitely. Legacy opaque entries lacking provenance need their exact
+original context or one fresh validation; they cannot be guessed compatible.
+
+**Closure.** A compatible hotfix and process restart perform zero repeated
+immutable value calls while still making required freshness checks. Changed
+calldata, code/decoder, verifier, policy, observer, signature, receipt or lineage
+must invalidate the affected proof. Cover partial two-observer completion,
+interruption, tampering, reorg, read-only mode, concurrent consumers and legacy
+entry migration. Measure work counts, not a convenient warm-cache runtime.
+
+### PH-06 — Release, plan and rendered configuration identity
+
+**Lesson.** Publishing reports invalidated a qualified executable (RL-01),
+budget/runtime revisions lost retained custody, and old render receipts were
+treated as proof of new configuration. The
+[render-convergence failure](../sim-testnet/peerreview/evidence/FINAL-2-render-convergence-20260914/README.md)
+also exposed a direct plain-WebSocket route that violated the server's
+transport policy.
+
+**Production change.** Approve an immutable release manifest covering executable,
+source/dependencies, contract artifacts, schema, policy and security inputs.
+Distinguish it from the current branch tip and reporting files. A successor
+plan records its predecessor and exact future-action diff, reuses completed
+compatible actions and preserves original signatures, limits and custody.
+Version rendered configuration by the fields it consumes: route, authority,
+schema, service profile and identity. Converge changed local outputs explicitly;
+do not overwrite an old receipt or mutate a running service's signed context.
+Allow address/path relocation only when its actual identity and security
+implications are reconciled. Retain transport authentication requirements.
+
+**Closure.** Cover documentation-only commits, budget-only revisions, approved
+runtime transitions, path relocation, stopped/running services, lost render
+output, changed endpoint and unauthorized release drift. Unaffected progress
+survives; changed executable, policy, contracts or authority cannot borrow an
+unrelated approval. Exercise restart on the admitted release while main advances.
+
+### PH-07 — Process ownership, dependency recovery and readiness
+
+**Lesson.** A taskworker log finding stopped all 33 processes; historical replay
+consumed the five-minute readiness budget; replaced executable paths prevented
+graceful shutdown; Docker restarts stranded dependencies. PF-02/PF-04 and
+`6105e22e` ([dependency recovery](../sim-testnet/supervisor_dependency_recovery.go))
+address parts of these failures.
+
+**Production change.** Supervise each long-lived service and its dependencies
+with explicit ownership, stable process identity and bounded restart/backoff.
+Use PID start identity, executable identity and owned process group/cgroup;
+a pathname or stale lock alone cannot prove a process is alive or safe to kill.
+Dependency recovery must preserve volumes, identities and deployment state.
+Keep one writer across restart and handoff. Separate liveness, replay/warmup,
+semantic readiness and acceptance health. Retain healthy workers when one
+recovers; wait for a canceled owner's children before replacement. A saturated
+restart budget surfaces an actionable degraded state, not a green endpoint.
+
+**Closure.** Kill an operator or validator independently, restart an owned
+database/object-store container, lose the observer connection, rotate the
+executable path and simulate PID reuse. Verify no duplicate signer/sidecar,
+no orphan process, no unexpected volume recreation and joined shutdown.
+Delayed replay must expose progress; both UR validators must eventually produce
+fresh verified trails through every required operator. The root validator's
+readiness is its own netuid-0 role, never a substitute for a second UR validator.
+
+### PH-08 — Bound replay and background workload
+
+**Lesson.** Journal validation became repeated full scans; fleet history repeated
+source authentication; whole-fleet fixtures performed unnecessary durable
+writes; a path-proof reader followed a growing file indefinitely. Evidence:
+[44,048-row journal regression](../sim-testnet/peerreview/evidence/FINAL-2-journal-recovery-20260916/README.md),
+`91274acc`, `cbf15c3b`, `2c968635` and `74192404`.
+
+**Production change.** Index each consistent journal snapshot once, authenticate
+each distinct historical plan once per reconciliation, and bound reads by the
+snapshot's initial length. Append-only growth is processed in a later segment.
+Use bounded queues, byte/memory limits, RPC concurrency and cancellation-aware
+joins. Keep background audits from starving signing, proofs, settlement and
+claims. Give subnet operator taskworkers an explicit workload profile; filter
+unrelated retained queue rows before claim limits and preserve their post hooks
+for the correct worker. Preserve ordinary production defaults. Measure actual
+provider/session memory and honor configured capacity instead of hiding leaks
+with higher limits or disabling admission.
+
+**Closure.** Assert linear/bounded operation counts under a representative
+retained journal and fleet. Force concurrent append, cold cache, queue pressure,
+slow archive, provider memory pressure and both operator workloads. Required
+foreground work must progress within its deadline, excluded tasks remain
+untouched, and cancellation joins without leaked buffers or goroutines. Fixture
+optimizations retain at least one representative full integration path.
+
+### PH-09 — Durable storage and usable test/build storage
+
+**Lesson.** Root-volume pressure and scratch/cache placement delayed or stopped
+qualification. `a5c23b39` and `2f9ef2b3` introduced data-volume workspaces and
+the [storage adapter](../scripts/test-storage.sh).
+
+**Production change.** Configure durable journal/database/artifact storage
+separately from disposable scratch and build caches. Check the intended mount,
+permissions, free bytes/inodes and I/O health; a missing mount must not silently
+write to the root filesystem. Retain temporary/private directory permissions
+without changing published artifact modes. Publish state with file fsync,
+atomic rename and directory durability; preserve a verifiable prior version.
+Back up signed journals, keys and evidence with separate access policies and
+test restoration. Relocate old data only with ownership checks and preserved
+live paths; paths themselves are not cryptographic identity. Production volume
+selection is deployment configuration, not a hardcoded testnet USB path.
+
+**Closure.** Exercise missing mount, read-only/full volume, inode exhaustion,
+partial write, crash before/after rename, cache loss and restored backups.
+Recover the last authenticated checkpoint without losing a signed attempt or
+marking incomplete publication complete. Release/test entry points propagate
+selected scratch/cache paths to children and remain usable in isolated CI.
+
+### PH-10 — Epoch boundaries, leases and partial renewal
+
+**Lesson.** Expiring preparation windows repeatedly triggered renewal; forecast
+end blocks were confused with minimum waiting periods; compacted and partially
+activated fleet generations failed replay. `ed768df3`, `aedb4e74` and
+[fleet_renewal_deadline.go](../sim-testnet/fleet_renewal_deadline.go) cover recent
+recovery boundaries.
+
+**Production change.** Model policy activation, evidence capacity horizon,
+native epoch, settlement epoch, lease validity and claim expiry separately.
+Choose fresh execution boundaries after slow preparation/import; derive them
+from finalized chain state. Preserve finalized children of a renewal and
+reconcile installed, pending, effective, expired and superseded generations
+before signing remaining work. Recover compacted history through authenticated
+witnesses. Parallelize independent fleet work within nonce/resource ownership.
+Keep retention capacity sufficient for startup margin and the full required
+window; a forecast end is not a reason to wait until that block to start.
+
+**Closure.** Move the finalized head across activation while part of a fleet is
+renewed; interrupt and compact midway; delay import past a planned boundary.
+Resume without double renewal, lost original lease proof or unauthorized fresh
+funding. Assert that acceptance counts actual complete policy epochs and that
+claim/commit/reveal deadlines are never inferred from stale wall-clock ETA.
+
+### PH-11 — Budgets, reserve targets and native funding behavior
+
+**Lesson.** Software changes retriggered a 65% reserve repair despite a valid
+prior repair and a live share above the 60% operating floor. Lifetime increases
+inflated future campaign allocations (`eceac4aa`), and successor renewals needed
+funding reconciliation (`9b874e34`, `19b400ac`). The probe incorrectly transferred
+value to a precompile whose staking path debited the caller's native balance
+(`e604a8d1`). See the [reserve refusal](../sim-testnet/peerreview/evidence/FINAL-2-release-reserve-recovery-20260916/README.md).
+
+**Production change.** Keep one cumulative ledger across releases and plan
+lineage: paid fees/principal, signed outstanding liabilities, reservations,
+replacements and remaining authorization. Distinguish EVM wei, TAO rao and
+alpha units with checked integer arithmetic. Raising a lifetime ceiling does
+not automatically expand each action allocation. Separate the live operating
+floor, a repair target at its pinned execution block and any required terminal
+target; preserve successful repairs while checking the current floor. Determine
+transfer/stake source, value semantics, fees and actual credited amount from
+the admitted precompile/runtime behavior, including dual native/EVM views of
+one account. Do not assume a successful outer call funded the intended party.
+
+**Closure.** Prove conservation through repeated budget revisions, partial
+repairs, superseded signatures, nonce cancellation and renewal successors.
+Exercise reserve rounding just below the target, below the floor, insufficient
+native balance despite EVM balance, and precompile revert/partial behavior.
+Only actual finalized balance/event/postcondition evidence releases liability.
+Testnet automatic allowance approval is not a production spending policy;
+mainnet uses its own explicitly configured limits, signers and custody rules.
+
+### PH-12 — Settlement, carry and claims remain explainable end to end
+
+**Lesson.** Epoch 309 captured zero but paid carried epoch-308 funds; the first
+report omitted `RootMissed(308)`. All 16 payments and 8 alpha-rao of rounding
+residue reproduced independently. Shared operator JWTs initially selected the
+wrong provider wallet. The first report also records a NetEscrow cross-store
+ordering race as a production limitation; detection is not evidence of a fix.
+See [peer-review conformance facts](../sim-testnet/peerreview/verify/content.py)
+and [claim receipts](../sim-testnet/peerreview/evidence/epoch309-paid-claims-20260912.json).
+
+**Production change.** Trace captured emission, per-operator carry, entitlement,
+Merkle root, claim, payment, outstanding liability and residue with exact units
+and epoch identities. Use provider-specific authorization for claims and verify
+the entitled client independently of a shared network credential. Preserve
+zero-entitlement, deferred-payment, missed-root and expired-claim outcomes as
+different states. Authenticate the coordinator-authorized commitment and its
+artifact hash; recovering an artifact signer is not proof that signer had the
+on-chain root role. Review and resolve the known cross-store ordering defect
+with its actual production owner, or retain it as an explicit launch blocker;
+monitor alerts alone do not close it. Preserve non-upgradeable custody and
+already finalized claims across coordinator changes.
+
+**Closure.** Reproduce missing roots followed by carry into the next epoch,
+cross-operator isolation, floor division/dust, retry after payment uncertainty,
+claim expiry and mismatched provider credentials. Force the NetEscrow ordering
+race at the observable store boundary and prove repaired state convergence.
+Independently rebuild leaves/root and every payment amount; vault conservation
+must hold at each pinned transition, including zero-current-capture payments.
+
+### PH-13 — Protocol identity and proof/traffic continuity
+
+**Lesson.** Stale measurement cuts, skipped settlement rounds, client-key
+history deadlines and terminal-publication failures repeatedly stopped
+validators while other services continued. Actual transport ACK volume did
+not by itself establish eligible usage or a payable root; the shortened run
+contained both positive settlement and a separate zero-usage epoch.
+
+**Production change.** Bind every evidence, client-key history and publication
+path to its operator, provider, validator, generation and epoch domain. Reconcile
+late/stale messages against their own lineage before changing current state.
+Resume verified history without fabricating missed measurements or applied
+weights. Persist publication progress and retry content-addressed writes.
+Preserve canonical serialized bytes, including signed framing/newline rules.
+Use bounded flow control with clear buffer/goroutine ownership and cancellation
+through SDK/operator/provider boundaries. Keep traffic ownership/accounting
+durable while controllers or observers restart. Retain the safety differences
+between testnet provisional gap handling and admissible mainnet history.
+
+**Closure.** Inject stale generations, delayed proofs, mixed operator keys,
+skipped rounds, partial artifact uploads, backpressure and controller restarts.
+Test both normal and replay/fast paths at the layer where identity is consumed.
+Require fresh proof progress for every validator/operator domain and connect
+traffic to eligible usage, signed roots, native rows and paid entitlement;
+bytes acknowledged or a healthy process alone cannot satisfy that chain.
+
+### PH-14 — Governed limits and real on-chain activation
+
+**Lesson.** The first run configured a future production policy but never
+scheduled it: on-chain cadence stayed 300/50/150/5 instead of 360/60/180/6.
+`max_allowed_validators=64` exceeded the design target of at most 56, and reserve
+was 61.449% against its 65% target. These are the peer review's three explicit
+findings, not arithmetic/test errors to suppress.
+
+**Production change.** Make policy transitions durable scheduled actions and
+prove their effective chain state. Read actual limits and authority; expose
+root/governance-only changes and adapt the design to supported constraints.
+A retained 64-validator exception must state its capacity consequence rather
+than pretend the target was met. Follow MAINNET.md for literal UID-reset
+capability, protected identities, actual contract/custody installation,
+**10% of native miner allocation**, disposition of the remainder and **both
+the netuid-0 root and UR subnet validator roles**. Scaling all weights or theta
+alone cannot implement the 10% requirement. Recheck role/permit/registration
+eligibility and operating reserve at execution, using approved semantics.
+
+**Closure.** Measure the activated cadence across the required three consecutive
+fully observed production epochs; distinguish it from configured intent.
+Verify hyperparameters and reserve at pinned blocks and report unresolved
+exceptions plainly. Mainnet activation additionally proves the chosen reset
+capability, 10% denominator/rounding, actual reward outcome and both validator
+roles. Test stale plans, unauthorized calls, competing registrations and policy
+activation races without silently substituting a narrower reset or reward goal.
+
+### PH-15 — Operational status that explains forward progress
+
+**Lesson.** Repeated "hours remaining" estimates obscured whether the runtime
+was producing transactions, replaying old evidence or waiting for a future
+boundary. An observer timeout was also easy to confuse with a stopped owner.
+
+**Production change.** Publish per-component owner identity, last successful
+checkpoint/block, current action, attempts, retry-after, queue/backlog, proof
+domains and blocking dependency. Use explicit classes: retryable transport,
+deferred audit, pending finality, recoverable service, integrity/authorization
+failure, accounting failure and acceptance failure. Emit one durable incident
+with recurrence counters, retaining original errors and resolution evidence.
+Expose real submitted/finalized transaction counts and workload/proof progress.
+ETA separates observed preparation throughput, chain-block duration and unknown
+repair time; update it from finalized block progress and measured cadence.
+
+**Closure.** During injected outage and live recovery, status must identify the
+same surviving owner, its pending operation and next retry. No live-process
+claim comes solely from a lock/state file. A completed soft-error recovery
+remains in the incident ledger for the improvement batch; missing required
+evidence remains visible in acceptance. Verify meaningful signals under both
+slow but progressing replay and an actual deadlock.
+
+### PH-16 — Deterministic qualification and reviewable evidence
+
+**Lesson.** Some prior failures were real production defects; others were
+incorrect selectors, working directories, fixture assumptions, stale generated
+artifacts, missing offline dependencies or observer/capture failures. Repeated
+full gates and confirmation runs did not isolate those causes. The handoff's
+`[no tests to run]` example and the retained failed bundles must stay distinguishable
+from passes.
+
+**Production change.** Follow [CODESTYLE.md](../../connect/CODESTYLE.md): each
+root cause needs a deterministic pre-fix failure and corrected result at its
+observable layer, using barriers/hooks/state transitions instead of scheduler
+luck. Inspect similar callers, alternate/replay/batch paths and adjacent failure
+classes. Use synthetic identities and bounded fixtures; keep live custody and
+private captures out of tests. Freeze each job's actual inputs, enumerate
+selected roots, require nonzero expected membership and record test/build/body
+and cleanup outcomes. Run normal/race modes where relevant. Repair the failed
+scope and reuse demonstrably unaffected results; repeat only for a named
+unresolved timing concern. Rerun the representative failed integration when a
+small test cannot establish the workload/resource fix.
+
+Maintain a requirement-to-evidence table for the composed release: original
+failure, root cause, patch and adjacent paths, exact source/dependency/toolchain
+inputs, causal test, normal/race results, reused scopes, deployment and operational
+proof, unresolved work. Keep producer/aggregate requirements and complete live
+acceptance in that table without turning each patch into another full restart.
+Hash and retain raw receipts and numbered reports; preserve failed/canceled
+attempts, not overwritten summaries.
+
+Use the [independent verifier](../sim-testnet/peerreview/verify/README.md) as a
+reproduction model: rebuild Merkle roots and signatures independently, pin
+native/EVM mapping, decode transactions/events/storage, and declare archive
+requirements. Parameterize new run/deployment inputs rather than editing old
+expected findings into passes. Distinguish on-chain proof, authenticated artifact
+content and off-chain operational assertions. The current testnet policy uses
+only the owned LAN RPC and must say `independent_rpc=false`; running an
+independent implementation against that node does not create an independent
+observer. Preserve the first report's separate public-node comparison with its
+original scope. A production independent observer, when provisioned, must have
+its own declared endpoint, chain identity and observed checkpoints.
+
+**Closure.** Terra's affected qualifications plus controlled production-path
+fault injection must prove the corresponding PH requirements. The final
+exercise combines compatible runtime upgrade, interrupted submission, temporary
+network loss, service/dependency restart and replay/cache reuse while retaining
+financial history. Then acquire the required complete acceptance interval and
+verify accounting, policy, both validator duties and graceful shutdown. A clean
+test log, peer review of an earlier run, or report publication alone does not
+complete mainnet readiness.
+
+### Closing and maintaining this hardening plan
+
+For each PH item record the implementation/review commit, affected production
+consumers, deterministic regression and adjacent review, qualification receipts,
+release/deployment, operational evidence, remaining action and accepted
+limitations. Mark `Done` only when its closure criteria are proved on the
+production path. Simulator-only success remains partial evidence. Link related
+RT/RL/PF rows so one completed implementation can satisfy multiple requirements
+without duplicate qualification.
+
+Roll out shared recovery/identity interfaces first, followed by independent
+consumer migrations and a composed release. Retain the previous authenticated
+release and state-format compatibility for roll-forward recovery; any rollback
+must reconcile already submitted transactions and preserve finalized economics.
+Fault injection may use a controlled integration network, but it must exercise
+the production implementations and the actual capability assumptions; mocks
+alone do not establish live precompile, governance or economic behavior.
+Keep the current sim-testnet finalization moving while these mainnet items are
+implemented, promoting only corrections that resolve a concrete active blocker.
