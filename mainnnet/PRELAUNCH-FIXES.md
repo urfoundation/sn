@@ -470,6 +470,8 @@ owner boundary, not an additional agent or approval requirement.
 | PH-14 | P0 | Governance/bootstrap: actual capabilities, activated policy and both validator roles | RT-02; PH-10 through PH-12 | Planned |
 | PH-15 | P1 | Status/operations: actionable failure classes, progress and evidence-based ETA | All runtime owners | Planned |
 | PH-16 | P0 | Qualification and evidence: deterministic faults, composed coverage and independent replay | Every affected implementation | Planned |
+| PH-17 | P0 | Plan-derived indexes: bind cached lookup structures to their immutable plan/generation owner | PH-01, PH-05, PH-06 | Planned |
+| PH-18 | P0 | Strict readers: re-authorize connection/runtime provenance at every boundary after provisional work | PH-03, PH-04, PH-05 | Planned |
 
 Work in parallel on transaction/recovery (PH-01/02/06/11), chain access and
 proofs (PH-03/04/05), service/storage (PH-07/08/09/13), and scheduling/economics
@@ -857,6 +859,55 @@ exceptions plainly. Mainnet activation additionally proves the chosen reset
 capability, 10% denominator/rounding, actual reward outcome and both validator
 roles. Test stale plans, unauthorized calls, competing registrations and policy
 activation races without silently substituting a narrower reset or reward goal.
+
+### PH-17 — Bind derived indexes to the exact plan and generation
+
+**Lesson.** During archived-plan recovery, executor copies could retain an
+action index built for the current plan. A lookup after the copy switched to a
+historical plan could therefore return an action authorized by the wrong plan.
+The sim-testnet correction in `701f4456` makes the index owner explicit and
+falls back to the copied plan when it differs; its causal control returned a
+synthetic current-plan target under the prior implementation.
+
+**Production change.** Every derived index, cache, iterator, batched-work map
+and dependency resolver must carry the immutable plan hash and generation that
+created it. At each read, verify object identity as well as content shape. A
+copied/recovered executor must either reuse an index owned by its exact plan or
+rebuild from its own authenticated source. Treat an index as an acceleration
+only: it cannot supply authority, dependency order, approval scope or a target
+that the bound immutable plan does not contain.
+
+**Closure.** Clone each production reader across current, archived, successor,
+cancelled and repaired plans; poison the original index and prove the clone
+selects only the target/dependencies from its own plan. Cover concurrent index
+publication, restart, eviction and plan migration. Include this in PH-05 proof
+reuse and PH-06 migration qualification, with normal and race tests at every
+consumer boundary.
+
+### PH-18 — Re-authorize strict readers after provisional work
+
+**Lesson.** A connection that was acceptable for provisional recovery could
+otherwise retain its compatibility authority when later reused by a strict
+reader. `701f4456` added an explicit strict-after-provisional fence and a
+causal regression; connection reuse alone does not establish that the strict
+runtime catalogue, metadata and capability decision were rechecked.
+
+**Production change.** Model connection transport, observed chain state,
+runtime/metadata catalogue, verification mode and approval lineage as separate
+capabilities. Every strict reader must request and validate a fresh strict
+capability at its own boundary, including after connection pooling, process
+restart, runtime update, handoff and provisional repair. A provisional result
+can be retained as labeled evidence but cannot populate a strict cache or
+authorize strict historical decoding, signing, settlement, governance or final
+acceptance. Invalidate/re-observe the relevant identity whenever the pinned
+block, runtime, endpoint/peer, decoder or policy changes.
+
+**Closure.** Reuse one pooled connection across provisional and strict readers,
+then inject a changed runtime catalogue, metadata hash, peer identity and
+unsupported capability. Prove strict work rejects the provisional authority,
+performs its own pinned observation and leaves unrelated provisional traffic
+running. Exercise both validators, miner/operator clients, bootstrap and
+archive replay under normal and race qualification.
 
 ### PH-15 — Operational status that explains forward progress
 
