@@ -95,6 +95,7 @@ type matrixStatus struct {
 	SourceUnchanged bool     `json:"source_unchanged"`
 	Error           string   `json:"error,omitempty"`
 	Report          string   `json:"report"`
+	Resumed         int      `json:"resumed,omitempty"`
 }
 type matrixReport struct {
 	Status  matrixStatus           `json:"status"`
@@ -104,6 +105,10 @@ type matrixReport struct {
 // A scheduler failure still cancels and joins every admitted worker before
 // returning. No global lock is held across an external command or callback.
 func runDAG(ctx context.Context, nodes map[string]stage, jobs int, execute func(context.Context, string, stage) stageResult, publish func(map[string]stageResult, []string, int) error) (map[string]stageResult, error) {
+	return runDAGFrom(ctx, nodes, jobs, nil, execute, publish)
+}
+
+func runDAGFrom(ctx context.Context, nodes map[string]stage, jobs int, retained map[string]stageResult, execute func(context.Context, string, stage) stageResult, publish func(map[string]stageResult, []string, int) error) (map[string]stageResult, error) {
 	if jobs < 1 || jobs > 256 || len(nodes) > 2048 || execute == nil || publish == nil {
 		return nil, errors.New("bounded jobs, nodes and callbacks required")
 	}
@@ -135,6 +140,17 @@ func runDAG(ctx context.Context, nodes map[string]stage, jobs int, execute func(
 			return nil, err
 		}
 	}
+	for name, result := range retained {
+		node, exists := nodes[name]
+		if !exists || result.Status != "passed" {
+			return nil, errors.New("resume contains a foreign or incomplete stage")
+		}
+		for _, dependency := range node.Dependencies {
+			if retained[dependency].Status != "passed" {
+				return nil, errors.New("resume stage has no completed dependency")
+			}
+		}
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type completion struct {
@@ -145,9 +161,14 @@ func runDAG(ctx context.Context, nodes map[string]stage, jobs int, execute func(
 	complete := make(chan completion, jobs)
 	pending := map[string]stage{}
 	for name, node := range nodes {
-		pending[name] = node
+		if _, done := retained[name]; !done {
+			pending[name] = node
+		}
 	}
 	results := map[string]stageResult{}
+	for name, result := range retained {
+		results[name] = result
+	}
 	running := map[string]bool{}
 	var scheduleErr error
 	for len(pending)+len(running) > 0 {
@@ -406,16 +427,17 @@ func (self *boundedCapture) Write(data []byte) (int, error) {
 // Immutable maps support concurrent stage commands. Unproven cleanup is sticky
 // and forbids all final source-fence claims, including after cancellation.
 type stageOwner struct {
-	Source      string
-	Capture     string
-	Environment map[string]string
-	Go          string
-	Test2JSON   string
-	GoTools     *goToolCensus
-	Bash        string
-	Inputs      map[string]fileProof
-	Tools       map[string]string
-	Unproven    atomic.Bool
+	Source       string
+	Capture      string
+	Environment  map[string]string
+	Go           string
+	Test2JSON    string
+	GoTools      *goToolCensus
+	Bash         string
+	Inputs       map[string]fileProof
+	Tools        map[string]string
+	Unproven     atomic.Bool
+	CaptureLocks []*os.File
 }
 
 func (self *stageOwner) command(ctx context.Context, name string, argv []string, directory string, seconds int, stdin string) (result commandResult, resultErr error) {
@@ -475,22 +497,11 @@ func (self *stageOwner) command(ctx context.Context, name string, argv []string,
 	if err := ctx.Err(); err != nil {
 		return commandResult{}, err
 	}
-	if err := command.Start(); err != nil {
+	if err := startOwnedCommand(command, self.CaptureLocks); err != nil {
 		return commandResult{}, err
 	}
 	started = true
-	joined := make(chan error, 1)
-	go func() { joined <- command.Wait() }()
-	var waitErr error
-	select {
-	case waitErr = <-joined:
-	case <-ctx.Done():
-		signalErr := command.Process.Signal(syscall.SIGTERM)
-		waitErr = <-joined
-		if signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
-			waitErr = errors.Join(waitErr, signalErr)
-		}
-	}
+	waitErr := waitOwnedCommand(ctx, command)
 	readErr := readJSON(request.Result, &result)
 	joinedProof, joinedErr := readBounded(base+".joined", int64(len("joined\n")))
 	proven = joinedErr == nil && string(joinedProof) == "joined\n"
@@ -509,6 +520,31 @@ func (self *stageOwner) command(ctx context.Context, name string, argv []string,
 
 func commandMatches(result commandResult, expected int) bool {
 	return result.Joined && result.Error == "" && result.Exit != nil && *result.Exit == expected && result.OwnerExit == expected
+}
+
+// Wait for this direct child. Matching command text (including our own argv)
+// never proves process liveness, and a later pid reuse cannot extend the wait.
+func waitOwnedCommand(ctx context.Context, command *exec.Cmd) error {
+	joined := make(chan error, 1)
+	go func() { joined <- command.Wait() }()
+	select {
+	case err := <-joined:
+		return err
+	case <-ctx.Done():
+		signalErr := command.Process.Signal(syscall.SIGTERM)
+		waitErr := <-joined
+		if signalErr != nil && !errors.Is(signalErr, os.ErrProcessDone) {
+			waitErr = errors.Join(waitErr, signalErr)
+		}
+		return waitErr
+	}
+}
+
+// The owner retains these descriptors while joining its descendants, including
+// when the Go launcher is killed and cannot publish its terminal status.
+func startOwnedCommand(command *exec.Cmd, locks []*os.File) error {
+	command.ExtraFiles = append(command.ExtraFiles, locks...)
+	return command.Start()
 }
 
 // Do not execute inherited shell/Python startup or loader injection before the
@@ -691,6 +727,22 @@ func executeStage(ctx context.Context, name string, node stage, owner *stageOwne
 }
 
 func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus matrixStatus, returnedErr error) {
+	return runMatrixFrom(ctx, planPath, capture, "")
+}
+
+func runMatrixFrom(ctx context.Context, planPath, capture, previous string) (returnedStatus matrixStatus, returnedErr error) {
+	var captureLocks []*os.File
+	if previous != "" {
+		if err := physicalPath(previous, true); err != nil {
+			return matrixStatus{}, err
+		}
+		lock, err := lockCapture(previous, false)
+		if err != nil {
+			return matrixStatus{}, err
+		}
+		defer lock.Close()
+		captureLocks = append(captureLocks, lock)
+	}
 	planProof, err := regularProof(planPath)
 	if err != nil {
 		return matrixStatus{}, err
@@ -767,6 +819,12 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 	if err := os.Mkdir(capture, 0700); err != nil {
 		return matrixStatus{}, err
 	}
+	lock, err := lockCapture(capture, true)
+	if err != nil {
+		return matrixStatus{}, err
+	}
+	defer lock.Close()
+	captureLocks = append(captureLocks, lock)
 	status := matrixStatus{State: "running", Report: filepath.Join(capture, "report.json")}
 	results := map[string]stageResult{}
 	// Every later return, including setup and fence failures, leaves a compact
@@ -799,6 +857,20 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 			}
 			*source = destination
 		}
+	}
+	var partitions []suitePartition
+	plan, partitions, err = partitionSuites(plan, capture)
+	if err != nil {
+		return status, err
+	}
+	partitionPath := filepath.Join(capture, "partitions.json")
+	if previous != "" {
+		err = copyFile(filepath.Join(previous, "partitions.json"), partitionPath, 0600)
+	} else {
+		err = writeJSON(partitionPath, partitions)
+	}
+	if err != nil {
+		return status, err
 	}
 	if err := writeJSON(filepath.Join(capture, "plan.json"), plan); err != nil {
 		return matrixStatus{}, err
@@ -850,6 +922,7 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 		tools[name], inputs[path] = path, proof
 	}
 	owner := &stageOwner{Source: plan.SourceRoot, Capture: capture, Inputs: inputs, Tools: tools, Go: tools["go"], Bash: tools["bash"], Environment: map[string]string{"PATH": os.Getenv("PATH"), "GOMAXPROCS": strconv.Itoa(plan.Limits.GOMAXPROCS), "GOFLAGS": "-mod=readonly", "GOPROXY": "off", "GOSUMDB": "off", "GONOPROXY": "none", "GONOSUMDB": "none", "GOPRIVATE": "", "GOVCS": "*:off", "GOWORK": "off", "GOENV": "off", "GOTOOLCHAIN": "local", "WARP_TEST_ENV_FAIL_FAST": "1"}}
+	owner.CaptureLocks = captureLocks
 	toolchain, err := owner.command(ctx, "toolchain", []string{owner.Go, "env", "-json", "GOROOT", "GOTOOLDIR", "GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED", "CC", "CXX", "GOPATH", "GOCACHE", "GOMODCACHE"}, plan.SourceRoot, plan.Limits.BuildSeconds, "")
 	if err != nil || !commandMatches(toolchain, 0) {
 		return status, errors.Join(err, errors.New("actual Go toolchain discovery failed"))
@@ -929,6 +1002,19 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 		nodes["suite-"+suite.Id] = stage{Dependencies: []string{build}, Suite: suite, Binary: build}
 	}
 	status.Total = len(nodes)
+	sourceFileProof, err := regularProof(filepath.Join(capture, "source.before.json"))
+	if err != nil {
+		return status, err
+	}
+	checkpoint := matrixCheckpoint{Version: 1, Source: sourceFileProof, Plan: plan, Environment: resumeEnvironment(owner), Inputs: inputs, Stages: map[string]stageReceipt{}}
+	var resumed map[string]stageResult
+	if previous != "" {
+		resumed, checkpoint.Stages, err = loadResume(ctx, previous, checkpoint, nodes, packages, capture)
+		if err != nil {
+			return status, err
+		}
+		status.Resumed = len(resumed)
+	}
 	publish := func(results map[string]stageResult, running []string, pending int) error {
 		status.Finished, status.Running, status.Pending = len(results), running, pending
 		status.Failed = nil
@@ -936,12 +1022,23 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 			if results[name].Status != "passed" {
 				status.Failed = append(status.Failed, name)
 			}
+			if results[name].Status == "passed" && checkpoint.Stages[name].Path == "" {
+				ref, err := retainStage(capture, name, results[name])
+				if err != nil {
+					return err
+				}
+				checkpoint.Stages[name] = ref
+			}
+		}
+		if err := writeCheckpoint(filepath.Join(capture, "checkpoint.json"), checkpoint); err != nil {
+			return err
 		}
 		return writeJSON(filepath.Join(capture, "status.json"), status)
 	}
-	results, runErr := runDAG(ctx, nodes, plan.Limits.Jobs, func(ctx context.Context, name string, node stage) stageResult {
+	results, runErr := runDAGFrom(ctx, nodes, plan.Limits.Jobs, resumed, func(ctx context.Context, name string, node stage) stageResult {
 		return executeStage(ctx, name, node, owner, plan, packages)
 	}, publish)
+	runErr = errors.Join(runErr, publish(results, nil, 0))
 	var after []sourceProof
 	var fenceErr, afterErr error
 	if owner.Unproven.Load() {
@@ -1036,7 +1133,7 @@ func readCaptureStatus(capture string) (matrixStatus, error) {
 	} else {
 		return matrixStatus{}, err
 	}
-	if status.Report != filepath.Join(capture, "report.json") || status.Total < 0 || status.Total > 2048 || status.Finished < 0 || status.Finished > status.Total || status.Pending < 0 || status.Pending > status.Total {
+	if status.Report != filepath.Join(capture, "report.json") || status.Total < 0 || status.Total > 2048 || status.Finished < 0 || status.Finished > status.Total || status.Pending < 0 || status.Pending > status.Total || status.Resumed < 0 || status.Resumed > status.Finished {
 		return matrixStatus{}, errors.New("invalid capture status identity or census")
 	}
 	switch status.State {
@@ -1088,8 +1185,15 @@ func main() {
 		if err == nil && status.State != "passed" {
 			err = errors.New("qualification did not pass")
 		}
+	} else if len(os.Args) == 4 && os.Args[1] == "resume" {
+		var status matrixStatus
+		status, err = runMatrixFrom(ctx, filepath.Join(os.Args[2], "plan.json"), os.Args[3], os.Args[2])
+		result = status
+		if err == nil && status.State != "passed" {
+			err = errors.New("qualification did not pass")
+		}
 	} else {
-		err = errors.New("usage: qualification run PLAN.json NEW_CAPTURE | status CAPTURE | fence SOURCE_ROOT MANIFEST | replay EVENTS OUTCOMES LITERALS PACKAGE BODY_EXIT")
+		err = errors.New("usage: qualification run PLAN.json NEW_CAPTURE | resume OLD_CAPTURE NEW_CAPTURE | status CAPTURE | fence SOURCE_ROOT MANIFEST | replay EVENTS OUTCOMES LITERALS PACKAGE BODY_EXIT")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

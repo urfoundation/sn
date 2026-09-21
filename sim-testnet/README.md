@@ -501,6 +501,47 @@ An empty matrix, duplicate roots within a package/mode, malformed metadata or
 unlisted dirty/new source fails preflight. Represent overlapping obligations
 with one exact root union and a retained obligation map, not duplicate runs.
 
+For a measured group whose parallel queue exhausts the package timeout, set
+`roots_per_shard` on its suite to a positive maximum root count (for example,
+`4`). The runner partitions the sorted declared roots and retains each root's
+complete descendant/outcome/literal tree. `partitions.json` records the exact
+disjoint union; every expanded shard is checked against its compiled census
+and event stream. The compiler runs once per package/mode. Each shard keeps
+the plan's original `test_seconds`, `outer_seconds`, `parallel` and
+`gomaxprocs`; `jobs` bounds concurrent build/body processes. Queueing between
+shards is outside their body deadlines. This is a selected union, and any
+separate whole-process or shared-state obligation remains visible. Do not
+replace a broad selection with a passing narrower selector: retain both the
+original census and the focused obligation map.
+
+Completed builds and shards receive atomic, synced receipts and a
+`checkpoint.json`. After a failed or interrupted run, continue into a new
+capture with the same compiled qualification runner:
+
+```sh
+/absolute/capture-tools/qualification resume /absolute/old-capture /absolute/new-capture
+```
+
+The old capture remains intact. Resume rechecks its source fence, tool/input
+proofs, compiler bytes, command exits, descendant cleanup, exact event census,
+execution environment and unchanged plan limits. It replays verification of
+completed events and copies the original compiled binary for unfinished
+shards; completed bodies and builds are not run again. `resumed` in status
+counts reused stages, including builds, and their original evidence paths
+remain in the new report. Changed or incomplete evidence causes an explicit
+refusal; failed and unrecorded stages rerun. A source patch requires its own
+qualification and cannot inherit passing bodies under this exact-source
+resume command. Private per-invocation scratch paths may change; inherited
+environment values are compared by digest, without recording their contents.
+For a checker-only refusal, use the retained-event replay below before resuming;
+repairing metadata does not require repeating a successful test body.
+
+An exclusive capture lock prevents resuming an active runner. Use the
+runner's direct child exit and `status` command for progress; never poll a
+`pgrep -f` pattern containing the watched command. Such a watcher can match its
+own shell after the test exits and wait indefinitely. The owner waits on the
+actual child and joins descendants before publishing completion.
+
 Each package/mode is compiled once. Suites become ready after their own build,
 not after unrelated builds. The compiled list must match the exact declared
 roots before execution. The Go event verifier requires complete package/root
@@ -548,7 +589,7 @@ and `failures.json` plus the referenced requests/logs for debugging. Passing
 updates should contain only the phase, exact counts, elapsed time, actual exits,
 integrity verdict and capture path. Do not repeatedly send passing raw logs,
 long hash inventories or the full historical handoff to an agent. Retain all
-raw evidence on disk and expand any failed or suspicious result for Sol max;
+raw evidence on disk and expand any failed or suspicious result for Astra max;
 compact reporting never means ignoring an anomaly or capping its investigation.
 Do not retry a failure blindly or declare a timeout an expected assertion
 failure. After its root cause is resolved, use the affected checks and any
@@ -586,9 +627,9 @@ isolated suites that pass. Independent source fixes and causal controls may
 retain their own exact preimages, but do not create another source checkout
 for a corrected selector, output filename, or report.
 
-During implementation, keep two Sol max implementation/fix agents and one
+During implementation, keep two Astra max implementation/fix agents and one
 Terra medium execution agent. Once independent integration suites are ready,
-use two Terra medium execution agents and one Sol max production/fix agent;
+use two Terra medium execution agents and one Astra max production/fix agent;
 the primary agent takes the second review role. The user explicitly requested
 this integration dispatch on 2026-09-09. Split validator/simulator qualification
 from fixture/database/Solidity qualification. An execution agent's command
