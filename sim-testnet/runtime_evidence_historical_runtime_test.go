@@ -163,8 +163,10 @@ func TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads(t
 	upgradeRuntimeEvidenceHistoricalTest(t, fixture)
 	relay := &evidenceRelayRuntime{executor: fixture.executor}
 	activation := fixture.base.prepared.Members[0].Activation
-	if epoch, err := relay.readHorizonNative(t.Context(), activation, evidenceRelayNativeOriginalSnapshot); err != nil || epoch == 0 {
-		t.Fatalf("original relay native anchor: epoch=%d error=%v", epoch, err)
+	for _, mode := range []evidenceRelayNativeReadMode{evidenceRelayNativeOriginalSnapshot, evidenceRelayNativeContinuationSnapshot} {
+		if epoch, err := relay.readHorizonNative(t.Context(), activation, mode); err != nil || epoch == 0 {
+			t.Fatalf("retained relay native snapshot %d: epoch=%d error=%v", mode, epoch, err)
+		}
 	}
 	for _, mode := range []evidenceRelayNativeReadMode{evidenceRelayNativeCurrentHead, evidenceRelayNativeCurrentSnapshot, 0} {
 		if _, err := relay.readHorizonNative(t.Context(), activation, mode); err == nil {
@@ -174,8 +176,10 @@ func TestRuntimeEvidenceHistoricalRuntimeHorizonSeparatesOriginalAndFreshReads(t
 	fixture.stateLock.Lock()
 	fixture.permits[1] = false
 	fixture.stateLock.Unlock()
-	if _, err := relay.readHorizonNative(t.Context(), activation, evidenceRelayNativeOriginalSnapshot); err == nil {
-		t.Fatal("historical horizon ignored original eligibility")
+	for _, mode := range []evidenceRelayNativeReadMode{evidenceRelayNativeOriginalSnapshot, evidenceRelayNativeContinuationSnapshot} {
+		if _, err := relay.readHorizonNative(t.Context(), activation, mode); err == nil {
+			t.Fatalf("historical horizon %d ignored original eligibility", mode)
+		}
 	}
 }
 

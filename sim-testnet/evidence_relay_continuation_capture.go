@@ -313,6 +313,7 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return nil, err
 	}
+	nativeMode := evidenceRelayNativeCurrentSnapshot
 	if pin != nil {
 		if pin.SourcePlanHash != base.PlanHash || pin.EndBlock != endBlock || pin.EVMHead.Number > block || pin.NativeHead.Number > nativeBlock {
 			return nil, errors.New("relay continuation imported snapshot is not finalized in its original source")
@@ -323,12 +324,13 @@ func captureEvidenceRelayContinuationAt(ctx context.Context, cfg *ResolvedConfig
 		}
 		block, hash = pin.EVMHead.Number, canonical
 		nativeBlock, nativeHash = pin.NativeHead.Number, nativeTypes.Hash(common.HexToHash(pin.NativeHead.Hash))
+		nativeMode = evidenceRelayNativeContinuationSnapshot
 	}
 	anchor := runtime.sources[0].activations[0]
 	freshNative := anchor
 	freshNative.NativeBlock = nativeBlock
 	freshNative.NativeHash = [32]byte(nativeHash)
-	nativeEpoch, err := runtime.readHorizonNative(ctx, freshNative, evidenceRelayNativeCurrentSnapshot)
+	nativeEpoch, err := runtime.readHorizonNative(ctx, freshNative, nativeMode)
 	if err != nil {
 		return nil, err
 	}
