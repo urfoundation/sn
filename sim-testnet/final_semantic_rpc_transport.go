@@ -278,7 +278,7 @@ type finalSemanticRPCCodeError interface {
 }
 
 func finalSemanticRPCErrorIsTransient(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) {
+	if err == nil || errors.Is(err, context.Canceled) || evmReadRpcRetriesExhausted(err) {
 		return false
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))

@@ -14,11 +14,9 @@ import (
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -456,16 +454,12 @@ func rawCoordinatorCall[T any](ctx context.Context, manager *EvmTxManager, addr 
 	if err != nil {
 		return zero, err
 	}
-	out, err := manager.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, new(big.Int).SetUint64(head.Number))
-	if err != nil {
-		return zero, err
-	}
-	return unpack(out)
+	return rawCoordinatorCallAt(ctx, manager, addr, data, unpack, head.Number)
 }
 
 func rawCoordinatorCallAt[T any](ctx context.Context, manager *EvmTxManager, addr common.Address, data []byte, unpack func([]byte) (T, error), block uint64) (T, error) {
 	var zero T
-	out, err := manager.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, new(big.Int).SetUint64(block))
+	out, err := readEvmContractAt(ctx, manager.client, addr, data, block)
 	if err != nil {
 		return zero, err
 	}
@@ -490,30 +484,35 @@ func rawCoordinatorBatchCallsAt(ctx context.Context, client *ethclient.Client, c
 	outputs := make([][]byte, len(calls))
 	for start := 0; start < len(calls); start += maximumEVMRPCBatchCalls {
 		end := min(start+maximumEVMRPCBatchCalls, len(calls))
-		results := make([]hexutil.Bytes, end-start)
-		batch := make([]rpc.BatchElem, end-start)
+		reads := make([]evmRpcRead, end-start)
 		for index := start; index < end; index++ {
 			call := calls[index]
 			if call.Block == 0 || call.Address == (common.Address{}) || len(call.Data) == 0 {
 				return nil, fmt.Errorf("coordinator batch call %d has an incomplete target, calldata, or block", index)
 			}
-			batch[index-start] = rpc.BatchElem{
-				Method: "eth_call",
-				Args: []any{
+			reads[index-start] = evmRpcRead{
+				method: "eth_call",
+				args: []any{
 					map[string]any{"to": call.Address, "data": hexutil.Bytes(call.Data)},
 					hexutil.EncodeUint64(call.Block),
 				},
-				Result: &results[index-start],
 			}
 		}
-		if err := client.Client().BatchCallContext(ctx, batch); err != nil {
+		operation := fmt.Sprintf("coordinator eth_call batch %d-%d blocks %d-%d", start, end-1, calls[start].Block, calls[end-1].Block)
+		results, err := readEvmRpcBatchWithPolicy[hexutil.Bytes](ctx, operation, reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+		if err != nil {
 			return nil, err
 		}
-		for index := range batch {
-			if batch[index].Error != nil {
-				return nil, fmt.Errorf("coordinator batch call %d: %w", start+index, batch[index].Error)
+		var failures []error
+		for index, result := range results {
+			if result.err != nil {
+				failures = append(failures, fmt.Errorf("coordinator batch call %d: %w", start+index, result.err))
+				continue
 			}
-			outputs[start+index] = append([]byte(nil), results[index]...)
+			outputs[start+index] = append([]byte(nil), result.value...)
+		}
+		if err := errors.Join(failures...); err != nil {
+			return nil, err
 		}
 	}
 	return outputs, nil

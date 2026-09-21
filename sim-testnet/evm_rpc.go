@@ -235,6 +235,9 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 		return nil, err
 	}
 	readOnly := publicEVMRPCRequestIsReadOnly(request)
+	// A caller may own the retry budget, but each physical public request must
+	// still acquire this gate and publish the provider's shared cooldown.
+	managed, _ := request.Context().Value(ownedEvmRpcRetryBudgetKey{}).(bool)
 	base := transport.base
 	if base == nil {
 		base = http.DefaultTransport
@@ -267,7 +270,7 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			if ctxErr := request.Context().Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			if !readOnly || attempt >= transport.maximumRetries {
+			if !readOnly || !managed && attempt >= transport.maximumRetries {
 				return nil, err
 			}
 			delay, delayErr := rpcRetryAfter(nil, nil, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
@@ -275,6 +278,9 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 				return nil, errors.Join(err, delayErr)
 			}
 			transport.gate.cooldown(now().Add(delay))
+			if managed {
+				return nil, err
+			}
 			continue
 		}
 		retry, body, err := publicEVMResponseNeedsRetry(response, readOnly)
@@ -282,7 +288,7 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			if ctxErr := request.Context().Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			if !readOnly || attempt >= transport.maximumRetries || !publicEVMResponseBodyReadIsTransient(err) {
+			if !readOnly || !managed && attempt >= transport.maximumRetries || !publicEVMResponseBodyReadIsTransient(err) {
 				return nil, err
 			}
 			delay, delayErr := rpcRetryAfter(response.Header, nil, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
@@ -290,12 +296,15 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 				return nil, errors.Join(err, delayErr)
 			}
 			transport.gate.cooldown(now().Add(delay))
+			if managed {
+				return nil, err
+			}
 			continue
 		}
 		if !retry {
 			return response, nil
 		}
-		if attempt >= transport.maximumRetries {
+		if !managed && attempt >= transport.maximumRetries {
 			return response, nil
 		}
 		delay, err := rpcRetryAfter(response.Header, body, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
@@ -303,8 +312,11 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			response.Body.Close()
 			return nil, err
 		}
-		response.Body.Close()
 		transport.gate.cooldown(now().Add(delay))
+		if managed {
+			return response, nil
+		}
+		response.Body.Close()
 	}
 }
 

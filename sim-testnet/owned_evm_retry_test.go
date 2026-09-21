@@ -208,6 +208,39 @@ func TestOwnedEvmRetryDoesNotMultiplyOuterBudget(t *testing.T) {
 	}
 }
 
+// net.DNSError can carry its own transient flags while Unwrap returns nil.
+// Preserve those typed flags without treating a missing name as recoverable.
+func TestOwnedEvmRetryHandlesDnsErrorsWithoutWrappedCause(t *testing.T) {
+	t.Parallel()
+	for _, failure := range []*net.DNSError{
+		{Err: "synthetic temporary lookup failure", IsTemporary: true},
+		{Err: "synthetic lookup timeout", IsTimeout: true},
+		{Err: "synthetic name does not exist", IsNotFound: true},
+	} {
+		calls, waits := 0, 0
+		transport := newOwnedEvmRetryTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			calls++
+			request.Body.Close()
+			if calls == 1 {
+				return nil, failure
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))}, nil
+		}))
+		transport.policy.wait = func(ctx context.Context, _ time.Duration) error { waits++; return ctx.Err() }
+		response, err := transport.RoundTrip(ownedEvmRetryTestRequest(t, `{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`))
+		if response != nil {
+			response.Body.Close()
+		}
+		if failure.IsNotFound {
+			if !errors.Is(err, failure) || calls != 1 || waits != 0 {
+				t.Fatalf("missing name retried: calls=%d waits=%d error=%v", calls, waits, err)
+			}
+		} else if err != nil || calls != 2 || waits != 1 {
+			t.Fatalf("temporary DNS failure lost: calls=%d waits=%d error=%v", calls, waits, err)
+		}
+	}
+}
+
 func TestOwnedEvmRetryStreamsLargeBodiesWithoutNewSizeLimits(t *testing.T) {
 	t.Parallel()
 	large := bytes.Repeat([]byte("x"), publicEVMRPCResponseReadLimit+1024)

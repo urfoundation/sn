@@ -2504,7 +2504,7 @@ func contractCallAt(ctx context.Context, client *ethclient.Client, address commo
 	if err != nil {
 		return nil, err
 	}
-	out, err := client.CallContract(ctx, ethereum.CallMsg{To: &address, Data: data}, new(big.Int).SetUint64(block))
+	out, err := readEvmContractAt(ctx, client, address, data, block)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
@@ -2683,7 +2683,7 @@ func (self ethEVMBlockReader) EVMBlockByNumber(ctx context.Context, number *big.
 		argument = "0x" + number.Text(16)
 	}
 	var block *evmRPCBlock
-	if err := retryFinalSemanticRPCCall(ctx, nil, defaultFinalSemanticRPCRetryPolicy(), func(attempt context.Context) error {
+	if err := retryEvmReadRpcCall(ctx, "eth_getBlockByNumber "+argument, defaultFinalSemanticRPCRetryPolicy(), func(attempt context.Context) error {
 		block = nil
 		return self.client.Client().CallContext(attempt, &block, "eth_getBlockByNumber", argument, false)
 	}); err != nil {

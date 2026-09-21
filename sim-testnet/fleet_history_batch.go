@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/urfoundation/sn/stabi"
 )
@@ -71,27 +70,26 @@ func batchEVMBlocksByNumber(ctx context.Context, client *ethclient.Client, numbe
 	heads := make([]ChainHead, len(numbers))
 	for start := 0; start < len(numbers); start += maximumEVMRPCBatchCalls {
 		end := min(start+maximumEVMRPCBatchCalls, len(numbers))
-		blocks := make([]*evmRPCBlock, end-start)
-		batch := make([]rpc.BatchElem, end-start)
+		reads := make([]evmRpcRead, end-start)
 		for index := start; index < end; index++ {
 			if numbers[index] == 0 {
 				return nil, fmt.Errorf("EVM block batch element %d has no block", index)
 			}
-			batch[index-start] = rpc.BatchElem{
-				Method: "eth_getBlockByNumber",
-				Args:   []any{hexutil.EncodeUint64(numbers[index]), false},
-				Result: &blocks[index-start],
+			reads[index-start] = evmRpcRead{
+				method: "eth_getBlockByNumber",
+				args:   []any{hexutil.EncodeUint64(numbers[index]), false},
 			}
 		}
-		if err := client.Client().BatchCallContext(ctx, batch); err != nil {
+		results, err := readEvmRpcBatchWithPolicy[*evmRPCBlock](ctx, fmt.Sprintf("historical EVM block batch %d-%d", start, end-1), reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+		if err != nil {
 			return nil, err
 		}
-		for index := range batch {
-			if batch[index].Error != nil {
-				return nil, fmt.Errorf("EVM block batch element %d: %w", start+index, batch[index].Error)
+		for index, result := range results {
+			if result.err != nil {
+				return nil, fmt.Errorf("EVM block batch element %d: %w", start+index, result.err)
 			}
 			number := numbers[start+index]
-			head, err := decodeEVMRPCBlock(blocks[index], new(big.Int).SetUint64(number))
+			head, err := decodeEVMRPCBlock(result.value, new(big.Int).SetUint64(number))
 			if err != nil {
 				return nil, fmt.Errorf("EVM block batch element %d: %w", start+index, err)
 			}
@@ -310,26 +308,27 @@ func readHistoricalFleetGenerationOneBatch(ctx context.Context, client *ethclien
 		return nil, errors.New("historical fleet contract batch is unavailable or unbounded")
 	}
 	results := make([]historicalFleetGenerationOneResult, len(calls))
-	batch := make([]rpc.BatchElem, len(calls))
+	reads := make([]evmRpcRead, len(calls))
 	for index, call := range calls {
 		request := historicalFleetGenerationOneRequest(call, independent)
 		if request.Block == 0 || request.Address == (common.Address{}) || len(request.Data) == 0 {
 			return nil, fmt.Errorf("action %s has an incomplete historical fleet request", call.action.ID)
 		}
-		batch[index] = rpc.BatchElem{
-			Method: "eth_call",
-			Args: []any{
+		reads[index] = evmRpcRead{
+			method: "eth_call",
+			args: []any{
 				map[string]any{"to": request.Address, "data": hexutil.Bytes(request.Data)},
 				hexutil.EncodeUint64(request.Block),
 			},
-			Result: &results[index].output,
 		}
 	}
-	if err := client.Client().BatchCallContext(ctx, batch); err != nil {
+	observed, err := readEvmRpcBatchWithPolicy[hexutil.Bytes](ctx, "historical fleet eth_call batch", reads, defaultFinalSemanticRPCRetryPolicy(), client.Client().BatchCallContext)
+	if err != nil {
 		return nil, err
 	}
-	for index := range batch {
-		results[index].err = batch[index].Error
+	for index, result := range observed {
+		results[index].output = result.value
+		results[index].err = result.err
 	}
 	return results, nil
 }

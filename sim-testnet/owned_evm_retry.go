@@ -50,7 +50,9 @@ func ownedEvmTransportErrorIsTransient(err error) bool {
 		return true
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return ownedEvmTransportErrorIsTransient(wrapped.Unwrap())
+		if cause := wrapped.Unwrap(); cause != nil {
+			return ownedEvmTransportErrorIsTransient(cause)
+		}
 	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ETIMEDOUT) {
 		return true

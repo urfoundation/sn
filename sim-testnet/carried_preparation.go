@@ -276,7 +276,7 @@ func verifyCarriedActionWithTimeoutFor(ctx context.Context, cfg *ResolvedConfig,
 			return nil
 		}
 		last = err
-		if !errors.Is(err, context.DeadlineExceeded) || attempt+1 == attempts {
+		if evmReadRpcRetriesExhausted(err) || !evmReadRpcErrorIsTransient(err) || !errors.Is(err, context.DeadlineExceeded) || attempt+1 == attempts {
 			return err
 		}
 	}
