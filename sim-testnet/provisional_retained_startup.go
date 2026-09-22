@@ -34,7 +34,7 @@ type retainedStartupPublication struct {
 // Recover publication only, never a running generation or a transaction. The
 // ordinary exact stopped/startup admission runs again after this rollback.
 func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) error {
-	if !provisionalResumeEnabled(self.cfg) || self.cfg.provisionalResume.Record.Command != "resume" {
+	if !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) {
 		return nil
 	}
 	raw, err := readValidatorEvidenceHistoricalFile(self.stateDir, "provisional-resumes/retained-start-publication.json", maximumCampaignEvidenceRawFileBytes)
@@ -67,7 +67,7 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	if err != nil || bytesSHA256(provenance) != publication.ProvenanceHash {
 		return errors.Join(errors.New("retained publication provenance changed"), err)
 	}
-	if err := json.Unmarshal(provenance, &record); err != nil || !record.Provisional || record.FinalAcceptance || record.Command != "resume" || record.PlanHash != self.plan.PlanHash || record.ConfigHash != self.cfg.ConfigHash || record.ReleaseLockHash != self.plan.ReleaseLockHash || record.DeploymentID != self.plan.DeploymentID {
+	if err := json.Unmarshal(provenance, &record); err != nil || !provisionalRetainedStartupAllowed(&record) || record.PlanHash != self.plan.PlanHash || record.ConfigHash != self.cfg.ConfigHash || record.ReleaseLockHash != self.plan.ReleaseLockHash || record.DeploymentID != self.plan.DeploymentID {
 		return errors.Join(errors.New("retained publication approval differs"), err)
 	}
 	if publication.Source == nil || bytesSHA256(publication.Original) != publication.Source.ManifestBytesSHA256 {
@@ -128,8 +128,8 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 // A current approved non-transaction successor can restart retained processes
 // without interpreting unfinished setup as an instruction to reconcile it.
 func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string, start retainedProvisionalStarter) error {
-	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || self.cfg.provisionalResume.Record.Command != "resume" || self.cfg.strictHistoryAdoption != nil {
-		return errors.New("retained startup requires explicit non-accepting resume")
+	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) || self.cfg.strictHistoryAdoption != nil {
+		return errors.New("retained startup requires explicit non-accepting resume or release scenario")
 	}
 	active, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
 	if err != nil {
@@ -210,7 +210,7 @@ func retainedProvisionalSupervisor(cfg *ResolvedConfig, plan *SetupPlan, stopped
 // new supervisor performs its normal local cleanup and independent child start.
 func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string) (returnErr error) {
 	cfg, stateDir := self.cfg, self.stateDir
-	current, err := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, "resume")
+	current, err := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cfg.provisionalResume.Record.Command)
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 	if err != nil {
 		return err
 	}
-	current, err = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, "resume")
+	current, err = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cfg.provisionalResume.Record.Command)
 	if err != nil {
 		return err
 	}

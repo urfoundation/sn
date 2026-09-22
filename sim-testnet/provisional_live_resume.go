@@ -46,8 +46,8 @@ type provisionalLiveTopology struct {
 }
 
 // A deliberately stopped, previously authenticated supervisor is a recovery
-// boundary, not a fresh deployment. Resume and a zero-dispatch setup approval
-// require the exact owned service to be inactive/dead. A subsequent launch still
+// boundary, not a fresh deployment. Resume, release scenarios and a zero-dispatch
+// setup approval require the exact owned service to be inactive/dead. Launch still
 // creates a new supervisor generation and performs its normal readiness gate.
 // This prevents a release-hotfix handoff from replaying the broad pre-launch
 // doctor after the retained-plan receipt audit has already authenticated every
@@ -156,8 +156,11 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 }
 
 func provisionalStoppedTopologyEligible(cfg *ResolvedConfig, command string, manifest SupervisorFile, manifestHash string, state SupervisorState, service supervisorServiceStatus) error {
-	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup") {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup" && command != "scenario") {
 		return errors.New("stopped topology recovery is not provisionally admitted")
+	}
+	if command == "scenario" && (cfg.provisionalResume.Record.Command != command || !provisionalRetainedStartupAllowed(cfg.provisionalResume.Record)) {
+		return errors.New("stopped scenario topology requires explicit provisional release authority")
 	}
 	if command == "setup" {
 		record := cfg.provisionalResume.Record
@@ -182,8 +185,11 @@ func provisionalStoppedTopologyEligible(cfg *ResolvedConfig, command string, man
 // read; ordinary launch paths and every ambiguous service state still use the
 // full doctor.
 func prepareStoppedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, stateDir, command string) (*provisionalStoppedTopology, error) {
-	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup") {
+	if cfg == nil || !provisionalResumeEnabled(cfg) || (command != "resume" && command != "setup" && command != "scenario") {
 		return nil, nil
+	}
+	if command == "scenario" && (cfg.provisionalResume.Record.Command != command || !provisionalRetainedStartupAllowed(cfg.provisionalResume.Record)) {
+		return nil, errors.New("stopped scenario topology requires explicit provisional release authority")
 	}
 	live, err := liveRecordedSupervisor(stateDir)
 	if err != nil || live != nil {

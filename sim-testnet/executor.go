@@ -633,7 +633,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	report := &launchPreparationReport{Schema: "urnetwork-sim-launch-preparation-v1", Command: cmd, PlanHash: p.PlanHash, PrepareOnly: o.PrepareOnly, Ready: true}
 	report.add("attempt-upload-budget", nil)
-	if cmd == "resume" && o.ProvisionalResume {
+	if o.ProvisionalResume && provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 		if err := recoverRetainedProvisionalPublication(ctx, local); err != nil {
 			return err
@@ -697,7 +697,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// fully inactive and its exact prior generation/inventory must still be
 	// recorded.  LaunchDeployment below still creates and gates a new process
 	// generation.
-	if liveAdoption == nil && liveAdoptionErr == nil && o.ProvisionalResume && cmd == "resume" {
+	if liveAdoption == nil && liveAdoptionErr == nil && o.ProvisionalResume && provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
 		stopped, stoppedErr := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
 		if stoppedErr != nil {
 			// This is an optimization boundary, not an additional admission
@@ -728,6 +728,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
+	retainedScenarioStartup := cmd == "scenario" && retainedPlanResume && stoppedAdoption != nil
 	if needsDoctor {
 		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
 		report.Doctor = &doctor
@@ -764,11 +765,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		report.add("managed-dependencies", startDependencies(ctx, cfg))
 	}
 	var bins map[string]string
-	if liveAdoption == nil && liveAdoptionErr == nil && requiresReleaseBinaries(cmd) {
+	if liveAdoption == nil && liveAdoptionErr == nil && (requiresReleaseBinaries(cmd) || retainedScenarioStartup) {
 		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
 		report.add("release-binaries", err)
 	}
-	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume" || retainedScenarioStartup) {
 		if liveAdoptionErr == nil {
 			report.add("release-host", preflightReleaseHost(ctx, stateDir, cfg, bins))
 		} else {
@@ -868,10 +869,12 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 					}
 				}
 			}
-			if o.Name == releaseCandidateCampaignName {
-				return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
-			}
-			return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
+			return runScenarioAfterRetainedStartup(ctx, ex, stoppedAdoption, bins, launchRetainedProvisionalTopology, func() error {
+				if o.Name == releaseCandidateCampaignName {
+					return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
+				}
+				return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
+			})
 		}
 		if retainedPlanResume {
 			if liveAdoption != nil {

@@ -52,7 +52,8 @@ func (self *Executor) authenticateProvisionalPlanOnlyAdoption(ctx context.Contex
 	}
 	invocation := self.cfg.provisionalResume
 	record := invocation.Record
-	if (record.Command != "setup" && record.Command != "resume") || (record.Command == "resume" && active.PlanHash != self.plan.PlanHash) || !record.Provisional || record.FinalAcceptance || record.PlanHash != self.plan.PlanHash ||
+	retainedStartup := provisionalRetainedStartupAllowed(record)
+	if (record.Command != "setup" && !retainedStartup) || (retainedStartup && active.PlanHash != self.plan.PlanHash) || !record.Provisional || record.FinalAcceptance || record.PlanHash != self.plan.PlanHash ||
 		record.ConfigHash != self.cfg.ConfigHash || record.DeploymentID != self.plan.DeploymentID || record.ReleaseLockHash != self.plan.ReleaseLockHash ||
 		record.Driver != invocation.Driver || !filepath.IsAbs(invocation.RecordPath) {
 		return false, errors.New("plan-only adoption lost its exact retained release and non-accepting provenance")

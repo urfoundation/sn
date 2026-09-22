@@ -26,7 +26,7 @@ func startedProvisionalTopologyTest(t *testing.T) (*Executor, processLogGateFixt
 	rpc := newRuntimeEvidenceActivationRpcV2TestFixture(t)
 	// Finalized postconditions require the real reviewed metadata artifact.
 	// The tiny activation fixture cannot satisfy that stricter entrypoint.
-	encoded, err := os.ReadFile("../miner/testdata/runtime461-metadata.scale.gz.base64")
+	encoded, err := os.ReadFile("../crv4/runtime-profile-v1.scale.gz.base64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,21 +292,14 @@ func TestStartedProvisionalTopologyPropagatesTournamentFailure(t *testing.T) {
 	}
 }
 
-// Readiness waivers cannot hide durable malformed proofs or a different
-// process generation. Both fail before any approved action is dispatched.
-func TestStartedProvisionalTopologyRejectsCorruptionAndGenerationChange(t *testing.T) {
+// Readiness waivers cannot authorize a different process generation. Refuse
+// it before any approved action or supervisor mutation.
+func TestStartedProvisionalTopologyRejectsGenerationChange(t *testing.T) {
 	executor, fixture, baseline := startedProvisionalTopologyTest(t)
 	started := fixture.supervisor
 	started.SupervisorStartTimeTicks++
 	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, started, baseline); !adopted || err == nil || !strings.Contains(err.Error(), "generation changed") {
 		t.Fatal("fresh startup adopted another process generation", adopted, err)
-	}
-	path := releaseTopologyProofPaths(executor.cfg, fixture.dir)["validator-1/no-1"]
-	if err := atomicWrite(path, []byte("not-json\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); !adopted || err == nil || !strings.Contains(err.Error(), "proof line 1 is malformed") {
-		t.Fatal("provisional startup hid durable proof corruption", adopted, err)
 	}
 	if len(executor.journal.Entries()) != 0 {
 		t.Fatal("invalid startup reached approved action dispatch")
@@ -322,5 +315,37 @@ func TestStartedProvisionalTopologyRejectsCorruptionAndGenerationChange(t *testi
 	after, err := json.Marshal(current)
 	if err != nil || !bytes.Equal(raw, after) {
 		t.Fatal("refused handoff rewrote its supervisor", err)
+	}
+}
+
+// Historical semantic validation is deliberately separate from provisional
+// startup. Preserve malformed bytes and unverified counts; strict validation
+// must still reject the same evidence before and after the process handoff.
+func TestStartedProvisionalTopologyRetainsDeferredProofCorruption(t *testing.T) {
+	executor, fixture, baseline := startedProvisionalTopologyTest(t)
+	path := releaseTopologyProofPaths(executor.cfg, fixture.dir)["validator-1/no-1"]
+	malformed := []byte("not-json\n")
+	if err := atomicWrite(path, malformed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := releaseTopologyProofCounts(executor.cfg, fixture.dir); err == nil || !strings.Contains(err.Error(), "proof line 1 is malformed") {
+		t.Fatal("strict proof reader did not reproduce the malformed history", err)
+	}
+	if adopted, err := adoptStartedProvisionalTopology(t.Context(), executor.cfg, fixture.dir, executor.plan, executor.roles, executor, fixture.supervisor, baseline); !adopted || err != nil {
+		t.Fatal("provisional startup restored historical proof validation", adopted, err)
+	}
+	var adoption provisionalLiveTopology
+	if err := readJSONFile(filepath.Join(fixture.dir, "provisional-resumes", "live-topology.json"), &adoption); err != nil {
+		t.Fatal(err)
+	}
+	if !adoption.Provisional || adoption.FinalAcceptance || !adoption.FreshProofStartupWaived || adoption.ObservedProofsVerified || len(adoption.VerifiedProofCounts) != 0 || adoption.ObservedProofCounts["validator-1/no-1"] != 1 {
+		t.Fatal("malformed history acquired semantic proof or final acceptance authority", adoption)
+	}
+	retained, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(retained, malformed) {
+		t.Fatal("provisional handoff rewrote malformed historical evidence", err)
+	}
+	if _, err := releaseTopologyProofCounts(executor.cfg, fixture.dir); err == nil || !strings.Contains(err.Error(), "proof line 1 is malformed") {
+		t.Fatal("strict proof reader accepted deferred corruption after startup", err)
 	}
 }
