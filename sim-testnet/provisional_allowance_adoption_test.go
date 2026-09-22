@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -410,6 +411,114 @@ func TestProvisionalPlanAdoptionRelayExpansionPreservesLiabilities(t *testing.T)
 	self.plan = &changed
 	if ok, err := self.authenticateProvisionalPlanOnlyAdoption(t.Context(), active); err == nil || ok {
 		t.Fatal("relay approval admitted a funding action change", ok, err)
+	}
+}
+
+// The actual reviewed-plan loader and local activation admit a v6 capture with
+// its original non-accepting marker. No chain reader or replay worker exists.
+func TestProvisionalPlanAdoptionSourceExpansionRetainsCaptureMarker(t *testing.T) {
+	fixture, self := newEvidenceRelayExpansionTest(t)
+	// Owned-route admission requires private IPv4; this generated synthetic
+	// authority is only an identity operand and is never dialed.
+	authority := fmt.Sprintf("10.%d.%d.%d:9944", 71, 23, 9)
+	var err error
+	self.cfg, err = prepareOwnedRPCConfiguration(self.cfg, authority)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.cfg = self.cfg
+	source := *self.plan
+	source.PriorPlanHashes = append(append([]string(nil), source.PriorPlanHashes...), source.PlanHash)
+	source.OwnedRPCAuthority = authority
+	source.ResolvedInputsHash, err = resolvedInputsHash(self.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.PlanHash, err = source.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRunInputs(self.cfg, self.stateDir, &source, self.roles); err != nil {
+		t.Fatal(err)
+	}
+	self.plan = &source
+	persistProvisionalAdoptionTopologyTest(t, self)
+	original, err := os.ReadFile(filepath.Join(self.stateDir, "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	continuation := evidenceRelaySourceExpansionRequestTest(t, fixture, self)
+	driver := provisionalDriverProvenance{ExecutablePath: "/reviewed/test/sim-testnet", ExecutableSHA256: "sha256:" + strings.Repeat("12", 32),
+		Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: strings.Repeat("34", 20), Modified: true}}
+	preview := *self.cfg
+	preview.readOnlyAudit = true
+	preview.provisionalResume = &provisionalResumeState{Driver: driver}
+	captureOptions := cliOptions{ProvisionalCapture: true, PlanHash: source.PlanHash, OwnedRPCAuthority: authority, RelayEndBlock: continuation.EndBlock}
+	if err := prepareProvisionalResume(t.Context(), &preview, self.stateDir, "relay-continuation", captureOptions, &source); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateProvisionalRelayCaptureContext(&preview, &source); err != nil {
+		t.Fatal(err)
+	}
+	continuation.ProvisionalCapture = &EvidenceRelayProvisionalCapture{Record: *preview.provisionalResume.Record, RecordPath: preview.provisionalResume.RecordPath, RecordSHA256: preview.provisionalResume.RecordHash}
+	reviewed, err := appendEvidenceRelayContinuationPlan(&source, continuation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archiveReviewedSetupPlan(self.stateDir, reviewed); err != nil {
+		t.Fatal(err)
+	}
+	command, options, err := parseCLI([]string{"setup", "--provisional-resume", "--apply", "--plan-hash", reviewed.PlanHash, "--owned-rpc-authority", authority})
+	if err != nil || options.PrepareOnly {
+		t.Fatal("documented route failed command admission", err)
+	}
+	self.cfg.provisionalResume = &provisionalResumeState{Driver: driver}
+	self.plan, err = loadInvocationPlan(self.cfg, self.stateDir, command, options)
+	if err != nil {
+		t.Fatal("v6 captured review did not load through the actual setup route", err)
+	}
+	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, command, options, self.plan); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := self.authenticateProvisionalPlanOnlyAdoption(t.Context(), original); err != nil || !ok {
+		t.Fatal("v6 captured review required another ledger replay", ok, err)
+	}
+	before := self.journal.Entries()
+	calls := 0
+	if err := self.activateProvisionalSetupRevision(t.Context(), original, func(context.Context, Action) error { calls++; return errors.New("local approval dispatched an action") }); err != nil {
+		t.Fatal(err)
+	}
+	active, err := os.ReadFile(filepath.Join(self.stateDir, "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := os.ReadFile(filepath.Join(self.stateDir, "plans", stringsTrim0x(reviewed.PlanHash)+".json"))
+	if err != nil || !bytes.Equal(active, archived) || calls != 0 || !reflect.DeepEqual(before, self.journal.Entries()) {
+		t.Fatal("v6 adoption changed the exact review or dispatched a transaction", calls, err)
+	}
+	adopted, err := decodePersistedPlanWire(active)
+	if err != nil || !reflect.DeepEqual(adopted.EvidenceRelayContinuation.SourceBounds, continuation.SourceBounds) || !reflect.DeepEqual(adopted.EvidenceRelayContinuation.ProvisionalCapture, continuation.ProvisionalCapture) || adopted.EvidenceRelayContinuation.HistoricalLiabilityWei != continuation.HistoricalLiabilityWei {
+		t.Fatal("v6 adoption changed original bounds, capture provenance or liabilities", err)
+	}
+	if _, err := loadPlanIdentityBytes(self.cfg, active, false); !errors.Is(err, errPersistedPlanIdentityMismatch) || !strings.Contains(err.Error(), "relay_capture_requires_strict_reconciliation") {
+		t.Fatal("provisional v6 adoption granted strict acceptance", err)
+	}
+	var activation struct {
+		PlanOnly        bool `json:"plan_only"`
+		FinalAcceptance bool `json:"final_acceptance"`
+	}
+	if err := readJSONFile(filepath.Join(filepath.Dir(self.cfg.provisionalResume.RecordPath), "setup-activation.json"), &activation); err != nil || !activation.PlanOnly || activation.FinalAcceptance {
+		t.Fatal("local activation lost its non-accepting boundary", err)
+	}
+	provenance, err := os.ReadFile(continuation.ProvisionalCapture.RecordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(continuation.ProvisionalCapture.RecordPath, append(provenance, ' '), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := self.authenticateProvisionalPlanOnlyAdoption(t.Context(), active); err == nil || ok {
+		t.Fatal("changed capture provenance retained adoption authority", ok, err)
 	}
 }
 

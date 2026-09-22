@@ -101,6 +101,24 @@ verification derive the same bounds from that exact successor; ordinary resume
 and later refresh cannot double them again. The 2,048 aggregate slots retain
 the fixed 51.2 TAO reserve and every earlier debit at its original approved cost.
 
+A successful `--provisional-capture` also archives its exact reviewed plan in
+`plans/HASH.json`. To adopt that review for an explicitly provisional continuation,
+use the existing local setup route with the same config, state and owned RPC:
+
+```sh
+sim-testnet setup --config CONFIG --state-dir STATE --owned-rpc-authority HOST:PORT \
+  --provisional-resume --apply --plan-hash CAPTURED_HASH --format json
+```
+
+This authenticates the exact relay transform, original liabilities, capture
+provenance, retained receipts and stopped topology generation. It adopts the
+archived bytes without another ledger/publication replay or any chain transaction;
+the result reports `plan_only=true` and `final_acceptance=false`. The v6 source
+bounds and provisional capture marker remain unchanged. Omit `--prepare-only`
+when adopting: that option stops before activation. Resume still performs its
+current runtime admission; strict reconciliation and final acceptance retain
+their complete verification requirements.
+
 Provisional campaign startup retains a successful evidence-relay history scan
 in an authenticated, exact-plan cache. The entry binds the config, deployment,
 genesis, netuid, activation origins, verifier inputs, inventory bounds, journal
