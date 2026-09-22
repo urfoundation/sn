@@ -44,7 +44,7 @@ func (self *evidenceRelayRuntime) preparePublicCensus(horizon *evidenceRelayHori
 		return errors.New("relay public census has no authenticated horizon")
 	}
 	deferred := horizon.continuation != nil && horizon.forecastAdvisory && !self.executor.cfg.readOnlyAudit && self.retainedPublications == nil
-	reader := &evidenceRelayRuntime{executor: self.executor, chain: self.chain, origins: self.origins, work: self.work,
+	reader := &evidenceRelayRuntime{executor: self.executor, chain: self.chain, origins: self.origins, work: self.work, phase: self.phase,
 		retainedPublications: self.retainedPublications, sources: slices.Clone(self.sources)}
 	for index := range reader.sources {
 		reader.sources[index].activations = slices.Clone(self.sources[index].activations)
@@ -185,7 +185,11 @@ func newEvidenceRelayPublicAudit(ctx context.Context, census *evidenceRelayPubli
 // A terminal outcome never turns an incomplete or failed public audit into a
 // pass, and the durable checkpoints remain available to later recovery.
 func (self *evidenceRelayPublicAudit) run() {
-	self.result = self.census.verify(self.ctx)
+	if self.census == nil || self.census.reader == nil {
+		self.result = errors.New("relay public census owner is absent")
+	} else {
+		self.result = self.census.reader.retryStep(self.ctx, "public-census", func() error { return self.census.verify(self.ctx) })
+	}
 	if self.result != nil {
 		fmt.Fprintf(os.Stderr, "sim-testnet: provisional evidence relay public census audit incomplete; final_audit_required=true final_acceptance=false: %v\n", self.result)
 	} else {

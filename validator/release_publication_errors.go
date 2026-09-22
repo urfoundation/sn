@@ -9,6 +9,17 @@ type attemptReplicaPublicationError struct{ causes []error }
 func (e *attemptReplicaPublicationError) Error() string   { return errors.Join(e.causes...).Error() }
 func (e *attemptReplicaPublicationError) Unwrap() []error { return e.causes }
 
+// Every joined replica reader/writer retains its sibling-cancellation owner.
+// Cancellation of the caller stays outside that scope and can never be retried.
+func joinReplicaPublicationErrors(parentErr error, causes []error) error {
+	for _, cause := range causes {
+		if cause != nil {
+			return errors.Join(&attemptReplicaPublicationError{causes: causes}, parentErr)
+		}
+	}
+	return parentErr
+}
+
 // Preserve the reason a readback could not reach authenticated EOF. An early
 // close with no interruption cause is still a permanent integrity failure.
 type attemptStreamHTTPIncompleteError struct{ cause error }

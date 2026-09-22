@@ -1193,6 +1193,19 @@ keeps its original failure budget. Deterministic transport, mixed-cause, reset,
 cancellation and strict/provisional tests cover this correction; production
 closure still requires exercising actual quota exhaustion and recovery.
 
+Apply the same ownership rule above the relay's individual reads. Its runtime
+previously stopped the complete campaign when one closed-publication or deposit
+audit step returned a transient error after lower-level recovery. Give each step
+a finite operation retry budget, record the failure before retry, and re-enter
+the existing exact signed-transaction reconciliation path; an accepted send
+with a lost response must resolve to its original winner without a new nonce or
+duplicate send. The independent historical census retains partial checkpoints
+and retries under the same transport classification without canceling live
+traffic. Preserve every independent integrity error, cancellation and terminal
+exhaustion. Retry diagnostics remain durable under `evidence-relay-retries/`;
+they confer no acceptance authority. Closure requires actual uncertain-send
+reconciliation, mixed-failure, exhaustion and audit/runtime isolation tests.
+
 **PH-23 — Funded capacity and physical resource profile.** A capacity revision
 must bind four different facts: funded slot/spend allowance, source-history
 horizon, upload quotas and finite archive metadata limits. Generation 25 found

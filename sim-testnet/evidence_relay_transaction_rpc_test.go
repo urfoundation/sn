@@ -514,6 +514,12 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 			return nil, custodyErr
 		}
 		self.sentBytes = append(self.sentBytes, bytes.Clone(sendBytes))
+		if self.mode == "send-busy-finalized" {
+			if err := self.installPublicationWithLock("success"); err != nil {
+				return nil, err
+			}
+			return fail("upstream overloaded")
+		}
 		if self.mode == "send-error" {
 			return fail("deterministic transport interruption after durable send")
 		}

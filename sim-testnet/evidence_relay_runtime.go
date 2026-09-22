@@ -225,7 +225,7 @@ func (self *evidenceRelayRuntime) run() {
 			return
 		}
 		self.startupProgress = false
-		if err := self.advance(); err != nil {
+		if err := self.retryStep(self.ctx, "closed-publications", self.advance); err != nil {
 			outcome = fmt.Errorf("validator evidence relay: %w", err)
 			return
 		}
@@ -242,7 +242,7 @@ func (self *evidenceRelayRuntime) run() {
 			outcome = err
 			return
 		}
-		if err := self.advanceDepositAudits(completedAudits); err != nil {
+		if err := self.retryStep(self.ctx, "deposit-audits", func() error { return self.advanceDepositAudits(completedAudits) }); err != nil {
 			outcome = fmt.Errorf("validator evidence audit relay: %w", err)
 			return
 		}

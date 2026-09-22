@@ -154,7 +154,7 @@ func readValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *V
 		}()
 	}
 	joined.Wait()
-	if err := errors.Join(failures[0], failures[1], ctx.Err()); err != nil {
+	if err := joinReplicaPublicationErrors(ctx.Err(), failures[:]); err != nil {
 		return nil, err
 	}
 	first, second := observed[0], observed[1]

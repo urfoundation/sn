@@ -100,12 +100,28 @@ func transientReleaseSnapshotError(err error) bool {
 	return retryable && transient
 }
 
+// Evidence consumers may retry only structured transport failures. Replica
+// sibling cancellation keeps its narrow owner; diagnostic text grants nothing.
+func RetryableEvidenceTransportError(err error) bool {
+	retryable, transient := classifyReleaseSnapshotRetryMode(err, false, false, false)
+	return retryable && transient
+}
+
 // A joined timeout must not hide an integrity failure, and the replica owner's
 // sibling cancellation must not hide the timeout that caused it. Every branch
 // is checked; cancellation alone never authorizes a retry.
 func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bool) {
+	return classifyReleaseSnapshotRetryMode(err, siblingCancellation, true, false)
+}
+
+// Legacy release callers retain their prior diagnostic compatibility. New
+// evidence retry owners require typed transport origin for eof and no text match.
+func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText, transportOrigin bool) (bool, bool) {
 	if err == nil {
 		return true, false
+	}
+	if _, fileError := err.(*os.PathError); fileError {
+		return false, false
 	}
 	if _, fatal := err.(*TrailFatalError); fatal {
 		return false, false
@@ -113,8 +129,23 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 	if err == context.Canceled {
 		return siblingCancellation, false
 	}
-	if err == context.DeadlineExceeded || err == io.EOF || err == io.ErrUnexpectedEOF {
+	if err == context.DeadlineExceeded {
 		return true, true
+	}
+	if err == net.ErrClosed || err == syscall.ECONNRESET || err == syscall.ECONNREFUSED || err == syscall.EPIPE || err == syscall.ETIMEDOUT {
+		return true, true
+	}
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		// A replica sibling canceled after another transport refusal may stop
+		// at a decoder eof. It is neutral, never a reason to retry by itself.
+		actualTransient := legacyText || transportOrigin
+		return actualTransient || siblingCancellation, actualTransient
+	}
+	switch cause := err.(type) {
+	case *url.Error:
+		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
+	case *net.OpError:
+		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
 	}
 	if _, observationStatus := err.(*clientKeyObservationHttpStatusError); observationStatus {
 		retryable := retryableClientKeyObservationHttpError(err)
@@ -125,11 +156,11 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 		return retryable, retryable
 	}
 	if publication, ok := err.(*attemptReplicaPublicationError); ok {
-		return classifyReleaseSnapshotRetryCauses(publication.causes, true)
+		return classifyReleaseSnapshotRetryCauses(publication.causes, true, legacyText, transportOrigin)
 	}
 	if incomplete, ok := err.(*attemptStreamHTTPIncompleteError); ok {
 		if incomplete.cause != nil {
-			return classifyReleaseSnapshotRetry(incomplete.cause, siblingCancellation)
+			return classifyReleaseSnapshotRetryMode(incomplete.cause, siblingCancellation, legacyText, true)
 		}
 		// Closing an owned sibling after another sibling times out can reach
 		// this exact typed marker before the body observes cancellation. It is
@@ -137,26 +168,36 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 		return siblingCancellation, false
 	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		return classifyReleaseSnapshotRetryCauses(joined.Unwrap(), siblingCancellation)
+		return classifyReleaseSnapshotRetryCauses(joined.Unwrap(), siblingCancellation, legacyText, transportOrigin)
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
 		cause := wrapped.Unwrap()
 		if cause == nil {
 			return false, false
 		}
-		return classifyReleaseSnapshotRetry(cause, siblingCancellation)
+		return classifyReleaseSnapshotRetryMode(cause, siblingCancellation, legacyText, transportOrigin)
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
 		return true, true
 	}
-	var httpErr gethrpc.HTTPError
-	if errors.As(err, &httpErr) {
-		switch httpErr.StatusCode {
+	statusCode := 0
+	switch httpErr := err.(type) {
+	case gethrpc.HTTPError:
+		statusCode = httpErr.StatusCode
+	case *gethrpc.HTTPError:
+		statusCode = httpErr.StatusCode
+	}
+	if statusCode != 0 {
+		switch statusCode {
 		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
 			http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 			return true, true
 		}
+		return false, false
+	}
+	if !legacyText {
+		return false, false
 	}
 	message := strings.ToLower(err.Error())
 	// Immutable publication uses a deliberately narrow error type at the
@@ -181,13 +222,13 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 	return false, false
 }
 
-func classifyReleaseSnapshotRetryCauses(causes []error, siblingCancellation bool) (bool, bool) {
+func classifyReleaseSnapshotRetryCauses(causes []error, siblingCancellation, legacyText, transportOrigin bool) (bool, bool) {
 	if len(causes) == 0 {
 		return false, false
 	}
 	transient := false
 	for _, cause := range causes {
-		retryable, actualTransient := classifyReleaseSnapshotRetry(cause, siblingCancellation)
+		retryable, actualTransient := classifyReleaseSnapshotRetryMode(cause, siblingCancellation, legacyText, transportOrigin)
 		if !retryable {
 			return false, false
 		}
