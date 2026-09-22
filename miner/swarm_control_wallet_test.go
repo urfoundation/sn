@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -199,5 +200,123 @@ func TestProviderSwarmControlWalletPreservesDialDeadline(t *testing.T) {
 	waitSwarmControlTestResponse(t, startSwarmControlTestRequest(swarm, context.Background(), "enable"), http.StatusServiceUnavailable)
 	if dials.Load() != 1 {
 		t.Fatalf("one wallet operation made %d dial attempts", dials.Load())
+	}
+}
+
+// Supplies read and close boundaries without transport timing or server races.
+type swarmWalletTestBody struct {
+	read  func([]byte) (int, error)
+	close func() error
+}
+
+// Delegates each read to the test's explicit transition.
+func (self *swarmWalletTestBody) Read(p []byte) (int, error) {
+	return self.read(p)
+}
+
+// Delegates the one owned close to the test's explicit transition.
+func (self *swarmWalletTestBody) Close() error {
+	return self.close()
+}
+
+// Completed bytes must be discarded when cancellation occurs during either
+// read or close, and cancellation never releases the body's close obligation.
+func TestProviderSwarmControlWalletClosesCanceledResponses(t *testing.T) {
+	for _, phase := range []string{"read", "close"} {
+		ownerCtx, cancelOwner := context.WithCancel(context.Background())
+		requestCtx, cancelRequest := context.WithCancel(context.Background())
+		closes := 0
+		body := &swarmWalletTestBody{
+			read: func(p []byte) (int, error) {
+				if phase == "read" {
+					cancelRequest()
+				}
+				return copy(p, `{}`), io.EOF
+			},
+			close: func() error {
+				closes++
+				if phase == "close" {
+					cancelOwner()
+				}
+				return nil
+			},
+		}
+		responseBytes, err := readSwarmWalletResponse(ownerCtx, requestCtx, &http.Response{
+			StatusCode: http.StatusOK, Body: body, ContentLength: -1,
+		}, 256)
+		cancelOwner()
+		cancelRequest()
+		if responseBytes != nil || !errors.Is(err, context.Canceled) || closes != 1 {
+			t.Fatalf("%s cancellation ownership: bytes=%q err=%v closes=%d", phase, responseBytes, err, closes)
+		}
+	}
+}
+
+// A failing close invalidates otherwise complete bytes and remains visible
+// alongside a read failure instead of replacing either failure.
+func TestProviderSwarmControlWalletPreservesReadAndCloseFailures(t *testing.T) {
+	closeErr := errors.New("synthetic body close failure")
+	for _, readErr := range []error{io.EOF, io.ErrUnexpectedEOF} {
+		closes := 0
+		responseBytes, err := readSwarmWalletResponse(context.Background(), context.Background(), &http.Response{
+			StatusCode: http.StatusOK, ContentLength: -1,
+			Body: &swarmWalletTestBody{
+				read: func(p []byte) (int, error) { return copy(p, `{}`), readErr },
+				close: func() error {
+					closes++
+					return closeErr
+				},
+			},
+		}, 256)
+		if responseBytes != nil || !errors.Is(err, closeErr) || closes != 1 {
+			t.Fatalf("close failure ownership: bytes=%q err=%v closes=%d", responseBytes, err, closes)
+		}
+		if readErr != io.EOF && !errors.Is(err, readErr) {
+			t.Fatalf("close failure lost read failure: %v", err)
+		}
+		if swarmControlErrorStatus(err) != http.StatusConflict {
+			t.Fatalf("semantic close failure became retryable: %v", err)
+		}
+	}
+}
+
+// A refusal's header remains semantic even when reading its body also fails.
+func TestProviderSwarmControlWalletPreservesRefusalWithReadFailure(t *testing.T) {
+	closes := 0
+	responseBytes, err := readSwarmWalletResponse(context.Background(), context.Background(), &http.Response{
+		StatusCode: http.StatusUnauthorized, Status: "401 Unauthorized", ContentLength: -1,
+		Body: &swarmWalletTestBody{
+			read: func([]byte) (int, error) { return 0, io.ErrUnexpectedEOF },
+			close: func() error {
+				closes++
+				return nil
+			},
+		},
+	}, 256)
+	var statusError *connect.HttpStatusError
+	if responseBytes != nil || closes != 1 || !errors.Is(err, io.ErrUnexpectedEOF) ||
+		!errors.As(err, &statusError) || statusError.StatusCode != http.StatusUnauthorized ||
+		swarmControlErrorStatus(err) != http.StatusConflict {
+		t.Fatalf("refusal and read failure: bytes=%q err=%v closes=%d", responseBytes, err, closes)
+	}
+}
+
+// Wrapping a mixed join must not let a single nested transient cause hide a
+// semantic refusal or malformed JSON, while all-transient joins can retry.
+func TestProviderSwarmControlWalletClassifiesEveryJoinedCause(t *testing.T) {
+	var decoded any
+	decodeErr := json.Unmarshal([]byte(`{"error":`), &decoded)
+	for _, testCase := range []struct {
+		err  error
+		code int
+	}{
+		{err: errors.Join(context.Canceled, io.ErrUnexpectedEOF), code: http.StatusServiceUnavailable},
+		{err: errors.Join(context.DeadlineExceeded, errors.New("semantic wallet refusal")), code: http.StatusConflict},
+		{err: errors.Join(io.ErrUnexpectedEOF, decodeErr), code: http.StatusConflict},
+		{err: decodeErr, code: http.StatusConflict},
+	} {
+		if code := swarmControlErrorStatus(fmt.Errorf("wallet request: %w", testCase.err)); code != testCase.code {
+			t.Errorf("joined cause classification: err=%v code=%d want=%d", testCase.err, code, testCase.code)
+		}
 	}
 }

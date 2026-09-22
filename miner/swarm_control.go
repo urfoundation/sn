@@ -278,9 +278,28 @@ func (self *ProviderSwarm) stopMembers() {
 	}
 }
 
-// Only typed transport failures are retryable. Semantic wallet refusals remain
-// conflicts, even when their messages contain words such as timeout or busy.
+// Every cause must be transient before retrying. A semantic refusal or decode
+// failure stays a conflict when joined with transport or cancellation errors.
 func swarmControlErrorStatus(err error) int {
+	if causes, ok := err.(interface{ Unwrap() []error }); ok {
+		hasCause := false
+		for _, cause := range causes.Unwrap() {
+			if cause == nil {
+				continue
+			}
+			hasCause = true
+			if swarmControlErrorStatus(cause) != http.StatusServiceUnavailable {
+				return http.StatusConflict
+			}
+		}
+		if hasCause {
+			return http.StatusServiceUnavailable
+		}
+		return http.StatusConflict
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return swarmControlErrorStatus(cause)
+	}
 	for _, transient := range []error{
 		context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF,
 		net.ErrClosed, syscall.ECONNRESET, syscall.ECONNREFUSED, syscall.EPIPE,

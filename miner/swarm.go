@@ -289,7 +289,7 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 		IdleConnTimeout: settings.IdleConnTimeout, ForceAttemptHTTP2: true,
 	}
 	client := &http.Client{
-		Transport: transport, Timeout: settings.RequestTimeout,
+		Transport:     transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	defer client.CloseIdleConnections()
@@ -298,7 +298,13 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 		maxResponseBytes = connect.DefaultMaxHttpResponseBodyBytes
 	}
 	httpPost := func(ctx context.Context, requestUrl string, requestBytes []byte, byJwt string) ([]byte, error) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestUrl, bytes.NewReader(requestBytes))
+		requestCtx := ctx
+		if 0 < settings.RequestTimeout {
+			var cancel context.CancelFunc
+			requestCtx, cancel = context.WithTimeout(ctx, settings.RequestTimeout)
+			defer cancel()
+		}
+		request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, requestUrl, bytes.NewReader(requestBytes))
 		if err != nil {
 			return nil, err
 		}
@@ -312,25 +318,7 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 		if err != nil {
 			return nil, err
 		}
-		defer func() {
-			if ctx.Err() == nil && response.Request.Context().Err() == nil {
-				_ = response.Body.Close()
-			}
-		}()
-		if maxResponseBytes < response.ContentLength {
-			return nil, connect.ErrHttpResponseBodyTooLarge
-		}
-		responseBytes, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-		if err != nil {
-			return nil, err
-		}
-		if maxResponseBytes < int64(len(responseBytes)) {
-			return nil, connect.ErrHttpResponseBodyTooLarge
-		}
-		if response.StatusCode != http.StatusOK {
-			return nil, &connect.HttpStatusError{StatusCode: response.StatusCode, Status: response.Status, Body: responseBytes}
-		}
-		return responseBytes, nil
+		return readSwarmWalletResponse(ctx, requestCtx, response, maxResponseBytes)
 	}
 	challenge, err := connect.HttpPostWithRawFunction(ctx, httpPost, member.APIURL+"/auth/wallet-challenge",
 		&sdk.AuthWalletChallengeArgs{WalletAddress: member.Wallet, Blockchain: "TAO"}, jwt,
