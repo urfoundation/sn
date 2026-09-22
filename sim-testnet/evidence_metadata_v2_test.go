@@ -20,10 +20,14 @@ import (
 	"github.com/urnetwork/server/startifact"
 )
 
-// Use the checked-in finite population with visibly synthetic public origins.
+// Preserve the historical 256-slot metadata profile and synthetic origins.
+// The new explicit 2048-slot grant has its own full-margin regression.
 func campaignMetadataConfigTestV2(t *testing.T) *ResolvedConfig {
 	t.Helper()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
+	cfg.Config.ValidatorEvidenceRelay.MaxSlots = 256
+	cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks = 0
+	cfg.Config.EvidenceArchiveMetadata = nil
 	cfg.OperatorAPIOrigins = []string{"https://no1.example", "https://no2.example"}
 	return cfg
 }

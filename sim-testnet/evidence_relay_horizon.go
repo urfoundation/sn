@@ -326,6 +326,7 @@ type evidenceRelayHorizonSource struct {
 type evidenceRelayHorizon struct {
 	work              evidenceRelayWork
 	maximum           uint64
+	sourceHorizon     uint64
 	anchorBlock       uint64
 	anchorEpoch       uint64
 	anchorNativeEpoch uint64
@@ -397,7 +398,16 @@ func evidenceRelayConfiguredHorizon(cfg *ResolvedConfig) (uint64, uint64, uint64
 	if !ok {
 		return 0, 0, 0, errors.New("evidence relay configured source census overflows")
 	}
-	return evidenceRelayMaximumSpan(work, sources, cfg.Config.ValidatorEvidenceRelay.MaxSlots, 0)
+	span, closed, native, err := evidenceRelayMaximumSpan(work, sources, cfg.Config.ValidatorEvidenceRelay.MaxSlots, 0)
+	if err != nil || cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks == 0 {
+		return span, closed, native, err
+	}
+	bounded := cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks
+	if bounded > span {
+		return 0, 0, 0, errors.New("evidence relay source horizon exceeds its funded slot horizon")
+	}
+	_, closed, native, err = evidenceRelayForecast(work, sources, bounded)
+	return bounded, closed, native, err
 }
 
 // Binary search a checked monotone count, not the ordering of public headers.
@@ -480,6 +490,13 @@ func (self *evidenceRelayHorizon) ceilings(candidate *protocol.ValidatorEvidence
 	span, closed, native, err := evidenceRelayMaximumSpan(self.work, uint64(len(self.sourceKVs)), self.maximum, extra)
 	if err != nil {
 		return 0, 0, 0, err
+	}
+	if self.sourceHorizon != 0 && self.sourceHorizon < span {
+		span = self.sourceHorizon
+		_, closed, native, err = self.forecast(span)
+		if err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	block, blockOk := checkedAdd(self.anchorBlock, span)
 	epoch, epochOk := checkedAdd(self.anchorEpoch, closed-1)

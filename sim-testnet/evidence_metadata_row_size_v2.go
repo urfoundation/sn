@@ -4,12 +4,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"unicode/utf8"
 )
 
 // Standard-library prototypes own field names, indentation and omission
 // framing. Only varying string/integer/base64 widths are counted directly.
 type campaignMetadataRowSizerV2 struct {
+	maximumBytes uint64
 	source       uint64
 	sourceOrigin uint64
 	carrier      uint64
@@ -17,7 +19,10 @@ type campaignMetadataRowSizerV2 struct {
 
 // The three small prototypes are per validation call, never a global cache.
 // Source Origin is the only optional field in these two concrete row types.
-func newCampaignMetadataRowSizerV2() (*campaignMetadataRowSizerV2, error) {
+func newCampaignMetadataRowSizerV2(maximumBytes uint64) (*campaignMetadataRowSizerV2, error) {
+	if maximumBytes == 0 || maximumBytes > maximumCampaignMetadataDocumentCapacity {
+		return nil, errors.New("metadata row size has no finite document owner")
+	}
 	row := FinalCollectedValidatorSourceV2{}
 	source, err := json.MarshalIndent(row, "          ", "  ")
 	if err != nil {
@@ -32,16 +37,16 @@ func newCampaignMetadataRowSizerV2() (*campaignMetadataRowSizerV2, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &campaignMetadataRowSizerV2{source: uint64(len(source)) + 12, sourceOrigin: uint64(len(sourceOrigin)) + 12 - 1, carrier: uint64(len(carrier)) + 12}, nil
+	return &campaignMetadataRowSizerV2{maximumBytes: maximumBytes, source: uint64(len(source)) + 12, sourceOrigin: uint64(len(sourceOrigin)) + 12 - 1, carrier: uint64(len(carrier)) + 12}, nil
 }
 
 // Quotes already belong to the prototype. Match encoding/json's Html-safe
 // content width, including replacement of each malformed Utf8 byte. A width
 // above the independent document ceiling is represented by one over that cap.
-func campaignMetadataStringContentBytesV2(value string) uint64 {
+func campaignMetadataStringContentBytesV2(value string, maximumBytes uint64) uint64 {
 	size := uint64(len(value))
-	if size > maximumCampaignMetadataDocumentV2 {
-		return maximumCampaignMetadataDocumentV2 + 1
+	if size > maximumBytes {
+		return maximumBytes + 1
 	}
 	for index := 0; index < len(value); {
 		c := value[index]
@@ -66,8 +71,8 @@ func campaignMetadataStringContentBytesV2(value string) uint64 {
 			}
 			index += width
 		}
-		if size > maximumCampaignMetadataDocumentV2 {
-			return maximumCampaignMetadataDocumentV2 + 1
+		if size > maximumBytes {
+			return maximumBytes + 1
 		}
 	}
 	return size
@@ -91,12 +96,12 @@ func (self *campaignMetadataRowSizerV2) sourceBytes(row FinalCollectedValidatorS
 		size = self.sourceOrigin
 	}
 	for _, value := range []string{row.Source.Kind, row.Source.Name, row.Source.Origin, row.Artifact.Kind, row.Artifact.URI, row.Artifact.ContentHash} {
-		size += campaignMetadataStringContentBytesV2(value)
-		if size > maximumCampaignMetadataDocumentV2 {
-			return maximumCampaignMetadataDocumentV2 + 1
+		size += campaignMetadataStringContentBytesV2(value, self.maximumBytes)
+		if size > self.maximumBytes {
+			return self.maximumBytes + 1
 		}
 	}
-	return size + campaignMetadataUintExtraBytesV2(row.Artifact.SizeBytes)
+	return min(size+campaignMetadataUintExtraBytesV2(row.Artifact.SizeBytes), self.maximumBytes+1)
 }
 
 // Nil suffix encodes null; non-nil empty suffix encodes an empty string.
@@ -104,16 +109,16 @@ func (self *campaignMetadataRowSizerV2) sourceBytes(row FinalCollectedValidatorS
 func (self *campaignMetadataRowSizerV2) carrierBytes(row FinalCollectedPriorCarrierV2) uint64 {
 	size := self.carrier
 	for _, value := range []string{row.Scope, row.Path, row.EnvelopeHash, row.WireHash, row.LocalHash} {
-		size += campaignMetadataStringContentBytesV2(value)
-		if size > maximumCampaignMetadataDocumentV2 {
-			return maximumCampaignMetadataDocumentV2 + 1
+		size += campaignMetadataStringContentBytesV2(value, self.maximumBytes)
+		if size > self.maximumBytes {
+			return self.maximumBytes + 1
 		}
 	}
 	if row.LocalSuffix != nil {
-		if uint64(len(row.LocalSuffix)) > maximumCampaignMetadataDocumentV2 {
-			return maximumCampaignMetadataDocumentV2 + 1
+		if uint64(len(row.LocalSuffix)) > self.maximumBytes {
+			return self.maximumBytes + 1
 		}
 		size = size - 2 + 4*((uint64(len(row.LocalSuffix))+2)/3)
 	}
-	return size + campaignMetadataUintExtraBytesV2(row.WireBytes) + campaignMetadataUintExtraBytesV2(row.LocalBytes)
+	return min(size+campaignMetadataUintExtraBytesV2(row.WireBytes)+campaignMetadataUintExtraBytesV2(row.LocalBytes), self.maximumBytes+1)
 }

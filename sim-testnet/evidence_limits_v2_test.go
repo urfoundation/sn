@@ -57,11 +57,11 @@ func TestCampaignEvidenceCapacityV2DerivesFullPopulationPhaseBounds(t *testing.T
 		}
 		t.Logf("%s: owners=%d nominal trails/source=%d, rows/source=%d, hard row/proof bytes=%d, archive ceiling=%d; no body allocation", phase.name, owners, trails, rows, hardBytes, limits.maximumBytes)
 	}
-	if limits.maximumBytes != 384*1024*1024*1024+maximumCampaignEvidenceAggregateBytes || limits.maximumObjects != 1191936 {
+	if limits.maximumBytes != 384*1024*1024*1024+maximumCampaignEvidenceAggregateBytes || limits.maximumObjects != 8531968 {
 		t.Fatalf("cfg-derived hard owner census drifted: %+v", limits)
 	}
 	metadata, err := campaignEvidenceMetadataForConfigV2(cfg)
-	if err != nil || metadata.maximumBytes != limits.metadata.graphBytes || metadata.maximumBytes <= cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds.MaxControlBytes || metadata.maximumBytes > maximumCampaignMetadataDocumentV2 {
+	if err != nil || metadata.maximumBytes != limits.metadata.graphBytes || metadata.maximumBytes <= cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds.MaxControlBytes || metadata.maximumBytes > cfg.Config.EvidenceArchiveMetadata.MaximumDocumentBytes {
 		t.Fatalf("configured graph census lacks its independent finite metadata owner: %+v %v", metadata, err)
 	}
 }

@@ -38,6 +38,10 @@ func runtimeEvidenceLaunchConfigTest(t *testing.T) *ResolvedConfig {
 	cfg := testResolvedConfig(t)
 	cfg.Config = &harness
 	cfg.Netuid = 521
+	// A fresh fleet's native fees need room beside its complete Evm allocation.
+	// Retained v6 revisions independently preserve their existing 512/512 caps.
+	cfg.MaximumEVMGasWei = "512000000000000000000"
+	cfg.MaximumTAORao = 520_000_000_000
 	cfg.MaximumAlphaRao = 28_250_000_000_000
 	cfg.OperatorAPIOrigins = []string{"http://127.0.0.1:18081", "http://127.0.0.1:18082"}
 	cfg.OperationalRPCMode = rpcModePublicOverride
@@ -489,7 +493,7 @@ func TestRuntimeEvidenceLaunchV2CapacityCoversBothApprovedPhases(t *testing.T) {
 		t.Fatal(err)
 	}
 	gas, err := evidenceRelayMaximumGas(cfg)
-	if err != nil || gas != DecimalUint("25600000000000000000") || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 || cfg.Config.ValidatorEvidenceActivationGasUnits != 1000000 {
+	if err != nil || gas != DecimalUint("204800000000000000000") || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 || cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks != 10080 || cfg.Config.ValidatorEvidenceActivationGasUnits != 1000000 {
 		t.Fatalf("finite keeper relay/activation reserve changed: %s, %v", gas, err)
 	}
 }

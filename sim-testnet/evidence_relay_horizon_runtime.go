@@ -258,7 +258,8 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	}
 	anchor := self.sources[0].activations[0]
 	horizon := &evidenceRelayHorizon{work: work, maximum: self.executor.cfg.Config.ValidatorEvidenceRelay.MaxSlots,
-		anchorBlock: anchor.EVMBlock, anchorEpoch: anchor.Domain.Epoch, sourceKVs: map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation{}, headerKVs: map[[32]byte]protocol.ValidatorEvidenceHeader{}}
+		sourceHorizon: self.executor.cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks,
+		anchorBlock:   anchor.EVMBlock, anchorEpoch: anchor.Domain.Epoch, sourceKVs: map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation{}, headerKVs: map[[32]byte]protocol.ValidatorEvidenceHeader{}}
 	for _, source := range self.sources {
 		for _, activation := range source.activations {
 			key := evidenceRelayHorizonSource{hotkey: activation.Hotkey, noId: activation.NoID}

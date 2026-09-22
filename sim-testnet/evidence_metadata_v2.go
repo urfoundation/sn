@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	// These are implementation admission ceilings, not source-byte grants or
-	// allocations. Larger configurations require a separately reviewed format.
+	// Legacy admission ceilings remain unchanged. A larger configuration needs
+	// an explicit hashed metadata grant, separate from raw-source authority.
 	maximumCampaignMetadataDocumentV2 = 2 * 1024 * 1024 * 1024
 	// Capture owns two indexes, a manifest and completion; supplements own
 	// the last two. Their sum must fit whenever each typed document fits.
@@ -35,6 +35,7 @@ const (
 // All counters are logical/wire bounds. Parser/map/encoding overhead is
 // additionally count-bounded and is measured separately during qualification.
 type campaignMetadataLimitsV2 struct {
+	capacity        *campaignMetadataCapacityConfig
 	indexBytes      uint64
 	manifestBytes   uint64
 	completionBytes uint64
@@ -59,6 +60,13 @@ func campaignMetadataLimitsForConfigV2(cfg *ResolvedConfig, objects uint64) (*ca
 		return nil, errors.New("compact metadata has no complete configured census")
 	}
 	result := &campaignMetadataLimitsV2{validators: uint64(cfg.Config.Topology.Validators), operators: uint64(cfg.Config.Topology.Operators)}
+	if err := cfg.Config.EvidenceArchiveMetadata.validate(); err != nil {
+		return nil, err
+	}
+	if cfg.Config.EvidenceArchiveMetadata != nil {
+		capacity := *cfg.Config.EvidenceArchiveMetadata
+		result.capacity = &capacity
+	}
 	hash := "sha256:" + strings.Repeat("f", 64)
 	sourcePath := "final-inputs/validators/v2/" + strings.Repeat("f", 64) + ".bin"
 	maximum := ^uint64(0)
@@ -142,6 +150,17 @@ func campaignMetadataLimitsForConfigV2(cfg *ResolvedConfig, objects uint64) (*ca
 	if arithmeticErr != nil {
 		return nil, arithmeticErr
 	}
+	// The explicit profile reserves twice the complete count/row forecast. No
+	// cap intersects or discards an unreachable-looking part of that census.
+	if result.capacity != nil {
+		for _, value := range []*uint64{&result.indexBytes, &result.manifestBytes, &result.completionBytes, &result.graphBytes, &result.retainedBytes, &result.supplementBytes} {
+			doubled, ok := checkedMul(*value, 2)
+			if !ok {
+				return nil, errors.New("compact metadata twofold capacity margin overflows")
+			}
+			*value = doubled
+		}
+	}
 	if err := result.validate(); err != nil {
 		return nil, err
 	}
@@ -154,17 +173,21 @@ func (self *campaignMetadataLimitsV2) validate() error {
 	if self == nil {
 		return nil
 	}
+	if err := self.capacity.validate(); err != nil {
+		return err
+	}
+	capacity := self.capacity.limits()
 	var failures []error
 	for _, field := range []struct {
 		name           string
 		value, maximum uint64
 	}{
-		{name: "index_bytes", value: self.indexBytes, maximum: maximumCampaignMetadataDocumentV2},
-		{name: "manifest_bytes", value: self.manifestBytes, maximum: maximumCampaignMetadataDocumentV2},
-		{name: "completion_bytes", value: self.completionBytes, maximum: maximumCampaignMetadataDocumentV2},
-		{name: "graph_bytes", value: self.graphBytes, maximum: maximumCampaignMetadataDocumentV2},
-		{name: "retained_bytes", value: self.retainedBytes, maximum: maximumCampaignRetainedMetadataV2},
-		{name: "supplement_bytes", value: self.supplementBytes, maximum: maximumCampaignSupplementMetadataV2},
+		{name: "index_bytes", value: self.indexBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "manifest_bytes", value: self.manifestBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "completion_bytes", value: self.completionBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "graph_bytes", value: self.graphBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "retained_bytes", value: self.retainedBytes, maximum: capacity.MaximumRetainedBytes},
+		{name: "supplement_bytes", value: self.supplementBytes, maximum: capacity.MaximumSupplementBytes},
 		{name: "intent_bytes", value: self.intentBytes, maximum: maximumCampaignEvidenceEnvelopeBytes},
 	} {
 		if field.value == 0 || field.value > field.maximum {
@@ -418,7 +441,7 @@ func validateCollectedMetadataWithLimitsV2(limits campaignEvidenceLimits, value 
 	}
 	copyValue := *value
 	copyValue.Validators = append([]FinalCollectedValidatorInputs(nil), value.Validators...)
-	rowSizer, err := newCampaignMetadataRowSizerV2()
+	rowSizer, err := newCampaignMetadataRowSizerV2(limits.metadata.indexBytes)
 	if err != nil {
 		return err
 	}

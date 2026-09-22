@@ -72,13 +72,24 @@ provision_validator_evidence_v2: true
 validator_evidence_activation_gas_units: 1000000
 
 # Each header slot belongs to one validator/operator source. The four sources
-# share 256 slots across the original-activation horizon, including bounded
-# delay/retry admissions. Failed/third-party-won slots are not refunded.
-# At the explicit fee ceiling it reserves 25.6 test Tao of the existing 160 ceiling;
-# the four fixed activations reserve a further 0.4, not a new wallet allowance.
+# share 2048 funded slots with independent 10080-block source retention.
+# Extra subjects/retries consume slots without extending source lifetime.
+# A fresh plan reserves 204.8 test Tao at the 100-gwei ceiling. Existing v6
+# successors retain their exact 51.2-Tao/25-gwei reserve and original debits.
+# Retained v6 successors keep their approved 512/512 lifetime limits. A fresh
+# 512-Evm allocation needs 520 total Tao to cover native setup fees as well.
 validator_evidence_relay:
-  max_slots: 256
+  max_slots: 2048
+  source_horizon_blocks: 10080
   gas_units: 1000000
+
+# Typed archive controls retain the complete 2048-slot census with a 2x margin.
+# Finite ceilings are 24 GiB/document, 64 GiB retained and 16 GiB supplement;
+# actual bytes are charged at capture/replay and no capacity is preallocated.
+evidence_archive_metadata:
+  maximum_document_bytes: 25769803776
+  maximum_retained_bytes: 68719476736
+  maximum_supplement_bytes: 17179869184
 
 # Per source: 40 seeds/minute, M8, at most eight durable records/trail.
 # 81920 trails / 655360 records cover the shared funded 10080-block horizon
@@ -253,8 +264,9 @@ artifacts:
     account_bytes_per_hour: 1099511627776
   # Full accepted streams permit 12 GiB records + 512 MiB proofs per cut.
   # Even one-hour catch-up of the retained prefix, changed final chunks and
-  # all metadata fits 32768 objects / 32 GiB per original owner. 8388608
-  # disjoint retries include actual refresh polls, failures and hostile replay.
+  # all metadata has a 2x margin against both validators' approved v6 lifetime
+  # at the owned-node poll interval and full 2048-slot metadata census.
+  # Disjoint retries include refresh polls, failures and hostile replay.
   # Expected cuts are much smaller; unused quota allocates no object bytes.
   reserved_attempt_uploads:
     - admission:
@@ -276,9 +288,9 @@ artifacts:
         fresh_active_per_owner: 1
         retry_active_per_owner: 1
       budget:
-        retry_requests_per_hour: 8388608
-        objects_per_hour: 32768
-        bytes_per_hour: 34359738368
+        retry_requests_per_hour: 25292728
+        objects_per_hour: 79858
+        bytes_per_hour: 55808163840
       native_rpc_urls:
         - wss://test.finney.opentensor.ai:443
     - admission:
@@ -300,9 +312,9 @@ artifacts:
         fresh_active_per_owner: 1
         retry_active_per_owner: 1
       budget:
-        retry_requests_per_hour: 8388608
-        objects_per_hour: 32768
-        bytes_per_hour: 34359738368
+        retry_requests_per_hour: 25292728
+        objects_per_hour: 79858
+        bytes_per_hour: 55808163840
       native_rpc_urls:
         - wss://test.finney.opentensor.ai:443
 

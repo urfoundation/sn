@@ -42,7 +42,7 @@ func TestEvidenceRelayContinuationNativeWarmupFitsRetainedSourceWithoutNewCapaci
 	if err := validateEvidenceRelayContinuationCapacity(cfg, bounds, remaining, full); err == nil {
 		t.Fatal("past source use or pending restart/active tails were refunded")
 	}
-	if !reflect.DeepEqual(bounds, original) || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 || bounds.Disk.MaxRecordCount != 655360 || bounds.Disk.MaxTrailCount != 81920 {
+	if !reflect.DeepEqual(bounds, original) || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 || bounds.Disk.MaxRecordCount != 655360 || bounds.Disk.MaxTrailCount != 81920 {
 		t.Fatal("launchable forecast enlarged original source or relay limits")
 	}
 }

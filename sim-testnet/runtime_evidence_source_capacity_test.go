@@ -55,9 +55,9 @@ func TestRuntimeEvidenceSourceCapacityForecastUsesActualOwnedPoll(t *testing.T) 
 		poll                     int
 		objects, bytes, requests uint64
 	}{
-		{mode: rpcModePublicOverride, poll: 60, objects: 18575, bytes: 15406497792, requests: 2555000},
-		{mode: rpcModePrivateAuthority, poll: 15, objects: 18935, bytes: 15430090752, requests: 6012260},
-		{mode: rpcModeOwnedNode, poll: 15, objects: 18935, bytes: 15430090752, requests: 6012260},
+		{mode: rpcModePublicOverride, poll: 60, objects: 23951, bytes: 15758819328, requests: 3286136},
+		{mode: rpcModePrivateAuthority, poll: 15, objects: 24311, bytes: 15782412288, requests: 7711076},
+		{mode: rpcModeOwnedNode, poll: 15, objects: 24311, bytes: 15782412288, requests: 7711076},
 	} {
 		cfg := runtimeEvidenceLaunchConfigTest(t)
 		cfg.OperationalRPCMode = testCase.mode
@@ -83,7 +83,7 @@ func TestRuntimeEvidenceSourceCapacityForecastUsesActualOwnedPoll(t *testing.T) 
 		if err == nil || diagnostic.Len() != 0 || strings.Count(err.Error(), "protected publication capacity is below") != 4 {
 			t.Fatalf("%s strict refusal omitted an original/destination owner: %v %s", testCase.mode, err, &diagnostic)
 		}
-		for _, field := range []string{"validator_poll_seconds=15", "objects_per_hour=32768 required_objects_per_hour=18935", "bytes_per_hour=34359738368 required_bytes_per_hour=15430090752", "retry_requests_per_hour=4194304 required_retry_requests_per_hour=6012260"} {
+		for _, field := range []string{"validator_poll_seconds=15", "objects_per_hour=79858 required_objects_per_hour=24311", "bytes_per_hour=55808163840 required_bytes_per_hour=15782412288", "retry_requests_per_hour=4194304 required_retry_requests_per_hour=7711076"} {
 			if strings.Count(err.Error(), field) != 4 {
 				t.Errorf("%s strict forecast lost exact %s: %v", testCase.mode, field, err)
 			}
@@ -107,14 +107,14 @@ func TestRuntimeEvidenceSourceCapacityProvisionalOwnedForecastPreservesRuntimeLi
 	}
 	configHash := cfg.ConfigHash
 	value, err := requiredRuntimeEvidenceSourceCapacity(cfg, cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds)
-	if err != nil || value.span != 10080 || value.objectsPerHour != 18935 || value.bytesPerHour != 15430090752 || value.retryRequestsPerHour != 6012260 {
+	if err != nil || value.span != 10080 || value.objectsPerHour != 24311 || value.bytesPerHour != 15782412288 || value.retryRequestsPerHour != 7711076 {
 		t.Fatalf("provisional mode changed source forecast: %+v %v", value, err)
 	}
 	var diagnostic bytes.Buffer
 	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, &diagnostic); err != nil {
 		t.Fatalf("non-accepting owned campaign stopped on an hourly forecast: %v", err)
 	}
-	for _, field := range []string{"forecast_waived=true", "runtime_limits_unchanged=true", "final_acceptance=false", "required_retry_requests_per_hour=6012260", "validator 2 replica 2"} {
+	for _, field := range []string{"forecast_waived=true", "runtime_limits_unchanged=true", "final_acceptance=false", "required_retry_requests_per_hour=7711076", "validator 2 replica 2"} {
 		if !strings.Contains(diagnostic.String(), field) {
 			t.Errorf("provisional advisory lost %s: %s", field, &diagnostic)
 		}
@@ -317,10 +317,10 @@ func TestRuntimeEvidenceSourceCapacityUsesActualCompleteLaunchProfile(t *testing
 		if value.span != 10080 || value.closed != 35 || value.native != 29 || value.trails != 81072 || value.records != 648576 || value.decisionAttempts != 340 || value.captureFiles != 680010 {
 			t.Fatalf("complete per-source and combined-operator count differs: %+v", value)
 		}
-		if value.historyBytes != 15775825920 || value.storageBytes != 22603104256 || value.storageFiles != 8780 || value.recordChunks != 3085 || value.recordPages != 25 || value.proofChunks != 129 || value.proofPages != 2 {
+		if value.historyBytes != 17179869184 || value.storageBytes != 22603104256 || value.storageFiles != 8780 || value.recordChunks != 3085 || value.recordPages != 25 || value.proofChunks != 129 || value.proofPages != 2 {
 			t.Fatalf("accepted wire/history/whole-row packing differs: %+v", value)
 		}
-		if value.objectsPerHour != 18575 || value.bytesPerHour != 15406497792 || value.retryRequestsPerHour != 2555000 {
+		if value.objectsPerHour != 23951 || value.bytesPerHour != 15758819328 || value.retryRequestsPerHour != 3286136 {
 			t.Fatalf("whole catch-up and actual poll/native retry allowance differs: %+v", value)
 		}
 		if source.Evidence.Bounds.CaptureFileLimit() != 700000 || source.Evidence.Bounds.MaxHistoryBytes != 16*1024*1024*1024 {

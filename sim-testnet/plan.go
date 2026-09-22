@@ -818,6 +818,13 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 // the independent lifetime cap. Revisions may raise that cap without funding
 // every newly available wei or changing the original role allocations.
 func buildPlanWithFundingAllocation(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time, generation uint64, allocation DecimalUint) (*SetupPlan, error) {
+	return buildPlanWithFundingAllocationAndRelayConfig(cfg, facts, roles, generatedAt, generation, allocation, cfg)
+}
+
+// A revision reconstructs original role allocations before carrying its exact
+// authenticated relay reserve. Only those two monetary calculations use the
+// retained relay template; every identity and resolved input uses current cfg.
+func buildPlanWithFundingAllocationAndRelayConfig(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time, generation uint64, allocation DecimalUint, relayConfig *ResolvedConfig) (*SetupPlan, error) {
 	if cfg == nil || cfg.Config == nil {
 		return nil, errors.New("setup plan configuration is absent")
 	}
@@ -1096,7 +1103,7 @@ func buildPlanWithFundingAllocation(cfg *ResolvedConfig, facts *SetupFacts, role
 	if comparisonErr != nil || voluntaryGas.IsZero() || productionGas.IsZero() || retirementComparison < 0 || governanceGas.IsZero() || precompileGas.IsZero() || dishonestDepositGas.IsZero() {
 		return nil, fmt.Errorf("EVM runtime gas ceiling is too small for conviction, production transition, and retirement")
 	}
-	relayGas, err := evidenceRelayMaximumGas(cfg)
+	relayGas, err := evidenceRelayMaximumGas(relayConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -1555,7 +1562,7 @@ func buildPlanWithFundingAllocation(cfg *ResolvedConfig, facts *SetupFacts, role
 	}
 	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: campaignGas}, DependsOn: setupDeps})
 	setupDeps = append(setupDeps, "campaign.evm-gas-reserve")
-	relayReserve, err := buildEvidenceRelayReserve(cfg, &evidenceManifest, setupDeps)
+	relayReserve, err := buildEvidenceRelayReserve(relayConfig, &evidenceManifest, setupDeps)
 	if err != nil {
 		return nil, err
 	}
