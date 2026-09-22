@@ -527,7 +527,7 @@ func (self *liveScenarioProbe) fetchReplicatedCampaignEnvelopeWithDecodeV2(ctx c
 	var first *ReleaseEvidenceEnvelope
 	for _, operator := range public.Operators {
 		evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=" + strings.ToLower(hash)
-		encoded, _, err := self.get(ctx, evidenceURL, maximumBytes)
+		encoded, _, err := self.getCampaignEvidence(ctx, evidenceURL, kind, maximumBytes, limits)
 		if err == nil {
 			err = ctx.Err()
 		}

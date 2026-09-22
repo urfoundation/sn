@@ -329,7 +329,7 @@ func (self *liveScenarioProbe) verifyPublicCampaignCaptureV2(ctx context.Context
 			return errors.New("compact prior original signer differs from the current completion")
 		}
 		read := func(ctx context.Context, origin, hash string, maximumBytes uint64) ([]byte, error) {
-			raw, _, err := self.get(ctx, origin+"/sn/evidence?hash="+hash, int64(maximumBytes))
+			raw, _, err := self.getCampaignEvidence(ctx, origin+"/sn/evidence?hash="+hash, campaignEvidenceFileKind, int64(maximumBytes), limits)
 			return raw, err
 		}
 		if err := verifyFinalPriorCarriersV2(ctx, self.cfg, prior.RunID, priorPayload, prior.CarrierOrigins, prior.PublicCarriers, common.HexToAddress(ownerSigner), read); err != nil {

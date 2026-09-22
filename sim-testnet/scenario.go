@@ -1156,11 +1156,16 @@ func inspectOneFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.Raw
 }
 
 func (p *liveScenarioProbe) get(ctx context.Context, url string, limit int64) ([]byte, int, error) {
+	return getScenarioProbeWithClient(ctx, p.client, url, limit)
+}
+
+// Request owners may copy a client to select one bounded timeout. Redirect,
+// body capacity, Close and status handling stay common to ordinary reads.
+func getScenarioProbeWithClient(ctx context.Context, client *http.Client, url string, limit int64) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
-	client := p.client
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -1175,7 +1180,7 @@ func (p *liveScenarioProbe) get(ctx context.Context, url string, limit int64) ([
 		return nil, resp.StatusCode, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return b, resp.StatusCode, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return b, resp.StatusCode, &evidenceRequestStatusError{status: resp.StatusCode}
 	}
 	return b, resp.StatusCode, nil
 }

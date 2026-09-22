@@ -430,6 +430,10 @@ ceilings, not a promise that every maximum fits simultaneously. Completed-phase
 plan carriers use an authenticated `.plan.evidence.json` wrapper; generic prior
 carriers keep their existing capacity. Public evidence GET and exact-history
 readers must support these same typed carriers before final public replay.
+An admitted carrier above 64 MiB receives two minutes plus one second per
+started 8 MiB and a thirty-second client margin, capped at twenty minutes for
+the whole request. Up to three transient retries retain the same hash and byte
+bound; parent deadlines, signature checks and ordinary request timeouts remain.
 
 For a compatible runtime update or recovery driver, add `--provisional-resume`
 to both commands. Planning also requires `--plan-hash SOURCE_HASH`, naming the
