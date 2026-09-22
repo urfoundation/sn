@@ -415,6 +415,13 @@ the approved renewal remain exact; changing either requires a new approved
 transaction intent. Reconciliation never changes the approval hash, signs a
 replacement or repeats a submitted action.
 
+An approved pending nonce may briefly lag the preceding pipelined submission;
+the read retries within a finite budget before signing. If finalized nonce state
+advances between receipt lookups, recovery rechecks the exact transaction hash.
+An uncertain submission response continues from its persisted signed bytes.
+Exhausted propagation remains unresolved evidence for the same action; it does
+not prove that a different transaction consumed the nonce.
+
 Compact approval output, renewal/relay imports, active reloads and immutable
 plan archives share a 128 MiB file limit. Full approvals retain earlier fleet
 generations and can exceed the independent 32 MiB ordinary proof limit. Every

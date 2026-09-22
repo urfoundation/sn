@@ -1333,7 +1333,13 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		return &tx, nil
 	}
 	from := crypto.PubkeyToAddress(m.key.PublicKey)
-	nonce, err := m.client.PendingNonceAt(ctx, from)
+	var nonce uint64
+	var err error
+	if isFleetRenewalAction(a) {
+		nonce, err = readFleetRenewalPendingNonce(ctx, m.client, from, a, defaultFinalSemanticRPCRetryPolicy())
+	} else {
+		nonce, err = m.client.PendingNonceAt(ctx, from)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1437,12 +1443,13 @@ func (m *EvmTxManager) waitExactTransaction(ctx context.Context, planHash string
 	}
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
+	transientBroadcastFailures := 0
 	for {
-		receipt, err := m.client.TransactionReceipt(ctx, signed.Hash())
+		receipt, err := readExactEvmReceipt(ctx, m.client, signed.Hash(), false, defaultFinalSemanticRPCRetryPolicy())
 		if err == nil {
 			return m.finalizeReceipt(ctx, planHash, a, signed.Hash(), receipt)
 		}
-		if err != ethereum.NotFound {
+		if !errors.Is(err, ethereum.NotFound) {
 			return nil, err
 		}
 		head, err := finalizedEVMHead(ctx, m.client)
@@ -1454,10 +1461,20 @@ func (m *EvmTxManager) waitExactTransaction(ctx context.Context, planHash string
 			return nil, err
 		}
 		if nonce > signed.Nonce() {
-			return nil, fmt.Errorf("EVM nonce %d was consumed by a different finalized transaction", signed.Nonce())
+			receipt, err := readExactEvmReceipt(ctx, m.client, signed.Hash(), true, defaultFinalSemanticRPCRetryPolicy())
+			if err != nil {
+				return nil, err
+			}
+			return m.finalizeReceipt(ctx, planHash, a, signed.Hash(), receipt)
 		}
 		if err := m.client.SendTransaction(ctx, signed); !knownEVMTxError(err) {
-			return nil, fmt.Errorf("rebroadcast exact EVM transaction %s: %w", signed.Hash(), err)
+			transientBroadcastFailures++
+			if ctx.Err() != nil || !evmReadRpcErrorIsTransient(err) || transientBroadcastFailures >= maximumExactEvmBroadcastFailures {
+				return nil, fmt.Errorf("rebroadcast exact EVM transaction %s: %w", signed.Hash(), err)
+			}
+			fmt.Fprintf(os.Stderr, "sim-testnet: exact transaction %s broadcast response is uncertain; retained receipt reconciliation continues: %v\n", signed.Hash(), err)
+		} else {
+			transientBroadcastFailures = 0
 		}
 		select {
 		case <-ctx.Done():

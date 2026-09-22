@@ -868,6 +868,14 @@ Advance an unrelated signer between approval and apply, then prove the same
 approval succeeds without signing or broadcasting twice. Keep changed renewal
 signers, custody, liabilities, missing roles and unbounded observations hard.
 
+Also cross the receipt/pool publication boundaries deterministically: finalize
+the original transaction between its first receipt lookup and nonce read, lose
+an accepted submission response, and delay the preceding pipeline nonce in the
+pool. Reconcile the exact hash and persisted bytes under finite read/broadcast
+budgets. Missing receipt plus advanced nonce is unresolved observation until
+canonical evidence identifies the winning transaction; it is not proof that a
+different transaction won. Never sign a replacement nonce to clear that gap.
+
 ### PH-11 — Budgets, reserve targets and native funding behavior
 
 **Lesson.** Software changes retriggered a 65% reserve repair despite a valid
