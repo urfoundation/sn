@@ -1405,12 +1405,7 @@ func (self *processLogGate) RequireClean(final bool) error {
 	if err != nil {
 		return fmt.Errorf("process log gate scan: %w", err)
 	}
-	blocking := blockingProcessLogFindings(result.Findings)
-	if len(blocking) == 0 {
-		return nil
-	}
-	first := blocking[0]
-	return fmt.Errorf("process log gate found %d release-blocking class(es); first=%s/%s/%s count=%d", len(blocking), first.ProcessID, first.Stream, first.Class, first.Count)
+	return processLogFindingsError(result.Findings)
 }
 
 func blockingProcessLogFindings(findings []ProcessLogFinding) []ProcessLogFinding {
@@ -1477,8 +1472,7 @@ func processLogFindingsError(findings []ProcessLogFinding) error {
 	if len(blocking) == 0 {
 		return nil
 	}
-	first := blocking[0]
-	return fmt.Errorf("process log gate found %d release-blocking class(es); first=%s/%s/%s count=%d", len(blocking), first.ProcessID, first.Stream, first.Class, first.Count)
+	return &processLogFindingsFailure{findings: blocking}
 }
 
 func scanScenarioProcessLogs(gate scenarioProcessLogGate, runDir string, observation *ScenarioObservation, final bool, faults ...processLogFaultScope) error {

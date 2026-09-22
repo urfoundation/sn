@@ -3796,7 +3796,7 @@ func beginScenarioCampaignPreparation(ctx context.Context, phase, runID string, 
 	return nil
 }
 
-func finalizeAdversaryEvidence(campaign adversaryCampaign, runDir string, started time.Time, observationHash string, completed time.Time) (*AdversaryCampaignEvidence, []AssertionRecord, error) {
+func finalizeAdversaryEvidence(campaign adversaryCampaign, runDir string, started time.Time, observationHash string, completed time.Time, evaluate bool) (*AdversaryCampaignEvidence, []AssertionRecord, error) {
 	if campaign == nil {
 		return nil, nil, nil
 	}
@@ -3813,7 +3813,10 @@ func finalizeAdversaryEvidence(campaign adversaryCampaign, runDir string, starte
 			stopErr = errors.Join(stopErr, err)
 		}
 	}
-	assertions := adversaryAssertions(evidence, started, observationHash)
+	var assertions []AssertionRecord
+	if evaluate {
+		assertions = adversaryAssertions(evidence, started, observationHash)
+	}
 	if stopErr != nil {
 		now := time.Now().UTC()
 		assertions = append(assertions, AssertionRecord{ID: "adversary_campaign_stop", Passed: false, Message: stopErr.Error(), StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: observationHash})
@@ -3873,7 +3876,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 		interrupted := fmt.Errorf("scenario campaign acceptance was interrupted (%s); a fresh signed deployment and lifecycle namespace is required", reason)
 		if options.FaultDriver != nil {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			cleanupCtx, cancel := newScenarioFaultRecoveryContext(options.FaultDriver)
 			defer cancel()
 			if err := options.FaultDriver.Recover(cleanupCtx); err != nil {
 				interrupted = errors.Join(interrupted, fmt.Errorf("recover interrupted scenario faults: %w", err))
@@ -3936,7 +3939,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if options.FaultDriver == nil || faultCleanupComplete {
 			return nil
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := newScenarioFaultRecoveryContext(options.FaultDriver)
 		defer cancel()
 		if err := options.FaultDriver.Recover(cleanupCtx); err != nil {
 			return err
@@ -3976,7 +3979,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if len(failureHistory) != 0 {
 			observationHash = failureHistory[len(failureHistory)-1].ObservationHash
 		}
-		evidence, adversaryRecords, stopErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, observationHash, options.Now().UTC())
+		evidence, adversaryRecords, stopErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, observationHash, options.Now().UTC(), false)
 		adversariesFinalized = true
 		var rewriteErr error
 		if result != nil {
@@ -4010,7 +4013,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if options.FaultDriver == nil || faultCleanupComplete {
 			return
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := newScenarioFaultRecoveryContext(options.FaultDriver)
 		defer cancel()
 		restored := map[string]bool{}
 		for index := len(definition.Faults) - 1; index >= 0; index-- {
@@ -4223,10 +4226,21 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 		return nil
 	}
-	assertions := appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
-	assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
+	assertions := evaluateScenarioInterval(cfg, definition, start, current, window, faults, started)
 	provisionalFindings := map[string]string{}
 	logProvisionalEpochFindings(assertions, provisionalFindings)
+	deferredProcessLogMessage := ""
+	scanRuntimeProcessLogs := func(observation *ScenarioObservation, scopes ...processLogFaultScope) error {
+		failure := scanScenarioProcessLogs(options.ProcessLogs, runDir, observation, false, scopes...)
+		if !scenarioProcessLogFailureDeferred(cfg, definition.Name, failure) {
+			return failure
+		}
+		if message := failure.Error(); message != deferredProcessLogMessage {
+			deferredProcessLogMessage = message
+			fmt.Fprintf(os.Stderr, "sim-testnet: provisional runtime process finding retained; observation_continues=true final_gate_unchanged=true; %s\n", message)
+		}
+		return nil
+	}
 	// Preparation actions have their own bounded waits. Give the exact accepted
 	// interval its complete timeout instead of consuming it during preparation.
 	deadline := options.Now().Add(options.Timeout)
@@ -4235,7 +4249,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	var runtimeAssertions []AssertionRecord
 	snapshotFailureCount := 0
 scenarioLoop:
-	for (!scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
+	for (!scenarioAcceptanceIntervalObserved(window, current) || !scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
 		var heartbeatErr error
 		next, snapshotErr := waitScenarioSnapshot(ctx, probe, options.PollInterval, func(heartbeatCtx context.Context, head ChainHead) error {
 			if len(faults) == 0 {
@@ -4276,7 +4290,10 @@ scenarioLoop:
 				}
 			}
 			transitionScopes := mergeProcessLogFaultScopes(faultScopesBefore, activeProcessLogFaultScopes(faults))
-			if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, transitionScopes...); err != nil {
+			// A heartbeat is not a complete observation. Keep its newly scanned
+			// findings from mutating the retained baseline/history snapshot.
+			heartbeatObservation := *current
+			if err := scanRuntimeProcessLogs(&heartbeatObservation, transitionScopes...); err != nil {
 				heartbeatErr = fmt.Errorf("heartbeat process log gate: %w", err)
 				return heartbeatErr
 			}
@@ -4312,7 +4329,7 @@ scenarioLoop:
 		if err := annotateScenarioExpectedFaults(current, faults); err != nil {
 			return initialFailure(current, fmt.Errorf("annotate expected scenario faults: %w", err))
 		}
-		processLogErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, activeProcessLogFaultScopes(faults)...)
+		processLogErr := scanRuntimeProcessLogs(current, activeProcessLogFaultScopes(faults)...)
 		observationHistory = append(observationHistory, current)
 		if current.Status == nil || current.Status.Contracts == nil {
 			snapshotFailureCount++
@@ -4357,7 +4374,7 @@ scenarioLoop:
 				return initialFailure(current, fmt.Errorf("persist scenario faults: %w", err))
 			}
 			transitionScopes := mergeProcessLogFaultScopes(faultScopesBefore, activeProcessLogFaultScopes(faults))
-			if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, transitionScopes...); logErr != nil {
+			if logErr := scanRuntimeProcessLogs(current, transitionScopes...); logErr != nil {
 				processLogErr = errors.Join(processLogErr, fmt.Errorf("fault-transition process log gate: %w", logErr))
 			}
 		}
@@ -4376,14 +4393,24 @@ scenarioLoop:
 		if err := persistRuntimeObservation(current); err != nil {
 			return initialFailure(current, fmt.Errorf("persist scenario observation: %w", err))
 		}
-		assertions = appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
-		assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
+		assertions = evaluateScenarioInterval(cfg, definition, start, current, window, faults, started)
 		logProvisionalEpochFindings(assertions, provisionalFindings)
 		if faultErr != nil {
 			break
 		}
 	}
-	acceptanceIncomplete := terminalErr != nil || faultErr != nil || !scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || options.FleetLifecycle != nil && !options.FleetLifecycle.Complete() || options.Adversaries != nil && !options.Adversaries.Ready()
+	if faultErr != nil && !errors.Is(terminalErr, faultErr) {
+		terminalErr = errors.Join(terminalErr, faultErr)
+	}
+	intervalObserved := scenarioAcceptanceIntervalObserved(window, current)
+	if !intervalObserved {
+		assertions = []AssertionRecord{scenarioInterruptedIntervalAssertion(window, current, started, options.Now())}
+	} else if terminalErr != nil || faultErr != nil {
+		// Heartbeats may update faults after the last full snapshot. Rebuild the
+		// final verdict from the latest retained values, never an earlier poll.
+		assertions = evaluateScenarioInterval(cfg, definition, start, current, window, faults, started)
+	}
+	acceptanceIncomplete := !intervalObserved || terminalErr != nil || faultErr != nil || !scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || options.FleetLifecycle != nil && !options.FleetLifecycle.Complete() || options.Adversaries != nil && !options.Adversaries.Ready()
 	if !acceptanceIncomplete && options.Publish && (definition.Name == "release-1.0" || definition.Name == "production-soak") {
 		waitClosures := options.WaitFinalSettlementClosures
 		if waitClosures == nil {
@@ -4408,7 +4435,7 @@ scenarioLoop:
 		sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
 	}
 	completed := options.Now().UTC()
-	adversaryEvidence, adversaryRecords, adversaryErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, current.ObservationHash, completed)
+	adversaryEvidence, adversaryRecords, adversaryErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, current.ObservationHash, completed, intervalObserved)
 	adversariesFinalized = true
 	if options.Attempt != nil && options.Attempt.payload.AcceptanceBoundary != nil {
 		boundary := options.Attempt.payload.AcceptanceBoundary
@@ -4429,7 +4456,7 @@ scenarioLoop:
 	assertions = append(assertions, snapshotRetries.assertions()...)
 	assertions = append(assertions, adversaryRecords...)
 	var lifecycleHandoff *ScenarioLifecycleHandoff
-	if options.FleetLifecycle != nil {
+	if options.FleetLifecycle != nil && intervalObserved {
 		passed, message := fleetLifecycleCompletionStatus(options.FleetLifecycle)
 		if passed && definition.Name == "release-1.0" && options.Attempt != nil {
 			binding, err := captureScenarioLifecycleHandoff(cfg, stateDir, runDir, runID, options.Attempt)
