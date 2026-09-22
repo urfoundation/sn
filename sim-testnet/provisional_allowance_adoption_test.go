@@ -378,7 +378,7 @@ func TestProvisionalPlanAdoptionRelayExpansionPreservesLiabilities(t *testing.T)
 	}
 	self.cfg.provisionalResume = &provisionalResumeState{Driver: provisionalDriverProvenance{
 		ExecutablePath: "/reviewed/test/sim-testnet", ExecutableSHA256: "sha256:" + strings.Repeat("12", 32),
-		Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: strings.Repeat("34", 20), Modified: true}}}
+		Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn/v2026", Revision: strings.Repeat("34", 20), Modified: true}}}
 	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, "setup", cliOptions{Apply: true, ProvisionalResume: true, PlanHash: self.plan.PlanHash}, self.plan); err != nil {
 		t.Fatal(err)
 	}

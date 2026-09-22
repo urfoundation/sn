@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 const paidTrafficSchema = "urnetwork-paid-traffic-v1"

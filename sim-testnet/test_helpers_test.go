@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 func testResolvedConfig(t *testing.T) *ResolvedConfig {
