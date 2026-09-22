@@ -19,8 +19,11 @@ import (
 const (
 	// These are implementation admission ceilings, not source-byte grants or
 	// allocations. Larger configurations require a separately reviewed format.
-	maximumCampaignMetadataDocumentV2    = 2 * 1024 * 1024 * 1024
-	maximumCampaignRetainedMetadataV2    = 4 * 1024 * 1024 * 1024
+	maximumCampaignMetadataDocumentV2 = 2 * 1024 * 1024 * 1024
+	// Capture owns two indexes, a manifest and completion; supplements own
+	// the last two. Their sum must fit whenever each typed document fits.
+	maximumCampaignRetainedMetadataV2    = maximumCampaignEvidenceAggregateBytes + 4*maximumCampaignMetadataDocumentV2 + 2*maximumCampaignFileEnvelopeOverhead
+	maximumCampaignSupplementMetadataV2  = maximumCampaignEvidenceAggregateBytes + 2*maximumCampaignMetadataDocumentV2 + 2*maximumCampaignFileEnvelopeOverhead
 	campaignCollectedIndexPathV2         = "final-inputs/manifest.json"
 	campaignPriorIndexPathV2             = "final-inputs/prior-release/collected-inputs-manifest.json.bin"
 	campaignPriorManifestPathV2          = "final-inputs/prior-release/campaign-evidence-manifest.json.bin"
@@ -151,15 +154,27 @@ func (self *campaignMetadataLimitsV2) validate() error {
 	if self == nil {
 		return nil
 	}
-	for _, bound := range []uint64{self.indexBytes, self.manifestBytes, self.completionBytes, self.graphBytes} {
-		if bound == 0 || bound > maximumCampaignMetadataDocumentV2 {
-			return errors.New("compact metadata profile exceeds the reviewed document bound")
+	var failures []error
+	for _, field := range []struct {
+		name           string
+		value, maximum uint64
+	}{
+		{name: "index_bytes", value: self.indexBytes, maximum: maximumCampaignMetadataDocumentV2},
+		{name: "manifest_bytes", value: self.manifestBytes, maximum: maximumCampaignMetadataDocumentV2},
+		{name: "completion_bytes", value: self.completionBytes, maximum: maximumCampaignMetadataDocumentV2},
+		{name: "graph_bytes", value: self.graphBytes, maximum: maximumCampaignMetadataDocumentV2},
+		{name: "retained_bytes", value: self.retainedBytes, maximum: maximumCampaignRetainedMetadataV2},
+		{name: "supplement_bytes", value: self.supplementBytes, maximum: maximumCampaignSupplementMetadataV2},
+		{name: "intent_bytes", value: self.intentBytes, maximum: maximumCampaignEvidenceEnvelopeBytes},
+	} {
+		if field.value == 0 || field.value > field.maximum {
+			failures = append(failures, fmt.Errorf("compact metadata %s=%d is outside its finite bound 1..%d", field.name, field.value, field.maximum))
 		}
 	}
-	if self.retainedBytes == 0 || self.retainedBytes > maximumCampaignRetainedMetadataV2 || self.supplementBytes == 0 || self.supplementBytes > maximumCampaignMetadataDocumentV2 || self.intentBytes == 0 || self.intentBytes > maximumCampaignEvidenceEnvelopeBytes || self.validators == 0 || self.operators != 2 {
-		return errors.New("compact metadata retained/control profile is invalid")
+	if self.validators == 0 || self.operators != 2 {
+		failures = append(failures, fmt.Errorf("compact metadata owner census is invalid: validators=%d operators=%d", self.validators, self.operators))
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // Only exact producer-owned control names can acquire a larger raw owner.
