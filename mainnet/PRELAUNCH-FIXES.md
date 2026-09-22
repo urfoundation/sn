@@ -1179,6 +1179,20 @@ final acceptance interval. Adversary probes may continue after a recovered
 transient read, but final acceptance evaluates the persistent exhausted-retry
 error budget rather than the first timeout.
 
+The retained publication review also found that stream upload/read transports
+discarded HTTP status into error text. A protected-quota `429` then consumed the
+native failure budget instead of waiting for its hourly reset. Preserve typed
+status and bounded server pacing through every wrapping and replica join;
+authentication, conflicting content and mixed integrity failures remain hard
+even when response text contains a transport-looking phrase. The transport
+performs one immutable request; its existing lifecycle owner retries. Startup
+honors a single positive integer `Retry-After`, bounded to one hour, within its
+existing finite attempt count and cancellation scope. Provisional native
+collection retains its cut across ordinary retry polls; strict final acceptance
+keeps its original failure budget. Deterministic transport, mixed-cause, reset,
+cancellation and strict/provisional tests cover this correction; production
+closure still requires exercising actual quota exhaustion and recovery.
+
 **PH-23 — Funded capacity and physical resource profile.** A capacity revision
 must bind four different facts: funded slot/spend allowance, source-history
 horizon, upload quotas and finite archive metadata limits. Generation 25 found
@@ -1189,6 +1203,18 @@ metadata and supplemental-metadata ceilings with at least the reviewed 2x
 margin. It must carry an authenticated predecessor reserve exactly when no new
 spend is intended; it must never reconstruct fresh economics from the new slot
 count. Admission rejects a requested profile that does not fit every bound.
+
+Keep whole-source catch-up forecasts separate from live quota consumption. The
+retained source forecast charges all source history and admitted refresh/retry
+operations to one hourly bucket; it can exceed a retained deployment's limits
+before any actual counter is exhausted. Testnet provisional continuation may
+record this forecast as advisory with `final_acceptance=false`, but must preserve
+every enforced object, byte and retry counter and deployment/replica owner.
+Adopt larger production quotas only through an authenticated config/manifest
+successor, with at least 2x all forecast dimensions; do not edit bound retained
+configuration or waive a real quota to clear a forecast warning. Record actual
+counter usage, resets and recovered throttles so final admission can distinguish
+an oversized catch-up estimate from sustained insufficient capacity.
 
 **PH-24 — Recovery-lineage work.** Generation 25 authenticated 24 retained
 generations before it could publish its recovery record. The reader repeatedly

@@ -120,6 +120,10 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 		retryable := retryableClientKeyObservationHttpError(err)
 		return retryable, retryable
 	}
+	if status, ok := err.(*attemptStreamHttpStatusError); ok {
+		retryable := status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
+		return retryable, retryable
+	}
 	if publication, ok := err.(*attemptReplicaPublicationError); ok {
 		return classifyReleaseSnapshotRetryCauses(publication.causes, true)
 	}
@@ -221,7 +225,7 @@ func advanceInitialReleaseWithRetry(ctx context.Context, initial *ReleaseSnapsho
 		if attempt == releaseSnapshotStartupAttempts {
 			break
 		}
-		if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+		if err := wait(ctx, releaseSnapshotRetryDelayForError(lastErr)); err != nil {
 			return err
 		}
 		fresh, err := load(ctx)
@@ -270,7 +274,7 @@ func loadInitialReleaseSnapshot(ctx context.Context, load releaseSnapshotLoader,
 			return nil, err
 		}
 		if attempt < releaseSnapshotStartupAttempts {
-			if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+			if err := wait(ctx, releaseSnapshotRetryDelayForError(lastErr)); err != nil {
 				return nil, err
 			}
 		}
@@ -299,7 +303,7 @@ func loadReleaseSteererV2WithRetry(ctx context.Context, load func() (*ReleaseSte
 			return nil, err
 		}
 		if attempt < releaseSnapshotStartupAttempts {
-			if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+			if err := wait(ctx, releaseSnapshotRetryDelayForError(lastErr)); err != nil {
 				return nil, err
 			}
 		}
