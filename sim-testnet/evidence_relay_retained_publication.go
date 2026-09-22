@@ -36,7 +36,7 @@ func newEvidenceRelayRetainedPublications(ctx context.Context, cfg *ResolvedConf
 	} else if cfg.relayCapturePlanHash != plan.PlanHash {
 		return nil, errors.New("retained publication has no exact strict capture approval")
 	}
-	manifest, _, err := authenticatedRuntimeConfigManifest(cfg, stateDir)
+	manifest, _, err := authenticatedRetainedRuntimeConfigManifest(cfg, stateDir, plan)
 	if err != nil {
 		return nil, err
 	}

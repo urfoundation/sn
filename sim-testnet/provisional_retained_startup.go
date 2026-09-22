@@ -222,7 +222,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 			return err
 		}
 	}
-	verified, err := verifyRuntimeConfigManifest(cfg, stateDir)
+	verified, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, self.plan)
 	if err != nil {
 		return fmt.Errorf("retained runtime inputs: %w", err)
 	}

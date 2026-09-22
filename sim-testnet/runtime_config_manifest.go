@@ -409,6 +409,12 @@ func validateRuntimeConfigStaticTrees(cfg *ResolvedConfig, stateDir string, expe
 // Authenticate the manifest identity and complete expected inventory before a
 // caller selects either every static input or a security-critical subset.
 func authenticatedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeConfigManifest, map[string]os.FileMode, error) {
+	return authenticatedRuntimeConfigManifestWithRetainedEvidence(cfg, stateDir, "")
+}
+
+// A retained caller may supply only the original evidence identity derived
+// from an authenticated V6 successor. Every other identity field stays exact.
+func authenticatedRuntimeConfigManifestWithRetainedEvidence(cfg *ResolvedConfig, stateDir, retainedEvidenceHash string) (*RuntimeConfigManifest, map[string]os.FileMode, error) {
 	var manifest RuntimeConfigManifest
 	path := runtimeConfigManifestPath(stateDir)
 	if err := decodeStrictJSONFile(path, &manifest); err != nil {
@@ -427,7 +433,8 @@ func authenticatedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*
 		return nil, nil, stateMismatchError(err, "runtime config manifest is absent or not private")
 	}
 	if manifest.Schema != runtimeConfigManifestSchema || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID ||
-		!strings.EqualFold(manifest.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(manifest.PolicyHash, cfg.PolicyHash) || manifest.EvidenceV2Hash != evidenceHash || manifest.AttemptUploadHash != uploadHash {
+		!strings.EqualFold(manifest.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(manifest.PolicyHash, cfg.PolicyHash) ||
+		(manifest.EvidenceV2Hash != evidenceHash && (retainedEvidenceHash == "" || manifest.EvidenceV2Hash != retainedEvidenceHash)) || manifest.AttemptUploadHash != uploadHash {
 		return nil, nil, errors.New("runtime config manifest identity does not match the active deployment")
 	}
 	if _, err := decodeHex32("runtime config manifest config hash", manifest.ConfigHash); err != nil {
@@ -493,7 +500,7 @@ func verifyRuntimeConfigManifestFile(cfg *ResolvedConfig, stateDir string, file 
 // completion boundary. Other runtime inputs may have undergone an approved
 // live transition, such as production verify-key rotation.
 func verifyRuntimeBlobConfigManifest(cfg *ResolvedConfig, stateDir string) error {
-	manifest, expected, err := authenticatedRuntimeConfigManifest(cfg, stateDir)
+	manifest, expected, err := authenticatedRuntimeBlobConfigManifest(cfg, stateDir)
 	if err != nil {
 		return err
 	}
@@ -527,6 +534,12 @@ func verifyRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (runtimeC
 	if err != nil {
 		return runtimeConfigVerification{}, err
 	}
+	return verifyResolvedRuntimeConfigManifest(cfg, stateDir, manifest, expected)
+}
+
+// Strict render verification and explicit retained startup share every file,
+// mode and inventory check after selecting their own authenticated identity.
+func verifyResolvedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string, manifest *RuntimeConfigManifest, expected map[string]os.FileMode) (runtimeConfigVerification, error) {
 	for _, file := range manifest.Files {
 		mode := expected[file.Path]
 		if err := verifyRuntimeConfigManifestFile(cfg, stateDir, file, mode); err != nil {

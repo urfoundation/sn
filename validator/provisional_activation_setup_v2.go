@@ -49,6 +49,7 @@ type ProvisionalActivationSetupV2 struct {
 	CoordinatorStateDir string                                `json:"coordinator_state_dir,omitempty"`
 	Receipts            []ProvisionalActivationSetupV2Receipt `json:"receipts"`
 	Members             []ProvisionalActivationSetupV2Member  `json:"members"`
+	SourceBounds        *ReleaseEvidenceV2SourceBounds        `json:"source_bounds,omitempty"`
 	contentHash         string
 }
 
@@ -115,6 +116,10 @@ func (self *ProvisionalActivationSetupV2) validate(cfg *ReleaseConfig, configPat
 	if provisionalActivationSetupSHA256(encoded) != self.ConfigSHA256 {
 		return errors.New("provisional activation validator config differs from its supervisor handoff")
 	}
+	bounds, err := self.SourceBounds.apply(cfg.EvidenceV2.Bounds)
+	if err != nil {
+		return err
+	}
 	if self.CoordinatorStateDir != "" {
 		if self.CoordinatorStateDir != filepath.Join(filepath.Dir(configPath), "coordinator-state-v2") {
 			return errors.New("provisional coordinator state is outside its original validator owner")
@@ -140,6 +145,9 @@ func (self *ProvisionalActivationSetupV2) validate(cfg *ReleaseConfig, configPat
 	// Retain signed cuts from a closed settlement and use the existing native
 	// epoch deferral instead of attempting to replace them during continuation.
 	cfg.ProvisionalDeferClosedNativeInput = true
+	// The original YAML remains byte-pinned; only this authenticated child
+	// receives the successor capacity, including its startup replay owners.
+	cfg.EvidenceV2.Bounds = bounds
 	return nil
 }
 

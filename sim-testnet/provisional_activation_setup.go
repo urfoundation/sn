@@ -63,6 +63,9 @@ func attachProvisionalActivationSetup(cfg *ResolvedConfig, stateDir string, plan
 			}
 		}
 	}
+	if _, err := applyEvidenceRelaySourceBounds(values, plan.EvidenceRelayContinuation); err != nil {
+		return err
+	}
 	actions := make([]Action, 0, len(prepared.Members)+1)
 	for _, member := range prepared.Members {
 		action, err := exactPlanActionByID(source, runtimeEvidenceActivationActionId(int(member.ValidatorId), int(member.NoId)))
@@ -118,6 +121,10 @@ func attachProvisionalActivationSetup(cfg *ResolvedConfig, stateDir string, plan
 			Schema: validatorcomponent.ProvisionalActivationSetupV2Schema, Provisional: true,
 			DeploymentID: plan.DeploymentID, ValidatorID: uint64(validatorID + 1), ApprovedPlanHash: plan.PlanHash, SourcePlanHash: source.PlanHash,
 			PreparedSHA256: bytesSHA256(preparedBytes), CompletedSHA256: bytesSHA256(completedBytes), ConfigSHA256: configHash, Receipts: receipts,
+		}
+		if continuation := plan.EvidenceRelayContinuation; continuation != nil && len(continuation.SourceBounds) != 0 {
+			sourceBounds := continuation.SourceBounds[validatorID]
+			handoff.SourceBounds = &validatorcomponent.ReleaseEvidenceV2SourceBounds{Original: sourceBounds.Original, Approved: sourceBounds.Approved}
 		}
 		coordinatorState := filepath.Join(stateDir, "runtime", id, "coordinator-state-v2")
 		if exists, err := regularDirectoryExists(coordinatorState); err != nil {
