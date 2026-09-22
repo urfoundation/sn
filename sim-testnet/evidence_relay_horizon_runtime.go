@@ -100,7 +100,17 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 		return nil, errors.New("evidence relay discovered a terminal publication outside the funded finalized epoch geometry")
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: end}
-	publication, err := validatorcomponent.ReadValidatorEvidencePublicationV2(ctx, manifest, validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds})
+	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
+	var publication *validatorcomponent.ValidatorEvidenceCensusV2Publication
+	if self.retainedPublications != nil {
+		replicas, readErr := self.retainedPublications.readers(source.bounds)
+		if readErr != nil {
+			return nil, readErr
+		}
+		publication, err = validatorcomponent.ReadRetainedValidatorEvidencePublicationV2(ctx, manifest, options, replicas)
+	} else {
+		publication, err = validatorcomponent.ReadValidatorEvidencePublicationV2(ctx, manifest, options)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +141,17 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 		return nil, errors.New("evidence audit publication is outside the funded finalized epoch geometry")
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: block, Subject: manifest.Subject}
-	publication, err := validatorcomponent.ReadValidatorEvidenceDepositAuditV2(ctx, manifest, validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds})
+	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
+	var publication *validatorcomponent.ValidatorEvidenceCensusV2Publication
+	if self.retainedPublications != nil {
+		replicas, readErr := self.retainedPublications.readers(source.bounds)
+		if readErr != nil {
+			return nil, readErr
+		}
+		publication, err = validatorcomponent.ReadRetainedValidatorEvidenceDepositAuditV2(ctx, manifest, options, replicas)
+	} else {
+		publication, err = validatorcomponent.ReadValidatorEvidenceDepositAuditV2(ctx, manifest, options)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -30,6 +30,7 @@ type attemptCutV2ReplicaTestStore struct {
 	beforePut func(context.Context, string, string, []byte) error
 	readBytes func(string, []byte) []byte
 	mutatePut bool
+	stopHTTP  func()
 }
 
 // Observations detach all objects while holding the same lock as HTTP/storage.
@@ -78,6 +79,7 @@ func newAttemptCutV2ReplicaTestStores(t *testing.T) ([2]AttemptCutV2Replica, [2]
 			_, _ = response.Write(raw)
 		}))
 		t.Cleanup(server.Close)
+		store.stopHTTP = server.Close
 		writer := func(kind string) AttemptStreamV2ObjectWriter {
 			return func(ctx context.Context, hash string, raw []byte) error {
 				if store.beforePut != nil {

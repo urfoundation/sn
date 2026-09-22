@@ -61,6 +61,7 @@ type depositAuditPublicationV2TestFixture struct {
 	nativeReads atomic.Uint64
 	outage      atomic.Bool
 	refuseLast  atomic.Bool
+	stopOrigins [2]func()
 }
 
 // Extend the existing actual activation/runtime fixture with independently
@@ -266,6 +267,7 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 		}
 		t.Cleanup(upload.close)
 		runtime.runtimes[index].attemptUpload = upload
+		self.stopOrigins[index] = endpoint.Close
 		runtime.origins[index] = endpoint.URL
 	}
 	runtime.cfg, runtime.history.cfg, runtime.chain = cfg, cfg, chain.chain

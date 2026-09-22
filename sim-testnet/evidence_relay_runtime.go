@@ -48,6 +48,7 @@ type evidenceRelayRuntime struct {
 	nativeWarmupBudget   *ScenarioNativeWarmupBudgetV2
 	nativeWarmupComplete bool
 	startupCache         *evidenceRelayStartupSession
+	retainedPublications *evidenceRelayRetainedPublications
 	startupProgress      bool
 	ready                chan struct{}
 	remainingRequests    chan evidenceRelayRemainingRequest

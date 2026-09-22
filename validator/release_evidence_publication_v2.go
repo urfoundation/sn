@@ -66,6 +66,10 @@ func decodeValidatorEvidencePublicationV2Json(ctx context.Context, raw []byte, l
 // any calldata. This verifies transport, complete membership and both consents,
 // not the truth of trails (the production publisher and final replay own that).
 func ReadValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *ValidatorEvidencePublicationV2Manifest, supplied ValidatorEvidencePublicationV2ReadOptions) (publication *ValidatorEvidenceCensusV2Publication, resultErr error) {
+	return readValidatorEvidencePublicationV2(ctx, suppliedManifest, supplied, nil)
+}
+
+func readValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *ValidatorEvidencePublicationV2Manifest, supplied ValidatorEvidencePublicationV2ReadOptions, retained *[2]ValidatorEvidenceRetainedReplicaV2) (publication *ValidatorEvidenceCensusV2Publication, resultErr error) {
 	if ctx == nil {
 		return nil, errors.New("evidence publication read context is absent")
 	}
@@ -121,7 +125,7 @@ func ReadValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *V
 	if manifest.CensusBytes > metadataLimit {
 		return nil, errors.New("evidence publication census exceeds the approved public metadata limit")
 	}
-	readers, err := newReleaseEvidenceV2ReadersWithMetadataLimit(options.Origins, options.Bounds.Cut, metadataLimit)
+	readers, err := validatorEvidencePublicationV2Readers(options, metadataLimit, retained)
 	if err != nil {
 		return nil, err
 	}

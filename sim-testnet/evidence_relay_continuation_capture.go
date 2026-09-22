@@ -352,6 +352,10 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	}
 	defer runtime.cancel()
 	defer runtime.chain.Close()
+	runtime.retainedPublications, err = newEvidenceRelayRetainedPublications(ctx, resolved, stateDir, base)
+	if err != nil {
+		return nil, err
+	}
 	work, err := evidenceRelayApprovalWork(cfg)
 	if err != nil {
 		return nil, err

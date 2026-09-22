@@ -244,6 +244,14 @@ func renderedOperatorEvidenceStore(cfg *ResolvedConfig, stateDir string, operato
 	if err := strictYAML(path, &rendered); err != nil {
 		return nil, fmt.Errorf("operator %d rendered MinIO config: %w", operator, err)
 	}
+	return renderedOperatorEvidenceStoreConfig(cfg, operator, rendered)
+}
+
+// Shared admission accepts only the independently authenticated rendered bytes.
+func renderedOperatorEvidenceStoreConfig(cfg *ResolvedConfig, operator int, rendered renderedOperatorBlobConfig) (server.BlobStore, error) {
+	if cfg == nil || cfg.Config == nil || operator < 1 || operator > cfg.Config.Topology.Operators {
+		return nil, errors.New("invalid operator evidence store identity")
+	}
 	wantPrefix, err := operatorArtifactPrefix(cfg.Config, operator)
 	if err != nil {
 		return nil, err

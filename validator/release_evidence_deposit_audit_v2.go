@@ -195,6 +195,10 @@ func validateValidatorEvidenceDepositAuditV2Publication(ctx context.Context, pub
 // Both approved public origins must return every exact object. The result is
 // signed content ready for an independently bounded relay, not an audit verdict.
 func ReadValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *ValidatorEvidenceDepositAuditV2Manifest, supplied ValidatorEvidencePublicationV2ReadOptions) (publication *ValidatorEvidenceCensusV2Publication, resultErr error) {
+	return readValidatorEvidenceDepositAuditV2(ctx, suppliedManifest, supplied, nil)
+}
+
+func readValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *ValidatorEvidenceDepositAuditV2Manifest, supplied ValidatorEvidencePublicationV2ReadOptions, retained *[2]ValidatorEvidenceRetainedReplicaV2) (publication *ValidatorEvidenceCensusV2Publication, resultErr error) {
 	if ctx == nil {
 		return nil, errors.New("deposit audit public read context is absent")
 	}
@@ -214,7 +218,7 @@ func ReadValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *
 	}
 	manifest := *suppliedManifest
 	manifest.Members = slices.Clone(suppliedManifest.Members)
-	readers, err := newReleaseEvidenceV2ReadersWithMetadataLimit(options.Origins, options.Bounds.Cut, max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes))
+	readers, err := validatorEvidencePublicationV2Readers(options, max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes), retained)
 	if err != nil {
 		return nil, err
 	}

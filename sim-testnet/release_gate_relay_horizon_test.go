@@ -21,8 +21,9 @@ func TestProducerGateStateSelectionCoversFundedRelayHorizon(t *testing.T) {
 		"evidence_relay_horizon_test.go", "evidence_relay_horizon_runtime_test.go",
 		"evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go",
 		"runtime_evidence_launch_config_test.go",
+		"evidence_relay_retained_publication_test.go",
 	})}
-	selected[1].sources = map[string][]string{"./validator": releaseEvidenceV2GateSources(t, []string{"../validator/release_evidence_publication_discovery_v2_test.go", "../validator/release_evidence_publication_discovery_race_v2_test.go"})}
+	selected[1].sources = map[string][]string{"./validator": releaseEvidenceV2GateSources(t, []string{"../validator/release_evidence_publication_discovery_v2_test.go", "../validator/release_evidence_publication_discovery_race_v2_test.go", "../validator/release_evidence_publication_retained_v2_test.go"})}
 	selected[2].sources = map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_relay_horizon_test.go"})}
 	for _, group := range selected {
 		if err := verifyReleaseEvidenceV2GateGroup(script, group); err != nil {
@@ -59,8 +60,11 @@ func TestProducerGateStateSelectionFundedRelayRetainsAuthenticatedOwners(t *test
 		{path: "evidence_relay_horizon_runtime.go", caller: "prepareHorizon", callees: []string{"readHorizonNative", "requireHorizonRemaining", "readAdmittedHorizon", "DiscoverValidatorEvidencePublicationV2Manifests", "DiscoverValidatorEvidenceDepositAuditV2Manifests", "readClosedPublication", "readAuditPublication"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readHorizonNative", callees: []string{"FinalizedHeadContext", "ReadValidatorScheduleAtContext", "MeetsNonSelfStakeAndPermit"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readAdmittedHorizon", callees: []string{"Entries", "ReadReleaseEvidenceV2SetupFile", "validateEvidenceRelayRequest", "admit"}},
-		{path: "evidence_relay_horizon_runtime.go", caller: "readClosedPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidencePublicationV2"}},
-		{path: "evidence_relay_horizon_runtime.go", caller: "readAuditPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidenceDepositAuditV2"}},
+		{path: "evidence_relay_horizon_runtime.go", caller: "readClosedPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidencePublicationV2", "ReadRetainedValidatorEvidencePublicationV2"}},
+		{path: "evidence_relay_horizon_runtime.go", caller: "readAuditPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidenceDepositAuditV2", "ReadRetainedValidatorEvidenceDepositAuditV2"}},
+		{path: "evidence_relay_continuation_capture.go", caller: "captureEvidenceRelayContinuationWithLimitsAt", callees: []string{"newEvidenceRelayRetainedPublications", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus"}},
+		{path: "evidence_relay_retained_publication.go", caller: "newEvidenceRelayRetainedPublications", callees: []string{"authenticatedRuntimeConfigManifest", "ReadReleaseEvidenceV2SetupFile", "renderedOperatorEvidenceStoreConfig"}},
+		{path: "evidence_relay_retained_publication.go", caller: "readers", callees: []string{"ReadAttemptObjectTo"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "checkRemaining", callees: []string{"FinalizedBlockContext", "readHorizonNative", "requireHorizonRemaining"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "requireHorizonRemaining", callees: []string{"phaseHorizonRemaining", "requireRemaining"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "phaseHorizonRemaining", callees: []string{"provisionalResumeEnabled", "ceilings"}},
