@@ -479,6 +479,7 @@ owner boundary, not an additional agent or approval requirement.
 | PH-23 | P0 | Capacity revisions: bind funded slots, history horizon and every finite storage dimension | PH-06, PH-09, PH-11, PH-20 | Planned |
 | PH-24 | P1 | Recovery performance: authenticate each retained plan once per immutable lineage | PH-01, PH-05, PH-17 | Planned |
 | PH-25 | P1 | Supervisor lifecycle: explicit deployment stop joins every owned workload child | PH-01, PH-07, PH-21 | Planned |
+| PH-26 | P1 | Large evidence transport: typed, cancellable public replay with finite admission | PH-03, PH-08, PH-09, PH-20, PH-23 | Planned |
 
 Work in parallel on transaction/recovery (PH-01/02/06/11), chain access and
 proofs (PH-03/04/05), service/storage (PH-07/08/09/13), and scheduling/economics
@@ -1339,6 +1340,28 @@ full final acceptance interval with a clean TLS and transport incident ledger.
 Exercise terminal-scenario continuation with a live child workload, then an
 explicit deployment stop that proves every owned process group exits while its
 evidence and resumable state remain readable.
+
+**PH-26 — Large evidence transport.** The fleet renewal exposed an evidence
+shape that was valid under the selected capacity profile but could exceed the
+ordinary 64 MiB HTTP GET deadline and body limit during closed capture or public
+replay. Production must admit only explicitly typed plan, bundle and lineage
+families to their separately reviewed byte limits. After header admission, the
+server and client may use a byte-scaled, finite deadline and a bounded
+large-response semaphore; ordinary metadata and ordinary HTTP routes retain
+their existing deadline and size limits. Parent cancellation must close an
+in-flight blob read and join its worker, so a timed-out reader cannot retain a
+large buffer or slot. Every response still verifies the exact body digest,
+schema, source identity and lineage ordering.
+
+Generic metadata and manifests must not silently inherit the typed-evidence
+exception. Before a production profile can produce metadata above the ordinary
+transport limit, give that family its own finite transport owner and either a
+streaming/reference representation or an independently tested typed admission
+path. Deduplicate immutable lineage references rather than embedding the same
+ancestry in plan and prior wrappers repeatedly. Qualification covers admitted
+large GET, historical replay, server timeout cancellation, client cancellation,
+busy admission, malformed headers, digest mismatch and concurrent ordinary
+requests; it must prove finite memory, connection and worker usage under race.
 An absent or empty optional completion checkpoint means no completed work yet;
 it must initialize a durable empty state rather than crash fixture setup or
 recovery. Malformed, substituted or conflicting completion records remain hard
