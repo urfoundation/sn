@@ -116,6 +116,10 @@ func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bo
 	if err == context.DeadlineExceeded || err == io.EOF || err == io.ErrUnexpectedEOF {
 		return true, true
 	}
+	if _, observationStatus := err.(*clientKeyObservationHttpStatusError); observationStatus {
+		retryable := retryableClientKeyObservationHttpError(err)
+		return retryable, retryable
+	}
 	if publication, ok := err.(*attemptReplicaPublicationError); ok {
 		return classifyReleaseSnapshotRetryCauses(publication.causes, true)
 	}

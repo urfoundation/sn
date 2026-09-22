@@ -48,6 +48,19 @@ func NewHTTPClientKeyHistoryReader(apiURL string, byJwt func() string) (*HTTPCli
 // A fresh nonce comes from the validator caller before this method. It is
 // echoed by an independently signed observation and verified by the consumer.
 func (self *HTTPClientKeyHistoryReader) Read(ctx context.Context, observationRequest protocol.ClientKeyObservationRequest, maximum uint64) (result []byte, resultErr error) {
+	result, resultErr = self.readAttempt(ctx, observationRequest, maximum)
+	if ctx == nil || ctx.Err() != nil || !retryableClientKeyObservationHttpError(resultErr) {
+		return result, resultErr
+	}
+	if err := waitReleaseSnapshotRetry(ctx, clientKeyObservationRetryDelay); err != nil {
+		return nil, err
+	}
+	return self.readAttempt(ctx, observationRequest, maximum)
+}
+
+// A failed attempt owns and closes its whole response before another request
+// can begin. A successful response still requires independent signer checks.
+func (self *HTTPClientKeyHistoryReader) readAttempt(ctx context.Context, observationRequest protocol.ClientKeyObservationRequest, maximum uint64) (result []byte, resultErr error) {
 	if ctx == nil || self == nil || self.client == nil || self.byJwt == nil || maximum == 0 || maximum > protocol.MaxClientKeyHistoryResponseBytes {
 		return nil, errors.New("client-key history HTTP owner or byte allowance is unavailable")
 	}
@@ -91,7 +104,7 @@ func (self *HTTPClientKeyHistoryReader) Read(ctx context.Context, observationReq
 		}
 	}()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("client-key history returned HTTP %d", response.StatusCode)
+		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "history"}
 	}
 	if contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])); contentType != "application/json" {
 		return nil, errors.New("client-key history response is not JSON")
@@ -100,8 +113,11 @@ func (self *HTTPClientKeyHistoryReader) Read(ctx context.Context, observationReq
 		return nil, errors.New("client-key history response exceeds its byte allowance")
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, int64(maximum)+1))
-	if err != nil || uint64(len(encoded)) > maximum {
-		return nil, errors.Join(errors.New("client-key history response is incomplete or excessive"), err)
+	if uint64(len(encoded)) > maximum {
+		return nil, errors.New("client-key history response is incomplete or excessive")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("client-key history response is incomplete or excessive: %w", err)
 	}
 	// json.Encoder adds one newline; every retained inner wrapper remains exact.
 	encoded = bytes.TrimSuffix(encoded, []byte{'\n'})

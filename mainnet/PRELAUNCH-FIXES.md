@@ -610,6 +610,18 @@ vectors as consequences of the recorded stop while retaining the failed final
 verdict. Regression coverage exercises the actual handler, persisted scanner,
 and a post-boundary scenario through later lifecycle and terminal snapshots.
 
+The adjacent signed client-key observation path now retries an interrupted
+HTTP read once with the same nonce and pinned decision. That retry and the
+existing smaller-batch admission fallback share the two-reservation ceiling;
+they cannot multiply quota. Complete response/body-close ownership precedes
+retry, existing immutable capture slots are authenticated on recovery, and
+signature, identity, quota and storage failures stay hard. A missing transport
+response no longer adds a false signer-mismatch verdict: exhausted transient
+reads remain eligible for the existing in-process steering continuation. Tests
+discard a real signed response, authenticate its retry, reuse exact durable
+captures without a live session, and continue the real compact-head collector
+after a timeout into the next native epoch.
+
 ### PH-04 — Runtime changes and historical archive compatibility
 
 **Lesson.** Repeated version-specific admission fixes for 455/458/459/460/461

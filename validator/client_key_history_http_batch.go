@@ -1,5 +1,5 @@
-// One ordered live census uses the plural authenticated endpoint. A refusal
-// before chain work permits only one bounded smaller retry per logical client.
+// One ordered live census uses the plural authenticated endpoint. A transient
+// read or admission fallback shares the same finite per-client retry allowance.
 package validator
 
 import (
@@ -17,8 +17,8 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// The operation preserves the same nonces through an admission-only fallback.
-// Signature, identity, transport, quota and partial-response failures never retry.
+// Every retry keeps the exact nonce and decision; incomplete bodies confer no
+// authority. Transport retry and admission fallback never multiply reservations.
 func (self *HTTPClientKeyHistoryReader) ReadBatch(ctx context.Context, requests []protocol.ClientKeyObservationRequest, maximum uint64) (result [][]byte, resultErr error) {
 	if ctx == nil || self == nil || self.client == nil || self.byJwt == nil || self.batchEndpoint == "" {
 		return nil, errors.New("client-key batch has no actual authenticated Http owner")
@@ -34,6 +34,14 @@ func (self *HTTPClientKeyHistoryReader) ReadBatch(ctx context.Context, requests 
 		}
 	}()
 	result, err := self.readBatchAttempt(ctx, owned)
+	if ctx.Err() == nil && retryableClientKeyObservationHttpError(err) {
+		if err := waitReleaseSnapshotRetry(ctx, clientKeyObservationRetryDelay); err != nil {
+			return nil, err
+		}
+		// The second reservation is final, including if it receives a work
+		// refusal. Never follow a transport retry with another fallback.
+		return self.readBatchAttempt(ctx, owned)
+	}
 	if !errors.Is(err, protocol.ErrClientKeyObservationBatchWork) || len(owned.Requests) <= protocol.ClientKeyObservationFallbackBatchClients {
 		return result, err
 	}
@@ -74,7 +82,7 @@ func (self *HTTPClientKeyHistoryReader) readBatchAttempt(ctx context.Context, ba
 	if err := errors.Join(ctx.Err(), batch.Validate()); err != nil {
 		return nil, err
 	}
-	// Copy the concrete client so the original singleton remains exactly30s.
+	// Copy the concrete client so the original singleton keeps its own ceiling.
 	// The caller's earlier deadline/cancellation still wins over this ceiling.
 	ownedClient := *self.client
 	ownedClient.Timeout = time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
@@ -115,7 +123,7 @@ func (self *HTTPClientKeyHistoryReader) readBatchAttempt(ctx context.Context, ba
 		return nil, protocol.ErrClientKeyObservationBatchWork
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("client-key batch returned Http %d", response.StatusCode)
+		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "batch"}
 	}
 	if contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])); contentType != "application/json" || len(response.Header.Values("Content-Type")) != 1 {
 		return nil, errors.New("client-key batch response is not unambiguous Json")
@@ -124,8 +132,11 @@ func (self *HTTPClientKeyHistoryReader) readBatchAttempt(ctx context.Context, ba
 		return nil, errors.New("client-key batch response exceeds its wire allowance")
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, int64(batch.MaximumResponseBytes)+1))
-	if err != nil || uint64(len(body)) > batch.MaximumResponseBytes {
-		return nil, errors.Join(errors.New("client-key batch response is incomplete or excessive"), err)
+	if uint64(len(body)) > batch.MaximumResponseBytes {
+		return nil, errors.New("client-key batch response is incomplete or excessive")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("client-key batch response is incomplete or excessive: %w", err)
 	}
 	body = bytes.TrimSuffix(body, []byte{'\n'})
 	decoded, err := protocol.DecodeClientKeyObservationBatchResponse(body, batch.MaximumResponseBytes, uint64(len(batch.Requests)))
