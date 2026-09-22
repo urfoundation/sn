@@ -3257,7 +3257,7 @@ func annotateScenarioExpectedFaults(observation *ScenarioObservation, records []
 func scenarioFaultTargets(records []ScenarioFaultRecord, head uint64, includeDue bool) []string {
 	seen := map[string]bool{}
 	for _, record := range records {
-		expected := record.Status == "active"
+		expected := record.Status == "active" || record.Status == "pending" && record.ControlStartedBlock != 0
 		if includeDue && record.Status == "pending" && head >= record.TriggerBlock {
 			expected = true
 		}
@@ -5248,7 +5248,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		}
 		fleetLifecycle = &liveFleetLifecycle{cfg: runtimeCfg, stateDir: stateDir, executor: scenarioExecutor, attempt: attempt}
 	}
-	faultDriver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}
+	faultDriver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg, minerControlHead: probe.FinalizedHead}
 	if scenarioExecutor != nil && scenarioExecutor.plan != nil && scenarioExecutor.payloads != nil {
 		faultDriver.planHash = scenarioExecutor.plan.PlanHash
 		faultDriver.coordinator = strings.ToLower(scenarioExecutor.payloads.Manifest.CoordinatorProxy.Hex())

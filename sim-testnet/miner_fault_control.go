@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -34,6 +33,7 @@ type minerFaultControlProgress struct {
 	CompletedCount int                    `json:"completed_count"`
 	Completed      []FaultProcessEvidence `json:"completed,omitempty"`
 	Pending        string                 `json:"pending,omitempty"`
+	PendingTargets []string               `json:"pending_targets,omitempty"`
 	Attempts       uint64                 `json:"attempts"`
 	LastError      string                 `json:"last_error,omitempty"`
 }
@@ -41,7 +41,7 @@ type minerFaultControlProgress struct {
 // Reject substituted targets, phase changes and orphan progress before any
 // recovery request. Historical ledgers without progress remain recoverable.
 func validateMinerFaultControlProgress(active activeFaultFile) error {
-	if len(active.MinerControls) != 0 && active.Schema != "urnetwork-sim-active-faults-v2" {
+	if len(active.MinerControls) != 0 && active.Schema != "urnetwork-sim-active-faults-v2" && active.Schema != minerControlProgressSchema {
 		return errors.New("miner control progress requires the versioned recovery ledger")
 	}
 	seen := map[string]bool{}
@@ -77,6 +77,19 @@ func validateMinerFaultControlProgress(active activeFaultFile) error {
 		}
 		if progress.Pending != "" && (!targets[progress.Pending] || completed[progress.Pending]) {
 			return errors.New("miner control progress has an invalid pending target")
+		}
+		if active.Schema != minerControlProgressSchema && len(progress.PendingTargets) != 0 {
+			return errors.New("parallel miner control progress has a legacy schema")
+		}
+		pending := map[string]bool{}
+		for index, target := range progress.PendingTargets {
+			if !targets[target] || pending[target] || completed[target] || index > 0 && progress.PendingTargets[index-1] >= target {
+				return errors.New("miner control progress has invalid parallel pending targets")
+			}
+			pending[target] = true
+		}
+		if active.Schema == minerControlProgressSchema && (len(progress.PendingTargets) == 0 && progress.Pending != "" || len(progress.PendingTargets) != 0 && progress.Pending != progress.PendingTargets[0]) {
+			return errors.New("miner control progress changed its pending target projection")
 		}
 		if progress.Phase == "active" && (progress.CompletedCount != progress.Total || progress.Pending != "" || progress.LastError != "") {
 			return errors.New("active miner control progress is incomplete")
@@ -182,13 +195,14 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 		active.MinerControls = append(active.MinerControls, minerFaultControlProgress{FaultId: spec.ID, FaultHash: hash, Phase: "restoring", Total: len(processes)})
 		index = len(active.MinerControls) - 1
 	}
-	active.Schema = "urnetwork-sim-active-faults-v2"
 	progress := &active.MinerControls[index]
+	upgradeMinerControlProgress(&active)
 	if enable && progress.Phase != "restoring" {
 		progress.Phase = "restoring"
 		progress.Completed = nil
 		progress.CompletedCount = 0
 		progress.Pending = ""
+		progress.PendingTargets = nil
 		progress.Attempts = 0
 		progress.LastError = ""
 	}
@@ -213,54 +227,33 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 	if enable {
 		action = "enable"
 	}
-	for _, process := range processes {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		completed := progress.Completed[:0]
-		for _, prior := range progress.Completed {
-			if prior.ID != process.ID {
-				completed = append(completed, prior)
-			}
-		}
-		progress.Completed = completed
-		progress.Pending = process.ID
-		if err := persist(); err != nil {
-			return nil, err
-		}
-		var miner int
-		_, _ = fmt.Sscanf(process.ID, "miner-%d", &miner)
-		swarm, _ := minerSwarmFor(self.cfg, miner)
-		before := func() error {
-			if progress.Attempts == math.MaxUint64 {
-				return errors.New("miner control attempt counter exhausted")
-			}
-			progress.Attempts++
-			return persist()
-		}
-		recordFailure := func(failure error) error {
-			progress.LastError = failure.Error()
-			if len(progress.LastError) > minerControlMaximumError {
-				progress.LastError = progress.LastError[:minerControlMaximumError]
-			}
-			return persist()
-		}
-		targetCtx, cancel := context.WithTimeout(ctx, minerControlTargetTimeout)
-		err := self.controlMiner(targetCtx, swarm, process.ID, action, before, recordFailure)
+	if err := self.controlMinerRound(ctx, processes, action, progress, persist); err != nil {
+		return processes, err
+	}
+	if self.minerControlHead != nil {
+		headCtx, cancel := context.WithTimeout(ctx, minerControlRequestTimeout)
+		head, err := self.minerControlHead(headCtx)
 		cancel()
 		if err != nil {
-			return nil, errors.Join(fmt.Errorf("%s %s: %w", action, process.ID, err), recordFailure(err))
+			if ctx.Err() == nil && minerControlTransientError(err) {
+				return processes, &minerControlPendingError{cause: err}
+			}
+			return processes, err
 		}
-		progress.Completed = append(progress.Completed, process)
-		sort.Slice(progress.Completed, func(i, j int) bool { return progress.Completed[i].ID < progress.Completed[j].ID })
-		progress.Pending = ""
-		progress.LastError = ""
-		if err := persist(); err != nil {
-			return nil, err
+		if head.Number == 0 || !validCanonicalHashHex(head.Hash) {
+			return processes, errors.New("miner control completion has an invalid finalized head")
 		}
+		self.minerControlCompleted = minerControlCompletedTransition{faultId: spec.ID, action: action, head: head}
 	}
 	if !enable {
 		progress.Phase = "active"
+		for index := range active.Processes {
+			for _, process := range processes {
+				if active.Processes[index].ID == process.ID {
+					active.Processes[index] = process
+				}
+			}
+		}
 		if err := persist(); err != nil {
 			return nil, err
 		}
@@ -471,13 +464,14 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 		wait = waitSupervisorRestart
 	}
 	attempts, observationFailures := 0, 0
-	var conflict error
+	var conflict, lastFailure error
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		observation, err := self.observeMinerControl(ctx, swarm, target)
 		if err != nil {
+			lastFailure = err
 			if saveErr := recordFailure(err); saveErr != nil {
 				return errors.Join(err, saveErr)
 			}
@@ -501,7 +495,7 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 					return conflict
 				}
 				if attempts >= minerControlMaximumAttempts {
-					return errors.New("miner control transient retry budget exhausted")
+					return fmt.Errorf("miner control transient retry budget exhausted: %w", lastFailure)
 				}
 				if err := before(); err != nil {
 					return err
@@ -525,6 +519,7 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 				if requestErr == nil {
 					requestErr = &minerControlHttpError{status: code, detail: strings.TrimSpace(string(raw))}
 				}
+				lastFailure = requestErr
 				if saveErr := recordFailure(requestErr); saveErr != nil {
 					return errors.Join(requestErr, saveErr)
 				}

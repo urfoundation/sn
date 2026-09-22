@@ -68,7 +68,7 @@ func TestMinerControlUpgradesLegacyRecoveryBeforeEnable(t *testing.T) {
 	observed := false
 	fixture.driver.minerControlClient.Transport = minerControlTestTransport(func(request *http.Request) (*http.Response, error) {
 		active, err := readActiveFaultFile(fixture.driver.activePath())
-		if err != nil || active.Schema != "urnetwork-sim-active-faults-v2" || len(active.MinerControls) != 1 || active.MinerControls[0].Phase != "restoring" {
+		if err != nil || active.Schema != minerControlProgressSchema || len(active.MinerControls) != 1 || active.MinerControls[0].Phase != "restoring" {
 			t.Fatalf("legacy recovery was not upgraded before request: %+v, %v", active, err)
 		}
 		observed = true
@@ -97,7 +97,7 @@ func TestMinerControlRemovalPreservesVersionedIndependentFault(t *testing.T) {
 		t.Fatal(err)
 	}
 	active, err := readActiveFaultFile(fixture.driver.activePath())
-	if err != nil || active.Schema != "urnetwork-sim-active-faults-v2" || len(active.Faults) != 1 || active.Faults[0].ID != other.ID || len(active.MinerControls) != 1 || active.MinerControls[0].FaultId != other.ID || active.MinerControls[0].Phase != "active" {
+	if err != nil || active.Schema != minerControlProgressSchema || len(active.Faults) != 1 || active.Faults[0].ID != other.ID || len(active.MinerControls) != 1 || active.MinerControls[0].FaultId != other.ID || active.MinerControls[0].Phase != "active" {
 		t.Fatalf("restoration discarded independent versioned fault: %+v, %v", active, err)
 	}
 	if _, err := fixture.driver.Apply(context.Background(), other); err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -55,7 +56,7 @@ func newMinerControlTestFixture(t *testing.T, targets ...string) *minerControlTe
 		fault:  scenarioFaultSpec{ID: "synthetic-cohort", Kind: "miner-control", Targets: targets},
 		states: map[string]string{},
 		driver: &liveScenarioFaultDriver{
-			stateDir: dir, cfg: cfg,
+			stateDir: dir, cfg: cfg, minerControlParallel: 1,
 			minerControlURL: func(_ int, target, action string) string {
 				return "http://swarm.example/control/" + target + "/" + action
 			},
@@ -101,7 +102,19 @@ func (self *minerControlTestFixture) roundTrip(request *http.Request) (*http.Res
 	}
 	status := minerControlSwarmStatus{Schema: "urnetwork-provider-swarm-v1", Configured: self.driver.cfg.Config.Topology.Miners / self.driver.cfg.Config.Topology.MinerSwarmProcesses}
 	status.Running = status.Configured
+	owningSwarm := 1
+	if len(parts) == 3 {
+		var miner int
+		_, _ = fmt.Sscanf(parts[1], "miner-%d", &miner)
+		owningSwarm, _ = minerSwarmFor(self.driver.cfg, miner)
+	}
 	for id, state := range self.states {
+		var miner int
+		_, _ = fmt.Sscanf(id, "miner-%d", &miner)
+		swarm, _ := minerSwarmFor(self.driver.cfg, miner)
+		if swarm != owningSwarm {
+			continue
+		}
 		if state != "running" {
 			status.Running--
 		}
@@ -324,7 +337,7 @@ func TestMinerControlMalformedSuccessDoesNotBecomeCompletion(t *testing.T) {
 	}
 }
 
-func TestMinerControlInterruptedApplyCannotBeAdoptedAndRestoresAmbiguousTarget(t *testing.T) {
+func TestMinerControlInterruptedApplyReconcilesWithoutRepeatingMutation(t *testing.T) {
 	fixture := newMinerControlTestFixture(t, "miner-1", "miner-2")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -344,9 +357,10 @@ func TestMinerControlInterruptedApplyCannotBeAdoptedAndRestoresAmbiguousTarget(t
 	if progress.Phase != "applying" || progress.Total != 2 || progress.CompletedCount != 1 || progress.Pending != "miner-2" {
 		t.Fatalf("interrupted apply progress = %+v", progress)
 	}
-	if _, err := fixture.driver.Apply(context.Background(), fixture.fault); err == nil || !strings.Contains(err.Error(), "unfinished miner control") {
-		t.Fatalf("partial activation was adopted: %v", err)
+	if _, err := fixture.driver.Apply(context.Background(), fixture.fault); err != nil {
+		t.Fatalf("exact partial activation did not reconcile its live desired state: %v", err)
 	}
+	fixture.requirePosts(t, "/control/miner-1/disable", "/control/miner-2/disable")
 	fixture.driver.minerControlClient.Transport = minerControlTestTransport(fixture.roundTrip)
 	if err := fixture.driver.Recover(context.Background()); err != nil {
 		t.Fatal(err)
@@ -411,7 +425,7 @@ func TestMinerControlCompletedProgressRequiresFreshStateAfterRestart(t *testing.
 	if err := reopened.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	fixture.requirePosts(t, "/control/miner-1/enable", "/control/miner-1/enable", "/control/miner-2/enable")
+	fixture.requirePosts(t, "/control/miner-1/enable", "/control/miner-2/enable", "/control/miner-1/enable")
 }
 
 func TestMinerControlLegacyReadyStatusReconcilesLostEnableReply(t *testing.T) {

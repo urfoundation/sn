@@ -70,6 +70,9 @@ type ScenarioFaultRecord struct {
 	RestoredProcesses          []FaultProcessEvidence `json:"restored_processes,omitempty"`
 	Status                     string                 `json:"status"`
 	Error                      string                 `json:"error,omitempty"`
+	ControlStartedBlock        uint64                 `json:"control_started_block,omitempty"`
+	ControlStartedBlockHash    string                 `json:"control_started_block_hash,omitempty"`
+	ControlPendingRounds       uint64                 `json:"control_pending_rounds,omitempty"`
 }
 
 type scenarioFaultDriver interface {
@@ -84,14 +87,18 @@ type scenarioContainerRuntime interface {
 }
 
 type liveScenarioFaultDriver struct {
-	stateDir           string
-	cfg                *ResolvedConfig
-	planHash           string
-	coordinator        string
-	containers         scenarioContainerRuntime
-	minerControlURL    func(swarm int, target, action string) string
-	minerControlClient *http.Client
-	minerControlWait   func(context.Context, time.Duration) error
+	stateDir                 string
+	cfg                      *ResolvedConfig
+	planHash                 string
+	coordinator              string
+	containers               scenarioContainerRuntime
+	minerControlURL          func(swarm int, target, action string) string
+	minerControlClient       *http.Client
+	minerControlWait         func(context.Context, time.Duration) error
+	minerControlParallel     int
+	minerControlRoundContext func(context.Context) (context.Context, context.CancelFunc)
+	minerControlHead         func(context.Context) (ChainHead, error)
+	minerControlCompleted    minerControlCompletedTransition
 }
 
 type dockerScenarioContainerRuntime struct{ docker dockerCLI }
@@ -221,7 +228,7 @@ func readActiveFaultFile(path string) (activeFaultFile, error) {
 		return activeFaultFile{}, err
 	}
 	var active activeFaultFile
-	if decodeStrictJSONBytes(b, &active) != nil || (active.Schema != "urnetwork-sim-active-faults-v1" && active.Schema != "urnetwork-sim-active-faults-v2") || len(active.Faults) == 0 {
+	if decodeStrictJSONBytes(b, &active) != nil || (active.Schema != "urnetwork-sim-active-faults-v1" && active.Schema != "urnetwork-sim-active-faults-v2" && active.Schema != minerControlProgressSchema) || len(active.Faults) == 0 {
 		return activeFaultFile{}, errors.New("invalid active fault recovery file; refusing ambiguous process state")
 	}
 	ids := map[string]bool{}
@@ -553,8 +560,14 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 	// idempotent; a merely matching ID or overlapping target still fails below.
 	if index, exactErr := activeFaultIndex(active, spec); exactErr == nil {
 		for _, progress := range active.MinerControls {
-			if progress.FaultId == spec.ID && progress.Phase != "active" {
-				return nil, fmt.Errorf("fault %s has unfinished miner control; recovery is required before adoption", spec.ID)
+			if progress.FaultId != spec.ID {
+				continue
+			}
+			if progress.Phase == "applying" {
+				return d.controlMiners(ctx, spec, false)
+			}
+			if progress.Phase != "active" {
+				return nil, fmt.Errorf("fault %s has unfinished restoring miner control; activation is forbidden", spec.ID)
 			}
 		}
 		targets := make(map[string]bool, len(active.Faults[index].Targets))
@@ -588,7 +601,7 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 		active.MinerControls = append(active.MinerControls, minerFaultControlProgress{
 			FaultId: spec.ID, FaultHash: faultHash, Phase: "applying", Total: len(processes),
 		})
-		active.Schema = "urnetwork-sim-active-faults-v2"
+		upgradeMinerControlProgress(&active)
 		// The intent includes every target before any request can become
 		// ambiguous. An interrupted apply remains recoverable, never adopted.
 		if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
@@ -664,7 +677,7 @@ func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaul
 		processes, restoreErr = d.signal(spec, syscall.SIGCONT)
 	}
 	if restoreErr != nil {
-		return nil, restoreErr
+		return processes, restoreErr
 	}
 	if spec.Kind == "miner-control" {
 		active, err = readActiveFaultFile(d.activePath())
@@ -730,7 +743,7 @@ func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 		return d.removeOrphanValidatorViewFilters()
 	}
 	for _, fault := range active.Faults {
-		if _, err := d.Restore(ctx, fault); err != nil {
+		if _, err := waitMinerFaultTransition(ctx, func() ([]FaultProcessEvidence, error) { return d.Restore(ctx, fault) }); err != nil {
 			return fmt.Errorf("recover active fault %s: %w", fault.ID, err)
 		}
 	}
@@ -1214,7 +1227,7 @@ func armPreAcceptanceFaults(ctx context.Context, specs []scenarioFaultSpec, driv
 		if !spec.PreAcceptance {
 			continue
 		}
-		processes, err := driver.Apply(ctx, spec)
+		processes, err := waitMinerFaultTransition(ctx, func() ([]FaultProcessEvidence, error) { return driver.Apply(ctx, spec) })
 		if err != nil {
 			for index := len(applied) - 1; index >= 0; index-- {
 				_, _ = driver.Restore(context.Background(), applied[index])
@@ -1298,10 +1311,28 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Apply(ctx, specs[i])
 			if err != nil {
+				if record.Kind == "miner-control" && minerControlPending(err) {
+					if record.ControlPendingRounds == ^uint64(0) {
+						record.Status, record.Error = "failed", "miner control pending round counter exhausted"
+						return errors.New(record.Error)
+					}
+					if record.ControlStartedBlock == 0 {
+						record.ControlStartedBlock, record.ControlStartedBlockHash = head.Number, head.Hash
+					}
+					record.ControlPendingRounds++
+					record.Processes, record.Error = processes, err.Error()
+					continue
+				}
 				record.Status, record.Error = "failed", err.Error()
 				return err
 			}
-			record.Status, record.AppliedBlock, record.AppliedBlockHash, record.Processes = "active", head.Number, head.Hash, processes
+			completedHead, err := minerFaultCompletedHead(driver, specs[i], "disable", head)
+			if err != nil {
+				record.Status, record.Error = "failed", err.Error()
+				return err
+			}
+			record.Status, record.AppliedBlock, record.AppliedBlockHash, record.Processes = "active", completedHead.Number, completedHead.Hash, processes
+			record.Error = ""
 		case "active":
 			minimumDuration := specs[i].MinimumDurationBlocks
 			if specs[i].RestoreCondition == "" {
@@ -1329,10 +1360,25 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Restore(ctx, specs[i])
 			if err != nil {
+				if record.Kind == "miner-control" && minerControlPending(err) {
+					if record.ControlPendingRounds == ^uint64(0) {
+						record.Status, record.Error = "failed", "miner control pending round counter exhausted"
+						return errors.New(record.Error)
+					}
+					record.ControlPendingRounds++
+					record.Error = err.Error()
+					continue
+				}
 				record.Status, record.Error = "failed", err.Error()
 				return err
 			}
-			record.Status, record.RestoredBlock, record.RestoredBlockHash, record.RestoredProcesses = "restored", head.Number, head.Hash, processes
+			completedHead, err := minerFaultCompletedHead(driver, specs[i], "enable", head)
+			if err != nil {
+				record.Status, record.Error = "failed", err.Error()
+				return err
+			}
+			record.Status, record.RestoredBlock, record.RestoredBlockHash, record.RestoredProcesses = "restored", completedHead.Number, completedHead.Hash, processes
+			record.Error = ""
 		}
 	}
 	return nil
