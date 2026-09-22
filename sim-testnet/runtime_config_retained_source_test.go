@@ -21,6 +21,7 @@ import (
 // The original render survives exact V6 adoption, while strict rendering still
 // requires the new identity and children receive only the approved capacity.
 func TestEvidenceRelaySourceExpansionRetainedManifestAndValidatorHandoff(t *testing.T) {
+	t.Parallel()
 	fixture, executor := newEvidenceRelayExpansionTest(t)
 	retainEvidenceRelaySourceExpansionSetupTest(t, fixture, executor)
 	cfg, stateDir := fixture.cfg, fixture.stateDir
@@ -74,7 +75,7 @@ func TestEvidenceRelaySourceExpansionRetainedManifestAndValidatorHandoff(t *test
 		t.Fatal(err)
 	}
 	cfg.provisionalResume = &provisionalResumeState{
-		Record: &provisionalResumeRecord{Command: "resume", PlanHash: plan.PlanHash, Provisional: true},
+		Record:     &provisionalResumeRecord{Command: "resume", PlanHash: plan.PlanHash, Provisional: true},
 		RecordPath: filepath.Join(stateDir, "provisional-resumes", "synthetic", "provenance.json"),
 	}
 	before := validatorNamespaceTreeSnapshot(t, stateDir)
@@ -93,6 +94,35 @@ func TestEvidenceRelaySourceExpansionRetainedManifestAndValidatorHandoff(t *test
 	}
 	if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, stateDir)) {
 		t.Fatal("retained manifest verification changed original state")
+	}
+	for _, fault := range []string{"missing", "empty", "malformed"} {
+		path := runtimeConfigManifestPath(stateDir)
+		if fault == "missing" {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			var changed []byte
+			if fault == "malformed" {
+				changed = []byte("{synthetic-invalid\n")
+			}
+			if err := os.WriteFile(path, changed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before := validatorNamespaceTreeSnapshot(t, stateDir)
+		if _, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, plan); err == nil || !strings.Contains(err.Error(), "read runtime config manifest") {
+			t.Fatalf("%s retained manifest gained startup authority: %v", fault, err)
+		}
+		if err := verifyRuntimeBlobConfigManifest(resolved, stateDir); err == nil || !strings.Contains(err.Error(), "read runtime config manifest") {
+			t.Fatalf("%s retained manifest gained store authority: %v", fault, err)
+		}
+		if !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, stateDir)) {
+			t.Fatal("rejected retained manifest was silently rebuilt", fault)
+		}
+		if err := atomicWrite(path, manifestBytes, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := attachProvisionalActivationSetup(cfg, stateDir, plan, fixture.roles, specs); err != nil {
 		t.Fatal(err)
@@ -115,7 +145,9 @@ func TestEvidenceRelaySourceExpansionRetainedManifestAndValidatorHandoff(t *test
 		if err != nil || bytesSHA256(configBytes) != handoff.ConfigSHA256 {
 			t.Fatal("handoff changed the original config pin", err)
 		}
-		var rendered struct { Evidence validatorcomponent.ReleaseEvidenceV2Config `yaml:"evidence_v2"` }
+		var rendered struct {
+			Evidence validatorcomponent.ReleaseEvidenceV2Config `yaml:"evidence_v2"`
+		}
 		if err := yaml.Unmarshal(configBytes, &rendered); err != nil || !reflect.DeepEqual(rendered.Evidence.Bounds, want.Original) {
 			t.Fatal("retained YAML was rewritten with successor bounds", err)
 		}
@@ -124,26 +156,42 @@ func TestEvidenceRelaySourceExpansionRetainedManifestAndValidatorHandoff(t *test
 		rewriteRuntimeConfigManifest(t, stateDir, func(manifest *RuntimeConfigManifest) {
 			hash := "0x" + strings.Repeat("91", 32)
 			switch field {
-			case "config": manifest.ConfigHash = hash
-			case "policy": manifest.PolicyHash = hash
-			case "evidence": manifest.EvidenceV2Hash = hash
-			case "upload": manifest.AttemptUploadHash = hash
+			case "config":
+				manifest.ConfigHash = hash
+			case "policy":
+				manifest.PolicyHash = hash
+			case "evidence":
+				manifest.EvidenceV2Hash = hash
+			case "upload":
+				manifest.AttemptUploadHash = hash
 			}
 		})
 		if _, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, plan); err == nil {
 			t.Fatal("retained identity admitted changed manifest field", field)
 		}
-		if err := atomicWrite(runtimeConfigManifestPath(stateDir), manifestBytes, 0o600); err != nil { t.Fatal(err) }
+		if err := atomicWrite(runtimeConfigManifestPath(stateDir), manifestBytes, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	path := filepath.Join(stateDir, "runtime", "validator-1", "validator.yml")
 	wire, err := os.ReadFile(path)
-	if err != nil { t.Fatal(err) }
-	if err := atomicWrite(path, append(bytes.Clone(wire), []byte("# changed\n")...), 0o600); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(path, append(bytes.Clone(wire), []byte("# changed\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, plan); err == nil {
 		t.Fatal("retained startup accepted changed config bytes")
 	}
-	if err := atomicWrite(path, wire, 0o600); err != nil { t.Fatal(err) }
+	if err := atomicWrite(path, wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cfg.provisionalResume.Record.FinalAcceptance = true
-	if _, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, plan); err == nil { t.Fatal("retained identity became final acceptance") }
-	if err := verifyRuntimeBlobConfigManifest(resolved, stateDir); err == nil { t.Fatal("retained store identity became final acceptance") }
+	if _, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, plan); err == nil {
+		t.Fatal("retained identity became final acceptance")
+	}
+	if err := verifyRuntimeBlobConfigManifest(resolved, stateDir); err == nil {
+		t.Fatal("retained store identity became final acceptance")
+	}
 }

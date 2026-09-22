@@ -642,27 +642,27 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 			if definitionErr != nil || hashErr != nil || startErr != nil {
 				return nil, errors.Join(errors.New("campaign recovery cannot materialize absent pre-acceptance result"), definitionErr, hashErr, startErr)
 			}
-			if err := os.MkdirAll(runDir, 0o700); err != nil {
-				return nil, fmt.Errorf("campaign recovery create absent pre-acceptance run directory: %w", err)
-			}
-			if err := os.WriteFile(filepath.Join(runDir, "observations.jsonl"), []byte(preAcceptanceInterruptedObservationMarker), 0o600); err != nil {
-				return nil, fmt.Errorf("campaign recovery create absent pre-acceptance observations: %w", err)
-			}
 			gate, err := loadLiveProcessLogGate(stateDir)
 			if err != nil {
 				return nil, fmt.Errorf("campaign recovery load live process-log gate: %w", err)
 			}
-			if err := gate.WritePreAcceptanceEvidence(runDir); err != nil {
-				return nil, fmt.Errorf("campaign recovery write absent pre-acceptance process-log evidence: %w", err)
-			}
-			failure := errors.New("provisional pre-acceptance owner was interrupted before its scenario directory was created")
-			result, writeErr := writeInitialScenarioFailure(cfg, runDir, prior.payload.RunID, definitionHash, definition, started.UTC(), nil, prior, failure)
-			resultPath := filepath.Join(runDir, "result.json")
-			if result == nil {
-				return nil, errors.Join(errors.New("campaign recovery could not materialize absent pre-acceptance result"), writeErr)
-			}
-			if _, err := os.Lstat(resultPath); err != nil {
-				return nil, errors.Join(errors.New("campaign recovery could not persist absent pre-acceptance result"), writeErr, err)
+			if err := publishAbsentCampaignRecoveryRun(runDir, func(staging string) error {
+				if err := atomicWrite(filepath.Join(staging, "observations.jsonl"), []byte(preAcceptanceInterruptedObservationMarker), 0o600); err != nil {
+					return fmt.Errorf("campaign recovery create absent pre-acceptance observations: %w", err)
+				}
+				if err := gate.WritePreAcceptanceEvidence(staging); err != nil {
+					return fmt.Errorf("campaign recovery write absent pre-acceptance process-log evidence: %w", err)
+				}
+				failure := errors.New("provisional pre-acceptance owner was interrupted before its scenario directory was created")
+				result, writeErr := writeInitialScenarioFailure(cfg, staging, prior.payload.RunID, definitionHash, definition, started.UTC(), nil, prior, failure)
+				// The expected scenario failure is returned only after every output
+				// succeeds; any other error is an incomplete publication.
+				if result == nil || writeErr != failure {
+					return errors.Join(errors.New("campaign recovery could not materialize absent pre-acceptance result"), writeErr)
+				}
+				return nil
+			}); err != nil {
+				return nil, err
 			}
 			now = time.Now().UTC()
 		} else if err != nil {

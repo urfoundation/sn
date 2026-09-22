@@ -49,6 +49,7 @@ func retainEvidenceRelaySourceExpansionSetupTest(t *testing.T, fixture *runtimeE
 
 // The approved lifetime covers full work while preserving finite exact bounds.
 func TestEvidenceRelaySourceExpansionFitsFullWorkAndReportsExactFailure(t *testing.T) {
+	t.Parallel()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
 	original := cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds
 	approved, err := doubledEvidenceRelaySourceBounds(original)
@@ -79,6 +80,7 @@ func TestEvidenceRelaySourceExpansionFitsFullWorkAndReportsExactFailure(t *testi
 
 // Real lineage and renderer paths keep original files and apply approved bounds.
 func TestEvidenceRelaySourceExpansionPreservesLineageAndRendersApprovedBounds(t *testing.T) {
+	t.Parallel()
 	fixture, executor := newEvidenceRelayExpansionTest(t)
 	retainEvidenceRelaySourceExpansionSetupTest(t, fixture, executor)
 	beforeConfig, err := json.Marshal(fixture.cfg.Config)
@@ -154,6 +156,7 @@ func TestEvidenceRelaySourceExpansionPreservesLineageAndRendersApprovedBounds(t 
 
 // Refresh and import retain the exact original approval without compounding it.
 func TestEvidenceRelaySourceExpansionRefreshAndImportCannotChangeApproval(t *testing.T) {
+	t.Parallel()
 	fixture, executor := newEvidenceRelayExpansionTest(t)
 	current := evidenceRelaySourceExpansionRequestTest(t, fixture, executor)
 	for _, multiplier := range []uint64{0, 2} {
@@ -220,6 +223,7 @@ func TestEvidenceRelaySourceExpansionRefreshAndImportCannotChangeApproval(t *tes
 
 // Only an explicit continuation request may introduce the source expansion.
 func TestEvidenceRelaySourceExpansionRequiresExplicitCaptureOption(t *testing.T) {
+	t.Parallel()
 	for _, sample := range []struct {
 		command string
 		options cliOptions
