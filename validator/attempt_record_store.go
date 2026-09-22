@@ -288,19 +288,26 @@ func attemptStoreCheckLifecycle(pending map[connect.Id]AttemptRecord, terminal m
 // DeploymentID may require six output bytes per input byte when JSON-escaped;
 // this bounded factor precedes the exact MaxRecordBytes check. These checks
 // do not replace the subsequent record hash and signature verification.
-func (self *attemptRecordStore) encodeRecord(record AttemptRecord) ([]byte, error) {
+func (self *attemptRecordStore) checkRecordShape(record AttemptRecord) error {
 	if record.Identity != self.identity.Identity || record.M < connect.VerifyMMin || record.M > connect.VerifyMMax || len(record.Assignments) == 0 || len(record.Assignments) >= record.M || len(record.ServerNonce) != connect.VerifyNonceSize || len(record.VPK) != ed25519.PublicKeySize || len(record.Signature) != ed25519.SignatureSize || len(record.RecordHash) != 66 || len(record.PreviousHash) != 66 || len(record.Boundary.EVMBlockHash) != 66 || len(record.Schema) > 128 || len(record.Disposition) > 64 {
-		return nil, errors.New("attempt record store record shape is invalid")
+		return errors.New("attempt record store record shape is invalid")
 	}
 	for _, assignment := range record.Assignments {
 		if len(assignment.Trail) >= record.M || len(assignment.AssignMessage) > 1024 || len(assignment.AssignSignature) != ed25519.SignatureSize || len(assignment.Binding.FleetID) != 66 || len(assignment.Binding.Hotkey) != 66 {
-			return nil, errors.New("attempt record store assignment shape is invalid")
+			return errors.New("attempt record store assignment shape is invalid")
 		}
 	}
 	if proof := record.Proof; proof != nil {
 		if len(proof.Hops) != record.M || len(proof.ServerNonce) != connect.VerifyNonceSize || len(proof.Vpk) != ed25519.PublicKeySize || len(proof.FinalSig) != ed25519.SignatureSize || len(proof.VerifierSig) != ed25519.SignatureSize || len(proof.VpkSig) != ed25519.SignatureSize || len(proof.FinalDigest) != 32 || len(proof.PathId) != 32 {
-			return nil, errors.New("attempt record store proof shape is invalid")
+			return errors.New("attempt record store proof shape is invalid")
 		}
+	}
+	return nil
+}
+
+func (self *attemptRecordStore) encodeRecord(record AttemptRecord) ([]byte, error) {
+	if err := self.checkRecordShape(record); err != nil {
+		return nil, err
 	}
 	raw, err := json.Marshal(&record)
 	if err != nil {
@@ -321,7 +328,7 @@ func (self *attemptRecordStore) decodeRecord(raw []byte) (AttemptRecord, error) 
 	if err := attemptStoreDecode(raw, &record); err != nil {
 		return record, err
 	}
-	if _, err := self.encodeRecord(record); err != nil {
+	if err := self.checkRecordShape(record); err != nil {
 		return record, err
 	}
 	if err := verifyAttemptRecord(&record, self.identity.Identity, self.vpk, nil, false); err != nil {
@@ -335,9 +342,11 @@ func (self *attemptRecordStore) decodeRecord(raw []byte) (AttemptRecord, error) 
 	return record, nil
 }
 
-// Missing an in-range record is corruption, not an empty successful read.
+// Missing an in-range record is corruption, not an empty successful read. The
+// existing bounded cache shares decompressed blocks for adjacent checkpoints
+// during the otherwise random trail-order replay.
 func (self *attemptRecordStore) readRecord(sequence uint64) (AttemptRecord, error) {
-	raw, err := self.db.Get(attemptStoreRecordKey(sequence), &opt.ReadOptions{DontFillCache: true, Strict: opt.StrictAll})
+	raw, err := self.db.Get(attemptStoreRecordKey(sequence), &opt.ReadOptions{Strict: opt.StrictAll})
 	if err != nil {
 		return AttemptRecord{}, err
 	}
@@ -391,9 +400,11 @@ func (self *attemptRecordStore) openContents(ctx context.Context) error {
 	return self.check(ctx)
 }
 
-// Two ordered scans verify the global chain and each complete trail history
-// without retaining either collection. Marker identity and exact counts make
-// record -> marker -> terminal/pending state a bijection, not a count heuristic.
+// Ordered scans verify the global chain and each complete trail history without
+// retaining either collection. The first pass reads only chain headers; the
+// exact marker bijection fully decodes and authenticates every record once in
+// the second pass. No result is admitted until both passes and the key census
+// succeed against this exclusively owned database.
 func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 	if self.head.LastSequence > self.bounds.MaxRecordCount || self.head.RecordBytes > self.bounds.MaxRawRecordBytes || self.head.TrailCount > self.bounds.MaxTrailCount {
 		return errAttemptRecordStoreLimit
@@ -412,7 +423,19 @@ func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 			return errors.New("attempt record store record sequence is incomplete")
 		}
 		raw := iterator.Value()
-		record, err := self.decodeRecord(raw)
+		if uint64(len(raw)) > self.bounds.MaxRecordBytes {
+			iterator.Release()
+			return fmt.Errorf("%w: stored record bytes", errAttemptRecordStoreLimit)
+		}
+		// This is only a chain projection, never independent authority. Full
+		// canonical JSON, shape, identity, hash and signature validation follows
+		// through each unique exact trail marker below, including skipped fields.
+		var record struct {
+			Sequence     uint64 `json:"sequence"`
+			PreviousHash string `json:"previous_hash"`
+			RecordHash   string `json:"record_hash"`
+		}
+		err := json.Unmarshal(raw, &record)
 		if err != nil || record.Sequence != count+1 || record.PreviousHash != root || uint64(len(raw)) > self.bounds.MaxRawRecordBytes-recordBytes {
 			iterator.Release()
 			return errors.Join(errors.New("attempt record store record chain differs"), err)

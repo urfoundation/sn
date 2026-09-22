@@ -52,7 +52,7 @@ func writeStoppedAttemptCapacityDiagnosticTest(t *testing.T, stateDir string) st
 	return path
 }
 
-// Nine startup boundaries used to perform both signed record scans each time.
+// Nine startup boundaries used to perform the complete signed replay each time.
 // A fresh owner reproduces that cost; one invocation must perform it only once.
 func TestStoppedAttemptLedgerCapacityCacheReusesOneSignedReplay(t *testing.T) {
 	fixture, stateDir, limits, prefix := newStoppedAttemptCapacityCacheTest(t, 16)
@@ -74,7 +74,7 @@ func TestStoppedAttemptLedgerCapacityCacheReusesOneSignedReplay(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		expected = read(&StoppedAttemptLedgerCapacityCache{hooks: hooks})
 	}
-	perReplay := 2*int(prefix.LastSequence) + 1
+	perReplay := int(prefix.LastSequence) + 1
 	if decodes != 9*perReplay {
 		t.Fatalf("uncached signed replay decodes = %d, want %d", decodes, 9*perReplay)
 	}
@@ -329,7 +329,7 @@ func TestStoppedAttemptLedgerCapacityCacheNeverPublishesFailedReplay(t *testing.
 		t.Fatal("failed signed replay published capacity", err)
 	}
 	fail = false
-	if err := read(); err != nil || decodes != 2*int(prefix.LastSequence)+2 {
+	if err := read(); err != nil || decodes != int(prefix.LastSequence)+2 {
 		t.Fatal("retry skipped the failed signed replay", err)
 	}
 	priorDecodes := decodes

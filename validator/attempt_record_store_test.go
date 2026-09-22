@@ -1082,7 +1082,7 @@ func TestAttemptRecordStoreCreateCollisionNeverTruncates(t *testing.T) {
 	}
 }
 
-// Reopen performs two exact one-record passes; Walk decodes each selected
+// Reopen authenticates each indexed record once; Walk decodes each selected
 // record once, independent of how much prior history the store contains.
 func TestAttemptRecordStoreBoundsStreamingDecodeWork(t *testing.T) {
 	fixture := newAttemptRecordStoreTestFixture(t, 2)
@@ -1109,7 +1109,7 @@ func TestAttemptRecordStoreBoundsStreamingDecodeWork(t *testing.T) {
 		}
 		return nil
 	}})
-	if decodes.Load() != 32 || largest.Load() == 0 || largest.Load() > bounds.MaxRecordBytes {
+	if decodes.Load() != 16 || largest.Load() == 0 || largest.Load() > bounds.MaxRecordBytes {
 		t.Fatalf("reopen work/maximum record bytes = %d/%d", decodes.Load(), largest.Load())
 	}
 	decodes.Store(0)
