@@ -21,7 +21,7 @@ import (
 
 const (
 	processLogGateSchema        = "urnetwork-sim-process-log-gate-v1"
-	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v9"
+	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v10"
 	processLogClassifierV2      = "urnetwork-sim-process-log-classifier-v2"
 	processLogClassifierV3      = "urnetwork-sim-process-log-classifier-v3"
 	processLogClassifierV4      = "urnetwork-sim-process-log-classifier-v4"
@@ -31,6 +31,7 @@ const (
 	processLogClassifierV6      = "urnetwork-sim-process-log-classifier-v6"
 	processLogClassifierV7      = "urnetwork-sim-process-log-classifier-v7"
 	processLogClassifierV8      = "urnetwork-sim-process-log-classifier-v8"
+	processLogClassifierV9      = "urnetwork-sim-process-log-classifier-v9"
 	processLogGateStateFilename = "process-log-gate.json"
 	processLogEvidenceFilename  = "process-logs.json"
 	processLogMaximumLineBytes  = 1024 * 1024
@@ -84,6 +85,9 @@ type processLogCursor struct {
 	ChunkChain        string `json:"scanned_chunk_chain_sha256"`
 	ScannedTailSHA256 string `json:"scanned_tail_sha256,omitempty"`
 	PrefixHash        string `json:"acceptance_prefix_sha256,omitempty"`
+	// Older API builds emitted joined errors across lines. Retain their
+	// cancellation continuation until the next structured log record.
+	ArtifactCancellationContinuation bool `json:"artifact_cancellation_continuation,omitempty"`
 }
 
 type processLogGateState struct {
@@ -282,6 +286,9 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return processLogClassification{class: "postgres-null-byte", summary: "PostgreSQL rejected a transaction intent containing a NUL byte"}, true
 	case strings.Contains(lower, "completehandshake failed: context canceled"):
 		return processLogClassification{class: "connection-canceled", summary: "connection handshake was canceled", faultAttributable: true}, true
+	}
+	if processLogArtifactRequestCancellation(text) {
+		return processLogClassification{class: "artifact-request-canceled", summary: "immutable artifact reader canceled its request", nonblockingDisposition: "request-canceled"}, true
 	}
 
 	// These exact classes are expected protocol/lifecycle noise and have their
@@ -667,7 +674,7 @@ func sameProcessLogCursorInventory(actual, expected []processLogCursor) bool {
 }
 
 func validatePersistedProcessLogGate(state processLogGateState) error {
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
+	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
 		return errors.New("process log gate schema or classifier does not match this release")
 	}
 	if state.Classifier == processLogClassifierV2 {
@@ -693,6 +700,9 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 		return errors.New("process log gate supervisor generation is incomplete")
 	}
 	for _, cursor := range state.Cursors {
+		if state.Classifier != processLogClassifierVersion && cursor.ArtifactCancellationContinuation {
+			return errors.New("legacy process log classifier has a future artifact continuation")
+		}
 		if cursor.InitialOffset < 0 || cursor.Offset < cursor.InitialOffset || cursor.DigestOffset < cursor.InitialOffset || cursor.DigestOffset > cursor.Offset || (cursor.Device == 0) != (cursor.Inode == 0) || cursor.InitialOffset > 0 && cursor.Inode == 0 || cursor.ScannedBytes != uint64(cursor.Offset-cursor.InitialOffset) || cursor.ChunkChain == "" {
 			return fmt.Errorf("process log gate cursor %s/%s is invalid", cursor.ProcessID, cursor.Stream)
 		}
@@ -757,7 +767,7 @@ func migrateProcessLogClassifier(state *processLogGateState) (bool, error) {
 	if state.Classifier == processLogClassifierVersion {
 		return false, nil
 	}
-	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 {
+	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV9 {
 		return false, errors.New("process log classifier has no supported migration")
 	}
 	if err := validatePersistedProcessLogGate(*state); err != nil {
@@ -1189,6 +1199,18 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 			self.recordFindingWithLock(cursor, processLogClassification{class: "log-overrun", summary: "process log contains an overlong line"}, lineOffset, hashProcessLogLine(line), observedAt)
 		} else if len(line) != 0 {
 			classification, matched := classifyProcessLogLine(line)
+			if cursor.ArtifactCancellationContinuation {
+				text := strings.TrimSpace(string(line))
+				if text != "context canceled" && text != "EOF" {
+					cursor.ArtifactCancellationContinuation = false
+					if !matched && !processLogStructuredRecord(text) {
+						classification, matched = processLogClassification{class: "artifact-stream-failure", summary: "artifact stream reported an additional failure after request cancellation"}, true
+					}
+				}
+			}
+			if classification.class == "artifact-request-canceled" {
+				cursor.ArtifactCancellationContinuation = true
+			}
 			if matched {
 				self.recordClassifiedLineWithLock(cursor, classification, faults, lineOffset, hashProcessLogLine(line), observedAt)
 			}

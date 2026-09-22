@@ -599,6 +599,17 @@ shared deadlines, cancellation joins, preserved successes, correct permanent
 classification and eventual continuation after a network outage. Exercise the
 real caller layers, including both validator paths and the artifact reader.
 
+**2026-09-22 cancellation follow-up.** Generation 24 reached its signed
+acceptance scope but a normal client-canceled immutable download became a
+blocking process warning. The production artifact handler now distinguishes a
+request-owned cancellation from deadline, integrity, storage and write errors;
+a partial body still aborts. The simulator recognizes only the exact legacy
+handler diagnostic and retains any subsequent joined failure across polls and
+restarts. Interrupted runs label pending, never-triggered faults and unexercised
+vectors as consequences of the recorded stop while retaining the failed final
+verdict. Regression coverage exercises the actual handler, persisted scanner,
+and a post-boundary scenario through later lifecycle and terminal snapshots.
+
 ### PH-04 — Runtime changes and historical archive compatibility
 
 **Lesson.** Repeated version-specific admission fixes for 455/458/459/460/461

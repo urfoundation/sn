@@ -29,6 +29,7 @@ type ScenarioAnomaly struct {
 	Disposition     string `json:"disposition,omitempty"`
 	Regression      string `json:"regression,omitempty"`
 	ResolvedByRun   string `json:"resolved_by_run,omitempty"`
+	DerivedFrom     string `json:"derived_from,omitempty"`
 }
 
 type ScenarioAnomalyLedger struct {
@@ -292,6 +293,7 @@ func attachScenarioAnomalyGate(result *ScenarioResult, generatedAt time.Time, st
 	}
 	result.Assertions = assertions
 	result.Anomalies = buildScenarioAnomalyLedger(result.RunID, generatedAt, start, current, result.Assertions, result.Faults, result.Adversaries, history...)
+	annotateInterruptedScenarioAnomalies(result)
 	observationHash := ""
 	if current != nil {
 		observationHash = current.ObservationHash
@@ -303,7 +305,13 @@ func attachScenarioAnomalyGate(result *ScenarioResult, generatedAt time.Time, st
 	}
 	message := "no unexpected anomalies"
 	if len(result.Anomalies.Entries) != 0 {
-		message = fmt.Sprintf("%d open anomalies; see anomalies.json", len(result.Anomalies.Entries))
+		derived := 0
+		for _, entry := range result.Anomalies.Entries {
+			if entry.DerivedFrom != "" {
+				derived++
+			}
+		}
+		message = fmt.Sprintf("%d open anomalies; %d unexercised consequences of interruption; see anomalies.json", len(result.Anomalies.Entries)-derived, derived)
 	}
 	result.Assertions = append(result.Assertions, AssertionRecord{
 		ID: anomalyGateAssertionID, Passed: len(result.Anomalies.Entries) == 0, Message: message,
