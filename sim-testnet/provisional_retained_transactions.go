@@ -3,9 +3,12 @@ package main
 // Starting transaction-capable children must not turn an unknown broadcast
 // into a fresh nonce. Local plan-only adoption itself dispatches nothing.
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // Call after authenticating retained postconditions. Finalized failures are
@@ -19,41 +22,98 @@ func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []J
 		owner identity
 		hash  string
 	}
-	broadcasts := map[transaction]bool{}
-	finalized := map[transaction]bool{}
-	verified := map[identity]bool{}
+	broadcastKVs := map[transaction]JournalEntry{}
+	ownerTransactionKVs := map[identity]map[transaction]bool{}
+	pendingKVs := map[transaction]JournalEntry{}
+	resolvedKVs := map[transaction]bool{}
+	finalizedNonceKVs := map[string]uint64{}
 	allowed := plan.allowedPlanHashes()
 	for _, entry := range entries {
 		if !allowed[entry.PlanHash] {
 			continue
 		}
-		owner := identity{entry.PlanHash, entry.ActionID, entry.IntentHash}
-		tx := transaction{owner, entry.TransactionHash}
+		owner := identity{plan: entry.PlanHash, action: entry.ActionID, intent: entry.IntentHash}
+		tx := transaction{owner: owner, hash: entry.TransactionHash}
 		switch entry.Stage {
 		case StageBroadcast:
 			if !validCanonicalHashHex(entry.TransactionHash) {
 				return errors.New("retained broadcast has no exact transaction hash")
 			}
-			broadcasts[tx] = true
+			if prior, exists := broadcastKVs[tx]; exists && (retainedProvisionalSignerKey(prior.Signer) != retainedProvisionalSignerKey(entry.Signer) || prior.Nonce != entry.Nonce) {
+				return errors.New("retained broadcast changed its exact signer or nonce")
+			}
+			broadcastKVs[tx] = entry
+			if ownerTransactionKVs[owner] == nil {
+				ownerTransactionKVs[owner] = map[transaction]bool{}
+			}
+			ownerTransactionKVs[owner][tx] = true
+			if !resolvedKVs[tx] {
+				pendingKVs[tx] = entry
+			}
 		case StageFinalized:
-			if validCanonicalHashHex(entry.TransactionHash) && entry.BlockNumber != 0 && validCanonicalHashHex(entry.BlockHash) {
-				finalized[tx] = true
+			broadcast, exists := broadcastKVs[tx]
+			if !exists || !validCanonicalHashHex(entry.TransactionHash) || entry.BlockNumber == 0 || !validCanonicalHashHex(entry.BlockHash) {
+				continue
+			}
+			if (entry.Signer != "" && retainedProvisionalSignerKey(entry.Signer) != retainedProvisionalSignerKey(broadcast.Signer)) || (entry.Nonce != "" && entry.Nonce != broadcast.Nonce) {
+				return errors.New("retained finalized outcome changed its signed slot")
+			}
+			resolvedKVs[tx] = true
+			delete(pendingKVs, tx)
+			// Finalization rows may omit the slot; its exact broadcast supplies it.
+			// A consumed slot says nothing about the old action's effects or fees.
+			if signer, nonce, valid := retainedProvisionalTransactionSlot(broadcast); valid {
+				prior, seen := finalizedNonceKVs[signer]
+				if !seen || nonce > prior {
+					finalizedNonceKVs[signer] = nonce
+				}
 			}
 		case StageVerified:
-			if validCanonicalHashHex(entry.PostconditionHash) && entry.PostconditionPath != "" {
-				verified[owner] = true
+			if !validCanonicalHashHex(entry.PostconditionHash) || entry.PostconditionPath == "" {
+				continue
+			}
+			// A receipt resolves only a preceding exact transaction, never a later
+			// broadcast under the same action. Legacy hashless receipts must be unique.
+			for prior := range ownerTransactionKVs[owner] {
+				if entry.TransactionHash == prior.hash || (entry.TransactionHash == "" && len(ownerTransactionKVs[owner]) == 1) {
+					resolvedKVs[prior] = true
+					delete(pendingKVs, prior)
+				}
 			}
 		}
 	}
 	var unresolved []string
-	for tx := range broadcasts {
-		if !finalized[tx] && !verified[tx.owner] {
-			unresolved = append(unresolved, tx.owner.action+":"+tx.hash)
+	for tx, broadcast := range pendingKVs {
+		if signer, nonce, valid := retainedProvisionalTransactionSlot(broadcast); valid {
+			if finalizedNonce, exists := finalizedNonceKVs[signer]; exists && nonce <= finalizedNonce {
+				continue
+			}
 		}
+		unresolved = append(unresolved, tx.owner.action+":"+tx.hash)
 	}
 	if len(unresolved) == 0 {
 		return nil
 	}
 	sort.Strings(unresolved)
 	return fmt.Errorf("retained startup requires exact outcome reconciliation for unresolved broadcasts: %v", unresolved)
+}
+
+// EVM checksum spelling does not create another account; native SS58 case does.
+// The prefix keeps those nonce domains distinct within the authenticated chain.
+func retainedProvisionalSignerKey(signer string) string {
+	if len(signer) == 42 && strings.HasPrefix(signer, "0x") {
+		if _, err := hex.DecodeString(signer[2:]); err == nil {
+			return "evm:" + strings.ToLower(signer)
+		}
+	}
+	return "native:" + signer
+}
+
+// Missing or noncanonical legacy slots cannot supply consumption evidence.
+func retainedProvisionalTransactionSlot(entry JournalEntry) (string, uint64, bool) {
+	nonce, err := strconv.ParseUint(entry.Nonce, 10, 64)
+	if entry.Signer == "" || err != nil || strconv.FormatUint(nonce, 10) != entry.Nonce {
+		return "", 0, false
+	}
+	return retainedProvisionalSignerKey(entry.Signer), nonce, true
 }
