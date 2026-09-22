@@ -21,7 +21,13 @@ import (
 // receipt. All other setup actions remain pending exactly as in its approval.
 func provisionalAllowanceAdoptionFixture(t *testing.T) (*Executor, []byte) {
 	t.Helper()
-	cfg, source, stateDir, options, original := provisionalRuntimePlanFixture(t)
+	return provisionalAllowanceAdoptionFixtureWithConfig(t, nil)
+}
+
+// Bind synthetic transport inputs before archiving and approving the plan.
+func provisionalAllowanceAdoptionFixtureWithConfig(t *testing.T, configure func(*ResolvedConfig)) (*Executor, []byte) {
+	t.Helper()
+	cfg, source, stateDir, options, original := provisionalRuntimePlanFixtureWithConfig(t, "", configure)
 	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(source.PlanHash)+".json"), original, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // Read-only by construction: no signing or transaction-submission operation.
@@ -31,14 +32,72 @@ func (self retainedProvisionalEVMOutcomeReader) TransactionInBlock(ctx context.C
 // Resolve only pending permitted-lineage EVM broadcasts. Native transactions
 // keep their existing exact reconciliation requirement and cannot be guessed.
 func (self *Executor) reconcileRetainedProvisionalTransactionOutcomes(ctx context.Context) error {
-	if self == nil || self.journal == nil || self.plan == nil {
+	return self.reconcileRetainedProvisionalTransactionOutcomesWithPolicy(ctx, defaultFinalSemanticRPCRetryPolicy())
+}
+
+// A fixed retry budget owns both temporary-reader admission and outcome proof.
+func (self *Executor) reconcileRetainedProvisionalTransactionOutcomesWithPolicy(ctx context.Context, policy finalSemanticRPCRetryPolicy) error {
+	if ctx == nil || self == nil || self.journal == nil || self.plan == nil {
 		return errors.New("retained startup reconciliation is incomplete")
 	}
-	var reader retainedProvisionalOutcomeReader
-	if self.deployer != nil && self.deployer.client != nil {
-		reader = retainedProvisionalEVMOutcomeReader{ethEVMReceiptFinalityReader: ethEVMReceiptFinalityReader{client: self.deployer.client}}
+	pending, err := unresolvedRetainedProvisionalTransactions(self.plan, self.journal.Entries())
+	if err != nil {
+		return err
 	}
-	return reconcileRetainedProvisionalEVMOutcomes(ctx, self, reader, defaultFinalSemanticRPCRetryPolicy())
+	needsReader := false
+	for _, entry := range pending {
+		needsReader = needsReader || strings.HasPrefix(retainedProvisionalSignerKey(entry.Signer), "evm:")
+	}
+	if !needsReader {
+		return ctx.Err()
+	}
+	var client *ethclient.Client
+	if self.deployer != nil && self.deployer.client != nil {
+		client = self.deployer.client
+	} else {
+		// Retained stopped startup intentionally has no transaction managers.
+		// Open only the approved direct reader, only while reconciling actual
+		// pending EVM outcomes. Never depend on its stopped egress proxy.
+		cfg := self.auditAuthorizedConfig
+		if cfg == nil {
+			cfg = self.cfg
+		}
+		if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.ChainID != self.plan.ChainID {
+			return errors.New("retained startup EVM reader has no matching approved configuration")
+		}
+		if err := validateOwnedRPCPlan(cfg, self.plan); err != nil {
+			return fmt.Errorf("retained startup EVM reader authority: %w", err)
+		}
+		if err := validateExecutionRPCConfiguration(cfg); err != nil {
+			return fmt.Errorf("retained startup EVM reader route: %w", err)
+		}
+		endpoint := cfg.OperationalEVM
+		if ownedRPCOnly(cfg) {
+			endpoint = verificationEVMEndpoint(cfg)
+		}
+		if err := retryEvmReadRpcCall(ctx, "retained startup EVM reader dial", policy, func(readCtx context.Context) error {
+			var err error
+			client, err = dialConfiguredEVMClient(readCtx, cfg, endpoint)
+			return err
+		}); err != nil {
+			return fmt.Errorf("open retained startup EVM reader: %w", err)
+		}
+		defer client.Close()
+	}
+	if err := retryEvmReadRpcCall(ctx, "retained startup EVM reader chain identity", policy, func(readCtx context.Context) error {
+		chainId, err := client.ChainID(readCtx)
+		if err != nil {
+			return err
+		}
+		if chainId == nil || chainId.Cmp(new(big.Int).SetUint64(self.plan.ChainID)) != 0 {
+			return fmt.Errorf("retained startup EVM reader chain id %v differs from approved %d", chainId, self.plan.ChainID)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	reader := retainedProvisionalEVMOutcomeReader{ethEVMReceiptFinalityReader: ethEVMReceiptFinalityReader{client: client}}
+	return reconcileRetainedProvisionalEVMOutcomes(ctx, self, reader, policy)
 }
 
 // Journal finality resolves a consumed nonce, not a postcondition. A finalized
@@ -59,8 +118,14 @@ func reconcileRetainedProvisionalEVMOutcomes(ctx context.Context, self *Executor
 		if !strings.HasPrefix(retainedProvisionalSignerKey(broadcast.Signer), "evm:") {
 			continue
 		}
-		if reader == nil || self.plan.ChainID == 0 || broadcast.DeploymentID != self.plan.DeploymentID || broadcast.RecoveryBlock == 0 || !validCanonicalHashHex(broadcast.RecoveryBlockHash) {
-			return errors.New("retained EVM outcome lacks its original deployment, reader or recovery checkpoint")
+		if reader == nil {
+			return errors.New("retained EVM outcome reader is unavailable")
+		}
+		if self.plan.ChainID == 0 || broadcast.DeploymentID != self.plan.DeploymentID {
+			return errors.New("retained EVM outcome differs from its original deployment or chain")
+		}
+		if broadcast.RecoveryBlock == 0 || !validCanonicalHashHex(broadcast.RecoveryBlockHash) {
+			return errors.New("retained EVM outcome lacks its original broadcast recovery checkpoint")
 		}
 		raw, err := readValidatorEvidenceHistoricalFile(self.stateDir, filepath.ToSlash(filepath.Join("transactions", strings.TrimPrefix(broadcast.TransactionHash, "0x")+".rlp")), maximumCampaignEvidenceRawFileBytes)
 		if err != nil {

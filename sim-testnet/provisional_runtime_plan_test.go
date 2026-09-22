@@ -23,7 +23,17 @@ func provisionalRuntimePlanFixture(t *testing.T) (*ResolvedConfig, *SetupPlan, s
 // Owned routing is selected before approval, independently of driver identity.
 func provisionalRuntimePlanFixtureWithOwnedRpc(t *testing.T, authority string) (*ResolvedConfig, *SetupPlan, string, cliOptions, []byte) {
 	t.Helper()
+	return provisionalRuntimePlanFixtureWithConfig(t, authority, nil)
+}
+
+// Configure a synthetic endpoint before approving the plan, so stopped-reader
+// tests exercise real route admission without substituting it after signing.
+func provisionalRuntimePlanFixtureWithConfig(t *testing.T, authority string, configure func(*ResolvedConfig)) (*ResolvedConfig, *SetupPlan, string, cliOptions, []byte) {
+	t.Helper()
 	cfg, _, stateDir, options := provisionalResumeTestContext(t)
+	if configure != nil {
+		configure(cfg)
+	}
 	var err error
 	cfg, err = prepareOwnedRPCConfiguration(cfg, authority)
 	if err != nil {

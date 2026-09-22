@@ -21,7 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type retainedOutcomeTestReader struct {
@@ -114,14 +113,7 @@ func newRetainedOutcomeTestFixture(t *testing.T, self *Executor, mutate func(*re
 // A normal startup used to reject this included transaction before reaching
 // any reconciliation. No transport method can sign, send or allocate a nonce.
 func TestRetainedProvisionalOutcomeReconcilesBeforeFullStartup(t *testing.T) {
-	self, original := provisionalAllowanceAdoptionFixture(t)
-	if err := self.activateProvisionalSetupRevision(t.Context(), original, func(context.Context, Action) error { return errors.New("unexpected setup action") }); err != nil {
-		t.Fatal(err)
-	}
-	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, "resume", cliOptions{Apply: true, ProvisionalResume: true, PlanHash: self.plan.PlanHash}, self.plan); err != nil {
-		t.Fatal(err)
-	}
-	fixture := newRetainedOutcomeTestFixture(t, self, nil)
+	var fixture *retainedOutcomeTestFixture
 	var reads, writes atomic.Int64
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		defer request.Body.Close()
@@ -137,6 +129,8 @@ func TestRetainedProvisionalOutcomeReconcilesBeforeFullStartup(t *testing.T) {
 		reads.Add(1)
 		var result any
 		switch call.Method {
+		case "eth_chainId":
+			result = "0x" + new(big.Int).SetUint64(fixture.executor.plan.ChainID).Text(16)
 		case "eth_getBlockByNumber":
 			var selector string
 			if len(call.Params) != 2 || json.Unmarshal(call.Params[0], &selector) != nil {
@@ -166,12 +160,19 @@ func TestRetainedProvisionalOutcomeReconcilesBeforeFullStartup(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
 	}))
 	t.Cleanup(endpoint.Close)
-	client, err := ethclient.Dial(endpoint.URL)
-	if err != nil {
+	self, original := provisionalAllowanceAdoptionFixtureWithConfig(t, func(cfg *ResolvedConfig) {
+		configureRetainedOutcomeTestEndpoint(t, cfg, endpoint.URL)
+	})
+	if err := self.activateProvisionalSetupRevision(t.Context(), original, func(context.Context, Action) error { return errors.New("unexpected setup action") }); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(client.Close)
-	self.deployer = &EvmTxManager{client: client}
+	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, "resume", cliOptions{Apply: true, ProvisionalResume: true, PlanHash: self.plan.PlanHash}, self.plan); err != nil {
+		t.Fatal(err)
+	}
+	fixture = newRetainedOutcomeTestFixture(t, self, nil)
+	if self.deployer != nil {
+		t.Fatal("stopped topology fixture unexpectedly has a transaction manager")
+	}
 	starts := 0
 	start := func(context.Context, *Executor, *provisionalStoppedTopology, map[string]string) error {
 		if err := validateRetainedProvisionalTransactionOutcomes(self.plan, self.journal.Entries()); err != nil {
@@ -181,7 +182,7 @@ func TestRetainedProvisionalOutcomeReconcilesBeforeFullStartup(t *testing.T) {
 		return nil
 	}
 	before := self.journal.Entries()
-	if err := executeRetainedProvisionalResume(t.Context(), self, &provisionalStoppedTopology{}, nil, start); err != nil || starts != 1 || writes.Load() != 0 {
+	if err := executeRetainedProvisionalResume(t.Context(), self, &provisionalStoppedTopology{}, nil, start); err != nil || starts != 1 || writes.Load() != 0 || self.deployer != nil {
 		t.Fatalf("retained startup did not reconcile first: starts=%d writes=%d error=%v", starts, writes.Load(), err)
 	}
 	after, err := readJournalEntries(self.stateDir)
@@ -195,6 +196,102 @@ func TestRetainedProvisionalOutcomeReconcilesBeforeFullStartup(t *testing.T) {
 	readCount := reads.Load()
 	if err := executeRetainedProvisionalResume(t.Context(), self, &provisionalStoppedTopology{}, nil, start); err != nil || starts != 2 || reads.Load() != readCount || len(self.journal.Entries()) != len(after) {
 		t.Fatalf("retained outcome was not idempotent: starts=%d reads=%d error=%v", starts, reads.Load(), err)
+	}
+}
+
+// Select the test-owned transport before deriving immutable plan identities.
+func configureRetainedOutcomeTestEndpoint(t *testing.T, cfg *ResolvedConfig, endpoint string) {
+	t.Helper()
+	cfg.Config.LaunchInputs.PublicEVMRPCOverride = endpoint
+	cfg.Config.LaunchInputs.PublicSubstrateRPCOverride = "ws" + strings.TrimPrefix(endpoint, "http")
+	cfg.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute = 0
+	cfg.Public.Chain.EVMPublicReadEndpoint = endpoint
+	cfg.Public.Chain.SubstratePublicReadEndpoint = cfg.Config.LaunchInputs.PublicSubstrateRPCOverride
+	var err error
+	cfg.OperationalSubstrate, cfg.OperationalEVM, cfg.OperationalRPCMode, err = resolveOperationalRPCs(cfg.Authority, cfg.Config.LaunchInputs.PublicSubstrateRPCOverride, endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConfigHash, err = releaseConfigHash(cfg.Config, cfg.Public, cfg.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The stopped path needs no reader for an empty journal or native-only work.
+// Native uncertainty is still rejected by the unchanged admission gate.
+func TestRetainedProvisionalOutcomeSkipsReaderWithoutPendingEvm(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	self := &Executor{stateDir: stateDir, journal: openCampaignTestJournal(t, stateDir), plan: &SetupPlan{DeploymentID: "synthetic-no-reader", ChainID: 945, PlanHash: "0x" + strings.Repeat("11", 32)}}
+	if err := self.reconcileRetainedProvisionalTransactionOutcomes(t.Context()); err != nil {
+		t.Fatal("empty stopped topology needed a reader", err)
+	}
+	fixture := newRetainedOutcomeTestFixture(t, nil, func(f *retainedOutcomeTestFixture) {
+		f.broadcast.Signer = "0x" + strings.Repeat("77", 32)
+		f.included.Signer = f.broadcast.Signer
+	})
+	before := fixture.executor.journal.Entries()
+	if err := fixture.executor.reconcileRetainedProvisionalTransactionOutcomes(t.Context()); err != nil || !reflect.DeepEqual(before, fixture.executor.journal.Entries()) {
+		t.Fatal("native-only uncertainty opened an EVM reader or changed progress", err)
+	}
+	if err := validateRetainedProvisionalTransactionOutcomes(fixture.executor.plan, before); err == nil {
+		t.Fatal("native uncertainty stopped blocking admission")
+	}
+}
+
+// Chain identity cannot be truncated or bypassed by opening a temporary reader.
+func TestRetainedProvisionalOutcomeRejectsTemporaryReaderIdentity(t *testing.T) {
+	t.Parallel()
+	for _, chain := range []*big.Int{big.NewInt(946), new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(945))} {
+		var calls, unrelated atomic.Int64
+		endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			defer request.Body.Close()
+			var call struct {
+				Id     json.RawMessage `json:"id"`
+				Method string
+			}
+			if err := json.NewDecoder(request.Body).Decode(&call); err != nil {
+				http.Error(w, "invalid synthetic request", http.StatusBadRequest)
+				return
+			}
+			calls.Add(1)
+			if call.Method != "eth_chainId" {
+				unrelated.Add(1)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": call.Id, "result": "0x" + chain.Text(16)})
+		}))
+		t.Cleanup(endpoint.Close)
+		fixture := newRetainedOutcomeTestFixture(t, nil, nil)
+		cfg := testResolvedConfig(t)
+		configureRetainedOutcomeTestEndpoint(t, cfg, endpoint.URL)
+		fixture.executor.cfg = cfg
+		before := fixture.executor.journal.Entries()
+		err := fixture.executor.reconcileRetainedProvisionalTransactionOutcomesWithPolicy(t.Context(), immediateFinalSemanticRetryPolicy())
+		if err == nil || !strings.Contains(err.Error(), "chain id") || calls.Load() != 1 || unrelated.Load() != 0 || fixture.executor.deployer != nil || !reflect.DeepEqual(before, fixture.executor.journal.Entries()) {
+			t.Fatalf("wrong chain %s reached outcome proof or changed progress: calls=%d unrelated=%d error=%v", chain, calls.Load(), unrelated.Load(), err)
+		}
+	}
+}
+
+// A refused transport and an explicitly canceled invocation retain all prior
+// journal rows, allowing later continuation to reconcile the same signed bytes.
+func TestRetainedProvisionalOutcomeTemporaryReaderFailurePreservesJournal(t *testing.T) {
+	t.Parallel()
+	endpoint := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	endpoint.Close()
+	fixture := newRetainedOutcomeTestFixture(t, nil, nil)
+	cfg := testResolvedConfig(t)
+	configureRetainedOutcomeTestEndpoint(t, cfg, endpoint.URL)
+	fixture.executor.cfg = cfg
+	before := fixture.executor.journal.Entries()
+	if err := fixture.executor.reconcileRetainedProvisionalTransactionOutcomesWithPolicy(t.Context(), immediateFinalSemanticRetryPolicy()); err == nil || fixture.executor.deployer != nil || !reflect.DeepEqual(before, fixture.executor.journal.Entries()) {
+		t.Fatal("refused temporary transport changed retained progress", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := fixture.executor.reconcileRetainedProvisionalTransactionOutcomesWithPolicy(ctx, immediateFinalSemanticRetryPolicy()); !errors.Is(err, context.Canceled) || !reflect.DeepEqual(before, fixture.executor.journal.Entries()) {
+		t.Fatal("canceled temporary reader changed retained progress", err)
 	}
 }
 
