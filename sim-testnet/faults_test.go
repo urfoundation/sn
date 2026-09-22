@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -416,10 +417,29 @@ func TestLiveFaultDriverControlsLogicalMinerThroughOwningProductionSwarm(t *test
 		t.Fatal(err)
 	}
 	var actions []string
+	var stateLock sync.Mutex
+	disabled := false
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		stateLock.Lock()
+		defer stateLock.Unlock()
+		if request.Method == http.MethodGet {
+			state := "running"
+			if disabled {
+				state = "disabled"
+			}
+			_ = json.NewEncoder(writer).Encode(minerControlObservation{Schema: "urnetwork-provider-swarm-member-v1", Id: "miner-1", State: state})
+			return
+		}
 		actions = append(actions, request.URL.Path)
+		disabled = strings.HasSuffix(request.URL.Path, "/disable")
+		status := minerControlSwarmStatus{Schema: "urnetwork-provider-swarm-v1", Configured: cfg.Config.Topology.Miners / cfg.Config.Topology.MinerSwarmProcesses}
+		status.Running = status.Configured
+		if disabled {
+			status.Disabled = []string{"miner-1"}
+			status.Running--
+		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"schema":"urnetwork-provider-swarm-v1"}`))
+		_ = json.NewEncoder(writer).Encode(status)
 	}))
 	defer server.Close()
 	driver := &liveScenarioFaultDriver{
@@ -436,6 +456,8 @@ func TestLiveFaultDriverControlsLogicalMinerThroughOwningProductionSwarm(t *test
 		t.Fatalf("logical miner restore = %+v, %v", after, err)
 	}
 	want := []string{"/control/miner-1/disable", "/control/miner-1/enable"}
+	stateLock.Lock()
+	defer stateLock.Unlock()
 	if len(actions) != len(want) || actions[0] != want[0] || actions[1] != want[1] {
 		t.Fatalf("miner control actions = %v, want %v", actions, want)
 	}
