@@ -654,6 +654,28 @@ manual version entry or repeated funding; an incompatible consumed interface
 halts that operation with a precise capability error. An ABI match alone does
 not establish unchanged economic semantics.
 
+**Repair admission follow-up (2026-09-22).** Fleet renewal still demanded a
+static runtime pin after continuation and diagnostics had authenticated the
+same compatible successor. Use one retained-evidence authority model across
+read-only planning, repair apply and readiness. The simulator now shares
+[the approval source selector](../sim-testnet/provisional_continuation.go):
+readers bind the active approval; setup and fleet repair bind an immutable
+reviewed successor before activating it. Exact journal/source reconstruction,
+custody, signing-domain, current capability and budget checks remain mandatory.
+Do not promote a provisional observation into release acceptance.
+
+Production should express these authorities as an evidence dependency ledger:
+each durable proof names its immutable inputs, output digest, verifier version
+and invalidation scope. Commands consume the same proof authority; they must
+not independently invent stricter or weaker versions of it. Invalidate only
+proofs dependent on changed code/metadata, chain, custody, policy, intent or
+economic observations, preserving unrelated finalized work. Qualify the full
+planning → reviewed successor → pre-apply readiness → partial apply → resume
+sequence through a compatible runtime update and changed recovery executable,
+including missing/altered archive bytes and a journal that advanced outside the
+repair. This simulator correction is a regression pattern for RT-08, not proof
+that production consumers already implement the ledger.
+
 ### PH-05 — Reusable proofs with explicit invalidation
 
 **Lesson.** Executable, release and plan changes invalidated otherwise identical

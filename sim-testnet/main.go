@@ -84,7 +84,7 @@ Common options:
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
   --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
-  --provisional-resume  reuse authenticated testnet receipts; setup may activate the exact approved repair revision; no final release acceptance
+  --provisional-resume  reuse authenticated testnet evidence for diagnostics, continuation and exact setup/fleet repairs; no final release acceptance
                         doctor observes the exact retained --plan-hash without --apply
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture

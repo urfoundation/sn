@@ -408,6 +408,17 @@ persisted signed bytes. The previous plan is archived, and every old signed
 manifest, binding, receipt and runtime queue is retained. Renewal alone does not
 launch or rerender a campaign; strict startup admission remains a separate step.
 
+For a compatible runtime update or recovery driver, add `--provisional-resume`
+to both commands. Planning also requires `--plan-hash SOURCE_HASH`, naming the
+unchanged active plan. Apply requires the emitted successor's hash and its
+`--renewal-plan` file. The shared continuation admission authenticates the actual
+driver, retained plan and current runtime capabilities; it records immutable
+non-accepting provenance. Apply archives the exact successor for its pre-apply
+doctor while keeping the predecessor active until all normal renewal checks
+pass. It neither changes runtime pins nor carries a runtime observation across
+different genesis, metadata or code identities. Omit the provisional flag to
+retain ordinary strict release admission.
+
 If an interrupted round already revoked some predecessors, the successor keeps
 their original signed bindings and attaches the exact client-authorized,
 finalized revocation separately. It does not rewrite the signed expiry or revoke

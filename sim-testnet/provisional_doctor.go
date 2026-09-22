@@ -15,26 +15,7 @@ import (
 // immutable invocation provenance is written; deployment inputs and journals
 // remain untouched, and the caller keeps its original strict configuration.
 func prepareProvisionalDoctor(ctx context.Context, cfg *ResolvedConfig, stateDir string, options cliOptions) (*ResolvedConfig, error) {
-	if err := validateProvisionalResumeOptions("doctor", options); err != nil {
-		return nil, err
-	}
-	if !options.ProvisionalResume {
-		return cfg, nil
-	}
-	if ctx == nil || cfg == nil || cfg.provisionalResume == nil {
-		return nil, errors.New("provisional doctor requires authenticated driver provenance")
-	}
-	plan, err := loadInvocationPlan(cfg, stateDir, "doctor", options)
-	if err != nil {
-		return nil, fmt.Errorf("provisional doctor requires the unchanged persisted plan: %w", err)
-	}
-	reader, provenance := *cfg, *cfg.provisionalResume
-	reader.provisionalResume = &provenance
-	reader.readOnlyAudit = true
-	if err := prepareProvisionalResume(ctx, &reader, stateDir, "doctor", options, plan); err != nil {
-		return nil, err
-	}
-	return &reader, nil
+	return prepareProvisionalRetainedReader(ctx, cfg, stateDir, "doctor", options)
 }
 
 // A recovery driver is authenticated separately from the release which
@@ -72,8 +53,9 @@ func validateProvisionalDoctorReleaseLock(ctx context.Context, cfg *ResolvedConf
 		return errors.New("provisional doctor retained release is restricted to the existing testnet")
 	}
 	invocation, record := cfg.provisionalResume, cfg.provisionalResume.Record
-	readOnly := record.Command == "doctor"
-	if record.Command != "doctor" && record.Command != "setup" && record.Command != "resume" && record.Command != "scenario" && record.Command != "coordinator-repair" || record.ReadOnly != readOnly || cfg.readOnlyAudit != readOnly || record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || record.RetainedSNRepo != cfg.Repos.SN || record.Driver != invocation.Driver || !releaseSHA256.MatchString(invocation.RecordHash) {
+	readOnly := record.ReadOnly
+	_, authorityErr := provisionalReviewedPlan(record.Command, readOnly)
+	if authorityErr != nil || cfg.readOnlyAudit != readOnly || record.Schema != "urnetwork-sim-provisional-resume-v1" || !record.Provisional || record.FinalAcceptance || record.ConfigHash != cfg.ConfigHash || record.DeploymentID != cfg.Config.Deployment.DeploymentID || record.RetainedSNRepo != cfg.Repos.SN || record.Driver != invocation.Driver || !releaseSHA256.MatchString(invocation.RecordHash) {
 		return errors.New("provisional doctor lost its exact non-accepting invocation authority")
 	}
 	options := cliOptions{

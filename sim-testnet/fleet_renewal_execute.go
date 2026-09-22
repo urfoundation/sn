@@ -29,8 +29,8 @@ func validateFleetRenewalOptions(command string, o cliOptions) error {
 		}
 		return nil
 	}
-	if o.ProvisionalResume || o.Detach || o.Name != "" {
-		return errors.New("fleet-renew requires the ordinary locked release and cannot launch a topology")
+	if o.Detach || o.Name != "" {
+		return errors.New("fleet-renew cannot launch a topology")
 	}
 	if o.Apply && (o.RenewalPlan == "" || !validCanonicalHashHex(o.PlanHash)) {
 		return errors.New("fleet-renew apply requires --renewal-plan and its exact --plan-hash")
@@ -166,7 +166,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 		return err
 	}
 	defer journal.Close()
-	if err := validateFleetRenewalSource(cfg, base, plan, journal.Entries()); err != nil {
+	if err := prepareFleetRenewalInvocation(ctx, cfg, stateDir, o, base, plan, journal.Entries()); err != nil {
 		return err
 	}
 	if err := validateFleetLifecycleRenewalPending(stateDir, base, journal.Entries()); err != nil {

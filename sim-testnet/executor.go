@@ -960,10 +960,14 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 	}
 	var plan *SetupPlan
 	var err error
-	if command == "setup" {
+	reviewed, err := provisionalReviewedPlan(command, !options.Apply)
+	if err != nil {
+		return nil, err
+	}
+	if reviewed {
 		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
 		if readErr != nil {
-			return nil, fmt.Errorf("read exact reviewed setup plan %s: %w", options.PlanHash, readErr)
+			return nil, fmt.Errorf("read exact reviewed %s plan %s: %w", command, options.PlanHash, readErr)
 		}
 		plan, err = loadPlanIdentityBytes(cfg, raw, true)
 	} else {

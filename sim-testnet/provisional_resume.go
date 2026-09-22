@@ -89,14 +89,17 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 		}
 		return nil
 	}
-	if command != "setup" && command != "resume" && command != "scenario" && command != "coordinator-repair" {
-		return errors.New("--provisional-resume is valid only for doctor, setup, resume, scenario or coordinator-repair")
+	if _, err := provisionalReviewedPlan(command, !options.Apply); err != nil {
+		return err
+	}
+	if command == "fleet-renew" && (options.Detach || options.PrepareOnly || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "" || options.Name != "" || options.Manifest != "" || options.ProvisionalRPCAuthority != "" || !options.Apply && options.RenewalPlan != "") {
+		return errors.New("provisional fleet-renew requires exact source planning or an approved repair apply; it cannot launch a topology or substitute its route")
 	}
 	if command == "setup" && (options.Detach || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "") {
 		return errors.New("provisional setup can activate an approved repair plan only; it cannot launch or accept a release")
 	}
-	if !options.Apply || !validCanonicalHashHex(options.PlanHash) {
-		return errors.New("--provisional-resume requires --apply and the exact persisted --plan-hash")
+	if !validCanonicalHashHex(options.PlanHash) {
+		return errors.New("--provisional-resume requires the exact --plan-hash")
 	}
 	return nil
 }
@@ -133,7 +136,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return err
 	}
 	record := &provisionalResumeRecord{
-		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture || command == "doctor",
+		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture || !options.Apply,
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Command: command, Scenario: options.Name,
 		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ConfigHash: cfg.ConfigHash,
 		ReleaseLockHash: plan.ReleaseLockHash, RetainedSNRepo: cfg.Repos.SN, Driver: driver,

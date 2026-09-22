@@ -450,6 +450,10 @@ func bindFleetRenewalRuntimeIdentity(cfg *ResolvedConfig, plan *SetupPlan) (*Set
 }
 
 func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) (*SetupPlan, error) {
+	cfg, err := prepareProvisionalRetainedReader(ctx, cfg, stateDir, "fleet-renew", o)
+	if err != nil {
+		return nil, err
+	}
 	base, err := loadFleetRenewalBase(cfg, stateDir)
 	if err != nil {
 		return nil, fmt.Errorf("renewal requires an admitted current setup plan: %w", err)
