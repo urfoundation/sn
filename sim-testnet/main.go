@@ -85,6 +85,7 @@ Common options:
   --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
   --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
   --provisional-resume  reuse authenticated testnet receipts; setup may activate the exact approved repair revision; no final release acceptance
+                        doctor observes the exact retained --plan-hash without --apply
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
   --relay-slots 2048  capture an explicit doubled aggregate relay funding revision
@@ -523,7 +524,11 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
 	case "doctor":
-		report := RunDoctorForState(ctx, resolved, stateDir)
+		doctorCfg, err := prepareProvisionalDoctor(ctx, resolved, stateDir, o)
+		if err != nil {
+			return err
+		}
+		report := RunDoctorForState(ctx, doctorCfg, stateDir)
 		return printResult(o.Format, report, report.Error())
 	case "plan":
 		var p *SetupPlan

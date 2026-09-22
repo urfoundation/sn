@@ -83,8 +83,14 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 	if !options.ProvisionalResume {
 		return nil
 	}
+	if command == "doctor" {
+		if options.Apply || options.Detach || options.PrepareOnly || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "" || options.Name != "" || options.Manifest != "" || options.ProvisionalRPCAuthority != "" || !validCanonicalHashHex(options.PlanHash) {
+			return errors.New("provisional doctor requires read-only options and the exact persisted --plan-hash; select an approved LAN route with --owned-rpc-authority")
+		}
+		return nil
+	}
 	if command != "setup" && command != "resume" && command != "scenario" && command != "coordinator-repair" {
-		return errors.New("--provisional-resume is valid only for setup, resume, scenario or coordinator-repair")
+		return errors.New("--provisional-resume is valid only for doctor, setup, resume, scenario or coordinator-repair")
 	}
 	if command == "setup" && (options.Detach || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "") {
 		return errors.New("provisional setup can activate an approved repair plan only; it cannot launch or accept a release")
@@ -127,7 +133,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return err
 	}
 	record := &provisionalResumeRecord{
-		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture,
+		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture || command == "doctor",
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Command: command, Scenario: options.Name,
 		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ConfigHash: cfg.ConfigHash,
 		ReleaseLockHash: plan.ReleaseLockHash, RetainedSNRepo: cfg.Repos.SN, Driver: driver,

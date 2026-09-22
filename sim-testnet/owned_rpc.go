@@ -30,8 +30,8 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
 		return errors.New("--owned-rpc-authority cannot combine another route or public-manifest override")
 	}
 	if options.ProvisionalResume {
-		if command != "setup" && command != "resume" && command != "scenario" {
-			return errors.New("provisional owned RPC is restricted to approved setup, resume or scenario")
+		if command != "doctor" && command != "setup" && command != "resume" && command != "scenario" {
+			return errors.New("provisional owned RPC is restricted to approved doctor, setup, resume or scenario")
 		}
 		if err := validateProvisionalResumeOptions(command, options); err != nil {
 			return err

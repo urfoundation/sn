@@ -38,12 +38,15 @@ type Check struct {
 	Detail string `json:"detail"`
 }
 type DoctorReport struct {
-	Schema      string  `json:"schema"`
-	GeneratedAt string  `json:"generated_at"`
-	ConfigHash  string  `json:"config_hash"`
-	PolicyHash  string  `json:"policy_hash"`
-	Checks      []Check `json:"checks"`
-	Ready       bool    `json:"ready"`
+	Schema           string  `json:"schema"`
+	GeneratedAt      string  `json:"generated_at"`
+	ConfigHash       string  `json:"config_hash"`
+	PolicyHash       string  `json:"policy_hash"`
+	Checks           []Check `json:"checks"`
+	Ready            bool    `json:"ready"`
+	Provisional      bool    `json:"provisional,omitempty"`
+	FinalAcceptance  *bool   `json:"final_acceptance,omitempty"`
+	ResumeRecordHash string  `json:"resume_record_hash,omitempty"`
 }
 
 func (r DoctorReport) Error() error {
@@ -237,6 +240,10 @@ func inspectSystemdUserManager(run func(...string) ([]byte, error), ownedService
 // the read-only mode additionally proves a newly generated plan is affordable.
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
 	r := DoctorReport{Schema: "urnetwork-sim-doctor-v1", GeneratedAt: time.Now().UTC().Format(time.RFC3339), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Ready: true}
+	if provisionalResumeEnabled(cfg) {
+		finalAcceptance := false
+		r.Provisional, r.FinalAcceptance, r.ResumeRecordHash = true, &finalAcceptance, cfg.provisionalResume.RecordHash
+	}
 	r.add("host/linux-amd64", true, validateHostPlatform(runtime.GOOS, runtime.GOARCH), runtime.GOOS+"/"+runtime.GOARCH)
 	udpLimits, udpBufferErr := readReleaseUDPBufferLimits(os.ReadFile)
 	if udpBufferErr == nil {
