@@ -770,7 +770,13 @@ func captureScenarioObservationLogPrefix(path string) (scenarioObservationLogPre
 	return scenarioObservationLogPrefix{ContentHash: bytesSHA256(data), Bytes: uint64(len(data))}, nil
 }
 
+// This durable marker is allowed only for a scenario interrupted before any observation or acceptance boundary.
+const preAcceptanceInterruptedObservationMarker = "preacceptance-interrupted-before-observation-v1\n"
+
 func decodeScenarioObservationLog(data []byte) ([]*ScenarioObservation, error) {
+	if string(data) == preAcceptanceInterruptedObservationMarker {
+		return nil, nil
+	}
 	if len(data) == 0 || data[len(data)-1] != '\n' {
 		return nil, errors.New("scenario observation log is empty or does not end at a durable record boundary")
 	}

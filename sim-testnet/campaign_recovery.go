@@ -583,12 +583,12 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	}
 	prior, priorRaw, priorRelativePath, err := readScenarioCampaignRecoveryRoot(cfg, stateDir, roles, planHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("campaign recovery read root: %w", err)
 	}
 	if len(files) != 0 {
 		records, chainErr := readScenarioCampaignRecoveryChain(cfg, stateDir, roles, planHash, files)
 		if chainErr != nil {
-			return nil, chainErr
+			return nil, fmt.Errorf("campaign recovery read lineage: %w", chainErr)
 		}
 		last := records[len(records)-1]
 		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
@@ -596,8 +596,9 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	// A signed acceptance invalidation proves that its process session cannot
 	// continue. If the process was killed between invalidation and result
 	// persistence, materialize the terminal provisional failure here. This is
-	// deliberately limited to that signed state; a pre-acceptance missing result
-	// remains an integrity error and is never synthesized.
+	// deliberately limited to that signed state.  A provisional-only exception
+	// below covers an interrupted preparation owner that never created its run
+	// directory, so it cannot erase an acceptance interval or scenario output.
 	if prior.payload.AcceptanceBoundary != nil && prior.payload.AcceptanceInvalidation != "" {
 		runDir := filepath.Join(stateDir, "runs", prior.payload.RunID)
 		resultPath := filepath.Join(runDir, "result.json")
@@ -622,6 +623,47 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 			// The terminal result uses the durable write time. Advance the
 			// successor clock after that write so ordering is checked against the
 			// actual terminal boundary rather than this function's entry time.
+			now = time.Now().UTC()
+		} else if err != nil {
+			return nil, err
+		}
+	} else if prior.payload.AcceptanceBoundary == nil && provisionalResumeEnabled(cfg) &&
+		cfg.provisionalResume.Record != nil && cfg.provisionalResume.Record.Command == "scenario" &&
+		cfg.provisionalResume.Record.Scenario == "release-candidate" && prior.payload.PlanHash != planHash &&
+		plan.allowedPlanHashes()[prior.payload.PlanHash] {
+		runDir := filepath.Join(stateDir, "runs", prior.payload.RunID)
+		if _, err := os.Lstat(runDir); errors.Is(err, os.ErrNotExist) {
+			if prior.payload.ConfigHash != cfg.ConfigHash || prior.payload.PolicyHash != cfg.PolicyHash {
+				return nil, errors.New("interrupted pre-acceptance owner has another configuration identity")
+			}
+			definition, definitionErr := scenarioDefinitionFor(cfg, prior.payload.Phase)
+			definitionHash, hashErr := scenarioDefinitionHash(definition)
+			started, startErr := time.Parse(time.RFC3339Nano, prior.payload.StartedAt)
+			if definitionErr != nil || hashErr != nil || startErr != nil {
+				return nil, errors.Join(errors.New("campaign recovery cannot materialize absent pre-acceptance result"), definitionErr, hashErr, startErr)
+			}
+			if err := os.MkdirAll(runDir, 0o700); err != nil {
+				return nil, fmt.Errorf("campaign recovery create absent pre-acceptance run directory: %w", err)
+			}
+			if err := os.WriteFile(filepath.Join(runDir, "observations.jsonl"), []byte(preAcceptanceInterruptedObservationMarker), 0o600); err != nil {
+				return nil, fmt.Errorf("campaign recovery create absent pre-acceptance observations: %w", err)
+			}
+			gate, err := loadLiveProcessLogGate(stateDir)
+			if err != nil {
+				return nil, fmt.Errorf("campaign recovery load live process-log gate: %w", err)
+			}
+			if err := gate.WritePreAcceptanceEvidence(runDir); err != nil {
+				return nil, fmt.Errorf("campaign recovery write absent pre-acceptance process-log evidence: %w", err)
+			}
+			failure := errors.New("provisional pre-acceptance owner was interrupted before its scenario directory was created")
+			result, writeErr := writeInitialScenarioFailure(cfg, runDir, prior.payload.RunID, definitionHash, definition, started.UTC(), nil, prior, failure)
+			resultPath := filepath.Join(runDir, "result.json")
+			if result == nil {
+				return nil, errors.Join(errors.New("campaign recovery could not materialize absent pre-acceptance result"), writeErr)
+			}
+			if _, err := os.Lstat(resultPath); err != nil {
+				return nil, errors.Join(errors.New("campaign recovery could not persist absent pre-acceptance result"), writeErr, err)
+			}
 			now = time.Now().UTC()
 		} else if err != nil {
 			return nil, err

@@ -716,6 +716,46 @@ func TestScenarioCampaignRecoveryRejectsIncompletePreAcceptanceFailure(t *testin
 	}
 }
 
+// A successor-authorized provisional scenario may materialize an interrupted
+// predecessor only when the predecessor never created a run directory. This
+// preserves the historical failure and advances from the retained checkpoint.
+func TestScenarioCampaignRecoveryMaterializesAbsentSuccessorPreAcceptanceRun(t *testing.T) {
+	t.Parallel()
+	fixture := newCampaignSuccessionFixture(t)
+	_, _ = bindCampaignRecoveryFixture(t, fixture)
+	predecessor, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Model a reviewed successor plan whose allowed lineage includes the
+	// interrupted owner. The recovery must only use this exact lineage.
+	nextPlan := *fixture.current
+	nextPlan.PriorPlanHashes = append([]string{fixture.current.PlanHash}, fixture.current.PriorPlanHashes...)
+	fixture.current = &nextPlan
+	fixture.writeCurrent(t)
+	fixture.cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{
+		PlanHash: fixture.current.PlanHash, Provisional: true, Command: "scenario", Scenario: "release-candidate",
+	}}
+	runDir := filepath.Join(fixture.stateDir, "runs", predecessor.payload.RunID)
+	if err := os.RemoveAll(runDir); err != nil {
+		t.Fatal(err)
+	}
+	next, err := createScenarioCampaignRecovery(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, fixture.now.Add(2*time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatalf("materialize missing pre-acceptance run: %v", err)
+	}
+	if next.payload.Recovery == nil || next.payload.Recovery.PriorRunID != predecessor.payload.RunID || next.payload.PreparationComplete {
+		t.Fatalf("recovery changed the interrupted predecessor checkpoint: %+v", next.payload.Recovery)
+	}
+	result, _, err := readScenarioCampaignRecoveryResult(fixture.cfg, fixture.stateDir, predecessor)
+	if err != nil || result.Result != "fail" || !result.Provisional || result.FinalAcceptance == nil || *result.FinalAcceptance {
+		t.Fatalf("materialized predecessor result=%+v err=%v", result, err)
+	}
+	if _, err := os.Lstat(filepath.Join(runDir, "result.json")); err != nil {
+		t.Fatalf("materialized predecessor result is absent: %v", err)
+	}
+}
+
 // A successful result is terminal but cannot authorize pre-acceptance recovery.
 func TestScenarioCampaignRecoveryRejectsNonfailedPreAcceptanceResult(t *testing.T) {
 	t.Parallel()

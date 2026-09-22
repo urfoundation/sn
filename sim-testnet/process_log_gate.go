@@ -1450,6 +1450,28 @@ func (self *processLogGate) WriteEvidence(runDir string) error {
 	return atomicWrite(filepath.Join(runDir, processLogEvidenceFilename), append(raw, '\n'), 0o644)
 }
 
+// WritePreAcceptanceEvidence writes a detached current process-log snapshot for
+// a run that ended before its acceptance boundary. A shared live gate may
+// retain an older boundary for another run; that boundary cannot be attributed
+// to this absent run.
+func (self *processLogGate) WritePreAcceptanceEvidence(runDir string) error {
+	var evidence processLogGateState
+	func() {
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
+		evidence = self.state
+		evidence.ProvisionalObservationOnly = self.provisionalObservationOnly
+		evidence.Cursors = append([]processLogCursor(nil), self.state.Cursors...)
+		evidence.Findings = append([]ProcessLogFinding(nil), self.state.Findings...)
+		evidence.AcceptanceBoundary = nil
+	}()
+	raw, err := json.MarshalIndent(evidence, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(filepath.Join(runDir, processLogEvidenceFilename), append(raw, '\n'), 0o644)
+}
+
 func processLogFindingsError(findings []ProcessLogFinding) error {
 	blocking := blockingProcessLogFindings(findings)
 	if len(blocking) == 0 {
