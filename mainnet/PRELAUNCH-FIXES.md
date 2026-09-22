@@ -1,6 +1,6 @@
 # Mainnet prelaunch fixes
 
-Updated 2026-09-21. This is the canonical tracker for fixes to complete before
+Updated 2026-09-22. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
 Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)
 adds the lessons from the wider testnet finalization. Implementation and
@@ -472,6 +472,13 @@ owner boundary, not an additional agent or approval requirement.
 | PH-16 | P0 | Qualification and evidence: deterministic faults, composed coverage and independent replay | Every affected implementation | Planned |
 | PH-17 | P0 | Plan-derived indexes: bind cached lookup structures to their immutable plan/generation owner | PH-01, PH-05, PH-06 | Planned |
 | PH-18 | P0 | Strict readers: re-authorize connection/runtime provenance at every boundary after provisional work | PH-03, PH-04, PH-05 | Planned |
+| PH-19 | P0 | Historical snapshots: use the reviewed historical runtime authority without weakening current writes | RT-01, RT-02, PH-18 | Planned |
+| PH-20 | P0 | Relay capacity: distinguish funded slots, retained history, scan pages and resident bytes | PH-06, PH-09, PH-11 | Planned |
+| PH-21 | P0 | Fault controller: bounded parallel, idempotent component control with durable partial recovery | PH-01, PH-03, PH-07, PH-10 | Planned |
+| PH-22 | P0 | Service clients: retryable transport incidents, connection recovery and final error budgets | PH-03, PH-07, PH-13, PH-15 | Planned |
+| PH-23 | P0 | Capacity revisions: bind funded slots, history horizon and every finite storage dimension | PH-06, PH-09, PH-11, PH-20 | Planned |
+| PH-24 | P1 | Recovery performance: authenticate each retained plan once per immutable lineage | PH-01, PH-05, PH-17 | Planned |
+| PH-25 | P1 | Supervisor lifecycle: explicit deployment stop joins every owned workload child | PH-01, PH-07, PH-21 | Planned |
 
 Work in parallel on transaction/recovery (PH-01/02/06/11), chain access and
 proofs (PH-03/04/05), service/storage (PH-07/08/09/13), and scheduling/economics
@@ -1133,6 +1140,93 @@ archive-replay and final-acceptance consumers. A controlled production-path
 rehearsal must resume a large authenticated history without redoing completed
 work, while refusing unapproved extra work. Link the completed sim-testnet
 fix, its Terra evidence and actual resume record before marking PH-20 done.
+
+### Generation-25 follow-up — fault, transport, capacity and recovery hardening
+
+Generation 25 started its acceptance interval at testnet block `8,062,774` on
+2026-09-22 and produced a complete terminal evidence bundle. It did not
+complete acceptance. The direct terminal error was `disable miner-848: context
+deadline exceeded` while applying the 96-member quality cohort. The fault
+controller had retained per-member intent and completed work, but dispatched
+members serially while holding the campaign callback; a transient local timeout
+therefore consumed the remaining fault window. The result also recorded
+acceptance-scope TLS handshake timeouts and adversary artifact/API GET
+deadlines. The 41 unexercised later faults are explicitly derived from this
+interruption, rather than separate production defects. Evidence is retained in
+the generation-25 `faults.json`, `process-logs.json`, `anomalies.json`,
+`assertions.json` and `result.json` under `sim-testnet/runs`.
+
+**PH-21 — Fault controller.** Persist an idempotent intent and completion
+record for every independently controlled member. Dispatch independent service
+or swarm controls with a bounded concurrency limit, never one unbounded serial
+loop. On a transient timeout, first read and reconcile the member's actual
+state, then retry only that pending member with bounded backoff; an already
+applied disable or restore is success. Record trigger, first-dispatch,
+per-member completion, effective cohort completion and restore boundaries
+separately. A temporary control-plane timeout must not erase the durable
+completed prefix or require a whole campaign restart. Invalid identities,
+conflicting state and exhausted retries remain explicit failures.
+
+**PH-22 — Transport recovery and final signal.** Treat connect/read deadlines,
+EOF/reset and HTTP `429`, `502`, `503` and `504` as bounded retry candidates
+only for idempotent reads or controls with a retained idempotency key. Reuse the
+same request identity, reconcile an uncertain outcome, record attempts and
+backoff, and preserve cancellation as cancellation rather than retrying it.
+Invalid JSON, identity/hash/signature mismatch and semantic API refusal remain
+hard failures. Transport clients must repair TLS connections and report health
+recovery; a correlated TLS incident remains visible and must be absent from the
+final acceptance interval. Adversary probes may continue after a recovered
+transient read, but final acceptance evaluates the persistent exhausted-retry
+error budget rather than the first timeout.
+
+**PH-23 — Funded capacity and physical resource profile.** A capacity revision
+must bind four different facts: funded slot/spend allowance, source-history
+horizon, upload quotas and finite archive metadata limits. Generation 25 found
+that setting 2,048 slots while leaving a 2 GiB metadata document limit would
+make the stated workload impossible. The successor profile therefore needs an
+explicit source horizon and finite, non-preallocated typed-document, retained
+metadata and supplemental-metadata ceilings with at least the reviewed 2x
+margin. It must carry an authenticated predecessor reserve exactly when no new
+spend is intended; it must never reconstruct fresh economics from the new slot
+count. Admission rejects a requested profile that does not fit every bound.
+
+**PH-24 — Recovery-lineage work.** Generation 25 authenticated 24 retained
+generations before it could publish its recovery record. The reader repeatedly
+decoded and hashed the same archived plans even though the lineage already had
+an immutable per-invocation lookup boundary. Cache each fully authenticated
+plan by its raw digest, filesystem/source witness and lineage owner; retain
+per-edge source and ordering checks on every reuse. Bound the cache, log
+generation progress, and fall back to cold authentication after an immutable
+source change. A cache must not bridge plans, authorities, generations or
+changed bytes.
+
+**PH-25 — Deployment workload ownership.** A terminal campaign and its
+deployment have distinct lifecycles. A terminal scenario may retain the exact
+healthy supervisor, claim relayers, miners, validators, proxies and supporting
+services for a successor; it must not silently repurpose them for another
+deployment. Explicit deployment stop must retain immutable evidence and the
+durable restart/continuation record, then cancel and join every owned process
+group before reporting shutdown. Generation 25 confirmed that explicit stop
+removed its supervisor and children. Never infer either continuation or cleanup
+from a dead parent while a recorded child process group remains live.
+
+**Closure for PH-21 through PH-25.** Add deterministic tests for partial cohort
+completion, timeout then state reconciliation, restart from a durable prefix,
+already-applied members, bounded swarm concurrency, exhausted retry, and no
+duplicate disable/restore. Test recovered and exhausted API/TLS reads,
+cancellation without retry, and hard semantic/integrity responses. Test funded
+successor capacity, one-byte/one-slot/one-object overages, every metadata
+dimension and imported predecessor reserve preservation. Test shared retained
+plan lookup under source replacement, truncation, symlink substitution,
+concurrent mutation and bounded eviction. Run normal and race suites, then a
+full final acceptance interval with a clean TLS and transport incident ledger.
+Exercise terminal-scenario continuation with a live child workload, then an
+explicit deployment stop that proves every owned process group exits while its
+evidence and resumable state remain readable.
+An absent or empty optional completion checkpoint means no completed work yet;
+it must initialize a durable empty state rather than crash fixture setup or
+recovery. Malformed, substituted or conflicting completion records remain hard
+failures.
 
 ### Closing and maintaining this hardening plan
 
