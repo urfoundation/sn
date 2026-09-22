@@ -171,6 +171,14 @@ The correction's retained evidence is under
 `/mnt/data/sn-testnet/qualification/terra-provisional-allowance-adoption-20260922/`:
 `candidate-census.log`, `candidate-normal.log`, `candidate-race.log`,
 `candidate-source-fence.log` and `candidate-post-run-source-fence.log`.
+The isolated `bb4cc77f` causal control passed by asserting the old guard refuses
+an unknown nonce-7 broadcast even after the same signer finalizes nonce 8.
+The candidate's consumed-slot positive test accepts that process-start boundary
+while preserving unknown action effects. The exact executed control is retained
+as `legacy-consumed-slot-causal_test.go`, SHA-256
+`86f2b60972759bed52facdd63b5d506d63496916795917ca5f9529a3a8cc66a2`.
+The corrected external evidence manifest excludes itself and has SHA-256
+`3525cdbbd203d71c5895320dfbfec16437b0fbf42c8bcb02e62f28de5a2531ef`.
 The superseded `e1206779` attempt was interrupted before final candidate
 qualification and is explicitly excluded. Base startup qualification and this
 later correction are separate scopes; neither substitutes for a live campaign
