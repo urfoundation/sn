@@ -651,6 +651,19 @@ must invalidate the affected proof. Cover partial two-observer completion,
 interruption, tampering, reorg, read-only mode, concurrent consumers and legacy
 entry migration. Measure work counts, not a convenient warm-cache runtime.
 
+**2026-09-22 path-proof follow-up.** The first scenario observation after a
+driver replacement reverified roughly 550 MB of validator path proofs because
+its prefix cache survived only in memory. The
+[durable prefix store](../sim-testnet/scenario_path_proof_store.go) authenticates
+each complete-record byte cut, SHA-256, verifier/key identity, count and unique
+trail census. It checkpoints successful chunks even when a later record fails,
+rehashes the source before reuse, and verifies only the appended suffix. A
+changed verifier requires full validation; a changed trusted prefix remains an
+integrity failure. Production consumers also need fixed snapshot cuts, bounded
+line allocation, read-only cache access and atomic publication without letting
+concurrent appends extend one observation indefinitely. Final semantic evidence
+continues to authenticate the original proof records independently of this cache.
+
 ### PH-06 — Release, plan and rendered configuration identity
 
 **Lesson.** Publishing reports invalidated a qualified executable (RL-01),

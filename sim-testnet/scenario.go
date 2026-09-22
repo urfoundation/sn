@@ -655,7 +655,7 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 			validator = inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
 		}
 		if p.pathProofs == nil {
-			p.pathProofs = newScenarioPathProofCache()
+			p.pathProofs = newDurableScenarioPathProofCache(p.cfg, p.stateDir)
 		}
 		validator.PathProofCounts, err = inspectValidatorPathProofsCached(ctx, p.cfg, p.stateDir, validatorID, observation.Operators, p.pathProofs)
 		if err != nil {
