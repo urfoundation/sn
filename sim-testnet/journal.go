@@ -15,6 +15,8 @@ import (
 
 type JournalStage string
 
+const maximumJournalRecordBytes = 4 * 1024 * 1024
+
 const (
 	StageIntent    JournalStage = "intent"
 	StageBroadcast JournalStage = "broadcast"
@@ -153,7 +155,7 @@ func (j *Journal) loadReader(file io.Reader) error {
 		j.validationCount = 0
 	}
 	scan := bufio.NewScanner(file)
-	scan.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	scan.Buffer(make([]byte, 64*1024), maximumJournalRecordBytes)
 	for scan.Scan() {
 		var e JournalEntry
 		if err := json.Unmarshal(scan.Bytes(), &e); err != nil {
@@ -279,6 +281,13 @@ func (self *Journal) rememberValidationEntry(entry JournalEntry) {
 		self.validationKVs = nil
 		return
 	}
+	self.rememberValidationWitness(entry)
+	self.validationCount++
+}
+
+// Streaming history readers retain the same action witnesses without keeping
+// a second copy of every accepted record. The ordinary journal owns its entries.
+func (self *Journal) rememberValidationWitness(entry JournalEntry) {
 	key := journalActionKey{planHash: entry.PlanHash, actionId: entry.ActionID}
 	priors := self.validationKVs[key]
 	hasTransaction, hasBroadcast := false, false
@@ -289,7 +298,6 @@ func (self *Journal) rememberValidationEntry(entry JournalEntry) {
 	if len(priors) == 0 || entry.Stage == StageVerified || (!hasTransaction && entry.TransactionHash != "") || (!hasBroadcast && entry.Stage == StageBroadcast) {
 		self.validationKVs[key] = append(priors, entry)
 	}
-	self.validationCount++
 }
 
 func (j *Journal) Append(e JournalEntry) error {

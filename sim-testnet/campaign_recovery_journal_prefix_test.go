@@ -75,9 +75,9 @@ func TestScenarioCampaignRecoveryJournalPrefixAllowsLegacyModeAndLargeGrowth(t *
 	if err != nil || info.Size() <= maximumCampaignEvidenceRawFileBytes {
 		t.Fatalf("growth fixture did not exceed raw evidence bound: %v %v", info, err)
 	}
-	raw, entries, err := readScenarioCampaignRecoveryJournalPrefix(attempt, prior)
-	if err != nil || !bytes.Equal(raw, prefix) || len(entries) != 1 || entries[0].ActionID != "synthetic-action-1" {
-		t.Fatalf("signed prefix was lost or suffix granted prior authority: bytes=%d entries=%d error=%v", len(raw), len(entries), err)
+	raw, entries, err := campaignRecoveryPrefixReadForTest(attempt, prior)
+	if err != nil || (raw == nil || raw.Bytes != uint64(len(prefix)) || raw.SHA256 != bytesSHA256(prefix)) || len(entries) != 1 || entries[0].ActionID != "synthetic-action-1" {
+		t.Fatalf("signed prefix was lost or suffix granted prior authority: cut=%+v entries=%d error=%v", raw, len(entries), err)
 	}
 	after, err := os.Stat(path)
 	if err != nil || !sameFinalCollectedFileState(info, after) {
@@ -129,8 +129,8 @@ func TestScenarioCampaignRecoveryJournalPrefixRejectsTamperAndInvalidBounds(t *t
 		if err := os.WriteFile(filepath.Join(attempt.stateDir, "journal.jsonl"), raw, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if raw, entries, err := readScenarioCampaignRecoveryJournalPrefix(attempt, prior); err == nil || raw != nil || entries != nil {
-			t.Fatalf("accepted %s: bytes=%d entries=%d error=%v", test.name, len(raw), len(entries), err)
+		if raw, entries, err := campaignRecoveryPrefixReadForTest(attempt, prior); err == nil || raw != nil || entries != nil {
+			t.Fatalf("accepted %s: cut=%+v entries=%d error=%v", test.name, raw, len(entries), err)
 		}
 	}
 }
@@ -162,8 +162,8 @@ func TestScenarioCampaignRecoveryJournalPrefixRejectsUnsafeFileTypes(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if raw, entries, err := readScenarioCampaignRecoveryJournalPrefix(attempt, prior); err == nil || raw != nil || entries != nil {
-			t.Fatalf("accepted %s: bytes=%d entries=%d error=%v", kind, len(raw), len(entries), err)
+		if raw, entries, err := campaignRecoveryPrefixReadForTest(attempt, prior); err == nil || raw != nil || entries != nil {
+			t.Fatalf("accepted %s: cut=%+v entries=%d error=%v", kind, raw, len(entries), err)
 		}
 	}
 }
@@ -174,8 +174,18 @@ func TestScenarioCampaignRecoveryJournalPrefixCapturesUnsignedCut(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(attempt.stateDir, "journal.jsonl"), prefix, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	raw, entries, err := readScenarioCampaignRecoveryJournalPrefix(attempt, prior)
-	if err != nil || !bytes.Equal(raw, prefix) || len(entries) != 1 {
-		t.Fatalf("new recovery could not capture exact journal cut: %d %d %v", len(raw), len(entries), err)
+	raw, entries, err := campaignRecoveryPrefixReadForTest(attempt, prior)
+	if err != nil || (raw == nil || raw.Bytes != uint64(len(prefix)) || raw.SHA256 != bytesSHA256(prefix)) || len(entries) != 1 {
+		t.Fatalf("new recovery could not capture exact journal cut: %+v %d %v", raw, len(entries), err)
 	}
+}
+
+// Test observation records which prefix entries reached the real streaming reader.
+func campaignRecoveryPrefixReadForTest(attempt, prior *scenarioCampaignAttempt) (*scenarioCampaignJournalCut, []JournalEntry, error) {
+	var entries []JournalEntry
+	cut, err := readScenarioCampaignRecoveryJournalPrefix(attempt, prior, func(entry JournalEntry) { entries = append(entries, entry) })
+	if err != nil {
+		return nil, nil, err
+	}
+	return cut, entries, nil
 }

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -23,7 +22,7 @@ type scenarioCampaignRecoveryProofCache struct {
 	contextHash   string
 	witnesses     []fleetCensusFileWitness
 	ancestorsKVs  map[string]bool
-	journalPrefix []byte
+	journalPrefix scenarioCampaignJournalCut
 }
 
 // Changing caller-owned configuration, custody, payload or matrix geometry
@@ -119,16 +118,12 @@ func scenarioCampaignRecoveryProofWitnesses(attempt *scenarioCampaignAttempt) ([
 
 // Read the exact bounded journal through the same safe source reader. Every
 // hit revalidates its current hash chain, including newly appended records.
-func scenarioCampaignRecoveryProofJournal(stateDir string, prefix []byte) bool {
-	if len(prefix) == 0 {
+func scenarioCampaignRecoveryProofJournal(stateDir string, prefix scenarioCampaignJournalCut) bool {
+	if prefix.Bytes == 0 {
 		return true
 	}
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "journal.jsonl", maximumCampaignEvidenceRawFileBytes)
-	if err != nil || !bytes.HasPrefix(raw, prefix) {
-		return false
-	}
-	journal := &Journal{}
-	return journal.loadReader(bytes.NewReader(raw)) == nil
+	_, _, err := readScenarioCampaignJournalSnapshot(stateDir, &prefix, nil)
+	return err == nil
 }
 
 // The full validator establishes all signed links once. Reading the already
@@ -192,7 +187,7 @@ func scenarioCampaignRecoveryAncestors(attempt *scenarioCampaignAttempt, validat
 		}
 	}
 	cache.ancestorsKVs = nil
-	journalBefore, journalErr := readValidatorEvidenceHistoricalFile(attempt.stateDir, "journal.jsonl", maximumCampaignEvidenceRawFileBytes)
+	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshot(attempt.stateDir, nil, nil)
 	if err := validate(attempt); err != nil {
 		return nil, err
 	}
@@ -203,10 +198,10 @@ func scenarioCampaignRecoveryAncestors(attempt *scenarioCampaignAttempt, validat
 	after, safeAfter := scenarioCampaignRecoveryProofWitnesses(attempt)
 	contextAfter, contextAfterErr := scenarioCampaignRecoveryProofContext(attempt)
 	stable := contextErr == nil && contextAfterErr == nil && contextHash == contextAfter && safeBefore && safeAfter && reflect.DeepEqual(before, after)
-	var journalPrefix []byte
+	var journalPrefix scenarioCampaignJournalCut
 	if usesJournal {
-		journalAfter, afterErr := readValidatorEvidenceHistoricalFile(attempt.stateDir, "journal.jsonl", maximumCampaignEvidenceRawFileBytes)
-		stable = stable && journalErr == nil && afterErr == nil && len(journalBefore) != 0 && bytes.Equal(journalBefore, journalAfter)
+		_, journalAfter, afterErr := readScenarioCampaignJournalSnapshot(attempt.stateDir, &journalBefore, nil)
+		stable = stable && journalErr == nil && afterErr == nil && journalBefore.Bytes != 0 && journalBefore == journalAfter
 		journalPrefix = journalAfter
 	}
 	if stable {
