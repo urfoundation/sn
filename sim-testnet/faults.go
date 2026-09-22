@@ -591,7 +591,7 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 		return nil, err
 	}
 	if spec.Kind == "miner-control" {
-		processes, err := d.minerControlProcesses(spec, false)
+		processes, err := d.waitMinerControlProcesses(ctx, spec, false)
 		if err != nil {
 			return nil, err
 		}

@@ -143,6 +143,7 @@ func (self *liveScenarioFaultDriver) minerControlProcesses(spec scenarioFaultSpe
 	targets := append([]string(nil), spec.Targets...)
 	sort.Strings(targets)
 	processes := make([]FaultProcessEvidence, 0, len(targets))
+	var unavailable []string
 	for index, target := range targets {
 		var miner int
 		if _, err := fmt.Sscanf(target, "miner-%d", &miner); err != nil || target != fmt.Sprintf("miner-%d", miner) || (index > 0 && targets[index-1] == target) {
@@ -155,10 +156,16 @@ func (self *liveScenarioFaultDriver) minerControlProcesses(spec scenarioFaultSpe
 		processId := fmt.Sprintf("miner-swarm-%d", swarm)
 		state, stateOk := states[processId]
 		process, specOk := specs[processId]
-		if !stateOk || !specOk || state.PID <= 1 || process.Role != "miner-swarm" || process.Identity == "" || (!enable && !state.Healthy) {
-			return nil, fmt.Errorf("miner control target %s has no healthy owning swarm", target)
+		if !stateOk || !specOk || process.Role != "miner-swarm" || process.Identity == "" || state.Role != process.Role || state.Identity != process.Identity || state.PID < 0 || state.PID == 1 || state.Restarts < 0 {
+			return nil, fmt.Errorf("miner control target %s has an invalid owning swarm", target)
 		}
 		processes = append(processes, FaultProcessEvidence{ID: target, Role: "miner", Identity: process.Identity, PID: state.PID})
+		if state.PID == 0 || !enable && !state.Healthy {
+			unavailable = append(unavailable, target)
+		}
+	}
+	if len(unavailable) != 0 {
+		return processes, &minerControlOwnerUnavailableError{targets: unavailable}
 	}
 	return processes, nil
 }
@@ -166,7 +173,7 @@ func (self *liveScenarioFaultDriver) minerControlProcesses(spec scenarioFaultSpe
 // Keep the successful prefix after cancellation or a later failure. Every
 // request is preceded by durable intent and every completed target is fsynced.
 func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec scenarioFaultSpec, enable bool) ([]FaultProcessEvidence, error) {
-	processes, err := self.minerControlProcesses(spec, enable)
+	processes, err := self.waitMinerControlProcesses(ctx, spec, enable)
 	if err != nil {
 		return nil, err
 	}

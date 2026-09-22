@@ -117,11 +117,12 @@ type minerControlGeneration struct {
 // Snapshot the owning generation on every round. A reopened driver has no
 // cache and must reconcile its retained disk census incrementally again.
 func (self *liveScenarioFaultDriver) minerControlGenerations(processes []FaultProcessEvidence) (map[string]minerControlGeneration, error) {
-	states, _, err := self.processSnapshot()
+	states, specs, err := self.processSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	processGenerationKVs := make(map[string]minerControlGeneration, len(processes))
+	var changed []string
 	for _, process := range processes {
 		var miner int
 		_, _ = fmt.Sscanf(process.ID, "miner-%d", &miner)
@@ -129,11 +130,19 @@ func (self *liveScenarioFaultDriver) minerControlGenerations(processes []FaultPr
 		if err != nil {
 			return nil, err
 		}
-		state, ok := states[fmt.Sprintf("miner-swarm-%d", swarm)]
-		if !ok || state.PID != process.PID || state.Identity != process.Identity {
-			return nil, fmt.Errorf("miner control owner changed before reconciliation for %s", process.ID)
+		ownerId := fmt.Sprintf("miner-swarm-%d", swarm)
+		state, stateOk := states[ownerId]
+		spec, specOk := specs[ownerId]
+		if !stateOk || !specOk || spec.Role != "miner-swarm" || spec.Identity == "" || spec.Identity != process.Identity || state.Role != spec.Role || state.Identity != spec.Identity || state.PID < 0 || state.PID == 1 || state.Restarts < 0 {
+			return nil, fmt.Errorf("miner control owner identity changed before reconciliation for %s", process.ID)
+		}
+		if state.PID != process.PID {
+			changed = append(changed, process.ID)
 		}
 		processGenerationKVs[process.ID] = minerControlGeneration{process: process, startedAt: state.StartedAt, restarts: state.Restarts}
+	}
+	if len(changed) != 0 {
+		return nil, &minerControlPendingError{cause: &minerControlOwnerUnavailableError{targets: changed}}
 	}
 	return processGenerationKVs, nil
 }

@@ -1233,6 +1233,16 @@ rounds, restored-state drift, same-PID worker replacement and mixed
 cancellation/integrity failures. Keep all acceptance-window and minimum fault
 duration checks unchanged.
 
+Control admission also needs a bounded readiness state for a checksum-bound
+swarm that is temporarily unhealthy or between process generations. Wait for
+that same owner before first dispatch, preserve an existing completed prefix,
+and re-read its live member state after replacement. A PID change between the
+admission read and the control round must defer that round before any request;
+it must not cancel the campaign. Missing owners, changed identities, invalid
+state and checksum failures remain hard. Tests must force first-dispatch,
+partial-prefix and restore restart windows, cancellation, generation turnover,
+and a mixed readiness/identity failure without sleeps.
+
 **PH-22 — Transport recovery and final signal.** Treat connect/read deadlines,
 EOF/reset and HTTP `429`, `502`, `503` and `504` as bounded retry candidates
 only for idempotent reads or controls with a retained idempotency key. Reuse the
