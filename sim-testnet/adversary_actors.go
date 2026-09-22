@@ -1046,7 +1046,7 @@ var errLiveMerkleEvidenceUnavailable = errors.New("live Merkle evidence is not a
 var errLiveMerkleOperatorUnavailable = errors.New("operator API is unavailable for the live Merkle probe")
 
 func liveMerkleRetryable(err error, expectedOperatorFault bool) bool {
-	return errors.Is(err, errLiveMerkleEvidenceUnavailable) || expectedOperatorFault && errors.Is(err, errLiveMerkleOperatorUnavailable)
+	return errors.Is(err, errLiveMerkleEvidenceUnavailable) || errors.Is(err, context.DeadlineExceeded) || expectedOperatorFault && errors.Is(err, errLiveMerkleOperatorUnavailable)
 }
 
 type liveMerkleProbeEvidence struct {
@@ -1129,6 +1129,12 @@ func requireInvalidProofResponse(response rpcResponse) error {
 // InvalidProof selector and identical entitlement/conservation snapshots prove
 // both rejection and absence of state mutation on the deployed testnet vault.
 func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, stateDir, operatorBase, rpcEndpoint string, operatorID int, operatorHTTP, rpcHTTP *adversaryHTTP, sequence uint64) (liveMerkleProbeEvidence, error) {
+	return liveInvalidMerkleProofProbeWithHistory(ctx, cfg, stateDir, operatorBase, rpcEndpoint, operatorID, operatorHTTP, rpcHTTP, sequence, nil)
+}
+
+// Retains only authenticated history metadata; finalized state and selected payout
+// body are refreshed on every attempt, including a sample after cancellation.
+func liveInvalidMerkleProofProbeWithHistory(ctx context.Context, cfg *ResolvedConfig, stateDir, operatorBase, rpcEndpoint string, operatorID int, operatorHTTP, rpcHTTP *adversaryHTTP, sequence uint64, cache *liveMerkleHistoryCache) (liveMerkleProbeEvidence, error) {
 	evidence := liveMerkleProbeEvidence{}
 	if cfg == nil || cfg.Config == nil || operatorBase == "" || rpcEndpoint == "" || operatorID < 1 || operatorID > cfg.Config.Topology.Operators || operatorHTTP == nil || rpcHTTP == nil {
 		return evidence, errors.New("live Merkle proof probe is incomplete")
@@ -1140,6 +1146,10 @@ func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, state
 	if deployment.SettlementVault == (common.Address{}) || deployment.CoordinatorProxy == (common.Address{}) {
 		return evidence, errors.New("deployed contract identity has a zero address")
 	}
+	generation := ""
+	if cache != nil {
+		generation = liveMerkleSourceGeneration(stateDir, operatorID)
+	}
 	var unavailable bool
 	keys, _, err := fetchPayoutArtifactHistory(ctx, operatorBase, cfg.Config.Deployment.DeploymentID, cfg.Netuid, func(ctx context.Context, endpoint string, limit int64) ([]byte, int, error) {
 		read := operatorHTTP.get(ctx, endpoint, "", limit)
@@ -1150,7 +1160,7 @@ func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, state
 	})
 	if err != nil {
 		if unavailable {
-			return evidence, fmt.Errorf("%w: fetch payout artifact history: %v", errLiveMerkleOperatorUnavailable, err)
+			return evidence, fmt.Errorf("%w: fetch payout artifact history: %w", errLiveMerkleOperatorUnavailable, err)
 		}
 		return evidence, fmt.Errorf("fetch payout artifact history: %w", err)
 	}
@@ -1158,52 +1168,29 @@ func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, state
 		return evidence, fmt.Errorf("%w: operator has no payout artifact", errLiveMerkleEvidenceUnavailable)
 	}
 	sort.Strings(keys)
-	var artifact *payoutArtifact
-	epochHashes := map[uint64]string{}
-	seenKeys := map[string]bool{}
-	for _, key := range keys {
-		hash := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
-		if len(hash) != 64 || seenKeys[hash] {
-			return evidence, errors.New("payout artifact history is not uniquely content-addressed")
-		}
-		if _, err := hex.DecodeString(hash); err != nil {
-			return evidence, errors.New("payout artifact history contains a non-hexadecimal content address")
-		}
-		seenKeys[hash] = true
+	artifact, err := selectLiveMerkleArtifact(ctx, cfg, deployment, operatorBase, operatorID, keys, func(ctx context.Context, hash string) ([]byte, error) {
 		read := operatorHTTP.get(ctx, operatorBase+"/sn/artifact?hash=sha256:"+hash, "", 32*1024*1024)
 		evidence.httpAccounting.observe(read)
 		evidence.Requests += read.Requests
-		status, body, err := read.Status, read.Body, read.Err
-		if err != nil {
+		if read.Err != nil {
 			if adversaryGetUnavailable(read) {
-				return evidence, fmt.Errorf("%w: fetch payout artifact: %v", errLiveMerkleOperatorUnavailable, err)
+				return nil, fmt.Errorf("%w: fetch payout artifact: %w", errLiveMerkleOperatorUnavailable, read.Err)
 			}
-			return evidence, fmt.Errorf("fetch payout artifact: %w", err)
+			return nil, fmt.Errorf("fetch payout artifact: %w", read.Err)
 		}
-		if status/100 != 2 {
-			return evidence, fmt.Errorf("fetch payout artifact returned HTTP %d", status)
+		if read.Status/100 != 2 {
+			return nil, fmt.Errorf("fetch payout artifact returned HTTP %d", read.Status)
 		}
-		var candidate payoutArtifact
-		if err := json.Unmarshal(body, &candidate); err != nil {
-			return evidence, fmt.Errorf("decode payout artifact: %w", err)
-		}
-		if err := verifyPayoutArtifact(&candidate); err != nil {
-			return evidence, fmt.Errorf("verify payout artifact: %w", err)
-		}
-		if !strings.EqualFold(candidate.ContentHash, "sha256:"+hash) || candidate.DeploymentID != cfg.Config.Deployment.DeploymentID || candidate.ChainID != cfg.ChainID || candidate.Netuid != cfg.Netuid || candidate.NoID != uint64(operatorID) || !strings.EqualFold(candidate.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(candidate.PolicyHash, cfg.PolicyHash) || candidate.Coordinator != deployment.CoordinatorProxy || candidate.SettlementVault != deployment.SettlementVault {
-			return evidence, errors.New("payout artifact identity does not match the active deployment")
-		}
-		if priorHash, ok := epochHashes[candidate.Epoch]; ok && !strings.EqualFold(priorHash, candidate.ContentHash) {
-			return evidence, fmt.Errorf("operator %d equivocated at payout epoch %d", operatorID, candidate.Epoch)
-		}
-		epochHashes[candidate.Epoch] = candidate.ContentHash
-		if artifact == nil || candidate.Epoch > artifact.Epoch {
-			copy := candidate
-			artifact = &copy
+		return read.Body, nil
+	}, cache, generation)
+	if cache != nil && liveMerkleSourceGeneration(stateDir, operatorID) != generation {
+		*cache = liveMerkleHistoryCache{}
+		if err == nil {
+			err = fmt.Errorf("%w: operator generation changed while reading payout history", errLiveMerkleEvidenceUnavailable)
 		}
 	}
-	if artifact == nil {
-		return evidence, fmt.Errorf("%w: operator has no verified payout artifact", errLiveMerkleEvidenceUnavailable)
+	if err != nil {
+		return evidence, err
 	}
 	if len(artifact.Leaves) == 0 {
 		return evidence, fmt.Errorf("%w: latest payout artifact has no eligible leaf", errLiveMerkleEvidenceUnavailable)
@@ -1315,6 +1302,7 @@ type custodyAdversary struct {
 	rpcHTTP               *adversaryHTTP
 	faults                *adversaryFaultWindow
 	liveMerklePassed      map[int]bool
+	liveMerkleHistoryKVs  map[int]*liveMerkleHistoryCache
 	liveMerkleNextAttempt uint64
 	implementationMu      sync.Mutex
 	implementationSeenAt  time.Time
@@ -2421,7 +2409,13 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "live malformed-Merkle proof gate lost its pending operator"}
 		}
 		base := fmt.Sprintf("http://127.0.0.1:%d", 18080+operator)
-		live, liveErr := liveInvalidMerkleProofProbe(ctx, self.cfg, self.stateDir, base, self.cfg.OperationalEVM, operator, self.operatorHTTP, self.rpcHTTP, sequence)
+		if self.liveMerkleHistoryKVs == nil {
+			self.liveMerkleHistoryKVs = map[int]*liveMerkleHistoryCache{}
+		}
+		if self.liveMerkleHistoryKVs[operator] == nil {
+			self.liveMerkleHistoryKVs[operator] = &liveMerkleHistoryCache{}
+		}
+		live, liveErr := liveInvalidMerkleProofProbeWithHistory(ctx, self.cfg, self.stateDir, base, self.cfg.OperationalEVM, operator, self.operatorHTTP, self.rpcHTTP, sequence, self.liveMerkleHistoryKVs[operator])
 		liveRequests += live.Requests
 		for key, value := range live.httpAccounting.metrics() {
 			metrics[key] = value

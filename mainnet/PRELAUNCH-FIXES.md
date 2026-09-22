@@ -1396,6 +1396,18 @@ it must initialize a durable empty state rather than crash fixture setup or
 recovery. Malformed, substituted or conflicting completion records remain hard
 failures.
 
+Historical custody checks must retain bounded, authenticated progress across
+sample deadlines. Rewalking every prior payout body made all 235 attack samples
+exhaust the ten-second read budget while independent artifact checks passed.
+The simulator now scopes a hash-to-epoch metadata cache to the complete payout
+domain and checksum-bound API process generation, refreshes history membership,
+and verifies the selected latest body and finalized vault state every attempt.
+Missing or changed process ownership invalidates cache reuse; signatures,
+content identity and same-epoch equivocation remain strict. An interrupted sample
+is pending evidence and cannot satisfy the final proof gate. Production adoption
+must prove interrupted-prefix continuation, source turnover, new equivocation,
+latest-body substitution and finite entry counts with deterministic regressions.
+
 ### Closing and maintaining this hardening plan
 
 For each PH item record the implementation/review commit, affected production
