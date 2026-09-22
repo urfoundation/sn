@@ -198,7 +198,8 @@ func (self *verifyAdversary) supplementalMetrics(operator int, phase adversarySa
 }
 
 func (self *verifyAdversary) sampleError(operator int, err error, requests, maximumInFlight uint64) adversarySampleResult {
-	if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
+	var invalidRead *adversaryReadIntegrityError
+	if !errors.As(err, &invalidRead) && self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
 		return adversarySampleResult{
 			Outcome:  adversaryOutcomeExpectedRejection,
 			Detail:   fmt.Sprintf("operator=%d scheduled verify API fault: %v", operator, err),
@@ -236,9 +237,14 @@ func (self *verifyAdversary) post(ctx context.Context, operator int, source stri
 
 func (self *verifyAdversary) serverKeys(ctx context.Context, operator int) (map[byte]ed25519.PublicKey, uint64, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/keys", 18080+operator)
-	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 1*1024*1024)
+	read := self.http.get(ctx, endpoint, "", 1*1024*1024)
+	status, body, err := read.Status, read.Body, read.Err
 	if err != nil || status/100 != 2 {
-		return nil, 1, fmt.Errorf("verify keys status=%d error=%v", status, err)
+		failure := fmt.Errorf("verify keys status=%d error=%v", status, err)
+		if !adversaryGetUnavailable(read) {
+			return nil, read.Requests, &adversaryReadIntegrityError{cause: failure}
+		}
+		return nil, read.Requests, failure
 	}
 	var response struct {
 		Keys []struct {
@@ -247,16 +253,16 @@ func (self *verifyAdversary) serverKeys(ctx context.Context, operator int) (map[
 		} `json:"keys"`
 	}
 	if json.Unmarshal(body, &response) != nil || len(response.Keys) == 0 {
-		return nil, 1, errors.New("verify keys response is malformed")
+		return nil, read.Requests, &adversaryReadIntegrityError{cause: errors.New("verify keys response is malformed")}
 	}
 	keys := map[byte]ed25519.PublicKey{}
 	for _, key := range response.Keys {
 		if len(key.PublicKey) != ed25519.PublicKeySize || keys[key.ServerKeyID] != nil {
-			return nil, 1, errors.New("verify keys response contains an invalid or duplicate key")
+			return nil, read.Requests, &adversaryReadIntegrityError{cause: errors.New("verify keys response contains an invalid or duplicate key")}
 		}
 		keys[key.ServerKeyID] = append(ed25519.PublicKey(nil), key.PublicKey...)
 	}
-	return keys, 1, nil
+	return keys, read.Requests, nil
 }
 
 func validateAdversaryAssign(assign *connect.VerifyAssignResult, confirmed []connect.Id, vpk ed25519.PublicKey, keys map[byte]ed25519.PublicKey) error {
@@ -532,9 +538,14 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 
 func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator int, trailID connect.Id) (uint64, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/proofs?limit=10000", 18080+operator)
-	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 32*1024*1024)
+	read := self.http.get(ctx, endpoint, "", 32*1024*1024)
+	status, body, err := read.Status, read.Body, read.Err
 	if err != nil || status != http.StatusOK {
-		return 1, fmt.Errorf("verify proof index status=%d error=%v", status, err)
+		failure := fmt.Errorf("verify proof index status=%d error=%v", status, err)
+		if !adversaryGetUnavailable(read) {
+			return read.Requests, &adversaryReadIntegrityError{cause: failure}
+		}
+		return read.Requests, failure
 	}
 	var proofs struct {
 		Schema string `json:"schema"`
@@ -543,7 +554,7 @@ func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator in
 		} `json:"rows"`
 	}
 	if json.Unmarshal(body, &proofs) != nil || proofs.Schema != "urnetwork-verify-proof-index-v1" {
-		return 1, errors.New("verify proof index is malformed")
+		return read.Requests, &adversaryReadIntegrityError{cause: errors.New("verify proof index is malformed")}
 	}
 	count := 0
 	for _, proof := range proofs.Rows {
@@ -552,9 +563,9 @@ func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator in
 		}
 	}
 	if count != 1 {
-		return 1, fmt.Errorf("verify finalized trail %s appears %d times in proof history", trailID, count)
+		return read.Requests, &adversaryReadIntegrityError{cause: fmt.Errorf("verify finalized trail %s appears %d times in proof history", trailID, count)}
 	}
-	return 1, nil
+	return read.Requests, nil
 }
 
 func (self *verifyAdversary) poison(ctx context.Context, operator int, sequence uint64) (string, uint64, error) {

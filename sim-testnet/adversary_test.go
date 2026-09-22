@@ -1519,10 +1519,15 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	var invalidHistoryQuery atomic.Uint64
+	var transientHistory, transientArtifact atomic.Bool
 	operatorServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/sn/artifacts":
+			if transientHistory.CompareAndSwap(true, false) {
+				writer.WriteHeader(http.StatusGatewayTimeout)
+				return
+			}
 			query := request.URL.Query()
 			if request.Method != http.MethodGet || query.Get("deployment_id") != cfg.Config.Deployment.DeploymentID || query.Get("netuid") != strconv.FormatUint(uint64(cfg.Netuid), 10) || query.Get("limit") != strconv.Itoa(payoutArtifactHistoryPageObjects) || query.Get("after") != "" {
 				invalidHistoryQuery.Add(1)
@@ -1531,6 +1536,10 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 			}
 			_, _ = writer.Write(historyBytes)
 		case "/sn/artifact":
+			if transientArtifact.CompareAndSwap(true, false) {
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
 			if request.URL.Query().Get("hash") != artifact.ContentHash {
 				writer.WriteHeader(http.StatusNotFound)
 				return
@@ -1596,7 +1605,7 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 	}))
 	defer rpcServer.Close()
 	gate := func() *adversaryHTTP {
-		return &adversaryHTTP{gate: &adversaryRequestGate{interval: time.Nanosecond, now: time.Now}, timeout: time.Second}
+		return &adversaryHTTP{gate: &adversaryRequestGate{interval: time.Nanosecond, now: time.Now}, timeout: time.Second, retryWait: func(ctx context.Context, _ time.Duration) error { return ctx.Err() }}
 	}
 	evidence, err := liveInvalidMerkleProofProbe(context.Background(), cfg, stateDir, operatorServer.URL, rpcServer.URL, 1, gate(), gate(), 7)
 	if err != nil {
@@ -1604,6 +1613,13 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 	}
 	if evidence.Epoch != 4 || evidence.NoID != 1 || evidence.FinalizedBlock != 100 || evidence.Requests != 8 || claimCalls.Load() != 1 || invalidHistoryQuery.Load() != 0 || invalidMethod.Load() != 0 || invalidBlock.Load() != 0 {
 		t.Fatalf("live Merkle evidence=%+v claim_calls=%d invalid_history_query=%d invalid_method=%d invalid_block=%d", evidence, claimCalls.Load(), invalidHistoryQuery.Load(), invalidMethod.Load(), invalidBlock.Load())
+	}
+	claimCalls.Store(0)
+	transientHistory.Store(true)
+	transientArtifact.Store(true)
+	evidence, err = liveInvalidMerkleProofProbe(context.Background(), cfg, stateDir, operatorServer.URL, rpcServer.URL, 1, gate(), gate(), 9)
+	if err != nil || evidence.Requests != 10 || evidence.httpAccounting.requests != 4 || evidence.httpAccounting.retries != 2 || evidence.httpAccounting.transientFailures != 2 || claimCalls.Load() != 1 || invalidBlock.Load() != 0 || invalidMethod.Load() != 0 {
+		t.Fatalf("recovered history/artifact changed pinned proof or hid attempts: evidence=%+v error=%v claim_calls=%d invalid_block=%d invalid_method=%d", evidence, err, claimCalls.Load(), invalidBlock.Load(), invalidMethod.Load())
 	}
 	claimCalls.Store(0)
 	mutateAfterClaim.Store(true)
