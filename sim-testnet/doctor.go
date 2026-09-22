@@ -280,7 +280,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		r.add("repository/"+name, true, err, path)
 	}
 	r.add("config/operator-resource-sources", true, validateOperatorConfigSources(cfg), cfg.Repos.PlatformConfig)
-	r.add("release-lock", true, validateReleaseLock(cfg), cfg.Release.Release)
+	checkDoctorReleaseLock(ctx, &r, cfg, approved, validateReleaseLock, authenticateRunningReleaseExecutable)
 	r.add("vault/wallet", true, nonempty(cfg.WalletMaterial, "testnet-wallet is empty"), cfg.WalletPublic)
 	r.add("vault/netuid", true, nonzero(uint64(cfg.Netuid), "testnet-netuid is zero"), fmt.Sprint(cfg.Netuid))
 	budgetErr := allNonzero(cfg.MaximumTAORao, cfg.MaximumAlphaRao)
