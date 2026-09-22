@@ -1014,8 +1014,7 @@ func enumerateFinalSemanticRawFilesWithLimitsV2(runRoot string, requirePair bool
 		return nil, fmt.Errorf("semantic supplement has %d files, maximum %d", len(paths), maximumCampaignEvidenceObjects)
 	}
 	result := make([]finalSemanticRawFile, 0, len(paths))
-	var aggregate uint64
-	var ordinaryBytes uint64
+	var retained finalPlanRetentionBudget
 	for _, name := range paths {
 		if err := validateFinalSemanticPostCapturePath(name); err != nil {
 			return nil, err
@@ -1027,8 +1026,7 @@ func enumerateFinalSemanticRawFilesWithLimitsV2(runRoot string, requirePair bool
 		if len(raw) == 0 {
 			return nil, fmt.Errorf("semantic supplement files are empty or exceed %d aggregate bytes", limits.supplementFileBytes())
 		}
-		aggregate, ordinaryBytes, err = admitCampaignMetadataRetentionV2(limits, name, uint64(len(raw)), true, aggregate, ordinaryBytes)
-		if err != nil {
+		if err := retained.admit(limits, name, uint64(len(raw)), true); err != nil {
 			return nil, err
 		}
 		result = append(result, finalSemanticRawFile{Path: name, ContentHash: bytesSHA256(raw), Data: raw})
@@ -1302,15 +1300,12 @@ func validateFinalSemanticSupplementFileManifestWithLimitsV2(payload *FinalSeman
 	seenEvidence, seenMarkdown := false, false
 	seenEnvelopes := make(map[string]bool, len(payload.Files))
 	previous := ""
-	var aggregate uint64
-	var ordinaryBytes uint64
+	var retained finalPlanRetentionBudget
 	for index, entry := range payload.Files {
-		if err := validateFinalSemanticPostCapturePath(entry.Path); err != nil || index > 0 && entry.Path <= previous || entry.Size == 0 || entry.Size > limits.rawFileBytes(entry.Path) || !validSHA256ContentHash(entry.ContentHash) || !validSHA256ContentHash(entry.EnvelopeHash) || seenEnvelopes[strings.ToLower(entry.EnvelopeHash)] || entry.Size > limits.supplementFileBytes()-aggregate {
+		if err := validateFinalSemanticPostCapturePath(entry.Path); err != nil || index > 0 && entry.Path <= previous || entry.Size == 0 || entry.Size > limits.rawFileBytes(entry.Path) || !validSHA256ContentHash(entry.ContentHash) || !validSHA256ContentHash(entry.EnvelopeHash) || seenEnvelopes[strings.ToLower(entry.EnvelopeHash)] {
 			return stateMismatchError(err, "semantic supplement file manifest is invalid at %q", entry.Path)
 		}
-		var err error
-		aggregate, ordinaryBytes, err = admitCampaignMetadataRetentionV2(limits, entry.Path, entry.Size, true, aggregate, ordinaryBytes)
-		if err != nil {
+		if err := retained.admit(limits, entry.Path, entry.Size, true); err != nil {
 			return err
 		}
 		seenEvidence = seenEvidence || entry.Path == finalSemanticEvidenceFilename

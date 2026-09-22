@@ -421,6 +421,16 @@ generations and can exceed the independent 32 MiB ordinary proof limit. Every
 plan read still requires bounded regular-file custody and its exact canonical
 approval hash; exceeding the plan limit fails before output or adoption.
 
+Closed capture carries only the active approval and its exact approved
+ancestors. Its plan bundles allow one full encoded 128 MiB approval plus 1 MiB
+metadata; compound fleet lineage files have a 4 GiB bound and an independent
+8 GiB retained-plan budget. The configured document and aggregate grants still
+apply, and the ordinary 256 MiB aggregate remains separate. These are finite
+ceilings, not a promise that every maximum fits simultaneously. Completed-phase
+plan carriers use an authenticated `.plan.evidence.json` wrapper; generic prior
+carriers keep their existing capacity. Public evidence GET and exact-history
+readers must support these same typed carriers before final public replay.
+
 For a compatible runtime update or recovery driver, add `--provisional-resume`
 to both commands. Planning also requires `--plan-hash SOURCE_HASH`, naming the
 unchanged active plan. Apply requires the emitted successor's hash and its

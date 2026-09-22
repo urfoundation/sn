@@ -136,7 +136,12 @@ func captureFinalSemanticClosedInputsWithPriorLimitsV2(ctx context.Context, stat
 	// the archive-retention receipt. Capture its exact bytes so the offline
 	// semantic builder never has to trust a mutable state-directory read.
 	foundationNames := finalSemanticLaunchFoundationNames()
-	foundation, err := finalCollectedNamedEntries(stateRoot, foundationNames)
+	foundation, err := finalCollectedNamedEntriesWithReader(stateRoot, foundationNames, func(root, name string) (FinalCollectedFileBundleEntry, error) {
+		if name == "plan.json" {
+			return finalCollectedFileEntryWithLimit(root, name, maximumSetupPlanFileBytes)
+		}
+		return finalCollectedFileEntry(root, name)
+	})
 	if err != nil {
 		return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, err
 	}
@@ -157,15 +162,17 @@ func captureFinalSemanticClosedInputsWithPriorLimitsV2(ctx context.Context, stat
 	}
 	bundles = append(bundles, locators...)
 
-	plans, err := finalCollectedDirectoryEntries(filepath.Join(stateRoot, "plans"), func(relative string) bool { return strings.HasSuffix(relative, ".json") })
+	plans, err := finalCollectedPlanHistoryEntries(stateRoot, foundation)
 	if err != nil {
 		return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, fmt.Errorf("capture plan history: %w", err)
 	}
-	locators, err = persistFinalCollectedBundleChunksContext(ctx, runRoot, "plan-history", plans)
-	if err != nil {
-		return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, err
+	if len(plans) != 0 {
+		locators, err = persistFinalCollectedBundleChunksContext(ctx, runRoot, "plan-history", plans)
+		if err != nil {
+			return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, err
+		}
+		bundles = append(bundles, locators...)
 	}
-	bundles = append(bundles, locators...)
 
 	topologyNames := make([]string, 0, 2*topologyMiners+topologySwarms+topologyOperators)
 	for minerID := 1; minerID <= topologyMiners; minerID++ {
@@ -314,13 +321,18 @@ func finalCollectedDirectoryEntries(root string, include func(string) bool) ([]F
 }
 
 func finalCollectedNamedEntries(root string, names []string) ([]FinalCollectedFileBundleEntry, error) {
+	return finalCollectedNamedEntriesWithReader(root, names, finalCollectedFileEntry)
+}
+
+// Callers may grant a larger reader only to an explicitly owned plan slot.
+func finalCollectedNamedEntriesWithReader(root string, names []string, read func(string, string) (FinalCollectedFileBundleEntry, error)) ([]FinalCollectedFileBundleEntry, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
 	}
 	entries := make([]FinalCollectedFileBundleEntry, 0, len(names))
 	for _, name := range names {
-		item, err := finalCollectedFileEntry(root, filepath.ToSlash(name))
+		item, err := read(root, filepath.ToSlash(name))
 		if err != nil {
 			return nil, err
 		}
@@ -336,6 +348,15 @@ func finalCollectedNamedEntries(root string, names []string) ([]FinalCollectedFi
 }
 
 func finalCollectedFileEntry(root, relative string) (FinalCollectedFileBundleEntry, error) {
+	return finalCollectedFileEntryWithLimit(root, relative, finalCollectedBundleMaximumRawBytes)
+}
+
+// The larger bound is explicitly supplied by a plan owner, never by file
+// content. Descriptor identity is checked again after the complete bounded read.
+func finalCollectedFileEntryWithLimit(root, relative string, maximum int64) (FinalCollectedFileBundleEntry, error) {
+	if maximum <= 0 || maximum > maximumSetupPlanFileBytes {
+		return FinalCollectedFileBundleEntry{}, errors.New("captured file capacity is invalid")
+	}
 	clean := filepath.Clean(filepath.FromSlash(relative))
 	if relative == "" || filepath.IsAbs(clean) || filepath.ToSlash(clean) != relative || clean == "." || strings.HasPrefix(relative, "../") {
 		return FinalCollectedFileBundleEntry{}, errors.New("captured file path is unsafe")
@@ -350,15 +371,15 @@ func finalCollectedFileEntry(root, relative string) (FinalCollectedFileBundleEnt
 	}
 	defer file.Close()
 	before, err := file.Stat()
-	if err != nil || !before.Mode().IsRegular() || before.Size() < 0 || before.Size() > finalCollectedBundleMaximumRawBytes {
+	if err != nil || !before.Mode().IsRegular() || before.Size() < 0 || before.Size() > maximum {
 		return FinalCollectedFileBundleEntry{}, fmt.Errorf("captured file %s is not regular or exceeds the bundle limit", relative)
 	}
-	data, err := io.ReadAll(io.LimitReader(file, finalCollectedBundleMaximumRawBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, maximum+1))
 	if err != nil {
 		return FinalCollectedFileBundleEntry{}, err
 	}
 	after, err := file.Stat()
-	if err != nil || len(data) > finalCollectedBundleMaximumRawBytes || !sameFinalCollectedFileState(before, after) || uint64(len(data)) != uint64(before.Size()) {
+	if err != nil || int64(len(data)) > maximum || !sameFinalCollectedFileState(before, after) || uint64(len(data)) != uint64(before.Size()) {
 		return FinalCollectedFileBundleEntry{}, fmt.Errorf("captured file %s changed while read", relative)
 	}
 	return FinalCollectedFileBundleEntry{Path: relative, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data)), Data: data}, nil
@@ -414,7 +435,7 @@ func persistFinalCollectedBundleChunks(runRoot, name string, entries []FinalColl
 // Packing is based on exact escaped metadata and base64 lengths. Only the
 // current encoded chunk is owned; every original entry remains in the census.
 func persistFinalCollectedBundleChunksContext(ctx context.Context, runRoot, name string, entries []FinalCollectedFileBundleEntry) ([]FinalArtifactLocator, error) {
-	ranges, err := finalCollectedBundleChunkRanges(ctx, name, entries, maximumCampaignEvidenceRawFileBytes)
+	ranges, err := finalCollectedBundleChunkRanges(ctx, name, entries, finalPlanBundleBytes(name))
 	if err != nil {
 		return nil, err
 	}
@@ -458,6 +479,9 @@ func verifyFinalCollectedFileBundle(bundle *FinalCollectedFileBundle) error {
 		if entry.SizeBytes != uint64(len(entry.Data)) || entry.ContentHash != bytesSHA256(entry.Data) {
 			return fmt.Errorf("collected file %s size or hash differs", entry.Path)
 		}
+		if entry.SizeBytes > finalPlanBundleSourceBytes(bundle.Name, entry.Path) {
+			return fmt.Errorf("collected file %s exceeds its typed source capacity", entry.Path)
+		}
 	}
 	encodedBytes, err := finalCollectedBundleOverhead(bundle.Name)
 	if err != nil {
@@ -474,7 +498,8 @@ func verifyFinalCollectedFileBundle(bundle *FinalCollectedFileBundle) error {
 			}
 			encodedBytes++
 		}
-		if encodedBytes > maximumCampaignEvidenceRawFileBytes || entryBytes > maximumCampaignEvidenceRawFileBytes-encodedBytes {
+		maximum := finalPlanBundleBytes(bundle.Name)
+		if encodedBytes > maximum || entryBytes > maximum-encodedBytes {
 			return errors.New("collected file bundle exceeds public raw-file size limit")
 		}
 		encodedBytes += entryBytes

@@ -1286,6 +1286,17 @@ aggregate archive charges and independent cache memory limits. A valid plan
 larger than an optional cache must bypass caching, never exhaust an eviction
 queue or acquire unbounded retained memory.
 
+The adjacent closure paths needed the same correction: capture bundles,
+derived validator plans, fleet lineage, public signing/readback and completed
+prior-phase carriers each had a different smaller limit. Use exact producer
+paths and schemas to select capacity, retain separate plan/ordinary counters,
+and clip their combined use to the configured grant. Capture only the approved
+ancestor hashes, not unrelated reviews found in the archive directory. A public
+blob write is incomplete until the actual API GET and exact-hash history routes
+can authenticate and return it. Keep ordinary upload/proof limits unchanged;
+test a generated large plan through capture, signed transport and replay,
+alongside invalid aliases, one-byte overages and independent counter exhaustion.
+
 Keep whole-source catch-up forecasts separate from live quota consumption. The
 retained source forecast charges all source history and admitted refresh/retry
 operations to one hourly bucket; it can exceed a retained deployment's limits

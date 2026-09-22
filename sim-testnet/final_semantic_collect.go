@@ -671,7 +671,7 @@ func collectFinalPriorPhaseInputsWithStoresContext(ctx context.Context, cfg *Res
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if !finalUsesEvidenceV2(cfg) {
+		if !finalUsesEvidenceV2(cfg) && finalPlanArtifactBytes(relative) == 0 {
 			entry, err := finalCollectedFileEntry(stateRoot, filepath.ToSlash(filepath.Join("runs", prior.RunID, filepath.FromSlash(relative))))
 			return entry.Data, err
 		}
@@ -801,6 +801,13 @@ func collectFinalPriorPhaseInputsWithStoresContext(ctx context.Context, cfg *Res
 	if len(supplementPayload.Files) < 2 || len(supplementPayload.Files) > maximumCampaignEvidenceObjects {
 		return nil, errors.New("prior semantic_verified file census is incomplete")
 	}
+	priorLimits, err := campaignEvidenceLimitsForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFinalSemanticSupplementFileManifestWithLimitsV2(&supplementPayload, priorLimits); err != nil {
+		return nil, err
+	}
 	semanticFiles := make([]FinalArtifactLocator, 0, len(supplementPayload.Files))
 	seenSemantic, seenMarkdown := false, false
 	previousPath := ""
@@ -811,12 +818,25 @@ func collectFinalPriorPhaseInputsWithStoresContext(ctx context.Context, cfg *Res
 		previousPath = item.Path
 		pathHash := sha256.Sum256([]byte(item.Path))
 		envelopeRelative := filepath.ToSlash(filepath.Join("public", finalSemanticSupplementArchiveDir, prior.RunID, "files", hex.EncodeToString(pathHash[:])+".evidence.json"))
-		envelopeEntry, err := finalCollectedFileEntry(stateRoot, envelopeRelative)
+		var envelopeRaw []byte
+		var err error
+		carrierSuffix := ".evidence.json"
+		if finalPlanArtifactBytes(item.Path) != 0 {
+			maximum, boundErr := priorLimits.fileEnvelopeBytes(item.Path, item.Size)
+			if boundErr != nil {
+				return nil, boundErr
+			}
+			envelopeRaw, err = readCampaignEvidenceOwnedFileWithLimitV2(stateRoot, envelopeRelative, uint64(maximum), nil)
+			carrierSuffix = ".plan.evidence.json"
+		} else {
+			entry, readErr := finalCollectedFileEntry(stateRoot, envelopeRelative)
+			envelopeRaw, err = entry.Data, readErr
+		}
 		if err != nil {
 			return nil, fmt.Errorf("read prior semantic file envelope %s: %w", item.Path, err)
 		}
 		var fileEnvelope ReleaseEvidenceEnvelope
-		if err := decodeStrictJSONBytes(envelopeEntry.Data, &fileEnvelope); err != nil {
+		if err := decodeStrictJSONBytes(envelopeRaw, &fileEnvelope); err != nil {
 			return nil, fmt.Errorf("decode prior semantic file envelope %s: %w", item.Path, err)
 		}
 		if err := verifyFinalSemanticOwnerEnvelope(cfg, &fileEnvelope, &ownerKey.PublicKey, finalSemanticSupplementFileKind, prior.RunID); err != nil || fileEnvelope.ContentHash != item.EnvelopeHash {
@@ -834,8 +854,8 @@ func collectFinalPriorPhaseInputsWithStoresContext(ctx context.Context, cfg *Res
 			seenSemantic = true
 		}
 		seenMarkdown = seenMarkdown || item.Path == finalSemanticMarkdownFilename
-		destination := filepath.ToSlash(filepath.Join("final-inputs", "prior-release", "semantic-files", hex.EncodeToString(pathHash[:])+".evidence.json"))
-		locator, err := persistFinalCollectedArtifact(runRoot, "prior-semantic-file-envelope", destination, envelopeEntry.Data)
+		destination := filepath.ToSlash(filepath.Join("final-inputs", "prior-release", "semantic-files", hex.EncodeToString(pathHash[:])+carrierSuffix))
+		locator, err := persistFinalCollectedArtifactForConfigV2(cfg, runRoot, "prior-semantic-file-envelope", destination, envelopeRaw)
 		if err != nil {
 			return nil, err
 		}

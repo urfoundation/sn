@@ -204,6 +204,9 @@ func (self *campaignMetadataLimitsV2) validate() error {
 // Hash-addressed V2 files may hold the original intent-store control; a
 // separate byte-shape check below refuses oversized ordinary proof bodies.
 func (self campaignEvidenceLimits) rawFileBytes(name string) uint64 {
+	if maximum := finalPlanArtifactBytes(name); maximum != 0 {
+		return self.finalPlanDocumentBytes(maximum)
+	}
 	if self.metadata == nil {
 		return maximumCampaignEvidenceRawFileBytes
 	}
@@ -266,11 +269,13 @@ func (self campaignEvidenceLimits) fileEnvelopeBytes(name string, size uint64) (
 // The largest carrier is derived from the largest admitted metadata document;
 // callers still supply the exact per-entry bound, never this ceiling blindly.
 func (self campaignEvidenceLimits) maximumEnvelopeBytes() uint64 {
+	planMaximum := self.finalPlanDocumentBytes(maximumFinalPriorPlanCarrierBytes)
+	planEnvelope := ((planMaximum + 2) / 3 * 4) + maximumCampaignFileEnvelopeOverhead
 	if self.metadata == nil {
-		return maximumCampaignEvidenceEnvelopeBytes
+		return max(uint64(maximumCampaignEvidenceEnvelopeBytes), planEnvelope)
 	}
 	maximum := max(self.metadata.indexBytes, self.metadata.manifestBytes+maximumCampaignFileEnvelopeOverhead, self.metadata.completionBytes+2*maximumCampaignFileEnvelopeOverhead, self.metadata.intentBytes)
-	return max(uint64(maximumCampaignEvidenceEnvelopeBytes), ((maximum+2)/3)*4+maximumCampaignFileEnvelopeOverhead)
+	return max(uint64(maximumCampaignEvidenceEnvelopeBytes), planEnvelope, ((maximum+2)/3)*4+maximumCampaignFileEnvelopeOverhead)
 }
 
 // Public control retrieval has the same original configuration authority as
@@ -292,10 +297,11 @@ func (self campaignEvidenceLimits) controlEnvelopeBytes(kind string) uint64 {
 // Derived output retains only its two exact prior controls in addition to the
 // unchanged ordinary output aggregate; no raw body inherits these bytes.
 func (self campaignEvidenceLimits) supplementFileBytes() uint64 {
+	maximum := uint64(maximumCampaignEvidenceAggregateBytes)
 	if self.metadata != nil {
-		return self.metadata.supplementBytes
+		maximum = self.metadata.supplementBytes
 	}
-	return maximumCampaignEvidenceAggregateBytes
+	return min(self.finalPlanRetentionBytes(true), maximum+maximumFinalPlanRetentionBytes)
 }
 
 // Only these four retained capture controls account against metadata rows.
@@ -325,7 +331,7 @@ func admitCampaignMetadataRetentionV2(limits campaignEvidenceLimits, name string
 		maximum = limits.metadata.retainedBytes
 		metadataPath = campaignRetainedMetadataPathV2(name)
 		if derived {
-			maximum = limits.supplementFileBytes()
+			maximum = limits.metadata.supplementBytes
 			metadataPath = campaignDerivedMetadataPathV2(name)
 		}
 	}
@@ -357,6 +363,9 @@ func validateCampaignMetadataRawSizeV2(limits campaignEvidenceLimits, name strin
 // is structural sizing, never semantic/native/source acceptance.
 func validateCampaignMetadataRawV2(limits campaignEvidenceLimits, name string, raw []byte) error {
 	if err := validateCampaignMetadataRawSizeV2(limits, name, uint64(len(raw))); err != nil {
+		return err
+	}
+	if err := validateFinalPlanArtifactBytes(limits, name, raw); err != nil {
 		return err
 	}
 	if limits.metadata == nil || len(raw) <= maximumCampaignEvidenceRawFileBytes || !campaignMetadataSourcePathV2(name) {
@@ -507,7 +516,16 @@ func campaignEvidencePayloadLimitV2(cfg *ResolvedConfig, kind string, payload an
 		return 0, err
 	}
 	if limits.metadata == nil {
-		return 0, nil
+		name := ""
+		switch file := payload.(type) {
+		case campaignEvidenceFilePayload:
+			name = file.Path
+		case finalSemanticSupplementFilePayload:
+			name = file.Path
+		}
+		if finalPlanArtifactBytes(name) == 0 || kind != campaignEvidenceFileKind && kind != finalSemanticSupplementFileKind {
+			return 0, nil
+		}
 	}
 	switch kind {
 	case campaignEvidenceFileKind:
