@@ -241,22 +241,74 @@ func (self *evidenceRelayRuntime) run() {
 			close(self.changed)
 			self.changed = make(chan struct{})
 		}()
-		if self.startupProgress {
-			continue
-		}
-		select {
-		case <-self.ctx.Done():
-			outcome = self.ctx.Err()
+		if err := self.awaitNextPass(); err != nil {
+			outcome = err
 			return
-		case request := <-self.remainingRequests:
-			outcome = self.checkRemaining(request)
-			request.result <- outcome
-			if outcome != nil {
-				return
-			}
-		case <-time.After(self.poll):
 		}
 	}
+}
+
+// A complete replay pass is a safe admission boundary. Catch-up may skip its
+// polling delay, but must service a queued phase request before replaying more
+// history. It never skips, advances or marks any source publication complete.
+func (self *evidenceRelayRuntime) awaitNextPass() error {
+	if err := self.ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case request := <-self.remainingRequests:
+		return self.completeRemainingRequest(request)
+	default:
+	}
+	if self.startupProgress {
+		return nil
+	}
+	timer := time.NewTimer(self.poll)
+	defer timer.Stop()
+	select {
+	case <-self.ctx.Done():
+		return self.ctx.Err()
+	case request := <-self.remainingRequests:
+		return self.completeRemainingRequest(request)
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (self *evidenceRelayRuntime) completeRemainingRequest(request evidenceRelayRemainingRequest) error {
+	err := self.checkRemaining(request)
+	request.result <- err
+	if self.ctx.Err() == nil && evidenceRelayOnlyRequestCancellation(err, request.ctx.Err()) {
+		return nil
+	}
+	return err
+}
+
+// An abandoned admission request does not own the worker's lifetime. Preserve
+// genuine validation or I/O failures even when joined with caller cancellation.
+func evidenceRelayOnlyRequestCancellation(err, requestErr error) bool {
+	if err == nil || requestErr == nil {
+		return false
+	}
+	if err == requestErr {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !evidenceRelayOnlyRequestCancellation(child, requestErr) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return evidenceRelayOnlyRequestCancellation(wrapped.Unwrap(), requestErr)
+	}
+	return false
 }
 
 // A missing next manifest is ordinary unpublished state, never permission to

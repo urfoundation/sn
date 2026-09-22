@@ -47,11 +47,30 @@ func (e *Executor) evidenceRelayAdmissionEntries() ([]JournalEntry, uint64, erro
 }
 
 func readOwnedEvidenceRelayRequest(ctx context.Context, stateDir string, scope *SetupPlan, entries []JournalEntry, actionID string, owners ...map[string]*SetupPlan) (*SetupPlan, evidenceRelayRequestRecord, []byte, error) {
+	readOwner := func(stateDir, planHash string) (*SetupPlan, error) {
+		if len(owners) == 1 && owners[0][planHash] != nil {
+			return owners[0][planHash], nil
+		}
+		owner, err := readValidatorEvidenceHistoricalPlan(stateDir, planHash)
+		if err == nil && len(owners) == 1 && owners[0] != nil {
+			owners[0][planHash] = owner
+		}
+		return owner, err
+	}
+	return readOwnedEvidenceRelayRequestWithOwner(ctx, stateDir, scope, entries, actionID, readOwner)
+}
+
+// Only the historical plan decoder may be reused. Each invocation reads and
+// authenticates the actual request against the caller's fresh journal census.
+func readOwnedEvidenceRelayRequestWithOwner(ctx context.Context, stateDir string, scope *SetupPlan, entries []JournalEntry, actionId string, readOwner func(string, string) (*SetupPlan, error)) (*SetupPlan, evidenceRelayRequestRecord, []byte, error) {
 	var record evidenceRelayRequestRecord
-	if scope == nil || stringsTrimRelayPrefix(actionID) == "" {
+	if ctx == nil || scope == nil || readOwner == nil || stringsTrimRelayPrefix(actionId) == "" {
 		return nil, record, nil, errors.New("relay retained request has no exact slot owner")
 	}
-	raw, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateDir, "evidence-relay", stringsTrimRelayPrefix(actionID)+".json"), evidenceRelayActionBytes)
+	if err := ctx.Err(); err != nil {
+		return nil, record, nil, err
+	}
+	raw, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateDir, "evidence-relay", stringsTrimRelayPrefix(actionId)+".json"), evidenceRelayActionBytes)
 	if err != nil {
 		return nil, record, nil, err
 	}
@@ -62,24 +81,15 @@ func readOwnedEvidenceRelayRequest(ctx context.Context, stateDir string, scope *
 		return nil, record, nil, errors.New("relay retained request names an unrelated source approval")
 	}
 	for _, entry := range entries {
-		if entry.ActionID == actionID && (entry.DeploymentID != scope.DeploymentID || entry.PlanHash != record.PlanHash) {
+		if entry.ActionID == actionId && (entry.DeploymentID != scope.DeploymentID || entry.PlanHash != record.PlanHash) {
 			return nil, record, nil, errors.New("relay slot has competing durable plan/deployment owners")
 		}
 	}
 	owner := scope
 	if record.PlanHash != scope.PlanHash {
-		owner = nil
-		if len(owners) == 1 {
-			owner = owners[0][record.PlanHash]
-		}
-		if owner == nil {
-			owner, err = readValidatorEvidenceHistoricalPlan(stateDir, record.PlanHash)
-			if err != nil {
-				return nil, record, nil, err
-			}
-			if len(owners) == 1 {
-				owners[0][record.PlanHash] = owner
-			}
+		owner, err = readOwner(stateDir, record.PlanHash)
+		if err != nil {
+			return nil, record, nil, err
 		}
 	}
 	action, err := validateEvidenceRelayRequest(owner, entries, raw)
@@ -87,8 +97,11 @@ func readOwnedEvidenceRelayRequest(ctx context.Context, stateDir string, scope *
 	// full config hash may differ solely because an operational spend allowance
 	// was renewed; deployment and validator-evidence identities below are the
 	// custody boundary that must remain unchanged.
-	if err != nil || action.ID != actionID || owner.DeploymentID != scope.DeploymentID || owner.ValidatorEvidence == nil || scope.ValidatorEvidence == nil || !reflect.DeepEqual(owner.ValidatorEvidence, scope.ValidatorEvidence) {
+	if err != nil || action.ID != actionId || owner.DeploymentID != scope.DeploymentID || owner.ValidatorEvidence == nil || scope.ValidatorEvidence == nil || !reflect.DeepEqual(owner.ValidatorEvidence, scope.ValidatorEvidence) {
 		return nil, record, nil, errors.Join(errors.New("relay retained request changed original source/deployment authority"), err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, record, nil, err
 	}
 	return owner, record, raw, nil
 }
@@ -112,11 +125,12 @@ func (e *Executor) admitOwnedEvidenceRelayAction(ctx context.Context, supplied v
 		return Action{}, "", err
 	}
 	id := evidenceRelayActionPrefix + strings.TrimPrefix(fleetLifecycleHex(slot), "0x")
-	for _, entry := range e.journal.Entries() {
+	entries := e.journal.Entries()
+	for _, entry := range entries {
 		if entry.ActionID != id {
 			continue
 		}
-		owner, record, _, err := readOwnedEvidenceRelayRequest(ctx, e.stateDir, e.plan, e.journal.Entries(), id)
+		owner, record, _, err := e.readRetainedEvidenceRelayRequest(ctx, entries, id)
 		if err != nil {
 			return Action{}, "", err
 		}

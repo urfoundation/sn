@@ -59,6 +59,7 @@ type Executor struct {
 	fleetCommitmentHistory       *fleetCommitmentHistoryScope
 	precompileHistoryEvidence    *PrecompileConformanceEvidence
 	preparationIncomplete        bool
+	evidenceRelayOwnerPlans      *evidenceRelayOwnerPlanCache
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
