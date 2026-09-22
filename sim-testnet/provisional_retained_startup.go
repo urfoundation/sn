@@ -142,6 +142,9 @@ func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopp
 	if err := self.verifyProvisionalActionHistory(ctx); err != nil {
 		return err
 	}
+	if err := self.reconcileRetainedProvisionalTransactionOutcomes(ctx); err != nil {
+		return err
+	}
 	if err := validateRetainedProvisionalTransactionOutcomes(self.plan, self.journal.Entries()); err != nil {
 		return err
 	}
