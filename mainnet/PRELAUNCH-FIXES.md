@@ -509,6 +509,20 @@ must be reacquired with its dependent observations, without discarding earlier
 valid phases or financial history. Verify that final acceptance cannot consume
 a provisional, missing, canceled or failed result.
 
+**2026-09-22 follow-up.** A successor relay plan accidentally restored an inline
+public census despite provisional startup, so the campaign waited for hundreds
+of historical publications after its local plan and debit checks had passed.
+[The separate relay census](../sim-testnet/evidence_relay_public_audit.go)
+retains bounded local manifest parsing, current chain/native authority and
+original liabilities before startup. Its read-only worker owns copied source
+and horizon state, reuses per-publication authenticated checkpoints, and must
+finish successfully at the final gate. The transaction worker still verifies
+each publication before sending. Production hardening must apply this separation
+to successor plans as well as fresh deployments and service phase transitions
+between individual replay items. Deterministic coverage must hold a real public
+request open while proving release admission, then separately prove that failed,
+canceled, missing or changed audit evidence cannot pass final acceptance.
+
 ### PH-02 — Transaction idempotency, partial failure and custody
 
 **Lesson.** Original signatures were missing from the simulator even though

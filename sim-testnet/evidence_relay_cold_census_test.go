@@ -40,6 +40,7 @@ type evidenceRelayColdCensusTestFixture struct {
 	viewKVs       map[string]string
 	blockHash     string
 	blockStarted  chan struct{}
+	blockRelease  chan struct{}
 	blockOnce     sync.Once
 	originStatus  int
 	finalized     uint64
@@ -61,7 +62,7 @@ func newEvidenceRelayColdCensusTestFixture(t *testing.T) *evidenceRelayColdCensu
 				return
 			}
 			hash := request.URL.Query().Get("hash")
-			raw, block, status := func() ([]byte, bool, int) {
+			raw, block, release, status := func() ([]byte, bool, <-chan struct{}, int) {
 				self.stateLock.Lock()
 				defer self.stateLock.Unlock()
 				self.readKVs[index][hash]++
@@ -73,11 +74,14 @@ func newEvidenceRelayColdCensusTestFixture(t *testing.T) *evidenceRelayColdCensu
 				if index == 1 {
 					status = self.originStatus
 				}
-				return bytes.Clone(self.objectKVs[index][hash]), block, status
+				return bytes.Clone(self.objectKVs[index][hash]), block, self.blockRelease, status
 			}()
 			if block {
-				<-request.Context().Done()
-				return
+				select {
+				case <-request.Context().Done():
+					return
+				case <-release:
+				}
 			}
 			if status != 0 {
 				http.Error(writer, "test origin request failed", status)
@@ -321,8 +325,17 @@ func (self *evidenceRelayColdCensusTestFixture) counts() [2]uint64 {
 	return result
 }
 
+// Complete public verification follows provisional admission in a separate
+// owner. Tests join that actual verifier before inspecting its retained work.
+func (self *evidenceRelayColdCensusTestFixture) prepareAndAudit() error {
+	if err := self.runtime.prepareHorizon(); err != nil {
+		return err
+	}
+	return self.runtime.pendingPublicCensus.verify(self.runtime.ctx)
+}
+
 // A cancellation after the first durable object and during the next actual
-// public request preserves completed work without granting readiness or sends.
+// public request preserves completed work without granting audit success or sends.
 func TestEvidenceRelayColdCensusCancellationResumesExactlyCompletedPublications(t *testing.T) {
 	fixture := newEvidenceRelayColdCensusTestFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -331,7 +344,7 @@ func TestEvidenceRelayColdCensusCancellationResumesExactlyCompletedPublications(
 	fixture.blockHash = fmt.Sprintf("0x%x", fixture.closed[1].CensusHash)
 	fixture.blockStarted = make(chan struct{})
 	result := make(chan error, 1)
-	go func() { result <- fixture.runtime.prepareHorizon() }()
+	go func() { result <- fixture.prepareAndAudit() }()
 	select {
 	case <-fixture.blockStarted:
 	case err := <-result:
@@ -344,15 +357,15 @@ func TestEvidenceRelayColdCensusCancellationResumesExactlyCompletedPublications(
 		t.Fatal("the complete first publication was not durable before its successor", len(paths), err)
 	}
 	cancel()
-	if err := <-result; !errors.Is(err, context.Canceled) || fixture.runtime.horizon != nil {
-		t.Fatal("canceled cold authentication escaped phase admission", err)
+	if err := <-result; !errors.Is(err, context.Canceled) || fixture.runtime.horizon == nil || len(fixture.runtime.horizon.headerKVs) != 0 {
+		t.Fatal("canceled audit lost provisional readiness or granted live slot admission", err)
 	}
 	before := fixture.counts()
 	fixture.stateLock.Lock()
 	fixture.blockHash = ""
 	fixture.stateLock.Unlock()
 	fixture.runtime.ctx = t.Context()
-	if err := fixture.runtime.prepareHorizon(); err != nil {
+	if err := fixture.prepareAndAudit(); err != nil {
 		t.Fatal("restart could not resume authenticated progress", err)
 	}
 	after := fixture.counts()
@@ -362,7 +375,7 @@ func TestEvidenceRelayColdCensusCancellationResumesExactlyCompletedPublications(
 		}
 	}
 	paths, err = filepath.Glob(filepath.Join(fixture.runtime.executor.stateDir, evidenceRelayColdCensusDirectoryName, "*.json"))
-	if err != nil || len(paths) != 3 || fixture.runtime.horizon == nil || len(fixture.runtime.horizon.headerKVs) != 6 || len(fixture.runtime.executor.journal.Entries()) != 1 {
+	if err != nil || len(paths) != 3 || fixture.runtime.horizon == nil || len(fixture.runtime.horizon.headerKVs) != 0 || len(fixture.runtime.pendingPublicCensus.horizon.headerKVs) != 6 || len(fixture.runtime.executor.journal.Entries()) != 1 {
 		t.Fatal("resumed census lost exact slots or created transaction completion", err)
 	}
 	for _, source := range fixture.runtime.sources {
@@ -376,7 +389,7 @@ func TestEvidenceRelayColdCensusCancellationResumesExactlyCompletedPublications(
 // and native permit. Actual relay input readers always revisit both origins.
 func TestEvidenceRelayColdCensusWarmEntryKeepsFreshAdmissionAndActualPublicationReads(t *testing.T) {
 	fixture := newEvidenceRelayColdCensusTestFixture(t)
-	if err := fixture.runtime.prepareHorizon(); err != nil {
+	if err := fixture.prepareAndAudit(); err != nil {
 		t.Fatal(err)
 	}
 	before := fixture.counts()
@@ -387,7 +400,7 @@ func TestEvidenceRelayColdCensusWarmEntryKeepsFreshAdmissionAndActualPublication
 	fixture.finalizedHash = common.Hash{0x34}
 	fixture.stateLock.Unlock()
 	fixture.runtime.horizon = nil
-	if err := fixture.runtime.prepareHorizon(); err != nil || fixture.runtime.horizon == nil {
+	if err := fixture.prepareAndAudit(); err != nil || fixture.runtime.horizon == nil {
 		t.Fatal("later finalized head discarded immutable progress", err)
 	}
 	fixture.stateLock.Lock()

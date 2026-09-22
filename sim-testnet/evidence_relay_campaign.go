@@ -87,6 +87,9 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		}
 		bounded, cancel := context.WithDeadline(waitCtx, deadline)
 		defer cancel()
+		if err := relay.WaitPublicAudit(bounded); err != nil {
+			return err
+		}
 		if err := relay.WaitThrough(bounded, end); err != nil {
 			return err
 		}

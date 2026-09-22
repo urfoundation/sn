@@ -48,6 +48,8 @@ type evidenceRelayRuntime struct {
 	nativeWarmupBudget   *ScenarioNativeWarmupBudgetV2
 	nativeWarmupComplete bool
 	startupCache         *evidenceRelayStartupSession
+	pendingPublicCensus  *evidenceRelayPublicCensus
+	publicAudit          *evidenceRelayPublicAudit
 	retainedPublications *evidenceRelayRetainedPublications
 	startupProgress      bool
 	ready                chan struct{}
@@ -183,6 +185,8 @@ func (self *evidenceRelayRuntime) run() {
 		if self.ctx.Err() != nil {
 			outcome = evidenceRelayNonCancellationError(outcome)
 		}
+		self.cancel()
+		outcome = errors.Join(outcome, self.publicAudit.Close())
 		self.chain.Close()
 		func() {
 			self.stateLock.Lock()
@@ -203,9 +207,20 @@ func (self *evidenceRelayRuntime) run() {
 	if self.startupCache != nil {
 		self.startupCache.seedCompletedAudits(completedAudits)
 	}
+	if self.pendingPublicCensus != nil {
+		self.publicAudit = newEvidenceRelayPublicAudit(self.ctx, self.pendingPublicCensus)
+	}
 	close(self.ready)
+	if err := self.awaitInitialReleasePreparation(); err != nil {
+		outcome = err
+		return
+	}
 	for {
 		if err := self.ctx.Err(); err != nil {
+			outcome = err
+			return
+		}
+		if err := self.serviceRemainingRequests(); err != nil {
 			outcome = err
 			return
 		}
@@ -322,6 +337,9 @@ func (self *evidenceRelayRuntime) advance() error {
 		return err
 	}
 	for index := range self.sources {
+		if err := self.serviceRemainingRequests(); err != nil {
+			return err
+		}
 		source := &self.sources[index]
 		path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.stateDir, source.nextEpoch)
 		if err != nil {
@@ -339,6 +357,9 @@ func (self *evidenceRelayRuntime) advance() error {
 			return err
 		}
 		for _, expected := range requests {
+			if err := self.serviceRemainingRequests(); err != nil {
+				return err
+			}
 			if err := self.horizon.admit(expected.Evidence.Header, block); err != nil {
 				return err
 			}

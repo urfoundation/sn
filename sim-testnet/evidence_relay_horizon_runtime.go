@@ -343,68 +343,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err := self.readAdmittedHorizon(self.ctx, horizon, block); err != nil {
 		return err
 	}
-	coldCensus, err := self.newEvidenceRelayColdCensusSession(self.ctx)
-	if err != nil {
-		return err
-	}
-	var observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected
-	for index := range self.sources {
-		if provisionalResumeEnabled(self.executor.cfg) && horizon.continuation == nil {
-			fmt.Fprintln(os.Stderr, "sim-testnet: provisional evidence relay pending_public_census_preview_waived=true; actual publication authentication and slot admission remain required; final_acceptance=false")
-			break
-		}
-		source := &self.sources[index]
-		var closed []validatorcomponent.ValidatorEvidencePublicationV2Manifest
-		var audits []validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest
-		if self.startupCache != nil {
-			closed, audits, err = self.readEvidenceRelayStartupManifests(self.ctx, source, inventories[source.validatorId])
-		} else {
-			closed, err = validatorcomponent.DiscoverValidatorEvidencePublicationV2Manifests(self.ctx, source.stateDir, source.bounds)
-			if err == nil {
-				audits, err = validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
-			}
-		}
-		if err != nil {
-			return err
-		}
-		census := coldCensus.beginSource(source, uint64(len(closed)+len(audits)))
-		for index := range closed {
-			requests, err := self.readClosedPublication(self.ctx, source, &closed[index], block, hash, census)
-			if err != nil {
-				return err
-			}
-			for _, request := range requests {
-				observed = append(observed, request)
-				if err := horizon.admit(request.Evidence.Header, block); err != nil {
-					return err
-				}
-			}
-		}
-		for index := range audits {
-			requests, err := self.readAuditPublication(self.ctx, source, &audits[index], block, hash, census)
-			if err != nil {
-				return err
-			}
-			for _, request := range requests {
-				observed = append(observed, request)
-				if err := horizon.admit(request.Evidence.Header, block); err != nil {
-					return err
-				}
-			}
-		}
-		if err := self.startupCache.observeSource(source, closed, audits); err != nil {
-			return err
-		}
-	}
-	if horizon.continuation != nil && (self.startupCache == nil || !self.startupCache.hit) {
-		if err := validateEvidenceRelayContinuationRetained(horizon.continuation, observed); err != nil {
-			return err
-		}
-	}
-	if self.startupCache != nil && self.startupCache.hit && !self.startupCache.revalidate(self) {
-		return errors.New("relay startup cached prefix changed during admission")
-	}
-	if err := coldCensus.revalidate(); err != nil {
+	if err := self.preparePublicCensus(horizon, block, hash, inventories); err != nil {
 		return err
 	}
 	// Discovery/public reads can take real time. Re-read both clocks before
