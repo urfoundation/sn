@@ -168,7 +168,7 @@ func (self *liveScenarioProbe) validatePrecompileEvidence(probe common.Address, 
 		return nil
 	}
 	if self.precompilePlan == nil {
-		raw, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		raw, err := readSetupPlanBytes(self.stateDir, "plan.json")
 		if err != nil {
 			return err
 		}

@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 )
 
@@ -61,14 +60,7 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 	if o.RelayContinuationPlan == "" {
 		plan, err = captureEvidenceRelayContinuationWithLimitsAt(ctx, cfg, stateDir, base, o.RelayEndBlock, o.RelaySlots, o.RelaySourceLimitMultiplier, nil)
 	} else {
-		info, statErr := os.Lstat(o.RelayContinuationPlan)
-		if statErr != nil {
-			return statErr
-		}
-		if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maximumCampaignEvidenceRawFileBytes {
-			return errors.New("relay continuation approval is not a bounded regular plan")
-		}
-		raw, readErr := os.ReadFile(o.RelayContinuationPlan)
+		raw, readErr := readSetupPlanFileBytes(o.RelayContinuationPlan)
 		if readErr != nil {
 			return readErr
 		}

@@ -536,7 +536,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		// Keep the active predecessor separate from the exact archived review.
 		// Moving finalized facts must never regenerate the approved repair.
 		var err error
-		provisionalSetupSource, err = readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		provisionalSetupSource, err = readSetupPlanBytes(stateDir, "plan.json")
 		if err != nil {
 			return err
 		}
@@ -667,7 +667,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 				}
 			}
 			if cmd == "resume" {
-				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
 					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
 				}
@@ -712,7 +712,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 			provisionalHistoryChecked = true
 			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
-				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
 					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
 				}
@@ -965,7 +965,7 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 		return nil, err
 	}
 	if reviewed {
-		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
+		raw, readErr := readSetupPlanBytes(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"))
 		if readErr != nil {
 			return nil, fmt.Errorf("read exact reviewed %s plan %s: %w", command, options.PlanHash, readErr)
 		}
@@ -985,7 +985,7 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 // Authenticate the persisted wire and all current operational inputs before
 // admitting it. A retained release never changes or rehashes the stored plan.
 func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelease bool) (*SetupPlan, error) {
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
 	}
@@ -1079,7 +1079,7 @@ func readPersistedPlan(stateDir string) (*SetupPlan, error) {
 // and current artifact. Archived ancestors use the separate historical reader;
 // both paths reject a hand-edited approval before interpreting its contents.
 func readPersistedPlanFile(path string) (*SetupPlan, error) {
-	b, err := os.ReadFile(path)
+	b, err := readSetupPlanFileBytes(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,8 +1100,8 @@ func decodePersistedPlanBytesForHistory(b []byte, historical bool) (*SetupPlan, 
 
 // Exact wire hashing precedes identity dispatch or interpretation of history.
 func decodePersistedPlanWire(b []byte) (*SetupPlan, error) {
-	if len(b) == 0 || len(b) > maximumCampaignEvidenceRawFileBytes {
-		return nil, errors.New("persisted setup plan exceeds its archival byte bound")
+	if err := validateSetupPlanWireSize(len(b)); err != nil {
+		return nil, err
 	}
 	var p SetupPlan
 	if err := json.Unmarshal(b, &p); err != nil {
@@ -1138,7 +1138,10 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 		return err
 	}
 	planBytes := append(b, '\n')
-	priorBytes, priorErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	if err := validateSetupPlanWireSize(len(planBytes)); err != nil {
+		return err
+	}
+	priorBytes, priorErr := readSetupPlanBytes(stateDir, "plan.json")
 	if priorErr == nil {
 		prior, decodeErr := decodePersistedPlanBytes(priorBytes)
 		if decodeErr != nil {

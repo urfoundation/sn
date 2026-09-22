@@ -1261,6 +1261,17 @@ margin. It must carry an authenticated predecessor reserve exactly when no new
 spend is intended; it must never reconstruct fresh economics from the new slot
 count. Admission rejects a requested profile that does not fit every bound.
 
+Full fleet-renewal approvals crossed the ordinary proof-file limit: a compact
+generated 35 MiB plan could not be imported by its own command. Output, import,
+active/runtime reload, immutable archive and historical owner lookup now share
+a separate 128 MiB approval bound while ordinary proofs remain at 32 MiB.
+Production must qualify each producer-to-consumer path at the selected size,
+including closed capture and public replica replay, before declaring the
+profile usable. Preserve exact approval hashes, no-follow regular-file reads,
+aggregate archive charges and independent cache memory limits. A valid plan
+larger than an optional cache must bypass caching, never exhaust an eviction
+queue or acquire unbounded retained memory.
+
 Keep whole-source catch-up forecasts separate from live quota consumption. The
 retained source forecast charges all source history and admitted refresh/retry
 operations to one hourly bucket; it can exceed a retained deployment's limits

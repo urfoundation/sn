@@ -46,7 +46,7 @@ func readScenarioSuccessionPlan(stateDir, hash string) (*SetupPlan, []byte, erro
 	if !validCanonicalHashHex(hash) {
 		return nil, nil, errors.New("campaign succession plan hash is invalid")
 	}
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plans/"+stringsTrim0x(hash)+".json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plans/"+stringsTrim0x(hash)+".json")
 	if err != nil {
 		return nil, nil, err
 	}

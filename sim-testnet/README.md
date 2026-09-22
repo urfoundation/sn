@@ -408,6 +408,12 @@ persisted signed bytes. The previous plan is archived, and every old signed
 manifest, binding, receipt and runtime queue is retained. Renewal alone does not
 launch or rerender a campaign; strict startup admission remains a separate step.
 
+Compact approval output, renewal/relay imports, active reloads and immutable
+plan archives share a 128 MiB file limit. Full approvals retain earlier fleet
+generations and can exceed the independent 32 MiB ordinary proof limit. Every
+plan read still requires bounded regular-file custody and its exact canonical
+approval hash; exceeding the plan limit fails before output or adoption.
+
 For a compatible runtime update or recovery driver, add `--provisional-resume`
 to both commands. Planning also requires `--plan-hash SOURCE_HASH`, naming the
 unchanged active plan. Apply requires the emitted successor's hash and its

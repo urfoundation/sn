@@ -4646,7 +4646,7 @@ func BuildPlanForState(ctx context.Context, cfg *ResolvedConfig, stateDir string
 	}
 	prior, err := readPersistedPlan(stateDir)
 	if err != nil {
-		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		raw, readErr := readSetupPlanBytes(stateDir, "plan.json")
 		if readErr != nil {
 			return nil, readErr
 		}

@@ -42,7 +42,7 @@ func archiveReviewedSetupPlanBytes(stateDir, hash string, raw []byte) ([]byte, e
 	}
 	relative := filepath.Join("plans", stringsTrim0x(hash)+".json")
 	readExisting := func() ([]byte, error) {
-		existing, err := readValidatorEvidenceHistoricalFile(stateDir, relative, maximumCampaignEvidenceRawFileBytes)
+		existing, err := readSetupPlanBytes(stateDir, relative)
 		if err != nil {
 			return nil, err
 		}

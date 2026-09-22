@@ -10,11 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"math/big"
 	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -78,42 +76,10 @@ func readValidatorEvidenceHistoricalFile(stateDir, name string, maximum int64) (
 // The private observation boundary exposes the actual owned descriptor for
 // deterministic custody tests; it cannot replace the production opener.
 func readValidatorEvidenceHistoricalFileObserved(stateDir, name string, maximum int64, opened func(*os.File) error) (result []byte, resultErr error) {
-	if err := validateCampaignEvidencePath(name); err != nil {
-		return nil, err
-	}
 	if maximum <= 0 || maximum > maximumCampaignEvidenceRawFileBytes {
 		return nil, errors.New("validator evidence history file bound is invalid")
 	}
-	file, err := openFinalCollectedFile(stateDir, filepath.FromSlash(name))
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		resultErr = errors.Join(resultErr, file.Close())
-		if resultErr != nil {
-			result = nil
-		}
-	}()
-	if opened != nil {
-		if err := opened(file); err != nil {
-			return nil, err
-		}
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maximum {
-		return nil, errors.New("validator evidence historical file is not regular or exceeds its bound")
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, maximum+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(raw)) != info.Size() || int64(len(raw)) > maximum {
-		return nil, errors.New("validator evidence historical file changed size or exceeds its bound")
-	}
-	return raw, nil
+	return readBoundedHistoricalFileObserved(stateDir, name, maximum, opened)
 }
 
 // Historical decoding is a separate read-only path. It can establish source
@@ -122,7 +88,7 @@ func readValidatorEvidenceHistoricalPlan(stateDir, hash string) (*SetupPlan, err
 	if value, err := decodeHex32("validator evidence historical plan", hash); err != nil || value == ([32]byte{}) {
 		return nil, errors.New("validator evidence historical plan hash is invalid")
 	}
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plans/"+stringsTrim0x(hash)+".json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plans/"+stringsTrim0x(hash)+".json")
 	if err != nil {
 		return nil, err
 	}

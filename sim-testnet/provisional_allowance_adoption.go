@@ -34,7 +34,7 @@ func (self *Executor) authenticateProvisionalPlanOnlyAdoption(ctx context.Contex
 			return false, nil
 		}
 		hash := source.PriorPlanHashes[len(source.PriorPlanHashes)-1]
-		sourceBytes, err = readValidatorEvidenceHistoricalFile(self.stateDir, "plans/"+stringsTrim0x(hash)+".json", maximumCampaignEvidenceRawFileBytes)
+		sourceBytes, err = readSetupPlanBytes(self.stateDir, "plans/"+stringsTrim0x(hash)+".json")
 		if err != nil {
 			return false, err
 		}
@@ -70,7 +70,7 @@ func (self *Executor) authenticateProvisionalPlanOnlyAdoption(ctx context.Contex
 	if err := json.Unmarshal(raw, &persisted); err != nil || !reflect.DeepEqual(&persisted, record) {
 		return false, errors.Join(errors.New("plan-only adoption provenance identity changed"), err)
 	}
-	latest, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	latest, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil || !bytes.Equal(latest, activeBytes) {
 		return false, errors.Join(errors.New("plan-only adoption active source changed"), err)
 	}

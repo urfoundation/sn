@@ -9,7 +9,7 @@ import "errors"
 // only an admitted provisional invocation can retain its original release.
 func loadRuntimePersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
 	retainRelease := provisionalResumeEnabled(cfg)
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
 	}

@@ -107,7 +107,7 @@ func (self *evidenceRelayOwnerPlanCache) read(ctx context.Context, stateDir, con
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	raw, err := readValidatorEvidenceHistoricalFileObserved(stateDir, "plans/"+stringsTrim0x(planHash)+".json", maximumCampaignEvidenceRawFileBytes, opened)
+	raw, err := readSetupPlanBytesObserved(stateDir, "plans/"+stringsTrim0x(planHash)+".json", opened)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (self *evidenceRelayOwnerPlanCache) decode(ctx context.Context, key evidenc
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(raw) == 0 || len(raw) > maximumCampaignEvidenceRawFileBytes {
+	if len(raw) == 0 || len(raw) > maximumSetupPlanFileBytes {
 		return nil, errors.New("relay historical owner cache bytes are incomplete or changed")
 	}
 	key.wireHash = sha256.Sum256(raw)
@@ -136,6 +136,11 @@ func (self *evidenceRelayOwnerPlanCache) decode(ctx context.Context, key evidenc
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	// An admissible approval can exceed the cache's separate memory budget.
+	// Validate it normally and retain no entry instead of evicting an empty map.
+	if len(raw) > evidenceRelayOwnerPlanCacheBytes {
+		return plan, nil
 	}
 	if self.entryKVs == nil {
 		self.entryKVs = map[evidenceRelayOwnerPlanKey]evidenceRelayOwnerPlanEntry{}

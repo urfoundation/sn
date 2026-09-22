@@ -49,14 +49,7 @@ func validateFleetRenewalOptions(command string, o cliOptions) error {
 }
 
 func readFleetRenewalPlan(path string) (*SetupPlan, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maximumCampaignEvidenceRawFileBytes {
-		return nil, errors.New("renewal plan is not a bounded regular file")
-	}
-	raw, err := os.ReadFile(path)
+	raw, err := readSetupPlanFileBytes(path)
 	if err != nil {
 		return nil, err
 	}

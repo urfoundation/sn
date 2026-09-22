@@ -51,7 +51,7 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	if publication.Schema != "urnetwork-sim-retained-start-publication-v1" || publication.PlanHash != self.plan.PlanHash {
 		return nil
 	}
-	active, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	active, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopp
 	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) || self.cfg.strictHistoryAdoption != nil {
 		return errors.New("retained startup requires explicit non-accepting resume or release scenario")
 	}
-	active, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	active, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil {
 		return err
 	}

@@ -649,8 +649,11 @@ func printResult(format string, v any, resultErr error) error {
 // Other result schemas keep their existing canonical indented representation.
 func writeJSONResult(writer io.Writer, v any) error {
 	compact := false
+	boundedPlan := false
 	switch value := v.(type) {
-	case *SetupPlan, SetupPlan, *fleetRenewalBudgetError:
+	case *SetupPlan, SetupPlan:
+		compact, boundedPlan = true, true
+	case *fleetRenewalBudgetError:
 		compact = true
 	case map[string]any:
 		_, compact = value["plan"].(*SetupPlan)
@@ -664,6 +667,11 @@ func writeJSONResult(writer io.Writer, v any) error {
 	}
 	if err != nil {
 		return err
+	}
+	if boundedPlan {
+		if err := validateSetupPlanWireSize(len(b) + 1); err != nil {
+			return err
+		}
 	}
 	_, err = fmt.Fprintln(writer, string(b))
 	return err
