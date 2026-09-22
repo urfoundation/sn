@@ -388,6 +388,12 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 		nativeBlock, nativeHash = pin.NativeHead.Number, nativeTypes.Hash(common.HexToHash(pin.NativeHead.Hash))
 		nativeMode = evidenceRelayNativeContinuationSnapshot
 	}
+	// Authenticate all retained signatures before replaying either source.
+	// Operator workers may have advanced nonces outside the simulator journal.
+	transactionCensus, err := executor.readEvidenceRelayContinuationTransactionCensus(ctx, block)
+	if err != nil {
+		return nil, err
+	}
 	anchor := runtime.sources[0].activations[0]
 	freshNative := anchor
 	freshNative.NativeBlock = nativeBlock
@@ -523,18 +529,10 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	if err != nil {
 		return nil, err
 	}
-	transactions, err := readEvidenceRelayContinuationTransactions(cfg, stateDir, base)
-	if err != nil {
+	if err := executor.recheckEvidenceRelayContinuationTransactionCensus(ctx, block, transactionCensus); err != nil {
 		return nil, err
 	}
-	exposure, err := fleetRenewalCampaignExposure(stateDir, base, entries, transactions)
-	if err != nil {
-		return nil, err
-	}
-	c.Nonces, err = executor.observeEvidenceRelayContinuationNonces(ctx, exposure, block)
-	if err != nil {
-		return nil, err
-	}
+	c.Nonces = transactionCensus.nonces
 	admitted := map[string]bool{}
 	for _, entry := range entries {
 		if entry.TransactionHash == "" || !base.allowedPlanHashes()[entry.PlanHash] {
@@ -550,16 +548,12 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			}
 		}
 	}
-	for hash, transaction := range exposure.Transactions {
+	for hash, transaction := range transactionCensus.exposure.Transactions {
 		if transaction.To() != nil && *transaction.To() == base.ValidatorEvidence.Address && !admitted[hash.Hex()] {
 			return nil, errors.New("relay continuation found a signed companion transaction outside original relay admission")
 		}
 	}
-	encoded, err := json.Marshal(transactions)
-	if err != nil {
-		return nil, err
-	}
-	c.TransactionsSHA256 = bytesSHA256(encoded)
+	c.TransactionsSHA256 = transactionCensus.sha256
 	latest, err := readJournalEntries(stateDir)
 	if err != nil || !reflect.DeepEqual(entries, latest) {
 		return nil, errors.Join(errors.New("relay continuation deployment journal changed during capture"), err)

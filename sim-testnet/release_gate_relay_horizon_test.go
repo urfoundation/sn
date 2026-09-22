@@ -6,6 +6,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"strings"
 	"testing"
 )
@@ -22,6 +25,7 @@ func TestProducerGateStateSelectionCoversFundedRelayHorizon(t *testing.T) {
 		"evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go",
 		"runtime_evidence_launch_config_test.go",
 		"evidence_relay_retained_publication_test.go",
+		"evidence_relay_continuation_transactions_test.go",
 	})}
 	selected[1].sources = map[string][]string{"./validator": releaseEvidenceV2GateSources(t, []string{"../validator/release_evidence_publication_discovery_v2_test.go", "../validator/release_evidence_publication_discovery_race_v2_test.go", "../validator/release_evidence_publication_retained_v2_test.go"})}
 	selected[2].sources = map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_relay_horizon_test.go"})}
@@ -62,7 +66,9 @@ func TestProducerGateStateSelectionFundedRelayRetainsAuthenticatedOwners(t *test
 		{path: "evidence_relay_horizon_runtime.go", caller: "readAdmittedHorizon", callees: []string{"Entries", "ReadReleaseEvidenceV2SetupFile", "validateEvidenceRelayRequest", "admit"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readClosedPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidencePublicationV2", "ReadRetainedValidatorEvidencePublicationV2"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readAuditPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidenceDepositAuditV2", "ReadRetainedValidatorEvidenceDepositAuditV2"}},
-		{path: "evidence_relay_continuation_capture.go", caller: "captureEvidenceRelayContinuationWithLimitsAt", callees: []string{"newEvidenceRelayRetainedPublications", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus"}},
+		{path: "evidence_relay_continuation_capture.go", caller: "captureEvidenceRelayContinuationWithLimitsAt", callees: []string{"newEvidenceRelayRetainedPublications", "readEvidenceRelayContinuationTransactionCensus", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus", "recheckEvidenceRelayContinuationTransactionCensus"}},
+		{path: "evidence_relay_continuation_transactions.go", caller: "readEvidenceRelayContinuationTransactionCensus", callees: []string{"readEvidenceRelayContinuationTransactions", "fleetRenewalCampaignExposure", "observeEvidenceRelayContinuationNonces"}},
+		{path: "evidence_relay_continuation_transactions.go", caller: "recheckEvidenceRelayContinuationTransactionCensus", callees: []string{"readEvidenceRelayContinuationTransactionCensus"}},
 		{path: "evidence_relay_retained_publication.go", caller: "newEvidenceRelayRetainedPublications", callees: []string{"authenticatedRuntimeConfigManifest", "ReadReleaseEvidenceV2SetupFile", "renderedOperatorEvidenceStoreConfig"}},
 		{path: "evidence_relay_retained_publication.go", caller: "readers", callees: []string{"ReadAttemptObjectTo"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "checkRemaining", callees: []string{"FinalizedBlockContext", "readHorizonNative", "requireHorizonRemaining"}},
@@ -82,5 +88,47 @@ func TestProducerGateStateSelectionFundedRelayRetainsAuthenticatedOwners(t *test
 				t.Errorf("%s:%s lost required owned call %s", edge.path, edge.caller, callee)
 			}
 		}
+	}
+}
+
+// The actual signature/custody tests exercise both observations. This source
+// guard additionally keeps the strict preflight ahead of expensive replay.
+func TestProducerGateStateSelectionRelayNoncePreflightPrecedesSourceReplay(t *testing.T) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), "evidence_relay_continuation_capture.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := map[string]token.Pos{}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "captureEvidenceRelayContinuationWithLimitsAt" {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch target := call.Fun.(type) {
+			case *ast.Ident:
+				positions[target.Name] = call.Pos()
+			case *ast.SelectorExpr:
+				positions[target.Sel.Name] = call.Pos()
+			}
+			return true
+		})
+	}
+	preflight := positions["readEvidenceRelayContinuationTransactionCensus"]
+	recheck := positions["recheckEvidenceRelayContinuationTransactionCensus"]
+	if preflight == 0 || recheck == 0 {
+		t.Fatal("capture lost an original nonce census observation")
+	}
+	for _, name := range []string{"CaptureReleaseHistoryAdoptionV2", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus"} {
+		if position := positions[name]; position == 0 || position <= preflight || position >= recheck {
+			t.Fatalf("%s escaped strict nonce preflight and final evidence recheck", name)
+		}
+	}
+	if positions["appendEvidenceRelayContinuationPlan"] <= recheck {
+		t.Fatal("capture sealed a successor before the final nonce census recheck")
 	}
 }
