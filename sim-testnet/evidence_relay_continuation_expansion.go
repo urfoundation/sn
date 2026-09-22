@@ -19,7 +19,7 @@ func (self *EvidenceRelayContinuation) reserveSpend() (Spend, error) {
 		return Spend{}, err
 	}
 	spend := self.OriginalReserve.Spend
-	if self.Schema == evidenceRelayContinuationExpansionSchema {
+	if evidenceRelayExpandedFunding(self.Schema) {
 		spend.EVMGasWei = multiplyUint64Decimal(evidenceRelayContinuationGas*fee, slots)
 	}
 	return spend, nil
@@ -36,8 +36,8 @@ func evidenceRelayContinuationCaptureSchema(base *SetupPlan, requestedSlots uint
 		switch prior.Schema {
 		case evidenceRelayContinuationSchema, evidenceRelayContinuationRefreshSchema:
 			schema = evidenceRelayContinuationRefreshSchema
-		case evidenceRelayContinuationExpansionSchema:
-			schema = evidenceRelayContinuationExpansionSchema
+		case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema:
+			schema = prior.Schema
 		default:
 			return "", errors.New("relay refresh cannot change an older approved fee version")
 		}
@@ -46,13 +46,15 @@ func evidenceRelayContinuationCaptureSchema(base *SetupPlan, requestedSlots uint
 		if requestedSlots != evidenceRelayContinuationExpandedSlots || base.EvidenceRelayContinuation == nil {
 			return "", errors.New("relay funding revision requires an existing continuation and exactly 2048 aggregate slots")
 		}
-		schema = evidenceRelayContinuationExpansionSchema
+		if schema != evidenceRelayContinuationSourceExpansionSchema {
+			schema = evidenceRelayContinuationExpansionSchema
+		}
 	}
 	if pin != nil {
 		if requestedSlots != 0 {
 			return "", errors.New("relay import cannot replace its approved slot capacity")
 		}
-		if pin.Schema == evidenceRelayContinuationExpansionSchema && base.EvidenceRelayContinuation != nil {
+		if evidenceRelayExpandedFunding(pin.Schema) && base.EvidenceRelayContinuation != nil {
 			schema = pin.Schema
 		}
 		if pin.Schema == "urnetwork-sim-evidence-relay-continuation-v2" && base.EvidenceRelayContinuation == nil {

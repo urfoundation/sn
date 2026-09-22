@@ -31,6 +31,7 @@ type cliOptions struct {
 	RelayContinuationPlan                                                                                                           string
 	RelayEndBlock                                                                                                                   uint64
 	RelaySlots                                                                                                                      uint64
+	RelaySourceLimitMultiplier                                                                                                      uint64
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
@@ -141,6 +142,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
 	fs.Uint64Var(&o.RelayEndBlock, "relay-end-block", 0, "")
 	fs.Uint64Var(&o.RelaySlots, "relay-slots", 0, "")
+	fs.Uint64Var(&o.RelaySourceLimitMultiplier, "relay-source-limit-multiplier", 0, "")
 	fs.BoolVar(&o.AllowanceOnly, "allowance-only", false, "")
 	fs.StringVar(&o.StrictHistoryAdoption, "strict-history-adoption", "", "")
 	fs.StringVar(&o.StrictHistoryAdoptionSHA256, "strict-history-adoption-sha256", "", "")

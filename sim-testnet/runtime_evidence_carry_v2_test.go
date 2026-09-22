@@ -86,9 +86,9 @@ func newRuntimeEvidenceSetupOriginalCarryHistoryV2Test(t *testing.T, beforePrepa
 	return &runtimeEvidenceProvisionV2TestFixture{cfg: executor.cfg, plan: executor.plan, roles: executor.roles, stateDir: executor.stateDir, prepared: prepared, preparedBytes: encoded, completed: completed}
 }
 
-// Construct durable original ownership before changing only the current source
-// lock. Every counterexample starts from this complete local history.
-func prepareRuntimeEvidenceSetupCarryV2Test(t *testing.T, fixture *runtimeEvidenceProvisionV2TestFixture) (*SetupPlan, []JournalEntry) {
+// Retain complete original activation receipts without changing the active
+// approval. Source-capacity successors reuse the same authenticated history.
+func retainRuntimeEvidenceSetupCarryV2Test(t *testing.T, fixture *runtimeEvidenceProvisionV2TestFixture) []JournalEntry {
 	t.Helper()
 	executor := &Executor{cfg: fixture.cfg, plan: fixture.plan, roles: fixture.roles, stateDir: fixture.stateDir}
 	if err := executor.retainRuntimeEvidenceInputsV2(t.Context(), fixture.prepared, fixture.preparedBytes, fixture.completed); err != nil {
@@ -163,6 +163,15 @@ func prepareRuntimeEvidenceSetupCarryV2Test(t *testing.T, fixture *runtimeEviden
 	if err != nil {
 		t.Fatal(err)
 	}
+	return entries
+}
+
+// Construct durable original ownership before changing only the current source
+// lock. Every counterexample starts from this complete local history.
+func prepareRuntimeEvidenceSetupCarryV2Test(t *testing.T, fixture *runtimeEvidenceProvisionV2TestFixture) (*SetupPlan, []JournalEntry) {
+	t.Helper()
+	entries := retainRuntimeEvidenceSetupCarryV2Test(t, fixture)
+	var err error
 	lock := *fixture.cfg.Release
 	lock.Repositories = maps.Clone(lock.Repositories)
 	lock.Repositories["sn"] = map[string]any{"go_source_hash": "sha256:" + strings.Repeat("12", 32)}
@@ -181,7 +190,7 @@ func prepareRuntimeEvidenceSetupCarryV2Test(t *testing.T, fixture *runtimeEviden
 	if err != nil || revised.PlanHash == fixture.plan.PlanHash {
 		t.Fatalf("fixture did not change its source approval: %v", err)
 	}
-	encoded, err = json.Marshal(revised)
+	encoded, err := json.Marshal(revised)
 	if err != nil {
 		t.Fatal(err)
 	}

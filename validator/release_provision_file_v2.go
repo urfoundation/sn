@@ -31,3 +31,9 @@ func ReadReleaseEvidenceV2SetupFile(ctx context.Context, path string, maximumByt
 	}
 	return readReleaseMeasurementInputV2Context(ctx, path, maximumBytes, releaseMeasurementInputV2ReadHooks{})
 }
+
+// Optional setup discovery accepts only clean absence at the first observation.
+// Late disappearance, cancellation and joined close failures remain errors.
+func ReleaseEvidenceV2SetupFileInitiallyMissing(err error) bool {
+	return releaseMeasurementInputV2InitialAbsence(err)
+}

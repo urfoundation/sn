@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -29,6 +28,9 @@ import (
 )
 
 const runtimeEvidenceActivationBoundaryActionId = "evidence.activation-boundary"
+
+// An empty immutable receipt is incomplete setup, never permission to recreate it.
+var errRuntimeEvidenceSetupEmpty = errors.New("validator evidence setup receipt is empty")
 
 // A prepared member retains the original randomized consent bytes across
 // process restarts. Native uid is only a historical observation at Native.
@@ -102,19 +104,38 @@ func writeRuntimeEvidenceSetupV2(ctx context.Context, path string, value any, li
 	return encoded, nil
 }
 
+// Required receipts must contain canonical data. Optional callers may separately
+// admit the descriptor reader's verified initial absence, never empty bytes.
 func readRuntimeEvidenceSetupV2(ctx context.Context, path string, limit uint64, value any) ([]byte, error) {
 	encoded, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, path, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validator evidence setup %s: %w", filepath.Base(path), err)
+	}
+	if len(encoded) == 0 {
+		return nil, fmt.Errorf("validator evidence setup %s: %w", filepath.Base(path), errRuntimeEvidenceSetupEmpty)
 	}
 	if err := decodeStrictJSONBytes(encoded, value); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validator evidence setup %s: %w", filepath.Base(path), err)
 	}
 	canonical, err := json.Marshal(value)
 	if err != nil || !bytes.Equal(encoded, append(canonical, '\n')) {
 		return nil, errors.Join(errors.New("validator evidence setup bytes are noncanonical"), err)
 	}
 	return encoded, ctx.Err()
+}
+
+// Preparation may start only when neither immutable receipt exists. An orphan
+// completion, including an empty or malformed one, still owns its namespace.
+func requireRuntimeEvidenceSetupUnpreparedV2(ctx context.Context, stateDir string, limit uint64) error {
+	var completed runtimeEvidenceActivationCompletedV2
+	_, err := readRuntimeEvidenceSetupV2(ctx, filepath.Join(stateDir, "evidence-v2-setup", "completed.json"), limit, &completed)
+	if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("activation setup completion exists without its original preparation")
 }
 
 // Public identities and both seeds come from the existing admitted role owner.
@@ -267,7 +288,10 @@ func (self *Executor) prepareRuntimeEvidenceActivationsV2(ctx context.Context, c
 		}
 		return &prepared, encoded, nil
 	}
-	if !errors.Is(err, os.ErrNotExist) {
+	if !validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
+		return nil, nil, err
+	}
+	if err := requireRuntimeEvidenceSetupUnpreparedV2(ctx, self.stateDir, limit); err != nil {
 		return nil, nil, err
 	}
 	if err := requireRuntimeEvidenceFreshStateV2(self.cfg, self.stateDir); err != nil {

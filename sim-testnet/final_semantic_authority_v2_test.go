@@ -16,22 +16,44 @@ import (
 // files. Offline authority reconstruction receives only public bytes; removing
 // all live private input files before its call proves the closed boundary.
 func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t *testing.T) {
-	finalValidatorAuthorityRuntimeTest(t, false)
+	finalValidatorAuthorityRuntimeTest(t, false, false)
 }
 
 func TestFinalValidatorAuthorityV2ReconstructsHistorical455Renderer(t *testing.T) {
-	finalValidatorAuthorityRuntimeTest(t, true)
+	finalValidatorAuthorityRuntimeTest(t, true, false)
 }
 
-func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
+func TestFinalValidatorAuthorityV2ReconstructsApprovedDoubledSource(t *testing.T) {
+	finalValidatorAuthorityRuntimeTest(t, false, true)
+}
+
+func finalValidatorAuthorityRuntimeTest(t *testing.T, historical, expandSource bool) {
 	t.Helper()
-	fixture := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
-		cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455
-		if historical {
-			cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455, 0
-			cfg.Release = validatorEvidenceRuntime455TestLock(t)
+	var fixture *runtimeEvidenceProvisionV2TestFixture
+	var current *SetupPlan
+	if expandSource {
+		var executor *Executor
+		fixture, executor = newEvidenceRelayExpansionTest(t)
+		retainEvidenceRelaySourceExpansionSetupTest(t, fixture, executor)
+		request := evidenceRelaySourceExpansionRequestTest(t, fixture, executor)
+		var err error
+		current, err = appendEvidenceRelayContinuationPlan(executor.plan, request)
+		if err != nil {
+			t.Fatal(err)
 		}
-	})
+		if err := writeRunInputs(fixture.cfg, fixture.stateDir, current, fixture.roles); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		fixture = newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
+			cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455
+			if historical {
+				cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ConfigIdentityRuntimeSpec = 455, 0
+				cfg.Release = validatorEvidenceRuntime455TestLock(t)
+			}
+		})
+		current = fixture.plan
+	}
 	deployment := renderFinalValidatorFixtureTest(t, fixture)
 	authority, err := captureFinalValidatorAuthorityV2(t.Context(), fixture.cfg, fixture.stateDir)
 	if err != nil {
@@ -64,7 +86,7 @@ func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	public := PublicDeploymentManifest{DeploymentID: fixture.plan.DeploymentID, PlanHash: fixture.plan.PlanHash, ConfigHash: fixture.cfg.ConfigHash, PolicyHash: fixture.cfg.PolicyHash, ChainID: fixture.cfg.ChainID, Netuid: fixture.cfg.Netuid, Contracts: &deployment}
+	public := PublicDeploymentManifest{DeploymentID: fixture.plan.DeploymentID, PlanHash: current.PlanHash, ConfigHash: fixture.cfg.ConfigHash, PolicyHash: fixture.cfg.PolicyHash, ChainID: fixture.cfg.ChainID, Netuid: fixture.cfg.Netuid, Contracts: &deployment}
 	for index, origin := range fixture.cfg.OperatorAPIOrigins {
 		public.Operators = append(public.Operators, PublicOperator{NoID: index + 1, APIURL: origin})
 	}
@@ -72,7 +94,7 @@ func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence := &FinalSemanticEvidence{DeploymentID: fixture.plan.DeploymentID, PlanHash: fixture.plan.PlanHash, ConfigHash: fixture.cfg.ConfigHash, PolicyHash: fixture.cfg.PolicyHash, ChainID: fixture.cfg.ChainID, GenesisHash: fixture.cfg.Public.Chain.GenesisHash, Netuid: fixture.cfg.Netuid, ExpectedValidators: fixture.cfg.Config.Topology.Validators, ExpectedOperators: fixture.cfg.Config.Topology.Operators}
+	evidence := &FinalSemanticEvidence{DeploymentID: fixture.plan.DeploymentID, PlanHash: current.PlanHash, ConfigHash: fixture.cfg.ConfigHash, PolicyHash: fixture.cfg.PolicyHash, ChainID: fixture.cfg.ChainID, GenesisHash: fixture.cfg.Public.Chain.GenesisHash, Netuid: fixture.cfg.Netuid, ExpectedValidators: fixture.cfg.Config.Topology.Validators, ExpectedOperators: fixture.cfg.Config.Topology.Operators}
 	evidence.Deployment.CoordinatorProxy = deployment.CoordinatorProxy.Hex()
 	evidence.Deployment.SettlementVault = deployment.SettlementVault.Hex()
 	evidence.Deployment.ReserveSink = deployment.ReserveSink.Hex()
@@ -88,7 +110,7 @@ func finalValidatorAuthorityRuntimeTest(t *testing.T, historical bool) {
 		}
 	}()
 	verify := func(source, config []byte) error {
-		_, _, err := finalValidatorConfigAuthorityV2(t.Context(), evidence, fixture.plan, fixture.plan, source, config, manifestBytes, publicBytes, identities, policy, release, 1)
+		_, _, err := finalValidatorConfigAuthorityV2(t.Context(), evidence, current, fixture.plan, source, config, manifestBytes, publicBytes, identities, policy, release, 1)
 		return err
 	}
 	if err := verify(authority, runtime); err != nil {

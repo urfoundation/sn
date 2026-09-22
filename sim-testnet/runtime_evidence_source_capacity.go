@@ -287,7 +287,12 @@ func validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg *ResolvedConfig, d
 	if diagnostics == nil {
 		return errors.Join(errors.New("provisional source forecast has no diagnostic owner"), forecastErr)
 	}
-	if _, err := fmt.Fprintf(diagnostics, "sim-testnet: provisional protected publication forecast advisory; forecast_waived=true runtime_limits_unchanged=true final_acceptance=false\n%v\n", forecastErr); err != nil {
+	message := fmt.Sprintf("sim-testnet: provisional protected publication forecast advisory; forecast_waived=true runtime_limits_unchanged=true final_acceptance=false\n%v\n", forecastErr)
+	written, err := io.WriteString(diagnostics, message)
+	if err == nil && written != len(message) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
 		return errors.Join(fmt.Errorf("record provisional source forecast: %w", err), forecastErr)
 	}
 	return nil

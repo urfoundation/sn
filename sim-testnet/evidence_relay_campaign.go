@@ -20,7 +20,15 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 	if ctx == nil {
 		return nil, errors.New("evidence relay campaign context is absent")
 	}
-	if err := validateRuntimeEvidenceSourceCapacity(cfg); err != nil {
+	sourceConfig := cfg
+	if executor != nil && executor.plan != nil {
+		var err error
+		sourceConfig, err = evidenceRelaySourceCapacityConfig(cfg, executor.plan)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := validateRuntimeEvidenceSourceCapacity(sourceConfig); err != nil {
 		return nil, err
 	}
 	phaseCtx, cancel := context.WithCancelCause(ctx)

@@ -7,7 +7,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -28,6 +30,20 @@ func runtimeEvidenceProvisionalSourceCapacityTest(t *testing.T) *ResolvedConfig 
 		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false,
 		PlanHash: "0x" + strings.Repeat("71", 32), ConfigHash: cfg.ConfigHash, DeploymentID: cfg.Config.Deployment.DeploymentID,
 	}}
+	return cfg
+}
+
+// Keep waiver controls below the computed minimum when launch quotas grow.
+func runtimeEvidenceProvisionalSourceShortfallTest(t *testing.T) *ResolvedConfig {
+	t.Helper()
+	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	minimum, err := requiredRuntimeEvidenceSourceCapacity(cfg, cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds)
+	if err != nil || minimum.retryRequestsPerHour <= 1 {
+		t.Fatalf("test needs a finite retry forecast: %+v %v", minimum, err)
+	}
+	for index := range cfg.Config.Artifacts.ReservedAttemptUploads {
+		cfg.Config.Artifacts.ReservedAttemptUploads[index].Budget.RetryRequestsPerHour = minimum.retryRequestsPerHour - 1
+	}
 	return cfg
 }
 
@@ -162,7 +178,7 @@ func TestRuntimeEvidenceSourceCapacityProvisionalForecastCoversEachQuotaDimensio
 // An in-memory flag or an accepting/foreign record cannot waive a forecast.
 func TestRuntimeEvidenceSourceCapacityForecastRequiresNonAcceptingApproval(t *testing.T) {
 	for _, field := range []string{"missing-record", "schema", "provisional", "final-acceptance", "chain", "config", "deployment", "plan"} {
-		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		cfg := runtimeEvidenceProvisionalSourceShortfallTest(t)
 		switch field {
 		case "missing-record":
 			cfg.provisionalResume.Record = nil
@@ -192,7 +208,7 @@ func TestRuntimeEvidenceSourceCapacityForecastRequiresNonAcceptingApproval(t *te
 // remain fatal even after a valid earlier replica has a retry forecast deficit.
 func TestRuntimeEvidenceSourceCapacityProvisionalForecastRetainsHardAdmission(t *testing.T) {
 	for _, field := range []string{"objects-zero", "bytes-zero", "requests-zero", "owner-product", "owner-census", "history", "record-newline", "record-product", "source-trails", "source-captures", "source-history", "source-operator", "later-source"} {
-		cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+		cfg := runtimeEvidenceProvisionalSourceShortfallTest(t)
 		destination := &cfg.Config.Artifacts.ReservedAttemptUploads[1]
 		bounds := &cfg.Config.ValidatorEvidenceV2[1].Evidence.Bounds
 		switch field {
@@ -233,7 +249,7 @@ func TestRuntimeEvidenceSourceCapacityProvisionalForecastRetainsHardAdmission(t 
 }
 
 func TestRuntimeEvidenceSourceCapacityForecastRequiresRecordedDiagnostic(t *testing.T) {
-	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	cfg := runtimeEvidenceProvisionalSourceShortfallTest(t)
 	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, nil); err == nil || !strings.Contains(err.Error(), "no diagnostic owner") {
 		t.Fatalf("missing advisory output was silently admitted: %v", err)
 	}
@@ -255,6 +271,34 @@ func TestRuntimeEvidenceSourceCapacityForecastRequiresRecordedDiagnostic(t *test
 				t.Fatal(fmt.Errorf("validator %d replica %d runtime capacity: %w", source.ValidatorID, destination.Admission.ReplicaNoID, err))
 			}
 		}
+	}
+}
+
+// No waiver is needed when the configured quotas cover the whole forecast.
+func TestRuntimeEvidenceSourceCapacityFittingForecastNeedsNoDiagnostic(t *testing.T) {
+	cfg := runtimeEvidenceProvisionalSourceCapacityTest(t)
+	if err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, nil); err != nil {
+		t.Fatalf("fitting forecast required an unused diagnostic writer: %v", err)
+	}
+}
+
+// A partial write with no writer error still fails the required receipt.
+type runtimeEvidenceShortDiagnosticTest struct{}
+
+// Return a deterministic incomplete receipt without relying on filesystem timing.
+func (self runtimeEvidenceShortDiagnosticTest) Write(encoded []byte) (int, error) {
+	if len(encoded) == 0 {
+		return 0, nil
+	}
+	return len(encoded) - 1, nil
+}
+
+// Advisory admission requires every diagnostic byte, including its census.
+func TestRuntimeEvidenceSourceCapacityForecastRejectsShortDiagnostic(t *testing.T) {
+	cfg := runtimeEvidenceProvisionalSourceShortfallTest(t)
+	err := validateRuntimeEvidenceSourceCapacityWithDiagnostics(cfg, runtimeEvidenceShortDiagnosticTest{})
+	if !errors.Is(err, io.ErrShortWrite) || strings.Count(err.Error(), "protected publication capacity is below") != 4 {
+		t.Fatalf("partial advisory was silently admitted or lost its shortfall census: %v", err)
 	}
 }
 

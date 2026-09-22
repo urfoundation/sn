@@ -49,6 +49,7 @@ type EvidenceRelayContinuation struct {
 	HistoricalLiabilityWei DecimalUint                                                 `json:"historical_liability_wei"`
 	NewSlots               uint64                                                      `json:"new_slots"`
 	Sources                []EvidenceRelayContinuationSource                           `json:"sources"`
+	SourceBounds           []evidenceRelaySourceBounds                                 `json:"source_bounds,omitempty"`
 	Retained               []validatorcomponent.ValidatorEvidenceTransactionV2Expected `json:"retained"`
 	Debits                 []EvidenceRelayContinuationDebit                            `json:"debits"`
 	Nonces                 []FleetRenewalNonce                                         `json:"nonces"`
@@ -85,7 +86,7 @@ func (self *EvidenceRelayContinuation) feeTerms() (uint64, uint64, error) {
 		return 50_000_000_000, 512, nil
 	case evidenceRelayContinuationSchema, evidenceRelayContinuationRefreshSchema:
 		return evidenceRelayContinuationFee, evidenceRelayContinuationSlots, nil
-	case evidenceRelayContinuationExpansionSchema:
+	case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema:
 		return evidenceRelayContinuationFee, evidenceRelayContinuationExpandedSlots, nil
 	default:
 		return 0, 0, errors.New("relay continuation fee approval version is unsupported")
@@ -237,6 +238,9 @@ func (c *EvidenceRelayContinuation) requiredSubjects(headers map[[32]byte]protoc
 }
 
 func appendEvidenceRelayContinuationPlan(base *SetupPlan, c EvidenceRelayContinuation) (*SetupPlan, error) {
+	if err := c.validateSourceBounds(); err != nil {
+		return nil, err
+	}
 	if base == nil || c.SourcePlanHash != base.PlanHash {
 		return nil, errors.New("relay continuation must extend its exact approved predecessor")
 	}
@@ -256,7 +260,7 @@ func appendEvidenceRelayContinuationPlan(base *SetupPlan, c EvidenceRelayContinu
 			return nil, err
 		}
 	} else {
-		if c.Schema == evidenceRelayContinuationRefreshSchema || c.Schema == evidenceRelayContinuationExpansionSchema || !reflect.DeepEqual(original, c.OriginalReserve) {
+		if c.Schema == evidenceRelayContinuationRefreshSchema || evidenceRelayExpandedFunding(c.Schema) || !reflect.DeepEqual(original, c.OriginalReserve) {
 			return nil, errors.Join(errors.New("relay continuation replaced its original reserve"), err)
 		}
 		gas, fee, maximum, err := evidenceRelayPlanAllowance(base, original)
@@ -299,7 +303,7 @@ func appendEvidenceRelayContinuationPlan(base *SetupPlan, c EvidenceRelayContinu
 	if err != nil {
 		return nil, err
 	}
-	if c.Schema == evidenceRelayContinuationExpansionSchema {
+	if evidenceRelayExpandedFunding(c.Schema) {
 		// A separately approved budget revision funds the fungible campaign
 		// reserve. Move only its excess into this exact relay allocation; never
 		// raise the configured lifetime cap or rewrite executable ceilings.
@@ -328,6 +332,9 @@ func validateEvidenceRelayContinuationPlan(plan *SetupPlan) error {
 	c := plan.EvidenceRelayContinuation
 	if c == nil {
 		return nil
+	}
+	if err := c.validateSourceBounds(); err != nil {
+		return err
 	}
 	if err := validateEvidenceRelayContinuationBudget(plan); err != nil {
 		return err

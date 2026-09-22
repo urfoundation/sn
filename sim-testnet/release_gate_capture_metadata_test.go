@@ -16,7 +16,7 @@ import (
 )
 
 // Pin the selected families independently of their growing source population.
-const releaseGateCaptureSelector = "^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ValidatorStateNamespace|QualificationLauncher|SimulatorAttemptCutV2|ProducerGateStateSelection|ProducerGateCustodySelection|ProducerGateCaptureSelection|FinalCaptureV2|FinalCaptureCapacity|ScenarioNativeWarmupV2|ScenarioNativeObservationV2|StrictHistoryAdoption|FleetRenewal|OwnedRPC|CoordinatorRepairCarry)"
+const releaseGateCaptureSelector = "^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ValidatorStateNamespace|QualificationLauncher|SimulatorAttemptCutV2|ProducerGateStateSelection|ProducerGateCustodySelection|ProducerGateCaptureSelection|FinalCaptureV2|FinalCaptureCapacity|ScenarioNativeWarmupV2|ScenarioNativeObservationV2|StrictHistoryAdoption|FleetRenewal|OwnedRPC|OwnedRpc|CoordinatorRepairCarry|ProvisionalCoordinatorRepair)"
 
 const releaseGateCapturePopulationRoot = "TestCampaignEvidencePopulationV2StreamsPhaseCensusWithBoundedOwners"
 
@@ -482,7 +482,10 @@ func verifyReleaseGateCaptureSourceCensus(script string, sources []string) error
 	}
 	// The two stress roots have their own owners; every other evidence root
 	// remains in the evidence family, including newly added regressions.
-	if counts["capture_population_tests"] != 1 || counts["capture_metadata_tests"] != 1 || counts["capture_private_tests"] != len(releaseCapturePrivateFixtureRoots) || counts["capture_prior_tests"] != 1 || counts["capture_typed_prior_tests"] != 1 || counts["capture_lifecycle_tests"] != 1 || counts["capture_evidence_tests"] != len(evidenceRoots)-2 || counts["capture_renewal_tests"] != 11 || counts["capture_revision_tests"] != 2 || len(ordinaryOwners) == 0 || len(ordinaryOwners)+separateOwners != len(selected) {
+	// The revision pattern enumerates literal root suffixes, so its declared
+	// alternatives fix the complete census even when a source is removed.
+	revisionRoots := strings.Count(releaseGateCaptureRevisionPattern, "|") + 1
+	if counts["capture_population_tests"] != 1 || counts["capture_metadata_tests"] != 1 || counts["capture_private_tests"] != len(releaseCapturePrivateFixtureRoots) || counts["capture_prior_tests"] != 1 || counts["capture_typed_prior_tests"] != 1 || counts["capture_lifecycle_tests"] != 1 || counts["capture_evidence_tests"] != len(evidenceRoots)-2 || counts["capture_renewal_tests"] != 11 || counts["capture_revision_tests"] != revisionRoots || len(ordinaryOwners) == 0 || len(ordinaryOwners)+separateOwners != len(selected) {
 		return fmt.Errorf("capture partition changed its complete source census: ordinary=%d separate=%v selected=%d", len(ordinaryOwners), counts, len(selected))
 	}
 	for _, root := range releaseCapturePrivateFixtureRoots {
@@ -577,6 +580,7 @@ func TestProducerGateCaptureSelectionRejectsSourceCensusDrift(t *testing.T) {
 		releaseGateCapturePopulationRoot,
 		releaseGateCaptureTypedPriorRoot,
 		"TestFleetRenewalBudgetDoesNotChargeRetiredGasTwice",
+		"TestFleetRenewalRevisionRestoresCompletedHistoricalActions",
 	} {
 		missingSources := slices.Clone(sources)
 		for i, source := range missingSources {

@@ -146,6 +146,7 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 		"../validator/release_bootstrap_v2*_test.go", "../validator/release_initial_boundary_v2*_test.go",
 		"../validator/release_state_v2*_test.go", "../validator/release_startup*_test.go",
 		"../validator/release_proof_state_v2*_test.go", "../validator/release_evidence*_test.go",
+		"../validator/release_provision_file_v2_test.go",
 		"../validator/release_client_key_history*_test.go", "../validator/validator_upload*_test.go",
 		"../validator/release_runtime_v2*_test.go", "../validator/release_artifact_observation_v2*_test.go", "../validator/intent_v2*_test.go",
 		"../validator/release_capture_native_v2_test.go", "../validator/release_capture_v2_test.go",
@@ -159,7 +160,7 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 			`go test ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m`,
 			`go test -race ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m`,
 		}},
-		{phase: "solidity", variable: "validator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./protocol", "./stabi", "./sim-testnet/gencontracts"}, sources: map[string][]string{
+		{phase: "solidity", variable: "validator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation", packages: []string{"./protocol", "./stabi", "./sim-testnet/gencontracts"}, sources: map[string][]string{
 			"./protocol":                 releaseEvidenceV2GateSources(t, []string{"../protocol/validator_evidence*_test.go", "../protocol/client_key_history*_test.go"}),
 			"./stabi":                    releaseEvidenceV2GateSources(t, []string{"../stabi/validator_evidence*_test.go"}),
 			"./sim-testnet/gencontracts": releaseEvidenceV2GateSources(t, []string{"gencontracts/evidence*_test.go"}),
@@ -171,8 +172,8 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 			`go test ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 5m`,
 			`go test -race ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 10m`,
 		}},
-		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./sim-testnet"}, sources: map[string][]string{
-			"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"evidence_deployment*_test.go", "evidence_carry*_test.go", "runtime_evidence*_test.go", "evidence_relay*_test.go", "evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go", "evm_nonce_turn_test.go", "adversary_client_key_batch_test.go"}),
+		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation", packages: []string{"./sim-testnet"}, sources: map[string][]string{
+			"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"evidence_deployment*_test.go", "evidence_carry*_test.go", "runtime_evidence*_test.go", "runtime_reserved_provisional_test.go", "evidence_relay*_test.go", "evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go", "evm_nonce_turn_test.go", "adversary_client_key_batch_test.go"}),
 		}, commands: []string{
 			`go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + ` -skip "$simulator_evidence_serial_skip_tests"` + ` -timeout 10m`,
 			`go test -race ./sim-testnet -run "$simulator_evidence_tests" -count=1` + ` -skip "$simulator_evidence_serial_skip_tests"` + ` -timeout 10m`,
@@ -242,7 +243,7 @@ func TestProducerGateStateSelectionEvidenceV2RejectsEveryNewFamilyOmission(t *te
 	script, groups := releaseEvidenceV2GateFixture(t)
 	for _, index := range []int{0, 1, 3} {
 		group := groups[index]
-		families := "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory"
+		families := "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation"
 		if index == 0 {
 			families = releaseEvidenceV2NewProducerGroups
 		}

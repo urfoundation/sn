@@ -192,6 +192,10 @@ func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanti
 	if err != nil {
 		return nil, nil, err
 	}
+	values, err = applyEvidenceRelaySourceBounds(values, current.EvidenceRelayContinuation)
+	if err != nil {
+		return nil, nil, err
+	}
 	copied := *resolved.Config
 	copied.ValidatorEvidenceV2 = values
 	resolved.Config = &copied

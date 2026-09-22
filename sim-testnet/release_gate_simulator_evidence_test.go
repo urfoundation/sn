@@ -14,10 +14,13 @@ import (
 	"testing"
 )
 
-const releaseGateSimulatorEvidenceSelector = "^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory)"
+const releaseGateSimulatorEvidenceSelector = "^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation)"
 const releaseGateSimulatorEvidenceSlowSelector = "^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads)$"
 const releaseGateSimulatorEvidenceRenderSelector = "^TestRuntimeEvidenceOwnedReservedStagingRerenderReplacesProvisionalConfig$"
-const releaseGateSimulatorEvidenceOwnerSkip = " -skip '^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads|TestRuntimeEvidenceOwnedReservedStagingRerenderReplacesProvisionalConfig)$'"
+const releaseGateSimulatorEvidenceProvisionalRenderSelector = "^TestRuntimeProvisionalStagingRenderBindsRetainedAuthority$"
+const releaseGateSimulatorEvidenceProvisionalRejectSelector = "^TestRuntimeProvisionalStagingRejectsChangedSourceAndAuthority$"
+const releaseGateSimulatorEvidenceAllRenderSelector = releaseGateSimulatorEvidenceRenderSelector + "|" + releaseGateSimulatorEvidenceProvisionalRenderSelector + "|" + releaseGateSimulatorEvidenceProvisionalRejectSelector
+const releaseGateSimulatorEvidenceOwnerSkip = " -skip '^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads|TestRuntimeEvidenceOwnedReservedStagingRerenderReplacesProvisionalConfig|TestRuntimeProvisionalStagingRenderBindsRetainedAuthority|TestRuntimeProvisionalStagingRejectsChangedSourceAndAuthority)$'"
 
 // Follow direct same-package identifier calls through test helpers so a new
 // full-launch wrapper cannot rejoin ordinary work. Dynamic calls are outside this classifier.
@@ -84,7 +87,7 @@ func releaseGateSimulatorEvidenceInventory(t *testing.T) ([]string, []string, []
 	var files []*ast.File
 	original := regexp.MustCompile(releaseGateSimulatorEvidenceSelector)
 	slow := regexp.MustCompile(releaseGateSimulatorEvidenceSlowSelector)
-	render := regexp.MustCompile(releaseGateSimulatorEvidenceRenderSelector)
+	render := regexp.MustCompile(releaseGateSimulatorEvidenceAllRenderSelector)
 	for _, path := range paths {
 		matched, err := build.Default.MatchFile(".", path)
 		if err != nil {
@@ -134,7 +137,7 @@ func releaseGateSimulatorEvidenceInventory(t *testing.T) ([]string, []string, []
 func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoots, parallelRoots []string) error {
 	original := regexp.MustCompile(releaseGateSimulatorEvidenceSelector)
 	slow := regexp.MustCompile(releaseGateSimulatorEvidenceSlowSelector)
-	render := regexp.MustCompile(releaseGateSimulatorEvidenceRenderSelector)
+	render := regexp.MustCompile(releaseGateSimulatorEvidenceAllRenderSelector)
 	parallelSelector := "^(" + strings.Join(parallelRoots, "|") + ")$"
 	serialSkip := strings.TrimSuffix(strings.TrimPrefix(releaseGateSimulatorEvidenceOwnerSkip, " -skip '"), ")$'") + "|" + strings.Join(parallelRoots, "|") + ")$"
 	parallelKVs := map[string]bool{}
@@ -151,12 +154,15 @@ func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoo
 	ordinaryRootsKVs := map[string]bool{}
 	for _, group := range []struct {
 		phase, job, variable, selector, packages, skip string
+		count                                          int
 	}{
-		{"solidity", "solidity", "validator_evidence_tests", releaseGateSimulatorEvidenceSelector, "./protocol ./stabi ./sim-testnet/gencontracts", ""},
+		{phase: "solidity", job: "solidity", variable: "validator_evidence_tests", selector: releaseGateSimulatorEvidenceSelector, packages: "./protocol ./stabi ./sim-testnet/gencontracts"},
 		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", selector: releaseGateSimulatorEvidenceSelector, packages: "./sim-testnet", skip: ` -skip "$simulator_evidence_serial_skip_tests"`},
 		{phase: "evidence_simulator_parallel", job: "evidence-simulator-parallel", variable: "simulator_evidence_parallel_tests", selector: parallelSelector, packages: "./sim-testnet", skip: ""},
-		{"evidence_simulator_slow", "evidence-simulator-slow", "simulator_evidence_slow_tests", releaseGateSimulatorEvidenceSlowSelector, "./sim-testnet", ""},
-		{phase: "evidence_simulator_render", job: "evidence-simulator-render", variable: "simulator_evidence_render_tests", selector: releaseGateSimulatorEvidenceRenderSelector, packages: "./sim-testnet"},
+		{phase: "evidence_simulator_slow", job: "evidence-simulator-slow", variable: "simulator_evidence_slow_tests", selector: releaseGateSimulatorEvidenceSlowSelector, packages: "./sim-testnet", count: 2},
+		{phase: "evidence_simulator_render", job: "evidence-simulator-render", variable: "simulator_evidence_render_tests", selector: releaseGateSimulatorEvidenceRenderSelector, packages: "./sim-testnet", count: 1},
+		{phase: "evidence_simulator_provisional_render", job: "evidence-simulator-provisional-render", variable: "simulator_evidence_provisional_render_tests", selector: releaseGateSimulatorEvidenceProvisionalRenderSelector, packages: "./sim-testnet", count: 1},
+		{phase: "evidence_simulator_provisional_reject", job: "evidence-simulator-provisional-reject", variable: "simulator_evidence_provisional_reject_tests", selector: releaseGateSimulatorEvidenceProvisionalRejectSelector, packages: "./sim-testnet", count: 1},
 	} {
 		function := "release_phase_" + group.phase
 		pattern := regexp.MustCompile("(?ms)^" + function + "\\(\\) \\{\\n(.*?)^\\}[\\t ]*$")
@@ -230,7 +236,7 @@ func verifyReleaseGateSimulatorEvidencePartition(script string, roots, renderRoo
 				count++
 			}
 		}
-		if count == 0 || group.phase == "evidence_simulator_slow" && count != 2 || group.phase == "evidence_simulator_render" && count != 1 {
+		if count == 0 || group.count != 0 && count != group.count {
 			return fmt.Errorf("simulator evidence %s has an incomplete root census", group.phase)
 		}
 	}
@@ -267,7 +273,7 @@ func TestProducerGateStateSelectionPartitionsSimulatorEvidenceExactly(t *testing
 			count++
 		}
 	}
-	t.Logf("original simulator census: %d roots; serial: %d; parallel: %d; slow: 2; owned render: 1; one owner per root in normal and race", count, count-3-len(parallelRoots), len(parallelRoots))
+	t.Logf("simulator census: %d roots; parallel: %d; one owner per root in normal and race", count, len(parallelRoots))
 	// An adjacent root, including a suffix of a slow root, remains ordinary.
 	roots = append(roots, "TestEvidenceRelayFutureBoundary", "TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRenderAdjacent")
 	if err := verifyReleaseGateSimulatorEvidencePartition(string(script), roots, renderRoots, parallelRoots); err != nil {
@@ -294,6 +300,10 @@ func TestProducerGateStateSelectionRejectsSimulatorEvidencePartitionDrift(t *tes
 	const renderStart = "release_gate_start evidence-simulator-render release_phase_evidence_simulator_render"
 	const parallelRace = `go test -race ./sim-testnet -run "$simulator_evidence_parallel_tests" -count=1 -timeout 10m`
 	const parallelStart = "release_gate_start evidence-simulator-parallel release_phase_evidence_simulator_parallel"
+	const provisionalRenderRace = `go test -race ./sim-testnet -run "$simulator_evidence_provisional_render_tests" -count=1 -timeout 10m`
+	const provisionalRenderStart = "release_gate_start evidence-simulator-provisional-render release_phase_evidence_simulator_provisional_render"
+	const provisionalRejectRace = `go test -race ./sim-testnet -run "$simulator_evidence_provisional_reject_tests" -count=1 -timeout 10m`
+	const provisionalRejectStart = "release_gate_start evidence-simulator-provisional-reject release_phase_evidence_simulator_provisional_reject"
 	parallelAssignment := "simulator_evidence_parallel_tests='^(" + strings.Join(parallelRoots, "|") + ")$'"
 	for _, mutation := range []struct{ old, replacement string }{
 		{normal, strings.Replace(normal, serialSkipArgument, "", 1)},
@@ -328,6 +338,14 @@ func TestProducerGateStateSelectionRejectsSimulatorEvidencePartitionDrift(t *tes
 		{old: parallelStart, replacement: "if false; then\n" + parallelStart + "\nfi"},
 		{old: parallelAssignment, replacement: "simulator_evidence_parallel_tests='^(" + strings.Join(parallelRoots[1:], "|") + ")$'"},
 		{old: parallelAssignment, replacement: "simulator_evidence_parallel_tests='^(" + strings.Join(append(slices.Clone(parallelRoots), parallelRoots[0]), "|") + ")$'"},
+		{old: provisionalRenderRace, replacement: "# " + provisionalRenderRace},
+		{old: provisionalRenderRace, replacement: strings.Replace(provisionalRenderRace, "10m", "30m", 1)},
+		{old: provisionalRenderStart, replacement: "# " + provisionalRenderStart},
+		{old: provisionalRenderStart, replacement: "if false; then\n" + provisionalRenderStart + "\nfi"},
+		{old: provisionalRejectRace, replacement: "# " + provisionalRejectRace},
+		{old: provisionalRejectRace, replacement: strings.Replace(provisionalRejectRace, "-race ", "", 1)},
+		{old: provisionalRejectStart, replacement: "# " + provisionalRejectStart},
+		{old: provisionalRejectStart, replacement: provisionalRejectStart + "\n" + provisionalRejectStart},
 	} {
 		if strings.Count(script, mutation.old) != 1 {
 			t.Fatalf("mutation does not identify one boundary: %s", mutation.old)

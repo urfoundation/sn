@@ -10,12 +10,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/urfoundation/sn/stabi"
+	validatorcomponent "github.com/urfoundation/sn/validator"
 )
 
 // Resolve a completed ancestor without changing its signatures, first epoch,
@@ -33,22 +33,25 @@ func historicalPlanConfig(cfg *ResolvedConfig, plan *SetupPlan) *ResolvedConfig 
 	return &copy
 }
 
+// Every retained preparation and completion must authenticate, even before the
+// first revision. Ancestor sources additionally require exact durable history.
 func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stateDir string, roles *RoleSecrets, prepared *runtimeEvidenceActivationPreparedV2, encoded []byte, completed *runtimeEvidenceActivationCompletedV2, entries []JournalEntry) (*SetupPlan, error) {
 	if cfg == nil || cfg.Config == nil || plan == nil || roles == nil || prepared == nil {
 		return nil, errors.New("activation setup carry owners are incomplete")
 	}
-	if prepared.PlanHash == plan.PlanHash {
-		return plan, nil
-	}
-	if !plan.allowedPlanHashes()[prepared.PlanHash] {
-		return nil, errors.New("activation setup source is outside approved lineage")
-	}
-	source, err := readValidatorEvidenceHistoricalPlan(stateDir, prepared.PlanHash)
-	if err != nil {
-		return nil, err
-	}
-	if err := validatorEvidenceSourcePlanMatches(plan, source); err != nil {
-		return nil, err
+	source := plan
+	if prepared.PlanHash != plan.PlanHash {
+		if !plan.allowedPlanHashes()[prepared.PlanHash] {
+			return nil, errors.New("activation setup source is outside approved lineage")
+		}
+		var err error
+		source, err = readValidatorEvidenceHistoricalPlan(stateDir, prepared.PlanHash)
+		if err != nil {
+			return nil, err
+		}
+		if err := validatorEvidenceSourcePlanMatches(plan, source); err != nil {
+			return nil, err
+		}
 	}
 	// The prepared evidence is signed against the source approval. A successor
 	// may change only an independent allowance and therefore has a different
@@ -68,6 +71,9 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 	}
 	if err := verifyFinalHead("activation setup original boundary", completed.Boundary); err != nil {
 		return nil, err
+	}
+	if source == plan {
+		return plan, nil
 	}
 	actions := make([]Action, 0, len(prepared.Members)+1)
 	for _, member := range prepared.Members {
@@ -262,7 +268,10 @@ func validateRuntimeEvidenceSetupRevisionV2(cfg *ResolvedConfig, stateDir string
 	}
 	var prepared runtimeEvidenceActivationPreparedV2
 	encoded, err := readRuntimeEvidenceSetupV2(context.Background(), filepath.Join(stateDir, "evidence-v2-setup", "prepared.json"), limit, &prepared)
-	if errors.Is(err, os.ErrNotExist) {
+	if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
+		if err := requireRuntimeEvidenceSetupUnpreparedV2(context.Background(), stateDir, limit); err != nil {
+			return err
+		}
 		for _, entry := range entries {
 			if plan.allowedPlanHashes()[entry.PlanHash] && (strings.HasPrefix(entry.ActionID, "evidence.activate.") || entry.ActionID == runtimeEvidenceActivationBoundaryActionId) {
 				return errors.New("activation setup revision has progress without its original preparation")

@@ -203,6 +203,7 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 	if err != nil {
 		return nil, err
 	}
+	current := plan
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		return nil, err
@@ -245,6 +246,10 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 				}
 			}
 		}
+	}
+	values, err = applyEvidenceRelaySourceBounds(values, current.EvidenceRelayContinuation)
+	if err != nil {
+		return nil, err
 	}
 	resolved, copied := *cfg, *cfg.Config
 	copied.ValidatorEvidenceV2 = values

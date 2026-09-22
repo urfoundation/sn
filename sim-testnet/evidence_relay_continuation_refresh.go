@@ -18,7 +18,7 @@ import (
 // Initial fee repartition owns only original debits. A refresh can also retain
 // the lower-fee slots already admitted by its authenticated predecessors.
 func (self *EvidenceRelayContinuation) debitLimit() uint64 {
-	if self != nil && self.Schema == evidenceRelayContinuationExpansionSchema {
+	if self != nil && evidenceRelayExpandedFunding(self.Schema) {
 		return evidenceRelayContinuationExpandedSlots
 	}
 	if self != nil && self.Schema == evidenceRelayContinuationRefreshSchema {
@@ -30,15 +30,21 @@ func (self *EvidenceRelayContinuation) debitLimit() uint64 {
 // Pure append admission preserves the predecessor's economic and historical
 // obligations. Actual prefix bytes and signed records are rechecked by capture.
 func validateEvidenceRelayContinuationRefresh(base *SetupPlan, current *EvidenceRelayContinuation) error {
-	if base == nil || base.EvidenceRelayContinuation == nil || current == nil || (current.Schema != evidenceRelayContinuationRefreshSchema && current.Schema != evidenceRelayContinuationExpansionSchema) || current.SourcePlanHash != base.PlanHash {
+	if base == nil || base.EvidenceRelayContinuation == nil || current == nil || (current.Schema != evidenceRelayContinuationRefreshSchema && !evidenceRelayExpandedFunding(current.Schema)) || current.SourcePlanHash != base.PlanHash {
 		return errors.New("relay refresh requires its exact adopted continuation predecessor")
 	}
 	prior := base.EvidenceRelayContinuation
-	if prior.Schema != evidenceRelayContinuationSchema && prior.Schema != evidenceRelayContinuationRefreshSchema && prior.Schema != evidenceRelayContinuationExpansionSchema {
+	if prior.Schema != evidenceRelayContinuationSchema && prior.Schema != evidenceRelayContinuationRefreshSchema && !evidenceRelayExpandedFunding(prior.Schema) {
 		return errors.New("relay refresh cannot change an older approved fee version")
 	}
 	if err := validateEvidenceRelayContinuationPlan(base); err != nil {
 		return err
+	}
+	if err := current.validateSourceBounds(); err != nil {
+		return err
+	}
+	if len(prior.SourceBounds) != 0 && !reflect.DeepEqual(current.SourceBounds, prior.SourceBounds) {
+		return errors.New("relay refresh changed or removed its approved source lifetime revision")
 	}
 	if current.ConfigHash != prior.ConfigHash || current.ActivationPlanHash != prior.ActivationPlanHash || current.PreparedSHA256 != prior.PreparedSHA256 || current.CompletedSHA256 != prior.CompletedSHA256 || !reflect.DeepEqual(current.OriginalReserve, prior.OriginalReserve) {
 		return errors.New("relay refresh changed original activation or monetary authority")

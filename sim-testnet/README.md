@@ -89,6 +89,18 @@ no chain transaction. Then capture the strict history adoption against that
 new plan hash. Original activation files, coordinator history, queues and
 request/receipt bytes remain owned by their original sources.
 
+When an existing source's retained lifetime cannot fit the complete remaining
+campaign, an explicit `--relay-slots 2048 --relay-source-limit-multiplier 2`
+capture requests a v6 successor. Its plan records both original and approved
+bounds for each validator. It doubles ledger record/trail totals, raw/storage
+and proof capacity, and their matching cut-stream and replay containers once.
+Per-record, per-proof, metadata, policy and upload limits stay unchanged. The
+capture authenticates retained records under the predecessor's limits before
+forecasting new work under the approved limits. Runtime rendering and detached
+verification derive the same bounds from that exact successor; ordinary resume
+and later refresh cannot double them again. The 2,048 aggregate slots retain
+the fixed 51.2 TAO reserve and every earlier debit at its original approved cost.
+
 Provisional campaign startup retains a successful evidence-relay history scan
 in an authenticated, exact-plan cache. The entry binds the config, deployment,
 genesis, netuid, activation origins, verifier inputs, inventory bounds, journal
