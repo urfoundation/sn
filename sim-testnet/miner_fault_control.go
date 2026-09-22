@@ -258,6 +258,7 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 			return nil, err
 		}
 	}
+	delete(self.minerControlReconciled, progress.FaultHash+":"+action)
 	return processes, nil
 }
 

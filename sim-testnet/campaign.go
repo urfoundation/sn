@@ -360,6 +360,9 @@ func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *
 // Both current schedules and historical signed schedules enforce identical
 // state-transition evidence and reject failed or malformed fault state.
 func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record ScenarioFaultRecord) error {
+	if err := validateScenarioCampaignMinerControl(record); err != nil {
+		return err
+	}
 	if record.PreAcceptance {
 		if record.ArmedBlock == 0 || record.ArmedBlock >= window.StartBlock || !validCanonicalHashHex(record.ArmedBlockHash) {
 			return fmt.Errorf("scenario campaign pre-acceptance fault %q has no exact armed boundary", record.ID)
@@ -369,11 +372,13 @@ func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record
 	}
 	switch record.Status {
 	case "pending":
-		if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != 0 || len(record.RestoredProcesses) != 0 || record.Error != "" {
+		controlPending := record.Kind == "miner-control" && record.ControlStartedBlock != 0
+		if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.RestoredProcesses) != 0 || !controlPending && (len(record.Processes) != 0 || record.Error != "") {
 			return fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
 		}
 	case "active":
-		if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != len(record.Targets) || len(record.RestoredProcesses) != 0 || record.Error != "" {
+		controlPending := record.Kind == "miner-control" && record.ControlPendingRounds != 0
+		if record.AppliedBlock < record.TriggerBlock || !validCanonicalHashHex(record.AppliedBlockHash) || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.Processes) != len(record.Targets) || len(record.RestoredProcesses) != 0 || !controlPending && record.Error != "" {
 			return fmt.Errorf("scenario campaign active fault %q has malformed transition evidence", record.ID)
 		}
 	case "restored":
@@ -965,6 +970,9 @@ func validateScenarioFaultProgress(previous, next []ScenarioFaultRecord) error {
 		}
 		if before.ActivationConditionMet && (!after.ActivationConditionMet || after.ActivationConditionBlock != before.ActivationConditionBlock) || before.RestoreConditionMet && (!after.RestoreConditionMet || after.RestoreConditionBlock != before.RestoreConditionBlock) {
 			return fmt.Errorf("scenario campaign fault %q changed its condition evidence", before.ID)
+		}
+		if after.ControlPendingRounds < before.ControlPendingRounds || before.ControlStartedBlock != 0 && (after.ControlStartedBlock != before.ControlStartedBlock || after.ControlStartedBlockHash != before.ControlStartedBlockHash) {
+			return fmt.Errorf("scenario campaign fault %q changed its pending control evidence", before.ID)
 		}
 	}
 	return nil

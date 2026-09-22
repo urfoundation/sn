@@ -1167,6 +1167,28 @@ separately. A temporary control-plane timeout must not erase the durable
 completed prefix or require a whole campaign restart. Invalid identities,
 conflicting state and exhausted retries remain explicit failures.
 
+The September 22 release also exposed a disagreement between these layers:
+the control driver returned a legitimate partial round, but the signed campaign
+validator required pending faults to have no process census or diagnostic. Its
+rejection canceled observation before the next full snapshot. Both applying and
+restoring retries must have explicit checkpoint semantics, with a canonical
+first-dispatch boundary, monotonic retry count, exact target census and separate
+completed-transition block. Preserve those diagnostics through checkpoint
+signing and reopening; incomplete work must neither stop observation nor count
+as a completed acceptance fault. Test the complete driver/controller/checkpoint
+path together, including a pending heartbeat while a snapshot is still running.
+
+Bounded rounds must also make progress across their completed prefix. Re-reading
+every completed member at each ten-second boundary can starve a large batch
+indefinitely under load. Retain verified member progress for one in-process
+fault/action and owning worker generation, only after the live reconciliation
+and durable completion write succeed. Reopen, parent cancellation, hard failure,
+worker replacement or the opposite action must require fresh reconciliation;
+an old completion file alone is never authority. Test multiple constrained
+rounds, restored-state drift, same-PID worker replacement and mixed
+cancellation/integrity failures. Keep all acceptance-window and minimum fault
+duration checks unchanged.
+
 **PH-22 — Transport recovery and final signal.** Treat connect/read deadlines,
 EOF/reset and HTTP `429`, `502`, `503` and `504` as bounded retry candidates
 only for idempotent reads or controls with a retained idempotency key. Reuse the

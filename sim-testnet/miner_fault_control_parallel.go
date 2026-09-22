@@ -37,6 +37,38 @@ func minerControlPending(err error) bool {
 	return ok
 }
 
+// Round cancellation may accompany sibling transport failures, but a joined
+// integrity/status error must never acquire nonterminal retry authority.
+func minerControlRoundRetryable(err error, canceled bool) bool {
+	if minerControlTransientError(err) {
+		return true
+	}
+	var invalid *minerControlInvalidStatusError
+	if !canceled || errors.As(err, &invalid) {
+		return false
+	}
+	if err == context.Canceled {
+		return true
+	}
+	switch err := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := err.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !minerControlRoundRetryable(cause, canceled) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return minerControlRoundRetryable(err.Unwrap(), canceled)
+	default:
+		return false
+	}
+}
+
 // Preserve the complete legacy singleton before adding any parallel target.
 func upgradeMinerControlProgress(active *activeFaultFile) {
 	if active.Schema != minerControlProgressSchema {
@@ -71,6 +103,39 @@ type minerControlRoundResult struct {
 	process FaultProcessEvidence
 	swarm   int
 	err     error
+}
+
+// This driver-local cache is only a cursor through one unfinished transition.
+// Disk completion alone cannot populate it; every entry follows a live response
+// and successful durable write. Worker generations and opposite actions differ.
+type minerControlGeneration struct {
+	process   FaultProcessEvidence
+	startedAt string
+	restarts  int
+}
+
+// Snapshot the owning generation on every round. A reopened driver has no
+// cache and must reconcile its retained disk census incrementally again.
+func (self *liveScenarioFaultDriver) minerControlGenerations(processes []FaultProcessEvidence) (map[string]minerControlGeneration, error) {
+	states, _, err := self.processSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	processGenerationKVs := make(map[string]minerControlGeneration, len(processes))
+	for _, process := range processes {
+		var miner int
+		_, _ = fmt.Sscanf(process.ID, "miner-%d", &miner)
+		swarm, err := minerSwarmFor(self.cfg, miner)
+		if err != nil {
+			return nil, err
+		}
+		state, ok := states[fmt.Sprintf("miner-swarm-%d", swarm)]
+		if !ok || state.PID != process.PID || state.Identity != process.Identity {
+			return nil, fmt.Errorf("miner control owner changed before reconciliation for %s", process.ID)
+		}
+		processGenerationKVs[process.ID] = minerControlGeneration{process: process, startedAt: state.StartedAt, restarts: state.Restarts}
+	}
+	return processGenerationKVs, nil
 }
 
 // Pre-acceptance and cleanup callers own bounded waits rather than a live
@@ -118,7 +183,26 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 	if self.minerControlParallel > 0 {
 		parallel = min(parallel, self.minerControlParallel)
 	}
-	remaining := slices.Clone(processes)
+	processGenerationKVs, err := self.minerControlGenerations(processes)
+	if err != nil {
+		return err
+	}
+	transitionKey := progress.FaultHash + ":" + action
+	if self.minerControlReconciled == nil {
+		self.minerControlReconciled = map[string]map[string]minerControlGeneration{}
+	}
+	reconciled := self.minerControlReconciled[transitionKey]
+	if reconciled == nil {
+		reconciled = map[string]minerControlGeneration{}
+		self.minerControlReconciled[transitionKey] = reconciled
+	}
+	remaining := make([]FaultProcessEvidence, 0, len(processes))
+	for _, process := range processes {
+		if reconciled[process.ID] != processGenerationKVs[process.ID] || !slices.Contains(progress.Completed, process) {
+			delete(reconciled, process.ID)
+			remaining = append(remaining, process)
+		}
+	}
 	// Resolve ambiguous pending operations before starting another target.
 	sort.SliceStable(remaining, func(i, j int) bool {
 		return slices.Contains(progress.PendingTargets, remaining[i].ID) && !slices.Contains(progress.PendingTargets, remaining[j].ID)
@@ -212,7 +296,7 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 			if result.err != nil {
 				failure := fmt.Errorf("%s %s: %w", action, result.process.ID, result.err)
 				failures = append(failures, failure)
-				if !minerControlTransientError(result.err) && !(errors.Is(result.err, context.Canceled) && roundCtx.Err() != nil) {
+				if !minerControlRoundRetryable(result.err, roundCtx.Err() != nil) {
 					hardFailure = errors.Join(hardFailure, failure)
 					cancel()
 				}
@@ -231,14 +315,18 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 				if err := persist(); err != nil {
 					hardFailure = errors.Join(hardFailure, err)
 					cancel()
+				} else {
+					reconciled[result.process.ID] = processGenerationKVs[result.process.ID]
 				}
 			}
 		}
 	}
 	if hardFailure != nil {
+		delete(self.minerControlReconciled, transitionKey)
 		return hardFailure
 	}
 	if err := ctx.Err(); err != nil {
+		delete(self.minerControlReconciled, transitionKey)
 		return err
 	}
 	if len(failures) != 0 || len(remaining) != 0 || len(progress.Completed) != len(processes) {

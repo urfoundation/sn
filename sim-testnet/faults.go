@@ -99,6 +99,7 @@ type liveScenarioFaultDriver struct {
 	minerControlRoundContext func(context.Context) (context.Context, context.CancelFunc)
 	minerControlHead         func(context.Context) (ChainHead, error)
 	minerControlCompleted    minerControlCompletedTransition
+	minerControlReconciled   map[string]map[string]minerControlGeneration
 }
 
 type dockerScenarioContainerRuntime struct{ docker dockerCLI }
