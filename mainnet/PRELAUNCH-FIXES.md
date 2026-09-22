@@ -687,6 +687,19 @@ line allocation, read-only cache access and atomic publication without letting
 concurrent appends extend one observation indefinitely. Final semantic evidence
 continues to authenticate the original proof records independently of this cache.
 
+**2026-09-22 recovery-plan follow-up.** A read-only CPU profile found that cold
+recovery validation decoded and rehashed the same large archived plans for each
+signed generation, even though envelope reads had their own lookup. Share one
+[authenticated plan lookup](../sim-testnet/campaign_plan_lookup.go) across root
+succession, signed envelopes, approval edges and source reconstruction. Preserve
+the exact raw-byte digest, all lineage and custody checks, and a bounded retained
+size. Fence each reuse and the final return with directory/file identity and
+change-time witnesses; replacement, truncation and same-size writes must fail.
+Unavailable metadata or an exhausted memory budget requires the full reader.
+Emit progress after each authenticated generation. Production qualification must
+count full decodes per distinct approval and force mutations during validation,
+so a warm envelope cache cannot conceal repeated work in adjacent readers.
+
 ### PH-06 — Release, plan and rendered configuration identity
 
 **Lesson.** Publishing reports invalidated a qualified executable (RL-01),

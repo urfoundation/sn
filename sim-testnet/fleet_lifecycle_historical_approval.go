@@ -60,7 +60,10 @@ func authenticateProvisionalLifecycleAncestor(attempt *scenarioCampaignAttempt, 
 		if prior.payload.PlanHash != evidence.PlanHash {
 			return nil, errors.New("provisional lifecycle changed its original run approval")
 		}
-		plan := reader.planKVs[prior.payload.PlanHash]
+		plan, _, err := reader.plans.read(attempt.stateDir, prior.payload.PlanHash)
+		if err != nil {
+			return nil, err
+		}
 		if !scenarioCampaignLineagePlansMatch(reader.current, plan) ||
 			!fleetLifecycleCanonicalEqual(reader.current.FleetLifecycleRenewal, plan.FleetLifecycleRenewal) ||
 			!fleetLifecycleCanonicalEqual(evidence.Renewal, plan.FleetLifecycleRenewal) {
@@ -78,6 +81,9 @@ func authenticateProvisionalLifecycleAncestor(attempt *scenarioCampaignAttempt, 
 			},
 		}
 		if err := checker.validateProvisionalBypassState("release-1.0", evidence.RunID, evidence); err != nil {
+			return nil, err
+		}
+		if err := reader.plans.check(); err != nil {
 			return nil, err
 		}
 		return plan, nil
