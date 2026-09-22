@@ -485,6 +485,15 @@ func readEvidenceRelayStartupCacheEnvelope(directory *os.File, name string, maxi
 }
 
 func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.File, error) {
+	return openEvidenceRelayPrivateCacheDirectory(stateDir, evidenceRelayStartupCacheDirectoryName, create)
+}
+
+// Both provisional caches retain private descriptor-owned entries beneath the
+// original state owner; a link in any path component cannot redirect writes.
+func openEvidenceRelayPrivateCacheDirectory(stateDir, name string, create bool) (*os.File, error) {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return nil, errors.New("relay cache directory name is not canonical")
+	}
 	path, err := filepath.Abs(stateDir)
 	if err != nil {
 		return nil, err
@@ -510,13 +519,15 @@ func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.F
 		return nil, err
 	}
 	if create {
-		if err := unix.Mkdirat(fd, evidenceRelayStartupCacheDirectoryName, 0o700); err == nil {
-			_ = unix.Fsync(fd)
+		if err := unix.Mkdirat(fd, name, 0o700); err == nil {
+			if err := unix.Fsync(fd); err != nil {
+				return nil, err
+			}
 		} else if !errors.Is(err, unix.EEXIST) {
 			return nil, err
 		}
 	}
-	cacheFD, err := unix.Openat(fd, evidenceRelayStartupCacheDirectoryName, flags, 0)
+	cacheFD, err := unix.Openat(fd, name, flags, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +535,7 @@ func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.F
 		unix.Close(cacheFD)
 		return nil, err
 	}
-	return os.NewFile(uintptr(cacheFD), evidenceRelayStartupCacheDirectoryName), nil
+	return os.NewFile(uintptr(cacheFD), name), nil
 }
 
 func (entry *evidenceRelayStartupCacheEntry) save(ctx context.Context, proof evidenceRelayStartupCacheProof) bool {

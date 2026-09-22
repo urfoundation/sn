@@ -86,7 +86,8 @@ func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activat
 
 // This common reader is used at preflight and immediately before sending.
 // Its returned values are metadata only; complete payload buffers are released.
-func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, source *evidenceRelaySource, manifest *validatorcomponent.ValidatorEvidencePublicationV2Manifest, block uint64, hash [32]byte) ([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, error) {
+// Only provisional preparation explicitly supplies a cold census checkpoint.
+func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, source *evidenceRelaySource, manifest *validatorcomponent.ValidatorEvidencePublicationV2Manifest, block uint64, hash [32]byte, censuses ...*evidenceRelayColdCensusSource) ([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, error) {
 	epoch := new(big.Int).SetUint64(manifest.Epoch)
 	start, err := self.chain.ReleaseEpochStartBlockAtHashContext(ctx, block, hash, epoch)
 	if err != nil {
@@ -101,17 +102,28 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: end}
 	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
-	var publication *validatorcomponent.ValidatorEvidenceCensusV2Publication
-	if self.retainedPublications != nil {
-		replicas, readErr := self.retainedPublications.readers(source.bounds)
-		if readErr != nil {
-			return nil, readErr
-		}
-		publication, err = validatorcomponent.ReadRetainedValidatorEvidencePublicationV2(ctx, manifest, options, replicas)
-	} else {
-		publication, err = validatorcomponent.ReadValidatorEvidencePublicationV2(ctx, manifest, options)
+	var census *evidenceRelayColdCensusSource
+	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
+		census = censuses[0]
 	}
-	if err != nil {
+	checkpoint := census.entry(ctx, manifest, window)
+	publication := checkpoint.read(ctx)
+	if publication == nil {
+		if self.retainedPublications != nil {
+			replicas, readErr := self.retainedPublications.readers(source.bounds)
+			if readErr != nil {
+				return nil, readErr
+			}
+			publication, err = validatorcomponent.ReadRetainedValidatorEvidencePublicationV2(ctx, manifest, options, replicas)
+		} else {
+			publication, err = validatorcomponent.ReadValidatorEvidencePublicationV2(ctx, manifest, options)
+		}
+		if err != nil {
+			return nil, err
+		}
+		census.complete(ctx, checkpoint, publication)
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	result := make([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, len(publication.Members))
@@ -124,7 +136,7 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 
 // Audit subjects are not collapsed by native epoch. Both actual public
 // replicas and every original operator consent remain mandatory.
-func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, source *evidenceRelaySource, manifest *validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest, block uint64, hash [32]byte) ([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, error) {
+func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, source *evidenceRelaySource, manifest *validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest, block uint64, hash [32]byte, censuses ...*evidenceRelayColdCensusSource) ([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, error) {
 	if manifest.Decision.ValidatorID != source.validatorId {
 		return nil, errors.New("evidence audit decision differs from its original configured validator")
 	}
@@ -142,17 +154,28 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: block, Subject: manifest.Subject}
 	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
-	var publication *validatorcomponent.ValidatorEvidenceCensusV2Publication
-	if self.retainedPublications != nil {
-		replicas, readErr := self.retainedPublications.readers(source.bounds)
-		if readErr != nil {
-			return nil, readErr
-		}
-		publication, err = validatorcomponent.ReadRetainedValidatorEvidenceDepositAuditV2(ctx, manifest, options, replicas)
-	} else {
-		publication, err = validatorcomponent.ReadValidatorEvidenceDepositAuditV2(ctx, manifest, options)
+	var census *evidenceRelayColdCensusSource
+	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
+		census = censuses[0]
 	}
-	if err != nil {
+	checkpoint := census.entry(ctx, manifest, window)
+	publication := checkpoint.read(ctx)
+	if publication == nil {
+		if self.retainedPublications != nil {
+			replicas, readErr := self.retainedPublications.readers(source.bounds)
+			if readErr != nil {
+				return nil, readErr
+			}
+			publication, err = validatorcomponent.ReadRetainedValidatorEvidenceDepositAuditV2(ctx, manifest, options, replicas)
+		} else {
+			publication, err = validatorcomponent.ReadValidatorEvidenceDepositAuditV2(ctx, manifest, options)
+		}
+		if err != nil {
+			return nil, err
+		}
+		census.complete(ctx, checkpoint, publication)
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	result := make([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, len(publication.Members))
@@ -320,6 +343,10 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err := self.readAdmittedHorizon(self.ctx, horizon, block); err != nil {
 		return err
 	}
+	coldCensus, err := self.newEvidenceRelayColdCensusSession(self.ctx)
+	if err != nil {
+		return err
+	}
 	var observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected
 	for index := range self.sources {
 		if provisionalResumeEnabled(self.executor.cfg) && horizon.continuation == nil {
@@ -340,8 +367,9 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		if err != nil {
 			return err
 		}
+		census := coldCensus.beginSource(source, uint64(len(closed)+len(audits)))
 		for index := range closed {
-			requests, err := self.readClosedPublication(self.ctx, source, &closed[index], block, hash)
+			requests, err := self.readClosedPublication(self.ctx, source, &closed[index], block, hash, census)
 			if err != nil {
 				return err
 			}
@@ -353,7 +381,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 			}
 		}
 		for index := range audits {
-			requests, err := self.readAuditPublication(self.ctx, source, &audits[index], block, hash)
+			requests, err := self.readAuditPublication(self.ctx, source, &audits[index], block, hash, census)
 			if err != nil {
 				return err
 			}
@@ -375,6 +403,9 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	}
 	if self.startupCache != nil && self.startupCache.hit && !self.startupCache.revalidate(self) {
 		return errors.New("relay startup cached prefix changed during admission")
+	}
+	if err := coldCensus.revalidate(); err != nil {
+		return err
 	}
 	// Discovery/public reads can take real time. Re-read both clocks before
 	// giving preparation permission, without turning elapsed time into credit.
