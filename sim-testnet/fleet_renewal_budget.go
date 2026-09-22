@@ -313,7 +313,7 @@ func validateFleetRenewalSignerNonceCoverage(roles *RoleSecrets, exposure fleetR
 	addresses := map[common.Address]bool{}
 	for _, point := range checkpoints {
 		role, ok := roles.EVM[point.Role]
-		if !ok || seen[point.Role] || point.Address != common.HexToAddress(role.Address) || addresses[point.Address] || point.Finalized > point.Latest || point.Latest > point.Pending || point.Pending > 20000 {
+		if !ok || seen[point.Role] || point.Address != common.HexToAddress(role.Address) || addresses[point.Address] || point.Finalized > point.Latest || point.Latest > point.Pending || point.Pending > maximumFleetRenewalObservedNonce {
 			return errors.New("renewal EVM nonce checkpoint changes custody or exceeds its bound")
 		}
 		seen[point.Role], addresses[point.Address] = true, true

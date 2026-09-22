@@ -408,6 +408,13 @@ persisted signed bytes. The previous plan is archived, and every old signed
 manifest, binding, receipt and runtime queue is retained. Renewal alone does not
 launch or rerender a campaign; strict startup admission remains a separate step.
 
+Unrelated deployment signers may continue working during renewal approval.
+Apply reconciles their bounded nonce observations while retaining exact role
+custody and monotonic finalized progress. The oracle and keeper nonces used by
+the approved renewal remain exact; changing either requires a new approved
+transaction intent. Reconciliation never changes the approval hash, signs a
+replacement or repeats a submitted action.
+
 Compact approval output, renewal/relay imports, active reloads and immutable
 plan archives share a 128 MiB file limit. Full approvals retain earlier fleet
 generations and can exceed the independent 32 MiB ordinary proof limit. Every

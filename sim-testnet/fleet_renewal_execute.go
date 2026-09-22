@@ -258,11 +258,8 @@ func validateFleetRenewalFreshPrestate(renewal FleetRenewal, fresh fleetRenewalO
 	if renewal.CampaignLiabilityWei != fresh.Renewal.CampaignLiabilityWei || renewal.SupersededGasCoveredWei != fresh.Renewal.SupersededGasCoveredWei || !equalFleetRenewalTransactions(renewal.TransactionEvidence, fresh.Renewal.TransactionEvidence) {
 		return errors.New("renewal signed transaction liabilities changed since approval")
 	}
-	if left, _ := canonicalHashHex(renewal.EVMNonces); left != "" {
-		right, _ := canonicalHashHex(fresh.Renewal.EVMNonces)
-		if left != right {
-			return errors.New("renewal deployment EVM nonce activity changed since approval")
-		}
+	if err := validateFleetRenewalNonceProgress(renewal, fresh.Renewal.EVMNonces); err != nil {
+		return err
 	}
 	if fresh.Renewal.ObservedEpoch >= renewal.ValidFromEpoch || fresh.Renewal.Oracle != renewal.Oracle || fresh.Renewal.Keeper != renewal.Keeper || fresh.Renewal.OracleNonce != renewal.OracleNonce || fresh.Renewal.KeeperNonce != renewal.KeeperNonce {
 		return errors.New("renewal signer nonce, oracle, or inclusion window changed since approval")

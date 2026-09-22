@@ -848,11 +848,24 @@ witnesses. Parallelize independent fleet work within nonce/resource ownership.
 Keep retention capacity sufficient for startup margin and the full required
 window; a forecast end is not a reason to wait until that block to start.
 
+**Concurrent signer follow-up (2026-09-22).** A fleet renewal repeatedly refused
+approval because independent root publishers advanced their nonces. Admission
+must bind exact nonce state to the transaction owners of the repair, then
+reconcile bounded progress of other signers without changing custody, signed
+liabilities or the approval hash. Unconfirmed observations may settle or leave
+the pool; finalized history may not regress. The simulator now applies this
+distinction to renewal checkpoints. Production closure also requires one owner
+per actual signing stream and recovery of persisted signed bytes before any
+retry; it does not permit silently changing an approved transaction nonce.
+
 **Closure.** Move the finalized head across activation while part of a fleet is
 renewed; interrupt and compact midway; delay import past a planned boundary.
 Resume without double renewal, lost original lease proof or unauthorized fresh
 funding. Assert that acceptance counts actual complete policy epochs and that
 claim/commit/reveal deadlines are never inferred from stale wall-clock ETA.
+Advance an unrelated signer between approval and apply, then prove the same
+approval succeeds without signing or broadcasting twice. Keep changed renewal
+signers, custody, liabilities, missing roles and unbounded observations hard.
 
 ### PH-11 — Budgets, reserve targets and native funding behavior
 
