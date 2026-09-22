@@ -45,6 +45,7 @@ type provisionalResumeState struct {
 	RecordPath         string
 	RecordHash         string
 	AcceptedPlanHashes []string
+	recoveryChain      *scenarioCampaignRecoveryChainCache
 }
 
 type provisionalScenarioProvenance struct {

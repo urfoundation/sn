@@ -436,18 +436,42 @@ func (self *scenarioCampaignLineageReader) readRoot() (*scenarioCampaignAttempt,
 	return prior, raw, relative, nil
 }
 
-// Every link is revalidated from the root before its successor can be selected.
+// Every link is authenticated from the root. An exact invocation-local proof
+// may project unchanged history without repeating its large source reads.
 func readScenarioCampaignRecoveryChain(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile) ([]scenarioCampaignRecoveryRecord, error) {
+	return readScenarioCampaignRecoveryChainMemo(cfg, stateDir, roles, planHash, files, readScenarioCampaignRecoveryChainFrom)
+}
+
+// A memoized prefix has already passed the same validator and source fence.
+// Each appended generation still authenticates its signed envelope and edge.
+func readScenarioCampaignRecoveryChainFrom(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile, prefix []scenarioCampaignRecoveryRecord) ([]scenarioCampaignRecoveryRecord, error) {
+	if len(prefix) > len(files) || len(prefix) != 0 && !provisionalResumeEnabled(cfg) {
+		return nil, errors.New("campaign recovery prefix has no provisional chain context")
+	}
+	for index, record := range prefix {
+		if record.file != files[index] || record.attempt == nil || len(record.raw) == 0 {
+			return nil, errors.New("campaign recovery prefix differs from selected source files")
+		}
+	}
 	reader, err := newScenarioCampaignLineageReader(cfg, stateDir, roles, planHash)
 	if err != nil {
 		return nil, err
 	}
-	prior, priorRaw, priorRelativePath, err := reader.readRoot()
-	if err != nil {
-		return nil, err
+	var prior *scenarioCampaignAttempt
+	var priorRaw []byte
+	var priorRelativePath string
+	if len(prefix) == 0 {
+		prior, priorRaw, priorRelativePath, err = reader.readRoot()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		last := prefix[len(prefix)-1]
+		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
 	}
 	records := make([]scenarioCampaignRecoveryRecord, 0, len(files))
-	for _, file := range files {
+	records = append(records, prefix...)
+	for _, file := range files[len(prefix):] {
 		attempt, raw, err := reader.read(file.path)
 		if err != nil {
 			return nil, err
