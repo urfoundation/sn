@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -22,7 +23,9 @@ func TestProvisionalRuntimeCompatibilityPreviewMatchesActualRender(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview, err := previewProvisionalRuntimeConfigs(cfg, stateDir, roles)
+	var previewReads atomic.Int64
+	previewCfg := countedRuntimePlanReadScopeTest(cfg, &previewReads)
+	preview, err := previewProvisionalRuntimeConfigs(previewCfg, stateDir, roles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +36,18 @@ func TestProvisionalRuntimeCompatibilityPreviewMatchesActualRender(t *testing.T)
 	if len(preview) != cfg.Config.Topology.Operators+cfg.Config.Topology.Validators+1 {
 		t.Fatal("preview inventory differs")
 	}
-	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
+	if count := previewReads.Load(); count != 1 {
+		t.Fatalf("preview authenticated the same immutable plan %d times, want 1", count)
+	}
+	var renderReads atomic.Int64
+	if err := RenderRuntimeConfigs(countedRuntimePlanReadScopeTest(cfg, &renderReads), stateDir, roles); err != nil {
 		t.Fatal(err)
+	}
+	if count := renderReads.Load(); count != 1 {
+		t.Fatalf("render authenticated the same immutable plan %d times, want 1", count)
+	}
+	if cfg.runtimePlanReads != nil {
+		t.Fatal("render proof scope escaped into its caller")
 	}
 	for relative, expected := range preview {
 		actual, err := os.ReadFile(filepath.Join(stateDir, filepath.FromSlash(relative)))

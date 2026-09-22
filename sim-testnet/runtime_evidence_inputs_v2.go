@@ -195,6 +195,7 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 	if !cfg.Config.ProvisionValidatorEvidenceV2 {
 		return cfg, nil
 	}
+	cfg = runtimePlanReadScopeConfig(cfg)
 	limit, err := runtimeEvidenceProvisionLimit(cfg)
 	if err != nil {
 		return nil, err

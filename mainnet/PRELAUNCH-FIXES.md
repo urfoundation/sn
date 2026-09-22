@@ -1283,6 +1283,15 @@ generation progress, and fall back to cold authentication after an immutable
 source change. A cache must not bridge plans, authorities, generations or
 changed bytes.
 
+Runtime rendering exposed the same duplication inside one operation: nested
+evidence, staging and manifest readers each revalidated the complete active
+plan. [The scoped reader](../sim-testnet/runtime_plan_read_scope.go) retains one
+successful proof for exact source bytes, state root, configuration and private
+route/assurance fields. Every use still acquires and hashes the bounded source;
+each caller receives its own decoded plan. Production qualification should
+count full validations per render, then replace/truncate/symlink source files,
+change authority and mutate returned values. No failed validation is reusable.
+
 **PH-25 — Deployment workload ownership.** A terminal campaign and its
 deployment have distinct lifecycles. A terminal scenario may retain the exact
 healthy supervisor, claim relayers, miners, validators, proxies and supporting

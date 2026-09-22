@@ -355,6 +355,9 @@ type CompatibilityGate struct {
 
 type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
+	// Read-only plan proofs are shared only by nested runtime render readers.
+	// Exact source bytes and operational authority are reobserved on every use.
+	runtimePlanReads *runtimePlanReadScope
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
 	readOnlyAudit bool
