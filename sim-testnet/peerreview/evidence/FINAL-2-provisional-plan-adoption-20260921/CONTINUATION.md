@@ -59,8 +59,8 @@ flowchart TD
 | P0 | Cap adoption still meets a pending-probe/strict-release gate | Qualify and integrate the exact local-only adoption route; active successor equals its archived review; journal and pending actions unchanged |
 | P0 | Relay capture and old live-only adoption form a stop/start cycle | Keep supervisor and validators stopped; capture and adopt the exact continuation under the separately approved caps; never restart the old 1,024-slot plan just to satisfy a live guard |
 | P0 | Ordinary resume would repeat setup even after adoption | Use the qualified retained-runtime branch: authentic static runtime files, qualified driver, explicit current API/handoff approval, zero setup/tournament dispatch |
-| P1 | Relay preview candidate `9aa93ae4` has two initial test refusals | Resolve owned-route fixture binding and historical source-release fixture identity; retain the failed receipts and rerun only the affected qualification |
-| P1 | Retry/checkpoint candidates `abf29b08` and `0c3d5773` need qualification | Preserve the original retry deadline/attempt, one retry owner and one bounded write attempt; correct the reported adaptive oracle fixture regression before integration |
+| P1 | Relay preview candidate `9aa93ae4` had two fixture refusals, corrected by `6a067e22` | Retain the initial failures; qualify the exact owned-route and historical source-release fixture correction without weakening production guards |
+| P1 | Retry/checkpoint candidates preserve bounded attempts, with oracle-local capacity correction | Preserve the original retry deadline/attempt, one retry owner and one bounded write attempt; use the qualified oracle correction so unrelated learned batch capacity cannot alter its complete groups |
 | P1 | Fresh relay horizon, keeper balance and transaction exposure are moving facts | Pin the actual new capture; preserve every original liability and signed request; reconcile finalized nonce/balance before any separately bounded funding |
 | P1 | Failed/interrupted acceptance intervals are immutable history | Append a fresh attempt under the current approved plan; reuse only authenticated unchanged preparation; start a new future fully observed acceptance interval |
 | P2 | Historical audit remains unresolved | Retry only missing proof groups; preserve successful receipts and deferred per-action errors; strict final acceptance refuses every unresolved deferral |
@@ -79,6 +79,7 @@ flowchart TD
 | Runtime version change | Fresh current operations use the reviewed compatibility adapter; pinned historical reads use their original runtime identity | A historical runtime observation cannot authorize signing/current dispatch. Do not rewrite original signed config/metadata merely to match today's runtime number |
 | Read timeout | One bounded owner retries the exact route/block/target/calldata; adaptive split retains authenticated successful elements | Cancellation, exhausted budgets, hard identity/decode errors remain visible; no outer loop resets an exhausted audit or retry deadline |
 | Unknown write outcome | Reopen exact signed raw bytes/hash/nonce and original recovery checkpoint | Timeout is not proof of non-execution. Receipt/nonce reconciliation precedes any rebroadcast; never generate a fresh transaction to resolve uncertainty |
+| Consumed retained nonce | A matching prior broadcast plus exact finalized coordinates for the same signer in approved lineage can establish slot consumption | This permits only retained provisional process startup. It neither proves an old action's effects nor creates a verified receipt, refunds spend, replays an action, or grants final acceptance. Native signer case and EVM/native nonce domains stay distinct |
 | Provisional campaign | Append fresh compatible recovery attempt, run traffic while historical audit proceeds | Actual approved plan/config is current; failed ancestor signatures and signed boundaries stay original; no inherited acceptance or fabricated progress |
 | Final acceptance | Compose unchanged qualifying evidence with newly observed required scopes | `final_acceptance=false`, unresolved historical deferrals, invalidated intervals or missing observations cannot satisfy the strict final gate |
 
@@ -131,12 +132,66 @@ A provisional successful run still needs the strict final acceptance work in
 the graph. No honest completion ETA can omit the actual required observed
 interval or pretend a failed interval can continue in place.
 
-## Qualification status
+## Qualification and retained-journal accounting
 
-Candidate source is isolated on `astra/provisional-allowance-adoption-20260921`.
-Seven new deterministic roots cover exact cap adoption, provenance/receipt tamper,
-strict rejection, stopped-generation and crash-publication recovery,
-2,048-slot signed-liability relay adoption, and retained executable/manifest
-substitution. Startup separately refuses an unresolved broadcast, while exact finalized failures and authenticated completed receipts remain reusable. Existing allowance, stopped-topology and provisional-repair roots
-form the adjacent selector. Formatting and diff checks passed. Normal/race
-results, controls and final commit identity must be added before deployment.
+The base startup implementation is `bb4cc77feffff4f3a4574618e09dd6372f9278fb`
+on `astra/provisional-allowance-adoption-20260921`. Its final adjacent selector
+contains 14 roots. The 13-root normal run passed in 37.919 seconds, the added
+unknown-transaction guard and stopped-start pair passed in 7.198 seconds, and
+the final 14-root race run passed in 274.600 seconds. The final 12-file source
+manifest remained byte-identical before and after the race; its SHA-256 is
+`5d42422d0223d3dab7e01037f4db30164dbd36a992122fbe4d3a71e153933283`.
+Raw commands, exit receipts and source fences are under
+`/mnt/data/sn-testnet/qualification/terra-successor-startup-20260921/`.
+
+The subsequent narrow correction
+`bc9b89b4aa060d4b7ebf2357e92f8781c0d8b6ee` distinguishes exact transaction
+history from action identity: an earlier verification cannot resolve a later
+different broadcast. A hashless historical receipt is reusable only when its
+preceding transaction identity is unique. Duplicate hashes must retain their
+signer and nonce. Finalized coordinates bind to a preceding exact broadcast;
+only a sufficient finalized nonce for the same signer can establish that a
+remaining old slot is already consumed. Four additional deterministic roots
+cover these distinctions, malformed evidence, and unchanged original entries.
+The following six-root selector passed normally in 6.722 seconds and with race
+detection in 53.594 seconds; census and pre/post source fences bind the executed
+candidate to `bc9b89b4`. It was integrated by the coordinating agent as
+`b3af1b08` without changing the isolated candidate.
+
+```sh
+./scripts/with-test-storage.sh go test ./sim-testnet \
+  -run '^(TestProvisionalPlanAdoptionRetainedStartup.*|TestProvisionalPlanAdoptionStoppedGeneration)$' \
+  -count=1 -parallel=4 -timeout=10m
+./scripts/with-test-storage.sh go test -race ./sim-testnet \
+  -run '^(TestProvisionalPlanAdoptionRetainedStartup.*|TestProvisionalPlanAdoptionStoppedGeneration)$' \
+  -count=1 -parallel=4 -timeout=10m
+```
+
+The correction's retained evidence is under
+`/mnt/data/sn-testnet/qualification/terra-provisional-allowance-adoption-20260922/`:
+`candidate-census.log`, `candidate-normal.log`, `candidate-race.log`,
+`candidate-source-fence.log` and `candidate-post-run-source-fence.log`.
+The superseded `e1206779` attempt was interrupted before final candidate
+qualification and is explicitly excluded. Base startup qualification and this
+later correction are separate scopes; neither substitutes for a live campaign
+or strict final acceptance.
+
+A read-only source-analysis census at 2026-09-22 00:24 UTC inspected the actual
+retained 45,465-entry journal without changing it. Among 8,817 exact broadcasts,
+8,802 had exact local outcomes and 15 additional slots had same-signer finalized
+nonce progress; zero remained unresolved under the corrected startup rule.
+This is local journal analysis, not independent on-chain verification or a
+compiled candidate test. The original 12-row census grew to 15 after the exact
+ordering/ambiguity rule exposed three additional old broadcast identities;
+all three also had consumed slots. Those action effects remain historical
+audit work. Restricted raw census artifacts are retained outside the repository:
+
+- `/mnt/data/sn-testnet/qualification/provisional-allowance-adoption-20260921/retained-nonce-census.json`
+- `/mnt/data/sn-testnet/qualification/provisional-allowance-adoption-20260921/retained-nonce-candidate-analysis.json`
+
+The census bound plan bytes to SHA-256
+`7023a9592652c5f7a20bb8f1c5fb5a964a0073d40f81e2c92b0ca9374d08295f`
+and journal bytes to
+`e7c2bed59f8cd7bf1de44c9e4f0202eb61754d1415d034de7310d3bc5bebe293`.
+Recheck the current retained state before an operational transition; these are
+pinned observations, not permission to substitute a later journal or plan.
