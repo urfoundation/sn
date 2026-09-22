@@ -523,6 +523,18 @@ between individual replay items. Deterministic coverage must hold a real public
 request open while proving release admission, then separately prove that failed,
 canceled, missing or changed audit evidence cannot pass final acceptance.
 
+**Process replacement follow-up.** A replacement driver previously spent its
+startup budget reopening a signed interval owned by a dead process, then
+invalidated that interval and required a second invocation to publish its
+recovery. The [process recovery path](../sim-testnet/campaign_process_recovery.go)
+now makes that decision before workers start. The exclusive deployment owner
+appends a fresh signed interval under the phase lock, retaining original
+observations, journal liabilities, deployment and authenticated fleet lifecycle.
+Unstarted preparation keeps its checkpoint; a process gap cannot count toward
+continuous acceptance. Qualify duplicate callers, interruption between
+invalidation and publication, retained fleet evidence, successful/completed
+sources, and read-only ownership before promoting the pattern to production.
+
 ### PH-02 — Transaction idempotency, partial failure and custody
 
 **Lesson.** Original signatures were missing from the simulator even though

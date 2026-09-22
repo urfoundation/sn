@@ -604,7 +604,7 @@ func fleetLifecycleProvisionalRecoveryFixture(t *testing.T) (*liveFleetLifecycle
 	}
 	lifecycle.cfg = fixture.cfg
 	lifecycle.stateDir = fixture.stateDir
-	lifecycle.executor = &Executor{cfg: fixture.cfg, stateDir: fixture.stateDir, plan: fixture.current, roles: fixture.roles}
+	lifecycle.executor = &Executor{cfg: fixture.cfg, stateDir: fixture.stateDir, plan: fixture.current, roles: fixture.roles, journal: fixture.journal}
 	lifecycle.attempt = current
 	evidence.DeploymentID = fixture.cfg.Config.Deployment.DeploymentID
 	evidence.PlanHash = fixture.current.PlanHash

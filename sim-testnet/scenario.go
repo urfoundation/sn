@@ -3874,7 +3874,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if err := options.Attempt.invalidateAcceptance(reason, options.Now().UTC()); err != nil {
 			return nil, fmt.Errorf("invalidate interrupted scenario acceptance: %w", err)
 		}
-		interrupted := fmt.Errorf("scenario campaign acceptance was interrupted (%s); a fresh signed deployment and lifecycle namespace is required", reason)
+		interrupted := fmt.Errorf("scenario campaign acceptance was interrupted (%s); a fresh signed acceptance interval is required", reason)
 		if options.FaultDriver != nil {
 			cleanupCtx, cancel := newScenarioFaultRecoveryContext(options.FaultDriver)
 			defer cancel()
@@ -5112,6 +5112,10 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 			}
 			attempt = loaded
 		}
+	}
+	attempt, err = recoverScenarioCampaignProcessSession(ctx, attempt, journal, scenarioProcessSessionID, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("recover scenario campaign process before startup: %w", err)
 	}
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {

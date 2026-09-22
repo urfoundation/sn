@@ -572,14 +572,11 @@ func validateScenarioCampaignRecoveryAncestor(attempt *scenarioCampaignAttempt, 
 
 // Extend the authenticated chain by one fresh full campaign after a failed interval.
 func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, now time.Time, journal *Journal) (*scenarioCampaignAttempt, error) {
-	if cfg == nil || cfg.Config == nil || roles == nil || journal == nil || !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record == nil || cfg.provisionalResume.Record.PlanHash != planHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
+	if roles == nil {
 		return nil, errors.New("campaign recovery requires the exact provisional non-accepting approval")
 	}
-	journal.mu.Lock()
-	owned := journal.lock != nil && journal.file != nil && journal.path == filepath.Join(stateDir, "journal.jsonl")
-	journal.mu.Unlock()
-	if !owned {
-		return nil, errors.New("campaign recovery has no live exclusive deployment journal owner")
+	if err := validateScenarioCampaignRecoveryOwner(cfg, stateDir, planHash, journal); err != nil {
+		return nil, err
 	}
 	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); err == nil {
 		return nil, errors.New("campaign recovery cannot replace a release with a production descendant")
