@@ -553,6 +553,9 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 
 	case "precompile.transfer-out":
+		if err := precompileTransferReadiness(evidence); err != nil {
+			return err
+		}
 		if evidence.Transfer.AmountRao == 0 {
 			probeBefore, err := e.readStakeFinalized(ctx, sample, probeColdkey)
 			if err != nil || probeBefore <= evidence.Seed.BeforeRao {

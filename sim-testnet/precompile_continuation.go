@@ -16,6 +16,8 @@ const precompilePreparationScenario = "precompile-prepare"
 
 var errPrecompileDividendPending = errors.New("precompile dividend is not finalized yet")
 
+var errPrecompileRecoveryPending = errors.New("precompile move-position recovery remains pending")
+
 // Confines a single dividend read to the continuation caller. The ordinary
 // conformance command retains its existing bounded wait semantics.
 type precompileDividendSinglePollKey struct{}
@@ -169,7 +171,7 @@ func precompileContinuationMayWait(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
-	if err == errPrecompileDividendPending {
+	if err == errPrecompileDividendPending || err == errPrecompileRecoveryPending {
 		return true
 	}
 	if _, fileError := err.(*os.PathError); fileError {
@@ -273,5 +275,35 @@ func (self *Executor) advancePrecompileContinuation(ctx context.Context) error {
 		_, ready, err := evaluatePrecompileDividend(evidence, tempo, head, baseline, current, since)
 		return ready, err
 	}
-	return continuePrecompileActions(turnCtx, self.plan, verified, observe, self.Execute)
+	return continuePrecompileActions(turnCtx, self.plan, verified, observe, self.executePrecompileContinuationAction)
+}
+
+// Recovery readiness is checked before Execute journals an intent or reaches a
+// signer. The already verified dividend remains durable while cleanup is pending.
+func (self *Executor) executePrecompileContinuationAction(ctx context.Context, action Action) error {
+	if action.ID == "precompile.transfer-out" {
+		evidence, err := loadPrecompileEvidence(self.stateDir)
+		if err != nil {
+			return err
+		}
+		if err := self.validatePrecompileEvidence(self.payloads.PrecompileProbeAddress, evidence); err != nil {
+			return err
+		}
+		if err := precompileTransferReadiness(evidence); err != nil {
+			return err
+		}
+	}
+	return self.Execute(ctx, action)
+}
+
+// Only an exactly recorded, receipt-accounted liability can be deferred. Lost
+// principal, altered credits and missing evidence remain integrity failures.
+func precompileTransferReadiness(evidence *PrecompileConformanceEvidence) error {
+	if !precompileRoundTripAccounted(evidence) {
+		return errors.New("precompile transfer has no accounted round trip")
+	}
+	if evidence.Back.FromAfterRao != 0 {
+		return fmt.Errorf("%w: outstanding_alpha_rao=%d", errPrecompileRecoveryPending, evidence.Back.FromAfterRao)
+	}
+	return nil
 }
