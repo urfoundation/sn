@@ -27,6 +27,9 @@ func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, non
 
 // Recovery authorization expands only the nonce sequence, never the setup plan.
 func precompileProbeSuccessorPrefixWithRecovery(plan *SetupPlan, entries []JournalEntry, nonce uint64, evidence *PrecompileConformanceEvidence) ([]JournalEntry, error) {
+	if err := validatePrecompileRecoveryGasRevisionJournal(plan, evidence, entries); err != nil {
+		return nil, err
+	}
 	if err := validatePrecompileProbeSuccessorActions(plan); err != nil {
 		return nil, err
 	}

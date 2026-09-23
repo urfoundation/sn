@@ -31,6 +31,7 @@ type cliOptions struct {
 	RolloverPlan, RolloverPlanHash                                                                                                  string
 	RolloverEpoch, RolloverGeneration                                                                                               uint64
 	ProbeRecoveryExecute                                                                                                            bool
+	ProbeRecoveryReviseGas                                                                                                          bool
 	ProbeRecoveryBudget, ProbeRecoveryBudgetSHA256                                                                                  string
 	RelayContinuationPlan                                                                                                           string
 	RelayEndBlock                                                                                                                   uint64
@@ -88,6 +89,7 @@ Common options:
   --platform-config-repo PATH  platform config repository override
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
+  --revise-recovery-gas  propose/sign a fixed 6M-gas revision of the first unsigned probe top-up
   --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
   --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
   --provisional-resume  reuse authenticated testnet evidence for diagnostics, continuation and exact setup/fleet repairs; no final release acceptance
@@ -133,6 +135,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	var o cliOptions
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
 	fs.BoolVar(&o.ProbeRecoveryExecute, "execute-recovery", false, "")
+	fs.BoolVar(&o.ProbeRecoveryReviseGas, "revise-recovery-gas", false, "")
 	fs.StringVar(&o.ProbeRecoveryBudget, "probe-recovery-budget", "", "")
 	fs.StringVar(&o.ProbeRecoveryBudgetSHA256, "probe-recovery-budget-sha256", "", "")
 	fs.StringVar(&o.StateDir, "state-dir", "", "")

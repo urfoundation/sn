@@ -275,8 +275,20 @@ func verifyPrecompileRecoveryOriginalEvidence(original, recovered *PrecompileCon
 	originalCopy := *original
 	originalCopy.EvidenceHash = ""
 	originalHash, err := canonicalHashHex(originalCopy)
-	if err != nil || originalHash != original.EvidenceHash || recovered.Recovery.Authorization.Request.OriginalEvidenceHash != originalHash {
+	if err != nil || originalHash != original.EvidenceHash {
 		return errors.New("probe recovery changed its original evidence hash")
+	}
+	request := recovered.Recovery.Authorization.Request
+	if original.Recovery != nil || request.OriginalEvidenceHash != originalHash {
+		// A terminal campaign may have observed the exact pending top-up later
+		// embedded in the signed gas revision. No other partial snapshot aliases
+		// the immutable origin, and none of its recovery fields are ignored.
+		if request.GasRevision == nil || originalHash != request.GasRevision.Evidence.EvidenceHash || !reflect.DeepEqual(*original, request.GasRevision.Evidence) {
+			return errors.New("probe recovery original is neither its immutable origin nor its exact signed pending snapshot")
+		}
+		if err := validatePrecompileRecoveryAuthorization(recovered, &recovered.Recovery.Authorization); err != nil {
+			return err
+		}
 	}
 	before, after := *original, *recovered
 	before.Recovery, after.Recovery = nil, nil

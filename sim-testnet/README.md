@@ -215,6 +215,25 @@ remain recovery blockers. The final acceptance interval independently replays
 the historical evidence, so this recovery optimization never promotes a
 provisional continuation to final acceptance.
 
+A first probe-recovery top-up refused before signing because its original gas
+ceiling is too small can receive one explicit gas revision. After the interval's
+writer exits, `probe-recovery --revise-recovery-gas --provisional-resume
+--plan-hash HASH` proposes a fresh budget. Review and pass that saved budget with
+`--probe-recovery-budget PATH --probe-recovery-budget-sha256 SHA256`; `--apply`
+publishes the dual-signed v2 authorization under exclusive journal ownership.
+The fixed ceiling is 6,000,000 gas per call, preserving eight steps, the original
+fee ceiling, custody amounts and lifetime limits. It provides at least twice
+the retained padded estimate, whose maximum supported value is 3,000,000.
+Ordinary `probe-recovery --execute-recovery --apply` adopts the revision and
+resumes; it refuses any old recovery transaction or unjournaled signed probe
+bytes. The original approval, unsigned failed step and journal rows remain in
+the authenticated history; distinct v2 action IDs preserve journal invariants.
+
+A later custody completion can bind either the immutable original conformance
+or the exact pending terminal snapshot embedded in that signed revision.
+Unrelated or altered pending snapshots remain invalid. This supplemental proof
+does not supply missing campaign observations, signed results or live epochs.
+
 For the user's 2026-09-16 run-first instruction, prefer explicit provisional
 testnet continuation when strict startup repeatedly audits retained history.
 Run the actual campaign while preserving its approved plan, signed records,

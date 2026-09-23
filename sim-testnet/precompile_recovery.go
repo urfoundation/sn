@@ -42,30 +42,31 @@ type PrecompileRecoveryBudget struct {
 // The immutable basis stops authorization from migrating to another probe,
 // snapshot or round trip. Dividend maturity is checked before any operation.
 type PrecompileRecoveryRequest struct {
-	Schema               string                   `json:"schema"`
-	PlanHash             string                   `json:"plan_hash"`
-	ConfigHash           string                   `json:"config_hash"`
-	DeploymentId         string                   `json:"deployment_id"`
-	ChainId              uint64                   `json:"chain_id"`
-	GenesisHash          string                   `json:"genesis_hash"`
-	Netuid               uint16                   `json:"netuid"`
-	Owner                common.Address           `json:"owner"`
-	Deployer             common.Address           `json:"deployer"`
-	Probe                common.Address           `json:"probe"`
-	ProbeRuntimeHash     string                   `json:"probe_runtime_hash"`
-	SampleHotkey         string                   `json:"sample_hotkey"`
-	MoveHotkey           string                   `json:"move_hotkey"`
-	RecoveryColdkey      string                   `json:"recovery_coldkey"`
-	BasisHash            string                   `json:"basis_hash"`
-	OriginalEvidenceHash string                   `json:"original_evidence_hash"`
-	ReseedTaoRao         uint64                   `json:"reseed_tao_rao"`
-	MaximumReseeds       uint64                   `json:"maximum_reseeds"`
-	TopUpRao             uint64                   `json:"top_up_rao"`
-	MaximumSteps         uint64                   `json:"maximum_steps"`
-	MaximumGasUnits      uint64                   `json:"maximum_gas_units"`
-	MaximumFeePerGasWei  uint64                   `json:"maximum_fee_per_gas_wei"`
-	BudgetHash           string                   `json:"budget_hash"`
-	Budget               PrecompileRecoveryBudget `json:"budget"`
+	Schema               string                         `json:"schema"`
+	PlanHash             string                         `json:"plan_hash"`
+	ConfigHash           string                         `json:"config_hash"`
+	DeploymentId         string                         `json:"deployment_id"`
+	ChainId              uint64                         `json:"chain_id"`
+	GenesisHash          string                         `json:"genesis_hash"`
+	Netuid               uint16                         `json:"netuid"`
+	Owner                common.Address                 `json:"owner"`
+	Deployer             common.Address                 `json:"deployer"`
+	Probe                common.Address                 `json:"probe"`
+	ProbeRuntimeHash     string                         `json:"probe_runtime_hash"`
+	SampleHotkey         string                         `json:"sample_hotkey"`
+	MoveHotkey           string                         `json:"move_hotkey"`
+	RecoveryColdkey      string                         `json:"recovery_coldkey"`
+	BasisHash            string                         `json:"basis_hash"`
+	OriginalEvidenceHash string                         `json:"original_evidence_hash"`
+	ReseedTaoRao         uint64                         `json:"reseed_tao_rao"`
+	MaximumReseeds       uint64                         `json:"maximum_reseeds"`
+	TopUpRao             uint64                         `json:"top_up_rao"`
+	MaximumSteps         uint64                         `json:"maximum_steps"`
+	MaximumGasUnits      uint64                         `json:"maximum_gas_units"`
+	MaximumFeePerGasWei  uint64                         `json:"maximum_fee_per_gas_wei"`
+	BudgetHash           string                         `json:"budget_hash"`
+	Budget               PrecompileRecoveryBudget       `json:"budget"`
+	GasRevision          *PrecompileRecoveryGasRevision `json:"gas_revision,omitempty"`
 }
 
 type PrecompileRecoveryAuthorization struct {
@@ -119,11 +120,14 @@ func validatePrecompileRecoveryAuthorization(evidence *PrecompileConformanceEvid
 		return errors.New("probe recovery requires an accounted source round trip")
 	}
 	r := authorization.Request
+	if err := validatePrecompileRecoveryGasRevision(evidence, authorization); err != nil {
+		return err
+	}
 	if !validCanonicalHashHex(r.OriginalEvidenceHash) || r.ReseedTaoRao == 0 || r.MaximumReseeds != precompileRecoveryMaximumReseeds {
 		return errors.New("probe recovery has no original evidence or bounded reseed authority")
 	}
 	basis, err := precompileRecoveryBasisHash(evidence)
-	if err != nil || r.Schema != "urnetwork-precompile-recovery-v1" || !validCanonicalHashHex(r.PlanHash) || r.ConfigHash != evidence.ConfigHash || r.DeploymentId != evidence.DeploymentID || r.ChainId != evidence.ChainID || r.GenesisHash != evidence.GenesisHash || r.Netuid != evidence.Netuid || r.Deployer != common.HexToAddress(evidence.Owner) || r.Probe != common.HexToAddress(evidence.ProbeAddress) || r.SampleHotkey != evidence.SampleHotkey || r.MoveHotkey != evidence.MoveHotkey || r.RecoveryColdkey != evidence.RecoveryColdkey || r.BasisHash != basis || !validCanonicalHashHex(r.ProbeRuntimeHash) || r.TopUpRao != precompileRecoveryTopUpRao || r.MaximumSteps != precompileRecoveryMaximumSteps || r.MaximumGasUnits != precompileRecoveryGasUnits || r.MaximumFeePerGasWei == 0 || r.MaximumFeePerGasWei > 100_000_000_000 || !validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber) {
+	if err != nil || !validCanonicalHashHex(r.PlanHash) || r.ConfigHash != evidence.ConfigHash || r.DeploymentId != evidence.DeploymentID || r.ChainId != evidence.ChainID || r.GenesisHash != evidence.GenesisHash || r.Netuid != evidence.Netuid || r.Deployer != common.HexToAddress(evidence.Owner) || r.Probe != common.HexToAddress(evidence.ProbeAddress) || r.SampleHotkey != evidence.SampleHotkey || r.MoveHotkey != evidence.MoveHotkey || r.RecoveryColdkey != evidence.RecoveryColdkey || r.BasisHash != basis || !validCanonicalHashHex(r.ProbeRuntimeHash) || r.TopUpRao != precompileRecoveryTopUpRao || r.MaximumSteps != precompileRecoveryMaximumSteps || r.MaximumFeePerGasWei == 0 || r.MaximumFeePerGasWei > 100_000_000_000 || !validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber) {
 		return errors.New("probe recovery changed its source identity or finite bounds")
 	}
 	budgetHash, err := canonicalHashHex(r.Budget)
@@ -199,6 +203,12 @@ func precompileRecoveryAction(authorization *PrecompileRecoveryAuthorization, in
 		return Action{}, nil, errors.New("probe recovery operation exceeds its approved count")
 	}
 	r := authorization.Request
+	if r.GasRevision != nil && index == 0 {
+		prior := r.GasRevision.Evidence.Recovery
+		if prior == nil || len(prior.Steps) != 1 || step.Operation != prior.Steps[0].Operation || step.QuoteHead != prior.Steps[0].QuoteHead || step.QuoteSourceRao != prior.Steps[0].QuoteSourceRao || step.QuoteDestinationRao != prior.Steps[0].QuoteDestinationRao || step.Move.AmountRao != prior.Steps[0].Move.AmountRao {
+			return Action{}, nil, errors.New("probe gas revision changed the original unsigned custody operation")
+		}
+	}
 	if (step.Operation == "reseed-sample") != (step.Seed != nil) {
 		return Action{}, nil, errors.New("probe recovery step mixes seed and move evidence")
 	}
@@ -249,7 +259,11 @@ func precompileRecoveryAction(authorization *PrecompileRecoveryAuthorization, in
 	if err != nil {
 		return Action{}, nil, err
 	}
-	action := Action{ID: fmt.Sprintf("%s%d", precompileRecoveryActionPrefix, index+1), Kind: "evm-transaction", Target: r.Probe.Hex(), Description: "bounded recovery of the probe's explicitly retained stake liability", Parameters: map[string]string{
+	prefix := precompileRecoveryActionPrefix
+	if r.GasRevision != nil {
+		prefix += "v2."
+	}
+	action := Action{ID: fmt.Sprintf("%s%d", prefix, index+1), Kind: "evm-transaction", Target: r.Probe.Hex(), Description: "bounded recovery of the probe's explicitly retained stake liability", Parameters: map[string]string{
 		"recovery_authorization_hash": authorization.Hash, "recovery_operation": step.Operation,
 		"recovery_signer": r.Deployer.Hex(), "recovery_data_hash": crypto.Keccak256Hash(data).Hex(),
 		"recovery_quote_block": strconv.FormatUint(step.QuoteHead.Number, 10), "recovery_quote_hash": step.QuoteHead.Hash,

@@ -16,7 +16,7 @@ import (
 // Publishing an authorization is separate from broadcasting either operation.
 func validatePrecompileRecoveryOptions(command string, options cliOptions) error {
 	if command != "probe-recovery" {
-		if options.ProbeRecoveryBudget != "" || options.ProbeRecoveryBudgetSHA256 != "" || options.ProbeRecoveryExecute {
+		if options.ProbeRecoveryBudget != "" || options.ProbeRecoveryBudgetSHA256 != "" || options.ProbeRecoveryExecute || options.ProbeRecoveryReviseGas {
 			return errors.New("probe recovery budget options require probe-recovery")
 		}
 		return nil
@@ -25,7 +25,7 @@ func validatePrecompileRecoveryOptions(command string, options cliOptions) error
 		return errors.New("probe-recovery requires an exact provisional plan and absolute reviewed budget path with SHA256; --apply publishes authorization only")
 	}
 	if options.ProbeRecoveryExecute {
-		if !options.Apply || options.ProbeRecoveryBudget != "" || options.ProbeRecoveryBudgetSHA256 != "" {
+		if !options.Apply || options.ProbeRecoveryBudget != "" || options.ProbeRecoveryBudgetSHA256 != "" || options.ProbeRecoveryReviseGas {
 			return errors.New("probe recovery execution requires --apply and the already published authorization")
 		}
 	} else if options.ProbeRecoveryBudget == "" && options.ProbeRecoveryBudgetSHA256 == "" && !options.Apply {
@@ -60,8 +60,8 @@ func newPrecompileRecoveryRequest(plan *SetupPlan, evidence *PrecompileConforman
 		OriginalEvidenceHash: evidence.EvidenceHash, ReseedTaoRao: plan.LiveFacts.ProbeTAORao, MaximumReseeds: precompileRecoveryMaximumReseeds, TopUpRao: precompileRecoveryTopUpRao, MaximumSteps: precompileRecoveryMaximumSteps, MaximumGasUnits: precompileRecoveryGasUnits, MaximumFeePerGasWei: fee, BudgetHash: budgetHash, Budget: budget}, nil
 }
 
-// This command never opens a transaction manager or the exclusive journal.
-// The consumer authenticates the retained anchor and the exact signed request.
+// No transaction manager opens here. Publishing v2 also holds the exclusive
+// journal so another writer cannot invalidate its unsigned source mid-approval.
 func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig, stateDir string, options cliOptions) error {
 	if err := validatePrecompileRecoveryOptions("probe-recovery", options); err != nil {
 		return err
@@ -69,6 +69,13 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 	plan, err := loadInvocationPlan(cfg, stateDir, "probe-recovery", options)
 	if err != nil {
 		return err
+	}
+	if options.ProbeRecoveryReviseGas && options.Apply {
+		journal, err := OpenJournal(stateDir)
+		if err != nil {
+			return err
+		}
+		defer journal.Close()
 	}
 	if err := prepareProvisionalResume(ctx, cfg, stateDir, "probe-recovery", options, plan); err != nil {
 		return err
@@ -82,7 +89,17 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 		return err
 	}
 	if options.ProbeRecoveryBudget == "" {
-		budget, err := newPrecompileRecoveryBudget(cfg, stateDir, plan, entries)
+		gas := precompileRecoveryGasUnits
+		if options.ProbeRecoveryReviseGas {
+			gas = precompileRecoveryRevisedGasUnits
+			if err := requireUnsignedPrecompileRecovery(stateDir, evidence, entries); err != nil {
+				return err
+			}
+		}
+		budget, err := newPrecompileRecoveryBudgetForGas(cfg, stateDir, plan, entries, gas)
+		if err == nil && options.ProbeRecoveryReviseGas {
+			_, err = newPrecompileRecoveryGasRevisionRequest(plan, evidence, *budget, entries)
+		}
 		return printResult(options.Format, budget, err)
 	}
 	owner := &Executor{cfg: cfg, plan: plan, stateDir: stateDir, journal: &Journal{entries: entries}}
@@ -97,7 +114,15 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 	if err := decodeExactCoordinatorRepairJSON(raw, &budget); err != nil {
 		return err
 	}
-	request, err := newPrecompileRecoveryRequest(plan, evidence, budget)
+	var request PrecompileRecoveryRequest
+	if options.ProbeRecoveryReviseGas {
+		if err := requireUnsignedPrecompileRecovery(stateDir, evidence, entries); err != nil {
+			return err
+		}
+		request, err = newPrecompileRecoveryGasRevisionRequest(plan, evidence, budget, entries)
+	} else {
+		request, err = newPrecompileRecoveryRequest(plan, evidence, budget)
+	}
 	if err != nil {
 		return err
 	}
@@ -146,8 +171,25 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 	if !found {
 		return errors.New("probe recovery budget anchor is absent from retained journal")
 	}
+	if options.ProbeRecoveryReviseGas {
+		current := *evidence
+		current.Recovery = &PrecompileRecoveryEvidence{Authorization: authorization}
+		if err := validatePrecompileRecoveryGasRevisionJournal(plan, &current, entries); err != nil {
+			return err
+		}
+		if err := requireUnsignedPrecompileRecovery(stateDir, evidence, entries); err != nil {
+			return err
+		}
+		owner.journal = &Journal{entries: entries}
+		if err := owner.validatePrecompileRecoveryBudget(&current); err != nil {
+			return err
+		}
+	}
 	if options.Apply {
 		path := filepath.Join(stateDir, precompileRecoveryAuthorizationFilename)
+		if options.ProbeRecoveryReviseGas {
+			path = filepath.Join(stateDir, precompileRecoveryGasRevisionFilename)
+		}
 		if err := validatePrecompileRecoveryArtifactPath(stateDir, path); err != nil {
 			return err
 		}
@@ -179,6 +221,15 @@ func validatePrecompileRecoveryArtifactPath(stateDir, path string) error {
 // explicit reserve suballocation is reviewed and signed. Execution rechecks
 // current exposure so the saved observation never freezes a stale nonce/cap.
 func newPrecompileRecoveryBudget(cfg *ResolvedConfig, stateDir string, plan *SetupPlan, entries []JournalEntry) (*PrecompileRecoveryBudget, error) {
+	return newPrecompileRecoveryBudgetForGas(cfg, stateDir, plan, entries, precompileRecoveryGasUnits)
+}
+
+// The gas revision recalculates the entire finite reserve under the same
+// lifetime caps; the old allocation cannot silently cover a larger envelope.
+func newPrecompileRecoveryBudgetForGas(cfg *ResolvedConfig, stateDir string, plan *SetupPlan, entries []JournalEntry, gas uint64) (*PrecompileRecoveryBudget, error) {
+	if gas != precompileRecoveryGasUnits && gas != precompileRecoveryRevisedGasUnits {
+		return nil, errors.New("probe recovery budget has an unsupported gas ceiling")
+	}
 	if plan == nil || plan.LiveFacts.ProbeTAORao == 0 || plan.MaximumEVMFeePerGasWei == 0 {
 		return nil, errors.New("probe recovery budget has no retained limits")
 	}
@@ -203,7 +254,7 @@ func newPrecompileRecoveryBudget(cfg *ResolvedConfig, stateDir string, plan *Set
 		return nil, err
 	}
 	fee := min(plan.MaximumEVMFeePerGasWei, uint64(100_000_000_000))
-	maximum := new(big.Int).Mul(new(big.Int).SetUint64(precompileRecoveryMaximumSteps*precompileRecoveryGasUnits), new(big.Int).SetUint64(fee))
+	maximum := new(big.Int).Mul(new(big.Int).SetUint64(precompileRecoveryMaximumSteps*gas), new(big.Int).SetUint64(fee))
 	reseed := new(big.Int).Mul(new(big.Int).SetUint64(plan.LiveFacts.ProbeTAORao), big.NewInt(precompileRecoveryMaximumReseeds*1_000_000_000))
 	maximum.Add(maximum, reseed)
 	anchor := ""

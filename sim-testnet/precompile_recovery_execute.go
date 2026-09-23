@@ -19,7 +19,10 @@ import (
 // approval is an integrity error and cannot gain permission by waiting.
 func (self *Executor) loadPrecompileRecoveryAuthorization(evidence *PrecompileConformanceEvidence) error {
 	if evidence.Recovery != nil {
-		return validatePrecompileRecoveryPlan(self.plan, evidence, &evidence.Recovery.Authorization)
+		if err := validatePrecompileRecoveryPlan(self.plan, evidence, &evidence.Recovery.Authorization); err != nil {
+			return err
+		}
+		return self.adoptPrecompileRecoveryGasRevision(evidence)
 	}
 	var authorization PrecompileRecoveryAuthorization
 	if err := readJSONFile(filepath.Join(self.stateDir, precompileRecoveryAuthorizationFilename), &authorization); err != nil {

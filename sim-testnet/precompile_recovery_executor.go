@@ -44,6 +44,9 @@ func preparePrecompileRecoveryExecutor(ctx context.Context, authorizedCfg, runti
 	if err := validatePrecompileRecoveryPlan(plan, evidence, &evidence.Recovery.Authorization); err != nil {
 		return nil, err
 	}
+	if err := validatePrecompileRecoveryGasRevisionJournal(plan, evidence, journal.Entries()); err != nil {
+		return nil, err
+	}
 	for label, expected := range map[string]string{validatorHotkeyLabel(1): evidence.SampleHotkey, validatorHotkeyLabel(2): evidence.MoveHotkey, fleetColdkeyLabel(1): evidence.RecoveryColdkey} {
 		key, err := roleBytes32(roles, label)
 		if err != nil || !strings.EqualFold(expected, hexBytesValue(key[:])) {
