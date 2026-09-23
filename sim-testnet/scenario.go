@@ -371,9 +371,10 @@ type liveScenarioProbe struct {
 	campaignResultVerify func(*ResolvedConfig, *ScenarioResult, string) error
 	// One scenario retains its authenticated immutable source approval. Each
 	// new observation still validates its current evidence and completion state.
-	precompilePlan       *SetupPlan
-	precompileJournal    *Journal
-	precompileSourcePlan *SetupPlan
+	precompilePlan         *SetupPlan
+	precompileJournal      *Journal
+	precompileSourcePlan   *SetupPlan
+	precompileContinuation func(context.Context) error
 }
 
 // FinalizedHead is the bounded scheduler read paired with Snapshot. It avoids
@@ -587,6 +588,11 @@ func acceptanceScenarioChecks() []scenarioCheck {
 }
 
 func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation, error) {
+	return precompileContinuationSnapshot(ctx, p.precompileContinuation, p.observeSnapshot)
+}
+
+// Collects the ordinary observation after any bounded durable continuation turn.
+func (p *liveScenarioProbe) observeSnapshot(ctx context.Context) (*ScenarioObservation, error) {
 	status, err := Status(ctx, p.cfg, p.stateDir)
 	if err != nil {
 		return nil, err
@@ -3307,6 +3313,8 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 	switch name {
 	case "smoke":
 		return definition, nil
+	case precompilePreparationScenario:
+		return definition, nil
 	case "precompile-conformance":
 		definition.Checks = append(definition.Checks, scenarioCheck{ID: "precompile_conformance_complete", Check: func(e *scenarioEvaluation) (bool, string) {
 			return e.Current.PrecompileConformanceValid, fmt.Sprintf("valid=%t error=%s", e.Current.PrecompileConformanceValid, e.Current.PrecompileConformanceError)
@@ -3331,6 +3339,9 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		definition.Faults = faults
 		definition.Checks = append(definition.Checks, epochChecks...)
 		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
+		if provisionalResumeEnabled(cfg) {
+			definition.Checks = append(definition.Checks, precompileContinuationCompleteCheck())
+		}
 		definition.Checks = append(definition.Checks, acceptanceScenarioChecks()...)
 		matrix, err := loadScenarioMatrix(cfg.Repos.SN)
 		if err != nil {
@@ -5057,6 +5068,12 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 }
 
 func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor, attempt *scenarioCampaignAttempt, observationTimeout time.Duration) error {
+	if name == precompilePreparationScenario {
+		if observationTimeout != 0 || attempt != nil {
+			return errors.New("precompile preparation cannot carry a campaign interval or timeout override")
+		}
+		return runPrecompilePreparation(ctx, cfg, stateDir, journal, executor)
+	}
 	if observationTimeout < 0 || observationTimeout > 6*time.Hour {
 		return errors.New("provisional observation timeout must be between 0 and 6h")
 	}
@@ -5172,7 +5189,10 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 				return errors.New("release scenario requires the approved deployment executor")
 			}
 			if !releaseStartupGatesRequired(cfg, attempt) {
-				fmt.Fprintln(os.Stderr, "sim-testnet: provisional precompile_conformance_startup_waived=true governance_drill_startup_waived=true; retained failures and unrun actions are not passes; final_acceptance=false")
+				if err := executePrecompilePreparation(prepareCtx, scenarioExecutor.plan, scenarioExecutor.Execute); err != nil {
+					return fmt.Errorf("release precompile preparation: %w", err)
+				}
+				fmt.Fprintln(os.Stderr, "sim-testnet: precompile preparation verified; native dividend continuation runs during release; governance_drill_startup_waived=true; incomplete proof cannot pass; final_acceptance=false")
 			} else {
 				precompile, readErr := loadPrecompileEvidence(stateDir)
 				if readErr != nil || !precompileEvidenceComplete(precompile) {
@@ -5245,6 +5265,9 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 	probe := &liveScenarioProbe{cfg: runtimeCfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
 	if scenarioExecutor != nil {
 		probe.precompilePlan, probe.precompileJournal = scenarioExecutor.plan, journal
+		if name == "release-1.0" && provisionalResumeEnabled(cfg) {
+			probe.precompileContinuation = scenarioExecutor.advancePrecompileContinuation
+		}
 	}
 	var fleetLifecycle scenarioFleetLifecycle
 	if name == "release-1.0" || name == "production-soak" {

@@ -1408,6 +1408,20 @@ is pending evidence and cannot satisfy the final proof gate. Production adoption
 must prove interrupted-prefix continuation, source turnover, new equivocation,
 latest-body substitution and finite entry counts with deterministic regressions.
 
+A native-cycle custody proof must not monopolize release startup or a separate
+journal writer while it waits for blocks. The simulator's explicit provisional
+`scenario --name precompile-prepare` executes and authenticates the approved
+transaction prefix through its finalized snapshot, then releases the command's
+lock. The release's existing writer continues the remaining exact dividend and
+transfer actions in bounded observation turns. Each unfinished read remains
+pending; a transient read or interrupted transfer retains the verified frontier.
+Final conformance still requires a full native window, a positive dividend,
+exact conservation and complete recovery to the approved custody destination.
+Never label the preparation result as release acceptance. Production adoption
+must cover pending observer survival, incomplete or substituted receipt prefixes,
+transfer interruption after dividend verification, source identity changes,
+parent cancellation, and refusal of incomplete conformance at interval end.
+
 ### Closing and maintaining this hardening plan
 
 For each PH item record the implementation/review commit, affected production

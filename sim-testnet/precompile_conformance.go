@@ -514,9 +514,21 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		for {
 			baseline, current, since, readErr := readDividendAtFinalized(ctx, e.deployer.client, probe, parsed, sample)
 			head, headErr := finalizedEVMHead(ctx, e.deployer.client)
-			if readErr == nil && headErr == nil && baseline == evidence.Snapshot.BaselineRao && since == evidence.Snapshot.SinceBlock && head.Number >= since+tempo && current > baseline {
-				evidence.Dividend = PrecompileDividendStep{FinalizedHead: head, BaselineRao: baseline, CurrentRao: current, DeltaRao: current - baseline, SinceBlock: since}
-				return writePrecompileEvidence(e.stateDir, evidence)
+			if readErr == nil && headErr == nil {
+				observed, ready, err := evaluatePrecompileDividend(evidence, tempo, head, baseline, current, since)
+				if err != nil {
+					return err
+				}
+				if ready {
+					evidence.Dividend = observed
+					return writePrecompileEvidence(e.stateDir, evidence)
+				}
+			}
+			if singlePoll, _ := ctx.Value(precompileDividendSinglePollKey{}).(bool); singlePoll {
+				if readErr != nil || headErr != nil {
+					return errors.Join(readErr, headErr)
+				}
+				return errPrecompileDividendPending
 			}
 			if time.Now().After(deadline) {
 				return fmt.Errorf("no finalized probe dividend after two tempo windows: baseline=%d current=%d read_err=%v head_err=%v", baseline, current, readErr, headErr)

@@ -67,7 +67,7 @@ Commands:
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
-  scenario run a named scenario (precompile-conformance, smoke, epoch, release-1.0, production-soak, release-candidate, or fault scenario)
+  scenario run a named scenario (precompile-prepare, precompile-conformance, smoke, epoch, release-1.0, production-soak, release-candidate, or fault scenario)
   tail     multiplex structured process logs
   stop     stop local processes only; preserves keys, evidence, and chain state
   retire   plan future-effective operator retirement; dry-run by default
@@ -194,6 +194,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
+	}
+	if o.Name == precompilePreparationScenario && (cmd != "scenario" || !o.ProvisionalResume || o.Detach || o.PrepareOnly || o.ThenReleaseCandidate || o.Manifest != "") {
+		return "", o, errors.New("precompile-prepare requires an exact provisional scenario approval and cannot launch or accept a campaign")
 	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
 		return "", o, err
