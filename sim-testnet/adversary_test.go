@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"net/http"
@@ -590,10 +591,11 @@ func TestAdversaryFaultWindowAttributesOnlyExactTargetAndBoundedGrace(t *testing
 	}
 	actor := &verifyAdversary{faults: window}
 	window.Update([]string{"operator-1-api"})
-	if result := actor.sampleError(1, errors.New("connection reset"), 1, 1); result.Outcome != adversaryOutcomeExpectedRejection {
+	failure := adversaryVerifyHttpFailure("synthetic request", 0, io.ErrUnexpectedEOF)
+	if result := actor.sampleError(1, failure, 1, 1); result.Outcome != adversaryOutcomeExpectedRejection {
 		t.Fatalf("scheduled target result=%+v", result)
 	}
-	if result := actor.sampleError(2, errors.New("connection reset"), 1, 1); result.Outcome != adversaryOutcomeError {
+	if result := actor.sampleError(2, failure, 1, 1); result.Outcome != adversaryOutcomeError {
 		t.Fatalf("unrelated target result=%+v", result)
 	}
 }
