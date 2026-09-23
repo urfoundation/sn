@@ -1489,3 +1489,14 @@ Owner or route drift remains a hard error. Release scenarios still perform their
 separate retained-topology restart and supervised egress handoff. Deterministic
 regressions cover stopped proxies, continued use of the original direct client,
 foreign journal/plan/route owners, and unchanged release restart scope.
+
+Retained release startup has the converse ownership requirement: its local-only
+executor owns approved metadata but deliberately has no native connection to
+lend. After topology restart, campaign construction must acquire that missing
+reader through the ordinary authenticated constructor. It may do this only for
+the exact provisional release plan, journal, directory, configuration and equal
+reloaded credentials; partial or foreign connection owners remain errors. A live
+parent's native reader stays borrowed. Supervised EVM egress and its readiness
+errors remain mandatory, with no direct-route fallback. Test both absent and
+existing native ownership, credential reload and drift, canceled construction,
+and refusal to bypass a stopped proxy.

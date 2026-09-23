@@ -84,11 +84,27 @@ func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 // The calling executor outlives the nested campaign and remains the sole owner
 // of its already authenticated native connections, including on setup failure.
 func newCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, *ResolvedConfig, error) {
+	return openCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, p, j, roles, nativeOwner, newExecutorWithTransport)
+}
+
+// Keeps connection construction as the I/O boundary. Retained local-only
+// startup has no native connection to lend; live parents keep exact ownership.
+func openCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor, open campaignExecutorFactory) (*Executor, *ResolvedConfig, error) {
+	if ctx == nil || open == nil {
+		return nil, nil, errors.New("campaign executor construction is incomplete")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
+	nativeOwner, err = retainedCampaignNativeOwner(cfg, stateDir, p, j, roles, nativeOwner)
+	if err != nil {
+		return nil, nil, err
+	}
+	executor, err := open(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
 	if err != nil {
 		return nil, nil, err
 	}
