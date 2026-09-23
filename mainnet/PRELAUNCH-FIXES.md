@@ -1717,3 +1717,26 @@ standalone scope and unchanged final rejection. See
 [the regression](../sim-testnet/precompile_recovery_gas_pending_test.go).
 Production integration and operational acceptance remain required before closing
 the corresponding hardening items.
+
+### Publish complete artifacts for failures before the first observation
+
+An initial snapshot failure left a terminal result and process-log evidence but
+no observation file, so the next recovery could not authenticate its predecessor.
+For PH-01 and PH-09, publish an explicit zero-observation marker before the
+terminal result when no observation or acceptance boundary exists. Propagate
+append, sync and publication errors before claiming a complete terminal artifact
+set. A failure to record evidence is a separate hard failure.
+
+Legacy repair belongs to the authenticated recovery writer. It may add only a
+missing marker after validating the exact failed result, zero recorded
+heads/epochs/observation hashes, absent acceptance/start markers and the matching
+process-log evidence. Preserve the original result bytes and all existing
+observations. The next signed recovery binds the new marker; read-only validators
+must continue to reject missing or changed sources.
+
+Simulator commit `2a6340b1` implements this scoped repair. Thirteen focused tests
+passed normally and with race detection, including a real initial-snapshot
+failure followed by recovery-chain validation, legacy backfill without result
+mutation, write-error propagation and observed-progress/source-substitution
+rejection. See [the regressions](../sim-testnet/scenario_initial_observation_test.go).
+Production crash-publication qualification remains required.
