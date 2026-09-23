@@ -284,6 +284,7 @@ type liveAdversaryCampaign struct {
 	stopping             bool
 	stopped              bool
 	faultWindow          *adversaryFaultWindow
+	errorLog             *adversaryErrorLog
 }
 
 func newAdversaryCampaign(cfg AdversaryConfig, matrix *AdversarialMatrix, actors []adversaryActor) (*liveAdversaryCampaign, error) {
@@ -411,7 +412,7 @@ func (self *liveAdversaryCampaign) runActor(ctx context.Context, workers *sync.W
 			return
 		}
 		completed := self.now().UTC()
-		self.record(actor.ID(), phase, completed, completed.Sub(started), result)
+		self.record(actor.ID(), phase, sequence, completed, completed.Sub(started), result)
 		sequence++
 		select {
 		case <-ctx.Done():
@@ -421,14 +422,32 @@ func (self *liveAdversaryCampaign) runActor(ctx context.Context, workers *sync.W
 	}
 }
 
-func (self *liveAdversaryCampaign) record(actorID string, phase adversarySamplePhase, sampledAt time.Time, duration time.Duration, result adversarySampleResult) {
+// Retain every sample's counters and append error diagnostics after unlocking.
+func (self *liveAdversaryCampaign) record(actorID string, phase adversarySamplePhase, sequence uint64, sampledAt time.Time, duration time.Duration, result adversarySampleResult) {
+	active, grace := self.faultWindow.diagnosticTargets()
+	var failure *adversaryErrorObservation
 	self.mu.Lock()
-	defer self.mu.Unlock()
+	defer func() {
+		self.mu.Unlock()
+		if failure != nil {
+			self.errorLog.append(*failure)
+		}
+	}()
 	state := self.states[actorID]
 	if state == nil {
 		return
 	}
 	evidence := &state.evidence
+	previousErrors := evidence.Errors
+	defer func() {
+		if evidence.Errors != previousErrors {
+			failure = &adversaryErrorObservation{
+				ActorId: actorID, Sequence: sequence, Phase: phase, SampledAt: sampledAt.UTC().Format(time.RFC3339Nano),
+				DurationMillis: duration.Milliseconds(), ErrorCount: evidence.Errors, Requests: result.Requests, Detail: result.Detail,
+				ActiveFaultTargets: active, GraceFaultTargets: grace,
+			}
+		}
+	}()
 	sampledAt = sampledAt.UTC()
 	previous := state.lastSampleAt
 	if previous.IsZero() {
@@ -441,6 +460,7 @@ func (self *liveAdversaryCampaign) record(actorID string, phase adversarySampleP
 		gap := sampledAt.Sub(previous).Milliseconds()
 		if gap < 0 {
 			evidence.Errors++
+			result.Detail = "sample clock moved backwards; " + result.Detail
 			gap = 0
 		}
 		if gap > evidence.MaximumSampleGapMillis {
@@ -537,7 +557,7 @@ func (self *liveAdversaryCampaign) Stop(ctx context.Context) (*AdversaryCampaign
 	if self.stopped {
 		evidence := self.snapshotLocked()
 		self.mu.Unlock()
-		return evidence, nil
+		return evidence, self.errorLog.finish()
 	}
 	if !self.stopping {
 		self.stopping = true
@@ -571,7 +591,7 @@ func (self *liveAdversaryCampaign) Stop(ctx context.Context) (*AdversaryCampaign
 	}
 	evidence := self.snapshotLocked()
 	self.mu.Unlock()
-	return evidence, nil
+	return evidence, self.errorLog.finish()
 }
 
 func latencyQuantile(values []int64, numerator, denominator int) int64 {

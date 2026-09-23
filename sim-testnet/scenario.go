@@ -4060,6 +4060,12 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if options.Adversaries == nil {
 			return nil, errors.New("release scenario requires a continuous adversarial campaign")
 		}
+		if live, ok := options.Adversaries.(*liveAdversaryCampaign); ok {
+			live.errorLog, err = newAdversaryErrorLog(runDir, cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword)
+			if err != nil {
+				return nil, fmt.Errorf("initialize adversary error chronology: %w", err)
+			}
+		}
 		if err := options.Adversaries.Start(ctx); err != nil {
 			return nil, fmt.Errorf("start continuous adversarial campaign: %w", err)
 		}
