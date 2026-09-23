@@ -6,14 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // A missing approval is a normal pending liability. A malformed or foreign
@@ -47,7 +46,7 @@ func (self *Executor) loadPrecompileRecoveryAuthorization(evidence *PrecompileCo
 }
 
 // Source quotes and preflight share one finalized head. Only an actual revert
-// selects the preauthorized top-up/reseed; transport and malformed reads retry.
+// selects the preauthorized top-up/reseed; other failures retain their cause.
 func (self *Executor) preparePrecompileRecoveryStep(ctx context.Context, evidence *PrecompileConformanceEvidence) (PrecompileRecoveryStep, error) {
 	sampleMinimum, moveMinimum, settled, err := precompileRecoveryPositions(evidence)
 	if err != nil || !settled {
@@ -105,11 +104,11 @@ func (self *Executor) preparePrecompileRecoveryStep(ctx context.Context, evidenc
 			return Action{}, errors.New("probe recovery value is invalid")
 		}
 		_, err = self.deployer.client.CallContract(ctx, ethereum.CallMsg{From: evidence.Recovery.Authorization.Request.Deployer, To: &probe, Value: value, Data: data}, new(big.Int).SetUint64(head.Number))
-		return action, err
+		return action, errors.Join(err, ctx.Err())
 	}
 	action, err := preflight(step)
 	if err != nil {
-		if !strings.Contains(strings.ToLower(err.Error()), "execution reverted") {
+		if !precompileRecoveryCallReverted(err) {
 			return PrecompileRecoveryStep{}, err
 		}
 		count := len(evidence.Recovery.Steps)
@@ -138,7 +137,7 @@ func (self *Executor) preparePrecompileRecoveryStep(ctx context.Context, evidenc
 		}
 		action, err = preflight(step)
 		if err != nil {
-			if historicalPreparationReadIsTransient(err) || ctx.Err() != nil {
+			if !precompileRecoveryCallReverted(err) {
 				return PrecompileRecoveryStep{}, err
 			}
 			return PrecompileRecoveryStep{}, fmt.Errorf("%w: bounded funding preflight: %v", errPrecompileRecoveryPending, err)

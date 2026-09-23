@@ -70,7 +70,7 @@ func evmReadRpcErrorIsTransient(err error) bool {
 		return true
 	}
 	message := strings.ToLower(err.Error())
-	for _, permanent := range []string{"execution reverted", "pruned", "archive", "state already discarded", "unknown block", "header not found", "missing trie", "state unavailable"} {
+	for _, permanent := range []string{"execution reverted", "vm exception while processing transaction: revert", "pruned", "archive", "state already discarded", "unknown block", "header not found", "missing trie", "state unavailable"} {
 		if strings.Contains(message, permanent) {
 			return false
 		}
