@@ -13,7 +13,7 @@ import (
 	"os"
 	"slices"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Locators are parsed and bound to their immutable file witnesses before the

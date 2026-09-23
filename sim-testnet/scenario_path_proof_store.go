@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 	"golang.org/x/sys/unix"
 )
 
