@@ -1477,6 +1477,44 @@ more than one unit at either conversion, changed requests and arithmetic overflo
 Do not propagate this probe rule into payout accounting without independently
 specifying and validating that contract's conservation and principal guarantee.
 
+### Stake observations across blocks and residual recovery
+
+The next live reverse move returned its exact approved principal but occurred
+579 blocks after the forward move. Both positions had grown in the meantime:
+the move hotkey carried 17,306,833 alpha-rao of additional stake and the sample
+hotkey carried 21,110,029. Requiring the later pre-state to equal the earlier
+post-state rejected a valid round trip before the snapshot transaction. Native
+share rounding is a within-call conversion; it must not absorb inter-block
+credits or become a broad numeric tolerance.
+
+The harness records those receipt-proven credits and the unrecovered move
+position separately. Snapshot preparation can continue while that liability
+remains explicit. Snapshot calldata has no amount argument, so its event baseline
+is the authoritative inclusion-time output; a positive credit after the pre-send
+read does not change the signed intent. Replay still requires the exact hotkey,
+receipt, inclusion block and retained baseline. Final acceptance continues to
+require recovery of both positions. An exactly recorded pending recovery keeps
+provisional observations running and returns before another transaction intent,
+while altered evidence and missing files remain hard failures.
+
+The small residual cannot simply be swept: pinned read-only calls showed the
+17.32-million-rao residual and requests up to 100 million rao reverting, whereas
+500-million-rao and larger funded operations succeeded. Empty revert data does
+not establish a specific runtime minimum. Production recovery must check actual
+runtime behavior and support a bounded top-up from existing custody before
+sweeping a small residual. Each top-up and sweep needs its own authorized action,
+durable nonce, exact receipt and recipient accounting. Do not overwrite the
+original reverse receipt or claim that it left zero balance.
+
+Before mainnet, cover stake growth between every pair of observations, including
+read-to-inclusion and dividend-to-recovery. Account for a recovery top-up's sample
+debit when comparing the eventual sample transfer with the earlier dividend
+observation. Force interruption at every signing/finalization boundary, residual
+growth during a sweep, and repeated recovery that retains completed actions.
+The final proof must include both recovered recipient positions, bounded native
+conversion residues, and zero source custody. Test forged extra credits, changed
+roles/amounts, duplicate spends and missing repair authorization independently.
+
 ### Preparation must not acquire a stopped campaign's transport
 
 Standalone precompile preparation reused completed chain evidence but then opened
