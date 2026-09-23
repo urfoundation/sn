@@ -6,7 +6,10 @@ package validator
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"math/big"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -282,5 +285,62 @@ func TestReleaseRateAmendmentDepositEvidenceKeepsActivation(t *testing.T) {
 	next.Deposit.Tiers[0].RateNumeratorRaoPerGiB++
 	if err := validateValidatorEvidenceDepositAuditV2DecisionWithPolicy(decision, domain, window, &next, &previous); err == nil {
 		t.Fatal("foreign tier gained public bridge authority")
+	}
+}
+
+// The production local observer reports retained applied work under the exact
+// new config/handoff; no RPC, fabricated proof, or final-acceptance flag is used.
+func TestReleaseRateAmendmentProvisionalObserverRetainsOldIntents(t *testing.T) {
+	_, storePath := authenticatedIntentHistoryFixture(t)
+	cfg := validReleaseConfig(t)
+	previous := *cloneReleasePolicy(&cfg.Policy)
+	cfg.Policy = releaseRateAmendmentTestNext(t, previous)
+	cfg.PreviousPolicy = &previous
+	cfg.PolicyHash, _ = cfg.Policy.HashHex()
+	cfg.StateDir = filepath.Dir(storePath)
+	configPath := writeReleaseConfig(t, cfg)
+	configBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup := ProvisionalActivationSetupV2{Schema: ProvisionalActivationSetupV2Schema, Provisional: true,
+		DeploymentID: cfg.DeploymentID, ValidatorID: cfg.ValidatorID,
+		ApprovedPlanHash: releaseHex32([32]byte{0x41}), SourcePlanHash: releaseHex32([32]byte{0x42}),
+		PreparedSHA256:  provisionalActivationSetupSHA256([]byte("synthetic prepared")),
+		CompletedSHA256: provisionalActivationSetupSHA256([]byte("synthetic completed")),
+		ConfigSHA256:    provisionalActivationSetupSHA256(configBytes)}
+	for _, action := range []string{"evidence.activate.1.1", "evidence.activate.1.2", "evidence.activate.2.1", "evidence.activate.2.2", "evidence.activation-boundary"} {
+		setup.Receipts = append(setup.Receipts, ProvisionalActivationSetupV2Receipt{ActionID: action,
+			PostconditionHash: releaseHex32([32]byte{0x43}), SHA256: provisionalActivationSetupSHA256([]byte(action))})
+	}
+	for _, operator := range cfg.EvidenceV2.Operators {
+		setup.Members = append(setup.Members, ProvisionalActivationSetupV2Member{NoID: operator.NoID, ContextSHA256: operator.Context.SHA256, PublishedBlock: 17})
+	}
+	encoded, err := json.MarshalIndent(setup, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = append(encoded, '\n')
+	options := ProvisionalIntentObservationV2Options{ConfigPath: configPath, Handoff: encoded,
+		HandoffSHA256: provisionalActivationSetupSHA256(encoded), PlanHash: setup.ApprovedPlanHash,
+		AcceptedPlanHashes: []string{setup.ApprovedPlanHash, setup.SourcePlanHash}, DeploymentID: cfg.DeploymentID,
+		ValidatorID: cfg.ValidatorID, Netuid: cfg.Netuid, Hotkey: testIntentHotkey(t).PublicKey()}
+	result, err := ObserveProvisionalIntentsV2(t.Context(), options)
+	if err != nil || result.State != "observed" || result.RecordedAppliedIntents == nil || *result.RecordedAppliedIntents != 2 || result.FinalAcceptance {
+		t.Fatalf("old applied history became unknown after exact rate adoption: %+v %v", result, err)
+	}
+	original, err := os.ReadFile(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state steeringIntentFile
+	if err := json.Unmarshal(original, &state); err != nil {
+		t.Fatal(err)
+	}
+	state.Current.PolicyHash = releaseHex32([32]byte{0x44})
+	writeIntentHistoryFixture(t, storePath, state)
+	result, err = ObserveProvisionalIntentsV2(t.Context(), options)
+	if err == nil || result.State != "unknown" || result.RecordedAppliedIntents != nil || result.FinalAcceptance {
+		t.Fatalf("observer accepted foreign policy or published partial progress: %+v %v", result, err)
 	}
 }

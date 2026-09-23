@@ -173,7 +173,10 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		if err := validateSteeringIntentLifecycle(intent, index < len(file.History)); err != nil {
 			return result, err
 		}
-		if intent.ValidatorID != cfg.ValidatorID || intent.Netuid != cfg.Netuid || intent.PolicyHash != cfg.PolicyHash || intent.Prepared.HotkeyHex != releaseHex32(options.Hotkey) || intent.Prepared.Netuid != cfg.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, intent.UIDs) {
+		if _, err := ReleasePolicyForHash(cfg, intent.PolicyHash); err != nil {
+			return result, err
+		}
+		if intent.ValidatorID != cfg.ValidatorID || intent.Netuid != cfg.Netuid || intent.Prepared.HotkeyHex != releaseHex32(options.Hotkey) || intent.Prepared.Netuid != cfg.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, intent.UIDs) {
 			return result, errors.New("local intent differs from its configured validator identity")
 		}
 		if err := intent.VerifyVectorHash(); err != nil {
