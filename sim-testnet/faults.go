@@ -97,6 +97,7 @@ type liveScenarioFaultDriver struct {
 	minerControlWait         func(context.Context, time.Duration) error
 	minerControlParallel     int
 	minerControlRoundContext func(context.Context) (context.Context, context.CancelFunc)
+	minerControlPersist      func(string, []byte) error
 	minerControlHead         func(context.Context) (ChainHead, error)
 	minerControlCompleted    minerControlCompletedTransition
 	minerControlReconciled   map[string]map[string]minerControlGeneration
@@ -544,7 +545,14 @@ func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spe
 	return result, nil
 }
 
-func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+// A failed heartbeat may leave exact durable miner intent. Preserve that
+// transition as pending; only semantic failures may terminalize its schedule.
+func (self *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	processes, err := self.apply(ctx, spec)
+	return self.minerControlResult(spec, processes, err)
+}
+
+func (d *liveScenarioFaultDriver) apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
 	if spec.Kind == "container-restart" || spec.Kind == "miner-control" {
 		unlock, err := lockSupervisorDependencyFault(ctx, d.stateDir)
 		if err != nil {
@@ -606,7 +614,7 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 		// The intent includes every target before any request can become
 		// ambiguous. An interrupted apply remains recoverable, never adopted.
 		if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
-			return nil, err
+			return processes, err
 		}
 		return d.controlMiners(ctx, spec, false)
 	}
@@ -648,7 +656,14 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 	return processes, nil
 }
 
-func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+// Restoration uses the same retained intent and transient classification as
+// activation, including a context expiring after partial successful teardown.
+func (self *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	processes, err := self.restore(ctx, spec)
+	return self.minerControlResult(spec, processes, err)
+}
+
+func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
 	if spec.Kind == "container-restart" || spec.Kind == "miner-control" {
 		unlock, err := lockSupervisorDependencyFault(ctx, d.stateDir)
 		if err != nil {

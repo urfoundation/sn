@@ -18,6 +18,7 @@ const (
 	minerControlRequestTimeout  = 5 * time.Second
 	minerControlTargetTimeout   = 3 * time.Minute
 	minerControlMaximumAttempts = 3
+	minerControlMaximumPolls    = 4
 	minerControlRetryDelay      = 250 * time.Millisecond
 	minerControlMaximumBody     = 64 * 1024
 	minerControlMaximumError    = 1024
@@ -170,8 +171,8 @@ func (self *liveScenarioFaultDriver) minerControlProcesses(spec scenarioFaultSpe
 	return processes, nil
 }
 
-// Keep the successful prefix after cancellation or a later failure. Every
-// request is preceded by durable intent and every completed target is fsynced.
+// Keep the successful prefix after cancellation or a later failure. Durable
+// intent and completion are batched by the coordinator, before later requests.
 func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec scenarioFaultSpec, enable bool) ([]FaultProcessEvidence, error) {
 	processes, err := self.waitMinerControlProcesses(ctx, spec, enable)
 	if err != nil {
@@ -225,10 +226,13 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 		if err != nil {
 			return err
 		}
+		if self.minerControlPersist != nil {
+			return self.minerControlPersist(self.activePath(), append(raw, '\n'))
+		}
 		return atomicWrite(self.activePath(), append(raw, '\n'), 0o600)
 	}
 	if err := persist(); err != nil {
-		return nil, err
+		return processes, err
 	}
 	action := "disable"
 	if enable {
@@ -262,7 +266,7 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 			}
 		}
 		if err := persist(); err != nil {
-			return nil, err
+			return processes, err
 		}
 	}
 	delete(self.minerControlReconciled, progress.FaultHash+":"+action)
@@ -321,6 +325,9 @@ func minerControlTransientError(err error) bool {
 // A request owns its response through close, with no redirects to a different
 // control origin. Transport retries remain separate from semantic validation.
 func (self *liveScenarioFaultDriver) minerControlRequest(ctx context.Context, method, endpoint string) ([]byte, int, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, minerControlRequestTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestCtx, method, endpoint, nil)
@@ -473,7 +480,7 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 	}
 	attempts, observationFailures := 0, 0
 	var conflict, lastFailure error
-	for {
+	for poll := 0; poll < minerControlMaximumPolls; poll++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -542,4 +549,5 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 			return err
 		}
 	}
+	return errMinerControlLifecyclePending
 }

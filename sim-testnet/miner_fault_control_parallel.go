@@ -9,12 +9,10 @@ import (
 	"math"
 	"slices"
 	"sort"
-	"time"
 )
 
 const (
 	minerControlProgressSchema = "urnetwork-sim-active-faults-v3"
-	minerControlRoundTimeout   = 10 * time.Second
 	minerControlParallelLimit  = 16
 	minerControlSwarmLimit     = 4
 )
@@ -40,14 +38,17 @@ func minerControlPending(err error) bool {
 // Round cancellation may accompany sibling transport failures, but a joined
 // integrity/status error must never acquire nonterminal retry authority.
 func minerControlRoundRetryable(err error, canceled bool) bool {
+	if err == errMinerControlLifecyclePending {
+		return true
+	}
 	if minerControlTransientError(err) {
 		return true
 	}
 	var invalid *minerControlInvalidStatusError
-	if !canceled || errors.As(err, &invalid) {
+	if errors.As(err, &invalid) {
 		return false
 	}
-	if err == context.Canceled {
+	if canceled && err == context.Canceled {
 		return true
 	}
 	switch err := err.(type) {
@@ -178,11 +179,15 @@ func minerFaultCompletedHead(driver scenarioFaultDriver, spec scenarioFaultSpec,
 	return observed, nil
 }
 
-// Workers never acquire a state lock around requests or durable writes.
-// Already completed members are freshly reconciled; they do not get another
-// mutation just because a sibling timed out or the driver was replaced.
+// Each wave admits a bounded census in one durable write. Workers rendezvous
+// at mutation and result checkpoints, so one slow fsync cannot consume the
+// request timeout of a member which has not dispatched yet.
 func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, processes []FaultProcessEvidence, action string, progress *minerFaultControlProgress, persist func() error) error {
-	roundCtx, cancel := context.WithTimeout(ctx, minerControlRoundTimeout)
+	processGenerationKVs, err := self.minerControlGenerations(processes)
+	if err != nil {
+		return err
+	}
+	roundCtx, cancel := context.WithCancel(ctx)
 	if self.minerControlRoundContext != nil {
 		cancel()
 		roundCtx, cancel = self.minerControlRoundContext(ctx)
@@ -191,10 +196,6 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 	parallel := minerControlParallelLimit
 	if self.minerControlParallel > 0 {
 		parallel = min(parallel, self.minerControlParallel)
-	}
-	processGenerationKVs, err := self.minerControlGenerations(processes)
-	if err != nil {
-		return err
 	}
 	transitionKey := progress.FaultHash + ":" + action
 	if self.minerControlReconciled == nil {
@@ -212,127 +213,143 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 			remaining = append(remaining, process)
 		}
 	}
-	// Resolve ambiguous pending operations before starting another target.
+	// Ambiguous durable calls are reconciled before another target is admitted.
 	sort.SliceStable(remaining, func(i, j int) bool {
 		return slices.Contains(progress.PendingTargets, remaining[i].ID) && !slices.Contains(progress.PendingTargets, remaining[j].ID)
 	})
-	requests := make(chan minerControlProgressRequest)
-	results := make(chan minerControlRoundResult, parallel)
-	swarmCounts := map[int]int{}
-	running := 0
-	var failures []error
-	var hardFailure error
 	projectPending := func() {
 		sort.Strings(progress.PendingTargets)
 		progress.Pending = ""
 		if len(progress.PendingTargets) != 0 {
 			progress.Pending = progress.PendingTargets[0]
 		}
+		if len(progress.PendingTargets) == 0 {
+			progress.LastError = ""
+		}
 	}
-	recordFailure := func(target string, failure error) error {
+	recordFailure := func(target string, failure error) {
 		progress.LastError = fmt.Sprintf("%s: %v", target, failure)
 		if len(progress.LastError) > minerControlMaximumError {
 			progress.LastError = progress.LastError[:minerControlMaximumError]
 		}
-		return persist()
 	}
-	for len(remaining) != 0 || running != 0 {
-		for roundCtx.Err() == nil && hardFailure == nil && running < parallel {
-			selected, swarm := -1, 0
-			for index, process := range remaining {
-				var miner int
-				_, _ = fmt.Sscanf(process.ID, "miner-%d", &miner)
-				candidate, _ := minerSwarmFor(self.cfg, miner)
-				if swarmCounts[candidate] < minerControlSwarmLimit {
-					selected, swarm = index, candidate
-					break
-				}
+	var failures []error
+	for len(remaining) != 0 && roundCtx.Err() == nil {
+		var wave []minerControlRoundResult
+		swarmCounts := map[int]int{}
+		for index := 0; index < len(remaining) && len(wave) < parallel; {
+			process := remaining[index]
+			var miner int
+			_, _ = fmt.Sscanf(process.ID, "miner-%d", &miner)
+			swarm, err := minerSwarmFor(self.cfg, miner)
+			if err != nil {
+				return err
 			}
-			if selected < 0 {
-				break
+			if swarmCounts[swarm] >= minerControlSwarmLimit {
+				index++
+				continue
 			}
-			process := remaining[selected]
-			remaining = slices.Delete(remaining, selected, selected+1)
+			wave = append(wave, minerControlRoundResult{process: process, swarm: swarm})
+			swarmCounts[swarm]++
+			remaining = slices.Delete(remaining, index, index+1)
 			progress.Completed = slices.DeleteFunc(progress.Completed, func(value FaultProcessEvidence) bool { return value.ID == process.ID })
 			if !slices.Contains(progress.PendingTargets, process.ID) {
 				progress.PendingTargets = append(progress.PendingTargets, process.ID)
 			}
-			projectPending()
-			if err := persist(); err != nil {
-				hardFailure = err
-				cancel()
-				break
-			}
-			running++
-			swarmCounts[swarm]++
+		}
+		projectPending()
+		if err := persist(); err != nil {
+			return err
+		}
+		requests := make(chan minerControlProgressRequest, len(wave))
+		results := make(chan minerControlRoundResult, len(wave))
+		for _, target := range wave {
 			go func() {
-				result := minerControlRoundResult{process: process, swarm: swarm, err: errors.New("miner control worker ended before reconciliation")}
+				result := target
+				result.err = errors.New("miner control worker ended before reconciliation")
 				defer func() { results <- result }()
 				requestProgress := func(before bool, failure error) error {
 					reply := make(chan error, 1)
-					requests <- minerControlProgressRequest{process: process, before: before, failure: failure, reply: reply}
+					requests <- minerControlProgressRequest{process: target.process, before: before, failure: failure, reply: reply}
 					return <-reply
 				}
-				result.err = self.controlMiner(roundCtx, swarm, process.ID, action,
+				result.err = self.controlMiner(roundCtx, target.swarm, target.process.ID, action,
 					func() error { return requestProgress(true, nil) },
 					func(failure error) error { return requestProgress(false, failure) })
 			}()
 		}
-		if running == 0 {
-			break
-		}
-		select {
-		case request := <-requests:
-			var err error
-			if request.before {
-				if progress.Attempts == math.MaxUint64 {
-					err = errors.New("miner control attempt counter exhausted")
-				} else {
-					progress.Attempts++
-					err = persist()
+		running := len(wave)
+		var waiting []minerControlProgressRequest
+		var completed []FaultProcessEvidence
+		var hardFailure, persistenceFailure error
+		dirty := false
+		for running != 0 || dirty {
+			// All workers have either returned or yielded before a request. No
+			// HTTP deadline is running while their durable checkpoint is flushed.
+			if len(waiting) == running && dirty {
+				checkpointErr := persistenceFailure
+				if checkpointErr == nil {
+					projectPending()
+					sort.Slice(progress.Completed, func(i, j int) bool { return progress.Completed[i].ID < progress.Completed[j].ID })
+					checkpointErr = persist()
 				}
-			} else {
-				err = recordFailure(request.process.ID, request.failure)
-			}
-			if err != nil {
-				hardFailure = errors.Join(hardFailure, err)
-				cancel()
-			}
-			request.reply <- err
-		case result := <-results:
-			running--
-			swarmCounts[result.swarm]--
-			if result.err != nil {
-				failure := fmt.Errorf("%s %s: %w", action, result.process.ID, result.err)
-				failures = append(failures, failure)
-				if !minerControlRoundRetryable(result.err, roundCtx.Err() != nil) {
-					hardFailure = errors.Join(hardFailure, failure)
-					cancel()
-				}
-				if err := recordFailure(result.process.ID, result.err); err != nil {
-					hardFailure = errors.Join(hardFailure, err)
-					cancel()
-				}
-			} else {
-				progress.Completed = append(progress.Completed, result.process)
-				sort.Slice(progress.Completed, func(i, j int) bool { return progress.Completed[i].ID < progress.Completed[j].ID })
-				progress.PendingTargets = slices.DeleteFunc(progress.PendingTargets, func(target string) bool { return target == result.process.ID })
-				projectPending()
-				if len(progress.PendingTargets) == 0 {
-					progress.LastError = ""
-				}
-				if err := persist(); err != nil {
-					hardFailure = errors.Join(hardFailure, err)
+				if checkpointErr != nil {
+					persistenceFailure = checkpointErr
 					cancel()
 				} else {
-					reconciled[result.process.ID] = processGenerationKVs[result.process.ID]
+					for _, process := range completed {
+						reconciled[process.ID] = processGenerationKVs[process.ID]
+					}
+				}
+				completed = nil
+				dirty = false
+				for _, request := range waiting {
+					request.reply <- errors.Join(checkpointErr, hardFailure, roundCtx.Err())
+				}
+				waiting = nil
+				if running == 0 {
+					break
+				}
+			}
+			select {
+			case request := <-requests:
+				dirty = true
+				if request.before {
+					if progress.Attempts == math.MaxUint64 {
+						hardFailure = errors.Join(hardFailure, errors.New("miner control attempt counter exhausted"))
+						cancel()
+					} else {
+						progress.Attempts++
+					}
+				} else {
+					recordFailure(request.process.ID, request.failure)
+				}
+				waiting = append(waiting, request)
+			case result := <-results:
+				dirty = true
+				running--
+				if result.err != nil {
+					failure := fmt.Errorf("%s %s: %w", action, result.process.ID, result.err)
+					failures = append(failures, failure)
+					recordFailure(result.process.ID, result.err)
+					if !minerControlRoundRetryable(result.err, roundCtx.Err() != nil) && !minerControlStorageRetryable(result.err) && persistenceFailure == nil {
+						hardFailure = errors.Join(hardFailure, failure)
+						cancel()
+					}
+				} else {
+					progress.Completed = append(progress.Completed, result.process)
+					progress.PendingTargets = slices.DeleteFunc(progress.PendingTargets, func(target string) bool { return target == result.process.ID })
+					completed = append(completed, result.process)
 				}
 			}
 		}
-	}
-	if hardFailure != nil {
-		delete(self.minerControlReconciled, transitionKey)
-		return hardFailure
+		if hardFailure != nil {
+			delete(self.minerControlReconciled, transitionKey)
+			return errors.Join(hardFailure, persistenceFailure)
+		}
+		if persistenceFailure != nil {
+			return persistenceFailure
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		delete(self.minerControlReconciled, transitionKey)

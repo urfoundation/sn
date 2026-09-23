@@ -1233,6 +1233,21 @@ rounds, restored-state drift, same-PID worker replacement and mixed
 cancellation/integrity failures. Keep all acceptance-window and minimum fault
 duration checks unchanged.
 
+The September 23 interval exposed a second starvation path: a shared ten-second
+round deadline started before its generation census and serial intent fsyncs.
+Disk pressure consumed the budget before requests were dispatched, then an
+outer deadline was signed as a terminally failed cohort. Request deadlines must
+start at actual dispatch. Bound request counts and simultaneous members instead
+of charging storage admission to an HTTP timeout. Commit exact pending-target
+and attempt intents in bounded batches, and batch completion checkpoints before
+admitting later mutations. Keep a sole persistence owner and join every worker.
+Temporary storage failures and outer deadlines retain applying/restoring intent;
+they never certify completion or backdate the fault. Test a 96-target cohort
+with simulated flushes longer than the old round deadline, crashes before and
+after rename, no mutation before a failed intent flush, and restart reconciliation
+without duplicate side effects. Permission, schema, custody and joined integrity
+failures remain hard.
+
 Control admission also needs a bounded readiness state for a checksum-bound
 swarm that is temporarily unhealthy or between process generations. Wait for
 that same owner before first dispatch, preserve an existing completed prefix,
