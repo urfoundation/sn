@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+
+	"github.com/urfoundation/sn/protocol"
 )
 
 // An authenticated older chain needs a new, separately signed recovery. This
@@ -57,7 +59,7 @@ func validateScenarioCampaignLineageAdmission(cfg *ResolvedConfig, planHash stri
 func scenarioCampaignLineagePlansMatch(current, prior *SetupPlan) bool {
 	return current != nil && prior != nil && (current.PlanHash == prior.PlanHash || current.allowedPlanHashes()[prior.PlanHash]) &&
 		current.DeploymentID == prior.DeploymentID && current.ChainID == prior.ChainID && current.Netuid == prior.Netuid &&
-		current.GenesisHash == prior.GenesisHash && current.Owner == prior.Owner && current.PolicyHash == prior.PolicyHash &&
+		current.GenesisHash == prior.GenesisHash && current.Owner == prior.Owner && (current.PolicyHash == prior.PolicyHash || policyRateAmendmentAllowsAncestor(current, prior)) &&
 		reflect.DeepEqual(current.Roles, prior.Roles) && contractDeploymentAddressesEqual(current.Deployment, prior.Deployment)
 }
 
@@ -100,6 +102,12 @@ func (self *scenarioCampaignLineageReader) read(path string) (*scenarioCampaignA
 		}
 		view := *self.cfg
 		view.ConfigHash = plan.ConfigHash
+		view.PolicyHash = plan.PolicyHash
+		if self.current.PolicyHash != plan.PolicyHash {
+			policy := self.current.PolicyRateAmendment.Previous
+			policy.Deposit.Tiers = append([]protocol.DepositTier(nil), policy.Deposit.Tiers...)
+			view.Policy = &policy
+		}
 		view.readOnlyAudit = true
 		cfg = &view
 	}

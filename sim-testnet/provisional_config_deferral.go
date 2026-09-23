@@ -59,7 +59,7 @@ func (self *Executor) provisionalConfigRenderDeferral(action Action, entries []J
 	}
 	if sourceAction == nil || sourceAction.Kind != "local" || !spendIsZero(sourceAction.Spend) ||
 		source.DeploymentID != self.plan.DeploymentID || source.ChainID != self.plan.ChainID || source.GenesisHash != self.plan.GenesisHash || source.Netuid != self.plan.Netuid ||
-		source.PolicyHash != self.plan.PolicyHash || sourceAction.Parameters["deployment_manifest_hash"] != action.Parameters["deployment_manifest_hash"] {
+		(source.PolicyHash != self.plan.PolicyHash && !policyRateAmendmentAllowsAncestor(self.plan, source)) || sourceAction.Parameters["deployment_manifest_hash"] != action.Parameters["deployment_manifest_hash"] {
 		return nil, errors.New("provisional config deferral predecessor has another deployment or policy")
 	}
 	receipt, err := self.readPersistedPostcondition(*sourceEntry)

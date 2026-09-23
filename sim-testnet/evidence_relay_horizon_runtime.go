@@ -106,6 +106,9 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: end}
 	active := source.forEpoch(manifest.Epoch)
 	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: active.activations, Window: window, Origins: self.origins, Bounds: active.bounds}
+	if err := bindPolicyRatePublicationOptions(self.executor.cfg, self.executor.plan, &options); err != nil {
+		return nil, err
+	}
 	var census *evidenceRelayColdCensusSource
 	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
 		census = censuses[0]
@@ -159,6 +162,9 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: block, Subject: manifest.Subject}
 	active := source.forEpoch(manifest.Epoch)
 	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: active.activations, Window: window, Origins: self.origins, Bounds: active.bounds}
+	if err := bindPolicyRatePublicationOptions(self.executor.cfg, self.executor.plan, &options); err != nil {
+		return nil, err
+	}
 	var census *evidenceRelayColdCensusSource
 	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
 		census = censuses[0]

@@ -205,6 +205,12 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 		return nil, err
 	}
 	current := plan
+	if plan.PolicyRateAmendment != nil {
+		cfg, err = configWithPolicyRateAmendment(cfg, plan)
+		if err != nil {
+			return nil, err
+		}
+	}
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		return nil, err
@@ -234,7 +240,7 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 	// The selected source has authenticated lineage, receipts and signatures.
 	// Its immutable files retain that original configuration identity even when
 	// the current approval changed an independent allowance.
-	values, inputs, err := runtimeEvidenceFixedInputsV2(historicalPlanConfig(cfg, plan), plan, stateDir, roles, &prepared, &completed)
+	values, inputs, err := runtimeEvidenceFixedInputsV2(historicalPlanConfig(cfg, plan, current), plan, stateDir, roles, &prepared, &completed)
 	if err != nil {
 		return nil, err
 	}

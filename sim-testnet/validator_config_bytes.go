@@ -24,6 +24,12 @@ func marshalRuntimeValidatorConfig(cfg *ResolvedConfig, stateDir string, roles *
 	v["poll_seconds"] = validatorPollSeconds(cfg)
 	v["version_key"] = hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["weights_version_key"])
 	v["policy"] = cfg.Policy
+	if cfg.previousPolicy != nil {
+		if err := validateFuturePolicyRateAmendment(cfg.previousPolicy, cfg.Policy); err != nil {
+			return nil, err
+		}
+		v["previous_policy"] = cfg.previousPolicy
+	}
 	v["operators"] = operatorDirectory(cfg, stateDir, roles, id)
 	v["evidence_v2"] = cfg.Config.ValidatorEvidenceV2[id-1].Evidence
 	if provisionalResumeEnabled(cfg) {

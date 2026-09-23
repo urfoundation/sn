@@ -2455,6 +2455,9 @@ func (e *Executor) scheduleBootstrapPolicy(ctx context.Context, a Action) error 
 	if err := e.ensurePayloads(ctx); err != nil {
 		return err
 	}
+	if e.plan.PolicyRateAmendment != nil {
+		return e.schedulePolicyRateAmendment(ctx, a)
+	}
 	head, err := finalizedEVMHead(ctx, e.owner.client)
 	if err != nil {
 		return err
@@ -2530,15 +2533,23 @@ func (e *Executor) awaitBootstrapPolicy(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		_, _, active, err := e.bootstrapPolicyState(ctx, head.Number)
+		var active stabi.STCoordinatorPolicySnapshot
+		if e.plan.PolicyRateAmendment != nil {
+			if err := validatePolicyRateAmendmentPlan(e.plan); err != nil {
+				return err
+			}
+			_, _, active, _, err = readPolicyRateSchedule(ctx, e.cfg, e.owner.client, e.payloads.Manifest.CoordinatorProxy, head.Number, &e.plan.PolicyRateAmendment.Previous)
+		} else {
+			_, _, active, err = e.bootstrapPolicyState(ctx, head.Number)
+			if err == nil && !bootstrapPolicyMatches(e.cfg, active) {
+				err = e.verifyBootstrapPolicyMigrationState(ctx, head.Number)
+			}
+		}
 		if err != nil {
 			return err
 		}
 		if bootstrapPolicyMatches(e.cfg, active) {
 			return nil
-		}
-		if err := e.verifyBootstrapPolicyMigrationState(ctx, head.Number); err != nil {
-			return err
 		}
 		select {
 		case <-ctx.Done():

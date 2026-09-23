@@ -355,6 +355,8 @@ type CompatibilityGate struct {
 
 type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
+	// Derived only from a validated approved rate amendment, never from YAML.
+	previousPolicy *protocol.Policy
 	// Read-only plan proofs are shared only by nested runtime render readers.
 	// Exact source bytes and operational authority are reobserved on every use.
 	runtimePlanReads *runtimePlanReadScope

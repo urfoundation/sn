@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 	validatorcomponent "github.com/urfoundation/sn/validator"
 )
@@ -23,13 +24,27 @@ import (
 // historicalPlanConfig retains the live transport and runtime readers but binds
 // immutable replay to the archived approval identity. It is used only after
 // lineage, deployment, role and receipt authentication has selected that plan.
-func historicalPlanConfig(cfg *ResolvedConfig, plan *SetupPlan) *ResolvedConfig {
+func historicalPlanConfig(cfg *ResolvedConfig, plan *SetupPlan, owners ...*SetupPlan) *ResolvedConfig {
 	if cfg == nil || plan == nil {
 		return cfg
 	}
 	copy := *cfg
 	copy.ConfigHash = plan.ConfigHash
 	copy.PolicyHash = plan.PolicyHash
+	if cfg.previousPolicy != nil {
+		if hash, err := cfg.previousPolicy.HashHex(); err == nil && hash == plan.PolicyHash {
+			policy := *cfg.previousPolicy
+			policy.Deposit.Tiers = append([]protocol.DepositTier(nil), policy.Deposit.Tiers...)
+			copy.Policy = &policy
+		}
+	}
+	for _, owner := range owners {
+		if policyRateAmendmentAllowsAncestor(owner, plan) {
+			policy := owner.PolicyRateAmendment.Previous
+			policy.Deposit.Tiers = append([]protocol.DepositTier(nil), policy.Deposit.Tiers...)
+			copy.Policy = &policy
+		}
+	}
 	return &copy
 }
 
@@ -58,10 +73,10 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 	// full config hash; its current config must still match its own plan and its
 	// policy must remain identical. Revalidate the signature using the archived
 	// source identity below, then retain the exact source actions and receipts.
-	if !validCanonicalHashHex(source.ConfigHash) || cfg.ConfigHash != plan.ConfigHash || source.PolicyHash != plan.PolicyHash || source.PolicyHash != cfg.PolicyHash {
+	if !validCanonicalHashHex(source.ConfigHash) || cfg.ConfigHash != plan.ConfigHash || cfg.PolicyHash != plan.PolicyHash || (source.PolicyHash != plan.PolicyHash && !policyRateAmendmentAllowsAncestor(plan, source)) {
 		return nil, errors.New("activation setup carry changed its approved configuration or policy")
 	}
-	sourceConfig := historicalPlanConfig(cfg, source)
+	sourceConfig := historicalPlanConfig(cfg, source, plan)
 	if err := validateRuntimeEvidencePreparedInputsV2(sourceConfig, source, roles, prepared); err != nil {
 		return nil, err
 	}

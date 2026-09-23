@@ -20,6 +20,7 @@ type scenarioCampaignRecoveryProjection struct {
 	file       scenarioCampaignRecoveryFile
 	raw        []byte
 	payload    []byte
+	policy     []byte
 	historical bool
 }
 
@@ -141,11 +142,15 @@ func scenarioCampaignRecoveryProject(records []scenarioCampaignRecoveryRecord) (
 		if err != nil {
 			return nil, err
 		}
-		retainedBytes += len(payload) + len(record.raw)
+		policy, err := json.Marshal(record.attempt.cfg.Policy)
+		if err != nil {
+			return nil, err
+		}
+		retainedBytes += len(payload) + len(record.raw) + len(policy)
 		if retainedBytes > scenarioCampaignRecoveryChainCacheBytes {
 			return nil, errors.New("recovery chain projection exceeds its cache byte bound")
 		}
-		projections = append(projections, scenarioCampaignRecoveryProjection{file: record.file, raw: bytes.Clone(record.raw), payload: payload, historical: record.attempt.historicalEvidence})
+		projections = append(projections, scenarioCampaignRecoveryProjection{file: record.file, raw: bytes.Clone(record.raw), payload: payload, policy: policy, historical: record.attempt.historicalEvidence})
 	}
 	return projections, nil
 }
@@ -161,6 +166,11 @@ func scenarioCampaignRecoveryExpand(cfg *ResolvedConfig, stateDir string, roles 
 		if projection.historical {
 			view := *cfg
 			view.ConfigHash, view.readOnlyAudit = attempt.payload.ConfigHash, true
+			view.PolicyHash = attempt.payload.PolicyHash
+			view.Policy = nil
+			if err := json.Unmarshal(projection.policy, &view.Policy); err != nil {
+				return nil, err
+			}
 			attempt.cfg = &view
 		}
 		records = append(records, scenarioCampaignRecoveryRecord{file: projection.file, attempt: attempt, raw: bytes.Clone(projection.raw)})

@@ -3229,6 +3229,10 @@ func validatePolicyRevisionOnChain(ctx context.Context, cfg *ResolvedConfig, sta
 	if err != nil {
 		return err
 	}
+	if decision.Class == policyRevisionFutureRate {
+		_, _, _, _, err := readPolicyRateSchedule(ctx, cfg, client, deployment.CoordinatorProxy, head.Number, decision.PreviousPolicy)
+		return err
+	}
 	coordinator, err := abi.JSON(strings.NewReader(CoordinatorABI))
 	if err != nil {
 		return err
@@ -4195,8 +4199,10 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		return nil, err
 	}
 	policyChanged := !strings.EqualFold(prior.PolicyHash, cfg.PolicyHash)
+	policyRevision := policyRevisionDecision{Class: policyRevisionNone}
 	if policyChanged {
-		if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err != nil {
+		policyRevision, err = classifyPolicyRevision(cfg, stateDir, prior, entries)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -4400,6 +4406,17 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			seen[hash] = true
 		}
 	}
+	if policyRevision.Class == policyRevisionFutureRate {
+		revised.PolicyRateAmendment = &PolicyRateAmendment{Schema: policyRateAmendmentSchema, PriorPlanHash: prior.PlanHash, Previous: *policyRevision.PreviousPolicy, Next: *cfg.Policy}
+	} else if !policyChanged && prior.PolicyRateAmendment != nil {
+		copy := *prior.PolicyRateAmendment
+		revised.PolicyRateAmendment = &copy
+	}
+	if revised.PolicyRateAmendment != nil {
+		if err := validatePolicyRateAmendmentPlan(revised); err != nil {
+			return nil, err
+		}
+	}
 	if prior.validatorEvidenceObserved != nil {
 		if deploymentSuperseded || deploymentGenerationPromoted {
 			return nil, errors.New("validator evidence carry cannot replace immutable custody")
@@ -4435,6 +4452,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, fmt.Errorf("retain native proof and replace failed probe: %w", err)
 		}
 	}
+	if revised.PolicyRateAmendment != nil {
+		if err := preservePolicyRateAmendmentSetup(revised, prior, entries); err != nil {
+			return nil, err
+		}
+	}
 	if err := carryFleetRenewalRevision(revised, prior); err != nil {
 		return nil, fmt.Errorf("retain approved fleet renewal: %w", err)
 	}
@@ -4465,7 +4487,7 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := validateRevisedFleetMirrorRecoveries(revised, recoveries.FleetMirrors); err != nil {
 		return nil, fmt.Errorf("reconcile finalized fleet mirror: %w", err)
 	}
-	if !policyChanged {
+	if !policyChanged || policyRevision.Class == policyRevisionFutureRate {
 		if err := preserveVerifiedOperatorAlphaTransfers(revised, prior, entries); err != nil {
 			return nil, fmt.Errorf("preserve verified operator alpha transfers: %w", err)
 		}

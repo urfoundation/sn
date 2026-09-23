@@ -25,6 +25,7 @@ type liveMerkleHistoryCache struct {
 // Binds retained metadata to both its full payout domain and serving generation.
 type liveMerkleHistoryScope struct {
 	configHash, deploymentId, policyHash, genesisHash, operatorBase, generation string
+	previousPolicyHash                                                          string
 	chainId                                                                     uint64
 	netuid                                                                      uint16
 	operatorId                                                                  int
@@ -67,6 +68,13 @@ func selectLiveMerkleArtifact(ctx context.Context, cfg *ResolvedConfig, deployme
 		return nil, errors.New("payout artifact history exceeds the retained metadata bound")
 	}
 	scope := liveMerkleHistoryScope{configHash: cfg.ConfigHash, deploymentId: cfg.Config.Deployment.DeploymentID, policyHash: cfg.PolicyHash, genesisHash: cfg.Public.Chain.GenesisHash, operatorBase: operatorBase, generation: generation, chainId: cfg.ChainID, netuid: cfg.Netuid, operatorId: operatorId, coordinator: deployment.CoordinatorProxy, vault: deployment.SettlementVault}
+	if cfg.previousPolicy != nil {
+		var err error
+		scope.previousPolicyHash, err = cfg.previousPolicy.HashHex()
+		if err != nil || !policyRateAmendmentHistoryHash(cfg, scope.previousPolicyHash) {
+			return nil, errors.Join(errors.New("payout history predecessor policy is not approved"), err)
+		}
+	}
 	if cache != nil {
 		if cache.scope != scope || generation == "" {
 			cache.scope, cache.epochKVs = scope, nil
@@ -89,7 +97,7 @@ func selectLiveMerkleArtifact(ctx context.Context, cfg *ResolvedConfig, deployme
 		if err := verifyPayoutArtifact(&candidate); err != nil {
 			return nil, fmt.Errorf("verify payout artifact: %w", err)
 		}
-		if !strings.EqualFold(candidate.ContentHash, "sha256:"+hash) || candidate.DeploymentID != scope.deploymentId || candidate.ChainID != scope.chainId || candidate.Netuid != scope.netuid || candidate.NoID != uint64(scope.operatorId) || !strings.EqualFold(candidate.GenesisHash, scope.genesisHash) || !strings.EqualFold(candidate.PolicyHash, scope.policyHash) || candidate.Coordinator != scope.coordinator || candidate.SettlementVault != scope.vault {
+		if !strings.EqualFold(candidate.ContentHash, "sha256:"+hash) || candidate.DeploymentID != scope.deploymentId || candidate.ChainID != scope.chainId || candidate.Netuid != scope.netuid || candidate.NoID != uint64(scope.operatorId) || !strings.EqualFold(candidate.GenesisHash, scope.genesisHash) || !policyRateAmendmentHistoryHash(cfg, candidate.PolicyHash) || candidate.Coordinator != scope.coordinator || candidate.SettlementVault != scope.vault {
 			return nil, errors.New("payout artifact identity does not match the active deployment")
 		}
 		return &candidate, nil

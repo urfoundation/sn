@@ -33,7 +33,7 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 		return stateMismatchError(err, "provisional setup approval hash differs")
 	}
 	if source.DeploymentID != self.plan.DeploymentID || source.ChainID != self.plan.ChainID ||
-		source.GenesisHash != self.plan.GenesisHash || source.Netuid != self.plan.Netuid || source.PolicyHash != self.plan.PolicyHash ||
+		source.GenesisHash != self.plan.GenesisHash || source.Netuid != self.plan.Netuid || (source.PolicyHash != self.plan.PolicyHash && !policyRateAmendmentAllowsAncestor(self.plan, source)) ||
 		!self.plan.allowedPlanHashes()[source.PlanHash] || self.plan.Limits != configuredPlanLimits(self.cfg) {
 		return errors.New("provisional setup revision differs from its retained deployment, policy, lineage or allowance")
 	}

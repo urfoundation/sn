@@ -107,6 +107,7 @@ type OperatorObservation struct {
 	LatestHeadExcludedClientIDs []string                                     `json:"latest_head_excluded_client_ids,omitempty"`
 	LifecyclePayoutArtifacts    []OperatorLifecyclePayoutArtifactObservation `json:"lifecycle_payout_artifacts,omitempty"`
 	LatestArtifactProviders     int                                          `json:"latest_artifact_providers,omitempty"`
+	RateSource                  *PolicyRateSourceObservation                 `json:"rate_source,omitempty"`
 	CandidateProviders          int                                          `json:"candidate_providers,omitempty"`
 	CandidateHeadExcluded       int                                          `json:"candidate_head_excluded,omitempty"`
 	CandidateLeaves             int                                          `json:"candidate_leaves,omitempty"`
@@ -242,46 +243,47 @@ type NativeRewardObservation struct {
 
 type ScenarioObservation struct {
 	legacyByteAuthenticated    bool
-	Schema                     string                         `json:"schema"`
-	ObservedAt                 string                         `json:"observed_at"`
-	RecoveryStartedAt          string                         `json:"recovery_started_at,omitempty"`
-	Status                     *DeploymentStatus              `json:"status"`
-	Operators                  []OperatorObservation          `json:"operators"`
-	Validators                 []ValidatorObservation         `json:"validators"`
-	Claims                     []ClaimObservation             `json:"claims"`
-	PublicIdentityCount        int                            `json:"public_identity_count"`
-	PublicIdentitiesValid      bool                           `json:"public_identities_valid"`
-	FleetCommitmentValid       bool                           `json:"fleet_commitment_valid"`
-	FleetBindingCount          int                            `json:"fleet_binding_count"`
-	FleetBindingsValid         bool                           `json:"fleet_bindings_valid"`
-	CandidateFleetUIDs         []uint16                       `json:"candidate_fleet_uids"`
-	CandidateFleetHotkeys      []string                       `json:"candidate_fleet_hotkeys"`
-	CandidateFleetMiners       [][]int                        `json:"candidate_fleet_miners"`
-	NativeRewards              *NativeRewardObservation       `json:"native_rewards,omitempty"`
-	NativeRewardsError         string                         `json:"native_rewards_error,omitempty"`
-	NativeWarmupV2             *ScenarioNativeWarmupV2        `json:"native_warmup_v2,omitempty"`
-	ReserveValidatorRegistered bool                           `json:"reserve_validator_registered"`
-	ReserveValidatorUID        uint16                         `json:"reserve_validator_uid"`
-	ReserveDelegateTake        *uint16                        `json:"reserve_delegate_take,omitempty"`
-	EscrowHotkeyRegistered     bool                           `json:"escrow_hotkey_registered"`
-	EscrowHotkeyUID            uint16                         `json:"escrow_hotkey_uid"`
-	NativeCustodyError         string                         `json:"native_custody_error,omitempty"`
-	VoluntaryConviction        *VoluntaryConvictionEvidence   `json:"voluntary_conviction,omitempty"`
-	VoluntaryConvictionValid   bool                           `json:"voluntary_conviction_valid"`
-	VoluntaryConvictionError   string                         `json:"voluntary_conviction_error,omitempty"`
-	GovernanceDrill            *GovernanceDrillEvidence       `json:"governance_drill,omitempty"`
-	GovernanceDrillError       string                         `json:"governance_drill_error,omitempty"`
-	FleetLifecycle             *FleetLifecycleEvidence        `json:"fleet_lifecycle,omitempty"`
-	PrecompileConformance      *PrecompileConformanceEvidence `json:"precompile_conformance,omitempty"`
-	PrecompileConformanceValid bool                           `json:"precompile_conformance_valid"`
-	PrecompileConformanceError string                         `json:"precompile_conformance_error,omitempty"`
-	DishonestDeposit           *DishonestDepositEvidence      `json:"dishonest_deposit,omitempty"`
-	DishonestDepositValid      bool                           `json:"dishonest_deposit_valid"`
-	DishonestDepositError      string                         `json:"dishonest_deposit_error,omitempty"`
-	ProcessLogFindings         []ProcessLogFinding            `json:"process_log_findings,omitempty"`
-	ExpectedFaultIDs           []string                       `json:"expected_fault_ids,omitempty"`
-	ExpectedFaultTargets       []string                       `json:"expected_fault_targets,omitempty"`
-	ObservationHash            string                         `json:"observation_hash"`
+	Schema                     string                          `json:"schema"`
+	ObservedAt                 string                          `json:"observed_at"`
+	RecoveryStartedAt          string                          `json:"recovery_started_at,omitempty"`
+	Status                     *DeploymentStatus               `json:"status"`
+	Operators                  []OperatorObservation           `json:"operators"`
+	Validators                 []ValidatorObservation          `json:"validators"`
+	Claims                     []ClaimObservation              `json:"claims"`
+	PublicIdentityCount        int                             `json:"public_identity_count"`
+	PublicIdentitiesValid      bool                            `json:"public_identities_valid"`
+	FleetCommitmentValid       bool                            `json:"fleet_commitment_valid"`
+	FleetBindingCount          int                             `json:"fleet_binding_count"`
+	FleetBindingsValid         bool                            `json:"fleet_bindings_valid"`
+	CandidateFleetUIDs         []uint16                        `json:"candidate_fleet_uids"`
+	CandidateFleetHotkeys      []string                        `json:"candidate_fleet_hotkeys"`
+	CandidateFleetMiners       [][]int                         `json:"candidate_fleet_miners"`
+	NativeRewards              *NativeRewardObservation        `json:"native_rewards,omitempty"`
+	NativeRewardsError         string                          `json:"native_rewards_error,omitempty"`
+	NativeWarmupV2             *ScenarioNativeWarmupV2         `json:"native_warmup_v2,omitempty"`
+	PolicyRateReadiness        *PolicyRateReadinessObservation `json:"policy_rate_readiness,omitempty"`
+	ReserveValidatorRegistered bool                            `json:"reserve_validator_registered"`
+	ReserveValidatorUID        uint16                          `json:"reserve_validator_uid"`
+	ReserveDelegateTake        *uint16                         `json:"reserve_delegate_take,omitempty"`
+	EscrowHotkeyRegistered     bool                            `json:"escrow_hotkey_registered"`
+	EscrowHotkeyUID            uint16                          `json:"escrow_hotkey_uid"`
+	NativeCustodyError         string                          `json:"native_custody_error,omitempty"`
+	VoluntaryConviction        *VoluntaryConvictionEvidence    `json:"voluntary_conviction,omitempty"`
+	VoluntaryConvictionValid   bool                            `json:"voluntary_conviction_valid"`
+	VoluntaryConvictionError   string                          `json:"voluntary_conviction_error,omitempty"`
+	GovernanceDrill            *GovernanceDrillEvidence        `json:"governance_drill,omitempty"`
+	GovernanceDrillError       string                          `json:"governance_drill_error,omitempty"`
+	FleetLifecycle             *FleetLifecycleEvidence         `json:"fleet_lifecycle,omitempty"`
+	PrecompileConformance      *PrecompileConformanceEvidence  `json:"precompile_conformance,omitempty"`
+	PrecompileConformanceValid bool                            `json:"precompile_conformance_valid"`
+	PrecompileConformanceError string                          `json:"precompile_conformance_error,omitempty"`
+	DishonestDeposit           *DishonestDepositEvidence       `json:"dishonest_deposit,omitempty"`
+	DishonestDepositValid      bool                            `json:"dishonest_deposit_valid"`
+	DishonestDepositError      string                          `json:"dishonest_deposit_error,omitempty"`
+	ProcessLogFindings         []ProcessLogFinding             `json:"process_log_findings,omitempty"`
+	ExpectedFaultIDs           []string                        `json:"expected_fault_ids,omitempty"`
+	ExpectedFaultTargets       []string                        `json:"expected_fault_targets,omitempty"`
+	ObservationHash            string                          `json:"observation_hash"`
 }
 
 type ScenarioResult struct {
@@ -476,6 +478,19 @@ func buildScenarioAcceptanceWindow(cfg *ResolvedConfig, definition scenarioDefin
 	if scenarioNeedsNativeWarmupV2(cfg, definition.Name) && (baseline.NativeWarmupV2 == nil || !baseline.NativeWarmupV2.Ready || baseline.NativeWarmupV2.Phase != definition.Name) {
 		return nil, errors.New("strict V2 acceptance requires both fresh native applications and payout readiness")
 	}
+	if cfg.previousPolicy != nil && definition.Name == "release-1.0" {
+		proof := baseline.PolicyRateReadiness
+		if proof == nil || !proof.Ready || proof.Head != baseline.Status.Contracts.FinalizedHead {
+			return nil, errors.New("rate amendment acceptance lacks its exact complete usage source and native-floor margin")
+		}
+		price, ok := new(big.Int).SetString(proof.AlphaPriceWei, 10)
+		if !ok {
+			return nil, errors.New("rate amendment acceptance alpha price is malformed")
+		}
+		if err := validatePolicyRateReadiness(cfg, baseline.Status.Contracts, proof.Sources, price); err != nil {
+			return nil, err
+		}
+	}
 	contracts := baseline.Status.Contracts
 	policy := contracts.Policy
 	wantEpochs := uint64(cfg.Config.Scenarios.ShortEpochs)
@@ -652,6 +667,9 @@ func (p *liveScenarioProbe) observeSnapshot(ctx context.Context) (*ScenarioObser
 	}
 	observation.DishonestDeposit, observation.DishonestDepositValid, observation.DishonestDepositError = inspectDishonestDepositEvidence(ctx, p.cfg, p.stateDir, status.Contracts)
 	observation.Operators = p.inspectOperators(ctx, status.Contracts, expectedSigners, minerClients)
+	if p.cfg.previousPolicy != nil {
+		observation.PolicyRateReadiness = p.observePolicyRateReadiness(ctx, status.Contracts, observation.Operators)
+	}
 	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
 		var validator ValidatorObservation
 		if provisionalResumeEnabled(p.cfg) {
@@ -1573,11 +1591,14 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 					p.payoutArtifacts[cacheKey] = artifact
 				}
 			}
-			if artifact.DeploymentID != p.cfg.Config.Deployment.DeploymentID || artifact.ChainID != p.cfg.ChainID || artifact.Netuid != p.cfg.Netuid || artifact.NoID != uint64(noID) || !strings.EqualFold(artifact.GenesisHash, p.cfg.Public.Chain.GenesisHash) || !strings.EqualFold(artifact.PolicyHash, p.cfg.PolicyHash) || (expectedSigner != "" && !strings.EqualFold(artifact.Signer.Hex(), expectedSigner)) {
+			if artifact.DeploymentID != p.cfg.Config.Deployment.DeploymentID || artifact.ChainID != p.cfg.ChainID || artifact.Netuid != p.cfg.Netuid || artifact.NoID != uint64(noID) || !strings.EqualFold(artifact.GenesisHash, p.cfg.Public.Chain.GenesisHash) || !policyRateAmendmentHistoryHash(p.cfg, artifact.PolicyHash) || (expectedSigner != "" && !strings.EqualFold(artifact.Signer.Hex(), expectedSigner)) {
 				problems = append(problems, "artifact "+hash+": deployment identity mismatch")
 				continue
 			}
 			o.ValidArtifacts++
+			if p.cfg.previousPolicy != nil && contracts != nil && artifact.PolicyHash == p.cfg.PolicyHash && artifact.Epoch < contracts.CurrentEpoch && (o.RateSource == nil || artifact.Epoch > o.RateSource.Epoch) {
+				o.RateSource = &PolicyRateSourceObservation{NoId: uint64(noID), Epoch: artifact.Epoch, PolicyHash: artifact.PolicyHash, ContentHash: artifact.ContentHash, TotalUsageBytes: artifact.TotalUsageBytes}
+			}
 			o.ArtifactHashes = append(o.ArtifactHashes, artifact.ContentHash)
 			if payoutArtifactMatchesChain(&artifact, contracts) {
 				o.MatchingArtifacts++
@@ -4183,6 +4204,16 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	// A release acceptance interval begins only at the next contract boundary
 	// after preparation. The current partial epoch remains in history but
 	// cannot count toward the exact acceptance gate.
+	current, err = waitScenarioPolicyRateReadiness(preparationCtx, cfg, definition.Name, current, probe, options.PollInterval, func(observed *ScenarioObservation) error {
+		if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, observed, false); err != nil {
+			return err
+		}
+		observationHistory = append(observationHistory, observed)
+		return appendObservation(filepath.Join(runDir, "observations.jsonl"), observed)
+	})
+	if err != nil {
+		return initialFailure(current, err)
+	}
 	window, err = buildScenarioAcceptanceWindow(cfg, definition, current)
 	if err != nil {
 		return initialFailure(current, fmt.Errorf("build complete-epoch acceptance window: %w", err))
@@ -5083,6 +5114,13 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 }
 
 func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor, attempt *scenarioCampaignAttempt, observationTimeout time.Duration) error {
+	if executor != nil && executor.plan != nil && executor.plan.PolicyRateAmendment != nil {
+		resolved, err := configWithPolicyRateAmendment(cfg, executor.plan)
+		if err != nil {
+			return err
+		}
+		cfg = resolved
+	}
 	if name == precompilePreparationScenario {
 		if observationTimeout != 0 || attempt != nil {
 			return errors.New("precompile preparation cannot carry a campaign interval or timeout override")

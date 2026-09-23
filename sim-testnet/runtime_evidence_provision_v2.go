@@ -570,7 +570,7 @@ func (self *Executor) runtimeEvidenceActivationPostStateV2(ctx context.Context, 
 		// retain exact current-plan admission and cannot republish an ancestor.
 		verifier := *self
 		verifier.plan = source
-		verifier.cfg = historicalPlanConfig(self.cfg, source)
+		verifier.cfg = historicalPlanConfig(self.cfg, source, self.plan)
 		self = &verifier
 	}
 	chain, err := self.runtimeEvidenceActivationChainV2(ctx)

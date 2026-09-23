@@ -1923,3 +1923,75 @@ old source. Production needs one authenticated handoff controlling validator
 directories, client identities/JWTs, API admission contexts, relay routing and
 collector identity selection; preserve the old signed evidence and account
 for the excluded gap separately.
+
+### Count paid and free provider usage equally
+
+For PH-12 and PH-13, keep the SN usage ledger independent of customer billing.
+R35's signed artifacts for both operators in epochs 585 and 586 contained no
+provider rows and zero total usage, although each operator had settled hundreds
+of thousands of same-network contracts that day. The producer read only
+`transfer_escrow_sweep`; those contracts correctly created no customer charge or
+billing sweep and were consequently invisible to SN. The last positive billing
+sweeps predated the campaign by eleven days. Creating paid sidecar traffic would
+mask this accounting defect and is not its repair.
+
+The required rule is that all valid paid and free provider bytes contribute
+equally. Record immutable per-contract/provider usage independently of balances,
+revenue and financial payout suppression, including same-network participants.
+Bind direction, participants and settled byte evidence before mutable stream
+membership or contract cleanup can change their attribution. Preserve exact
+byte conservation, one-time settlement, explicit dispute outcomes, nonnegative
+amounts and the exclusion of unfinished work. Customer billing and its existing
+payment rules remain a separate consumer.
+
+Keep the governed NO deposit/rate/quality formula unchanged. The signed artifact's
+`total_usage_bytes` feeds the existing prior-epoch required-deposit calculation;
+validators authenticate the artifact and audit that amount before weighting
+`deposit / rate × Q`. A free-service operator funds the same required deposit
+for the same usage. Customer payment status must not affect usage, relative
+provider shares, required deposit or weight. Head exclusion, reliability floors,
+deposit caps, tier snapshots and mismatch rejection remain strict.
+
+Implementation and qualification are pending in the server usage producer.
+Required deterministic regressions compare otherwise identical paid, free and
+same-network transfers; cover forward/companion and multihop attribution,
+duplicate/concurrent close, partial and disputed close, cleanup, exact epoch
+boundaries, mixed financial allocations and zero usage; and trace equal usage
+through artifact totals, required deposits and validator audit. Preserve every
+already signed historical artifact and its original interpretation; deployment
+must establish an explicit prospective accounting boundary. Earlier same-network
+reply contracts could lose their companion/origin role during billing
+normalization, so historical endpoint rows cannot safely recover the provider.
+Do not backfill guessed usage or replace the signed zero-usage artifacts. Start
+the new accepted measurement window after deployment of the usage producer;
+an epoch crossing activation cannot silently count as complete. Closure requires
+nonzero eligible provider artifacts, timely root commits and successful claims
+for both operators in the accepted interval. Connect idle recovery alone does
+not establish this settlement coverage.
+
+### Size governed rates against the native movement minimum
+
+Positive valid usage does not guarantee an executable demand deposit. The
+coordinator moves the exact governed amount, while the native runtime and
+immutable vault enforce a TAO-denominated transfer floor after alpha conversion.
+A rate chosen without measured epoch bytes can produce a valid amount several
+orders of magnitude below that floor. Increasing the transfer to the floor
+would break the deposit audit and must remain forbidden.
+
+Before mainnet launch, preflight the exact integer floor, epoch cap and reserve
+rounding across every conviction tier and conservative observed epoch usage and
+price states. Require at least twice the native minimum as operating headroom,
+then repeat the exact minimum check immediately before each actual deposit.
+Govern future rate changes explicitly and authenticate both old and new policy
+documents; preserve the prior signed artifacts and original activation domain.
+The deposit/rate/quality weighting rule remains unchanged. A uniform rate
+increase changes operator funding economics even when uncapped relative demand
+is preserved, so it requires a new reviewed policy and future activation.
+
+The testnet correction retains both policy files, existing caps and one-epoch
+usage lag. Its [rollout procedure](../sim-testnet/POLICY-RATE-AMENDMENT.md)
+requires the two additive database migrations before service adoption, a
+prospective immutable usage boundary, legacy-contract drainage, a complete new
+policy source epoch, and a signed source/price/minimum readiness proof. There is
+no historical backfill or acceptance waiver. Mainnet parameters require their
+own measured economic and native-minimum qualification.

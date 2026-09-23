@@ -643,7 +643,7 @@ func (self *Executor) provisionalSetupPrefix(ctx context.Context, plan *SetupPla
 		}
 		prior, ok := verified.find(action, false)
 		if !ok {
-			if !allowRepairs || !provisionalLiveSetupRepair(action) {
+			if !allowRepairs || (!provisionalLiveSetupRepair(action) && !policyRateAmendmentSetupRepair(plan, action)) {
 				return nil, nil, fmt.Errorf("live adoption requires already verified setup action %s", action.ID)
 			}
 			hash, err := actionIntentHash(action)

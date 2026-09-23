@@ -864,7 +864,7 @@ func (self *artifactAdversary) Sample(ctx context.Context, phase adversarySample
 	if json.Unmarshal(body, &artifact) != nil || verifyPayoutArtifact(&artifact) != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "canonical artifact failed local verification", Requests: accounting.requests, MaxInFlight: 1, Metrics: accounting.metrics()}
 	}
-	if !strings.EqualFold(artifact.ContentHash, "sha256:"+hash) || artifact.DeploymentID != self.cfg.Config.Deployment.DeploymentID || artifact.ChainID != self.cfg.ChainID || artifact.Netuid != self.cfg.Netuid || artifact.NoID != uint64(operator) || !strings.EqualFold(artifact.GenesisHash, self.cfg.Public.Chain.GenesisHash) || !strings.EqualFold(artifact.PolicyHash, self.cfg.PolicyHash) {
+	if !strings.EqualFold(artifact.ContentHash, "sha256:"+hash) || artifact.DeploymentID != self.cfg.Config.Deployment.DeploymentID || artifact.ChainID != self.cfg.ChainID || artifact.Netuid != self.cfg.Netuid || artifact.NoID != uint64(operator) || !strings.EqualFold(artifact.GenesisHash, self.cfg.Public.Chain.GenesisHash) || !policyRateAmendmentHistoryHash(self.cfg, artifact.PolicyHash) {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "canonical artifact identity differs from its requested content address or deployment", Requests: accounting.requests, MaxInFlight: 1, Metrics: accounting.metrics()}
 	}
 	if phase == adversaryAttackPhase {

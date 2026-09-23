@@ -534,7 +534,11 @@ func waitFinalValidatorPublicationsV2(ctx context.Context, cfg *ResolvedConfig, 
 				if err != nil {
 					return false, err
 				}
-				_, err = validatorpkg.ReadValidatorEvidencePublicationV2(ctx, manifest, validatorpkg.ValidatorEvidencePublicationV2ReadOptions{Activations: activationCenses[release.ValidatorID], Window: protocol.ValidatorEvidenceWindow{Epoch: epoch, StartBlock: start, EndBlock: end, FinalizedBlock: terminal.Status.Contracts.FinalizedHead.Number}, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, Bounds: release.EvidenceV2.Bounds})
+				readOptions := validatorpkg.ValidatorEvidencePublicationV2ReadOptions{Activations: activationCenses[release.ValidatorID], Window: protocol.ValidatorEvidenceWindow{Epoch: epoch, StartBlock: start, EndBlock: end, FinalizedBlock: terminal.Status.Contracts.FinalizedHead.Number}, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, Bounds: release.EvidenceV2.Bounds}
+				if release.PreviousPolicy != nil {
+					readOptions.Policy, readOptions.PreviousPolicy = &release.Policy, release.PreviousPolicy
+				}
+				_, err = validatorpkg.ReadValidatorEvidencePublicationV2(ctx, manifest, readOptions)
 				if err != nil {
 					return false, err
 				}

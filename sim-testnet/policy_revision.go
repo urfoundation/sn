@@ -31,6 +31,7 @@ const (
 	policyRevisionNone policyRevisionClass = iota
 	policyRevisionPristine
 	policyRevisionFutureAcceleration
+	policyRevisionFutureRate
 )
 
 // Carry the authenticated prior policy and whether a launch/stop generation
@@ -451,6 +452,11 @@ func classifyPolicyRevision(cfg *ResolvedConfig, stateDir string, prior *SetupPl
 	}
 	if strings.EqualFold(prior.PolicyHash, cfg.PolicyHash) {
 		return policyRevisionDecision{Class: policyRevisionNone}, nil
+	}
+	// An explicit rate-only successor can follow a used deployment. The
+	// ordinary acceleration path below retains its stricter pristine limits.
+	if previous, err := authenticatedPreviousPolicy(stateDir, prior); err == nil && validateFuturePolicyRateAmendment(previous, cfg.Policy) == nil {
+		return policyRevisionDecision{Class: policyRevisionFutureRate, PreviousPolicy: previous, RestartRequired: true}, nil
 	}
 	allowedPlans := prior.allowedPlanHashes()
 	convictionStarted := false

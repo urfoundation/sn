@@ -26,7 +26,7 @@ func validatePrecompileEvidenceCarry(cfg *ResolvedConfig, plan, source *SetupPla
 	if err := validatePrecompileEvidenceCarryScope(plan, source, probe); err != nil {
 		return err
 	}
-	if err := validatePrecompileEvidenceIdentity(historicalPlanConfig(cfg, source), probe, evidence); err != nil {
+	if err := validatePrecompileEvidenceIdentity(historicalPlanConfig(cfg, source, plan), probe, evidence); err != nil {
 		return err
 	}
 	if !strings.EqualFold(evidence.Owner, plan.Roles.Deployer) {
@@ -69,7 +69,7 @@ func validatePrecompileEvidenceCarryScope(plan, source *SetupPlan, probe common.
 	if plan == nil || source == nil || !plan.allowedPlanHashes()[source.PlanHash] {
 		return errors.New("precompile evidence source is outside approved plan lineage")
 	}
-	if source.PolicyHash != plan.PolicyHash || source.DeploymentID != plan.DeploymentID || source.ChainID != plan.ChainID || source.GenesisHash != plan.GenesisHash || source.Netuid != plan.Netuid || source.Owner != plan.Owner || !reflect.DeepEqual(source.Roles, plan.Roles) || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || approvedPrecompileProbe(source) != probe || approvedPrecompileProbe(plan) != probe || !reflect.DeepEqual(source.PrecompileProbeSuccessor, plan.PrecompileProbeSuccessor) {
+	if (source.PolicyHash != plan.PolicyHash && !policyRateAmendmentAllowsAncestor(plan, source)) || source.DeploymentID != plan.DeploymentID || source.ChainID != plan.ChainID || source.GenesisHash != plan.GenesisHash || source.Netuid != plan.Netuid || source.Owner != plan.Owner || !reflect.DeepEqual(source.Roles, plan.Roles) || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || approvedPrecompileProbe(source) != probe || approvedPrecompileProbe(plan) != probe || !reflect.DeepEqual(source.PrecompileProbeSuccessor, plan.PrecompileProbeSuccessor) {
 		return errors.New("precompile evidence carry changed its policy, probe, roles, or deployment")
 	}
 	if source.LiveFacts.ProbeTAORao != plan.LiveFacts.ProbeTAORao || source.LiveFacts.NominatorMinimumRao != plan.LiveFacts.NominatorMinimumRao {

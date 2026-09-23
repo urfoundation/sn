@@ -88,6 +88,7 @@ type SetupPlan struct {
 	ResolvedInputsHash           string                     `json:"resolved_inputs_hash"`
 	OwnedRPCAuthority            string                     `json:"owned_rpc_authority,omitempty"`
 	PolicyHash                   string                     `json:"policy_hash"`
+	PolicyRateAmendment          *PolicyRateAmendment       `json:"policy_rate_amendment,omitempty"`
 	Roles                        PublicRoles                `json:"roles"`
 	Deployment                   ContractDeployment         `json:"deployment"`
 	CoordinatorUpgrade           CoordinatorUpgrade         `json:"coordinator_upgrade"`
@@ -481,7 +482,7 @@ func planUsesRevisionRecoveryEnvelope(schema string) bool {
 // Accept the current policy or the exact historical policy linked through the
 // one authenticated duplicate-conviction reconciliation.
 func operatorRepairBindsApprovedCampaignPolicy(plan *SetupPlan, action Action, seen map[string]Action, priorPlans map[string]bool) bool {
-	if strings.EqualFold(action.Parameters["campaign_policy_hash"], plan.PolicyHash) {
+	if policyRateAmendmentFundingHash(plan, action.Parameters["campaign_policy_hash"]) {
 		return true
 	}
 	if !planUsesRuntimeConfigIdentityEnvelope(plan.Schema) {
@@ -2058,6 +2059,11 @@ func validatePlanBudgetWithFleetRenewalVerifier(p *SetupPlan, verifyRenewal func
 	if p == nil {
 		return errors.New("setup plan is unavailable")
 	}
+	if p.PolicyRateAmendment != nil {
+		if err := validatePolicyRateAmendmentPlan(p); err != nil {
+			return err
+		}
+	}
 	if !p.EVMFundingAllocationWei.IsZero() {
 		comparison, err := p.EVMFundingAllocationWei.Cmp(p.Limits.EVMGasWei)
 		if err != nil || comparison > 0 {
@@ -2386,7 +2392,7 @@ func validatePlanBudgetWithFleetRenewalVerifier(p *SetupPlan, verifyRenewal func
 					}
 				}
 			}
-			if planUsesCoordinatorUpgradeEnvelope(p.Schema) && strings.HasPrefix(action.ID, "alpha.transfer.operator-deposit.") && !strings.EqualFold(action.Parameters["campaign_policy_hash"], p.PolicyHash) {
+			if planUsesCoordinatorUpgradeEnvelope(p.Schema) && strings.HasPrefix(action.ID, "alpha.transfer.operator-deposit.") && !policyRateAmendmentFundingHash(p, action.Parameters["campaign_policy_hash"]) {
 				return fmt.Errorf("operator alpha transfer %s does not bind the campaign policy", action.ID)
 			}
 			if action.Kind == "substrate-reconciliation" {

@@ -49,7 +49,7 @@ func attachProvisionalActivationSetup(cfg *ResolvedConfig, stateDir string, plan
 	if err != nil {
 		return err
 	}
-	values, inputs, err := runtimeEvidenceFixedInputsV2(historicalPlanConfig(cfg, source), source, stateDir, roles, &prepared, &completed)
+	values, inputs, err := runtimeEvidenceFixedInputsV2(historicalPlanConfig(cfg, source, plan), source, stateDir, roles, &prepared, &completed)
 	if err != nil {
 		return err
 	}
