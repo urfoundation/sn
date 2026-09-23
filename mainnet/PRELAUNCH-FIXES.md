@@ -1663,3 +1663,26 @@ completion for the repaired scope; require the production handoff to understand
 that composition explicitly. A new binary cannot silently join an immutable live
 interval. Deferred historical audits and unrelated semantic checks remain their
 own outstanding requirements until their exact proofs are accepted.
+
+### Keep read availability separate from verified mismatches
+
+Relay startup and receipt reconciliation must return an RPC read error before
+comparing the unread value with an approved snapshot, nonce, registration or
+transaction. Do not join a fabricated mismatch to a timeout: mixed errors remain
+hard by design, so that join prevents the bounded transport retry from running.
+The same rule applies to the final registration and canonical-hash rechecks in
+the native schedule reader and to retained manifest reads.
+
+Give initial phase admission and each consumed phase-transition request their
+own bounded retry. Keep the first successful finalized head and original wall
+deadline across admission attempts. A canceled caller releases its request while
+the relay remains available; worker shutdown cancels an active request. Retain
+hard integrity and local persistence failures even when joined with cancellation.
+
+A permissionless publication race needs a typed canonical-revert outcome,
+distinct from a failed journal write. Retry its independent winner, canonical
+receipt and transaction-body reads using the original signed bytes and nonce.
+Keep the reverted receipt and actual paid gas visible. Test failures at each
+read boundary, exhaustion, request cancellation, original-deadline retention,
+journal reopen and no duplicate broadcast. Test real mismatch and storage-error
+controls beside every transient recovery path.

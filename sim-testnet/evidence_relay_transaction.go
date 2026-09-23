@@ -134,8 +134,11 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 			return prior, nil, hasIntent, err
 		}
 		transaction, err := validatorcomponent.ValidateValidatorEvidenceTransactionV2(ctx, expected)
-		if err != nil || transaction == nil || transaction.Hash().Hex() != prior.TransactionHash || !strings.EqualFold(prior.Signer, expected.Relayer.Hex()) || strconv.FormatUint(transaction.Nonce(), 10) != prior.Nonce {
-			return prior, nil, hasIntent, errors.Join(errors.New("evidence relay recovery differs from its original exact broadcast"), err)
+		if err != nil {
+			return prior, nil, hasIntent, fmt.Errorf("read evidence relay original exact broadcast: %w", err)
+		}
+		if transaction == nil || transaction.Hash().Hex() != prior.TransactionHash || !strings.EqualFold(prior.Signer, expected.Relayer.Hex()) || strconv.FormatUint(transaction.Nonce(), 10) != prior.Nonce {
+			return prior, nil, hasIntent, errors.New("evidence relay recovery differs from its original exact broadcast")
 		}
 		if err := validateApprovedEVMTransactionFields(action, expected.Relayer, transaction.Nonce(), transaction.To(), transaction.Value(), transaction.Data()); err != nil {
 			return prior, nil, hasIntent, err
@@ -179,19 +182,35 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 		if receipt == nil || receipt.Status != types.ReceiptStatusFailed || ctx.Err() != nil {
 			return nil, sendErr
 		}
+		if reverted, ok := sendErr.(*evmCanonicalRevertError); !ok || reverted.transactionHash != receipt.TxHash {
+			if !evidenceRelayTransientError(sendErr) {
+				return nil, sendErr
+			}
+		}
 		prior, transaction, _, err = readBroadcast()
-		if err != nil || transaction == nil || receipt.TxHash != transaction.Hash() {
-			return nil, errors.Join(sendErr, errors.New("evidence relay failed receipt differs from its original broadcast"), err)
+		if err != nil {
+			return nil, err
+		}
+		if transaction == nil || receipt.TxHash != transaction.Hash() {
+			return nil, errors.Join(sendErr, errors.New("evidence relay failed receipt differs from its original broadcast"))
 		}
 		// An initial failed receipt can precede a finality transport error.
 		// Re-read canonical inclusion and exact body before claiming a race.
 		actual, finalized, err := observeEVMReceiptFinality(ctx, ethEVMReceiptFinalityReader{client: self.client}, transaction.Hash())
-		if err != nil || !finalized || actual == nil || actual.Status != types.ReceiptStatusFailed || actual.Type != transaction.Type() || actual.ContractAddress != (common.Address{}) || actual.GasUsed > transaction.Gas() || actual.CumulativeGasUsed < actual.GasUsed || actual.EffectiveGasPrice == nil || actual.EffectiveGasPrice.Sign() < 0 || actual.EffectiveGasPrice.Cmp(transaction.GasFeeCap()) > 0 || len(actual.Logs) != 0 {
-			return nil, errors.Join(sendErr, errors.New("evidence relay failed receipt lacks exact canonical transaction/cost identity"), err)
+		if err != nil {
+			// The original failed receipt stays durable while race verification
+			// retries. Joining its revert would mask this transport failure.
+			return nil, fmt.Errorf("read evidence relay failed receipt finality: %w", err)
+		}
+		if !finalized || actual == nil || actual.Status != types.ReceiptStatusFailed || actual.Type != transaction.Type() || actual.ContractAddress != (common.Address{}) || actual.GasUsed > transaction.Gas() || actual.CumulativeGasUsed < actual.GasUsed || actual.EffectiveGasPrice == nil || actual.EffectiveGasPrice.Sign() < 0 || actual.EffectiveGasPrice.Cmp(transaction.GasFeeCap()) > 0 || len(actual.Logs) != 0 {
+			return nil, errors.Join(sendErr, errors.New("evidence relay failed receipt lacks exact canonical transaction/cost identity"))
 		}
 		included, err := self.client.TransactionInBlock(ctx, actual.BlockHash, actual.TransactionIndex)
-		if err != nil || included == nil || included.Hash() != transaction.Hash() {
-			return nil, errors.Join(sendErr, errors.New("evidence relay failed inclusion contains another transaction"), err)
+		if err != nil {
+			return nil, fmt.Errorf("read evidence relay failed inclusion transaction: %w", err)
+		}
+		if included == nil || included.Hash() != transaction.Hash() {
+			return nil, errors.Join(sendErr, errors.New("evidence relay failed inclusion contains another transaction"))
 		}
 		raw, err := included.MarshalBinary()
 		if err != nil || !bytes.Equal(raw, expected.SignedTransaction) {
@@ -201,12 +220,18 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 		// Only the sender's real canonical failed receipt plus an independently
 		// confirmed matching winner explains a publication race.
 		winner, winnerErr = chain.FindValidatorEvidenceSlotWinnerV2Context(ctx, expected)
-		if winnerErr != nil || winner == nil || winner.Receipt.TxHash == receipt.TxHash {
-			return nil, errors.Join(sendErr, winnerErr)
+		if winnerErr != nil {
+			return nil, fmt.Errorf("read evidence relay publication race winner: %w", winnerErr)
+		}
+		if winner == nil || winner.Receipt.TxHash == receipt.TxHash {
+			return nil, sendErr
 		}
 		canonical, err := canonicalEVMBlockHash(ctx, ethEVMBlockReader{client: self.client}, receipt.BlockNumber.Uint64())
-		if err != nil || canonical != receipt.BlockHash.Hex() {
-			return nil, errors.Join(sendErr, errors.New("evidence relay reverted inclusion changed through winner readback"), err)
+		if err != nil {
+			return nil, fmt.Errorf("read evidence relay reverted inclusion after winner readback: %w", err)
+		}
+		if canonical != receipt.BlockHash.Hex() {
+			return nil, errors.Join(sendErr, errors.New("evidence relay reverted inclusion changed through winner readback"))
 		}
 		if err := self.journal.Append(JournalEntry{DeploymentID: self.deploymentID, PlanHash: planHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFailed, TransactionHash: receipt.TxHash.Hex(), BlockNumber: receipt.BlockNumber.Uint64(), BlockHash: receipt.BlockHash.Hex(), Error: "canonical publication race: exact immutable slot was committed by " + winner.Receipt.TxHash.Hex()}); err != nil {
 			return nil, errors.Join(sendErr, err)
@@ -217,8 +242,11 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 		return nil, errors.New("evidence relay sender returned no canonical receipt")
 	}
 	prior, transaction, _, err = readBroadcast()
-	if err != nil || transaction == nil || prior.TransactionHash != receipt.TxHash.Hex() {
-		return nil, errors.Join(errors.New("evidence relay successful receipt differs from its original durable transaction"), err)
+	if err != nil {
+		return nil, err
+	}
+	if transaction == nil || prior.TransactionHash != receipt.TxHash.Hex() {
+		return nil, errors.New("evidence relay successful receipt differs from its original durable transaction")
 	}
 	winner, err = chain.ConfirmValidatorEvidenceTransactionV2Context(ctx, expected)
 	if err != nil {

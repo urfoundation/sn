@@ -78,8 +78,11 @@ func (self *evidenceRelayRuntime) readHorizonNative(ctx context.Context, activat
 	}
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, chain, crv4.ValidatorScheduleQuery{GenesisHash: types.Hash(self.executor.plan.ValidatorEvidence.GenesisHash), BlockHash: hash, BlockNumber: block,
 		Netuid: self.executor.cfg.Netuid, Hotkey: activation.Hotkey, MaximumSubnetUIDs: uint32(maximum)}, allowed...)
-	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() {
-		return 0, errors.Join(errors.New("evidence relay native horizon lacks independent finalized eligibility/schedule"), err)
+	if err != nil {
+		return 0, fmt.Errorf("read evidence relay native horizon: %w", err)
+	}
+	if !observed.Stake.MeetsNonSelfStakeAndPermit() {
+		return 0, errors.New("evidence relay native horizon lacks independent finalized eligibility/schedule")
 	}
 	return observed.SubnetEpochIndex, nil
 }
@@ -226,14 +229,28 @@ func (self *evidenceRelayRuntime) requireHorizonRemaining(horizon *evidenceRelay
 	return horizon.requireRemaining(block, native, bounded)
 }
 
+// Phase admission owns a finite retry before any readiness can be published.
+func (self *evidenceRelayRuntime) prepareHorizon() error {
+	return self.prepareHorizonWithWait(waitFinalSemanticRPCRetry)
+}
+
+// Retry cannot move the original preparation block or wall-clock deadline.
+func (self *evidenceRelayRuntime) prepareHorizonWithWait(wait func(context.Context, time.Duration) error) error {
+	started := time.Now()
+	var firstHead ChainHead
+	return self.retryStepWithWait(self.ctx, "phase-admission", func() error { return self.readHorizon(started, &firstHead) }, wait)
+}
+
 // The worker has not admitted or sent anything when this executes. Read each
 // original request separately; only its header survives the bounded read.
-func (self *evidenceRelayRuntime) prepareHorizon() error {
+func (self *evidenceRelayRuntime) readHorizon(started time.Time, firstHead *ChainHead) error {
 	block, hash, err := self.chain.FinalizedBlockContext(self.ctx)
 	if err != nil {
 		return err
 	}
-	started := time.Now()
+	if firstHead.Number == 0 {
+		*firstHead = ChainHead{Number: block, Hash: fmt.Sprintf("0x%x", hash)}
+	}
 	workCfg := *self.executor.cfg
 	if self.executor.plan.EvidenceRelayContinuation != nil {
 		// Approval binds the original complete workload, independently of this
@@ -248,7 +265,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
-	budget, err := newScenarioNativeWarmupBudgetV2(self.executor.cfg, self.phase, self.prepared, ChainHead{Number: block, Hash: fmt.Sprintf("0x%x", hash)}, started)
+	budget, err := newScenarioNativeWarmupBudgetV2(self.executor.cfg, self.phase, self.prepared, *firstHead, started)
 	if err != nil {
 		return err
 	}
@@ -289,8 +306,11 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 			}
 		}
 		canonical, err := self.chain.BlockHashContext(self.ctx, c.EVMHead.Number)
-		if err != nil || fmt.Sprintf("0x%x", canonical) != c.EVMHead.Hash || block < c.EVMHead.Number {
-			return errors.Join(errors.New("relay continuation approved snapshot is not canonical"), err)
+		if err != nil {
+			return fmt.Errorf("read relay continuation approved snapshot: %w", err)
+		}
+		if fmt.Sprintf("0x%x", canonical) != c.EVMHead.Hash || block < c.EVMHead.Number {
+			return errors.New("relay continuation approved snapshot is not canonical")
 		}
 		nativeAnchor := anchor
 		nativeAnchor.NativeBlock = c.NativeHead.Number
@@ -300,8 +320,11 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		}
 		nativeAnchor.NativeHash = value
 		nativeEpoch, err := self.readHorizonNative(self.ctx, nativeAnchor, evidenceRelayNativeContinuationSnapshot)
-		if err != nil || nativeEpoch != c.NativeEpoch {
-			return errors.Join(errors.New("relay continuation approved native snapshot changed"), err)
+		if err != nil {
+			return fmt.Errorf("read relay continuation approved native snapshot: %w", err)
+		}
+		if nativeEpoch != c.NativeEpoch {
+			return errors.New("relay continuation approved native snapshot changed")
 		}
 		horizon.continuation = c
 		horizon.maximum = uint64(len(c.Debits)) + c.NewSlots
@@ -327,8 +350,11 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		return err
 	}
 	canonical, err := self.chain.BlockHashContext(self.ctx, anchor.EVMBlock)
-	if err != nil || canonical != anchor.EVMHash {
-		return errors.Join(errors.New("evidence relay original activation Evm anchor is not canonical"), err)
+	if err != nil {
+		return fmt.Errorf("read evidence relay original activation Evm anchor: %w", err)
+	}
+	if canonical != anchor.EVMHash {
+		return errors.New("evidence relay original activation Evm anchor is not canonical")
 	}
 	var inventories map[uint64]evidenceRelayStartupSourceInventory
 	if horizon.continuation != nil && horizon.forecastAdvisory {

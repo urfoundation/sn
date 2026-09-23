@@ -20,10 +20,11 @@ import (
 // Each actual reader accepts only nonce reads and records the exact selector.
 // Response maps are fixed before any synchronous observation begins.
 type evidenceRelayNonceRpcFixture struct {
-	stateLock sync.Mutex
-	reads     []string
-	nonces    map[string]uint64
-	failure   string
+	stateLock      sync.Mutex
+	reads          []string
+	nonces         map[string]uint64
+	failure        string
+	failureMessage string
 }
 
 func (self *evidenceRelayNonceRpcFixture) client(t *testing.T) *ethclient.Client {
@@ -49,7 +50,11 @@ func (self *evidenceRelayNonceRpcFixture) client(t *testing.T) *ethclient.Client
 		}()
 		response := map[string]any{"jsonrpc": "2.0", "id": call.Id}
 		if key == self.failure {
-			response["error"] = map[string]any{"code": -32000, "message": "nonce fixture unavailable"}
+			message := self.failureMessage
+			if message == "" {
+				message = "nonce fixture unavailable"
+			}
+			response["error"] = map[string]any{"code": -32000, "message": message}
 		} else if nonce, ok := self.nonces[key]; ok {
 			response["result"] = fmt.Sprintf("0x%x", nonce)
 		} else {
@@ -167,8 +172,14 @@ func TestEvidenceRelayContinuationNoncePrivateAuthorityComparesPinnedState(t *te
 			if err != nil || len(points) != 2 || !slices.Equal(independent.observedReads(), []string{first, second}) {
 				t.Fatalf("independent nonce census did not read the exact finalized checkpoint: %v", err)
 			}
-		} else if err == nil || !strings.Contains(err.Error(), "independent finalized nonce differs") || points != nil || !slices.Equal(independent.observedReads(), []string{first}) {
-			t.Fatalf("%s independent nonce result was accepted: %v", mismatch, err)
+		} else {
+			message := "independent finalized nonce differs"
+			if mismatch == "unavailable" {
+				message = "read relay continuation independent finalized nonce"
+			}
+			if err == nil || !strings.Contains(err.Error(), message) || points != nil || !slices.Equal(independent.observedReads(), []string{first}) {
+				t.Fatalf("%s independent nonce result was accepted: %v", mismatch, err)
+			}
 		}
 	}
 }

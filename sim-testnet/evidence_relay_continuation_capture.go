@@ -270,8 +270,11 @@ func (self *Executor) observeEvidenceRelayContinuationNonces(ctx context.Context
 		}
 		if independentRPCRequired(self.cfg) {
 			independent, err := self.independentEVM.NonceAt(ctx, point.Address, new(big.Int).SetUint64(block))
-			if err != nil || independent != point.Finalized {
-				return nil, errors.Join(errors.New("relay continuation independent finalized nonce differs"), err)
+			if err != nil {
+				return nil, fmt.Errorf("read relay continuation independent finalized nonce: %w", err)
+			}
+			if independent != point.Finalized {
+				return nil, errors.New("relay continuation independent finalized nonce differs")
 			}
 		}
 	}
@@ -381,8 +384,11 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			return nil, errors.New("relay continuation imported snapshot is not finalized in its original source")
 		}
 		canonical, err := runtime.chain.BlockHashContext(ctx, pin.EVMHead.Number)
-		if err != nil || fmt.Sprintf("0x%x", canonical) != pin.EVMHead.Hash {
-			return nil, errors.Join(errors.New("relay continuation approved EVM snapshot is no longer canonical"), err)
+		if err != nil {
+			return nil, fmt.Errorf("read relay continuation approved EVM snapshot: %w", err)
+		}
+		if fmt.Sprintf("0x%x", canonical) != pin.EVMHead.Hash {
+			return nil, errors.New("relay continuation approved EVM snapshot is no longer canonical")
 		}
 		block, hash = pin.EVMHead.Number, canonical
 		nativeBlock, nativeHash = pin.NativeHead.Number, nativeTypes.Hash(common.HexToHash(pin.NativeHead.Hash))

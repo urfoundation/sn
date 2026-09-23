@@ -8,10 +8,44 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
+
+// Late registration/canonical reads preserve a typed timeout while returning
+// no partial schedule. Recovery repeats the real metadata and stake reader.
+func TestRuntimeArtifactMetadataValidatorScheduleLateReadErrorsRemainTransport(t *testing.T) {
+	t.Parallel()
+	for _, failure := range []string{"registration", "canonical"} {
+		fixture, query := newValidatorScheduleTestFixture(t)
+		identity := fixture.identity
+		originalHook := identity.hook
+		epochRead, injected := false, false
+		identity.after = func(method string, args ...any) {
+			if method == "state_getStorage" && identity.keyNames[args[0].(string)] == "SubnetEpochIndex" {
+				epochRead = true
+			}
+		}
+		identity.hook = func(ctx context.Context, result any, method string, args ...any) (bool, error) {
+			match := failure == "registration" && method == "state_getStorage" && identity.keyNames[args[0].(string)] == "Uids" || failure == "canonical" && method == "chain_getBlockHash"
+			if epochRead && match && !injected {
+				injected = true
+				return true, context.DeadlineExceeded
+			}
+			return originalHook(ctx, result, method, args...)
+		}
+		result, err := ReadValidatorScheduleAtContext(identity.ctx, identity.chain, query, identity.allowed...)
+		if !injected || !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "changed") || result != (ValidatorScheduleObservation{}) {
+			t.Fatalf("%s late read became a mismatch or partial observation: %+v %v", failure, result, err)
+		}
+		result, err = ReadValidatorScheduleAtContext(identity.ctx, identity.chain, query, identity.allowed...)
+		if err != nil || result.SubnetEpochIndex != 77 || !result.Stake.MeetsNonSelfStakeAndPermit() {
+			t.Fatalf("%s recovery failed to repeat real schedule: %+v %v", failure, result, err)
+		}
+	}
+}
 
 // Each test adds the real epoch map to its own stake fixture. Existing
 // identity/stake fixtures and their independent metadata pins are unchanged.

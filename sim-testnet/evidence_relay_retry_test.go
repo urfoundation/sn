@@ -143,6 +143,16 @@ func TestEvidenceRelayStepCancellationNeverAdmitsFurtherWork(t *testing.T) {
 // Re-entry must discover that exact winner without sending or allocating again.
 func TestEvidenceRelayStepReconcilesDurableWinnerBeforeAnyResend(t *testing.T) {
 	fixture := newEvidenceRelayRpcFixture(t, "send-busy-finalized")
+	fixture.stateLock.Lock()
+	receiptFailures := 0
+	fixture.requestError = func(request evidenceRelayRpcRequest) error {
+		if len(fixture.sentBytes) != 0 && request.Method == "eth_getTransactionReceipt" && receiptFailures < defaultFinalSemanticRPCRetryPolicy().maximumAttempts {
+			receiptFailures++
+			return errors.New("upstream overloaded")
+		}
+		return nil
+	}
+	fixture.stateLock.Unlock()
 	runtime := &evidenceRelayRuntime{phase: "release-1.0", executor: &Executor{cfg: &ResolvedConfig{}, stateDir: fixture.stateDir,
 		plan: &SetupPlan{PlanHash: fixture.planHash, DeploymentID: fixture.manager.deploymentID}}}
 	calls, waits := 0, 0

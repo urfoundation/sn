@@ -1520,12 +1520,23 @@ func (m *EvmTxManager) finalizeReceipt(ctx context.Context, planHash string, a A
 		return r, err
 	}
 	if finalized.Status != types.ReceiptStatusSuccessful {
-		return finalized, fmt.Errorf("EVM transaction %s reverted in its canonical inclusion", finalized.TxHash)
+		return finalized, &evmCanonicalRevertError{transactionHash: finalized.TxHash}
 	}
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: expectedHash.Hex(), BlockNumber: finalized.BlockNumber.Uint64(), BlockHash: finalized.BlockHash.Hex(), RecoveryBlock: recovery.Number, RecoveryBlockHash: recovery.Hash}); err != nil {
 		return finalized, err
 	}
 	return finalized, nil
+}
+
+// A canonical revert is distinct from an interrupted receipt or journal write.
+// Permissionless publication races may reconcile this exact on-chain outcome.
+type evmCanonicalRevertError struct {
+	transactionHash common.Hash
+}
+
+// Retain the established diagnostic while exposing exact outcome identity.
+func (self *evmCanonicalRevertError) Error() string {
+	return fmt.Sprintf("EVM transaction %s reverted in its canonical inclusion", self.transactionHash)
 }
 
 type evmReceiptFinalityReader interface {

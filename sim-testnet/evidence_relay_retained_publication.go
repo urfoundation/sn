@@ -56,8 +56,11 @@ func newEvidenceRelayRetainedPublications(ctx context.Context, cfg *ResolvedConf
 			return nil, errors.New("retained publication lost an original private operator store")
 		}
 		raw, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateDir, filepath.FromSlash(relative)), 64*1024)
-		if err != nil || bytesSHA256(raw) != expected.SHA256 {
-			return nil, errors.Join(fmt.Errorf("retained publication operator %d store differs from its authenticated runtime manifest", operator), err)
+		if err != nil {
+			return nil, fmt.Errorf("read retained publication operator %d store: %w", operator, err)
+		}
+		if bytesSHA256(raw) != expected.SHA256 {
+			return nil, fmt.Errorf("retained publication operator %d store differs from its authenticated runtime manifest", operator)
 		}
 		var rendered renderedOperatorBlobConfig
 		decoder := yaml.NewDecoder(bytes.NewReader(raw))

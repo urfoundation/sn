@@ -290,13 +290,58 @@ func (self *evidenceRelayRuntime) awaitNextPass() error {
 	}
 }
 
+// Keep a consumed request under its finite retry owner until one final answer.
 func (self *evidenceRelayRuntime) completeRemainingRequest(request evidenceRelayRemainingRequest) error {
-	err := self.checkRemaining(request)
+	return self.completeRemainingRequestWithWait(request, waitFinalSemanticRPCRetry)
+}
+
+// The wait seam forces request abandonment and worker shutdown during retry.
+func (self *evidenceRelayRuntime) completeRemainingRequestWithWait(request evidenceRelayRemainingRequest, wait func(context.Context, time.Duration) error) error {
+	ctx, cancel := context.WithCancel(request.ctx)
+	defer cancel()
+	stop := context.AfterFunc(self.ctx, cancel)
+	defer stop()
+	if self.ctx.Err() != nil {
+		cancel()
+	}
+	owned := request
+	owned.ctx = ctx
+	err := self.retryStepWithWait(ctx, "phase-transition", func() error { return self.checkRemaining(owned) }, wait)
 	request.result <- err
-	if self.ctx.Err() == nil && evidenceRelayOnlyRequestCancellation(err, request.ctx.Err()) {
+	if self.ctx.Err() == nil && errors.Is(err, request.ctx.Err()) && evidenceRelayAbandonedRequestError(err, request.ctx.Err()) {
 		return nil
 	}
 	return err
+}
+
+// An abandoned request can leave a logged transient read from its retry. No
+// integrity or local persistence error is discarded with that cancellation.
+func evidenceRelayAbandonedRequestError(err, requestErr error) bool {
+	if err == nil || requestErr == nil {
+		return false
+	}
+	if _, fileError := err.(*os.PathError); fileError {
+		return false
+	}
+	if err == requestErr || evidenceRelayTransientError(err) {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !evidenceRelayAbandonedRequestError(child, requestErr) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return evidenceRelayAbandonedRequestError(wrapped.Unwrap(), requestErr)
+	}
+	return false
 }
 
 // An abandoned admission request does not own the worker's lifetime. Preserve

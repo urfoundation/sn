@@ -75,6 +75,7 @@ type runtimeEvidenceActivationRpcV2TestFixture struct {
 	storageKeys            map[string]runtimeEvidenceNativeKeyV2
 	views                  map[string]string
 	calls                  map[string]uint64
+	requestError           func(string, []json.RawMessage) error
 }
 
 // Both validators inhabit one real three-entry census. Storage keys use the
@@ -224,6 +225,11 @@ func (self *runtimeEvidenceActivationRpcV2TestFixture) serve(writer http.Respons
 		self.stateLock.Lock()
 		defer self.stateLock.Unlock()
 		self.calls[call.Method]++
+		if self.requestError != nil {
+			if err := self.requestError(call.Method, call.Params); err != nil {
+				return nil, err
+			}
+		}
 		return self.dispatchWithLock(request.Context(), call.Method, call.Params)
 	}()
 	response := map[string]any{"jsonrpc": "2.0", "id": call.Id}

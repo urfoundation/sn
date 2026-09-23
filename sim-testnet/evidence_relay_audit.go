@@ -106,8 +106,11 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				}
 			}
 			checkpointIdentity, err := self.startupCache.completeAudit(self, source, &manifest)
-			if err != nil || checkpointIdentity != identity {
-				return errors.Join(errors.New("evidence audit checkpoint identity changed"), err)
+			if err != nil {
+				return err
+			}
+			if checkpointIdentity != identity {
+				return errors.New("evidence audit checkpoint identity changed")
 			}
 			completed[key] = identity
 			if self.startupCache != nil {
