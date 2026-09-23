@@ -6,10 +6,11 @@ package validator
 import (
 	"errors"
 	"fmt"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
 	"reflect"
 	"slices"
+
+	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // The original attempt activation may survive this one rate-only amendment;

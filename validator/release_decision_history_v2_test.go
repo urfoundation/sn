@@ -265,6 +265,12 @@ func TestReleaseEvidenceV2DecisionHistoricalDeploymentScopeIsIndependent(t *test
 		change.mutate(candidate)
 		before := decision.count("currentEpoch")
 		err := history.authenticateIntentChainReference(t.Context(), decision.chain, native.chain, native.expected, fixture.intent, candidate)
+		if change.name == "policy" {
+			if err == nil || !strings.Contains(err.Error(), "release policy is not configured") || decision.count("currentEpoch") != before {
+				t.Fatalf("foreign policy selected a historical RPC domain: %v", err)
+			}
+			continue
+		}
 		if err == nil || !strings.Contains(err.Error(), "client-key capture differs from the admitted validator deployment") || decision.count("currentEpoch") <= before {
 			t.Fatalf("%s candidate replaced independent historical scope or skipped real reads: %v", change.name, err)
 		}

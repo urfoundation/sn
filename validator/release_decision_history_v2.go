@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -78,7 +79,8 @@ func readReleaseDecisionV2Context(ctx context.Context, chain *ChainClient, nativ
 }
 
 // Immutable replayed journals provide the provider census. Artifact fields
-// are compared only after independent native and complete EVM observations.
+// are compared after independent native and complete EVM observations. Only
+// exact configured policy selection occurs before the first chain read.
 func (self *releaseEvidenceV2StartupHistory) authenticateIntentChainReference(ctx context.Context, chain *ChainClient, native *crv4.Chain, runtime crv4.RuntimeArtifactIdentity, intent *SteeringIntent, artifact *ReleaseMeasurementArtifact) error {
 	if self == nil {
 		return errors.New("historical decision reference owner is absent")
@@ -238,6 +240,9 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 			}
 			encoded, err := custody.read(keyCtx, path, maximum, false)
 			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return result, errors.Join(errReleaseHistoricalClientKeyV2, err)
+				}
 				return result, err
 			}
 			if ReleaseMeasurementContentHash(encoded) != contentHash {
