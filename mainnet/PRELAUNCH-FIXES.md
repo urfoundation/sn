@@ -1567,6 +1567,15 @@ replay. A final record must prove both source positions zero at one finalized
 head. Test interrupted signing/finalization/postcondition boundaries, quote edits,
 extra credits, receipt/recipient changes, gas-cap changes and reseed exhaustion.
 
+Recovery admission must authenticate only the exact repair authority, custody,
+immutable target and retained journal before allowing its durable sender to
+reconcile pending bytes. A finalized deployment nonce census cannot precede that
+reconciliation: the transaction being recovered may already consume the next
+nonce without a finalized journal row. Restrict the recovery executor's dispatch
+scope when reusing partial payloads, and enforce the signed fee/value envelope
+before rebroadcast as well as during final replay. Test a crash with a signed,
+unfinalized call and prove the same bytes finish without allocating another nonce.
+
 For future probe/custody maintenance contracts, provide a narrowly authorized
 operation that reads and transfers the full selected position in the same call,
 with exact before/after events and an explicit recovery recipient. This removes

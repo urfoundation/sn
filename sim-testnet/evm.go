@@ -1323,6 +1323,9 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		if err := validateFleetRenewalSignedTransaction(a, &tx, m.chainID); err != nil {
 			return nil, err
 		}
+		if err := validatePrecompileRecoverySignedBounds(a, &tx); err != nil {
+			return nil, err
+		}
 		if (a.ID == validatorEvidenceAnchorActionID || strings.HasPrefix(a.ID, precompileRecoveryActionPrefix)) && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
 			return nil, errors.New("persisted validator evidence anchor transaction has another or unprotected chain")
 		}

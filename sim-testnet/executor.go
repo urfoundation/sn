@@ -59,6 +59,7 @@ type Executor struct {
 	fleetCommitmentHistory       *fleetCommitmentHistoryScope
 	precompileHistoryEvidence    *PrecompileConformanceEvidence
 	preparationIncomplete        bool
+	precompileRecoveryOnly       bool
 	evidenceRelayOwnerPlans      *evidenceRelayOwnerPlanCache
 }
 
@@ -1862,6 +1863,9 @@ func (e *Executor) verifyInitialRegistrationPreState(ctx context.Context, action
 }
 
 func (e *Executor) Execute(ctx context.Context, a Action) error {
+	if err := e.validatePrecompileRecoveryDispatch(a); err != nil {
+		return err
+	}
 	if e != nil && e.cfg != nil && e.cfg.readOnlyAudit {
 		return errors.New("historical audit cannot execute actions")
 	}
@@ -1961,6 +1965,9 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 }
 
 func (e *Executor) execute(ctx context.Context, a Action) error {
+	if err := e.validatePrecompileRecoveryDispatch(a); err != nil {
+		return err
+	}
 	switch {
 	case strings.HasPrefix(a.ID, precompileRecoveryActionPrefix):
 		return e.executePrecompileRecoveryStep(ctx, a)

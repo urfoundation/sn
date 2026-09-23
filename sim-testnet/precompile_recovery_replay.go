@@ -98,9 +98,8 @@ func verifyPrecompileRecoveryCall(ctx context.Context, reader contractCreationRe
 	if err != nil || tx == nil || pending || tx.Hash() != receipt.TxHash || !tx.Protected() || tx.ChainId().Cmp(chain) != 0 || (nonce != 0 && tx.Nonce() != nonce) {
 		return stateMismatchError(err, "probe recovery changed its signed chain or nonce")
 	}
-	request := evidence.Recovery.Authorization.Request
-	if tx.Gas() > request.MaximumGasUnits || tx.GasFeeCap().Cmp(new(big.Int).SetUint64(request.MaximumFeePerGasWei)) > 0 {
-		return errors.New("probe recovery receipt exceeded its approved gas or fee cap")
+	if err := validatePrecompileRecoverySignedBounds(action, tx); err != nil {
+		return err
 	}
 	signer, err := types.Sender(types.LatestSignerForChainID(chain), tx)
 	if err != nil || !bytes.Equal(tx.Data(), data) {

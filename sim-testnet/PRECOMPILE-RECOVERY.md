@@ -77,6 +77,13 @@ unknown transaction outcome must reconcile before any new signature. Exhausted
 bounds or an untransferable position remain explicit pending liabilities. A new
 quote cannot replace an already retained operation.
 
+Recovery admission authenticates the dual-signed authority, journal anchor,
+native custody roles and immutable probe runtime, then opens only its required
+reader and deployer. An unfinalized signed repair reaches exact reconciliation
+before deployment-wide nonce auditing. Its partial payload cannot execute other
+setup actions, and saved bytes retain the same gas/value limits before any
+rebroadcast. Full original and repair replay remains mandatory for completion.
+
 ## Evidence and acceptance
 
 - `public/precompile-recovery-authorization.json`: immutable dual-signed authority.

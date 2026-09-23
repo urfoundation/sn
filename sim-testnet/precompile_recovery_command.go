@@ -124,7 +124,7 @@ func runPrecompileRecovery(ctx context.Context, cfg *ResolvedConfig, stateDir st
 	if err != nil {
 		return err
 	}
-	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, plan, journal, &roles, nil)
+	executor, err := newPrecompileRecoveryExecutor(ctx, cfg, runtimeCfg, stateDir, plan, journal, &roles, evidence)
 	if err != nil {
 		return err
 	}

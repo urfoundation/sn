@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -268,6 +269,22 @@ func validatePrecompileRecoveryTransactionFields(action Action, signer common.Ad
 	}
 	if action.Kind != "evm-transaction" || signer != common.HexToAddress(action.Parameters["recovery_signer"]) || to == nil || *to != common.HexToAddress(action.Target) || value == nil || value.String() != action.Parameters["recovery_value_wei"] || !validCanonicalHashHex(action.Parameters["recovery_authorization_hash"]) || crypto.Keccak256Hash(data).Hex() != action.Parameters["recovery_data_hash"] {
 		return errors.New("probe recovery transaction differs from its approved semantic envelope")
+	}
+	return nil
+}
+
+// Saved bytes remain bound before rebroadcast as well as during final replay.
+// Receipt-only enforcement would discover an over-budget call after spending.
+func validatePrecompileRecoverySignedBounds(action Action, transaction *types.Transaction) error {
+	if !strings.HasPrefix(action.ID, precompileRecoveryActionPrefix) {
+		return nil
+	}
+	gas, fee, err := evmActionFeeEnvelope(action)
+	if err != nil {
+		return err
+	}
+	if transaction == nil || transaction.Gas() == 0 || transaction.Gas() > gas || transaction.GasFeeCap().Sign() < 0 || transaction.GasFeeCap().Cmp(new(big.Int).SetUint64(fee)) > 0 {
+		return errors.New("probe recovery signed transaction exceeded its approved gas or fee cap")
 	}
 	return nil
 }
