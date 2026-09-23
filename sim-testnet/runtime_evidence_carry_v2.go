@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Resolve a completed ancestor without changing its signatures, first epoch,
