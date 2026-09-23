@@ -70,7 +70,7 @@ func TestVerifyFaultAttributionKeepsSignedWalkSemanticsBlocking(t *testing.T) {
 		}
 		actor := &verifyAdversary{
 			cfg: cfg, faults: window, validators: map[int]verifyAdversaryIdentity{1: {clientID: connect.Id{4}, private: validatorPrivate, public: validatorPublic}},
-			seedProviders: map[int][]connect.Id{1: {provider}}, providerSources: map[int]map[connect.Id]string{1: {provider: "192.0.2.1"}},
+			seedProviders: map[int][]connect.Id{1: {provider}}, providerSources: map[int]map[connect.Id]string{1: {provider: "127.90.0.1"}},
 			http: adversaryGetTestClient(func(request *http.Request) (*http.Response, error) {
 				if request.Method == http.MethodGet && request.URL.Path == "/verify/keys" {
 					return adversaryGetTestResponse(http.StatusOK, string(keys)), nil
