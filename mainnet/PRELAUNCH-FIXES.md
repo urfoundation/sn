@@ -1407,6 +1407,19 @@ each caller receives its own decoded plan. Production qualification should
 count full validations per render, then replace/truncate/symlink source files,
 change authority and mutate returned values. No failed validation is reusable.
 
+R35 exposed a remaining scope gap after this improvement: release observations
+still re-entered recovery-lineage validation, repeatedly authenticating the
+latest two generations in roughly nine-second passes. The controller accumulated
+tens of gigabytes of logical reads while observations advanced. Before mainnet,
+cache only the sealed predecessor-edge proof across observations under exact
+source-byte, file-identity, plan and authority witnesses; invalidate it on any
+changed generation or source. The current attempt envelope is rewritten during
+observations and must remain freshly authenticated. Keep the per-edge checks
+when a new generation is appended, and measure full lineage validations and
+logical read bytes per observation in the actual release process. The repeated
+edge is material to the observed 100–162-second gaps, but is not yet proven to
+be their only cause. A process staying alive is not a throughput proof.
+
 **PH-25 — Deployment workload ownership.** A terminal campaign and its
 deployment have distinct lifecycles. A terminal scenario may retain the exact
 healthy supervisor, claim relayers, miners, validators, proxies and supporting
