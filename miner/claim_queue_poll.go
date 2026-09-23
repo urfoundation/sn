@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// Historical repair cannot consume an entire poll or turn faster persistence
+// into an unbounded API burst. Current epochs and uncertain outcomes are separate.
+const claimHistoricalReconciliationsPerPoll = 2
+
 // Each callback runs synchronously under the daemon's queue ownership. The
 // production callbacks retain their existing chain and nonce lock boundaries.
 type claimQueuePollHooks struct {
@@ -48,6 +52,7 @@ func deferClaimReconciliation(entry *ClaimQueueEntry, now time.Time, failure err
 // for that batch. Recent claims are considered before historical repair work.
 func pollClaimQueue(ctx context.Context, queue *ClaimQueue, hooks claimQueuePollHooks) error {
 	dirty := false
+	historicalReconciliations := 0
 	flush := func() error {
 		if !dirty {
 			return nil
@@ -75,6 +80,13 @@ func pollClaimQueue(ctx context.Context, queue *ClaimQueue, hooks claimQueuePoll
 				continue
 			}
 		}
+		recent := epoch >= queue.LastDiscovered-1
+		if !recent && entry.Status != "uncertain" {
+			if historicalReconciliations >= claimHistoricalReconciliationsPerPoll {
+				continue
+			}
+			historicalReconciliations++
+		}
 		reconciled, reconcileErr := hooks.reconcile(ctx, entry)
 		if reconciled != "" {
 			entry.Status = reconciled
@@ -90,7 +102,7 @@ func pollClaimQueue(ctx context.Context, queue *ClaimQueue, hooks claimQueuePoll
 			}
 		}
 		if reconcileErr != nil {
-			deferClaimReconciliation(entry, hooks.now(), reconcileErr, epoch >= queue.LastDiscovered-1)
+			deferClaimReconciliation(entry, hooks.now(), reconcileErr, recent)
 			dirty = true
 			continue
 		}

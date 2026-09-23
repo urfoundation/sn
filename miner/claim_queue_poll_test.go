@@ -53,8 +53,8 @@ func TestClaimQueuePollHonorsDeadlineBeforeAnySideEffect(t *testing.T) {
 	}
 }
 
-// A large historical backlog causes one retry checkpoint, not one complete
-// file rewrite per epoch. Current claims receive the first reconciliation.
+// Historical work advances in bounded polls with one retry checkpoint each.
+// Current claims lead the first poll, and future deadlines consume no budget.
 func TestClaimQueuePollBatchesHistoricalFailuresAndPrioritizesRecentClaims(t *testing.T) {
 	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 	queue := &ClaimQueue{LastDiscovered: 63, Entries: map[string]*ClaimQueueEntry{}}
@@ -72,8 +72,22 @@ func TestClaimQueuePollBatchesHistoricalFailuresAndPrioritizesRecentClaims(t *te
 	if err := pollClaimQueue(context.Background(), queue, hooks); err != nil {
 		t.Fatal(err)
 	}
-	if len(epochs) != 64 || epochs[0] != 63 || epochs[63] != 0 || writes != 1 {
+	if !reflect.DeepEqual(epochs, []int64{63, 62, 61, 60}) || writes != 1 {
 		t.Fatalf("epochs=%v writes=%d", epochs, writes)
+	}
+	for len(epochs) < 64 {
+		priorReads, priorWrites := len(epochs), writes
+		if err := pollClaimQueue(context.Background(), queue, hooks); err != nil {
+			t.Fatal(err)
+		}
+		if len(epochs)-priorReads != claimHistoricalReconciliationsPerPoll || writes-priorWrites != 1 {
+			t.Fatalf("historical poll reads=%d writes=%d", len(epochs)-priorReads, writes-priorWrites)
+		}
+	}
+	for index, epoch := range epochs {
+		if epoch != int64(63-index) {
+			t.Fatalf("retained historical frontier was skipped or repeated: %v", epochs)
+		}
 	}
 	for _, entry := range queue.Entries {
 		if entry.Attempts != 0 || entry.ReconcileAttempts != 1 || entry.NextRetryAt != now.Add(time.Minute).Format(time.RFC3339Nano) {
@@ -82,6 +96,40 @@ func TestClaimQueuePollBatchesHistoricalFailuresAndPrioritizesRecentClaims(t *te
 	}
 	if err := pollClaimQueue(context.Background(), queue, claimPollTestHooks(t, now)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Ordinary historical backpressure cannot hide a retained signed transaction
+// whose canonical outcome still needs reconciliation.
+func TestClaimQueuePollHistoricalBudgetPreservesUncertainOutcomePriority(t *testing.T) {
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	queue := &ClaimQueue{LastDiscovered: 8, Entries: map[string]*ClaimQueueEntry{}}
+	for epoch := int64(0); epoch <= queue.LastDiscovered; epoch++ {
+		queue.Entries[fmt.Sprint(epoch)] = &ClaimQueueEntry{Epoch: epoch, Status: "retry"}
+	}
+	uncertain := queue.Entries["0"]
+	uncertain.Status, uncertain.TxHash, uncertain.RawTxHex = "uncertain", "synthetic retained hash", "synthetic retained bytes"
+	hooks := claimPollTestHooks(t, now)
+	var epochs []int64
+	hooks.reconcile = func(_ context.Context, entry *ClaimQueueEntry) (string, error) {
+		epochs = append(epochs, entry.Epoch)
+		if entry.Epoch == 0 {
+			return "finalized", nil
+		}
+		return "", errors.New("synthetic root pending")
+	}
+	writes := 0
+	hooks.save = func(*ClaimQueue) error { writes++; return nil }
+	if err := pollClaimQueue(context.Background(), queue, hooks); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(epochs, []int64{8, 7, 6, 5, 0}) || writes != 1 || uncertain.Status != "finalized" || uncertain.TxHash != "synthetic retained hash" || uncertain.RawTxHex != "synthetic retained bytes" {
+		t.Fatalf("historical budget changed outcome recovery: epochs=%v writes=%d uncertain=%+v", epochs, writes, uncertain)
+	}
+	for _, epoch := range []int64{1, 2, 3, 4} {
+		if entry := queue.Entries[fmt.Sprint(epoch)]; entry.ReconcileAttempts != 0 || entry.UpdatedAt != "" {
+			t.Fatalf("unvisited historical entry changed: %+v", entry)
+		}
 	}
 }
 
