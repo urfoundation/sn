@@ -52,6 +52,7 @@ type PrecompileConformanceEvidence struct {
 	Snapshot         PrecompileSnapshotStep       `json:"snapshot"`
 	Dividend         PrecompileDividendStep       `json:"dividend"`
 	Transfer         PrecompileTransferStep       `json:"transfer_out"`
+	Recovery         *PrecompileRecoveryEvidence  `json:"recovery,omitempty"`
 
 	Complete     bool   `json:"complete"`
 	EvidenceHash string `json:"evidence_hash"`
@@ -553,21 +554,42 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 
 	case "precompile.transfer-out":
+		if evidence.Recovery != nil && evidence.Transfer.TransactionHash != "" {
+			if !precompileRecoveryTransferAccounted(evidence) {
+				return errPrecompileRecoveryPending
+			}
+			evidence.Complete = true
+			return writePrecompileEvidence(e.stateDir, evidence)
+		}
 		if err := precompileTransferReadiness(evidence); err != nil {
 			return err
 		}
 		if evidence.Transfer.AmountRao == 0 {
-			probeBefore, err := e.readStakeFinalized(ctx, sample, probeColdkey)
+			quoteHead, err := finalizedEVMHead(ctx, e.deployer.client)
+			if err != nil {
+				return err
+			}
+			probeBefore, err := e.readStakeAt(ctx, quoteHead.Number, sample, probeColdkey)
 			if err != nil || probeBefore <= evidence.Seed.BeforeRao {
 				return conformanceMismatch(fmt.Sprintf("no probe-attributable alpha to recover: stake=%d baseline=%d", probeBefore, evidence.Seed.BeforeRao), err)
 			}
-			providerBefore, err := e.readStakeFinalized(ctx, sample, recovery)
+			providerBefore, err := e.readStakeAt(ctx, quoteHead.Number, sample, recovery)
 			if err != nil {
 				return err
 			}
 			evidence.Transfer.AmountRao = probeBefore - evidence.Seed.BeforeRao
 			evidence.Transfer.ProbeBeforeRao = probeBefore
 			evidence.Transfer.ProviderBeforeRao = providerBefore
+			if evidence.Recovery != nil {
+				sample, move, settled, err := precompileRecoveryPositionsBeforeTransfer(evidence)
+				if err != nil || !settled || move != 0 || probeBefore < sample {
+					return errors.Join(errors.New("probe transfer lost its authorized recovery accounting"), err)
+				}
+				evidence.Recovery.SampleTransferCreditRao = probeBefore - sample
+				evidence.Recovery.SampleTransferQuoteHead = quoteHead
+				evidence.Recovery.SampleTransferSourceQuoteRao = probeBefore
+				evidence.Recovery.SampleTransferDestinationQuoteRao = providerBefore
+			}
 			if err := writePrecompileEvidence(e.stateDir, evidence); err != nil {
 				return err
 			}
@@ -585,17 +607,25 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		if err != nil {
 			return err
 		}
-		observed, err := reconcilePrecompileTransferEvent(evidence.Transfer, transferEvent)
+		var observed PrecompileTransferStep
+		if evidence.Recovery != nil {
+			observed, err = reconcilePrecompileRecoveryOriginalTransfer(evidence, transferEvent)
+		} else {
+			observed, err = reconcilePrecompileTransferEvent(evidence.Transfer, transferEvent)
+		}
 		if err != nil {
 			return err
 		}
 		evidence.Transfer = observed
-		if !precompileTransferRecovered(evidence) {
-			return errors.New("probe recovery retained an unrecovered source balance")
-		}
 		evidence.Transfer.TransactionHash, evidence.Transfer.BlockNumber, evidence.Transfer.BlockHash = receiptFields(receipt)
-		evidence.Complete = true
-		return writePrecompileEvidence(e.stateDir, evidence)
+		evidence.Complete = precompileTransferRecovered(evidence)
+		if err := writePrecompileEvidence(e.stateDir, evidence); err != nil {
+			return err
+		}
+		if !evidence.Complete {
+			return errPrecompileRecoveryPending
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown precompile conformance action %s", action.ID)
 	}
@@ -647,7 +677,11 @@ func readDividendAtFinalized(ctx context.Context, client *ethclient.Client, prob
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	values, err := contractCallAt(ctx, client, probe, parsed, "dividendDelta", head.Number, hotkey)
+	return readDividendAt(ctx, client, probe, parsed, hotkey, head.Number)
+}
+
+func readDividendAt(ctx context.Context, client *ethclient.Client, probe common.Address, parsed abi.ABI, hotkey [32]byte, block uint64) (uint64, uint64, uint64, error) {
+	values, err := contractCallAt(ctx, client, probe, parsed, "dividendDelta", block, hotkey)
 	if err != nil || len(values) != 3 {
 		return 0, 0, 0, stateMismatchError(err, "dividendDelta returned %d values", len(values))
 	}
@@ -783,7 +817,14 @@ func precompileEvidenceComplete(evidence *PrecompileConformanceEvidence) bool {
 	if evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao || evidence.Dividend.BaselineRao != evidence.Snapshot.BaselineRao || evidence.Dividend.SinceBlock != evidence.Snapshot.SinceBlock || !exactIncrease(evidence.Dividend.BaselineRao, evidence.Dividend.CurrentRao, evidence.Dividend.DeltaRao) {
 		return false
 	}
-	if evidence.Transfer.ProbeBeforeRao != evidence.Dividend.CurrentRao || !precompileTransferRecovered(evidence) {
+	if !precompileTransferRecovered(evidence) {
+		return false
+	}
+	if evidence.Recovery == nil {
+		if evidence.Transfer.ProbeBeforeRao != evidence.Dividend.CurrentRao {
+			return false
+		}
+	} else if !precompileRecoveryTransferAccounted(evidence) || len(evidence.Recovery.Steps) == 0 {
 		return false
 	}
 	return validConformanceTransaction(evidence.Commitment.WriteTransactionHash, evidence.Commitment.WriteFinalizedHead.Hash, evidence.Commitment.WriteFinalizedHead.Number) &&
@@ -939,12 +980,15 @@ func (e *Executor) verifyPrecompileChainEvidence(ctx context.Context, action Act
 		if err != nil {
 			return err
 		}
-		baseline, current, since, err := readDividendAtFinalized(ctx, e.deployer.client, e.payloads.PrecompileProbeAddress, parsed, sample)
+		baseline, current, since, err := readDividendAt(ctx, e.deployer.client, e.payloads.PrecompileProbeAddress, parsed, sample, evidence.Dividend.FinalizedHead.Number)
 		if err != nil || baseline != evidence.Dividend.BaselineRao || since != evidence.Dividend.SinceBlock || current < evidence.Dividend.CurrentRao {
 			return stateMismatchError(err, "independent dividend state baseline=%d current=%d since=%d", baseline, current, since)
 		}
 		return nil
 	case "precompile.transfer-out":
+		if evidence.Recovery != nil {
+			return e.verifyPrecompileRecoveryFinalEvidence(ctx, head, evidence)
+		}
 		transactionHash, blockNumber, blockHash = evidence.Transfer.TransactionHash, evidence.Transfer.BlockNumber, evidence.Transfer.BlockHash
 	default:
 		return fmt.Errorf("unknown precompile chain evidence %s", action.ID)

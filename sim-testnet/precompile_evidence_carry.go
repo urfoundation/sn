@@ -151,6 +151,11 @@ func readPrecompileEvidenceSource(cfg *ResolvedConfig, stateDir string, plan *Se
 // Both mutation and audit paths retain the source label while the current
 // executor continues enforcing its own transaction intents and spend limits.
 func (self *Executor) validatePrecompileEvidence(probe common.Address, evidence *PrecompileConformanceEvidence) error {
+	if evidence != nil && evidence.Recovery != nil {
+		if err := validatePrecompileRecoveryPlan(self.plan, evidence, &evidence.Recovery.Authorization); err != nil {
+			return err
+		}
+	}
 	if err := validatePrecompileEvidenceIdentity(self.cfg, probe, evidence); err == nil {
 		return nil
 	}
@@ -164,6 +169,21 @@ func (self *Executor) validatePrecompileEvidence(probe common.Address, evidence 
 // Standalone analysis loads the same authenticated owner once. Live campaigns
 // already have that plan and journal, so snapshots do not repeat a large census.
 func (self *liveScenarioProbe) validatePrecompileEvidence(probe common.Address, evidence *PrecompileConformanceEvidence) error {
+	if evidence != nil && evidence.Recovery != nil {
+		if self.precompilePlan == nil {
+			raw, err := readSetupPlanBytes(self.stateDir, "plan.json")
+			if err != nil {
+				return err
+			}
+			self.precompilePlan, err = decodePersistedPlanBytesForHistory(raw, true)
+			if err != nil {
+				return err
+			}
+		}
+		if err := validatePrecompileRecoveryPlan(self.precompilePlan, evidence, &evidence.Recovery.Authorization); err != nil {
+			return err
+		}
+	}
 	if err := validatePrecompileEvidenceIdentity(self.cfg, probe, evidence); err == nil {
 		return nil
 	}

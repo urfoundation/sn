@@ -28,6 +28,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	ProbeRecoveryExecute                                                                                                            bool
+	ProbeRecoveryBudget, ProbeRecoveryBudgetSHA256                                                                                  string
 	RelayContinuationPlan                                                                                                           string
 	RelayEndBlock                                                                                                                   uint64
 	RelaySlots                                                                                                                      uint64
@@ -63,6 +65,7 @@ Commands:
   audit    read-only retained-plan and action-history checks; reports all findings
   resume   reconcile the journal and continue an interrupted approved action
   coordinator-repair  apply one bounded provisional coordinator implementation correction
+  probe-recovery  authorize bounded probe recovery, or execute it with --execute-recovery under exclusive journal ownership
   fleet-renew  plan or resume an exact next-generation renewal of existing fleets
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
@@ -115,6 +118,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	cmd := args[0]
 	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid["probe-recovery"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -122,6 +126,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.SetOutput(os.Stderr)
 	var o cliOptions
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
+	fs.BoolVar(&o.ProbeRecoveryExecute, "execute-recovery", false, "")
+	fs.StringVar(&o.ProbeRecoveryBudget, "probe-recovery-budget", "", "")
+	fs.StringVar(&o.ProbeRecoveryBudgetSHA256, "probe-recovery-budget-sha256", "", "")
 	fs.StringVar(&o.StateDir, "state-dir", "", "")
 	fs.StringVar(&o.SNRepo, "sn-repo", "", "")
 	fs.StringVar(&o.ServerRepo, "server-repo", "", "")
@@ -208,6 +215,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validateCoordinatorRepairOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validatePrecompileRecoveryOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
@@ -473,6 +483,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
+	requireSecrets = requireSecrets || cmd == "probe-recovery"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -526,6 +537,11 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return printResult(o.Format, bundle, nil)
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
+	case "probe-recovery":
+		if o.ProbeRecoveryExecute {
+			return runPrecompileRecovery(ctx, resolved, stateDir, o)
+		}
+		return runPrecompileRecoveryAuthorization(ctx, resolved, stateDir, o)
 	case "doctor":
 		doctorCfg, err := prepareProvisionalDoctor(ctx, resolved, stateDir, o)
 		if err != nil {

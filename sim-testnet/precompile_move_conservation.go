@@ -57,14 +57,14 @@ func precompileMoveBackValid(evidence *PrecompileConformanceEvidence) bool {
 // Both source positions must close exactly, with any native credit conversion
 // explicitly subtracted from the returned stake. Source dust cannot pass.
 func precompileRoundTripRecovered(evidence *PrecompileConformanceEvidence) bool {
-	if evidence == nil || evidence.Forward.AmountRao != evidence.Seed.DeltaRao/2 || !precompileMoveBackValid(evidence) {
+	if !precompileRoundTripAccounted(evidence) {
 		return false
 	}
-	creditRounding := evidence.Forward.NativeShareCreditRoundingRao + evidence.Back.NativeShareCreditRoundingRao
-	return evidence.Forward.ToBeforeRao == 0 && evidence.Forward.FromBeforeRao == evidence.Seed.AfterRao &&
-		evidence.Back.FromBeforeRao == evidence.Forward.ToAfterRao && evidence.Back.ToBeforeRao == evidence.Forward.FromAfterRao &&
-		evidence.Back.FromAfterRao == 0 && evidence.Back.ToAfterRao <= evidence.Forward.FromBeforeRao &&
-		evidence.Forward.FromBeforeRao-evidence.Back.ToAfterRao == creditRounding
+	if evidence.Recovery != nil {
+		_, move, settled, err := precompileRecoveryPositions(evidence)
+		return err == nil && settled && move == 0
+	}
+	return evidence.Back.FromAfterRao == 0
 }
 
 // Transfers across coldkeys use the same native share conversions as hotkey
@@ -93,6 +93,9 @@ func reconcilePrecompileTransferEvent(step PrecompileTransferStep, values map[st
 // Final recovery accounts for the explicit credit conversion and still requires
 // the complete originally observed probe position to be debited with no dust.
 func precompileTransferRecovered(evidence *PrecompileConformanceEvidence) bool {
+	if evidence != nil && evidence.Recovery != nil {
+		return precompileRecoveryTransferAccounted(evidence)
+	}
 	if evidence == nil || evidence.Transfer.ProbeBeforeRao <= evidence.Seed.BeforeRao || evidence.Transfer.ProbeAfterRao != evidence.Seed.BeforeRao || evidence.Transfer.AmountRao != evidence.Transfer.ProbeBeforeRao-evidence.Seed.BeforeRao {
 		return false
 	}

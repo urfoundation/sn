@@ -1220,6 +1220,9 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 // Verify optional exact transaction fields which are hash-bound into critical
 // deployment actions. Either the complete field set is present or none is.
 func validateApprovedEVMTransactionFields(action Action, signer common.Address, nonce uint64, to *common.Address, value *big.Int, data []byte) error {
+	if err := validatePrecompileRecoveryTransactionFields(action, signer, to, value, data); err != nil {
+		return err
+	}
 	if err := validateFleetRenewalEVMFields(action, signer, nonce, to, value, data); err != nil {
 		return err
 	}
@@ -1320,7 +1323,7 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		if err := validateFleetRenewalSignedTransaction(a, &tx, m.chainID); err != nil {
 			return nil, err
 		}
-		if a.ID == validatorEvidenceAnchorActionID && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
+		if (a.ID == validatorEvidenceAnchorActionID || strings.HasPrefix(a.ID, precompileRecoveryActionPrefix)) && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
 			return nil, errors.New("persisted validator evidence anchor transaction has another or unprotected chain")
 		}
 		signer, err := types.Sender(types.LatestSignerForChainID(m.chainID), &tx)

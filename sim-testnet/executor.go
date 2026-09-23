@@ -1962,6 +1962,8 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 
 func (e *Executor) execute(ctx context.Context, a Action) error {
 	switch {
+	case strings.HasPrefix(a.ID, precompileRecoveryActionPrefix):
+		return e.executePrecompileRecoveryStep(ctx, a)
 	case isFleetRenewalAction(a):
 		return e.executeFleetRenewalAction(ctx, a)
 	case a.ID == coordinatorRepairCarryActionID:

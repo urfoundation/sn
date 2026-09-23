@@ -955,6 +955,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 			state["scheduled_policy_effective_block"] = scheduled.EffectiveBlock
 		}
 		return state, nil
+	case strings.HasPrefix(a.ID, precompileRecoveryActionPrefix):
+		return e.verifyPrecompileRecoveryPostState(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "precompile."):
 		return e.verifyPrecompileConformancePostState(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "governance."):

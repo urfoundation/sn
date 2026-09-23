@@ -289,6 +289,15 @@ func (self *Executor) executePrecompileContinuationAction(ctx context.Context, a
 		if err := self.validatePrecompileEvidence(self.payloads.PrecompileProbeAddress, evidence); err != nil {
 			return err
 		}
+		if evidence.Back.FromAfterRao != 0 {
+			if err := self.advancePrecompileRecovery(ctx, evidence); err != nil {
+				return err
+			}
+			evidence, err = loadPrecompileEvidence(self.stateDir)
+			if err != nil {
+				return err
+			}
+		}
 		if err := precompileTransferReadiness(evidence); err != nil {
 			return err
 		}
@@ -301,6 +310,16 @@ func (self *Executor) executePrecompileContinuationAction(ctx context.Context, a
 func precompileTransferReadiness(evidence *PrecompileConformanceEvidence) error {
 	if !precompileRoundTripAccounted(evidence) {
 		return errors.New("precompile transfer has no accounted round trip")
+	}
+	if evidence.Recovery != nil {
+		_, move, settled, err := precompileRecoveryPositions(evidence)
+		if err != nil {
+			return err
+		}
+		if !settled || move != 0 {
+			return errPrecompileRecoveryPending
+		}
+		return nil
 	}
 	if evidence.Back.FromAfterRao != 0 {
 		return fmt.Errorf("%w: outstanding_alpha_rao=%d", errPrecompileRecoveryPending, evidence.Back.FromAfterRao)

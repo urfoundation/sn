@@ -1549,3 +1549,34 @@ not be treated as conflicting renewal submission. Keep the original fleet-apply
 exclusion for new work. Use the same restart admission for preflight binary and
 readiness preparation, process startup and interrupted manifest publication;
 none of these paths may replay pending setup or alter final acceptance.
+
+### Recover custody without repeating completed acceptance epochs
+
+The probe's immutable `transferOut` accepts an off-chain amount. A position can
+accrue between that quote and inclusion, and small residual positions can fail a
+runtime transfer minimum. Final custody cannot be inferred from a successful
+receipt or a nearly equal balance. Keep requested units, actual source debit,
+actual recipient credit, bounded share conversion and inter-block growth as
+separate fields. Preserve successful receipts even when they leave a residual.
+
+Production recovery must use separately signed, finite authority for each affected
+position, bounded funding when a residual is below the transfer minimum, and one
+durable transaction writer. Bind quotes into action intents; retain signed bytes
+through timeout and crash recovery; verify gas, fee and value limits again during
+replay. A final record must prove both source positions zero at one finalized
+head. Test interrupted signing/finalization/postcondition boundaries, quote edits,
+extra credits, receipt/recipient changes, gas-cap changes and reseed exhaustion.
+
+For future probe/custody maintenance contracts, provide a narrowly authorized
+operation that reads and transfers the full selected position in the same call,
+with exact before/after events and an explicit recovery recipient. This removes
+the quote-to-inclusion gap; it does not change exact-amount payout entitlements.
+The already deployed testnet probe instead uses the bounded mechanism documented
+in [PRECOMPILE-RECOVERY.md](../sim-testnet/PRECOMPILE-RECOVERY.md).
+
+A later custody repair must not rewrite a signed interval or force already
+observed epochs to repeat. Preserve the original result and add an authenticated
+completion for the repaired scope; require the production handoff to understand
+that composition explicitly. A new binary cannot silently join an immutable live
+interval. Deferred historical audits and unrelated semantic checks remain their
+own outstanding requirements until their exact proofs are accepted.
