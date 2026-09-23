@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -50,6 +51,75 @@ func TestRuntimeEvidenceSetupReadClassifiesMissingEmptyAndMalformed(t *testing.T
 			if test.valid && !bytes.Equal(encoded, test.encoded) || !test.valid && encoded != nil {
 				t.Fatalf("%s %s exposed unexpected receipt bytes", name, test.name)
 			}
+		}
+	}
+}
+
+// Filesystem failures are never optional receipt absence. The check uses
+// synthetic directories and links rather than permission behavior under sudo.
+func TestRuntimeEvidenceSetupReadRejectsNonregularAndOversizedReceipts(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"prepared.json", "completed.json"} {
+		for _, fault := range []string{"directory", "symlink", "dangling-symlink", "parent-file", "oversized"} {
+			root := t.TempDir()
+			path := filepath.Join(root, "setup", name)
+			if fault == "parent-file" {
+				if err := os.WriteFile(filepath.Dir(path), []byte("synthetic file"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				switch fault {
+				case "directory":
+					if err := os.Mkdir(path, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				case "symlink", "dangling-symlink":
+					target := filepath.Join(root, "synthetic-target.json")
+					if fault == "symlink" {
+						if err := os.WriteFile(target, []byte("{}\n"), 0o600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := os.Symlink(target, path); err != nil {
+						t.Fatal(err)
+					}
+				case "oversized":
+					if err := os.WriteFile(path, bytes.Repeat([]byte{' '}, 1025), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			var value struct{}
+			encoded, err := readRuntimeEvidenceSetupV2(t.Context(), path, 1024, &value)
+			if err == nil || encoded != nil || errors.Is(err, errRuntimeEvidenceSetupEmpty) || validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
+				t.Fatalf("%s %s became empty or optional evidence: bytes=%d error=%v", name, fault, len(encoded), err)
+			}
+		}
+	}
+}
+
+// Cancellation of an optional initial lookup must stop preparation rather
+// than making missing or already present data authorize a new namespace.
+func TestRuntimeEvidenceSetupCanceledDiscoveryCannotClaimAbsence(t *testing.T) {
+	t.Parallel()
+	for _, present := range []bool{false, true} {
+		root := t.TempDir()
+		if present {
+			path := filepath.Join(root, "evidence-v2-setup", "completed.json")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		if err := requireRuntimeEvidenceSetupUnpreparedV2(ctx, root, 1024); !errors.Is(err, context.Canceled) || validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
+			t.Fatalf("present=%t canceled discovery gained fresh authority: %v", present, err)
 		}
 	}
 }

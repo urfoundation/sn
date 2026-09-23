@@ -1,6 +1,6 @@
 # Mainnet prelaunch fixes
 
-Updated 2026-09-21. This is the canonical tracker for fixes to complete before
+Updated 2026-09-22. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
 Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)
 adds the lessons from the wider testnet finalization. Implementation and
@@ -472,6 +472,14 @@ owner boundary, not an additional agent or approval requirement.
 | PH-16 | P0 | Qualification and evidence: deterministic faults, composed coverage and independent replay | Every affected implementation | Planned |
 | PH-17 | P0 | Plan-derived indexes: bind cached lookup structures to their immutable plan/generation owner | PH-01, PH-05, PH-06 | Planned |
 | PH-18 | P0 | Strict readers: re-authorize connection/runtime provenance at every boundary after provisional work | PH-03, PH-04, PH-05 | Planned |
+| PH-19 | P0 | Historical snapshots: use the reviewed historical runtime authority without weakening current writes | RT-01, RT-02, PH-18 | Planned |
+| PH-20 | P0 | Relay capacity: distinguish funded slots, retained history, scan pages and resident bytes | PH-06, PH-09, PH-11 | Planned |
+| PH-21 | P0 | Fault controller: bounded parallel, idempotent component control with durable partial recovery | PH-01, PH-03, PH-07, PH-10 | Planned |
+| PH-22 | P0 | Service clients: retryable transport incidents, connection recovery and final error budgets | PH-03, PH-07, PH-13, PH-15 | Planned |
+| PH-23 | P0 | Capacity revisions: bind funded slots, history horizon and every finite storage dimension | PH-06, PH-09, PH-11, PH-20 | Planned |
+| PH-24 | P1 | Recovery performance: authenticate each retained plan once per immutable lineage | PH-01, PH-05, PH-17 | Planned |
+| PH-25 | P1 | Supervisor lifecycle: explicit deployment stop joins every owned workload child | PH-01, PH-07, PH-21 | Planned |
+| PH-26 | P1 | Large evidence transport: typed, cancellable public replay with finite admission | PH-03, PH-08, PH-09, PH-20, PH-23 | Planned |
 
 Work in parallel on transaction/recovery (PH-01/02/06/11), chain access and
 proofs (PH-03/04/05), service/storage (PH-07/08/09/13), and scheduling/economics
@@ -508,6 +516,32 @@ dependency is suspended. A required continuous epoch interrupted by the fault
 must be reacquired with its dependent observations, without discarding earlier
 valid phases or financial history. Verify that final acceptance cannot consume
 a provisional, missing, canceled or failed result.
+
+**2026-09-22 follow-up.** A successor relay plan accidentally restored an inline
+public census despite provisional startup, so the campaign waited for hundreds
+of historical publications after its local plan and debit checks had passed.
+[The separate relay census](../sim-testnet/evidence_relay_public_audit.go)
+retains bounded local manifest parsing, current chain/native authority and
+original liabilities before startup. Its read-only worker owns copied source
+and horizon state, reuses per-publication authenticated checkpoints, and must
+finish successfully at the final gate. The transaction worker still verifies
+each publication before sending. Production hardening must apply this separation
+to successor plans as well as fresh deployments and service phase transitions
+between individual replay items. Deterministic coverage must hold a real public
+request open while proving release admission, then separately prove that failed,
+canceled, missing or changed audit evidence cannot pass final acceptance.
+
+**Process replacement follow-up.** A replacement driver previously spent its
+startup budget reopening a signed interval owned by a dead process, then
+invalidated that interval and required a second invocation to publish its
+recovery. The [process recovery path](../sim-testnet/campaign_process_recovery.go)
+now makes that decision before workers start. The exclusive deployment owner
+appends a fresh signed interval under the phase lock, retaining original
+observations, journal liabilities, deployment and authenticated fleet lifecycle.
+Unstarted preparation keeps its checkpoint; a process gap cannot count toward
+continuous acceptance. Qualify duplicate callers, interruption between
+invalidation and publication, retained fleet evidence, successful/completed
+sources, and read-only ownership before promoting the pattern to production.
 
 ### PH-02 — Transaction idempotency, partial failure and custody
 
@@ -573,6 +607,39 @@ shared deadlines, cancellation joins, preserved successes, correct permanent
 classification and eventual continuation after a network outage. Exercise the
 real caller layers, including both validator paths and the artifact reader.
 
+**2026-09-23 release-interval follow-up.** The live RPC consistency actor
+opened fresh native-chain readers for each sample, repeatedly decoding runtime
+metadata and discarding an authenticated cache. Several sequential reads then
+inherited the nearly exhausted 10-second sample deadline and were reported as
+RPC timeouts even while direct LAN reads were fast. Production readers should
+reuse an owner-scoped chain client and bounded immutable metadata cache,
+authenticate each pinned block and runtime identity, and retry transport reads
+inside one measured sample budget. Test the complete multi-call sample under
+slow metadata and a one-call timeout; a fast isolated RPC probe is insufficient.
+
+**2026-09-22 cancellation follow-up.** Generation 24 reached its signed
+acceptance scope but a normal client-canceled immutable download became a
+blocking process warning. The production artifact handler now distinguishes a
+request-owned cancellation from deadline, integrity, storage and write errors;
+a partial body still aborts. The simulator recognizes only the exact legacy
+handler diagnostic and retains any subsequent joined failure across polls and
+restarts. Interrupted runs label pending, never-triggered faults and unexercised
+vectors as consequences of the recorded stop while retaining the failed final
+verdict. Regression coverage exercises the actual handler, persisted scanner,
+and a post-boundary scenario through later lifecycle and terminal snapshots.
+
+The adjacent signed client-key observation path now retries an interrupted
+HTTP read once with the same nonce and pinned decision. That retry and the
+existing smaller-batch admission fallback share the two-reservation ceiling;
+they cannot multiply quota. Complete response/body-close ownership precedes
+retry, existing immutable capture slots are authenticated on recovery, and
+signature, identity, quota and storage failures stay hard. A missing transport
+response no longer adds a false signer-mismatch verdict: exhausted transient
+reads remain eligible for the existing in-process steering continuation. Tests
+discard a real signed response, authenticate its retry, reuse exact durable
+captures without a live session, and continue the real compact-head collector
+after a timeout into the next native epoch.
+
 ### PH-04 — Runtime changes and historical archive compatibility
 
 **Lesson.** Repeated version-specific admission fixes for 455/458/459/460/461
@@ -597,6 +664,28 @@ wrong genesis and pruned-state responses. A compatible update requires no
 manual version entry or repeated funding; an incompatible consumed interface
 halts that operation with a precise capability error. An ABI match alone does
 not establish unchanged economic semantics.
+
+**Repair admission follow-up (2026-09-22).** Fleet renewal still demanded a
+static runtime pin after continuation and diagnostics had authenticated the
+same compatible successor. Use one retained-evidence authority model across
+read-only planning, repair apply and readiness. The simulator now shares
+[the approval source selector](../sim-testnet/provisional_continuation.go):
+readers bind the active approval; setup and fleet repair bind an immutable
+reviewed successor before activating it. Exact journal/source reconstruction,
+custody, signing-domain, current capability and budget checks remain mandatory.
+Do not promote a provisional observation into release acceptance.
+
+Production should express these authorities as an evidence dependency ledger:
+each durable proof names its immutable inputs, output digest, verifier version
+and invalidation scope. Commands consume the same proof authority; they must
+not independently invent stricter or weaker versions of it. Invalidate only
+proofs dependent on changed code/metadata, chain, custody, policy, intent or
+economic observations, preserving unrelated finalized work. Qualify the full
+planning → reviewed successor → pre-apply readiness → partial apply → resume
+sequence through a compatible runtime update and changed recovery executable,
+including missing/altered archive bytes and a journal that advanced outside the
+repair. This simulator correction is a regression pattern for RT-08, not proof
+that production consumers already implement the ledger.
 
 ### PH-05 — Reusable proofs with explicit invalidation
 
@@ -624,6 +713,32 @@ calldata, code/decoder, verifier, policy, observer, signature, receipt or lineag
 must invalidate the affected proof. Cover partial two-observer completion,
 interruption, tampering, reorg, read-only mode, concurrent consumers and legacy
 entry migration. Measure work counts, not a convenient warm-cache runtime.
+
+**2026-09-22 path-proof follow-up.** The first scenario observation after a
+driver replacement reverified roughly 550 MB of validator path proofs because
+its prefix cache survived only in memory. The
+[durable prefix store](../sim-testnet/scenario_path_proof_store.go) authenticates
+each complete-record byte cut, SHA-256, verifier/key identity, count and unique
+trail census. It checkpoints successful chunks even when a later record fails,
+rehashes the source before reuse, and verifies only the appended suffix. A
+changed verifier requires full validation; a changed trusted prefix remains an
+integrity failure. Production consumers also need fixed snapshot cuts, bounded
+line allocation, read-only cache access and atomic publication without letting
+concurrent appends extend one observation indefinitely. Final semantic evidence
+continues to authenticate the original proof records independently of this cache.
+
+**2026-09-22 recovery-plan follow-up.** A read-only CPU profile found that cold
+recovery validation decoded and rehashed the same large archived plans for each
+signed generation, even though envelope reads had their own lookup. Share one
+[authenticated plan lookup](../sim-testnet/campaign_plan_lookup.go) across root
+succession, signed envelopes, approval edges and source reconstruction. Preserve
+the exact raw-byte digest, all lineage and custody checks, and a bounded retained
+size. Fence each reuse and the final return with directory/file identity and
+change-time witnesses; replacement, truncation and same-size writes must fail.
+Unavailable metadata or an exhausted memory budget requires the full reader.
+Emit progress after each authenticated generation. Production qualification must
+count full decodes per distinct approval and force mutations during validation,
+so a warm envelope cache cannot conceal repeated work in adjacent readers.
 
 ### PH-06 — Release, plan and rendered configuration identity
 
@@ -744,11 +859,32 @@ witnesses. Parallelize independent fleet work within nonce/resource ownership.
 Keep retention capacity sufficient for startup margin and the full required
 window; a forecast end is not a reason to wait until that block to start.
 
+**Concurrent signer follow-up (2026-09-22).** A fleet renewal repeatedly refused
+approval because independent root publishers advanced their nonces. Admission
+must bind exact nonce state to the transaction owners of the repair, then
+reconcile bounded progress of other signers without changing custody, signed
+liabilities or the approval hash. Unconfirmed observations may settle or leave
+the pool; finalized history may not regress. The simulator now applies this
+distinction to renewal checkpoints. Production closure also requires one owner
+per actual signing stream and recovery of persisted signed bytes before any
+retry; it does not permit silently changing an approved transaction nonce.
+
 **Closure.** Move the finalized head across activation while part of a fleet is
 renewed; interrupt and compact midway; delay import past a planned boundary.
 Resume without double renewal, lost original lease proof or unauthorized fresh
 funding. Assert that acceptance counts actual complete policy epochs and that
 claim/commit/reveal deadlines are never inferred from stale wall-clock ETA.
+Advance an unrelated signer between approval and apply, then prove the same
+approval succeeds without signing or broadcasting twice. Keep changed renewal
+signers, custody, liabilities, missing roles and unbounded observations hard.
+
+Also cross the receipt/pool publication boundaries deterministically: finalize
+the original transaction between its first receipt lookup and nonce read, lose
+an accepted submission response, and delay the preceding pipeline nonce in the
+pool. Reconcile the exact hash and persisted bytes under finite read/broadcast
+budgets. Missing receipt plus advanced nonce is unresolved observation until
+canonical evidence identifies the winning transaction; it is not proof that a
+different transaction won. Never sign a replacement nonce to clear that gap.
 
 ### PH-11 — Budgets, reserve targets and native funding behavior
 
@@ -832,6 +968,22 @@ Test both normal and replay/fast paths at the layer where identity is consumed.
 Require fresh proof progress for every validator/operator domain and connect
 traffic to eligible usage, signed roots, native rows and paid entitlement;
 bytes acknowledged or a healthy process alone cannot satisfy that chain.
+
+**2026-09-23 reconnect follow-up.** Concurrent old/new Connect sessions can
+share a reverse egress key. An old session's cleanup must compare its lease
+owner before deletion, so it cannot remove the newer session's live mapping
+and produce a synthetic verification hop. Cover reconnect overlap, stale TTL
+expiry, proxy/direct handoff and replayed multi-hop verification in deterministic
+tests. Retain bounded response diagnostics that identify a rejected verification
+step without logging secrets.
+
+**2026-09-23 fault-selection follow-up.** A verification probe selected miners
+that a scheduled quality fault had deliberately disabled, then treated the
+expected missing source lease as a protocol failure. Resolve the exact logical
+miner before probe selection, exclude active fault targets and guard a signed
+walk against a fault starting mid-request. Continue to reject wrong source,
+signature and response content for every request actually issued; fault scope
+must not become a blanket waiver for an entire swarm or operator.
 
 ### PH-14 — Governed limits and real on-chain activation
 
@@ -931,6 +1083,17 @@ claim comes solely from a lock/state file. A completed soft-error recovery
 remains in the incident ledger for the improvement batch; missing required
 evidence remains visible in acceptance. Verify meaningful signals under both
 slow but progressing replay and an actual deadlock.
+
+**2026-09-23 release-heartbeat follow-up.** R31 entered the real release epoch
+and then stopped because a heartbeat treated process-log findings as a reason
+to terminate before the terminal acceptance block. Production monitoring must
+persist classified findings and keep the interval running; the final gate still
+rejects unresolved findings. Only evidence-integrity or authorization failures
+should stop the heartbeat itself. Attribute a fault-related log to the exact
+logical client and its authenticated event-time fault window, since a buffered
+line may be scanned only after the fault has been restored. The affected swarm
+process may remain healthy while one miner is intentionally disabled. Test both
+the continued run and strict terminal rejection of an unrelated error.
 
 ### PH-16 — Deterministic qualification and reviewable evidence
 
@@ -1059,6 +1222,280 @@ rehearsal must resume a large authenticated history without redoing completed
 work, while refusing unapproved extra work. Link the completed sim-testnet
 fix, its Terra evidence and actual resume record before marking PH-20 done.
 
+### Generation-25 follow-up — fault, transport, capacity and recovery hardening
+
+Generation 25 started its acceptance interval at testnet block `8,062,774` on
+2026-09-22 and produced a complete terminal evidence bundle. It did not
+complete acceptance. The direct terminal error was `disable miner-848: context
+deadline exceeded` while applying the 96-member quality cohort. The fault
+controller had retained per-member intent and completed work, but dispatched
+members serially while holding the campaign callback; a transient local timeout
+therefore consumed the remaining fault window. The result also recorded
+acceptance-scope TLS handshake timeouts and adversary artifact/API GET
+deadlines. The 41 unexercised later faults are explicitly derived from this
+interruption, rather than separate production defects. Evidence is retained in
+the generation-25 `faults.json`, `process-logs.json`, `anomalies.json`,
+`assertions.json` and `result.json` under `sim-testnet/runs`.
+
+**PH-21 — Fault controller.** Persist an idempotent intent and completion
+record for every independently controlled member. Dispatch independent service
+or swarm controls with a bounded concurrency limit, never one unbounded serial
+loop. On a transient timeout, first read and reconcile the member's actual
+state, then retry only that pending member with bounded backoff; an already
+applied disable or restore is success. Record trigger, first-dispatch,
+per-member completion, effective cohort completion and restore boundaries
+separately. A temporary control-plane timeout must not erase the durable
+completed prefix or require a whole campaign restart. Invalid identities,
+conflicting state and exhausted retries remain explicit failures.
+
+The September 22 release also exposed a disagreement between these layers:
+the control driver returned a legitimate partial round, but the signed campaign
+validator required pending faults to have no process census or diagnostic. Its
+rejection canceled observation before the next full snapshot. Both applying and
+restoring retries must have explicit checkpoint semantics, with a canonical
+first-dispatch boundary, monotonic retry count, exact target census and separate
+completed-transition block. Preserve those diagnostics through checkpoint
+signing and reopening; incomplete work must neither stop observation nor count
+as a completed acceptance fault. Test the complete driver/controller/checkpoint
+path together, including a pending heartbeat while a snapshot is still running.
+
+Bounded rounds must also make progress across their completed prefix. Re-reading
+every completed member at each ten-second boundary can starve a large batch
+indefinitely under load. Retain verified member progress for one in-process
+fault/action and owning worker generation, only after the live reconciliation
+and durable completion write succeed. Reopen, parent cancellation, hard failure,
+worker replacement or the opposite action must require fresh reconciliation;
+an old completion file alone is never authority. Test multiple constrained
+rounds, restored-state drift, same-PID worker replacement and mixed
+cancellation/integrity failures. Keep all acceptance-window and minimum fault
+duration checks unchanged.
+
+The September 23 interval exposed a second starvation path: a shared ten-second
+round deadline started before its generation census and serial intent fsyncs.
+Disk pressure consumed the budget before requests were dispatched, then an
+outer deadline was signed as a terminally failed cohort. Request deadlines must
+start at actual dispatch. Bound request counts and simultaneous members instead
+of charging storage admission to an HTTP timeout. Commit exact pending-target
+and attempt intents in bounded batches, and batch completion checkpoints before
+admitting later mutations. Keep a sole persistence owner and join every worker.
+Temporary storage failures and outer deadlines retain applying/restoring intent;
+they never certify completion or backdate the fault. Test a 96-target cohort
+with simulated flushes longer than the old round deadline, crashes before and
+after rename, no mutation before a failed intent flush, and restart reconciliation
+without duplicate side effects. Permission, schema, custody and joined integrity
+failures remain hard.
+
+Control admission also needs a bounded readiness state for a checksum-bound
+swarm that is temporarily unhealthy or between process generations. Wait for
+that same owner before first dispatch, preserve an existing completed prefix,
+and re-read its live member state after replacement. A PID change between the
+admission read and the control round must defer that round before any request;
+it must not cancel the campaign. Missing owners, changed identities, invalid
+state and checksum failures remain hard. Tests must force first-dispatch,
+partial-prefix and restore restart windows, cancellation, generation turnover,
+and a mixed readiness/identity failure without sleeps.
+
+Preserve every semantic failure when its diagnostic checkpoint also fails.
+Classify each joined cause; a malformed or foreign status remains hard even
+beside a retryable disk error or cancellation. Restoration cleanup has its own
+durability boundary: retain the exact completed census before removing active
+intent. A failed unlink/rename sync must resume from that checkpoint and observe
+each member again, including after process restart; a retained completion alone
+does not prove current state. Test both already restored and newly changed
+members, partial or substituted checkpoints, and missing recovery evidence.
+
+**PH-22 — Transport recovery and final signal.** Treat connect/read deadlines,
+EOF/reset and HTTP `429`, `502`, `503` and `504` as bounded retry candidates
+only for idempotent reads or controls with a retained idempotency key. Reuse the
+same request identity, reconcile an uncertain outcome, record attempts and
+backoff, and preserve cancellation as cancellation rather than retrying it.
+Invalid JSON, identity/hash/signature mismatch and semantic API refusal remain
+hard failures. Transport clients must repair TLS connections and report health
+recovery; a correlated TLS incident remains visible and must be absent from the
+final acceptance interval. Adversary probes may continue after a recovered
+transient read, but final acceptance evaluates the persistent exhausted-retry
+error budget rather than the first timeout.
+
+The retained publication review also found that stream upload/read transports
+discarded HTTP status into error text. A protected-quota `429` then consumed the
+native failure budget instead of waiting for its hourly reset. Preserve typed
+status and bounded server pacing through every wrapping and replica join;
+authentication, conflicting content and mixed integrity failures remain hard
+even when response text contains a transport-looking phrase. The transport
+performs one immutable request; its existing lifecycle owner retries. Startup
+honors a single positive integer `Retry-After`, bounded to one hour, within its
+existing finite attempt count and cancellation scope. Provisional native
+collection retains its cut across ordinary retry polls; strict final acceptance
+keeps its original failure budget. Deterministic transport, mixed-cause, reset,
+cancellation and strict/provisional tests cover this correction; production
+closure still requires exercising actual quota exhaustion and recovery.
+
+Apply the same ownership rule above the relay's individual reads. Its runtime
+previously stopped the complete campaign when one closed-publication or deposit
+audit step returned a transient error after lower-level recovery. Give each step
+a finite operation retry budget, record the failure before retry, and re-enter
+the existing exact signed-transaction reconciliation path; an accepted send
+with a lost response must resolve to its original winner without a new nonce or
+duplicate send. The independent historical census retains partial checkpoints
+and retries under the same transport classification without canceling live
+traffic. Preserve every independent integrity error, cancellation and terminal
+exhaustion. Retry diagnostics remain durable under `evidence-relay-retries/`;
+they confer no acceptance authority. Closure requires actual uncertain-send
+reconciliation, mixed-failure, exhaustion and audit/runtime isolation tests.
+
+**PH-23 — Funded capacity and physical resource profile.** A capacity revision
+must bind four different facts: funded slot/spend allowance, source-history
+horizon, upload quotas and finite archive metadata limits. Generation 25 found
+that setting 2,048 slots while leaving a 2 GiB metadata document limit would
+make the stated workload impossible. The successor profile therefore needs an
+explicit source horizon and finite, non-preallocated typed-document, retained
+metadata and supplemental-metadata ceilings with at least the reviewed 2x
+margin. It must carry an authenticated predecessor reserve exactly when no new
+spend is intended; it must never reconstruct fresh economics from the new slot
+count. Admission rejects a requested profile that does not fit every bound.
+
+Full fleet-renewal approvals crossed the ordinary proof-file limit: a compact
+generated 35 MiB plan could not be imported by its own command. Output, import,
+active/runtime reload, immutable archive and historical owner lookup now share
+a separate 128 MiB approval bound while ordinary proofs remain at 32 MiB.
+Production must qualify each producer-to-consumer path at the selected size,
+including closed capture and public replica replay, before declaring the
+profile usable. Preserve exact approval hashes, no-follow regular-file reads,
+aggregate archive charges and independent cache memory limits. A valid plan
+larger than an optional cache must bypass caching, never exhaust an eviction
+queue or acquire unbounded retained memory.
+
+The adjacent closure paths needed the same correction: capture bundles,
+derived validator plans, fleet lineage, public signing/readback and completed
+prior-phase carriers each had a different smaller limit. Use exact producer
+paths and schemas to select capacity, retain separate plan/ordinary counters,
+and clip their combined use to the configured grant. Capture only the approved
+ancestor hashes, not unrelated reviews found in the archive directory. A public
+blob write is incomplete until the actual API GET and exact-hash history routes
+can authenticate and return it. Keep ordinary upload/proof limits unchanged;
+test a generated large plan through capture, signed transport and replay,
+alongside invalid aliases, one-byte overages and independent counter exhaustion.
+
+Keep whole-source catch-up forecasts separate from live quota consumption. The
+retained source forecast charges all source history and admitted refresh/retry
+operations to one hourly bucket; it can exceed a retained deployment's limits
+before any actual counter is exhausted. Testnet provisional continuation may
+record this forecast as advisory with `final_acceptance=false`, but must preserve
+every enforced object, byte and retry counter and deployment/replica owner.
+Adopt larger production quotas only through an authenticated config/manifest
+successor, with at least 2x all forecast dimensions; do not edit bound retained
+configuration or waive a real quota to clear a forecast warning. Record actual
+counter usage, resets and recovered throttles so final admission can distinguish
+an oversized catch-up estimate from sustained insufficient capacity.
+
+**PH-24 — Recovery-lineage work.** Generation 25 authenticated 24 retained
+generations before it could publish its recovery record. The reader repeatedly
+decoded and hashed the same archived plans even though the lineage already had
+an immutable per-invocation lookup boundary. Cache each fully authenticated
+plan by its raw digest, filesystem/source witness and lineage owner; retain
+per-edge source and ordering checks on every reuse. Bound the cache, log
+generation progress, and fall back to cold authentication after an immutable
+source change. A cache must not bridge plans, authorities, generations or
+changed bytes.
+
+Runtime rendering exposed the same duplication inside one operation: nested
+evidence, staging and manifest readers each revalidated the complete active
+plan. [The scoped reader](../sim-testnet/runtime_plan_read_scope.go) retains one
+successful proof for exact source bytes, state root, configuration and private
+route/assurance fields. Every use still acquires and hashes the bounded source;
+each caller receives its own decoded plan. Production qualification should
+count full validations per render, then replace/truncate/symlink source files,
+change authority and mutate returned values. No failed validation is reusable.
+
+R35 exposed a remaining scope gap after this improvement: release observations
+still re-entered recovery-lineage validation, repeatedly authenticating the
+latest two generations in roughly nine-second passes. The controller accumulated
+tens of gigabytes of logical reads while observations advanced. Before mainnet,
+cache only the sealed predecessor-edge proof across observations under exact
+source-byte, file-identity, plan and authority witnesses; invalidate it on any
+changed generation or source. The current attempt envelope is rewritten during
+observations and must remain freshly authenticated. Keep the per-edge checks
+when a new generation is appended, and measure full lineage validations and
+logical read bytes per observation in the actual release process. The repeated
+edge is material to the observed 100–162-second gaps, but is not yet proven to
+be their only cause. A process staying alive is not a throughput proof.
+
+**PH-25 — Deployment workload ownership.** A terminal campaign and its
+deployment have distinct lifecycles. A terminal scenario may retain the exact
+healthy supervisor, claim relayers, miners, validators, proxies and supporting
+services for a successor; it must not silently repurpose them for another
+deployment. Explicit deployment stop must retain immutable evidence and the
+durable restart/continuation record, then cancel and join every owned process
+group before reporting shutdown. Generation 25 confirmed that explicit stop
+removed its supervisor and children. Never infer either continuation or cleanup
+from a dead parent while a recorded child process group remains live.
+
+**Closure for PH-21 through PH-25.** Add deterministic tests for partial cohort
+completion, timeout then state reconciliation, restart from a durable prefix,
+already-applied members, bounded swarm concurrency, exhausted retry, and no
+duplicate disable/restore. Test recovered and exhausted API/TLS reads,
+cancellation without retry, and hard semantic/integrity responses. Test funded
+successor capacity, one-byte/one-slot/one-object overages, every metadata
+dimension and imported predecessor reserve preservation. Test shared retained
+plan lookup under source replacement, truncation, symlink substitution,
+concurrent mutation and bounded eviction. Run normal and race suites, then a
+full final acceptance interval with a clean TLS and transport incident ledger.
+Exercise terminal-scenario continuation with a live child workload, then an
+explicit deployment stop that proves every owned process group exits while its
+evidence and resumable state remain readable.
+
+**PH-26 — Large evidence transport.** The fleet renewal exposed an evidence
+shape that was valid under the selected capacity profile but could exceed the
+ordinary 64 MiB HTTP GET deadline and body limit during closed capture or public
+replay. Production must admit only explicitly typed plan, bundle and lineage
+families to their separately reviewed byte limits. After header admission, the
+server and client may use a byte-scaled, finite deadline and a bounded
+large-response semaphore; ordinary metadata and ordinary HTTP routes retain
+their existing deadline and size limits. Parent cancellation must close an
+in-flight blob read and join its worker, so a timed-out reader cannot retain a
+large buffer or slot. Every response still verifies the exact body digest,
+schema, source identity and lineage ordering.
+
+Generic metadata and manifests must not silently inherit the typed-evidence
+exception. Before a production profile can produce metadata above the ordinary
+transport limit, give that family its own finite transport owner and either a
+streaming/reference representation or an independently tested typed admission
+path. Deduplicate immutable lineage references rather than embedding the same
+ancestry in plan and prior wrappers repeatedly. Qualification covers admitted
+large GET, historical replay, server timeout cancellation, client cancellation,
+busy admission, malformed headers, digest mismatch and concurrent ordinary
+requests; it must prove finite memory, connection and worker usage under race.
+An absent or empty optional completion checkpoint means no completed work yet;
+it must initialize a durable empty state rather than crash fixture setup or
+recovery. Malformed, substituted or conflicting completion records remain hard
+failures.
+
+Historical custody checks must retain bounded, authenticated progress across
+sample deadlines. Rewalking every prior payout body made all 235 attack samples
+exhaust the ten-second read budget while independent artifact checks passed.
+The simulator now scopes a hash-to-epoch metadata cache to the complete payout
+domain and checksum-bound API process generation, refreshes history membership,
+and verifies the selected latest body and finalized vault state every attempt.
+Missing or changed process ownership invalidates cache reuse; signatures,
+content identity and same-epoch equivocation remain strict. An interrupted sample
+is pending evidence and cannot satisfy the final proof gate. Production adoption
+must prove interrupted-prefix continuation, source turnover, new equivocation,
+latest-body substitution and finite entry counts with deterministic regressions.
+
+A native-cycle custody proof must not monopolize release startup or a separate
+journal writer while it waits for blocks. The simulator's explicit provisional
+`scenario --name precompile-prepare` executes and authenticates the approved
+transaction prefix through its finalized snapshot, then releases the command's
+lock. The release's existing writer continues the remaining exact dividend and
+transfer actions in bounded observation turns. Each unfinished read remains
+pending; a transient read or interrupted transfer retains the verified frontier.
+Final conformance still requires a full native window, a positive dividend,
+exact conservation and complete recovery to the approved custody destination.
+Never label the preparation result as release acceptance. Production adoption
+must cover pending observer survival, incomplete or substituted receipt prefixes,
+transfer interruption after dividend verification, source identity changes,
+parent cancellation, and refusal of incomplete conformance at interval end.
+
 ### Closing and maintaining this hardening plan
 
 For each PH item record the implementation/review commit, affected production
@@ -1078,3 +1515,337 @@ the production implementations and the actual capability assumptions; mocks
 alone do not establish live precompile, governance or economic behavior.
 Keep the current sim-testnet finalization moving while these mainnet items are
 implemented, promoting only corrections that resolve a concrete active blocker.
+
+### Precompile stake requests versus native share rounding
+
+The conformance harness treated a requested stake amount as both observed balance
+changes. A finalized same-subnet move instead debited and credited the same amount
+one alpha-rao below its request: the remaining unit stayed at the source. The
+reverse path also tried to spend the original request rather than the amount
+actually received. Production acceptance must distinguish requested units, observed
+source debit, observed destination credit, and any explicitly recorded remainder.
+
+The testnet repair records separate checksum-bound fields for the request minus
+source debit (`native_share_residue_rao`) and source debit minus destination
+credit (`native_share_credit_rounding_rao`), each bounded to zero or one rao.
+A read-only call at the finalized forward receipt reproduced the adjacent reverse
+case: an all-balance request clears its source, while its destination's native
+share quote credits one fewer integer unit. Both conversions must be explicitly
+accounted for; negative deltas, inflation, unrecorded differences and larger
+rounding remain hard failures. Requested amount, pre-state, roles, signer, nonce,
+chain, contract and transaction remain exact. Reverse calldata uses actual credit.
+
+The shared accounting governs live reconciliation, retained postconditions,
+successor receipt replay and final recovery. Finalized transactions resume without
+another broadcast. Historical zero-rounding evidence keeps its original canonical
+encoding. Round-trip accounting requires returned stake plus explicit native
+credit quantization to equal the initial position and requires zero remaining
+stake on the intermediate hotkey. Final transfer requires zero probe custody and
+an exactly recorded destination credit plus its bounded conversion; rounding is
+reported, never silently counted as a recipient payment.
+
+Before mainnet, exercise native share conversion in move and transfer operations,
+including even and odd requests, all-balance withdrawals, full custody recovery,
+finalized-before-evidence restart, and negative controls for unmatched accounting,
+more than one unit at either conversion, changed requests and arithmetic overflow.
+Do not propagate this probe rule into payout accounting without independently
+specifying and validating that contract's conservation and principal guarantee.
+
+### Stake observations across blocks and residual recovery
+
+The next live reverse move returned its exact approved principal but occurred
+579 blocks after the forward move. Both positions had grown in the meantime:
+the move hotkey carried 17,306,833 alpha-rao of additional stake and the sample
+hotkey carried 21,110,029. Requiring the later pre-state to equal the earlier
+post-state rejected a valid round trip before the snapshot transaction. Native
+share rounding is a within-call conversion; it must not absorb inter-block
+credits or become a broad numeric tolerance.
+
+The harness records those receipt-proven credits and the unrecovered move
+position separately. Snapshot preparation can continue while that liability
+remains explicit. Snapshot calldata has no amount argument, so its event baseline
+is the authoritative inclusion-time output; a positive credit after the pre-send
+read does not change the signed intent. Replay still requires the exact hotkey,
+receipt, inclusion block and retained baseline. Final acceptance continues to
+require recovery of both positions. An exactly recorded pending recovery keeps
+provisional observations running and returns before another transaction intent,
+while altered evidence and missing files remain hard failures.
+
+The small residual cannot simply be swept: pinned read-only calls showed the
+17.32-million-rao residual and requests up to 100 million rao reverting, whereas
+500-million-rao and larger funded operations succeeded. Empty revert data does
+not establish a specific runtime minimum. Production recovery must check actual
+runtime behavior and support a bounded top-up from existing custody before
+sweeping a small residual. Each top-up and sweep needs its own authorized action,
+durable nonce, exact receipt and recipient accounting. Do not overwrite the
+original reverse receipt or claim that it left zero balance.
+
+Before mainnet, cover stake growth between every pair of observations, including
+read-to-inclusion and dividend-to-recovery. Account for a recovery top-up's sample
+debit when comparing the eventual sample transfer with the earlier dividend
+observation. Force interruption at every signing/finalization boundary, residual
+growth during a sweep, and repeated recovery that retains completed actions.
+The final proof must include both recovered recipient positions, bounded native
+conversion residues, and zero source custody. Test forged extra credits, changed
+roles/amounts, duplicate spends and missing repair authorization independently.
+
+### Claim queue write amplification and admission budgets
+
+The first live acceptance interval exposed a storage saturation loop: claim
+workers reconciled old entries before checking their retry deadline, then
+rewrote and fsynced their complete queue for every repeated not-ready result.
+Readiness failures did not increment submission attempts, so their backoff never
+grew. The two relayers generated roughly 116 MB/s of queue writes and starved
+unrelated durable fault controls. The control round's deadline included its
+sequential persistence work, leaving healthy local endpoints little or no
+request time. Healthy process status alone did not establish useful progress.
+
+The production queue now checks retry admission before API/RPC work, records
+reconciliation attempts separately from transaction submissions, and combines
+retry diagnostics into one checkpoint per poll. Historical readiness backoff is
+bounded at one hour; the newest two epochs and exact uncertain transactions keep
+a one-minute cap. Ordinary historical reconciliation has a small per-poll work
+budget, with unvisited entries retained, so faster persistence does not create an
+API catch-up burst. Current work and uncertain transaction outcomes remain
+eligible. This is queue scheduling, not an RPC endpoint rate limit.
+
+Unchanged saves require a successful acknowledgement from this store plus
+matching current bytes in a private regular file. A reopened owner or failed
+durability boundary must sync again. Submitting intent, prepared signed bytes,
+broadcast checkpoints and finalized receipts remain immediately durable; the
+diagnostic batch never grants transaction authority or marks an uncertain send
+as absent. Deterministic tests cover historical backlog progress, future retry
+deadlines, restart/backoff persistence, recent-epoch readiness, exact uncertain
+outcomes, failed writes, cancellation, and changed or missing queue files.
+
+Before mainnet, qualify the control scheduler and queue together under slow
+durable writes. A network request's attempt budget must begin after required
+intent admission; expired queued work must remain resumable without canceling
+the observer. Batch intent where safe, keep one durable owner, and require exact
+fresh completion evidence before assigning a fault's applied block. Track queue
+write bytes, checkpoint latency, remaining historical work and admitted control
+requests independently from process health. Production sizing must reserve the
+agreed 2x margin without relying on filesystem stalls to throttle useful work.
+
+### Supplemental repair allocation within lifetime caps
+
+The repair proposal later exposed a separate budget boundary: fleet-renewal
+liabilities had consumed the local campaign reserve while approved lifetime
+headroom remained. Production must distinguish those two limits. A supplemental
+repair approval may allocate its exact documented shortfall within both retained
+lifetime caps, signed by the budget and custody owners, without replaying setup
+or changing its actions. Retain active and superseded spend in that calculation,
+round fractional native units upward, and recheck signed/queued exposure before
+execution. Tests must reject cap substitution, omitted historical liabilities,
+arbitrary extra margin, duplicate charging after restart, and integer overflow.
+
+### Preparation must not acquire a stopped campaign's transport
+
+Standalone precompile preparation reused completed chain evidence but then opened
+a campaign executor, forcing its next call through a loopback EVM proxy owned by
+a deliberately stopped supervisor. The authenticated command already had working
+RPC and transaction managers. Preparation now borrows those exact owners and
+retains their authorized route, journal, plan, native connection, payloads and
+nonce management; it neither starts topology nor closes the caller's managers.
+Owner or route drift remains a hard error. Release scenarios still perform their
+separate retained-topology restart and supervised egress handoff. Deterministic
+regressions cover stopped proxies, continued use of the original direct client,
+foreign journal/plan/route owners, and unchanged release restart scope.
+
+Retained release startup has the converse ownership requirement: its local-only
+executor owns approved metadata but deliberately has no native connection to
+lend. After topology restart, campaign construction must acquire that missing
+reader through the ordinary authenticated constructor. It may do this only for
+the exact provisional release plan, journal, directory, configuration and equal
+reloaded credentials; partial or foreign connection owners remain errors. A live
+parent's native reader stays borrowed. Supervised EVM egress and its readiness
+errors remain mandatory, with no direct-route fallback. Test both absent and
+existing native ownership, credential reload and drift, canceled construction,
+and refusal to bypass a stopped proxy.
+
+Retained process restart must distinguish approval of new work from continuation
+of an approved plan. A completed fleet renewal appends transaction actions, so an
+allowance-only classifier cannot admit its later process restart. Authenticate
+the exact active and archived approval, reconstruct the fleet append from its
+archived predecessor at the original journal checkpoint, then authenticate the
+full later journal independently. Valid preparation after that checkpoint must
+not be treated as conflicting renewal submission. Keep the original fleet-apply
+exclusion for new work. Use the same restart admission for preflight binary and
+readiness preparation, process startup and interrupted manifest publication;
+none of these paths may replay pending setup or alter final acceptance.
+
+### Recover custody without repeating completed acceptance epochs
+
+The probe's immutable `transferOut` accepts an off-chain amount. A position can
+accrue between that quote and inclusion, and small residual positions can fail a
+runtime transfer minimum. Final custody cannot be inferred from a successful
+receipt or a nearly equal balance. Keep requested units, actual source debit,
+actual recipient credit, bounded share conversion and inter-block growth as
+separate fields. Preserve successful receipts even when they leave a residual.
+
+Production recovery must use separately signed, finite authority for each affected
+position, bounded funding when a residual is below the transfer minimum, and one
+durable transaction writer. Bind quotes into action intents; retain signed bytes
+through timeout and crash recovery; verify gas, fee and value limits again during
+replay. A final record must prove both source positions zero at one finalized
+head. Test interrupted signing/finalization/postcondition boundaries, quote edits,
+extra credits, receipt/recipient changes, gas-cap changes and reseed exhaustion.
+
+Recovery admission must authenticate only the exact repair authority, custody,
+immutable target and retained journal before allowing its durable sender to
+reconcile pending bytes. A finalized deployment nonce census cannot precede that
+reconciliation: the transaction being recovered may already consume the next
+nonce without a finalized journal row. Restrict the recovery executor's dispatch
+scope when reusing partial payloads, and enforce the signed fee/value envelope
+before rebroadcast as well as during final replay. Test a crash with a signed,
+unfinalized call and prove the same bytes finish without allocating another nonce.
+
+For future probe/custody maintenance contracts, provide a narrowly authorized
+operation that reads and transfers the full selected position in the same call,
+with exact before/after events and an explicit recovery recipient. This removes
+the quote-to-inclusion gap; it does not change exact-amount payout entitlements.
+The already deployed testnet probe instead uses the bounded mechanism documented
+in [PRECOMPILE-RECOVERY.md](../sim-testnet/PRECOMPILE-RECOVERY.md).
+
+A later custody repair must not rewrite a signed interval or force already
+observed epochs to repeat. Preserve the original result and add an authenticated
+completion for the repaired scope; require the production handoff to understand
+that composition explicitly. A new binary cannot silently join an immutable live
+interval. Deferred historical audits and unrelated semantic checks remain their
+own outstanding requirements until their exact proofs are accepted.
+
+### Keep read availability separate from verified mismatches
+
+Relay startup and receipt reconciliation must return an RPC read error before
+comparing the unread value with an approved snapshot, nonce, registration or
+transaction. Do not join a fabricated mismatch to a timeout: mixed errors remain
+hard by design, so that join prevents the bounded transport retry from running.
+The same rule applies to the final registration and canonical-hash rechecks in
+the native schedule reader and to retained manifest reads.
+
+Give initial phase admission and each consumed phase-transition request their
+own bounded retry. Keep the first successful finalized head and original wall
+deadline across admission attempts. A canceled caller releases its request while
+the relay remains available; worker shutdown cancels an active request. Retain
+hard integrity and local persistence failures even when joined with cancellation.
+
+A permissionless publication race needs a typed canonical-revert outcome,
+distinct from a failed journal write. Retry its independent winner, canonical
+receipt and transaction-body reads using the original signed bytes and nonce.
+Keep the reverted receipt and actual paid gas visible. Test failures at each
+read boundary, exhaustion, request cancellation, original-deadline retention,
+journal reopen and no duplicate broadcast. Test real mismatch and storage-error
+controls beside every transient recovery path.
+
+### Retain unsigned repair liabilities during independent observation
+
+Recovery 29 stopped before its acceptance boundary because the initial snapshot
+retried an unsigned probe repair whose estimate exceeded its signed gas-unit
+limit. Cancellation then interrupted the independent evidence census. Repeating
+the same operation could not supply the missing authority.
+
+For PH-01, PH-02 and PH-05, separate observation, signing permission and final
+acceptance. An explicitly provisional observer may retain an accounted repair
+liability after a typed refusal raised before signing. Require the exact signed
+action and gas cap, validated custody/accounting, a durable failed journal
+frontier, and proof that no matching signed transaction exists, including orphan
+transaction files saved before their broadcast record. Keep standalone repair,
+mixed integrity/storage errors and other budget or fee refusals hard. Any change
+to transaction authority still requires its own explicit signed amendment.
+
+Under the same exclusive writer, reuse that refusal only while its plan, action,
+authority and action-journal frontier remain unchanged. Reauthenticate those
+inputs on each observation; do not append identical intent/failed records or
+repeat the full signature census. Preserve the pending liability and completed
+receipts in evidence. Strict final acceptance must still require complete,
+verified custody recovery.
+
+Simulator commits `8369f96a` and `16e9896a` implement this narrow continuation.
+Eight focused normal and race tests passed, covering observer survival without
+another send, durable failure requirements, orphan signatures, joined errors,
+standalone scope and unchanged final rejection. See
+[the regression](../sim-testnet/precompile_recovery_gas_pending_test.go).
+Production integration and operational acceptance remain required before closing
+the corresponding hardening items.
+
+### Publish complete artifacts for failures before the first observation
+
+An initial snapshot failure left a terminal result and process-log evidence but
+no observation file, so the next recovery could not authenticate its predecessor.
+For PH-01 and PH-09, publish an explicit zero-observation marker before the
+terminal result when no observation or acceptance boundary exists. Propagate
+append, sync and publication errors before claiming a complete terminal artifact
+set. A failure to record evidence is a separate hard failure.
+
+Legacy repair belongs to the authenticated recovery writer. It may add only a
+missing marker after validating the exact failed result, zero recorded
+heads/epochs/observation hashes, absent acceptance/start markers and the matching
+process-log evidence. Preserve the original result bytes and all existing
+observations. The next signed recovery binds the new marker; read-only validators
+must continue to reject missing or changed sources.
+
+Simulator commit `2a6340b1` implements this scoped repair. Thirteen focused tests
+passed normally and with race detection, including a real initial-snapshot
+failure followed by recovery-chain validation, legacy backfill without result
+mutation, write-error propagation and observed-progress/source-substitution
+rejection. See [the regressions](../sim-testnet/scenario_initial_observation_test.go).
+Production crash-publication qualification remains required.
+
+### Keep release intervals running while classifying adversary failures
+
+R34 entered its signed release interval and continued making finalized-block
+observations while three adversary probes found hard errors. RPC consistency
+timeouts were successfully recorded as pending and then recovered. Separate
+operator artifact GET timeouts and verification `503` responses remained hard
+findings. A healthy fleet and advancing block head therefore show liveness,
+not final acceptance. Production should retain the exact failed probe, actor,
+target, block and fault window without terminating an otherwise useful interval;
+the final gate must still reject unresolved required probes. Recovery must never
+turn an unanswered read into a verified mismatch or a skipped probe into coverage.
+Operational status must group pending and recovered rows by recovery ID: historical
+pending rows remain after recovery and must not be counted as open incidents.
+
+Give each HTTP operation its full configured attempt deadline before bounded
+retry. Dividing a ten-second sample into short attempts canceled artifact reads
+that were completing in roughly three seconds, creating failure during normal
+load. Retain one overall budget, retry only classified transport and server
+availability errors, and require the original content-addressed validation of
+every nonempty recovered response. An empty history after timeout carries no
+coverage. Test slow successful reads, timeout followed by success, exhausted
+retry, empty history, malformed response and cancellation through the full actor.
+
+For expected production GETs, use at least 60 seconds total and default to a
+five-minute retry horizon when no tighter protocol deadline applies. Give each
+attempt a real response deadline, back off between transient transport failures
+and retryable server responses, and preserve the original request identity and
+hash expectation throughout. A missing object, authorization refusal, malformed
+response or hash mismatch is a semantic finding; repeated transport success
+cannot waive it. Long retries must not hold the release heartbeat or silently
+extend a signed fault window: persist the pending read, let unrelated work
+continue, and complete or fail that exact read within its own bounded horizon.
+Test an outage lasting longer than 60 seconds, recovery before five minutes,
+exhaustion, cancellation and a fault-window transition during retry.
+
+Fault admission must distinguish a scheduled trigger from a physically active
+pre-arm. R34 installed exact validator-view exclusions before the release epoch
+so the quality-fault boundary could start safely, but the verification actor
+selected those excluded miners while their signed trigger was still pending.
+Pre-arm the exclusions before any dependent fleet lifecycle action; publish
+their exact target scope before installing physical files, and select probes
+only from the eligible census. Across recovery, adopt only the signed filter
+rules and verify their bytes, private-file mode and process ownership. Retain an
+existing filter file without replacing its inode until the authorized restore;
+reject unrelated faults or partial restoration. If an older predecessor removes
+the filter during shutdown, record that continuity gap explicitly; a successor
+that installs a fresh filter cannot claim uninterrupted protection.
+
+Qualify the whole rollover, not only the candidate binary: authenticate the
+sealed predecessor and signed invalidation, pin evidence hashes, verify the
+retained fault registry and physical filters before service replacement, then
+check their permitted state after the new supervisor starts. Require the exact
+binary provenance, manifest, 33-process identity and healthy fleet before the
+next interval. The handoff may tolerate a typed provisional predecessor and
+recoverable transient errors, but must reject changed authorization, substituted
+evidence, unexpected fault controls and missing physical safety rules. Exercise
+pending pre-arms, retained filters, intentional absence after old cleanup,
+interrupted install, changed registry, partial restore and rollback in tests.

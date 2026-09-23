@@ -6,6 +6,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"strings"
 	"testing"
 )
@@ -21,8 +24,10 @@ func TestProducerGateStateSelectionCoversFundedRelayHorizon(t *testing.T) {
 		"evidence_relay_horizon_test.go", "evidence_relay_horizon_runtime_test.go",
 		"evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go",
 		"runtime_evidence_launch_config_test.go",
+		"evidence_relay_retained_publication_test.go",
+		"evidence_relay_continuation_transactions_test.go",
 	})}
-	selected[1].sources = map[string][]string{"./validator": releaseEvidenceV2GateSources(t, []string{"../validator/release_evidence_publication_discovery_v2_test.go", "../validator/release_evidence_publication_discovery_race_v2_test.go"})}
+	selected[1].sources = map[string][]string{"./validator": releaseEvidenceV2GateSources(t, []string{"../validator/release_evidence_publication_discovery_v2_test.go", "../validator/release_evidence_publication_discovery_race_v2_test.go", "../validator/release_evidence_publication_retained_v2_test.go"})}
 	selected[2].sources = map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_relay_horizon_test.go"})}
 	for _, group := range selected {
 		if err := verifyReleaseEvidenceV2GateGroup(script, group); err != nil {
@@ -51,16 +56,26 @@ func TestProducerGateStateSelectionFundedRelayRetainsAuthenticatedOwners(t *test
 		callees []string
 	}{
 		{path: "evidence_relay_campaign.go", caller: "runScenarioWithEvidenceRelay", callees: []string{"validateRuntimeEvidenceSourceCapacity", "newEvidenceRelayRuntime", "WaitReady", "RequirePrepared", "WaitThrough", "WaitAuditPass", "Close", "runScenarioWithProbe"}},
-		{path: "evidence_relay_runtime.go", caller: "run", callees: []string{"prepareHorizon", "advance", "advanceDepositAudits", "checkRemaining"}},
+		{path: "evidence_relay_runtime.go", caller: "run", callees: []string{"prepareHorizon", "advance", "advanceDepositAudits", "awaitNextPass"}},
+		{path: "evidence_relay_runtime.go", caller: "awaitNextPass", callees: []string{"completeRemainingRequest"}},
+		{path: "evidence_relay_runtime.go", caller: "completeRemainingRequest", callees: []string{"checkRemaining"}},
 		{path: "evidence_relay_runtime.go", caller: "advance", callees: []string{"checkHorizonBlock", "readClosedPublication", "admit", "admitOwnedEvidenceRelayAction"}},
 		{path: "evidence_relay_audit.go", caller: "advanceDepositAudits", callees: []string{"checkHorizonBlock", "readAuditPublication", "admit", "admitOwnedEvidenceRelayAction"}},
-		{path: "evidence_relay_continuation_budget.go", caller: "admitOwnedEvidenceRelayAction", callees: []string{"readOwnedEvidenceRelayRequest", "admitEvidenceRelayAction"}},
-		{path: "evidence_relay_continuation_budget.go", caller: "readOwnedEvidenceRelayRequest", callees: []string{"readValidatorEvidenceHistoricalPlan", "validateEvidenceRelayRequest"}},
+		{path: "evidence_relay_continuation_budget.go", caller: "admitOwnedEvidenceRelayAction", callees: []string{"readRetainedEvidenceRelayRequest", "admitEvidenceRelayAction"}},
+		{path: "evidence_relay_owner_plan_cache.go", caller: "readRetainedEvidenceRelayRequest", callees: []string{"readOwnedEvidenceRelayRequest", "readOwnedEvidenceRelayRequestWithOwner"}},
+		{path: "evidence_relay_continuation_budget.go", caller: "readOwnedEvidenceRelayRequest", callees: []string{"readValidatorEvidenceHistoricalPlan", "readOwnedEvidenceRelayRequestWithOwner"}},
+		{path: "evidence_relay_continuation_budget.go", caller: "readOwnedEvidenceRelayRequestWithOwner", callees: []string{"validateEvidenceRelayRequest"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "prepareHorizon", callees: []string{"readHorizonNative", "requireHorizonRemaining", "readAdmittedHorizon", "DiscoverValidatorEvidencePublicationV2Manifests", "DiscoverValidatorEvidenceDepositAuditV2Manifests", "readClosedPublication", "readAuditPublication"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readHorizonNative", callees: []string{"FinalizedHeadContext", "ReadValidatorScheduleAtContext", "MeetsNonSelfStakeAndPermit"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "readAdmittedHorizon", callees: []string{"Entries", "ReadReleaseEvidenceV2SetupFile", "validateEvidenceRelayRequest", "admit"}},
-		{path: "evidence_relay_horizon_runtime.go", caller: "readClosedPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidencePublicationV2"}},
-		{path: "evidence_relay_horizon_runtime.go", caller: "readAuditPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidenceDepositAuditV2"}},
+		{path: "evidence_relay_horizon_runtime.go", caller: "readClosedPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidencePublicationV2", "ReadRetainedValidatorEvidencePublicationV2"}},
+		{path: "evidence_relay_horizon_runtime.go", caller: "readAuditPublication", callees: []string{"ReleaseEpochStartBlockAtHashContext", "ReleaseEpochEndBlockAtHashContext", "ReadValidatorEvidenceDepositAuditV2", "ReadRetainedValidatorEvidenceDepositAuditV2"}},
+		{path: "evidence_relay_continuation_capture.go", caller: "captureEvidenceRelayContinuationWithLimitsAt", callees: []string{"newEvidenceRelayRetainedPublications", "readEvidenceRelayContinuationTransactionCensus", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus", "recheckEvidenceRelayContinuationTransactionCensus"}},
+		{path: "evidence_relay_continuation_transactions.go", caller: "readEvidenceRelayContinuationTransactionCensus", callees: []string{"readEvidenceRelayContinuationTransactions", "fleetRenewalCampaignExposure", "observeEvidenceRelayContinuationNonces"}},
+		{path: "evidence_relay_continuation_transactions.go", caller: "recheckEvidenceRelayContinuationTransactionCensus", callees: []string{"readEvidenceRelayContinuationTransactionCensus"}},
+		{path: "evidence_relay_retained_publication.go", caller: "newEvidenceRelayRetainedPublications", callees: []string{"authenticatedRetainedRuntimeConfigManifest", "ReadReleaseEvidenceV2SetupFile", "renderedOperatorEvidenceStoreConfig"}},
+		{path: "runtime_config_retained_source.go", caller: "authenticatedRetainedRuntimeConfigManifest", callees: []string{"loadRuntimePersistedPlan", "runtimeEvidenceV2ResolvedConfig", "authenticatedRuntimeConfigManifest", "authenticatedRuntimeConfigManifestWithRetainedEvidence"}},
+		{path: "evidence_relay_retained_publication.go", caller: "readers", callees: []string{"ReadAttemptObjectTo"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "checkRemaining", callees: []string{"FinalizedBlockContext", "readHorizonNative", "requireHorizonRemaining"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "requireHorizonRemaining", callees: []string{"phaseHorizonRemaining", "requireRemaining"}},
 		{path: "evidence_relay_horizon_runtime.go", caller: "phaseHorizonRemaining", callees: []string{"provisionalResumeEnabled", "ceilings"}},
@@ -78,5 +93,47 @@ func TestProducerGateStateSelectionFundedRelayRetainsAuthenticatedOwners(t *test
 				t.Errorf("%s:%s lost required owned call %s", edge.path, edge.caller, callee)
 			}
 		}
+	}
+}
+
+// The actual signature/custody tests exercise both observations. This source
+// guard additionally keeps the strict preflight ahead of expensive replay.
+func TestProducerGateStateSelectionRelayNoncePreflightPrecedesSourceReplay(t *testing.T) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), "evidence_relay_continuation_capture.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := map[string]token.Pos{}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "captureEvidenceRelayContinuationWithLimitsAt" {
+			continue
+		}
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch target := call.Fun.(type) {
+			case *ast.Ident:
+				positions[target.Name] = call.Pos()
+			case *ast.SelectorExpr:
+				positions[target.Sel.Name] = call.Pos()
+			}
+			return true
+		})
+	}
+	preflight := positions["readEvidenceRelayContinuationTransactionCensus"]
+	recheck := positions["recheckEvidenceRelayContinuationTransactionCensus"]
+	if preflight == 0 || recheck == 0 {
+		t.Fatal("capture lost an original nonce census observation")
+	}
+	for _, name := range []string{"CaptureReleaseHistoryAdoptionV2", "ReadStoppedAttemptLedgerCapacity", "readContinuationPublicCensus"} {
+		if position := positions[name]; position == 0 || position <= preflight || position >= recheck {
+			t.Fatalf("%s escaped strict nonce preflight and final evidence recheck", name)
+		}
+	}
+	if positions["appendEvidenceRelayContinuationPlan"] <= recheck {
+		t.Fatal("capture sealed a successor before the final nonce census recheck")
 	}
 }

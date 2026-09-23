@@ -237,7 +237,7 @@ func (self *ReleaseSteerer) gatherHeadV2(ctx context.Context, snapshot *ReleaseS
 			maximum := min(uint64(protocol.MaxClientKeyHistoryResponseBytes), (budget.limit-budget.used)/8)
 			captures, err := captureReleaseClientKeysV2(keyCtx, chain, keyHistories[input.NoID], keyConfig.StateDir, keyDomainsKVs[input.NoID], requests[start:end], maximum, keyConfig.EvidenceV2.Bounds.MaxHistoryBytes)
 			if err != nil {
-				return result, errors.Join(errors.New("compact live head client census lacks its exact operator-signed current observations"), err)
+				return result, fmt.Errorf("compact live head client census observation read: %w", err)
 			}
 			for index, capture := range captures {
 				position := keyPositionsKVs[input.NoID][start+index]

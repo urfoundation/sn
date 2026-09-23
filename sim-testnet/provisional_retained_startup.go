@@ -2,7 +2,7 @@
 
 package main
 
-// Restart an authenticated topology after a local-only successor approval.
+// Restart an authenticated topology under its exact retained successor approval.
 // Runtime inputs, chain actions and signed validator namespaces stay retained.
 import (
 	"bytes"
@@ -34,7 +34,7 @@ type retainedStartupPublication struct {
 // Recover publication only, never a running generation or a transaction. The
 // ordinary exact stopped/startup admission runs again after this rollback.
 func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) error {
-	if !provisionalResumeEnabled(self.cfg) || self.cfg.provisionalResume.Record.Command != "resume" {
+	if !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) {
 		return nil
 	}
 	raw, err := readValidatorEvidenceHistoricalFile(self.stateDir, "provisional-resumes/retained-start-publication.json", maximumCampaignEvidenceRawFileBytes)
@@ -51,11 +51,11 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	if publication.Schema != "urnetwork-sim-retained-start-publication-v1" || publication.PlanHash != self.plan.PlanHash {
 		return nil
 	}
-	active, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	active, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil {
 		return err
 	}
-	if admitted, err := self.authenticateProvisionalPlanOnlyAdoption(ctx, active); err != nil || !admitted {
+	if admitted, err := self.authenticateProvisionalRetainedPlan(ctx, active); err != nil || !admitted {
 		return errors.Join(errors.New("retained publication has no current successor authority"), err)
 	}
 	relative, err := filepath.Rel(self.stateDir, publication.ProvenancePath)
@@ -67,7 +67,7 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	if err != nil || bytesSHA256(provenance) != publication.ProvenanceHash {
 		return errors.Join(errors.New("retained publication provenance changed"), err)
 	}
-	if err := json.Unmarshal(provenance, &record); err != nil || !record.Provisional || record.FinalAcceptance || record.Command != "resume" || record.PlanHash != self.plan.PlanHash || record.ConfigHash != self.cfg.ConfigHash || record.ReleaseLockHash != self.plan.ReleaseLockHash || record.DeploymentID != self.plan.DeploymentID {
+	if err := json.Unmarshal(provenance, &record); err != nil || !provisionalRetainedStartupAllowed(&record) || record.PlanHash != self.plan.PlanHash || record.ConfigHash != self.cfg.ConfigHash || record.ReleaseLockHash != self.plan.ReleaseLockHash || record.DeploymentID != self.plan.DeploymentID {
 		return errors.Join(errors.New("retained publication approval differs"), err)
 	}
 	if publication.Source == nil || bytesSHA256(publication.Original) != publication.Source.ManifestBytesSHA256 {
@@ -125,21 +125,24 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	return atomicWrite(filepath.Join(self.stateDir, "supervisor.json"), publication.Original, 0o600)
 }
 
-// A current approved non-transaction successor can restart retained processes
-// without interpreting unfinished setup as an instruction to reconcile it.
+// An exact retained successor can restart processes without interpreting its
+// unfinished setup actions as an instruction to reconcile or dispatch them.
 func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string, start retainedProvisionalStarter) error {
-	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || self.cfg.provisionalResume.Record.Command != "resume" || self.cfg.strictHistoryAdoption != nil {
-		return errors.New("retained startup requires explicit non-accepting resume")
+	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) || self.cfg.strictHistoryAdoption != nil {
+		return errors.New("retained startup requires explicit non-accepting resume or release scenario")
 	}
-	active, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	active, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil {
 		return err
 	}
-	admitted, err := self.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+	admitted, err := self.authenticateProvisionalRetainedPlan(ctx, active)
 	if err != nil || !admitted {
-		return errors.Join(errors.New("retained startup lost its exact local-only successor approval"), err)
+		return errors.Join(errors.New("retained startup lost its exact approved successor"), err)
 	}
 	if err := self.verifyProvisionalActionHistory(ctx); err != nil {
+		return err
+	}
+	if err := self.reconcileRetainedProvisionalTransactionOutcomes(ctx); err != nil {
 		return err
 	}
 	if err := validateRetainedProvisionalTransactionOutcomes(self.plan, self.journal.Entries()); err != nil {
@@ -207,7 +210,7 @@ func retainedProvisionalSupervisor(cfg *ResolvedConfig, plan *SetupPlan, stopped
 // new supervisor performs its normal local cleanup and independent child start.
 func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string) (returnErr error) {
 	cfg, stateDir := self.cfg, self.stateDir
-	current, err := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, "resume")
+	current, err := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cfg.provisionalResume.Record.Command)
 	if err != nil {
 		return err
 	}
@@ -222,7 +225,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 			return err
 		}
 	}
-	verified, err := verifyRuntimeConfigManifest(cfg, stateDir)
+	verified, err := verifyRetainedProvisionalRuntimeConfigManifest(cfg, stateDir, self.plan)
 	if err != nil {
 		return fmt.Errorf("retained runtime inputs: %w", err)
 	}
@@ -241,7 +244,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 	if err != nil {
 		return err
 	}
-	current, err = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, "resume")
+	current, err = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cfg.provisionalResume.Record.Command)
 	if err != nil {
 		return err
 	}

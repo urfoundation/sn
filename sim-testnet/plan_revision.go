@@ -4384,7 +4384,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err != nil {
 		return nil, err
 	}
-	revised, err := buildPlanWithFundingAllocation(cfg, &normalized, roles, generatedAt, registrationGeneration, allocation)
+	relayFundingConfig, err := evidenceRelayRevisionFundingConfig(cfg, prior)
+	if err != nil {
+		return nil, err
+	}
+	revised, err := buildPlanWithFundingAllocationAndRelayConfig(cfg, &normalized, roles, generatedAt, registrationGeneration, allocation, relayFundingConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -4642,7 +4646,7 @@ func BuildPlanForState(ctx context.Context, cfg *ResolvedConfig, stateDir string
 	}
 	prior, err := readPersistedPlan(stateDir)
 	if err != nil {
-		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		raw, readErr := readSetupPlanBytes(stateDir, "plan.json")
 		if readErr != nil {
 			return nil, readErr
 		}

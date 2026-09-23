@@ -131,8 +131,8 @@ func (self *ChainClient) ConfirmValidatorEvidenceTransactionV2Context(ctx contex
 // send and a permissionless winner. Only the winner may arrive through a
 // forwarder or contract constructor and share its receipt with other slots.
 func (self *ChainClient) confirmValidatorEvidenceTransactionV2(ctx context.Context, expected ValidatorEvidenceTransactionV2Expected, transaction *types.Transaction, permissionless bool) (result *ValidatorEvidenceTransactionV2Finalized, resultErr error) {
-	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
-	defer cancel()
+	// Each read owns its finite timeout; earlier reads cannot consume a later
+	// read's allowance. The caller still bounds the complete reconciliation.
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil {
@@ -150,7 +150,10 @@ func (self *ChainClient) confirmValidatorEvidenceTransactionV2(ctx context.Conte
 	if finalizedBlock < expected.Window.FinalizedBlock {
 		return nil, ErrValidatorEvidenceTransactionPending
 	}
-	receipt, err := chain.client.TransactionReceipt(ctx, transaction.Hash())
+	readCtx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	receipt, err := chain.client.TransactionReceipt(readCtx, transaction.Hash())
+	err = errors.Join(err, readCtx.Err())
+	cancel()
 	if errors.Is(err, ethereum.NotFound) {
 		return nil, ErrValidatorEvidenceTransactionPending
 	}
@@ -181,7 +184,10 @@ func (self *ChainClient) confirmValidatorEvidenceTransactionV2(ctx context.Conte
 	if includedHash != [32]byte(receipt.BlockHash) {
 		return nil, errors.New("validator evidence receipt inclusion is no longer canonical")
 	}
-	included, err := chain.client.TransactionInBlock(ctx, receipt.BlockHash, receipt.TransactionIndex)
+	readCtx, cancel = context.WithTimeout(ctx, chainCallTimeout)
+	included, err := chain.client.TransactionInBlock(readCtx, receipt.BlockHash, receipt.TransactionIndex)
+	err = errors.Join(err, readCtx.Err())
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("read exact validator evidence transaction inclusion: %w", err)
 	}
@@ -218,8 +224,11 @@ func (self *ChainClient) confirmValidatorEvidenceTransactionV2(ctx context.Conte
 		{number: finalizedBlock, hash: finalizedHash},
 	} {
 		actual, err := chain.BlockHashContext(ctx, boundary.number)
-		if err != nil || actual != boundary.hash {
-			return nil, errors.Join(errors.New("validator evidence canonical boundary changed through readback"), err)
+		if err != nil {
+			return nil, err
+		}
+		if actual != boundary.hash {
+			return nil, errors.New("validator evidence canonical boundary changed through readback")
 		}
 	}
 	return &ValidatorEvidenceTransactionV2Finalized{SignedTransaction: expected.SignedTransaction, Receipt: receipt, FinalizedBlock: finalizedBlock, FinalizedHash: finalizedHash, Publication: publication}, nil

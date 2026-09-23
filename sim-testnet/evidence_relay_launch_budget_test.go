@@ -67,12 +67,13 @@ func evidenceRelayLaunchRequestTest(t *testing.T, fixture *runtimeEvidenceProvis
 // of the larger actual profile checked by the horizon/full-plan tests.
 func TestEvidenceRelayLaunchSlotCensusKeepsEverySourceAndFailureDebit(t *testing.T) {
 	launch := runtimeEvidenceLaunchConfigTest(t)
-	if launch.Config.Topology.Miners != 1000 || launch.Config.Topology.HeadSlots != 200 || launch.Config.Topology.Validators != 2 || launch.Config.Topology.Operators != 2 || launch.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
+	if launch.Config.Topology.Miners != 1000 || launch.Config.Topology.HeadSlots != 200 || launch.Config.Topology.Validators != 2 || launch.Config.Topology.Operators != 2 || launch.Config.ValidatorEvidenceRelay.MaxSlots != 2048 {
 		t.Fatal("actual launch source/population/slot geometry changed")
 	}
 	fixture := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
 		cfg.Config.ValidatorEvidenceRelay = launch.Config.ValidatorEvidenceRelay
 		cfg.Config.ValidatorEvidenceRelay.MaxSlots = 128
+		cfg.Config.ValidatorEvidenceRelay.SourceHorizonBlocks = 0
 	})
 	journal, err := OpenJournal(fixture.stateDir)
 	if err != nil {
@@ -183,12 +184,12 @@ func TestEvidenceRelayLaunchSlotCensusKeepsEverySourceAndFailureDebit(t *testing
 }
 
 // Build the actual 1000-miner plan twice with identical absolute ceilings.
-// The correction moves 12.8 test Tao from remaining campaign gas to the existing
+// The correction moves 179.2 test Tao from remaining campaign gas to the existing
 // keeper; it cannot increase total gas, Tao, alpha or create another wallet.
 func TestEvidenceRelayLaunchPlanFitsUnchangedAbsoluteCaps(t *testing.T) {
 	cfg := runtimeEvidenceLaunchConfigTest(t)
 	ceiling := configuredPlanLimits(cfg)
-	if cfg.MaximumEVMGasWei != DecimalUint("160000000000000000000") || cfg.MaximumTAORao != 200_000_000_000 || cfg.MaximumAlphaRao != 28_250_000_000_000 {
+	if cfg.MaximumEVMGasWei != DecimalUint("512000000000000000000") || cfg.MaximumTAORao != 520_000_000_000 || cfg.MaximumAlphaRao != 28_250_000_000_000 {
 		t.Fatal("test silently expanded the resolved absolute launch ceilings")
 	}
 	roles, err := derivePublicRoles(cfg)
@@ -216,8 +217,8 @@ func TestEvidenceRelayLaunchPlanFitsUnchangedAbsoluteCaps(t *testing.T) {
 		}
 		return plan
 	}
-	before, after := build(128), build(cfg.Config.ValidatorEvidenceRelay.MaxSlots)
-	if cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 || before.PlanHash == after.PlanHash || len(before.Actions) != len(after.Actions) {
+	before, after := build(256), build(cfg.Config.ValidatorEvidenceRelay.MaxSlots)
+	if cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 || before.PlanHash == after.PlanHash || len(before.Actions) != len(after.Actions) {
 		t.Fatal("finite reserve revision lost its own approval identity or added another funding role")
 	}
 	find := func(plan *SetupPlan, id string) Action {
@@ -228,11 +229,11 @@ func TestEvidenceRelayLaunchPlanFitsUnchangedAbsoluteCaps(t *testing.T) {
 		return value
 	}
 	oldReserve, newReserve := find(before, evidenceRelayReserveId), find(after, evidenceRelayReserveId)
-	if newReserve.Spend.EVMGasWei != DecimalUint("25600000000000000000") {
-		t.Fatal("corrected per-source reserve is not exactly 25.6 test Tao")
+	if newReserve.Spend.EVMGasWei != DecimalUint("204800000000000000000") {
+		t.Fatal("fresh full-slot reserve is not exactly 204.8 test Tao")
 	}
 	delta, err := subtractDecimalUint(newReserve.Spend.EVMGasWei, oldReserve.Spend.EVMGasWei)
-	if err != nil || delta != DecimalUint("12800000000000000000") {
+	if err != nil || delta != DecimalUint("179200000000000000000") {
 		t.Fatal("source-slot correction changed the finite call-price product", delta, err)
 	}
 	campaignDelta, err := subtractDecimalUint(find(before, "campaign.evm-gas-reserve").Spend.EVMGasWei, find(after, "campaign.evm-gas-reserve").Spend.EVMGasWei)
@@ -254,7 +255,7 @@ func TestEvidenceRelayLaunchPlanFitsUnchangedAbsoluteCaps(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("complete launch plan: sources=4 slots=256 relay_gas=%s total_gas=%s tao_rao=%d/%d alpha_rao=%d/%d", newReserve.Spend.EVMGasWei, after.MaximumSpend.EVMGasWei, after.MaximumSpend.TAORao, cfg.MaximumTAORao, after.MaximumSpend.AlphaRao, cfg.MaximumAlphaRao)
+	t.Logf("complete launch plan: sources=4 slots=2048 relay_gas=%s total_gas=%s tao_rao=%d/%d alpha_rao=%d/%d", newReserve.Spend.EVMGasWei, after.MaximumSpend.EVMGasWei, after.MaximumSpend.TAORao, cfg.MaximumTAORao, after.MaximumSpend.AlphaRao, cfg.MaximumAlphaRao)
 }
 
 // A too-small external ceiling remains a plan error; the corrected internal
@@ -273,7 +274,7 @@ func TestEvidenceRelayLaunchPlanRejectsInsufficientAbsoluteGas(t *testing.T) {
 	if _, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0)); err == nil {
 		t.Fatal("relay-only gas ceiling also paid all fixed setup and remaining campaign actions")
 	}
-	if cfg.MaximumEVMGasWei != reserve || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
+	if cfg.MaximumEVMGasWei != reserve || cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 {
 		t.Fatal("failed planning widened its external ceiling or dropped source slots")
 	}
 }

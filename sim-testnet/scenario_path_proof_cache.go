@@ -1,3 +1,5 @@
+// Each live observation verifies only newly appended complete proofs. Durable
+// authenticated prefix checkpoints preserve that work across driver restarts.
 package main
 
 import (
@@ -35,11 +37,14 @@ type scenarioPathProofPrefix struct {
 // expensive JSON and signature verification is retained, so a changed prefix
 // fails closed while an append verifies only its new complete records.
 type scenarioPathProofCache struct {
-	prefixes map[string]scenarioPathProofPrefix
+	prefixes         map[string]scenarioPathProofPrefix
+	store            *scenarioPathProofStore
+	checkpointProofs int
 }
 
+// Ordinary callers can retain only memory; live drivers attach a durable store.
 func newScenarioPathProofCache() *scenarioPathProofCache {
-	return &scenarioPathProofCache{prefixes: map[string]scenarioPathProofPrefix{}}
+	return &scenarioPathProofCache{prefixes: map[string]scenarioPathProofPrefix{}, checkpointProofs: 1024}
 }
 
 func configuredScenarioPathProofLimits(cfg *ResolvedConfig, validatorID int) (scenarioPathProofLimits, bool, error) {
@@ -93,13 +98,19 @@ func cloneScenarioTrailIDs(source map[connect.Id]bool) map[connect.Id]bool {
 	return result
 }
 
-func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifierHash string, limits scenarioPathProofLimits, verify func(*validatorpkg.ProofRecord, int) error) (int, error) {
-	if ctx == nil || cache == nil || cache.prefixes == nil || !validCanonicalHashHex(verifierHash) || limits.maximumBytes == 0 || limits.maximumProofs == 0 || limits.maximumLine == 0 || verify == nil {
+// Successful complete records become checkpoints even when a later record or
+// cancellation interrupts the sweep. Unverified or partial bytes never enter it.
+func (self *scenarioPathProofCache) inspect(ctx context.Context, path, verifierHash string, limits scenarioPathProofLimits, verify func(*validatorpkg.ProofRecord, int) error) (int, error) {
+	if ctx == nil || self == nil || self.prefixes == nil || !validCanonicalHashHex(verifierHash) || limits.maximumBytes == 0 || limits.maximumProofs == 0 || limits.maximumLine == 0 || verify == nil {
 		return 0, errors.New("scenario path-proof cache input is incomplete")
+	}
+	prefix, reuse := self.prefixes[path]
+	if !reuse {
+		prefix, reuse = self.store.load(path, limits)
 	}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		if prefix, found := cache.prefixes[path]; found && prefix.bytes != 0 {
+		if reuse && prefix.bytes != 0 {
 			return 0, errors.New("verified path-proof prefix disappeared")
 		}
 		return 0, nil
@@ -116,11 +127,14 @@ func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifier
 		return 0, fmt.Errorf("path-proof store size %d exceeds its bounded regular-file owner", info.Size())
 	}
 
-	prefix, reuse := cache.prefixes[path]
+	if reuse && info.Size() < prefix.bytes {
+		return 0, errors.New("verified path-proof prefix was truncated")
+	}
 	if !reuse || prefix.verifierHash != verifierHash {
 		prefix = scenarioPathProofPrefix{verifierHash: verifierHash, trailIDs: map[connect.Id]bool{}}
-	} else if info.Size() < prefix.bytes {
-		return 0, errors.New("verified path-proof prefix was truncated")
+	}
+	if prefix.bytes < 0 || uint64(prefix.bytes) > limits.maximumBytes || prefix.proofs < 0 || uint64(prefix.proofs) > limits.maximumProofs || prefix.proofs != len(prefix.trailIDs) {
+		return 0, errors.New("verified path-proof prefix exceeds its current bounds or identity census")
 	}
 	hasher := sha256.New()
 	if prefix.bytes != 0 {
@@ -132,22 +146,49 @@ func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifier
 		if got != prefix.hash {
 			return 0, errors.New("verified path-proof prefix changed before append")
 		}
+		var last [1]byte
+		if _, err := file.ReadAt(last[:], prefix.bytes-1); err != nil || last[0] != '\n' {
+			return 0, errors.New("verified path-proof prefix has no complete record boundary")
+		}
 	}
 
 	trailIDs := cloneScenarioTrailIDs(prefix.trailIDs)
 	proofs, completedBytes := prefix.proofs, prefix.bytes
+	checkpointBytes, checkpointProofs := prefix.bytes, prefix.proofs
+	checkpoint := func() {
+		if completedBytes == checkpointBytes {
+			return
+		}
+		var prefixHash [sha256.Size]byte
+		copy(prefixHash[:], hasher.Sum(nil))
+		verified := scenarioPathProofPrefix{verifierHash: verifierHash, bytes: completedBytes, hash: prefixHash, proofs: proofs, trailIDs: cloneScenarioTrailIDs(trailIDs)}
+		self.prefixes[path] = verified
+		if self.store != nil {
+			persisted := self.store.save(path, verified, limits)
+			source, _, _ := self.store.source(path)
+			fmt.Fprintf(os.Stderr, "sim-testnet: path-proof prefix checkpoint; source=%s completed_proofs=%d completed_bytes=%d scan_cut_bytes=%d durable=%t\n", source, proofs, completedBytes, info.Size(), persisted)
+		}
+		checkpointBytes, checkpointProofs = completedBytes, proofs
+	}
+	// A later failure retains only records whose verification already succeeded.
+	defer checkpoint()
 	// A live validator can append faster than signatures are checked. Retain the
 	// initial size cut so this snapshot finishes; later bytes belong to the next.
 	reader := bufio.NewReaderSize(io.LimitReader(file, info.Size()-prefix.bytes), int(min(limits.maximumLine, 64*1024)))
+	scannedBytes := prefix.bytes
 	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		line, readErr := reader.ReadBytes('\n')
+		line, readErr := readScenarioPathProofLine(ctx, reader, limits.maximumLine)
+		scannedBytes += int64(len(line))
 		if uint64(len(line)) > limits.maximumLine {
 			return 0, fmt.Errorf("proof line %d exceeds %d bytes", proofs+1, limits.maximumLine)
 		}
 		if errors.Is(readErr, io.EOF) {
+			if scannedBytes != info.Size() {
+				return 0, errors.New("path-proof source was truncated during its fixed-cut sweep")
+			}
 			// The validator may be appending one record. It is excluded until its
 			// newline makes the complete bytes part of the next verified prefix.
 			break
@@ -155,14 +196,13 @@ func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifier
 		if readErr != nil {
 			return 0, readErr
 		}
-		completedBytes += int64(len(line))
-		hasher.Write(line)
-		line = line[:len(line)-1]
-		if len(line) == 0 {
+		if len(line) == 1 {
+			completedBytes += int64(len(line))
+			hasher.Write(line)
 			continue
 		}
 		var record validatorpkg.ProofRecord
-		if err := json.Unmarshal(line, &record); err != nil {
+		if err := json.Unmarshal(line[:len(line)-1], &record); err != nil {
 			return 0, fmt.Errorf("proof line %d is malformed: %w", proofs+1, err)
 		}
 		if record.Version != 1 || record.TrailId == (connect.Id{}) || record.Coverage == 0 || record.CompleteTimeMs == 0 {
@@ -179,9 +219,72 @@ func (cache *scenarioPathProofCache) inspect(ctx context.Context, path, verifier
 		}
 		trailIDs[record.TrailId] = true
 		proofs++
+		completedBytes += int64(len(line))
+		hasher.Write(line)
+		if proofs-checkpointProofs >= max(1, self.checkpointProofs) || completedBytes-checkpointBytes >= 8*1024*1024 {
+			checkpoint()
+		}
 	}
 	var prefixHash [sha256.Size]byte
 	copy(prefixHash[:], hasher.Sum(nil))
-	cache.prefixes[path] = scenarioPathProofPrefix{verifierHash: verifierHash, bytes: completedBytes, hash: prefixHash, proofs: proofs, trailIDs: trailIDs}
+	if err := revalidateScenarioPathProofPrefix(ctx, path, info.Size(), completedBytes, prefixHash); err != nil {
+		return 0, err
+	}
+	checkpoint()
+	if _, ok := self.prefixes[path]; !ok {
+		self.prefixes[path] = scenarioPathProofPrefix{verifierHash: verifierHash, bytes: completedBytes, hash: prefixHash, proofs: proofs, trailIDs: trailIDs}
+	}
 	return proofs, nil
+}
+
+// Bound allocation before appending a reader fragment. A malformed record with
+// no newline must not allocate the entire, potentially much larger, proof file.
+func readScenarioPathProofLine(ctx context.Context, reader *bufio.Reader, maximum uint64) ([]byte, error) {
+	var line []byte
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		fragment, err := reader.ReadSlice('\n')
+		if uint64(len(line))+uint64(len(fragment)) > maximum {
+			return nil, fmt.Errorf("proof line exceeds %d bytes", maximum)
+		}
+		line = append(line, fragment...)
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return line, err
+		}
+	}
+}
+
+// Reopen the selected path after verification so replacement, truncation or
+// mutation during a sweep cannot become the current observation's evidence.
+func revalidateScenarioPathProofPrefix(ctx context.Context, path string, cut, length int64, expected [sha256.Size]byte) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("reopen verified path-proof prefix: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() < cut {
+		return errors.New("verified path-proof source was replaced or truncated")
+	}
+	hasher := sha256.New()
+	buffer := make([]byte, 64*1024)
+	for remaining := length; remaining > 0; {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		n, err := io.ReadFull(file, buffer[:min(int64(len(buffer)), remaining)])
+		if err != nil {
+			return fmt.Errorf("rehash completed path-proof prefix: %w", err)
+		}
+		hasher.Write(buffer[:n])
+		remaining -= int64(n)
+	}
+	var actual [sha256.Size]byte
+	copy(actual[:], hasher.Sum(nil))
+	if actual != expected {
+		return errors.New("verified path-proof prefix changed during verification")
+	}
+	return nil
 }

@@ -339,7 +339,14 @@ func TestProvisionalProcessLogAcceptanceRetainsLateHistoricalLinesAndFailsClosed
 	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:00 completeHandshake failed: tls handshake timeout\n")
 	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:01 completeHandshake failed: tls handshake timeout\n")
 	current, err := fixture.gate.Scan(false)
-	if err != nil || len(current.Findings) != 1 || !current.Findings[0].Blocking || current.Findings[0].AcceptanceScope != boundaryHash {
+	if err != nil || len(current.Findings) != 1 || current.Findings[0].Blocking || current.Findings[0].Count != 2 || current.Findings[0].Disposition != "isolated-network-transient" || current.Findings[0].AcceptanceScope != boundaryHash {
+		t.Fatalf("post-boundary retries did not retain their isolated scope: %+v %v", current.Findings, err)
+	}
+	// The historical timeout is outside this budget. Only the third current
+	// timeout crosses the existing acceptance threshold and must fail closed.
+	appendProcessLog(t, fixture.stderrPath, "E0902 14:07:02 completeHandshake failed: tls handshake timeout\n")
+	current, err = fixture.gate.Scan(false)
+	if err != nil || len(current.Findings) != 1 || !current.Findings[0].Blocking || current.Findings[0].Count != 3 || current.Findings[0].AcceptanceScope != boundaryHash {
 		t.Fatalf("post-boundary finding did not fail closed: %+v %v", current.Findings, err)
 	}
 	if len(fixture.gate.state.Findings) != 3 || fixture.gate.state.AcceptanceBoundary == nil {

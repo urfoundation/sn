@@ -59,6 +59,9 @@ type Executor struct {
 	fleetCommitmentHistory       *fleetCommitmentHistoryScope
 	precompileHistoryEvidence    *PrecompileConformanceEvidence
 	preparationIncomplete        bool
+	precompileRecoveryOnly       bool
+	precompileRecoveryGasPending *precompileRecoveryGasPending
+	evidenceRelayOwnerPlans      *evidenceRelayOwnerPlanCache
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
@@ -83,11 +86,27 @@ func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 // The calling executor outlives the nested campaign and remains the sole owner
 // of its already authenticated native connections, including on setup failure.
 func newCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, *ResolvedConfig, error) {
+	return openCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, p, j, roles, nativeOwner, newExecutorWithTransport)
+}
+
+// Keeps connection construction as the I/O boundary. Retained local-only
+// startup has no native connection to lend; live parents keep exact ownership.
+func openCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor, open campaignExecutorFactory) (*Executor, *ResolvedConfig, error) {
+	if ctx == nil || open == nil {
+		return nil, nil, errors.New("campaign executor construction is incomplete")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
+	nativeOwner, err = retainedCampaignNativeOwner(cfg, stateDir, p, j, roles, nativeOwner)
+	if err != nil {
+		return nil, nil, err
+	}
+	executor, err := open(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -535,7 +554,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		// Keep the active predecessor separate from the exact archived review.
 		// Moving finalized facts must never regenerate the approved repair.
 		var err error
-		provisionalSetupSource, err = readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+		provisionalSetupSource, err = readSetupPlanBytes(stateDir, "plan.json")
 		if err != nil {
 			return err
 		}
@@ -632,7 +651,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	report := &launchPreparationReport{Schema: "urnetwork-sim-launch-preparation-v1", Command: cmd, PlanHash: p.PlanHash, PrepareOnly: o.PrepareOnly, Ready: true}
 	report.add("attempt-upload-budget", nil)
-	if cmd == "resume" && o.ProvisionalResume {
+	if o.ProvisionalResume && provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
 		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 		if err := recoverRetainedProvisionalPublication(ctx, local); err != nil {
 			return err
@@ -665,16 +684,16 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 					report.add("provisional-revision-setup-prefix", prefixErr)
 				}
 			}
-			if cmd == "resume" {
-				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+			if provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
+				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
-					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+					retainedPlanResume, readErr = local.authenticateProvisionalRetainedPlan(ctx, active)
 				}
 				report.add("provisional-retained-plan-resume", readErr)
 			}
 			if planOnlyAdoption || retainedPlanResume {
 				needsDoctor = false
-				report.Checks = append(report.Checks, Check{Name: "provisional-plan-adoption", OK: true, Hard: false, Detail: "exact non-transaction approval; retained receipts/release authenticated; pending actions remain unverified and undispatched; final_acceptance=false"})
+				report.Checks = append(report.Checks, Check{Name: "provisional-plan-adoption", OK: true, Hard: false, Detail: "exact retained approval; receipts/release authenticated; pending actions remain unverified and undispatched; final_acceptance=false"})
 			} else if cmd == "scenario" {
 				// A retained provisional scenario neither applies pending setup
 				// actions nor spends their reserves. Its own action paths retain
@@ -696,7 +715,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// fully inactive and its exact prior generation/inventory must still be
 	// recorded.  LaunchDeployment below still creates and gates a new process
 	// generation.
-	if liveAdoption == nil && liveAdoptionErr == nil && o.ProvisionalResume && cmd == "resume" {
+	if liveAdoption == nil && liveAdoptionErr == nil && o.ProvisionalResume && provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
 		stopped, stoppedErr := prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
 		if stoppedErr != nil {
 			// This is an optimization boundary, not an additional admission
@@ -711,9 +730,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
 			provisionalHistoryChecked = true
 			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
-				active, readErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
-					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+					retainedPlanResume, readErr = local.authenticateProvisionalRetainedPlan(ctx, active)
 				}
 				report.add("provisional-retained-plan-resume", readErr)
 				if retainedPlanResume {
@@ -727,6 +746,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
+	retainedScenarioStartup := cmd == "scenario" && retainedPlanResume && stoppedAdoption != nil
 	if needsDoctor {
 		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
 		report.Doctor = &doctor
@@ -763,11 +783,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		report.add("managed-dependencies", startDependencies(ctx, cfg))
 	}
 	var bins map[string]string
-	if liveAdoption == nil && liveAdoptionErr == nil && requiresReleaseBinaries(cmd) {
+	if liveAdoption == nil && liveAdoptionErr == nil && (requiresReleaseBinaries(cmd) || retainedScenarioStartup) {
 		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
 		report.add("release-binaries", err)
 	}
-	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume" || retainedScenarioStartup) {
 		if liveAdoptionErr == nil {
 			report.add("release-host", preflightReleaseHost(ctx, stateDir, cfg, bins))
 		} else {
@@ -867,10 +887,12 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 					}
 				}
 			}
-			if o.Name == releaseCandidateCampaignName {
-				return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
-			}
-			return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
+			return runScenarioAfterRetainedStartup(ctx, ex, stoppedAdoption, bins, launchRetainedProvisionalTopology, func() error {
+				if o.Name == releaseCandidateCampaignName {
+					return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
+				}
+				return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
+			})
 		}
 		if retainedPlanResume {
 			if liveAdoption != nil {
@@ -956,10 +978,14 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 	}
 	var plan *SetupPlan
 	var err error
-	if command == "setup" {
-		raw, readErr := readValidatorEvidenceHistoricalFile(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
+	reviewed, err := provisionalReviewedPlan(command, !options.Apply)
+	if err != nil {
+		return nil, err
+	}
+	if reviewed {
+		raw, readErr := readSetupPlanBytes(stateDir, filepath.Join("plans", stringsTrim0x(options.PlanHash)+".json"))
 		if readErr != nil {
-			return nil, fmt.Errorf("read exact reviewed setup plan %s: %w", options.PlanHash, readErr)
+			return nil, fmt.Errorf("read exact reviewed %s plan %s: %w", command, options.PlanHash, readErr)
 		}
 		plan, err = loadPlanIdentityBytes(cfg, raw, true)
 	} else {
@@ -977,7 +1003,7 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 // Authenticate the persisted wire and all current operational inputs before
 // admitting it. A retained release never changes or rehashes the stored plan.
 func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelease bool) (*SetupPlan, error) {
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
 	}
@@ -1071,7 +1097,7 @@ func readPersistedPlan(stateDir string) (*SetupPlan, error) {
 // and current artifact. Archived ancestors use the separate historical reader;
 // both paths reject a hand-edited approval before interpreting its contents.
 func readPersistedPlanFile(path string) (*SetupPlan, error) {
-	b, err := os.ReadFile(path)
+	b, err := readSetupPlanFileBytes(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1092,8 +1118,8 @@ func decodePersistedPlanBytesForHistory(b []byte, historical bool) (*SetupPlan, 
 
 // Exact wire hashing precedes identity dispatch or interpretation of history.
 func decodePersistedPlanWire(b []byte) (*SetupPlan, error) {
-	if len(b) == 0 || len(b) > maximumCampaignEvidenceRawFileBytes {
-		return nil, errors.New("persisted setup plan exceeds its archival byte bound")
+	if err := validateSetupPlanWireSize(len(b)); err != nil {
+		return nil, err
 	}
 	var p SetupPlan
 	if err := json.Unmarshal(b, &p); err != nil {
@@ -1130,7 +1156,10 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 		return err
 	}
 	planBytes := append(b, '\n')
-	priorBytes, priorErr := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	if err := validateSetupPlanWireSize(len(planBytes)); err != nil {
+		return err
+	}
+	priorBytes, priorErr := readSetupPlanBytes(stateDir, "plan.json")
 	if priorErr == nil {
 		prior, decodeErr := decodePersistedPlanBytes(priorBytes)
 		if decodeErr != nil {
@@ -1835,6 +1864,9 @@ func (e *Executor) verifyInitialRegistrationPreState(ctx context.Context, action
 }
 
 func (e *Executor) Execute(ctx context.Context, a Action) error {
+	if err := e.validatePrecompileRecoveryDispatch(a); err != nil {
+		return err
+	}
 	if e != nil && e.cfg != nil && e.cfg.readOnlyAudit {
 		return errors.New("historical audit cannot execute actions")
 	}
@@ -1934,7 +1966,12 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 }
 
 func (e *Executor) execute(ctx context.Context, a Action) error {
+	if err := e.validatePrecompileRecoveryDispatch(a); err != nil {
+		return err
+	}
 	switch {
+	case strings.HasPrefix(a.ID, precompileRecoveryActionPrefix):
+		return e.executePrecompileRecoveryStep(ctx, a)
 	case isFleetRenewalAction(a):
 		return e.executeFleetRenewalAction(ctx, a)
 	case a.ID == coordinatorRepairCarryActionID:

@@ -867,27 +867,9 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 	if err != nil {
 		return nil, err
 	}
-	observation.EVMBuild["reserve_sink_runtime_hash"] = ReserveSinkRuntimeBytecodeHash
-	observation.EVMBuild["settlement_vault_runtime_hash"] = SettlementVaultRuntimeBytecodeHash
-	observation.EVMBuild["coordinator_implementation_runtime_hash"] = CoordinatorRuntimeBytecodeHash
-	observation.EVMBuild["coordinator_proxy_runtime_hash"] = ERC1967ProxyRuntimeBytecodeHash
-	observation.EVMBuild["governance_drill_implementation_runtime_hash"] = CoordinatorAdversaryRuntimeBytecodeHash
-	observation.EVMBuild["precompile_probe_runtime_hash"] = SubnetProbeRuntimeBytecodeHash
-	observation.EVMBuild["fleet_batcher_runtime_hash"] = FleetBatcherRuntimeBytecodeHash
-	observation.EVMBuild["reserve_sink_artifact_hash"] = ReserveSinkFoundryArtifactHash
-	observation.EVMBuild["settlement_vault_artifact_hash"] = SettlementVaultFoundryArtifactHash
-	observation.EVMBuild["coordinator_implementation_artifact_hash"] = CoordinatorFoundryArtifactHash
-	observation.EVMBuild["coordinator_proxy_artifact_hash"] = ERC1967ProxyFoundryArtifactHash
-	observation.EVMBuild["governance_drill_implementation_artifact_hash"] = CoordinatorAdversaryFoundryArtifactHash
-	observation.EVMBuild["precompile_probe_artifact_hash"] = SubnetProbeFoundryArtifactHash
-	observation.EVMBuild["fleet_batcher_artifact_hash"] = FleetBatcherFoundryArtifactHash
-	observation.EVMBuild["governance_drill_storage_layout_hash"] = CoordinatorAdversaryStorageLayoutHash
-	observation.EVMBuild["fleet_batcher_storage_layout_hash"] = FleetBatcherStorageLayoutHash
-	observation.EVMBuild["validator_evidence_runtime_hash"] = ValidatorEvidenceRuntimeBytecodeHash
-	observation.EVMBuild["validator_evidence_artifact_hash"] = ValidatorEvidenceFoundryArtifactHash
-	observation.EVMBuild["validator_evidence_storage_layout_hash"] = ValidatorEvidenceStorageLayoutHash
-	observation.EVMBuild["abi_hash"] = generatedABIHash()
-	observation.EVMBuild["coordinator_storage_layout_hash"] = CoordinatorStorageLayoutHash
+	for key, value := range generatedReleaseBuildObservation() {
+		observation.EVMBuild[key] = value
+	}
 
 	parent := filepath.Dir(cfg.Repos.SN)
 	modules := map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server}

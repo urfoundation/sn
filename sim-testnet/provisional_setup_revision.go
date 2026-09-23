@@ -44,7 +44,7 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 	if err := validateReviewedSetupRepairRetirements(source, self.plan, entries); err != nil {
 		return err
 	}
-	reviewedBytes, err := readValidatorEvidenceHistoricalFile(self.stateDir, filepath.Join("plans", stringsTrim0x(self.plan.PlanHash)+".json"), maximumCampaignEvidenceRawFileBytes)
+	reviewedBytes, err := readSetupPlanBytes(self.stateDir, filepath.Join("plans", stringsTrim0x(self.plan.PlanHash)+".json"))
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (self *Executor) activateProvisionalSetupRevision(ctx context.Context, sour
 			return err
 		}
 	}
-	current, err := readValidatorEvidenceHistoricalFile(self.stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	current, err := readSetupPlanBytes(self.stateDir, "plan.json")
 	if err != nil || !bytes.Equal(current, sourceBytes) || !slices.Equal(entries, self.journal.Entries()) {
 		return stateMismatchError(err, "provisional setup source plan or journal changed before activation")
 	}

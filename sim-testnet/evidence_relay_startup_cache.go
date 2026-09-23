@@ -485,6 +485,15 @@ func readEvidenceRelayStartupCacheEnvelope(directory *os.File, name string, maxi
 }
 
 func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.File, error) {
+	return openEvidenceRelayPrivateCacheDirectory(stateDir, evidenceRelayStartupCacheDirectoryName, create)
+}
+
+// Both provisional caches retain private descriptor-owned entries beneath the
+// original state owner; a link in any path component cannot redirect writes.
+func openEvidenceRelayPrivateCacheDirectory(stateDir, name string, create bool) (*os.File, error) {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return nil, errors.New("relay cache directory name is not canonical")
+	}
 	path, err := filepath.Abs(stateDir)
 	if err != nil {
 		return nil, err
@@ -510,13 +519,15 @@ func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.F
 		return nil, err
 	}
 	if create {
-		if err := unix.Mkdirat(fd, evidenceRelayStartupCacheDirectoryName, 0o700); err == nil {
-			_ = unix.Fsync(fd)
+		if err := unix.Mkdirat(fd, name, 0o700); err == nil {
+			if err := unix.Fsync(fd); err != nil {
+				return nil, err
+			}
 		} else if !errors.Is(err, unix.EEXIST) {
 			return nil, err
 		}
 	}
-	cacheFD, err := unix.Openat(fd, evidenceRelayStartupCacheDirectoryName, flags, 0)
+	cacheFD, err := unix.Openat(fd, name, flags, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +535,7 @@ func openEvidenceRelayStartupCacheDirectory(stateDir string, create bool) (*os.F
 		unix.Close(cacheFD)
 		return nil, err
 	}
-	return os.NewFile(uintptr(cacheFD), evidenceRelayStartupCacheDirectoryName), nil
+	return os.NewFile(uintptr(cacheFD), name), nil
 }
 
 func (entry *evidenceRelayStartupCacheEntry) save(ctx context.Context, proof evidenceRelayStartupCacheProof) bool {
@@ -711,16 +722,22 @@ func (self *evidenceRelayRuntime) readEvidenceRelayStartupManifests(ctx context.
 	closed := make([]validatorcomponent.ValidatorEvidencePublicationV2Manifest, 0, len(inventory.closed)-closedStart)
 	for _, witness := range inventory.closed[closedStart:] {
 		manifest, err := validatorcomponent.ReadValidatorEvidencePublicationV2Manifest(ctx, evidenceRelayStartupWitnessPath(self.executor.stateDir, witness), source.bounds.MaxClosureBytes, source.bounds.MaxParticipants)
-		if err != nil || !self.matchEvidenceRelayStartupWitness(witness) {
-			return nil, nil, errors.Join(errors.New("relay startup closed manifest changed during suffix read"), err)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !self.matchEvidenceRelayStartupWitness(witness) {
+			return nil, nil, errors.New("relay startup closed manifest changed during suffix read")
 		}
 		closed = append(closed, *manifest)
 	}
 	audits := make([]validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest, 0, len(inventory.audits)-auditStart)
 	for _, witness := range inventory.audits[auditStart:] {
 		manifest, err := validatorcomponent.ReadValidatorEvidenceDepositAuditV2Manifest(ctx, evidenceRelayStartupWitnessPath(self.executor.stateDir, witness), source.bounds.MaxClosureBytes, source.bounds.MaxParticipants)
-		if err != nil || !self.matchEvidenceRelayStartupWitness(witness) {
-			return nil, nil, errors.Join(errors.New("relay startup audit manifest changed during suffix read"), err)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !self.matchEvidenceRelayStartupWitness(witness) {
+			return nil, nil, errors.New("relay startup audit manifest changed during suffix read")
 		}
 		audits = append(audits, *manifest)
 	}
@@ -918,8 +935,11 @@ func (session *evidenceRelayStartupSession) ready(runtime *evidenceRelayRuntime,
 
 func (session *evidenceRelayStartupSession) buildAction(ctx context.Context, runtime *evidenceRelayRuntime, entries []JournalEntry, draft evidenceRelayStartupActionDraft, owners map[string]*SetupPlan) (evidenceRelayStartupAction, error) {
 	owner, request, requestRaw, err := readOwnedEvidenceRelayRequest(ctx, runtime.executor.stateDir, runtime.executor.plan, entries, draft.action.ID, owners)
-	if err != nil || owner.PlanHash != draft.planHash || !reflect.DeepEqual(request.Action, draft.action) || request.Evidence.Evidence.Header != draft.header {
-		return evidenceRelayStartupAction{}, errors.Join(errors.New("relay startup action no longer matches its successful verification"), err)
+	if err != nil {
+		return evidenceRelayStartupAction{}, err
+	}
+	if owner.PlanHash != draft.planHash || !reflect.DeepEqual(request.Action, draft.action) || request.Evidence.Evidence.Header != draft.header {
+		return evidenceRelayStartupAction{}, errors.New("relay startup action no longer matches its successful verification")
 	}
 	receiptPath := filepath.Join(runtime.executor.stateDir, "evidence-relay", draft.action.ID+".receipt.json")
 	receiptRaw, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, receiptPath, 4*1024*1024)

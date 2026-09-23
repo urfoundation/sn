@@ -154,8 +154,7 @@ func (self *liveScenarioProbe) streamPublicCampaignArchiveV2(ctx context.Context
 			}
 		}
 	}
-	var controlBytes uint64
-	var ordinaryControlBytes uint64
+	var retained finalPlanRetentionBudget
 	var peakOriginalBytes uint64
 	sourceCount := uint64(len(sources))
 	references := map[string]campaignArtifactReference{}
@@ -191,8 +190,7 @@ func (self *liveScenarioProbe) streamPublicCampaignArchiveV2(ctx context.Context
 			return nil, err
 		}
 		if campaignCaptureControlV2(name) || wantedControls[name] {
-			controlBytes, ordinaryControlBytes, err = admitCampaignMetadataRetentionV2(limits, name, uint64(len(raw)), false, controlBytes, ordinaryControlBytes)
-			if err != nil {
+			if err := retained.admit(limits, name, uint64(len(raw)), false); err != nil {
 				return nil, err
 			}
 			controls[name] = raw
@@ -265,7 +263,7 @@ func (self *liveScenarioProbe) streamPublicCampaignArchiveV2(ctx context.Context
 	if metadata != nil {
 		metadataBytes = metadata.usedBytes
 	}
-	return &campaignEvidenceReadbackV2{controls: controls, sourceCount: sourceCount, sourceBytes: aggregate, peakOriginalBytes: peakOriginalBytes, retainedControlBytes: controlBytes, graphMetadataBytes: metadataBytes}, nil
+	return &campaignEvidenceReadbackV2{controls: controls, sourceCount: sourceCount, sourceBytes: aggregate, peakOriginalBytes: peakOriginalBytes, retainedControlBytes: retained.controlBytes + retained.planBytes, graphMetadataBytes: metadataBytes}, nil
 }
 
 // Missing interpretation is reported only after complete bounded custody
@@ -331,7 +329,7 @@ func (self *liveScenarioProbe) verifyPublicCampaignCaptureV2(ctx context.Context
 			return errors.New("compact prior original signer differs from the current completion")
 		}
 		read := func(ctx context.Context, origin, hash string, maximumBytes uint64) ([]byte, error) {
-			raw, _, err := self.get(ctx, origin+"/sn/evidence?hash="+hash, int64(maximumBytes))
+			raw, _, err := self.getCampaignEvidence(ctx, origin+"/sn/evidence?hash="+hash, campaignEvidenceFileKind, int64(maximumBytes), limits)
 			return raw, err
 		}
 		if err := verifyFinalPriorCarriersV2(ctx, self.cfg, prior.RunID, priorPayload, prior.CarrierOrigins, prior.PublicCarriers, common.HexToAddress(ownerSigner), read); err != nil {

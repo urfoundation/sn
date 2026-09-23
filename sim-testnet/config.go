@@ -57,6 +57,7 @@ type HarnessConfig struct {
 	ValidatorBootstrap                  ValidatorBootstrapConfig                        `yaml:"validator_bootstrap" json:"validator_bootstrap"`
 	ValidatorEvidenceV2                 []validatorpkg.ReleaseValidatorEvidenceV2Config `yaml:"validator_evidence_v2" json:"validator_evidence_v2"`
 	ValidatorEvidenceRelay              evidenceRelayConfig                             `yaml:"validator_evidence_relay" json:"validator_evidence_relay"`
+	EvidenceArchiveMetadata             *campaignMetadataCapacityConfig                 `yaml:"evidence_archive_metadata,omitempty" json:"evidence_archive_metadata,omitempty"`
 	ProvisionValidatorEvidenceV2        bool                                            `yaml:"provision_validator_evidence_v2" json:"provision_validator_evidence_v2,omitempty"`
 	ValidatorEvidenceActivationGasUnits uint64                                          `yaml:"validator_evidence_activation_gas_units" json:"validator_evidence_activation_gas_units,omitempty"`
 	Contracts                           ContractConfig                                  `yaml:"contracts" json:"contracts"`
@@ -354,6 +355,9 @@ type CompatibilityGate struct {
 
 type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
+	// Read-only plan proofs are shared only by nested runtime render readers.
+	// Exact source bytes and operational authority are reobserved on every use.
+	runtimePlanReads *runtimePlanReadScope
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
 	readOnlyAudit bool
@@ -526,6 +530,9 @@ func releaseConfigHash(config *HarnessConfig, public *PublicManifest, hyperparam
 func (c *HarnessConfig) Validate() error {
 	if c.SchemaVersion != 1 || c.Profile != releaseProfile {
 		return fmt.Errorf("config must be schema 1 profile %s", releaseProfile)
+	}
+	if err := c.EvidenceArchiveMetadata.validate(); err != nil {
+		return err
 	}
 	// Planning can precede provisioning, but a supplied capacity is never
 	// silently corrected. Actual rendering requires all four limits below.

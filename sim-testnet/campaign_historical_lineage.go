@@ -22,13 +22,13 @@ type scenarioCampaignLineageReader struct {
 	roles    *RoleSecrets
 	planHash string
 	current  *SetupPlan
-	planKVs  map[string]*SetupPlan
+	plans    *scenarioCampaignPlanLookup
 }
 
 // Ordinary current-attempt reads remain strict. Historical admission requires
 // the exact current provisional approval, including its operational inputs.
 func newScenarioCampaignLineageReader(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string) (*scenarioCampaignLineageReader, error) {
-	self := &scenarioCampaignLineageReader{cfg: cfg, stateDir: stateDir, roles: roles, planHash: planHash}
+	self := &scenarioCampaignLineageReader{cfg: cfg, stateDir: stateDir, roles: roles, planHash: planHash, plans: &scenarioCampaignPlanLookup{stateDir: stateDir}}
 	if !provisionalResumeEnabled(cfg) {
 		return self, nil
 	}
@@ -40,7 +40,6 @@ func newScenarioCampaignLineageReader(cfg *ResolvedConfig, stateDir string, role
 		return nil, errors.Join(errors.New("historical campaign lineage current approval is unavailable"), err)
 	}
 	self.current = current
-	self.planKVs = map[string]*SetupPlan{current.PlanHash: current}
 	return self, nil
 }
 
@@ -87,13 +86,9 @@ func (self *scenarioCampaignLineageReader) read(path string) (*scenarioCampaignA
 	if payload.PlanHash != self.planHash && !self.current.allowedPlanHashes()[payload.PlanHash] {
 		return nil, nil, errors.New("historical campaign plan is not an approved ancestor")
 	}
-	plan := self.planKVs[payload.PlanHash]
-	if plan == nil {
-		plan, _, err = readScenarioSuccessionPlan(self.stateDir, payload.PlanHash)
-		if err != nil {
-			return nil, nil, err
-		}
-		self.planKVs[payload.PlanHash] = plan
+	plan, _, err := self.plans.read(self.stateDir, payload.PlanHash)
+	if err != nil {
+		return nil, nil, err
 	}
 	if !scenarioCampaignLineagePlansMatch(self.current, plan) || payload.ConfigHash != plan.ConfigHash || payload.PolicyHash != plan.PolicyHash {
 		return nil, nil, errors.New("historical campaign differs from its approved configuration, policy, deployment or custody")
@@ -131,17 +126,29 @@ func validateHistoricalScenarioCampaignFaults(window *ScenarioAcceptanceWindow, 
 // Every cross-approval edge must move forward in its own signed plan lineage,
 // even if the current approval lists both endpoints among its ancestors.
 func validateScenarioCampaignLineageEdge(attempt, prior *scenarioCampaignAttempt) error {
+	if attempt == nil || prior == nil {
+		return errors.New("campaign recovery lineage edge is absent")
+	}
+	return validateScenarioCampaignLineageEdgeWithPlans(attempt, prior, &scenarioCampaignPlanLookup{stateDir: attempt.stateDir})
+}
+
+// The same authenticated approvals serve the signed envelope and its edge.
+func validateScenarioCampaignLineageEdgeWithPlans(attempt, prior *scenarioCampaignAttempt, plans *scenarioCampaignPlanLookup) (resultErr error) {
+	defer func() { resultErr = errors.Join(resultErr, plans.check()) }()
+	if attempt == nil || prior == nil {
+		return errors.New("campaign recovery lineage edge is absent")
+	}
 	if attempt.payload.PlanHash == prior.payload.PlanHash {
 		if attempt.payload.ConfigHash != prior.payload.ConfigHash || attempt.payload.PolicyHash != prior.payload.PolicyHash {
 			return errors.New("campaign recovery mixed configuration or policy within one approval")
 		}
 		return nil
 	}
-	current, _, err := readScenarioSuccessionPlan(attempt.stateDir, attempt.payload.PlanHash)
+	current, _, err := plans.read(attempt.stateDir, attempt.payload.PlanHash)
 	if err != nil {
 		return err
 	}
-	previous, _, err := readScenarioSuccessionPlan(attempt.stateDir, prior.payload.PlanHash)
+	previous, _, err := plans.read(attempt.stateDir, prior.payload.PlanHash)
 	if err != nil {
 		return err
 	}

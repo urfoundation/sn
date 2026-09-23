@@ -1197,7 +1197,7 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 		return 0, nil, fmt.Errorf("%s: %w", action.ID, err)
 	}
 	if gas > maximumGasUnits {
-		return 0, nil, fmt.Errorf("%s padded gas %d exceeds approved gas-unit ceiling %d", action.ID, gas, maximumGasUnits)
+		return 0, nil, &evmGasUnitCeilingError{actionId: action.ID, intentHash: action.IntentHash, paddedGas: gas, maximumGas: maximumGasUnits}
 	}
 	maximumCost := new(big.Int).Mul(new(big.Int).SetUint64(gas), feeCap)
 	actionCeiling, ceilingErr := action.Spend.EVMGasWei.Big()
@@ -1220,6 +1220,9 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 // Verify optional exact transaction fields which are hash-bound into critical
 // deployment actions. Either the complete field set is present or none is.
 func validateApprovedEVMTransactionFields(action Action, signer common.Address, nonce uint64, to *common.Address, value *big.Int, data []byte) error {
+	if err := validatePrecompileRecoveryTransactionFields(action, signer, to, value, data); err != nil {
+		return err
+	}
 	if err := validateFleetRenewalEVMFields(action, signer, nonce, to, value, data); err != nil {
 		return err
 	}
@@ -1320,7 +1323,10 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		if err := validateFleetRenewalSignedTransaction(a, &tx, m.chainID); err != nil {
 			return nil, err
 		}
-		if a.ID == validatorEvidenceAnchorActionID && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
+		if err := validatePrecompileRecoverySignedBounds(a, &tx); err != nil {
+			return nil, err
+		}
+		if (a.ID == validatorEvidenceAnchorActionID || strings.HasPrefix(a.ID, precompileRecoveryActionPrefix)) && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
 			return nil, errors.New("persisted validator evidence anchor transaction has another or unprotected chain")
 		}
 		signer, err := types.Sender(types.LatestSignerForChainID(m.chainID), &tx)
@@ -1333,7 +1339,13 @@ func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash 
 		return &tx, nil
 	}
 	from := crypto.PubkeyToAddress(m.key.PublicKey)
-	nonce, err := m.client.PendingNonceAt(ctx, from)
+	var nonce uint64
+	var err error
+	if isFleetRenewalAction(a) {
+		nonce, err = readFleetRenewalPendingNonce(ctx, m.client, from, a, defaultFinalSemanticRPCRetryPolicy())
+	} else {
+		nonce, err = m.client.PendingNonceAt(ctx, from)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1437,12 +1449,13 @@ func (m *EvmTxManager) waitExactTransaction(ctx context.Context, planHash string
 	}
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
+	transientBroadcastFailures := 0
 	for {
-		receipt, err := m.client.TransactionReceipt(ctx, signed.Hash())
+		receipt, err := readExactEvmReceipt(ctx, m.client, signed.Hash(), false, defaultFinalSemanticRPCRetryPolicy())
 		if err == nil {
 			return m.finalizeReceipt(ctx, planHash, a, signed.Hash(), receipt)
 		}
-		if err != ethereum.NotFound {
+		if !errors.Is(err, ethereum.NotFound) {
 			return nil, err
 		}
 		head, err := finalizedEVMHead(ctx, m.client)
@@ -1454,10 +1467,20 @@ func (m *EvmTxManager) waitExactTransaction(ctx context.Context, planHash string
 			return nil, err
 		}
 		if nonce > signed.Nonce() {
-			return nil, fmt.Errorf("EVM nonce %d was consumed by a different finalized transaction", signed.Nonce())
+			receipt, err := readExactEvmReceipt(ctx, m.client, signed.Hash(), true, defaultFinalSemanticRPCRetryPolicy())
+			if err != nil {
+				return nil, err
+			}
+			return m.finalizeReceipt(ctx, planHash, a, signed.Hash(), receipt)
 		}
 		if err := m.client.SendTransaction(ctx, signed); !knownEVMTxError(err) {
-			return nil, fmt.Errorf("rebroadcast exact EVM transaction %s: %w", signed.Hash(), err)
+			transientBroadcastFailures++
+			if ctx.Err() != nil || !evmReadRpcErrorIsTransient(err) || transientBroadcastFailures >= maximumExactEvmBroadcastFailures {
+				return nil, fmt.Errorf("rebroadcast exact EVM transaction %s: %w", signed.Hash(), err)
+			}
+			fmt.Fprintf(os.Stderr, "sim-testnet: exact transaction %s broadcast response is uncertain; retained receipt reconciliation continues: %v\n", signed.Hash(), err)
+		} else {
+			transientBroadcastFailures = 0
 		}
 		select {
 		case <-ctx.Done():
@@ -1497,12 +1520,23 @@ func (m *EvmTxManager) finalizeReceipt(ctx context.Context, planHash string, a A
 		return r, err
 	}
 	if finalized.Status != types.ReceiptStatusSuccessful {
-		return finalized, fmt.Errorf("EVM transaction %s reverted in its canonical inclusion", finalized.TxHash)
+		return finalized, &evmCanonicalRevertError{transactionHash: finalized.TxHash}
 	}
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: expectedHash.Hex(), BlockNumber: finalized.BlockNumber.Uint64(), BlockHash: finalized.BlockHash.Hex(), RecoveryBlock: recovery.Number, RecoveryBlockHash: recovery.Hash}); err != nil {
 		return finalized, err
 	}
 	return finalized, nil
+}
+
+// A canonical revert is distinct from an interrupted receipt or journal write.
+// Permissionless publication races may reconcile this exact on-chain outcome.
+type evmCanonicalRevertError struct {
+	transactionHash common.Hash
+}
+
+// Retain the established diagnostic while exposing exact outcome identity.
+func (self *evmCanonicalRevertError) Error() string {
+	return fmt.Sprintf("EVM transaction %s reverted in its canonical inclusion", self.transactionHash)
 }
 
 type evmReceiptFinalityReader interface {

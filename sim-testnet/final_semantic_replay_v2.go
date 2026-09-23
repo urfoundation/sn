@@ -167,7 +167,7 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	readControl := func(locator FinalArtifactLocator) ([]byte, error) {
 		return loadFinalV2Source(ctx, load, locator, maximumCampaignEvidenceRawFileBytes)
 	}
-	planBytes, err := readControl(evidence.PlanArtifact)
+	planBytes, err := loadFinalV2Source(ctx, load, evidence.PlanArtifact, maximumSetupPlanFileBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err != nil {
 		return nil, err
 	}
-	sourceBytes, err := readControl(manifest.SourcePlan)
+	sourceBytes, err := loadFinalV2Source(ctx, load, manifest.SourcePlan, maximumSetupPlanFileBytes)
 	if err != nil {
 		return nil, err
 	}

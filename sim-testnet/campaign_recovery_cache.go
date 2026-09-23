@@ -59,24 +59,9 @@ func scenarioCampaignRecoveryProofContext(attempt *scenarioCampaignAttempt) (str
 func scenarioCampaignRecoveryProofWitnesses(attempt *scenarioCampaignAttempt) ([]fleetCensusFileWitness, bool) {
 	var witnesses []fleetCensusFileWitness
 	add := func(name string, directory bool) bool {
-		info, err := os.Lstat(filepath.Join(attempt.stateDir, filepath.FromSlash(name)))
-		if errors.Is(err, os.ErrNotExist) && !directory {
-			witnesses = append(witnesses, fleetCensusFileWitness{Name: name})
-			return true
-		}
-		if err != nil || info.Mode().Perm()&0o022 != 0 || directory && !info.IsDir() || !directory && !info.Mode().IsRegular() {
+		witness, ok := scenarioCampaignRecoverySourceWitness(attempt.stateDir, name, directory)
+		if !ok {
 			return false
-		}
-		device, inode, uid, changed, err := evidenceRelayStartupFileIdentity(info)
-		if err != nil || uid != uint32(os.Geteuid()) {
-			return false
-		}
-		witness := fleetCensusFileWitness{Name: name, Size: info.Size(), Mode: uint32(info.Mode()), Device: device, Inode: inode,
-			ModifiedNanosecond: info.ModTime().UnixNano(), ChangedNanosecond: changed}
-		if directory {
-			// The inventory below witnesses membership. Atomic writes of unrelated
-			// live files must not invalidate every immutable historical proof.
-			witness.Size, witness.ModifiedNanosecond, witness.ChangedNanosecond = 0, 0, 0
 		}
 		witnesses = append(witnesses, witness)
 		return true

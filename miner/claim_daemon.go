@@ -109,6 +109,7 @@ type ClaimQueueEntry struct {
 	Epoch              int64  `json:"epoch"`
 	Status             string `json:"status"`
 	Attempts           int    `json:"attempts"`
+	ReconcileAttempts  int    `json:"reconcile_attempts,omitempty"`
 	UpdatedAt          string `json:"updated_at"`
 	NextRetryAt        string `json:"next_retry_at,omitempty"`
 	TxHash             string `json:"tx_hash,omitempty"`
@@ -126,7 +127,13 @@ type ClaimQueue struct {
 	Entries        map[string]*ClaimQueueEntry `json:"entries"`
 }
 
-type claimQueueStore struct{ path string }
+// One daemon owns this store. Only a successful file and directory sync can
+// establish the same-process acknowledgement used for unchanged saves.
+type claimQueueStore struct {
+	path      string
+	savedHash [sha256.Size]byte
+	saved     bool
+}
 
 func newClaimQueueStore(stateDir string) (*claimQueueStore, error) {
 	if !filepath.IsAbs(stateDir) {
@@ -174,12 +181,36 @@ func (s *claimQueueStore) load() (*ClaimQueue, error) {
 	return &q, nil
 }
 
-func (s *claimQueueStore) save(q *ClaimQueue) error {
+// Compare the current durable bytes, not a process-local cache: unchanged
+// discovery polls need no rename/fsync, and removed files must be recreated.
+func (self *claimQueueStore) save(q *ClaimQueue) error {
 	b, err := json.MarshalIndent(q, "", "  ")
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(s.path), ".claim-queue-")
+	b = append(b, '\n')
+	hash := sha256.Sum256(b)
+	if self.saved && self.savedHash == hash {
+		info, statErr := os.Lstat(self.path)
+		if statErr == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o600 {
+			prior, readErr := os.ReadFile(self.path)
+			if readErr == nil && bytes.Equal(prior, b) {
+				return nil
+			}
+			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+				self.saved = false
+				return readErr
+			}
+		}
+		self.saved = false
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			return statErr
+		}
+	}
+	// A failed rename or directory sync must not make the next identical
+	// attempt skip the durability boundary merely because bytes are visible.
+	self.saved = false
+	f, err := os.CreateTemp(filepath.Dir(self.path), ".claim-queue-")
 	if err != nil {
 		return err
 	}
@@ -189,7 +220,7 @@ func (s *claimQueueStore) save(q *ClaimQueue) error {
 		f.Close()
 		return err
 	}
-	if _, err := f.Write(append(b, '\n')); err != nil {
+	if _, err := f.Write(b); err != nil {
 		f.Close()
 		return err
 	}
@@ -200,15 +231,19 @@ func (s *claimQueueStore) save(q *ClaimQueue) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
+	if err := os.Rename(tmp, self.path); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(s.path))
+	dir, err := os.Open(filepath.Dir(self.path))
 	if err != nil {
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	if err := dir.Sync(); err != nil {
+		return err
+	}
+	self.savedHash, self.saved = hash, true
+	return nil
 }
 
 func claimRetry(attempt int) time.Duration {
@@ -916,73 +951,17 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, chainStateLo
 				return err
 			}
 		}
-		for epoch := int64(0); epoch <= queue.LastDiscovered; epoch++ {
-			entry := queue.Entries[fmt.Sprint(epoch)]
-			if entry == nil || entry.Status == "finalized" || entry.Status == "no-claim" {
-				continue
-			}
-			reconciled, reconcileErr := reconcileClaimEntryWithLock(ctx, cfg, api, entry, chainStateLock, reconcileClaimEntry)
-			if reconciled != "" {
-				entry.Status = reconciled
-				entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-				entry.LastError = ""
-				entry.NextRetryAt = ""
-				if err := store.save(queue); err != nil {
-					return err
-				}
-				if reconciled == "finalized" || reconciled == "no-claim" {
-					continue
-				}
-			}
-			if entry.Status == "uncertain" {
-				if reconcileErr != nil {
-					entry.LastError = "uncertain transaction reconciliation: " + reconcileErr.Error()
-					entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-					_ = store.save(queue)
-				}
-				continue
-			}
-			if reconcileErr != nil {
-				entry.Status = "retry"
-				entry.LastError = "claim is not ready for finalized reconciliation: " + reconcileErr.Error()
-				entry.NextRetryAt = time.Now().Add(claimRetry(max(1, entry.Attempts))).UTC().Format(time.RFC3339Nano)
-				entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-				if err := store.save(queue); err != nil {
-					return err
-				}
-				continue
-			}
-			if entry.NextRetryAt != "" {
-				when, parseErr := time.Parse(time.RFC3339Nano, entry.NextRetryAt)
-				if parseErr == nil && time.Now().Before(when) {
-					continue
-				}
-			}
-			entry.Status = "submitting"
-			entry.Attempts++
-			entry.TxHash = ""
-			entry.RawTxHex = ""
-			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-			entry.LastError = ""
-			if err := store.save(queue); err != nil {
-				return err
-			}
-			claimErr := submitClaimDirect(ctx, cfg, api, entry, chainStateLock, store, queue)
-			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-			if claimErr == nil {
-				entry.Status = "finalized"
-				entry.NextRetryAt = ""
-			} else if entry.TxHash != "" {
-				entry.Status = "uncertain"
-				entry.LastError = "transaction was broadcast but finality was not confirmed: " + claimErr.Error()
-			} else {
-				entry.Status = "retry"
-				entry.LastError = claimErr.Error()
-				entry.NextRetryAt = time.Now().Add(claimRetry(entry.Attempts)).UTC().Format(time.RFC3339Nano)
-			}
-			if err := store.save(queue); err != nil {
-				return err
-			}
+		if err := pollClaimQueue(ctx, queue, claimQueuePollHooks{
+			now:  time.Now,
+			save: store.save,
+			reconcile: func(ctx context.Context, entry *ClaimQueueEntry) (string, error) {
+				return reconcileClaimEntryWithLock(ctx, cfg, api, entry, chainStateLock, reconcileClaimEntry)
+			},
+			submit: func(ctx context.Context, entry *ClaimQueueEntry) error {
+				return submitClaimDirect(ctx, cfg, api, entry, chainStateLock, store, queue)
+			},
+		}); err != nil {
+			return err
 		}
 		select {
 		case <-ctx.Done():

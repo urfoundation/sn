@@ -30,15 +30,12 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
 		return errors.New("--owned-rpc-authority cannot combine another route or public-manifest override")
 	}
 	if options.ProvisionalResume {
-		if command != "setup" && command != "resume" && command != "scenario" {
-			return errors.New("provisional owned RPC is restricted to approved setup, resume or scenario")
-		}
 		if err := validateProvisionalResumeOptions(command, options); err != nil {
 			return err
 		}
 	}
 	switch command {
-	case "audit", "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
+	case "audit", "doctor", "plan", "setup", "launch", "resume", "coordinator-repair", "probe-recovery", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
 	default:
 		return fmt.Errorf("--owned-rpc-authority is not supported by %s", command)
 	}

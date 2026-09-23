@@ -28,6 +28,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	ProbeRecoveryExecute                                                                                                            bool
+	ProbeRecoveryBudget, ProbeRecoveryBudgetSHA256                                                                                  string
 	RelayContinuationPlan                                                                                                           string
 	RelayEndBlock                                                                                                                   uint64
 	RelaySlots                                                                                                                      uint64
@@ -63,11 +65,12 @@ Commands:
   audit    read-only retained-plan and action-history checks; reports all findings
   resume   reconcile the journal and continue an interrupted approved action
   coordinator-repair  apply one bounded provisional coordinator implementation correction
+  probe-recovery  authorize bounded probe recovery, or execute it with --execute-recovery under exclusive journal ownership
   fleet-renew  plan or resume an exact next-generation renewal of existing fleets
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
-  scenario run a named scenario (precompile-conformance, smoke, epoch, release-1.0, production-soak, release-candidate, or fault scenario)
+  scenario run a named scenario (precompile-prepare, precompile-conformance, smoke, epoch, release-1.0, production-soak, release-candidate, or fault scenario)
   tail     multiplex structured process logs
   stop     stop local processes only; preserves keys, evidence, and chain state
   retire   plan future-effective operator retirement; dry-run by default
@@ -84,7 +87,8 @@ Common options:
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --prepare-only      approved setup/launch/resume preparation; report all failures and stop before actions
   --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
-  --provisional-resume  reuse authenticated testnet receipts; setup may activate the exact approved repair revision; no final release acceptance
+  --provisional-resume  reuse authenticated testnet evidence for diagnostics, continuation and exact setup/fleet repairs; no final release acceptance
+                        doctor observes the exact retained --plan-hash without --apply
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
   --relay-slots 2048  capture an explicit doubled aggregate relay funding revision
@@ -114,6 +118,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	cmd := args[0]
 	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid["probe-recovery"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -121,6 +126,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.SetOutput(os.Stderr)
 	var o cliOptions
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
+	fs.BoolVar(&o.ProbeRecoveryExecute, "execute-recovery", false, "")
+	fs.StringVar(&o.ProbeRecoveryBudget, "probe-recovery-budget", "", "")
+	fs.StringVar(&o.ProbeRecoveryBudgetSHA256, "probe-recovery-budget-sha256", "", "")
 	fs.StringVar(&o.StateDir, "state-dir", "", "")
 	fs.StringVar(&o.SNRepo, "sn-repo", "", "")
 	fs.StringVar(&o.ServerRepo, "server-repo", "", "")
@@ -194,6 +202,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
 	}
+	if o.Name == precompilePreparationScenario && (cmd != "scenario" || !o.ProvisionalResume || o.Detach || o.PrepareOnly || o.ThenReleaseCandidate || o.Manifest != "") {
+		return "", o, errors.New("precompile-prepare requires an exact provisional scenario approval and cannot launch or accept a campaign")
+	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
 		return "", o, err
 	}
@@ -204,6 +215,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validateCoordinatorRepairOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validatePrecompileRecoveryOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
@@ -469,6 +483,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
+	requireSecrets = requireSecrets || cmd == "probe-recovery"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -522,8 +537,17 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return printResult(o.Format, bundle, nil)
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
+	case "probe-recovery":
+		if o.ProbeRecoveryExecute {
+			return runPrecompileRecovery(ctx, resolved, stateDir, o)
+		}
+		return runPrecompileRecoveryAuthorization(ctx, resolved, stateDir, o)
 	case "doctor":
-		report := RunDoctorForState(ctx, resolved, stateDir)
+		doctorCfg, err := prepareProvisionalDoctor(ctx, resolved, stateDir, o)
+		if err != nil {
+			return err
+		}
+		report := RunDoctorForState(ctx, doctorCfg, stateDir)
 		return printResult(o.Format, report, report.Error())
 	case "plan":
 		var p *SetupPlan
@@ -644,8 +668,11 @@ func printResult(format string, v any, resultErr error) error {
 // Other result schemas keep their existing canonical indented representation.
 func writeJSONResult(writer io.Writer, v any) error {
 	compact := false
+	boundedPlan := false
 	switch value := v.(type) {
-	case *SetupPlan, SetupPlan, *fleetRenewalBudgetError:
+	case *SetupPlan, SetupPlan:
+		compact, boundedPlan = true, true
+	case *fleetRenewalBudgetError:
 		compact = true
 	case map[string]any:
 		_, compact = value["plan"].(*SetupPlan)
@@ -659,6 +686,11 @@ func writeJSONResult(writer io.Writer, v any) error {
 	}
 	if err != nil {
 		return err
+	}
+	if boundedPlan {
+		if err := validateSetupPlanWireSize(len(b) + 1); err != nil {
+			return err
+		}
 	}
 	_, err = fmt.Fprintln(writer, string(b))
 	return err

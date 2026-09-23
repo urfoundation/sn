@@ -38,7 +38,7 @@ func buildAllowanceOnlyPlan(ctx context.Context, cfg *ResolvedConfig, stateDir, 
 	if cfg.Config.Deployment.Network != "bittensor-testnet" || cfg.Config.Deployment.Subnet != "existing" || cfg.ChainID != testnetChainID {
 		return nil, errors.New("allowance-only review is restricted to retained testnet custody")
 	}
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func buildAllowanceOnlyPlan(ctx context.Context, cfg *ResolvedConfig, stateDir, 
 	if err != nil {
 		return nil, err
 	}
-	latest, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	latest, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil || !bytes.Equal(latest, raw) || ctx.Err() != nil {
 		return nil, errors.Join(errors.New("allowance review source changed during construction"), err, ctx.Err())
 	}

@@ -13,9 +13,9 @@ import (
 
 // Call after authenticating retained postconditions. Finalized failures are
 // known outcomes; a timeout/failed marker alone never resolves a signed hash.
-func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []JournalEntry) error {
+func unresolvedRetainedProvisionalTransactions(plan *SetupPlan, entries []JournalEntry) ([]JournalEntry, error) {
 	if plan == nil {
-		return errors.New("retained startup transaction approval is missing")
+		return nil, errors.New("retained startup transaction approval is missing")
 	}
 	type identity struct{ plan, action, intent string }
 	type transaction struct {
@@ -37,10 +37,10 @@ func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []J
 		switch entry.Stage {
 		case StageBroadcast:
 			if !validCanonicalHashHex(entry.TransactionHash) {
-				return errors.New("retained broadcast has no exact transaction hash")
+				return nil, errors.New("retained broadcast has no exact transaction hash")
 			}
 			if prior, exists := broadcastKVs[tx]; exists && (retainedProvisionalSignerKey(prior.Signer) != retainedProvisionalSignerKey(entry.Signer) || prior.Nonce != entry.Nonce) {
-				return errors.New("retained broadcast changed its exact signer or nonce")
+				return nil, errors.New("retained broadcast changed its exact signer or nonce")
 			}
 			broadcastKVs[tx] = entry
 			if ownerTransactionKVs[owner] == nil {
@@ -56,7 +56,7 @@ func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []J
 				continue
 			}
 			if (entry.Signer != "" && retainedProvisionalSignerKey(entry.Signer) != retainedProvisionalSignerKey(broadcast.Signer)) || (entry.Nonce != "" && entry.Nonce != broadcast.Nonce) {
-				return errors.New("retained finalized outcome changed its signed slot")
+				return nil, errors.New("retained finalized outcome changed its signed slot")
 			}
 			resolvedKVs[tx] = true
 			delete(pendingKVs, tx)
@@ -82,14 +82,29 @@ func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []J
 			}
 		}
 	}
-	var unresolved []string
-	for tx, broadcast := range pendingKVs {
+	var unresolved []JournalEntry
+	for _, broadcast := range pendingKVs {
 		if signer, nonce, valid := retainedProvisionalTransactionSlot(broadcast); valid {
 			if finalizedNonce, exists := finalizedNonceKVs[signer]; exists && nonce <= finalizedNonce {
 				continue
 			}
 		}
-		unresolved = append(unresolved, tx.owner.action+":"+tx.hash)
+		unresolved = append(unresolved, broadcast)
+	}
+	sort.Slice(unresolved, func(i, j int) bool { return unresolved[i].Sequence < unresolved[j].Sequence })
+	return unresolved, nil
+}
+
+// Validation remains strict; a separate outcome-only reconciler may first
+// persist exact already-finalized EVM outcomes without executing any action.
+func validateRetainedProvisionalTransactionOutcomes(plan *SetupPlan, entries []JournalEntry) error {
+	pending, err := unresolvedRetainedProvisionalTransactions(plan, entries)
+	if err != nil {
+		return err
+	}
+	var unresolved []string
+	for _, broadcast := range pending {
+		unresolved = append(unresolved, broadcast.ActionID+":"+broadcast.TransactionHash)
 	}
 	if len(unresolved) == 0 {
 		return nil

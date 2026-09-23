@@ -251,6 +251,20 @@ func scenarioCampaignRecoveryPredecessorIdentity(prior *scenarioCampaignAttempt)
 
 // Rebuild the expected lineage from the predecessor's exact authenticated sources.
 func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte) (*scenarioCampaignRecovery, time.Time, error) {
+	if attempt == nil {
+		return nil, time.Time{}, errors.New("campaign recovery source is unavailable")
+	}
+	return readScenarioCampaignRecoverySourcesWithPlans(attempt, prior, priorRelativePath, priorRaw, &scenarioCampaignPlanLookup{stateDir: attempt.stateDir})
+}
+
+// Preserve every source digest while sharing only unchanged plan validation.
+func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte, plans *scenarioCampaignPlanLookup) (result *scenarioCampaignRecovery, completedAt time.Time, resultErr error) {
+	defer func() {
+		resultErr = errors.Join(resultErr, plans.check())
+		if resultErr != nil {
+			result, completedAt = nil, time.Time{}
+		}
+	}()
 	if attempt == nil || prior == nil || len(priorRaw) == 0 {
 		return nil, time.Time{}, errors.New("campaign recovery source is unavailable")
 	}
@@ -286,7 +300,7 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 		}
 		startRaw = raw
 	}
-	result, resultRaw, err := readScenarioCampaignRecoveryResult(prior.cfg, attempt.stateDir, prior)
+	terminalResult, resultRaw, err := readScenarioCampaignRecoveryResult(prior.cfg, attempt.stateDir, prior)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
@@ -324,11 +338,11 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 	} else if boundaryHash := prior.payload.AcceptanceBoundary.ProcessLogBoundaryHash; boundaryHash != "" && (processLogs.AcceptanceBoundary == nil || !strings.EqualFold(processLogs.AcceptanceBoundary.ContentHash, boundaryHash)) {
 		return nil, time.Time{}, errors.New("campaign recovery process-log boundary differs from the signed acceptance")
 	}
-	plan, planRaw, err := readScenarioSuccessionPlan(attempt.stateDir, attempt.payload.PlanHash)
+	plan, planRawHash, err := plans.read(attempt.stateDir, attempt.payload.PlanHash)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	completed, _ := time.Parse(time.RFC3339Nano, result.CompletedAt)
+	completed, _ := time.Parse(time.RFC3339Nano, terminalResult.CompletedAt)
 	terminal := completed
 	var journalCut *scenarioCampaignJournalCut
 	if preAcceptance {
@@ -357,7 +371,7 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 		PriorAttemptSha256:        bytesSHA256(priorRaw),
 		PriorResultSha256:         bytesSHA256(resultRaw),
 		PriorObservationLogSha256: bytesSHA256(observationRaw), PriorObservationLogBytes: uint64(len(observationRaw)),
-		PriorProcessLogSha256: bytesSHA256(processLogRaw), ApprovedPlanSha256: bytesSHA256(planRaw),
+		PriorProcessLogSha256: bytesSHA256(processLogRaw), ApprovedPlanSha256: planRawHash,
 	}
 	if preAcceptance {
 		recovery.PriorJournalSha256 = journalCut.SHA256
@@ -393,16 +407,25 @@ func readScenarioCampaignRecoverySources(attempt, prior *scenarioCampaignAttempt
 
 // A candidate must equal the rebuilt lineage and start after both terminal times.
 func validateScenarioCampaignRecoveryFromPrior(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte) error {
+	if attempt == nil {
+		return errors.New("campaign recovery has no exact signed predecessor")
+	}
+	return validateScenarioCampaignRecoveryFromPriorWithPlans(attempt, prior, priorRelativePath, priorRaw, &scenarioCampaignPlanLookup{stateDir: attempt.stateDir})
+}
+
+// Envelope order, historical source bytes and cross-approval compatibility all
+// remain checked; the shared lookup only removes repeated plan decoding.
+func validateScenarioCampaignRecoveryFromPriorWithPlans(attempt, prior *scenarioCampaignAttempt, priorRelativePath string, priorRaw []byte, plans *scenarioCampaignPlanLookup) error {
 	if attempt == nil || attempt.payload.Recovery == nil || attempt.payload.Phase != "release-1.0" || attempt.payload.Succession != nil {
 		return errors.New("campaign recovery has no exact signed predecessor")
 	}
 	if prior == nil {
 		return errors.New("campaign recovery predecessor is unavailable")
 	}
-	if err := validateScenarioCampaignLineageEdge(attempt, prior); err != nil {
+	if err := validateScenarioCampaignLineageEdgeWithPlans(attempt, prior, plans); err != nil {
 		return err
 	}
-	want, terminal, err := readScenarioCampaignRecoverySources(attempt, prior, priorRelativePath, priorRaw)
+	want, terminal, err := readScenarioCampaignRecoverySourcesWithPlans(attempt, prior, priorRelativePath, priorRaw, plans)
 	if err != nil {
 		return err
 	}
@@ -429,26 +452,65 @@ func (self *scenarioCampaignLineageReader) readRoot() (*scenarioCampaignAttempt,
 	if err != nil {
 		return nil, nil, "", err
 	}
-	if err := validateScenarioCampaignSuccession(prior); err != nil {
+	if err := validateScenarioCampaignSuccessionWithPlans(prior, self.plans); err != nil {
 		return nil, nil, "", err
 	}
 	relative := filepath.ToSlash(filepath.Join("campaign-attempts", filepath.Base(path)))
 	return prior, raw, relative, nil
 }
 
-// Every link is revalidated from the root before its successor can be selected.
+// Every link is authenticated from the root. An exact invocation-local proof
+// may project unchanged history without repeating its large source reads.
 func readScenarioCampaignRecoveryChain(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile) ([]scenarioCampaignRecoveryRecord, error) {
+	return readScenarioCampaignRecoveryChainMemo(cfg, stateDir, roles, planHash, files, readScenarioCampaignRecoveryChainFrom)
+}
+
+// A memoized prefix has already passed the same validator and source fence.
+// Each appended generation still authenticates its signed envelope and edge.
+func readScenarioCampaignRecoveryChainFrom(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile, prefix []scenarioCampaignRecoveryRecord) ([]scenarioCampaignRecoveryRecord, error) {
 	reader, err := newScenarioCampaignLineageReader(cfg, stateDir, roles, planHash)
 	if err != nil {
 		return nil, err
 	}
-	prior, priorRaw, priorRelativePath, err := reader.readRoot()
-	if err != nil {
-		return nil, err
+	return reader.readRecoveryChain(files, prefix)
+}
+
+// The real traversal owns its plan memo and emits progress only after each
+// complete authenticated edge. A final source fence guards earlier approvals.
+func (self *scenarioCampaignLineageReader) readRecoveryChain(files []scenarioCampaignRecoveryFile, prefix []scenarioCampaignRecoveryRecord) (result []scenarioCampaignRecoveryRecord, resultErr error) {
+	defer func() {
+		resultErr = errors.Join(resultErr, self.plans.check())
+		if resultErr != nil {
+			result = nil
+		}
+	}()
+	if len(prefix) > len(files) || len(prefix) != 0 && !provisionalResumeEnabled(self.cfg) {
+		return nil, errors.New("campaign recovery prefix has no provisional chain context")
+	}
+	for index, record := range prefix {
+		if record.file != files[index] || record.attempt == nil || len(record.raw) == 0 {
+			return nil, errors.New("campaign recovery prefix differs from selected source files")
+		}
+	}
+	started := time.Now()
+	fmt.Fprintf(os.Stderr, "sim-testnet: campaign recovery lineage; authenticated_generations=%d total_generations=%d phase=validating\n", len(prefix), len(files))
+	var err error
+	var prior *scenarioCampaignAttempt
+	var priorRaw []byte
+	var priorRelativePath string
+	if len(prefix) == 0 {
+		prior, priorRaw, priorRelativePath, err = self.readRoot()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		last := prefix[len(prefix)-1]
+		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
 	}
 	records := make([]scenarioCampaignRecoveryRecord, 0, len(files))
-	for _, file := range files {
-		attempt, raw, err := reader.read(file.path)
+	records = append(records, prefix...)
+	for index, file := range files[len(prefix):] {
+		attempt, raw, err := self.read(file.path)
 		if err != nil {
 			return nil, err
 		}
@@ -456,12 +518,13 @@ func readScenarioCampaignRecoveryChain(cfg *ResolvedConfig, stateDir string, rol
 		if err != nil || generation != file.generation {
 			return nil, errors.Join(fmt.Errorf("campaign recovery file generation %d differs from its signed payload", file.generation), err)
 		}
-		if err := validateScenarioCampaignRecoveryFromPrior(attempt, prior, priorRelativePath, priorRaw); err != nil {
+		if err := validateScenarioCampaignRecoveryFromPriorWithPlans(attempt, prior, priorRelativePath, priorRaw, self.plans); err != nil {
 			return nil, fmt.Errorf("validate campaign recovery generation %d: %w", file.generation, err)
 		}
 		record := scenarioCampaignRecoveryRecord{file: file, attempt: attempt, raw: raw}
 		records = append(records, record)
 		prior, priorRaw, priorRelativePath = attempt, raw, file.relativePath
+		fmt.Fprintf(os.Stderr, "sim-testnet: campaign recovery lineage; authenticated_generations=%d total_generations=%d generation=%d cached_plans=%d elapsed=%s\n", len(prefix)+index+1, len(files), file.generation, len(self.plans.proofKVs), time.Since(started).Round(time.Millisecond))
 	}
 	return records, nil
 }
@@ -548,14 +611,11 @@ func validateScenarioCampaignRecoveryAncestor(attempt *scenarioCampaignAttempt, 
 
 // Extend the authenticated chain by one fresh full campaign after a failed interval.
 func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, now time.Time, journal *Journal) (*scenarioCampaignAttempt, error) {
-	if cfg == nil || cfg.Config == nil || roles == nil || journal == nil || !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record == nil || cfg.provisionalResume.Record.PlanHash != planHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
+	if roles == nil {
 		return nil, errors.New("campaign recovery requires the exact provisional non-accepting approval")
 	}
-	journal.mu.Lock()
-	owned := journal.lock != nil && journal.file != nil && journal.path == filepath.Join(stateDir, "journal.jsonl")
-	journal.mu.Unlock()
-	if !owned {
-		return nil, errors.New("campaign recovery has no live exclusive deployment journal owner")
+	if err := validateScenarioCampaignRecoveryOwner(cfg, stateDir, planHash, journal); err != nil {
+		return nil, err
 	}
 	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); err == nil {
 		return nil, errors.New("campaign recovery cannot replace a release with a production descendant")
@@ -583,12 +643,12 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	}
 	prior, priorRaw, priorRelativePath, err := readScenarioCampaignRecoveryRoot(cfg, stateDir, roles, planHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("campaign recovery read root: %w", err)
 	}
 	if len(files) != 0 {
 		records, chainErr := readScenarioCampaignRecoveryChain(cfg, stateDir, roles, planHash, files)
 		if chainErr != nil {
-			return nil, chainErr
+			return nil, fmt.Errorf("campaign recovery read lineage: %w", chainErr)
 		}
 		last := records[len(records)-1]
 		prior, priorRaw, priorRelativePath = last.attempt, last.raw, last.file.relativePath
@@ -596,8 +656,9 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	// A signed acceptance invalidation proves that its process session cannot
 	// continue. If the process was killed between invalidation and result
 	// persistence, materialize the terminal provisional failure here. This is
-	// deliberately limited to that signed state; a pre-acceptance missing result
-	// remains an integrity error and is never synthesized.
+	// deliberately limited to that signed state.  A provisional-only exception
+	// below covers an interrupted preparation owner that never created its run
+	// directory, so it cannot erase an acceptance interval or scenario output.
 	if prior.payload.AcceptanceBoundary != nil && prior.payload.AcceptanceInvalidation != "" {
 		runDir := filepath.Join(stateDir, "runs", prior.payload.RunID)
 		resultPath := filepath.Join(runDir, "result.json")
@@ -626,9 +687,57 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 		} else if err != nil {
 			return nil, err
 		}
+	} else if prior.payload.AcceptanceBoundary == nil && provisionalResumeEnabled(cfg) &&
+		cfg.provisionalResume.Record != nil && cfg.provisionalResume.Record.Command == "scenario" &&
+		cfg.provisionalResume.Record.Scenario == "release-candidate" && prior.payload.PlanHash != planHash &&
+		plan.allowedPlanHashes()[prior.payload.PlanHash] {
+		runDir := filepath.Join(stateDir, "runs", prior.payload.RunID)
+		if _, err := os.Lstat(runDir); errors.Is(err, os.ErrNotExist) {
+			if prior.payload.ConfigHash != cfg.ConfigHash || prior.payload.PolicyHash != cfg.PolicyHash {
+				return nil, errors.New("interrupted pre-acceptance owner has another configuration identity")
+			}
+			definition, definitionErr := scenarioDefinitionFor(cfg, prior.payload.Phase)
+			definitionHash, hashErr := scenarioDefinitionHash(definition)
+			started, startErr := time.Parse(time.RFC3339Nano, prior.payload.StartedAt)
+			if definitionErr != nil || hashErr != nil || startErr != nil {
+				return nil, errors.Join(errors.New("campaign recovery cannot materialize absent pre-acceptance result"), definitionErr, hashErr, startErr)
+			}
+			gate, err := loadLiveProcessLogGate(stateDir)
+			if err != nil {
+				return nil, fmt.Errorf("campaign recovery load live process-log gate: %w", err)
+			}
+			if err := publishAbsentCampaignRecoveryRun(runDir, func(staging string) error {
+				if err := atomicWrite(filepath.Join(staging, "observations.jsonl"), []byte(preAcceptanceInterruptedObservationMarker), 0o600); err != nil {
+					return fmt.Errorf("campaign recovery create absent pre-acceptance observations: %w", err)
+				}
+				if err := gate.WritePreAcceptanceEvidence(staging); err != nil {
+					return fmt.Errorf("campaign recovery write absent pre-acceptance process-log evidence: %w", err)
+				}
+				failure := errors.New("provisional pre-acceptance owner was interrupted before its scenario directory was created")
+				result, writeErr := writeInitialScenarioFailure(cfg, staging, prior.payload.RunID, definitionHash, definition, started.UTC(), nil, prior, failure)
+				// The expected scenario failure is returned only after every output
+				// succeeds; any other error is an incomplete publication.
+				if result == nil || writeErr != failure {
+					return errors.Join(errors.New("campaign recovery could not materialize absent pre-acceptance result"), writeErr)
+				}
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+			now = time.Now().UTC()
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	// Legacy initial-read failures persisted a terminal result before creating
+	// any observation file. Only this authenticated writer may add the explicit
+	// empty marker; all existing result/observation evidence remains immutable.
+	if err := materializeMissingPreAcceptanceObservationLog(stateDir, prior); err != nil {
+		return nil, err
 	}
 	probe := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{PlanHash: planHash}}
-	recovery, terminal, err := readScenarioCampaignRecoverySources(probe, prior, priorRelativePath, priorRaw)
+	plans := &scenarioCampaignPlanLookup{stateDir: stateDir}
+	recovery, terminal, err := readScenarioCampaignRecoverySourcesWithPlans(probe, prior, priorRelativePath, priorRaw, plans)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +766,7 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if err := validateScenarioCampaignRecoveryFromPrior(attempt, prior, priorRelativePath, priorRaw); err != nil {
+	if err := validateScenarioCampaignRecoveryFromPriorWithPlans(attempt, prior, priorRelativePath, priorRaw, plans); err != nil {
 		return nil, err
 	}
 	if err := writeScenarioCampaignAttempt(attempt); err != nil {

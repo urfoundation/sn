@@ -4,16 +4,26 @@ package main
 
 import "errors"
 
-// Revalidate the persisted wire, current operational configuration and budget
-// on every reload. Only an admitted provisional invocation can retain its
-// original release identity, and it cannot switch plans after admission.
+// Observe the exact persisted bytes and operational authority on every reload.
+// Nested render readers may reuse a complete validation of those same inputs;
+// only an admitted provisional invocation can retain its original release.
 func loadRuntimePersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
-	if !provisionalResumeEnabled(cfg) {
-		return loadPersistedPlan(cfg, stateDir)
-	}
-	plan, err := loadPersistedPlanIdentity(cfg, stateDir, true)
+	retainRelease := provisionalResumeEnabled(cfg)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
+	}
+	var plan *SetupPlan
+	if cfg != nil && cfg.runtimePlanReads != nil {
+		plan, err = cfg.runtimePlanReads.load(cfg, stateDir, raw, retainRelease)
+	} else {
+		plan, err = loadPlanIdentityBytes(cfg, raw, retainRelease)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !retainRelease {
+		return plan, nil
 	}
 	record := cfg.provisionalResume.Record
 	if !record.Provisional || record.FinalAcceptance || record.PlanHash != plan.PlanHash {

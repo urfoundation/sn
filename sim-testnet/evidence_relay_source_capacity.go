@@ -27,31 +27,7 @@ type evidenceRelaySourceBounds struct {
 // Extend the lifetime containers together. Per-record, per-proof, metadata,
 // participant, upload and policy limits do not change.
 func doubledEvidenceRelaySourceBounds(original validatorcomponent.ReleaseEvidenceV2Bounds) (validatorcomponent.ReleaseEvidenceV2Bounds, error) {
-	if err := original.Validate(2); err != nil {
-		return validatorcomponent.ReleaseEvidenceV2Bounds{}, err
-	}
-	next := original
-	for _, value := range []*uint64{
-		&next.Disk.MaxRecordCount, &next.Disk.MaxTrailCount,
-		&next.Disk.MaxRawRecordBytes, &next.Disk.MaxStorageBytes,
-		&next.Disk.MaxStorageFiles, &next.Disk.MaxProofBytes,
-		&next.Cut.Records.MaxDataBytes, &next.Cut.Records.MaxItems,
-		&next.Cut.Records.MaxChunks, &next.Cut.Records.MaxPages,
-		&next.Cut.Proofs.MaxDataBytes, &next.Cut.Proofs.MaxItems,
-		&next.Cut.Proofs.MaxChunks, &next.Cut.Proofs.MaxPages,
-		&next.Replay.MaxTrails, &next.Replay.MaxScratchBytes,
-		&next.Replay.MaxScratchFiles,
-	} {
-		doubled, ok := checkedMul(*value, 2)
-		if !ok {
-			return validatorcomponent.ReleaseEvidenceV2Bounds{}, errors.New("relay source lifetime doubling overflows")
-		}
-		*value = doubled
-	}
-	if err := next.Validate(2); err != nil {
-		return validatorcomponent.ReleaseEvidenceV2Bounds{}, err
-	}
-	return next, nil
+	return validatorcomponent.DoubledReleaseEvidenceV2SourceBounds(original)
 }
 
 // Only the explicit successor may carry one exact original capacity doubling.

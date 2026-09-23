@@ -108,7 +108,7 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		t.Fatal("required original-source forecast differs", required, closed, native, err)
 	}
 	span, closed, native, err := evidenceRelayConfiguredHorizon(cfg)
-	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 56 {
+	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 1848 {
 		t.Fatal("finite delay/extra-subject headroom differs", span, closed, native, err)
 	}
 	if required > cfg.Config.ValidatorEvidenceRelay.MaxSlots {

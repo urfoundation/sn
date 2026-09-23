@@ -55,6 +55,9 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 			return err
 		}
 		for _, manifest := range manifests {
+			if err := self.serviceRemainingRequests(); err != nil {
+				return err
+			}
 			if manifest.Decision.ValidatorID != source.validatorId {
 				return errors.New("evidence audit decision differs from its original configured validator")
 			}
@@ -78,6 +81,9 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				return err
 			}
 			for _, expected := range requests {
+				if err := self.serviceRemainingRequests(); err != nil {
+					return err
+				}
 				if err := self.horizon.admit(expected.Evidence.Header, block); err != nil {
 					return err
 				}
@@ -100,8 +106,11 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				}
 			}
 			checkpointIdentity, err := self.startupCache.completeAudit(self, source, &manifest)
-			if err != nil || checkpointIdentity != identity {
-				return errors.Join(errors.New("evidence audit checkpoint identity changed"), err)
+			if err != nil {
+				return err
+			}
+			if checkpointIdentity != identity {
+				return errors.New("evidence audit checkpoint identity changed")
 			}
 			completed[key] = identity
 			if self.startupCache != nil {

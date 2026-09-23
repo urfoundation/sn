@@ -154,7 +154,7 @@ func prepareStrictRelayCapture(cfg *ResolvedConfig, stateDir string) (*ResolvedC
 	if cfg == nil || provisionalResumeEnabled(cfg) {
 		return nil, nil, errors.New("strict relay capture cannot borrow provisional runtime authority")
 	}
-	raw, err := readValidatorEvidenceHistoricalFile(stateDir, "plan.json", maximumCampaignEvidenceRawFileBytes)
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, nil, err
 	}

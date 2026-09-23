@@ -435,7 +435,7 @@ func TestEvidenceRelayContinuationCapacityRetainsFullMeasuredLifetimeAndTail(t *
 			t.Fatal("retained source use was treated as fresh capacity")
 		}
 	}
-	if cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
+	if cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 {
 		t.Fatal("relay partition silently enlarged source storage admission")
 	}
 }

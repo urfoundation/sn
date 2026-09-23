@@ -100,7 +100,7 @@ func validatePrecompileProbeSeedFailureEvidence(plan *SetupPlan, predecessor *Pr
 	}
 	value := new(big.Int).Mul(new(big.Int).SetUint64(plan.LiveFacts.ProbeTAORao), big.NewInt(1_000_000_000)).String()
 	wantSeed := PrecompileValueStep{TAORao: plan.LiveFacts.ProbeTAORao, ValueWei: value}
-	if plan.LiveFacts.ProbeTAORao == 0 || evidence.Seed != wantSeed || evidence.Complete || !evidence.Battery.Passed || evidence.Battery.SampleSelfStake != "0" || evidence.Battery.FinalizedHead.Number == 0 || !validCanonicalHashHex(evidence.Battery.FinalizedHead.Hash) || evidence.Forward != (PrecompileMoveStep{}) || evidence.Back != (PrecompileMoveStep{}) || evidence.Snapshot != (PrecompileSnapshotStep{}) || evidence.Dividend != (PrecompileDividendStep{}) || evidence.Transfer != (PrecompileTransferStep{}) {
+	if plan.LiveFacts.ProbeTAORao == 0 || evidence.Seed != wantSeed || evidence.Complete || evidence.Recovery != nil || evidence.RoundTripCredits != nil || !evidence.Battery.Passed || evidence.Battery.SampleSelfStake != "0" || evidence.Battery.FinalizedHead.Number == 0 || !validCanonicalHashHex(evidence.Battery.FinalizedHead.Hash) || evidence.Forward != (PrecompileMoveStep{}) || evidence.Back != (PrecompileMoveStep{}) || evidence.Snapshot != (PrecompileSnapshotStep{}) || evidence.Dividend != (PrecompileDividendStep{}) || evidence.Transfer != (PrecompileTransferStep{}) {
 		return errors.New("precompile seed retirement contains value progress or lacks its successful battery")
 	}
 	return nil

@@ -17,10 +17,13 @@ import (
 )
 
 const (
-	// These are implementation admission ceilings, not source-byte grants or
-	// allocations. Larger configurations require a separately reviewed format.
-	maximumCampaignMetadataDocumentV2    = 2 * 1024 * 1024 * 1024
-	maximumCampaignRetainedMetadataV2    = 4 * 1024 * 1024 * 1024
+	// Legacy admission ceilings remain unchanged. A larger configuration needs
+	// an explicit hashed metadata grant, separate from raw-source authority.
+	maximumCampaignMetadataDocumentV2 = 2 * 1024 * 1024 * 1024
+	// Capture owns two indexes, a manifest and completion; supplements own
+	// the last two. Their sum must fit whenever each typed document fits.
+	maximumCampaignRetainedMetadataV2    = maximumCampaignEvidenceAggregateBytes + 4*maximumCampaignMetadataDocumentV2 + 2*maximumCampaignFileEnvelopeOverhead
+	maximumCampaignSupplementMetadataV2  = maximumCampaignEvidenceAggregateBytes + 2*maximumCampaignMetadataDocumentV2 + 2*maximumCampaignFileEnvelopeOverhead
 	campaignCollectedIndexPathV2         = "final-inputs/manifest.json"
 	campaignPriorIndexPathV2             = "final-inputs/prior-release/collected-inputs-manifest.json.bin"
 	campaignPriorManifestPathV2          = "final-inputs/prior-release/campaign-evidence-manifest.json.bin"
@@ -32,6 +35,7 @@ const (
 // All counters are logical/wire bounds. Parser/map/encoding overhead is
 // additionally count-bounded and is measured separately during qualification.
 type campaignMetadataLimitsV2 struct {
+	capacity        *campaignMetadataCapacityConfig
 	indexBytes      uint64
 	manifestBytes   uint64
 	completionBytes uint64
@@ -56,6 +60,13 @@ func campaignMetadataLimitsForConfigV2(cfg *ResolvedConfig, objects uint64) (*ca
 		return nil, errors.New("compact metadata has no complete configured census")
 	}
 	result := &campaignMetadataLimitsV2{validators: uint64(cfg.Config.Topology.Validators), operators: uint64(cfg.Config.Topology.Operators)}
+	if err := cfg.Config.EvidenceArchiveMetadata.validate(); err != nil {
+		return nil, err
+	}
+	if cfg.Config.EvidenceArchiveMetadata != nil {
+		capacity := *cfg.Config.EvidenceArchiveMetadata
+		result.capacity = &capacity
+	}
 	hash := "sha256:" + strings.Repeat("f", 64)
 	sourcePath := "final-inputs/validators/v2/" + strings.Repeat("f", 64) + ".bin"
 	maximum := ^uint64(0)
@@ -139,6 +150,17 @@ func campaignMetadataLimitsForConfigV2(cfg *ResolvedConfig, objects uint64) (*ca
 	if arithmeticErr != nil {
 		return nil, arithmeticErr
 	}
+	// The explicit profile reserves twice the complete count/row forecast. No
+	// cap intersects or discards an unreachable-looking part of that census.
+	if result.capacity != nil {
+		for _, value := range []*uint64{&result.indexBytes, &result.manifestBytes, &result.completionBytes, &result.graphBytes, &result.retainedBytes, &result.supplementBytes} {
+			doubled, ok := checkedMul(*value, 2)
+			if !ok {
+				return nil, errors.New("compact metadata twofold capacity margin overflows")
+			}
+			*value = doubled
+		}
+	}
 	if err := result.validate(); err != nil {
 		return nil, err
 	}
@@ -151,21 +173,40 @@ func (self *campaignMetadataLimitsV2) validate() error {
 	if self == nil {
 		return nil
 	}
-	for _, bound := range []uint64{self.indexBytes, self.manifestBytes, self.completionBytes, self.graphBytes} {
-		if bound == 0 || bound > maximumCampaignMetadataDocumentV2 {
-			return errors.New("compact metadata profile exceeds the reviewed document bound")
+	if err := self.capacity.validate(); err != nil {
+		return err
+	}
+	capacity := self.capacity.limits()
+	var failures []error
+	for _, field := range []struct {
+		name           string
+		value, maximum uint64
+	}{
+		{name: "index_bytes", value: self.indexBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "manifest_bytes", value: self.manifestBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "completion_bytes", value: self.completionBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "graph_bytes", value: self.graphBytes, maximum: capacity.MaximumDocumentBytes},
+		{name: "retained_bytes", value: self.retainedBytes, maximum: capacity.MaximumRetainedBytes},
+		{name: "supplement_bytes", value: self.supplementBytes, maximum: capacity.MaximumSupplementBytes},
+		{name: "intent_bytes", value: self.intentBytes, maximum: maximumCampaignEvidenceEnvelopeBytes},
+	} {
+		if field.value == 0 || field.value > field.maximum {
+			failures = append(failures, fmt.Errorf("compact metadata %s=%d is outside its finite bound 1..%d", field.name, field.value, field.maximum))
 		}
 	}
-	if self.retainedBytes == 0 || self.retainedBytes > maximumCampaignRetainedMetadataV2 || self.supplementBytes == 0 || self.supplementBytes > maximumCampaignMetadataDocumentV2 || self.intentBytes == 0 || self.intentBytes > maximumCampaignEvidenceEnvelopeBytes || self.validators == 0 || self.operators != 2 {
-		return errors.New("compact metadata retained/control profile is invalid")
+	if self.validators == 0 || self.operators != 2 {
+		failures = append(failures, fmt.Errorf("compact metadata owner census is invalid: validators=%d operators=%d", self.validators, self.operators))
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // Only exact producer-owned control names can acquire a larger raw owner.
 // Hash-addressed V2 files may hold the original intent-store control; a
 // separate byte-shape check below refuses oversized ordinary proof bodies.
 func (self campaignEvidenceLimits) rawFileBytes(name string) uint64 {
+	if maximum := finalPlanArtifactBytes(name); maximum != 0 {
+		return self.finalPlanDocumentBytes(maximum)
+	}
 	if self.metadata == nil {
 		return maximumCampaignEvidenceRawFileBytes
 	}
@@ -228,11 +269,13 @@ func (self campaignEvidenceLimits) fileEnvelopeBytes(name string, size uint64) (
 // The largest carrier is derived from the largest admitted metadata document;
 // callers still supply the exact per-entry bound, never this ceiling blindly.
 func (self campaignEvidenceLimits) maximumEnvelopeBytes() uint64 {
+	planMaximum := self.finalPlanDocumentBytes(maximumFinalPriorPlanCarrierBytes)
+	planEnvelope := ((planMaximum + 2) / 3 * 4) + maximumCampaignFileEnvelopeOverhead
 	if self.metadata == nil {
-		return maximumCampaignEvidenceEnvelopeBytes
+		return max(uint64(maximumCampaignEvidenceEnvelopeBytes), planEnvelope)
 	}
 	maximum := max(self.metadata.indexBytes, self.metadata.manifestBytes+maximumCampaignFileEnvelopeOverhead, self.metadata.completionBytes+2*maximumCampaignFileEnvelopeOverhead, self.metadata.intentBytes)
-	return max(uint64(maximumCampaignEvidenceEnvelopeBytes), ((maximum+2)/3)*4+maximumCampaignFileEnvelopeOverhead)
+	return max(uint64(maximumCampaignEvidenceEnvelopeBytes), planEnvelope, ((maximum+2)/3)*4+maximumCampaignFileEnvelopeOverhead)
 }
 
 // Public control retrieval has the same original configuration authority as
@@ -254,10 +297,11 @@ func (self campaignEvidenceLimits) controlEnvelopeBytes(kind string) uint64 {
 // Derived output retains only its two exact prior controls in addition to the
 // unchanged ordinary output aggregate; no raw body inherits these bytes.
 func (self campaignEvidenceLimits) supplementFileBytes() uint64 {
+	maximum := uint64(maximumCampaignEvidenceAggregateBytes)
 	if self.metadata != nil {
-		return self.metadata.supplementBytes
+		maximum = self.metadata.supplementBytes
 	}
-	return maximumCampaignEvidenceAggregateBytes
+	return min(self.finalPlanRetentionBytes(true), maximum+maximumFinalPlanRetentionBytes)
 }
 
 // Only these four retained capture controls account against metadata rows.
@@ -287,7 +331,7 @@ func admitCampaignMetadataRetentionV2(limits campaignEvidenceLimits, name string
 		maximum = limits.metadata.retainedBytes
 		metadataPath = campaignRetainedMetadataPathV2(name)
 		if derived {
-			maximum = limits.supplementFileBytes()
+			maximum = limits.metadata.supplementBytes
 			metadataPath = campaignDerivedMetadataPathV2(name)
 		}
 	}
@@ -319,6 +363,9 @@ func validateCampaignMetadataRawSizeV2(limits campaignEvidenceLimits, name strin
 // is structural sizing, never semantic/native/source acceptance.
 func validateCampaignMetadataRawV2(limits campaignEvidenceLimits, name string, raw []byte) error {
 	if err := validateCampaignMetadataRawSizeV2(limits, name, uint64(len(raw))); err != nil {
+		return err
+	}
+	if err := validateFinalPlanArtifactBytes(limits, name, raw); err != nil {
 		return err
 	}
 	if limits.metadata == nil || len(raw) <= maximumCampaignEvidenceRawFileBytes || !campaignMetadataSourcePathV2(name) {
@@ -403,7 +450,7 @@ func validateCollectedMetadataWithLimitsV2(limits campaignEvidenceLimits, value 
 	}
 	copyValue := *value
 	copyValue.Validators = append([]FinalCollectedValidatorInputs(nil), value.Validators...)
-	rowSizer, err := newCampaignMetadataRowSizerV2()
+	rowSizer, err := newCampaignMetadataRowSizerV2(limits.metadata.indexBytes)
 	if err != nil {
 		return err
 	}
@@ -469,7 +516,16 @@ func campaignEvidencePayloadLimitV2(cfg *ResolvedConfig, kind string, payload an
 		return 0, err
 	}
 	if limits.metadata == nil {
-		return 0, nil
+		name := ""
+		switch file := payload.(type) {
+		case campaignEvidenceFilePayload:
+			name = file.Path
+		case finalSemanticSupplementFilePayload:
+			name = file.Path
+		}
+		if finalPlanArtifactBytes(name) == 0 || kind != campaignEvidenceFileKind && kind != finalSemanticSupplementFileKind {
+			return 0, nil
+		}
 	}
 	switch kind {
 	case campaignEvidenceFileKind:

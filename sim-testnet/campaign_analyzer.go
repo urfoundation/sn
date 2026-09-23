@@ -167,6 +167,10 @@ func runReleaseCandidateCampaignWithAnalyzer(ctx context.Context, cfg *ResolvedC
 		if !errors.Is(err, errNoCompletedScenarioCampaign) {
 			return err
 		}
+		releaseAttempt, err = recoverScenarioCampaignProcessSession(campaignCtx, releaseAttempt, journal, scenarioProcessSessionID, time.Now().UTC())
+		if err != nil {
+			return fmt.Errorf("recover release campaign process before startup: %w", err)
+		}
 		if err := preflight(campaignCtx, cfg, stateDir); err != nil {
 			return fmt.Errorf("release-candidate archive-retention preflight: %w", err)
 		}

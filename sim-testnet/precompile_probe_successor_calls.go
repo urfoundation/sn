@@ -22,6 +22,11 @@ func precompileProbeSuccessorTransactionIds() []string {
 
 // Each consumed nonce needs one exact finalized action in chronological order.
 func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, nonce uint64) ([]JournalEntry, error) {
+	return precompileProbeSuccessorPrefixWithRecovery(plan, entries, nonce, nil)
+}
+
+// Recovery authorization expands only the nonce sequence, never the setup plan.
+func precompileProbeSuccessorPrefixWithRecovery(plan *SetupPlan, entries []JournalEntry, nonce uint64, evidence *PrecompileConformanceEvidence) ([]JournalEntry, error) {
 	if err := validatePrecompileProbeSuccessorActions(plan); err != nil {
 		return nil, err
 	}
@@ -29,8 +34,11 @@ func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, non
 	if successor == nil {
 		return nil, errors.New("precompile probe successor is absent")
 	}
-	ids := precompileProbeSuccessorTransactionIds()
-	if nonce < successor.DeployerNonce || nonce-successor.DeployerNonce > uint64(len(ids)) {
+	actions, err := precompileProbeSuccessorActions(plan, evidence)
+	if err != nil {
+		return nil, err
+	}
+	if nonce < successor.DeployerNonce || nonce-successor.DeployerNonce > uint64(len(actions)) {
 		return nil, errors.New("precompile probe successor nonce exceeds its approved call sequence")
 	}
 	consumed := int(nonce - successor.DeployerNonce)
@@ -38,11 +46,8 @@ func precompileProbeSuccessorPrefix(plan *SetupPlan, entries []JournalEntry, non
 	prefix := make([]JournalEntry, 0, consumed)
 	boundary := precompileProbeSuccessorJournalBoundary(successor)
 	previous := boundary
-	for index, actionId := range ids {
-		action, err := exactPlanActionByID(plan, actionId)
-		if err != nil {
-			return nil, err
-		}
+	for index, action := range actions {
+		actionId := action.ID
 		var matched *JournalEntry
 		for _, entry := range entries {
 			if entry.Sequence <= boundary || entry.ActionID != actionId || entry.Stage != StageFinalized {
@@ -110,7 +115,11 @@ func precompileProbeSuccessorCall(plan *SetupPlan, evidence *PrecompileConforman
 	case "precompile.move-forward", "precompile.move-back":
 		step, from, to, amount := evidence.Forward, sample, move, evidence.Seed.DeltaRao/2
 		if actionId == "precompile.move-back" {
-			step, from, to, amount = evidence.Back, move, sample, evidence.Forward.AmountRao
+			amount, err = precompileMoveObservedAmount(evidence.Forward)
+			if err != nil {
+				return nil, nil, recorded, fmt.Errorf("successor reverse move has no conserved forward credit: %w", err)
+			}
+			step, from, to = evidence.Back, move, sample
 		}
 		if amount == 0 || step.AmountRao != amount || step.FromBeforeRao < amount {
 			return nil, nil, recorded, errors.New("successor move differs from the approved round trip")
@@ -118,13 +127,17 @@ func precompileProbeSuccessorCall(plan *SetupPlan, evidence *PrecompileConforman
 		data, err = parsed.Pack("moveRoundTrip", from, to, new(big.Int).SetUint64(amount))
 		recorded.TransactionHash, recorded.BlockNumber, recorded.BlockHash = step.TransactionHash, step.BlockNumber, step.BlockHash
 	case "precompile.snapshot":
-		if evidence.Snapshot.BaselineRao == 0 || evidence.Snapshot.BaselineRao < evidence.Seed.AfterRao {
+		if evidence.Snapshot.BaselineRao == 0 || !precompileRoundTripAccounted(evidence) || evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao {
 			return nil, nil, recorded, errors.New("successor snapshot lost the completed round trip")
 		}
 		data, err = parsed.Pack("snapshot", sample)
 		recorded.TransactionHash, recorded.BlockNumber, recorded.BlockHash = evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockNumber, evidence.Snapshot.BlockHash
 	case "precompile.transfer-out":
-		if evidence.Transfer.ProbeBeforeRao <= evidence.Seed.BeforeRao || evidence.Transfer.AmountRao != evidence.Transfer.ProbeBeforeRao-evidence.Seed.BeforeRao {
+		quote := evidence.Transfer.ProbeBeforeRao
+		if evidence.Recovery != nil {
+			quote = evidence.Recovery.SampleTransferSourceQuoteRao
+		}
+		if quote <= evidence.Seed.BeforeRao || evidence.Transfer.AmountRao != quote-evidence.Seed.BeforeRao {
 			return nil, nil, recorded, errors.New("successor transfer differs from the approved recovery")
 		}
 		data, err = parsed.Pack("transferOut", recovery, sample, new(big.Int).SetUint64(evidence.Transfer.AmountRao))
@@ -214,19 +227,59 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 			step, from, to = evidence.Back, move, sample
 		}
 		values, err = conformanceEventValues(parsed, "MoveRoundTrip", &filtered, from, to)
+		if err != nil {
+			return err
+		}
+		observed, observeErr := reconcilePrecompileMoveEvent(step, values)
+		if observeErr != nil {
+			return observeErr
+		}
 		fields = map[string]uint64{"amount": step.AmountRao, "fromBefore": step.FromBeforeRao, "toBefore": step.ToBeforeRao}
 		if !partial {
+			if observed.NativeShareResidueRao != step.NativeShareResidueRao || observed.NativeShareCreditRoundingRao != step.NativeShareCreditRoundingRao {
+				return errors.New("successor move changed its native-share remainder")
+			}
 			fields["fromAfter"], fields["toAfter"] = step.FromAfterRao, step.ToAfterRao
 		}
 	case "precompile.snapshot":
 		values, err = conformanceEventValues(parsed, "DividendSnapshot", &filtered, sample)
-		fields = map[string]uint64{"baseline": evidence.Snapshot.BaselineRao}
+		if err != nil {
+			return err
+		}
+		if receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() {
+			return errors.New("successor snapshot has no receipt block")
+		}
+		if _, err := reconcilePrecompileSnapshotEvent(evidence.Snapshot, values, receipt.BlockNumber.Uint64()); err != nil {
+			return err
+		}
 		if !partial {
-			fields["blockNumber"] = evidence.Snapshot.SinceBlock
+			fields = map[string]uint64{"baseline": evidence.Snapshot.BaselineRao, "blockNumber": evidence.Snapshot.SinceBlock}
 		}
 	case "precompile.transfer-out":
 		values, err = conformanceEventValues(parsed, "TransferredOut", &filtered, recovery, sample)
+		if err != nil {
+			return err
+		}
+		var observed PrecompileTransferStep
+		var observeErr error
+		if evidence.Recovery != nil {
+			copy := *evidence
+			record := *evidence.Recovery
+			copy.Recovery = &record
+			observed, observeErr = reconcilePrecompileRecoveryOriginalTransfer(&copy, values)
+		} else {
+			observed, observeErr = reconcilePrecompileTransferEvent(evidence.Transfer, values)
+		}
+		if observeErr != nil {
+			return observeErr
+		}
+		if !partial && (observed.NativeShareResidueRao != evidence.Transfer.NativeShareResidueRao || observed.NativeShareCreditRoundingRao != evidence.Transfer.NativeShareCreditRoundingRao) {
+			return errors.New("successor recovery changed its native-share conversion")
+		}
 		fields = map[string]uint64{"amount": evidence.Transfer.AmountRao, "sourceBefore": evidence.Transfer.ProbeBeforeRao, "destinationBefore": evidence.Transfer.ProviderBeforeRao}
+		if partial && evidence.Recovery != nil {
+			fields["sourceBefore"], fields["destinationBefore"] = observed.ProbeBeforeRao, observed.ProviderBeforeRao
+		}
 		if !partial {
 			fields["sourceAfter"], fields["destinationAfter"] = evidence.Transfer.ProbeAfterRao, evidence.Transfer.ProviderAfterRao
 		}
@@ -246,12 +299,16 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 
 // A crash after the last finalization may retain only that phase's saved input.
 func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, entries []JournalEntry, reader contractCreationReader, head ChainHead, nonce uint64) error {
-	prefix, err := precompileProbeSuccessorPrefix(plan, entries, nonce)
-	if err != nil || len(prefix) <= 1 {
+	if plan != nil && plan.PrecompileProbeSuccessor != nil && nonce <= plan.PrecompileProbeSuccessor.DeployerNonce+1 {
+		_, err := precompileProbeSuccessorPrefix(plan, entries, nonce)
 		return err
 	}
 	evidence, err := loadPrecompileEvidence(stateDir)
 	if err != nil {
+		return err
+	}
+	prefix, err := precompileProbeSuccessorPrefixWithRecovery(plan, entries, nonce, evidence)
+	if err != nil || len(prefix) <= 1 {
 		return err
 	}
 	owner := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, journal: &Journal{entries: entries}}
@@ -266,6 +323,12 @@ func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfi
 		return errors.New("successor call evidence changed the original approved roles")
 	}
 	for index, entry := range prefix[1:] {
+		if strings.HasPrefix(entry.ActionID, precompileRecoveryActionPrefix) {
+			if err := verifyPrecompileRecoveryCall(ctx, reader, head, plan, evidence, entry, plan.PrecompileProbeSuccessor.DeployerNonce+uint64(index)+1, index == len(prefix)-2); err != nil {
+				return err
+			}
+			continue
+		}
 		action, err := exactPlanActionByID(plan, entry.ActionID)
 		if err != nil {
 			return err

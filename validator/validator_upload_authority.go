@@ -192,8 +192,11 @@ type ValidatorUploadActivationEvent struct {
 // These staging boundaries always consult the actual numbered RPC header.
 func (self *ChainClient) recheckValidatorUploadBlockContext(ctx context.Context, block uint64, expected [32]byte) error {
 	actual, err := self.BlockHashContext(ctx, block)
-	if err != nil || actual != expected {
-		return errors.Join(errors.New("validator staging canonical EVM boundary changed"), err)
+	if err != nil {
+		return err
+	}
+	if actual != expected {
+		return errors.New("validator staging canonical EVM boundary changed")
 	}
 	return ctx.Err()
 }

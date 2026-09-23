@@ -64,6 +64,7 @@ type evidenceRelayRpcFixture struct {
 	requestCounts         map[string]int
 	sentBytes             [][]byte
 	pendingNonceReads     int
+	requestError          func(evidenceRelayRpcRequest) error
 }
 
 // Preserve request identifiers even when a real client batches mixed methods.
@@ -429,6 +430,11 @@ func (self *evidenceRelayRpcFixture) respond(request evidenceRelayRpcRequest) []
 
 // Each branch supplies protocol bytes, never a verifier or sender verdict.
 func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequest, sendBytes []byte, custodyErr error) (any, error) {
+	if self.requestError != nil {
+		if err := self.requestError(request); err != nil {
+			return nil, err
+		}
+	}
 	fail := func(message string) (any, error) { return nil, errors.New(message) }
 	switch request.Method {
 	case "eth_chainId":
@@ -514,6 +520,12 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 			return nil, custodyErr
 		}
 		self.sentBytes = append(self.sentBytes, bytes.Clone(sendBytes))
+		if self.mode == "send-busy-finalized" {
+			if err := self.installPublicationWithLock("success"); err != nil {
+				return nil, err
+			}
+			return fail("upstream overloaded")
+		}
 		if self.mode == "send-error" {
 			return fail("deterministic transport interruption after durable send")
 		}

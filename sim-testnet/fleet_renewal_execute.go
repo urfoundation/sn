@@ -29,8 +29,8 @@ func validateFleetRenewalOptions(command string, o cliOptions) error {
 		}
 		return nil
 	}
-	if o.ProvisionalResume || o.Detach || o.Name != "" {
-		return errors.New("fleet-renew requires the ordinary locked release and cannot launch a topology")
+	if o.Detach || o.Name != "" {
+		return errors.New("fleet-renew cannot launch a topology")
 	}
 	if o.Apply && (o.RenewalPlan == "" || !validCanonicalHashHex(o.PlanHash)) {
 		return errors.New("fleet-renew apply requires --renewal-plan and its exact --plan-hash")
@@ -49,14 +49,7 @@ func validateFleetRenewalOptions(command string, o cliOptions) error {
 }
 
 func readFleetRenewalPlan(path string) (*SetupPlan, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maximumCampaignEvidenceRawFileBytes {
-		return nil, errors.New("renewal plan is not a bounded regular file")
-	}
-	raw, err := os.ReadFile(path)
+	raw, err := readSetupPlanFileBytes(path)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +159,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 		return err
 	}
 	defer journal.Close()
-	if err := validateFleetRenewalSource(cfg, base, plan, journal.Entries()); err != nil {
+	if err := prepareFleetRenewalInvocation(ctx, cfg, stateDir, o, base, plan, journal.Entries()); err != nil {
 		return err
 	}
 	if err := validateFleetLifecycleRenewalPending(stateDir, base, journal.Entries()); err != nil {
@@ -265,11 +258,8 @@ func validateFleetRenewalFreshPrestate(renewal FleetRenewal, fresh fleetRenewalO
 	if renewal.CampaignLiabilityWei != fresh.Renewal.CampaignLiabilityWei || renewal.SupersededGasCoveredWei != fresh.Renewal.SupersededGasCoveredWei || !equalFleetRenewalTransactions(renewal.TransactionEvidence, fresh.Renewal.TransactionEvidence) {
 		return errors.New("renewal signed transaction liabilities changed since approval")
 	}
-	if left, _ := canonicalHashHex(renewal.EVMNonces); left != "" {
-		right, _ := canonicalHashHex(fresh.Renewal.EVMNonces)
-		if left != right {
-			return errors.New("renewal deployment EVM nonce activity changed since approval")
-		}
+	if err := validateFleetRenewalNonceProgress(renewal, fresh.Renewal.EVMNonces); err != nil {
+		return err
 	}
 	if fresh.Renewal.ObservedEpoch >= renewal.ValidFromEpoch || fresh.Renewal.Oracle != renewal.Oracle || fresh.Renewal.Keeper != renewal.Keeper || fresh.Renewal.OracleNonce != renewal.OracleNonce || fresh.Renewal.KeeperNonce != renewal.KeeperNonce {
 		return errors.New("renewal signer nonce, oracle, or inclusion window changed since approval")

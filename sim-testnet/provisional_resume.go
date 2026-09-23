@@ -45,6 +45,7 @@ type provisionalResumeState struct {
 	RecordPath         string
 	RecordHash         string
 	AcceptedPlanHashes []string
+	recoveryChain      *scenarioCampaignRecoveryChainCache
 }
 
 type provisionalScenarioProvenance struct {
@@ -82,14 +83,23 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 	if !options.ProvisionalResume {
 		return nil
 	}
-	if command != "setup" && command != "resume" && command != "scenario" && command != "coordinator-repair" {
-		return errors.New("--provisional-resume is valid only for setup, resume, scenario or coordinator-repair")
+	if command == "doctor" {
+		if options.Apply || options.Detach || options.PrepareOnly || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "" || options.Name != "" || options.Manifest != "" || options.ProvisionalRPCAuthority != "" || !validCanonicalHashHex(options.PlanHash) {
+			return errors.New("provisional doctor requires read-only options and the exact persisted --plan-hash; select an approved LAN route with --owned-rpc-authority")
+		}
+		return nil
+	}
+	if _, err := provisionalReviewedPlan(command, !options.Apply); err != nil {
+		return err
+	}
+	if command == "fleet-renew" && (options.Detach || options.PrepareOnly || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "" || options.Name != "" || options.Manifest != "" || options.ProvisionalRPCAuthority != "" || !options.Apply && options.RenewalPlan != "") {
+		return errors.New("provisional fleet-renew requires exact source planning or an approved repair apply; it cannot launch a topology or substitute its route")
 	}
 	if command == "setup" && (options.Detach || options.ThenReleaseCandidate || options.StrictHistoryAdoption != "") {
 		return errors.New("provisional setup can activate an approved repair plan only; it cannot launch or accept a release")
 	}
-	if !options.Apply || !validCanonicalHashHex(options.PlanHash) {
-		return errors.New("--provisional-resume requires --apply and the exact persisted --plan-hash")
+	if !validCanonicalHashHex(options.PlanHash) {
+		return errors.New("--provisional-resume requires the exact --plan-hash")
 	}
 	return nil
 }
@@ -126,7 +136,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return err
 	}
 	record := &provisionalResumeRecord{
-		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture,
+		Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, FinalAcceptance: false, ReadOnly: options.ProvisionalCapture || !options.Apply,
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Command: command, Scenario: options.Name,
 		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ConfigHash: cfg.ConfigHash,
 		ReleaseLockHash: plan.ReleaseLockHash, RetainedSNRepo: cfg.Repos.SN, Driver: driver,

@@ -102,6 +102,9 @@ func publicPrecompileProbePlan(public *PublicDeploymentManifest, identities fina
 
 // Refuses partially attempted value phases as well as completed probe funding.
 func precompileProbeHasOnlyNativeEvidence(evidence *PrecompileConformanceEvidence) bool {
+	if evidence != nil && (evidence.Recovery != nil || evidence.RoundTripCredits != nil) {
+		return false
+	}
 	return evidence != nil && evidence.CommitmentSource == nil && !evidence.Complete &&
 		evidence.Battery == (PrecompileBatteryEvidence{}) && evidence.Seed == (PrecompileValueStep{}) &&
 		evidence.Forward == (PrecompileMoveStep{}) && evidence.Back == (PrecompileMoveStep{}) &&
@@ -406,7 +409,18 @@ func verifyPrecompileProbeSuccessorAt(ctx context.Context, cfg *ResolvedConfig, 
 	if _, err := readPrecompileProbeSuccessorSource(cfg, stateDir, plan, entries); err != nil {
 		return err
 	}
-	if allowed, err := precompileProbeSuccessorNonce(plan, entries, nonce); err != nil || !allowed {
+	var evidence *PrecompileConformanceEvidence
+	if nonce > plan.PrecompileProbeSuccessor.DeployerNonce+1 {
+		var err error
+		evidence, err = loadPrecompileEvidence(stateDir)
+		if err != nil {
+			return err
+		}
+		if common.HexToAddress(evidence.ProbeAddress) != common.HexToAddress(plan.PrecompileProbeSuccessor.Probe) {
+			return errors.New("probe successor receipt evidence belongs to another probe")
+		}
+	}
+	if _, err := precompileProbeSuccessorPrefixWithRecovery(plan, entries, nonce, evidence); err != nil {
 		return errors.Join(errors.New("precompile probe successor nonce is outside approval"), err)
 	}
 	if err := verifyPrecompileProbeRetirementAt(ctx, cfg, stateDir, plan, entries, client, head, nonce); err != nil {

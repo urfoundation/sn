@@ -26,8 +26,8 @@ func (self *ChainClient) FindValidatorEvidenceSlotWinnerV2Context(ctx context.Co
 	if ctx == nil {
 		return nil, errors.New("validator evidence winner context is absent")
 	}
-	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
-	defer cancel()
+	// Discovery and confirmation share the caller's deadline, while every
+	// individual read retains its own finite transport allowance.
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil {
@@ -88,7 +88,10 @@ func (self *ChainClient) FindValidatorEvidenceSlotWinnerV2Context(ctx context.Co
 	event := contractAbi.Events[stabi.STValidatorEvidenceEvidenceCommittedEventName]
 	canonicalHash := common.Hash(includedHash)
 	topics := [][]common.Hash{{event.ID}, {common.Hash(slot)}, {common.BigToHash(new(big.Int).SetUint64(expected.Evidence.Header.NoID))}, {common.BigToHash(new(big.Int).SetUint64(expected.Window.Epoch))}}
-	logs, err := chain.client.FilterLogs(ctx, ethereum.FilterQuery{BlockHash: &canonicalHash, Addresses: []common.Address{expected.Journal}, Topics: topics})
+	readCtx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	logs, err := chain.client.FilterLogs(readCtx, ethereum.FilterQuery{BlockHash: &canonicalHash, Addresses: []common.Address{expected.Journal}, Topics: topics})
+	err = errors.Join(err, readCtx.Err())
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +115,10 @@ func (self *ChainClient) FindValidatorEvidenceSlotWinnerV2Context(ctx context.Co
 			return nil, errors.New("validator evidence discovered event topics differ")
 		}
 	}
-	transaction, pending, err := chain.client.TransactionByHash(ctx, logs[0].TxHash)
+	readCtx, cancel = context.WithTimeout(ctx, chainCallTimeout)
+	transaction, pending, err := chain.client.TransactionByHash(readCtx, logs[0].TxHash)
+	err = errors.Join(err, readCtx.Err())
+	cancel()
 	if err != nil {
 		return nil, err
 	}

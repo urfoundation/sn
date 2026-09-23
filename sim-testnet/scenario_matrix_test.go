@@ -12,8 +12,25 @@ import (
 	"testing"
 )
 
+// Isolated worktrees use sibling repository symlinks. WalkDir does not follow
+// a root symlink, so resolve it explicitly rather than silently finding no tests.
+func checkedInTestReferenceRoot(t *testing.T, root string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("checked-in test reference root is not a directory: %s: %v", root, err)
+	}
+	return resolved
+}
+
+// Parse the exact checked-in test declarations under the resolved repository.
 func discoverGoTestReferences(t *testing.T, root, prefix string, references map[string]bool) {
 	t.Helper()
+	root = checkedInTestReferenceRoot(t, root)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -55,8 +72,10 @@ func discoverGoTestReferences(t *testing.T, root, prefix string, references map[
 	}
 }
 
+// Solidity discovery uses the same root ownership as Go test discovery.
 func discoverSolidityTestReferences(t *testing.T, root string, references map[string]bool) {
 	t.Helper()
+	root = checkedInTestReferenceRoot(t, root)
 	contractPattern := regexp.MustCompile(`(?m)\bcontract\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	testPattern := regexp.MustCompile(`(?m)\bfunction\s+(test_[A-Za-z0-9_]*)\s*\(`)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -83,8 +102,10 @@ func discoverSolidityTestReferences(t *testing.T, root string, references map[st
 	}
 }
 
+// Preserve executable-script references through an aliased repository root.
 func discoverShellTestReferences(t *testing.T, root string, references map[string]bool) {
 	t.Helper()
+	root = checkedInTestReferenceRoot(t, root)
 	scripts := filepath.Join(root, "scripts")
 	err := filepath.WalkDir(scripts, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {

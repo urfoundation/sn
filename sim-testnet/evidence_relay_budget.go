@@ -25,8 +25,9 @@ const evidenceRelayActionBytes = 256 * 1024
 // These are explicit testnet execution allowances, not protocol defaults.
 // Closed censuses and later audit subjects share this one aggregate ceiling.
 type evidenceRelayConfig struct {
-	MaxSlots uint64 `yaml:"max_slots" json:"max_slots"`
-	GasUnits uint64 `yaml:"gas_units" json:"gas_units"`
+	MaxSlots            uint64 `yaml:"max_slots" json:"max_slots"`
+	GasUnits            uint64 `yaml:"gas_units" json:"gas_units"`
+	SourceHorizonBlocks uint64 `yaml:"source_horizon_blocks,omitempty" json:"source_horizon_blocks,omitempty"`
 }
 
 // A missing relay configuration is valid only when V2 itself is not enabled.
@@ -141,8 +142,8 @@ func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied val
 		if err := validateEvidenceRelayContinuationBudget(self.plan); err != nil {
 			return Action{}, err
 		}
-		if self.cfg.ConfigHash != self.plan.ConfigHash || reserve.Spend != self.plan.EvidenceRelayContinuation.OriginalReserve.Spend {
-			return Action{}, errors.New("relay continuation changed the original configured monetary reserve")
+		if err := validateEvidenceRelayContinuationConfig(self.cfg, self.plan); err != nil {
+			return Action{}, err
 		}
 		reserve = *actual
 		reserve.Parameters = maps.Clone(actual.Parameters)

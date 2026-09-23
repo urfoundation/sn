@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	"mime"
@@ -171,7 +170,7 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 		return refuse(err)
 	}
 	if response.StatusCode != http.StatusOK {
-		return refuse(fmt.Errorf("attempt stream HTTP response status is %d", response.StatusCode))
+		return refuse(&attemptStreamHttpStatusError{status: response.StatusCode, retryAfter: attemptStreamHttpRetryAfter(response.Header)})
 	}
 	mediaType, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if mediaErr != nil || len(response.Header.Values("Content-Type")) != 1 || mediaType != contentType {

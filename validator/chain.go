@@ -1017,8 +1017,11 @@ func (self *ChainClient) depositedSumsAtFinalizedContext(ctx context.Context, fr
 		return sums, nil
 	}
 	canonicalHash, err := self.BlockHashContext(ctx, finalizedBlock)
-	if err != nil || canonicalHash != finalizedHash {
-		return nil, fmt.Errorf("Deposited finalized checkpoint changed before scan: %v", err)
+	if err != nil {
+		return nil, err
+	}
+	if canonicalHash != finalizedHash {
+		return nil, errors.New("Deposited finalized checkpoint changed before scan")
 	}
 	topics := [][]common.Hash{{common.Hash(depositedTopic0)}}
 	if epochFilter != nil {
@@ -1087,13 +1090,19 @@ func (self *ChainClient) depositedSumsAtFinalizedContext(ctx context.Context, fr
 	sort.Slice(blockNumbers, func(i, j int) bool { return blockNumbers[i] < blockNumbers[j] })
 	for _, number := range blockNumbers {
 		canonicalHash, err := self.BlockHashContext(ctx, number)
-		if err != nil || canonicalHash != blockHashes[number] {
-			return nil, fmt.Errorf("Deposited log block %d differs from its canonical finalized identity: %v", number, err)
+		if err != nil {
+			return nil, err
+		}
+		if canonicalHash != blockHashes[number] {
+			return nil, fmt.Errorf("Deposited log block %d differs from its canonical finalized identity", number)
 		}
 	}
 	canonicalHash, err = self.BlockHashContext(ctx, finalizedBlock)
-	if err != nil || canonicalHash != finalizedHash {
-		return nil, fmt.Errorf("Deposited finalized checkpoint changed during scan: %v", err)
+	if err != nil {
+		return nil, err
+	}
+	if canonicalHash != finalizedHash {
+		return nil, errors.New("Deposited finalized checkpoint changed during scan")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

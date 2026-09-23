@@ -20,10 +20,12 @@ import (
 // Each actual reader accepts only nonce reads and records the exact selector.
 // Response maps are fixed before any synchronous observation begins.
 type evidenceRelayNonceRpcFixture struct {
-	stateLock sync.Mutex
-	reads     []string
-	nonces    map[string]uint64
-	failure   string
+	stateLock      sync.Mutex
+	reads          []string
+	nonces         map[string]uint64
+	failure        string
+	failureMessage string
+	timeouts       map[string]uint64
 }
 
 func (self *evidenceRelayNonceRpcFixture) client(t *testing.T) *ethclient.Client {
@@ -42,14 +44,27 @@ func (self *evidenceRelayNonceRpcFixture) client(t *testing.T) *ethclient.Client
 			return
 		}
 		key := common.HexToAddress(address).Hex() + "/" + selector
-		func() {
+		timedOut := func() bool {
 			self.stateLock.Lock()
 			defer self.stateLock.Unlock()
 			self.reads = append(self.reads, key)
+			if self.timeouts[key] != 0 {
+				self.timeouts[key]--
+				return true
+			}
+			return false
 		}()
+		if timedOut {
+			http.Error(writer, "synthetic upstream timeout", http.StatusGatewayTimeout)
+			return
+		}
 		response := map[string]any{"jsonrpc": "2.0", "id": call.Id}
 		if key == self.failure {
-			response["error"] = map[string]any{"code": -32000, "message": "nonce fixture unavailable"}
+			message := self.failureMessage
+			if message == "" {
+				message = "nonce fixture unavailable"
+			}
+			response["error"] = map[string]any{"code": -32000, "message": message}
 		} else if nonce, ok := self.nonces[key]; ok {
 			response["result"] = fmt.Sprintf("0x%x", nonce)
 		} else {
@@ -167,9 +182,34 @@ func TestEvidenceRelayContinuationNoncePrivateAuthorityComparesPinnedState(t *te
 			if err != nil || len(points) != 2 || !slices.Equal(independent.observedReads(), []string{first, second}) {
 				t.Fatalf("independent nonce census did not read the exact finalized checkpoint: %v", err)
 			}
-		} else if err == nil || !strings.Contains(err.Error(), "independent finalized nonce differs") || points != nil || !slices.Equal(independent.observedReads(), []string{first}) {
-			t.Fatalf("%s independent nonce result was accepted: %v", mismatch, err)
+		} else {
+			want := "independent finalized nonce differs"
+			if mismatch == "unavailable" {
+				want = "read relay continuation independent finalized nonce"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) || points != nil || !slices.Equal(independent.observedReads(), []string{first}) || mismatch == "unavailable" && strings.Contains(err.Error(), "independent finalized nonce differs") {
+				t.Fatalf("%s independent nonce result was accepted or mislabeled: %v", mismatch, err)
+			}
 		}
+	}
+}
+
+// The actual continuation planner can retry the same finalized nonce census
+// after an independent reader times out; a failed read is not changed state.
+func TestEvidenceRelayContinuationNonceTimeoutThenSamePinnedValue(t *testing.T) {
+	t.Parallel()
+	executor, exposure, _ := evidenceRelayNonceTest(t, rpcModePrivateAuthority)
+	first := common.Address{19: 1}.Hex() + "/0x28"
+	second := common.Address{19: 2}.Hex() + "/0x28"
+	independent := &evidenceRelayNonceRpcFixture{nonces: map[string]uint64{first: 1, second: 1}, timeouts: map[string]uint64{first: 1}}
+	executor.independentEVM = independent.client(t)
+	points, err := executor.observeEvidenceRelayContinuationNonces(t.Context(), exposure, 40)
+	if points != nil || !evmReadRpcErrorIsTransient(err) || strings.Contains(err.Error(), "independent finalized nonce differs") || !slices.Equal(independent.observedReads(), []string{first}) {
+		t.Fatalf("independent timeout was changed into a nonce mismatch: points=%v err=%v reads=%v", points, err, independent.observedReads())
+	}
+	points, err = executor.observeEvidenceRelayContinuationNonces(t.Context(), exposure, 40)
+	if err != nil || len(points) != 2 || points[0].Finalized != 1 || points[1].Finalized != 1 || !slices.Equal(independent.observedReads(), []string{first, first, second}) {
+		t.Fatalf("same-value retry changed its pinned nonce observations: points=%v err=%v reads=%v", points, err, independent.observedReads())
 	}
 }
 

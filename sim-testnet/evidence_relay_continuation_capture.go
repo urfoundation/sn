@@ -270,8 +270,11 @@ func (self *Executor) observeEvidenceRelayContinuationNonces(ctx context.Context
 		}
 		if independentRPCRequired(self.cfg) {
 			independent, err := self.independentEVM.NonceAt(ctx, point.Address, new(big.Int).SetUint64(block))
-			if err != nil || independent != point.Finalized {
-				return nil, errors.Join(errors.New("relay continuation independent finalized nonce differs"), err)
+			if err != nil {
+				return nil, fmt.Errorf("read relay continuation independent finalized nonce: %w", err)
+			}
+			if independent != point.Finalized {
+				return nil, errors.New("relay continuation independent finalized nonce differs")
 			}
 		}
 	}
@@ -352,6 +355,10 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	}
 	defer runtime.cancel()
 	defer runtime.chain.Close()
+	runtime.retainedPublications, err = newEvidenceRelayRetainedPublications(ctx, resolved, stateDir, base)
+	if err != nil {
+		return nil, err
+	}
 	work, err := evidenceRelayApprovalWork(cfg)
 	if err != nil {
 		return nil, err
@@ -377,12 +384,21 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			return nil, errors.New("relay continuation imported snapshot is not finalized in its original source")
 		}
 		canonical, err := runtime.chain.BlockHashContext(ctx, pin.EVMHead.Number)
-		if err != nil || fmt.Sprintf("0x%x", canonical) != pin.EVMHead.Hash {
-			return nil, errors.Join(errors.New("relay continuation approved EVM snapshot is no longer canonical"), err)
+		if err != nil {
+			return nil, fmt.Errorf("read relay continuation approved EVM snapshot: %w", err)
+		}
+		if fmt.Sprintf("0x%x", canonical) != pin.EVMHead.Hash {
+			return nil, errors.New("relay continuation approved EVM snapshot is no longer canonical")
 		}
 		block, hash = pin.EVMHead.Number, canonical
 		nativeBlock, nativeHash = pin.NativeHead.Number, nativeTypes.Hash(common.HexToHash(pin.NativeHead.Hash))
 		nativeMode = evidenceRelayNativeContinuationSnapshot
+	}
+	// Authenticate all retained signatures before replaying either source.
+	// Operator workers may have advanced nonces outside the simulator journal.
+	transactionCensus, err := executor.readEvidenceRelayContinuationTransactionCensus(ctx, block)
+	if err != nil {
+		return nil, err
 	}
 	anchor := runtime.sources[0].activations[0]
 	freshNative := anchor
@@ -519,18 +535,10 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	if err != nil {
 		return nil, err
 	}
-	transactions, err := readEvidenceRelayContinuationTransactions(cfg, stateDir, base)
-	if err != nil {
+	if err := executor.recheckEvidenceRelayContinuationTransactionCensus(ctx, block, transactionCensus); err != nil {
 		return nil, err
 	}
-	exposure, err := fleetRenewalCampaignExposure(stateDir, base, entries, transactions)
-	if err != nil {
-		return nil, err
-	}
-	c.Nonces, err = executor.observeEvidenceRelayContinuationNonces(ctx, exposure, block)
-	if err != nil {
-		return nil, err
-	}
+	c.Nonces = transactionCensus.nonces
 	admitted := map[string]bool{}
 	for _, entry := range entries {
 		if entry.TransactionHash == "" || !base.allowedPlanHashes()[entry.PlanHash] {
@@ -546,16 +554,12 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			}
 		}
 	}
-	for hash, transaction := range exposure.Transactions {
+	for hash, transaction := range transactionCensus.exposure.Transactions {
 		if transaction.To() != nil && *transaction.To() == base.ValidatorEvidence.Address && !admitted[hash.Hex()] {
 			return nil, errors.New("relay continuation found a signed companion transaction outside original relay admission")
 		}
 	}
-	encoded, err := json.Marshal(transactions)
-	if err != nil {
-		return nil, err
-	}
-	c.TransactionsSHA256 = bytesSHA256(encoded)
+	c.TransactionsSHA256 = transactionCensus.sha256
 	latest, err := readJournalEntries(stateDir)
 	if err != nil || !reflect.DeepEqual(entries, latest) {
 		return nil, errors.Join(errors.New("relay continuation deployment journal changed during capture"), err)

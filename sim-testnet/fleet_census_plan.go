@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -27,7 +25,7 @@ func readFleetCensusPlanWithVerifier(cfg *ResolvedConfig, stateDir string, verif
 	if verify == nil {
 		return nil, errors.New("fleet census plan verifier is unavailable")
 	}
-	raw, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
+	raw, err := readSetupPlanBytes(stateDir, "plan.json")
 	if err != nil {
 		return nil, err
 	}

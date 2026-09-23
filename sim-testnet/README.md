@@ -101,6 +101,24 @@ verification derive the same bounds from that exact successor; ordinary resume
 and later refresh cannot double them again. The 2,048 aggregate slots retain
 the fixed 51.2 TAO reserve and every earlier debit at its original approved cost.
 
+A successful `--provisional-capture` also archives its exact reviewed plan in
+`plans/HASH.json`. To adopt that review for an explicitly provisional continuation,
+use the existing local setup route with the same config, state and owned RPC:
+
+```sh
+sim-testnet setup --config CONFIG --state-dir STATE --owned-rpc-authority HOST:PORT \
+  --provisional-resume --apply --plan-hash CAPTURED_HASH --format json
+```
+
+This authenticates the exact relay transform, original liabilities, capture
+provenance, retained receipts and stopped topology generation. It adopts the
+archived bytes without another ledger/publication replay or any chain transaction;
+the result reports `plan_only=true` and `final_acceptance=false`. The v6 source
+bounds and provisional capture marker remain unchanged. Omit `--prepare-only`
+when adopting: that option stops before activation. Resume still performs its
+current runtime admission; strict reconciliation and final acceptance retain
+their complete verification requirements.
+
 Provisional campaign startup retains a successful evidence-relay history scan
 in an authenticated, exact-plan cache. The entry binds the config, deployment,
 genesis, netuid, activation origins, verifier inputs, inventory bounds, journal
@@ -389,6 +407,51 @@ and balances before the first write. Interrupted actions recover their exact
 persisted signed bytes. The previous plan is archived, and every old signed
 manifest, binding, receipt and runtime queue is retained. Renewal alone does not
 launch or rerender a campaign; strict startup admission remains a separate step.
+
+Unrelated deployment signers may continue working during renewal approval.
+Apply reconciles their bounded nonce observations while retaining exact role
+custody and monotonic finalized progress. The oracle and keeper nonces used by
+the approved renewal remain exact; changing either requires a new approved
+transaction intent. Reconciliation never changes the approval hash, signs a
+replacement or repeats a submitted action.
+
+An approved pending nonce may briefly lag the preceding pipelined submission;
+the read retries within a finite budget before signing. If finalized nonce state
+advances between receipt lookups, recovery rechecks the exact transaction hash.
+An uncertain submission response continues from its persisted signed bytes.
+Exhausted propagation remains unresolved evidence for the same action; it does
+not prove that a different transaction consumed the nonce.
+
+Compact approval output, renewal/relay imports, active reloads and immutable
+plan archives share a 128 MiB file limit. Full approvals retain earlier fleet
+generations and can exceed the independent 32 MiB ordinary proof limit. Every
+plan read still requires bounded regular-file custody and its exact canonical
+approval hash; exceeding the plan limit fails before output or adoption.
+
+Closed capture carries only the active approval and its exact approved
+ancestors. Its plan bundles allow one full encoded 128 MiB approval plus 1 MiB
+metadata; compound fleet lineage files have a 4 GiB bound and an independent
+8 GiB retained-plan budget. The configured document and aggregate grants still
+apply, and the ordinary 256 MiB aggregate remains separate. These are finite
+ceilings, not a promise that every maximum fits simultaneously. Completed-phase
+plan carriers use an authenticated `.plan.evidence.json` wrapper; generic prior
+carriers keep their existing capacity. Public evidence GET and exact-history
+readers must support these same typed carriers before final public replay.
+An admitted carrier above 64 MiB receives two minutes plus one second per
+started 8 MiB and a thirty-second client margin, capped at twenty minutes for
+the whole request. Up to three transient retries retain the same hash and byte
+bound; parent deadlines, signature checks and ordinary request timeouts remain.
+
+For a compatible runtime update or recovery driver, add `--provisional-resume`
+to both commands. Planning also requires `--plan-hash SOURCE_HASH`, naming the
+unchanged active plan. Apply requires the emitted successor's hash and its
+`--renewal-plan` file. The shared continuation admission authenticates the actual
+driver, retained plan and current runtime capabilities; it records immutable
+non-accepting provenance. Apply archives the exact successor for its pre-apply
+doctor while keeping the predecessor active until all normal renewal checks
+pass. It neither changes runtime pins nor carries a runtime observation across
+different genesis, metadata or code identities. Omit the provisional flag to
+retain ordinary strict release admission.
 
 If an interrupted round already revoked some predecessors, the successor keeps
 their original signed bindings and attaches the exact client-authorized,

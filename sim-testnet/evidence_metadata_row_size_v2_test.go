@@ -34,7 +34,7 @@ func TestCampaignEvidenceCapacityV2MetadataRowStringsMatchLegacyJson(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := campaignMetadataStringContentBytesV2(value); got != uint64(len(encoded)-2) {
+		if got := campaignMetadataStringContentBytesV2(value, maximumCampaignMetadataDocumentV2); got != uint64(len(encoded)-2) {
 			t.Fatalf("string width differs from legacy Json at case%d: got%d want%d", index, got, len(encoded)-2)
 		}
 	}
@@ -44,7 +44,7 @@ func TestCampaignEvidenceCapacityV2MetadataRowStringsMatchLegacyJson(t *testing.
 // retains the exact old deepest-indent row charge, including its twelve bytes.
 func TestCampaignEvidenceCapacityV2MetadataRowWidthsMatchLegacyJson(t *testing.T) {
 	t.Parallel()
-	sizer, err := newCampaignMetadataRowSizerV2()
+	sizer, err := newCampaignMetadataRowSizerV2(maximumCampaignMetadataDocumentV2)
 	if err != nil {
 		t.Fatal(err)
 	}

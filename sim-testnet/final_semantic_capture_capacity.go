@@ -68,7 +68,7 @@ func finalCollectedBundleOverhead(name string) (uint64, error) {
 // known. Each supplied entry is routed once; order/duplicates cannot hide at
 // a chunk boundary. The explicit limit also permits tiny deterministic tests.
 func finalCollectedBundleChunkRanges(ctx context.Context, name string, entries []FinalCollectedFileBundleEntry, maximum uint64) ([]finalCollectedBundleRange, error) {
-	if ctx == nil || len(entries) == 0 || maximum == 0 || maximum > maximumCampaignEvidenceRawFileBytes {
+	if ctx == nil || len(entries) == 0 || maximum == 0 || maximum > finalPlanBundleBytes(name) {
 		return nil, errors.New("closed bundle capacity owner is incomplete")
 	}
 	if err := ctx.Err(); err != nil {
@@ -95,7 +95,7 @@ func finalCollectedBundleChunkRanges(ctx context.Context, name string, entries [
 		if entry.Path == "" || clean != entry.Path || filepath.IsAbs(filepath.FromSlash(entry.Path)) || strings.HasPrefix(entry.Path, "../") || index > 0 && entry.Path <= entries[index-1].Path {
 			return nil, errors.New("closed bundle source census is unsafe, duplicated or unordered")
 		}
-		if uint64(len(entry.Data)) > finalCollectedBundleMaximumRawBytes {
+		if uint64(len(entry.Data)) > finalPlanBundleSourceBytes(name, entry.Path) {
 			return nil, errors.New("closed bundle source exceeds its raw-file bound")
 		}
 		entryBytes, err := finalCollectedEntryEncodedBytes(entry)
