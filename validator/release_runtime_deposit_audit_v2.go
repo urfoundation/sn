@@ -248,7 +248,7 @@ func (self *releaseRuntimeV2) publishDepositAuditV2WithReadHooks(ctx context.Con
 		return ctx.Err()
 	}
 	epoch := decision.SettlementEpoch - lag
-	options := ValidatorEvidencePublicationV2ReadOptions{Origins: self.origins, Bounds: self.cfg.EvidenceV2.Bounds, Window: protocol.ValidatorEvidenceWindow{Epoch: epoch, Subject: protocol.ValidatorEvidenceSubject{ObservationEpoch: decision.SettlementEpoch, NativeEpoch: decision.SubnetEpoch}}}
+	options := ValidatorEvidencePublicationV2ReadOptions{Policy: cloneReleasePolicy(&self.cfg.Policy), PreviousPolicy: cloneReleasePolicy(self.cfg.PreviousPolicy), Origins: self.origins, Bounds: self.cfg.EvidenceV2.Bounds, Window: protocol.ValidatorEvidenceWindow{Epoch: epoch, Subject: protocol.ValidatorEvidenceSubject{ObservationEpoch: decision.SettlementEpoch, NativeEpoch: decision.SubnetEpoch}}}
 	for _, participant := range self.history.participants {
 		source := self.sources[participant.NoID]
 		if source == nil {

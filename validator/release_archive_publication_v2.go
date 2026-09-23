@@ -73,7 +73,7 @@ func sameReleaseArchivePublicationV2(a, b *ValidatorEvidenceCensusV2Publication)
 }
 
 func (self *ReleaseEvidenceV2Archive) publicationOptionsV2(window protocol.ValidatorEvidenceWindow) ValidatorEvidencePublicationV2ReadOptions {
-	options := ValidatorEvidencePublicationV2ReadOptions{Window: window, Origins: self.owner.origins, Bounds: self.owner.cfg.EvidenceV2.Bounds}
+	options := ValidatorEvidencePublicationV2ReadOptions{Policy: cloneReleasePolicy(&self.owner.cfg.Policy), PreviousPolicy: cloneReleasePolicy(self.owner.cfg.PreviousPolicy), Window: window, Origins: self.owner.origins, Bounds: self.owner.cfg.EvidenceV2.Bounds}
 	for _, input := range self.inputs {
 		options.Activations = append(options.Activations, input.Context.Activation)
 	}

@@ -33,6 +33,11 @@ func releaseClientKeyDecisionV2(cfg *ReleaseConfig, noID uint64, hotkey [32]byte
 	if cfg == nil || artifact == nil || clientID == (connect.Id{}) || hotkey == ([32]byte{}) || noID == 0 {
 		return domain, request, errors.New("client-key decision owner is incomplete")
 	}
+	decisionCfg, err := releaseConfigForPolicyHash(cfg, artifact.PolicyHash)
+	if err != nil {
+		return domain, request, err
+	}
+	cfg = decisionCfg
 	genesis, err := canonicalAttemptHex32("client-key native genesis", cfg.GenesisHash, false)
 	if err != nil {
 		return domain, request, err

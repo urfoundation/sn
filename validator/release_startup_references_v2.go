@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/urfoundation/sn/crv4"
@@ -299,8 +300,12 @@ func (self *releaseEvidenceV2StartupHistory) matchIntentReference(ctx context.Co
 	if uint64(len(artifact.HeadEMA)) > self.cfg.EvidenceV2.Bounds.MaxHeadEntries {
 		return errors.New("startup reference head transcript exceeds its finite census")
 	}
+	policy, err := ReleasePolicyForHash(&self.cfg, artifact.PolicyHash)
+	if err != nil || !reflect.DeepEqual(policy, artifact.Policy) {
+		return errors.Join(errors.New("startup reference policy differs from configured authority"), err)
+	}
 	first := self.initial[self.participants[0].NoID].InitialCut
-	if artifact.DeploymentID != self.cfg.DeploymentID || artifact.ChainID != self.cfg.ChainID || artifact.GenesisHash != strings.ToLower(self.cfg.GenesisHash) || artifact.Coordinator != strings.ToLower(self.cfg.Coordinator) || artifact.SettlementVault != strings.ToLower(self.cfg.SettlementVault) || artifact.ValidatorID != self.cfg.ValidatorID || artifact.Netuid != self.cfg.Netuid || artifact.PolicyHash != strings.ToLower(self.cfg.PolicyHash) || artifact.ValidatorID != intent.ValidatorID || artifact.Netuid != intent.Netuid || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.PolicyHash != intent.PolicyHash || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || artifact.SelfUID != intent.SelfUID {
+	if artifact.DeploymentID != self.cfg.DeploymentID || artifact.ChainID != self.cfg.ChainID || artifact.GenesisHash != strings.ToLower(self.cfg.GenesisHash) || artifact.Coordinator != strings.ToLower(self.cfg.Coordinator) || artifact.SettlementVault != strings.ToLower(self.cfg.SettlementVault) || artifact.ValidatorID != self.cfg.ValidatorID || artifact.Netuid != self.cfg.Netuid || artifact.ValidatorID != intent.ValidatorID || artifact.Netuid != intent.Netuid || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.PolicyHash != intent.PolicyHash || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || artifact.SelfUID != intent.SelfUID {
 		return errors.New("startup intent reference differs from configured deployment or signed coordinates")
 	}
 	if !releaseMeasurementEnvelopeMatchesArtifact(envelope, artifact, intent.SelfUID) || envelope.ValidatorHotkey != attemptHex32(first.Activation.Hotkey) || intent.Prepared.HotkeyHex != envelope.ValidatorHotkey || intent.Prepared.Netuid != intent.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !releaseBlockAtOrBefore(artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash, intent.Prepared.PreparedAtBlock, intent.Prepared.PreparedAtBlockHash) || envelope.PreparedExtrinsicHash != normalizeReleasePreparedHex32(intent.Prepared.ExtrinsicHash, canonicalHexWork{}) || envelope.MeasurementArtifactHash != intent.MeasurementArtifactHash || envelope.MeasurementArtifactSize != intent.MeasurementArtifactSize {

@@ -25,7 +25,14 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2Context(ctx context
 
 // Only startup's complete validated provisional handoff waives repeated
 // external history comparisons; all runtime callers retain the strict wrapper.
-func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx context.Context, domain protocol.ValidatorEvidenceDomain, noID uint64, boundary AttemptBoundary, terminal, retained bool) (resultErr error) {
+func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx context.Context, domain protocol.ValidatorEvidenceDomain, noID uint64, boundary AttemptBoundary, terminal, retained bool) error {
+	return self.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, domain, noID, boundary, terminal, retained, nil, "")
+}
+
+// The immutable activation retains its original policy. A configured amendment
+// admits only its exact successor at an independently observed policyAt block.
+// Ordinary journals additionally pin the policy named by their original owner.
+func (self *ChainClient) authenticateReleaseStartupBoundaryV2WithPolicy(ctx context.Context, domain protocol.ValidatorEvidenceDomain, noID uint64, boundary AttemptBoundary, terminal, retained bool, cfg *ReleaseConfig, expectedPolicyHash string) (resultErr error) {
 	if ctx == nil || self == nil || self.client == nil || self.coordinator == nil || self.chainId == nil {
 		return errors.New("startup history EVM owner is absent")
 	}
@@ -45,6 +52,16 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetained
 	hash, err := canonicalAttemptHex32("startup history EVM hash", boundary.EVMBlockHash, false)
 	if err != nil {
 		return err
+	}
+	if cfg != nil {
+		if _, err := ReleasePolicyForHash(cfg, releaseHex32(domain.PolicyHash)); err != nil {
+			return err
+		}
+		if expectedPolicyHash != "" {
+			if _, err := ReleasePolicyForHash(cfg, expectedPolicyHash); err != nil {
+				return err
+			}
+		}
 	}
 	if retained {
 		return ctx.Err()
@@ -79,8 +96,8 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetained
 	if err := canonicalReleaseActivationV2View("policyAt", outputs[1], policy); err != nil {
 		return err
 	}
-	if policy.PolicyHash != domain.PolicyHash || policy.EffectiveEpoch > boundary.SettlementEpoch || policy.EffectiveBlock == 0 || policy.EpochBlocks == 0 {
-		return errors.New("startup history policy differs from independent deployment authority")
+	if err := validateReleaseStartupBoundaryPolicyV2(cfg, domain, boundary, expectedPolicyHash, policy); err != nil {
+		return err
 	}
 	start := new(big.Int).Mul(new(big.Int).SetUint64(boundary.SettlementEpoch-policy.EffectiveEpoch), new(big.Int).SetUint64(policy.EpochBlocks))
 	start.Add(start, new(big.Int).SetUint64(policy.EffectiveBlock))

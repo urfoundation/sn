@@ -91,7 +91,11 @@ func validateReleaseMeasurementInputV2Context(cfg *ReleaseConfig, noID uint64, e
 	if identity.DeploymentID != cfg.DeploymentID || identity.ChainID != cfg.ChainID || !strings.EqualFold(identity.GenesisHash, cfg.GenesisHash) || identity.ValidatorID != cfg.ValidatorID || identity.Netuid != cfg.Netuid || identity.NoID != noID {
 		return errors.New("compact input cut differs from configured ledger identity")
 	}
-	policyHash, err := parseReleaseHex32("compact input configured policy", cfg.PolicyHash, false)
+	replayPolicy, err := ReleasePolicyForHash(cfg, releaseHex32(domain.PolicyHash))
+	if err != nil {
+		return err
+	}
+	policyHash, err := replayPolicy.Hash()
 	if err != nil {
 		return err
 	}

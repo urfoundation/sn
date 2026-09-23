@@ -113,7 +113,7 @@ func admitValidatorEvidenceDepositAuditV2(manifest *ValidatorEvidenceDepositAudi
 		if activation.Hotkey != options.Activations[0].Hotkey || manifest.Members[index].NoId != activation.NoID || index > 0 && activation.NoID <= options.Activations[index-1].NoID || manifest.Members[index].SignedArtifactBytes > min(limit, options.Bounds.Cut.MaxHeaderBytes) {
 			return 0, errors.New("deposit audit activation or member census differs")
 		}
-		if err := validateValidatorEvidenceDepositAuditV2Decision(manifest.Decision, domain, options.Window); err != nil {
+		if err := validateValidatorEvidenceDepositAuditV2DecisionWithPolicy(manifest.Decision, domain, options.Window, options.Policy, options.PreviousPolicy); err != nil {
 			return 0, err
 		}
 	}
@@ -212,6 +212,8 @@ func readValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *
 		return nil, err
 	}
 	options := supplied
+	options.Policy = cloneReleasePolicy(supplied.Policy)
+	options.PreviousPolicy = cloneReleasePolicy(supplied.PreviousPolicy)
 	options.Activations = slices.Clone(supplied.Activations)
 	if _, err := admitValidatorEvidenceDepositAuditV2(suppliedManifest, options); err != nil {
 		return nil, err

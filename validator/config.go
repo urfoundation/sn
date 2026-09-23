@@ -65,6 +65,7 @@ type ReleaseConfig struct {
 	TrailDepth          int                     `yaml:"trail_depth" json:"trail_depth"`
 	PollSeconds         int                     `yaml:"poll_seconds" json:"poll_seconds"`
 	VersionKey          uint64                  `yaml:"version_key" json:"version_key"`
+	PreviousPolicy      *protocol.Policy        `yaml:"previous_policy,omitempty" json:"previous_policy,omitempty"`
 	Policy              protocol.Policy         `yaml:"policy" json:"policy"`
 	Operators           []OperatorConfig        `yaml:"operators" json:"operators"`
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
@@ -330,6 +331,11 @@ func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObserva
 	}
 	if policyHash != configuredPolicyHash {
 		return fmt.Errorf("policy hash mismatch: config has 0x%x, embedded policy hashes to 0x%x", configuredPolicyHash, policyHash)
+	}
+	if c.PreviousPolicy != nil {
+		if err := protocol.ValidateTestnetRateAmendment(c.PreviousPolicy, &c.Policy); err != nil {
+			return fmt.Errorf("previous policy: %w", err)
+		}
 	}
 	if len(c.RPC) == 0 || len(c.Substrate) == 0 {
 		return errors.New("at least one EVM and Substrate endpoint is required")

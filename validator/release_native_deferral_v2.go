@@ -59,9 +59,12 @@ func (self *releaseEvidenceV2StartupHistory) provisionalClosedInputDeferral(ctx 
 			}
 			continue
 		}
+		if _, err := ReleasePolicyForHash(&self.cfg, journal.PolicyHash); err != nil {
+			return err
+		}
 		input := journal.MeasurementInput
 		cursor, owned := self.current[noID]
-		if journal.Schema != releaseMeasurementInputV2Schema || journal.DeploymentID != self.cfg.DeploymentID || journal.ChainID != self.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, self.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, self.cfg.Coordinator) || journal.ValidatorID != self.cfg.ValidatorID || journal.Netuid != self.cfg.Netuid || journal.SubnetEpoch != nativeEpoch || !strings.EqualFold(journal.PolicyHash, self.cfg.PolicyHash) || input.NoID != noID || input.SettlementEpoch >= active || !owned || cursor.epoch != active || !releaseBlockAtOrBefore(input.CutNativeBlock, input.CutNativeBlockHash, nativeBlock, nativeHash) || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, snapshot.BlockNumber, releaseHex32(snapshot.BlockHash)) {
+		if journal.Schema != releaseMeasurementInputV2Schema || journal.DeploymentID != self.cfg.DeploymentID || journal.ChainID != self.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, self.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, self.cfg.Coordinator) || journal.ValidatorID != self.cfg.ValidatorID || journal.Netuid != self.cfg.Netuid || journal.SubnetEpoch != nativeEpoch || input.NoID != noID || input.SettlementEpoch >= active || !owned || cursor.epoch != active || !releaseBlockAtOrBefore(input.CutNativeBlock, input.CutNativeBlockHash, nativeBlock, nativeHash) || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, snapshot.BlockNumber, releaseHex32(snapshot.BlockHash)) {
 			return errors.New("provisional native input differs beyond its closed settlement")
 		}
 		cut := input.AttemptCutV2

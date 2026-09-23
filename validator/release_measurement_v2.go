@@ -74,6 +74,7 @@ type ReleaseMeasurementV2OperatorOptions struct {
 type ReleaseMeasurementV2Options struct {
 	Expected         ReleaseMeasurementV2Decision
 	Policy           protocol.Policy
+	ReplayPolicy     *protocol.Policy
 	ControlledNOIDs  []uint64
 	Bindings         []ReleaseBindingMeasurement
 	Pools            []ReleasePoolMeasurement
@@ -217,6 +218,10 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 	if artifact == nil || artifact.Schema != ReleaseMeasurementSchemaV2 {
 		return nil, options, errors.New("compact release measurement schema is unsupported")
 	}
+	replayPolicy, err := releaseMeasurementReplayPolicy(options)
+	if err != nil {
+		return nil, options, err
+	}
 	if (artifact.SettlementClosureV2 == nil) != (options.Settlement == nil) {
 		return nil, options, errors.New("compact terminal closure and independent authority must both be present")
 	}
@@ -289,7 +294,7 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 		if identity.NoID != input.NoID || identity.DeploymentID != artifact.DeploymentID || identity.ChainID != artifact.ChainID || identity.GenesisHash != artifact.GenesisHash || identity.Netuid != artifact.Netuid || identity.ValidatorID != artifact.ValidatorID || identity.ValidatorUID != artifact.SelfUID || common.Address(domain.Coordinator) != common.HexToAddress(artifact.Coordinator) || common.Address(domain.SettlementVault) != common.HexToAddress(artifact.SettlementVault) {
 			return nil, options, errors.New("compact operator authority differs from the expected decision namespace")
 		}
-		if _, err := attemptCutV2PolicyDepth(expected, options.Policy); err != nil {
+		if _, err := attemptCutV2PolicyDepth(expected, replayPolicy); err != nil {
 			return nil, options, err
 		}
 		if input.SettlementEpoch != artifact.SettlementEpoch || input.SettlementEpoch != expected.Boundary.SettlementEpoch || input.CutEVMSnapshotBlock != expected.Boundary.EVMBlock || input.CutEVMSnapshotHash != expected.Boundary.EVMBlockHash || input.EgressGeneration != expected.EgressGeneration || input.AttemptCutV2.Context != expected || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
@@ -312,7 +317,7 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 		for index, transition := range settlement.closure.Transitions {
 			input := artifact.Inputs[index]
 			operator := settlement.options.Operators[transition.Identity.NoID]
-			if transition.Identity.NoID != input.NoID || !reflect.DeepEqual(operator.Policy, options.Policy) || scratchKVs[operator.Measurement.Replay.ScratchDirectory] {
+			if transition.Identity.NoID != input.NoID || !reflect.DeepEqual(operator.Policy, replayPolicy) || scratchKVs[operator.Measurement.Replay.ScratchDirectory] {
 				return nil, options, errors.New("compact terminal operator, policy or replay namespace differs")
 			}
 			if err := verifyAttemptSettlementV2Successor(transition, input.Stats, *input.AttemptCutV2, false); err != nil {
@@ -331,6 +336,9 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 		return nil, options, err
 	}
 	options.Policy = owned.Policy
+	if options.ReplayPolicy != nil {
+		options.ReplayPolicy = &replayPolicy
+	}
 	options.ControlledNOIDs = slices.Clone(owned.ControlledNOIDs)
 	options.Bindings = slices.Clone(owned.Bindings)
 	options.Pools = slices.Clone(owned.Pools)
@@ -439,7 +447,11 @@ func verifyOwnedReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasu
 		if checkpoint := checkpoints[input.NoID]; checkpoint != nil {
 			visit = checkpoint.visit
 		}
-		projection, err := verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, options.Policy, operator.Bounds, operator.Measurement, visit)
+		replayPolicy, err := releaseMeasurementReplayPolicy(options)
+		if err != nil {
+			return VerifiedReleaseMeasurementV2{}, err
+		}
+		projection, err := verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, replayPolicy, operator.Bounds, operator.Measurement, visit)
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, fmt.Errorf("compact operator %d: %w", input.NoID, err)
 		}
@@ -719,8 +731,11 @@ func VerifyReleaseMeasurementLineageV2(ctx context.Context, previousEncoded []by
 			}
 		}
 	}
-	if current.PreviousArtifactHash != ReleaseMeasurementContentHash(previousEncoded) || current.DeploymentID != previous.DeploymentID || current.ChainID != previous.ChainID || current.GenesisHash != previous.GenesisHash || current.Coordinator != previous.Coordinator || current.SettlementVault != previous.SettlementVault || current.ValidatorID != previous.ValidatorID || current.Netuid != previous.Netuid || current.SelfUID != previous.SelfUID || current.PolicyHash != previous.PolicyHash {
+	if current.PreviousArtifactHash != ReleaseMeasurementContentHash(previousEncoded) || current.DeploymentID != previous.DeploymentID || current.ChainID != previous.ChainID || current.GenesisHash != previous.GenesisHash || current.Coordinator != previous.Coordinator || current.SettlementVault != previous.SettlementVault || current.ValidatorID != previous.ValidatorID || current.Netuid != previous.Netuid || current.SelfUID != previous.SelfUID {
 		return result, errors.New("compact release measurement lineage identity differs")
+	}
+	if err := verifyReleasePolicyLineage(previous, current); err != nil {
+		return result, err
 	}
 	crossSettlement := current.SettlementEpoch != previous.SettlementEpoch
 	if crossSettlement && (previous.SettlementEpoch == ^uint64(0) || current.SettlementEpoch != previous.SettlementEpoch+1 || current.SettlementClosureV2 == nil) {

@@ -184,7 +184,11 @@ func (self *releaseRuntimeV2) operator(ctx context.Context, expected AttemptCutV
 		return AttemptSettlementV2OperatorOptions{}, err
 	}
 	bounds, reader := self.cfg.EvidenceV2.Bounds, self.history.readers[0]
-	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: self.cfg.Policy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
+	replayPolicy, err := ReleasePolicyForHash(&self.cfg, releaseHex32(expected.Activation.Domain.PolicyHash))
+	if err != nil {
+		return AttemptSettlementV2OperatorOptions{}, err
+	}
+	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: replayPolicy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
 		ExpectedConfig: ReleaseStatsConfig{AMin: self.cfg.Policy.Verify.ReliabilityAMin, AlphaNumerator: releasePoolAlphaNumerator, AlphaDenominator: releasePoolAlphaDenominator, LatRefMillis: releasePoolLatRefMillis},
 		MaxProviders:   bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, MaxFleetPrefixes: bounds.MaxFleetPrefixes,
 		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.history.keys[expected.Identity.NoID], ReadMetadata: reader.ReadMetadata, OpenData: reader.OpenData}}}, nil
@@ -245,7 +249,7 @@ func (self *releaseRuntimeV2) window(ctx context.Context, snapshot *ReleaseSnaps
 	}
 	boundary := AttemptBoundary{SettlementEpoch: epoch, EVMBlock: end - 1, EVMBlockHash: attemptHex32(hash)}
 	for _, participant := range self.history.participants {
-		if err := self.chain.authenticateReleaseStartupBoundaryV2Context(ctx, self.history.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, boundary, true); err != nil {
+		if err := self.chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, self.history.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, boundary, true, false, &self.cfg, ""); err != nil {
 			return zero, AttemptBoundary{}, err
 		}
 	}
@@ -513,12 +517,16 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		if err != nil {
 			return nil, zero, err
 		}
+		if options.ReplayPolicy == nil {
+			policy := operator.Policy
+			options.ReplayPolicy = &policy
+		}
 		seal, err := self.seal(ctx, noId, replicas[noId], "ordinary-seal")
 		if err != nil {
 			return nil, zero, err
 		}
 		inputOptions := releaseMeasurementInputV2Options{MaxJournalBytes: bounds.MaxInputJournalBytes,
-			Stats: releaseStatsV2Options{Activation: expected.Activation, Policy: self.cfg.Policy, Bounds: bounds.Cut, Seal: seal,
+			Stats: releaseStatsV2Options{Activation: expected.Activation, Policy: operator.Policy, Bounds: bounds.Cut, Seal: seal,
 				Stats: AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, Replay: operator.Measurement.Replay}}}
 		if provisionalClosedNativeInputEnabled(&self.cfg) {
 			if self.nativeReservations == nil {

@@ -131,7 +131,7 @@ func (self *ReleaseEvidenceV2Archive) ObserveSources(ctx context.Context, chain 
 				return nil, err
 			}
 			input := journal.MeasurementInput
-			if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, initial.InitialCut.Activation.Domain, noID, AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}, false, false); err != nil {
+			if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, initial.InitialCut.Activation.Domain, noID, AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}, false, false, &history.cfg, journal.PolicyHash); err != nil {
 				return nil, err
 			}
 		}
@@ -139,7 +139,7 @@ func (self *ReleaseEvidenceV2Archive) ObserveSources(ctx context.Context, chain 
 	for _, epoch := range slices.Sorted(maps.Keys(history.terminals)) {
 		for _, transition := range history.terminals[epoch].Transitions {
 			noID := transition.Identity.NoID
-			if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, history.initial[noID].InitialCut.Activation.Domain, noID, transition.FromBoundary, true, false); err != nil {
+			if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, history.initial[noID].InitialCut.Activation.Domain, noID, transition.FromBoundary, true, false, &history.cfg, ""); err != nil {
 				return nil, err
 			}
 		}
@@ -252,9 +252,13 @@ func (self *ReleaseEvidenceV2Archive) decisionOptions(ctx context.Context, inten
 	if len(contexts) != len(history.participants) || len(inputs) != len(contexts) || len(artifact.Inputs) != len(contexts) {
 		return ReleaseMeasurementV2Options{}, errors.New("archive decision lacks a complete independently replayed native cut")
 	}
+	decisionPolicy, err := ReleasePolicyForHash(&history.cfg, observation.Decision.PolicyHash)
+	if err != nil {
+		return ReleaseMeasurementV2Options{}, err
+	}
 	controlled := slices.Clone(history.cfg.ControlledNOIDs)
 	slices.Sort(controlled)
-	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: history.cfg.Policy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
+	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	for _, participant := range history.participants {
 		expected, found := contexts[participant.NoID]
 		input := inputs[participant.NoID]
@@ -265,6 +269,10 @@ func (self *ReleaseEvidenceV2Archive) decisionOptions(ctx context.Context, inten
 		operator, err := history.operator(ctx, participant.NoID, cursor, expected.Boundary, 0, "decision")
 		if err != nil {
 			return ReleaseMeasurementV2Options{}, err
+		}
+		if result.ReplayPolicy == nil {
+			replayPolicy := operator.Policy
+			result.ReplayPolicy = &replayPolicy
 		}
 		result.Operators[participant.NoID] = ReleaseMeasurementV2OperatorOptions{Expected: operator.Expected, CutNativeBlock: input.MeasurementInput.CutNativeBlock, CutNativeBlockHash: input.MeasurementInput.CutNativeBlockHash, Bounds: operator.Bounds, Measurement: operator.Measurement}
 	}

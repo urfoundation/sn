@@ -22,10 +22,14 @@ import (
 // Activations and epoch geometry are independently supplied deployment/chain
 // inputs. They must not be constructed by copying the discovered artifacts.
 type ValidatorEvidencePublicationV2ReadOptions struct {
-	Activations []protocol.ValidatorEvidenceActivation
-	Window      protocol.ValidatorEvidenceWindow
-	Origins     [2]string
-	Bounds      ReleaseEvidenceV2Bounds
+	// Deposit decisions may name the exact governed successor while their
+	// evidence header continues to use its original activation domain.
+	Policy         *protocol.Policy
+	PreviousPolicy *protocol.Policy
+	Activations    []protocol.ValidatorEvidenceActivation
+	Window         protocol.ValidatorEvidenceWindow
+	Origins        [2]string
+	Bounds         ReleaseEvidenceV2Bounds
 }
 
 // Both the concrete HTTP reader and closed archive adapter use this exact

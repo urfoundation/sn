@@ -119,9 +119,23 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 			result = releaseIntentDecisionSourcesV2{}
 		}
 	}()
+	decisionCfg, err := releaseConfigForPolicyHash(&self.cfg, artifact.PolicyHash)
+	if err != nil {
+		return result, err
+	}
+	// Scope every historical policy, client-key and deposit read to its exact
+	// original document; the retained activation and cut remain unchanged.
+	owned := *self
+	owned.cfg = *decisionCfg
+	self = &owned
 	first := self.initial[self.participants[0].NoID].InitialCut
+	domain := first.Activation.Domain
+	domain.PolicyHash, err = self.cfg.Policy.Hash()
+	if err != nil {
+		return result, err
+	}
 	bounds := self.cfg.EvidenceV2.Bounds
-	query := releaseDecisionChainV2Query{domain: first.Activation.Domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes}
+	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes}
 	if uint64(len(self.participants)) > bounds.MaxOperators {
 		return result, errors.New("historical decision operator census exceeds its bound")
 	}

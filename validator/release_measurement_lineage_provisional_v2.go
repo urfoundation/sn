@@ -89,8 +89,11 @@ func (self *releaseRuntimeV2) verifyMeasurementGapHistoryV2(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	if current.PreviousArtifactHash != ReleaseMeasurementContentHash(previousEncoded) || current.DeploymentID != previous.DeploymentID || current.ChainID != previous.ChainID || current.GenesisHash != previous.GenesisHash || current.Coordinator != previous.Coordinator || current.SettlementVault != previous.SettlementVault || current.ValidatorID != previous.ValidatorID || current.Netuid != previous.Netuid || current.SelfUID != previous.SelfUID || current.PolicyHash != previous.PolicyHash {
+	if current.PreviousArtifactHash != ReleaseMeasurementContentHash(previousEncoded) || current.DeploymentID != previous.DeploymentID || current.ChainID != previous.ChainID || current.GenesisHash != previous.GenesisHash || current.Coordinator != previous.Coordinator || current.SettlementVault != previous.SettlementVault || current.ValidatorID != previous.ValidatorID || current.Netuid != previous.Netuid || current.SelfUID != previous.SelfUID {
 		return errors.New("provisional measurement lineage identity or predecessor hash differs")
+	}
+	if err := verifyReleasePolicyLineage(previous, current); err != nil {
+		return err
 	}
 	if current.SubnetEpoch < previous.SubnetEpoch || current.SettlementEpoch < previous.SettlementEpoch || !releaseBlockAtOrBefore(previous.NativeSnapshotBlock, previous.NativeSnapshotHash, current.NativeSnapshotBlock, current.NativeSnapshotHash) || !releaseBlockAtOrBefore(previous.EVMSnapshotBlock, previous.EVMSnapshotHash, current.EVMSnapshotBlock, current.EVMSnapshotHash) {
 		return errors.New("provisional measurement lineage regresses its epoch or boundary")

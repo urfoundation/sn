@@ -205,7 +205,11 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 		if err != nil {
 			return nil, err
 		}
-		if uint64(len(measurement)) != intent.MeasurementArtifactSize || artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || artifact.Coordinator != cfg.Coordinator || artifact.SettlementVault != cfg.SettlementVault || artifact.ValidatorID != cfg.ValidatorID || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != cfg.PolicyHash || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.SelfUID != intent.SelfUID || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || !reflect.DeepEqual(artifact.DepositAudits, intent.DepositAudits) {
+		policy, err := ReleasePolicyForHash(cfg, artifact.PolicyHash)
+		if err != nil || !reflect.DeepEqual(policy, artifact.Policy) {
+			return nil, errors.Join(errors.New("compact capture policy document differs from configured authority"), err)
+		}
+		if uint64(len(measurement)) != intent.MeasurementArtifactSize || artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || artifact.Coordinator != cfg.Coordinator || artifact.SettlementVault != cfg.SettlementVault || artifact.ValidatorID != cfg.ValidatorID || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != intent.PolicyHash || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.SelfUID != intent.SelfUID || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || !reflect.DeepEqual(artifact.DepositAudits, intent.DepositAudits) {
 			return nil, errors.New("compact capture measurement differs from its configured deployment or exact intent")
 		}
 		envelopeHash, err := parseReleaseContentHash(intent.MeasurementEnvelopeHash)

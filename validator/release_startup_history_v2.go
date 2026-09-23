@@ -169,7 +169,11 @@ func (self *releaseEvidenceV2StartupHistory) operator(ctx context.Context, noID 
 		reader := self.readers[replica]
 		readMetadata, openData = reader.ReadMetadata, reader.OpenData
 	}
-	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: self.cfg.Policy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
+	replayPolicy, err := ReleasePolicyForHash(&self.cfg, releaseHex32(expected.Activation.Domain.PolicyHash))
+	if err != nil {
+		return AttemptSettlementV2OperatorOptions{}, err
+	}
+	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: replayPolicy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
 		ExpectedConfig: ReleaseStatsConfig{AMin: self.cfg.Policy.Verify.ReliabilityAMin, AlphaNumerator: releasePoolAlphaNumerator, AlphaDenominator: releasePoolAlphaDenominator, LatRefMillis: releasePoolLatRefMillis},
 		MaxProviders:   bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, MaxFleetPrefixes: bounds.MaxFleetPrefixes,
 		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.keys[noID], ReadMetadata: readMetadata, OpenData: openData},
@@ -458,6 +462,11 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 		owned.cfg.historyAdoptionV2 = &request
 	}
 	owned.cfg.Policy.Deposit.Tiers = slices.Clone(cfg.Policy.Deposit.Tiers)
+	if cfg.PreviousPolicy != nil {
+		previous := *cfg.PreviousPolicy
+		previous.Deposit.Tiers = slices.Clone(previous.Deposit.Tiers)
+		owned.cfg.PreviousPolicy = &previous
+	}
 	inputs = slices.Clone(inputs)
 	for index := range inputs {
 		input := &inputs[index]
@@ -557,7 +566,7 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 			return nil, err
 		}
 		boundary := AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
-		if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false, retainedHistoricalRPC); err != nil {
+		if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false, retainedHistoricalRPC, &owned.cfg, journal.PolicyHash); err != nil {
 			return nil, err
 		}
 		if member.legacy {
@@ -638,7 +647,7 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 			if transition == nil || transition.Identity.NoID != participant.NoID {
 				return nil, errors.New("startup terminal operator order differs from configured history")
 			}
-			if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, owned.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, transition.FromBoundary, true, retainedHistoricalRPC); err != nil {
+			if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, owned.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, transition.FromBoundary, true, retainedHistoricalRPC, &owned.cfg, ""); err != nil {
 				return nil, err
 			}
 		}
@@ -677,8 +686,11 @@ func (self *releaseEvidenceV2StartupHistory) decodeInput(ctx context.Context, me
 	if err != nil {
 		return nil, err
 	}
-	if journal.DeploymentID != self.cfg.DeploymentID || journal.ChainID != self.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, self.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, self.cfg.Coordinator) || journal.ValidatorID != self.cfg.ValidatorID || journal.Netuid != self.cfg.Netuid || !strings.EqualFold(journal.PolicyHash, self.cfg.PolicyHash) || journal.SubnetEpoch != member.epoch || journal.MeasurementInput.NoID != member.noID {
+	if journal.DeploymentID != self.cfg.DeploymentID || journal.ChainID != self.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, self.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, self.cfg.Coordinator) || journal.ValidatorID != self.cfg.ValidatorID || journal.Netuid != self.cfg.Netuid || journal.SubnetEpoch != member.epoch || journal.MeasurementInput.NoID != member.noID {
 		return nil, errors.New("startup input history differs from configured identity or canonical filename")
+	}
+	if _, err := ReleasePolicyForHash(&self.cfg, journal.PolicyHash); err != nil {
+		return nil, err
 	}
 	return journal, ctx.Err()
 }

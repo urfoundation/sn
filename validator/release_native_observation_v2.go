@@ -199,6 +199,13 @@ func matchObservedNativeSourceV2(cfg *ReleaseConfig, hotkey [32]byte, intent *St
 	if err := verifyReleaseMeasurementCommonIdentity(artifact); err != nil {
 		return err
 	}
+	if cfg.PreviousPolicy != nil || !strings.EqualFold(cfg.PolicyHash, artifact.PolicyHash) {
+		decisionCfg, err := releaseConfigForPolicyHash(cfg, artifact.PolicyHash)
+		if err != nil {
+			return err
+		}
+		cfg = decisionCfg
+	}
 	if artifact.Schema != ReleaseMeasurementSchemaV2 || artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != strings.ToLower(cfg.GenesisHash) || artifact.Coordinator != strings.ToLower(cfg.Coordinator) || artifact.SettlementVault != strings.ToLower(cfg.SettlementVault) || artifact.PolicyHash != strings.ToLower(cfg.PolicyHash) || artifact.ValidatorID != cfg.ValidatorID || artifact.Netuid != cfg.Netuid || artifact.ValidatorID != intent.ValidatorID || artifact.Netuid != intent.Netuid || artifact.PolicyHash != intent.PolicyHash || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.SelfUID != intent.SelfUID || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || !reflect.DeepEqual(artifact.DepositAudits, intent.DepositAudits) {
 		return errors.New("V2 native source differs from its deployment or intent")
 	}
