@@ -191,13 +191,20 @@ func (self *claimQueueStore) save(q *ClaimQueue) error {
 	b = append(b, '\n')
 	hash := sha256.Sum256(b)
 	if self.saved && self.savedHash == hash {
-		prior, readErr := os.ReadFile(self.path)
-		if readErr == nil && bytes.Equal(prior, b) {
-			return nil
+		info, statErr := os.Lstat(self.path)
+		if statErr == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o600 {
+			prior, readErr := os.ReadFile(self.path)
+			if readErr == nil && bytes.Equal(prior, b) {
+				return nil
+			}
+			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+				self.saved = false
+				return readErr
+			}
 		}
 		self.saved = false
-		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			return readErr
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			return statErr
 		}
 	}
 	// A failed rename or directory sync must not make the next identical

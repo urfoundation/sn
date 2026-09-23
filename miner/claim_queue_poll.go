@@ -20,7 +20,7 @@ type claimQueuePollHooks struct {
 
 // A reconciliation failure has its own bounded backoff: failed readiness reads
 // do not increment the count of actual transaction submission attempts.
-func deferClaimReconciliation(entry *ClaimQueueEntry, now time.Time, failure error) {
+func deferClaimReconciliation(entry *ClaimQueueEntry, now time.Time, failure error, recent bool) {
 	if entry.ReconcileAttempts < 0 {
 		entry.ReconcileAttempts = 0
 	}
@@ -28,9 +28,12 @@ func deferClaimReconciliation(entry *ClaimQueueEntry, now time.Time, failure err
 		entry.ReconcileAttempts++
 	}
 	delay := claimRetry(entry.ReconcileAttempts)
-	if entry.Status == "uncertain" {
-		// Exact signed transactions still receive frequent outcome checks.
+	if recent || entry.Status == "uncertain" {
+		// Current payout roots and exact transaction outcomes must not wait
+		// behind the longer backoff assigned to historical repair work.
 		delay = min(delay, time.Minute)
+	}
+	if entry.Status == "uncertain" {
 		entry.LastError = "uncertain transaction reconciliation: " + failure.Error()
 	} else {
 		entry.Status = "retry"
@@ -87,7 +90,7 @@ func pollClaimQueue(ctx context.Context, queue *ClaimQueue, hooks claimQueuePoll
 			}
 		}
 		if reconcileErr != nil {
-			deferClaimReconciliation(entry, hooks.now(), reconcileErr)
+			deferClaimReconciliation(entry, hooks.now(), reconcileErr, epoch >= queue.LastDiscovered-1)
 			dirty = true
 			continue
 		}

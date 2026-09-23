@@ -93,7 +93,7 @@ func TestClaimQueuePollPersistsIndependentBoundedReconciliationBackoff(t *testin
 		t.Fatal(err)
 	}
 	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 4, Entries: map[string]*ClaimQueueEntry{"4": {Epoch: 4, Status: "retry"}}}
+	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 9, Entries: map[string]*ClaimQueueEntry{"4": {Epoch: 4, Status: "retry"}}}
 	for attempt := 1; attempt <= 9; attempt++ {
 		hooks := claimPollTestHooks(t, now)
 		hooks.save = store.save
@@ -113,6 +113,37 @@ func TestClaimQueuePollPersistsIndependentBoundedReconciliationBackoff(t *testin
 			t.Fatalf("attempt %d entry=%+v deadline=%s error=%v", attempt, entry, deadline, err)
 		}
 		now = deadline
+	}
+}
+
+// Recent payout roots retain prompt polling after repeated not-ready results;
+// only older repair work may receive the maximum hourly readiness backoff.
+func TestClaimQueuePollKeepsRecentEpochReadinessPrompt(t *testing.T) {
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	queue := &ClaimQueue{LastDiscovered: 8, Entries: map[string]*ClaimQueueEntry{}}
+	for _, epoch := range []int64{6, 7, 8} {
+		queue.Entries[fmt.Sprint(epoch)] = &ClaimQueueEntry{Epoch: epoch, Status: "retry", ReconcileAttempts: 7}
+	}
+	hooks := claimPollTestHooks(t, now)
+	hooks.reconcile = func(context.Context, *ClaimQueueEntry) (string, error) {
+		return "", errors.New("synthetic root pending")
+	}
+	writes := 0
+	hooks.save = func(*ClaimQueue) error { writes++; return nil }
+	if err := pollClaimQueue(context.Background(), queue, hooks); err != nil {
+		t.Fatal(err)
+	}
+	for key, entry := range queue.Entries {
+		wantDelay := time.Minute
+		if entry.Epoch == 6 {
+			wantDelay = time.Hour
+		}
+		if entry.NextRetryAt != now.Add(wantDelay).Format(time.RFC3339Nano) || entry.Attempts != 0 {
+			t.Fatalf("epoch %s has wrong readiness deadline: %+v", key, entry)
+		}
+	}
+	if writes != 1 {
+		t.Fatalf("recent and historical retry diagnostics were not batched: %d", writes)
 	}
 }
 
@@ -266,5 +297,71 @@ func TestClaimQueueStoreSkipsOnlyCurrentIdenticalBytes(t *testing.T) {
 	want, marshalErr := json.MarshalIndent(queue, "", "  ")
 	if err != nil || marshalErr != nil || !bytes.Equal(raw, append(want, '\n')) {
 		t.Fatalf("missing queue was not durably restored: read=%v encode=%v", err, marshalErr)
+	}
+}
+
+// Equal bytes cannot bypass the existing private-file boundary or turn an
+// external symlink into an acknowledged durable queue generation.
+func TestClaimQueueStoreRepairsChangedPrivacyBeforeSkippingSave(t *testing.T) {
+	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: -1, Entries: map[string]*ClaimQueueEntry{}}
+	if err := store.save(queue); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(store.path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.save(queue); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(store.path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		t.Fatalf("private queue invariant was skipped: %v %v", info, err)
+	}
+	retained := filepath.Join(filepath.Dir(store.path), "synthetic-retained.json")
+	if err := os.Rename(store.path, retained); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(retained, store.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.save(queue); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Lstat(store.path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		t.Fatalf("symlink replaced a durable queue generation: %v %v", info, err)
+	}
+}
+
+// A new owner cannot skip its durability boundary just because a previous
+// owner's bytes are visible; this also models an unacknowledged prior write.
+func TestClaimQueueStoreReacknowledgesPreviouslyVisibleBytes(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	store, err := newClaimQueueStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: -1, Entries: map[string]*ClaimQueueEntry{}}
+	if err := store.save(queue); err != nil {
+		t.Fatal(err)
+	}
+	prior, err := os.Stat(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newClaimQueueStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.save(queue); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.Stat(reopened.path)
+	if err != nil || os.SameFile(prior, current) {
+		t.Fatalf("unacknowledged bytes skipped the durability boundary: %v", err)
 	}
 }
