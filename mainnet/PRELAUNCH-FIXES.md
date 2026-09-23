@@ -1476,3 +1476,16 @@ finalized-before-evidence restart, and negative controls for unmatched accountin
 more than one unit at either conversion, changed requests and arithmetic overflow.
 Do not propagate this probe rule into payout accounting without independently
 specifying and validating that contract's conservation and principal guarantee.
+
+### Preparation must not acquire a stopped campaign's transport
+
+Standalone precompile preparation reused completed chain evidence but then opened
+a campaign executor, forcing its next call through a loopback EVM proxy owned by
+a deliberately stopped supervisor. The authenticated command already had working
+RPC and transaction managers. Preparation now borrows those exact owners and
+retains their authorized route, journal, plan, native connection, payloads and
+nonce management; it neither starts topology nor closes the caller's managers.
+Owner or route drift remains a hard error. Release scenarios still perform their
+separate retained-topology restart and supervised egress handoff. Deterministic
+regressions cover stopped proxies, continued use of the original direct client,
+foreign journal/plan/route owners, and unchanged release restart scope.

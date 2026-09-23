@@ -64,14 +64,10 @@ func executePrecompilePreparation(ctx context.Context, plan *SetupPlan, execute 
 // Runs the approved preparation directly, without treating the known missing
 // successor deployment in a pre-repair snapshot as a failed acceptance run.
 func runPrecompilePreparation(ctx context.Context, cfg *ResolvedConfig, stateDir string, journal *Journal, executor *Executor) error {
-	if !provisionalResumeEnabled(cfg) || journal == nil || executor == nil || executor.plan == nil || executor.roles == nil {
-		return errors.New("precompile preparation requires an approved provisional scenario writer")
-	}
-	prepared, _, err := newCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, executor.plan, journal, executor.roles, executor)
+	prepared, err := precompilePreparationOwner(cfg, stateDir, journal, executor)
 	if err != nil {
 		return err
 	}
-	defer prepared.Close()
 	if err := prepared.ensurePayloads(ctx); err != nil {
 		return err
 	}
@@ -89,6 +85,22 @@ func runPrecompilePreparation(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return errors.New("precompile preparation lacks its finalized snapshot")
 	}
 	return printResult("json", map[string]any{"command": "scenario", "name": precompilePreparationScenario, "plan_hash": prepared.plan.PlanHash, "status": "postcondition_verified", "prepared_actions": 8, "probe": evidence.ProbeAddress, "snapshot_block": evidence.Snapshot.SinceBlock, "evidence_hash": evidence.EvidenceHash, "dividend_pending": !precompileEvidenceComplete(evidence), "provisional": true, "final_acceptance": false}, nil)
+}
+
+// Borrows the command's already authenticated route and transaction managers.
+// Standalone repair does not own a topology or a second executor to close; a
+// supervised release retains its separate campaign egress handoff.
+func precompilePreparationOwner(cfg *ResolvedConfig, stateDir string, journal *Journal, executor *Executor) (*Executor, error) {
+	if !provisionalResumeEnabled(cfg) || journal == nil || executor == nil || executor.plan == nil || executor.roles == nil || executor.substrate == nil || executor.deployer == nil {
+		return nil, errors.New("precompile preparation requires an approved provisional scenario writer")
+	}
+	if executor.auditAuthorizedConfig != cfg || executor.journal != journal || executor.stateDir != stateDir || cfg.provisionalResume.Record.PlanHash != executor.plan.PlanHash {
+		return nil, errors.New("precompile preparation owner differs from the authenticated command")
+	}
+	if err := validateCampaignRPCTransport(cfg, executor.cfg); err != nil {
+		return nil, fmt.Errorf("precompile preparation transport: %w", err)
+	}
+	return executor, nil
 }
 
 // Every continuation first authenticates the exact preparation frontier. An
