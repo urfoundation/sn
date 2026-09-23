@@ -60,6 +60,7 @@ type Executor struct {
 	precompileHistoryEvidence    *PrecompileConformanceEvidence
 	preparationIncomplete        bool
 	precompileRecoveryOnly       bool
+	precompileRecoveryGasPending *precompileRecoveryGasPending
 	evidenceRelayOwnerPlans      *evidenceRelayOwnerPlanCache
 }
 

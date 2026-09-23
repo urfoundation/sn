@@ -1197,7 +1197,7 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 		return 0, nil, fmt.Errorf("%s: %w", action.ID, err)
 	}
 	if gas > maximumGasUnits {
-		return 0, nil, fmt.Errorf("%s padded gas %d exceeds approved gas-unit ceiling %d", action.ID, gas, maximumGasUnits)
+		return 0, nil, &evmGasUnitCeilingError{actionId: action.ID, intentHash: action.IntentHash, paddedGas: gas, maximumGas: maximumGasUnits}
 	}
 	maximumCost := new(big.Int).Mul(new(big.Int).SetUint64(gas), feeCap)
 	actionCeiling, ceilingErr := action.Spend.EVMGasWei.Big()

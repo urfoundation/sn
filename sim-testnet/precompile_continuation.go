@@ -290,8 +290,25 @@ func (self *Executor) executePrecompileContinuationAction(ctx context.Context, a
 			return err
 		}
 		if evidence.Back.FromAfterRao != 0 {
+			if pending := self.precompileRecoveryGasPending; pending != nil && evidence.Recovery != nil && len(evidence.Recovery.Steps) != 0 && self.journal != nil {
+				step := evidence.Recovery.Steps[len(evidence.Recovery.Steps)-1]
+				journalHash := ""
+				for _, entry := range self.journal.Entries() {
+					if entry.ActionID == step.Action.ID {
+						journalHash = entry.EntryHash
+					}
+				}
+				if pending.planHash == self.plan.PlanHash && pending.authorizationHash == evidence.Recovery.Authorization.Hash && pending.failure.actionId == step.Action.ID && pending.failure.intentHash == step.Action.IntentHash && pending.journalHash == journalHash {
+					return self.deferPrecompileRecoveryGas(ctx, evidence, pending.failure)
+				}
+				self.precompileRecoveryGasPending = nil
+			}
 			if err := self.advancePrecompileRecovery(ctx, evidence); err != nil {
-				return err
+				current, readErr := loadPrecompileEvidence(self.stateDir)
+				if readErr != nil {
+					return errors.Join(err, readErr)
+				}
+				return self.deferPrecompileRecoveryGas(ctx, current, err)
 			}
 			evidence, err = loadPrecompileEvidence(self.stateDir)
 			if err != nil {

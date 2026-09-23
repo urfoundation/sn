@@ -20,6 +20,13 @@ import (
 // fixture identities; this executor never signs a native transaction.
 func newPendingPrecompileRecoveryExecutorFixture(t *testing.T) (*precompileRecoveryTestFixture, *Journal, *types.Transaction) {
 	t.Helper()
+	return newPrecompileRecoveryExecutorFixture(t, true)
+}
+
+// The unsigned variant stops before saving bytes; the signed variant reproduces
+// the later crash boundary used by receipt-reconciliation tests.
+func newPrecompileRecoveryExecutorFixture(t *testing.T, signed bool) (*precompileRecoveryTestFixture, *Journal, *types.Transaction) {
+	t.Helper()
 	f := newPrecompileRecoveryTestFixture(t)
 	f.cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://verification-rpc.example"
 	f.cfg.Public.Chain.EVMPublicReadEndpoint = "https://verification-rpc.example"
@@ -68,13 +75,23 @@ func newPendingPrecompileRecoveryExecutorFixture(t *testing.T) (*precompileRecov
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := atomicWrite(filepath.Join(f.stateDir, "transactions", stringsTrim0x(tx.Hash().Hex())+".rlp"), raw, 0o600); err != nil {
+	if err := func() error {
+		if !signed {
+			return nil
+		}
+		return atomicWrite(filepath.Join(f.stateDir, "transactions", stringsTrim0x(tx.Hash().Hex())+".rlp"), raw, 0o600)
+	}(); err != nil {
 		t.Fatal(err)
 	}
 	if err := journal.Append(JournalEntry{DeploymentID: f.plan.DeploymentID, PlanHash: f.plan.PlanHash, ActionID: step.Action.ID, IntentHash: step.Action.IntentHash, Stage: StageIntent}); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Append(JournalEntry{DeploymentID: f.plan.DeploymentID, PlanHash: f.plan.PlanHash, ActionID: step.Action.ID, IntentHash: step.Action.IntentHash, Stage: StageBroadcast, Signer: f.plan.Roles.Deployer, Nonce: strconv.FormatUint(tx.Nonce(), 10), TransactionHash: tx.Hash().Hex(), RecoveryBlock: step.QuoteHead.Number, RecoveryBlockHash: step.QuoteHead.Hash}); err != nil {
+	if err := func() error {
+		if !signed {
+			return nil
+		}
+		return journal.Append(JournalEntry{DeploymentID: f.plan.DeploymentID, PlanHash: f.plan.PlanHash, ActionID: step.Action.ID, IntentHash: step.Action.IntentHash, Stage: StageBroadcast, Signer: f.plan.Roles.Deployer, Nonce: strconv.FormatUint(tx.Nonce(), 10), TransactionHash: tx.Hash().Hex(), RecoveryBlock: step.QuoteHead.Number, RecoveryBlockHash: step.QuoteHead.Hash})
+	}(); err != nil {
 		t.Fatal(err)
 	}
 	if err := journal.Close(); err != nil {
