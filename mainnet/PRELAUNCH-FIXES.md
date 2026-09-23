@@ -1686,3 +1686,34 @@ Keep the reverted receipt and actual paid gas visible. Test failures at each
 read boundary, exhaustion, request cancellation, original-deadline retention,
 journal reopen and no duplicate broadcast. Test real mismatch and storage-error
 controls beside every transient recovery path.
+
+### Retain unsigned repair liabilities during independent observation
+
+Recovery 29 stopped before its acceptance boundary because the initial snapshot
+retried an unsigned probe repair whose estimate exceeded its signed gas-unit
+limit. Cancellation then interrupted the independent evidence census. Repeating
+the same operation could not supply the missing authority.
+
+For PH-01, PH-02 and PH-05, separate observation, signing permission and final
+acceptance. An explicitly provisional observer may retain an accounted repair
+liability after a typed refusal raised before signing. Require the exact signed
+action and gas cap, validated custody/accounting, a durable failed journal
+frontier, and proof that no matching signed transaction exists, including orphan
+transaction files saved before their broadcast record. Keep standalone repair,
+mixed integrity/storage errors and other budget or fee refusals hard. Any change
+to transaction authority still requires its own explicit signed amendment.
+
+Under the same exclusive writer, reuse that refusal only while its plan, action,
+authority and action-journal frontier remain unchanged. Reauthenticate those
+inputs on each observation; do not append identical intent/failed records or
+repeat the full signature census. Preserve the pending liability and completed
+receipts in evidence. Strict final acceptance must still require complete,
+verified custody recovery.
+
+Simulator commits `8369f96a` and `16e9896a` implement this narrow continuation.
+Eight focused normal and race tests passed, covering observer survival without
+another send, durable failure requirements, orphan signatures, joined errors,
+standalone scope and unchanged final rejection. See
+[the regression](../sim-testnet/precompile_recovery_gas_pending_test.go).
+Production integration and operational acceptance remain required before closing
+the corresponding hardening items.
