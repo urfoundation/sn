@@ -273,16 +273,16 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			return nil, fmt.Errorf("compact companion action %s lacks actual finalized journal evidence", name)
 		}
 		transaction, pending, err := client.TransactionByHash(ctx, common.HexToHash(selected.TransactionHash))
-		if err != nil || transaction == nil || pending || !strings.EqualFold(transaction.Hash().Hex(), selected.TransactionHash) {
-			return nil, errors.Join(errors.New("compact companion signed transaction is absent"), err)
+		if err := captureRpcObservationError(err, transaction != nil && !pending && strings.EqualFold(transaction.Hash().Hex(), selected.TransactionHash), errors.New("compact companion signed transaction is absent")); err != nil {
+			return nil, err
 		}
 		receipt, err := client.TransactionReceipt(ctx, transaction.Hash())
-		if err != nil || receipt == nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Uint64() != selected.BlockNumber || !strings.EqualFold(receipt.BlockHash.Hex(), selected.BlockHash) || receipt.TxHash != transaction.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
-			return nil, errors.Join(errors.New("compact companion actual receipt differs from finalized journal"), err)
+		if err := captureRpcObservationError(err, receipt != nil && receipt.BlockNumber != nil && receipt.BlockNumber.IsUint64() && receipt.BlockNumber.Uint64() == selected.BlockNumber && strings.EqualFold(receipt.BlockHash.Hex(), selected.BlockHash) && receipt.TxHash == transaction.Hash() && receipt.Status == types.ReceiptStatusSuccessful, errors.New("compact companion actual receipt differs from finalized journal")); err != nil {
+			return nil, err
 		}
 		head, err := (ethEVMBlockReader{client: client}).EVMBlockByNumber(ctx, receipt.BlockNumber)
-		if err != nil || head.Number != selected.BlockNumber || !strings.EqualFold(head.Hash, selected.BlockHash) {
-			return nil, errors.Join(errors.New("compact companion receipt block is not canonical"), err)
+		if err := captureRpcObservationError(err, head.Number == selected.BlockNumber && strings.EqualFold(head.Hash, selected.BlockHash), errors.New("compact companion receipt block is not canonical")); err != nil {
+			return nil, err
 		}
 		signed, err := transaction.MarshalBinary()
 		if err != nil {
@@ -423,8 +423,8 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	}
 	// Prove the terminal selector has not moved after every actual view.
 	recheck, err := (ethEVMBlockReader{client: client}).EVMBlockByNumber(ctx, new(big.Int).SetUint64(head.Number))
-	if err != nil || recheck != head {
-		return nil, errors.Join(errors.New("compact companion terminal identity changed"), err)
+	if err := captureRpcObservationError(err, recheck == head, errors.New("compact companion terminal identity changed")); err != nil {
+		return nil, err
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return persistFinalCollectedBundleChunks(runRoot, "validator-evidence-companion", files)
