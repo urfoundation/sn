@@ -1789,6 +1789,8 @@ not final acceptance. Production should retain the exact failed probe, actor,
 target, block and fault window without terminating an otherwise useful interval;
 the final gate must still reject unresolved required probes. Recovery must never
 turn an unanswered read into a verified mismatch or a skipped probe into coverage.
+Operational status must group pending and recovered rows by recovery ID: historical
+pending rows remain after recovery and must not be counted as open incidents.
 
 Give each HTTP operation its full configured attempt deadline before bounded
 retry. Dividing a ten-second sample into short attempts canceled artifact reads
