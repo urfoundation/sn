@@ -451,11 +451,17 @@ func (self *chainAttemptBoundaryRPC) Validate(ctx context.Context, boundary Atte
 		return hashErr
 	}
 	blockHash, err := self.chain.BlockHashContext(ctx, boundary.EVMBlock)
-	if err != nil || blockHash != expectedHash {
+	if err != nil {
+		return err
+	}
+	if blockHash != expectedHash {
 		return errors.New("attempt pinned EVM block hash is no longer canonical")
 	}
 	epoch, err := chainViewAtHashContext(ctx, self.chain, boundary.EVMBlock, expectedHash, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
-	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64() != boundary.SettlementEpoch {
+	if err != nil {
+		return err
+	}
+	if epoch == nil || !epoch.IsUint64() || epoch.Uint64() != boundary.SettlementEpoch {
 		return errors.New("attempt pinned EVM settlement epoch differs")
 	}
 	return nil

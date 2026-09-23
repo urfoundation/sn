@@ -607,12 +607,18 @@ func (self *Steerer) gatherDeposits(epoch *big.Int) (epochDeposits DepositSums, 
 		return nil, nil, errors.New("deposit epoch is invalid")
 	}
 	finalizedEpoch, err := chainViewAtHashContext(ctx, self.chain, tip, tipHash, self.chain.st.PackEpoch(), self.chain.st.UnpackEpoch)
-	if err != nil || finalizedEpoch == nil || finalizedEpoch.Cmp(epoch) != 0 {
-		return nil, nil, fmt.Errorf("deposit epoch differs from the finalized contract epoch: %v", err)
+	if err != nil {
+		return nil, nil, err
+	}
+	if finalizedEpoch == nil || finalizedEpoch.Cmp(epoch) != 0 {
+		return nil, nil, errors.New("deposit epoch differs from the finalized contract epoch")
 	}
 	start, err := chainViewAtHashContext(ctx, self.chain, tip, tipHash, self.chain.st.PackEpochStartBlock(), self.chain.st.UnpackEpochStartBlock)
-	if err != nil || start > tip {
-		return nil, nil, fmt.Errorf("finalized epoch deposit start is invalid: %v", err)
+	if err != nil {
+		return nil, nil, err
+	}
+	if start > tip {
+		return nil, nil, errors.New("finalized epoch deposit start is invalid")
 	}
 	// Retain both the previous finalized hash and cursor. A fork, head
 	// regression, or failed second scan leaves the entire ledger untouched.
@@ -621,8 +627,11 @@ func (self *Steerer) gatherDeposits(epoch *big.Int) (epochDeposits DepositSums, 
 			return nil, nil, errors.New("cached deposit checkpoint is ahead of finalized state or has no hash")
 		}
 		cachedHash, err := self.chain.BlockHashContext(ctx, self.deposits.scannedThrough)
-		if err != nil || cachedHash != self.deposits.scannedHash {
-			return nil, nil, fmt.Errorf("cached deposit checkpoint is no longer canonical: %v", err)
+		if err != nil {
+			return nil, nil, err
+		}
+		if cachedHash != self.deposits.scannedHash {
+			return nil, nil, errors.New("cached deposit checkpoint is no longer canonical")
 		}
 	}
 	delta := DepositSums{}

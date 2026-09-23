@@ -36,6 +36,7 @@ type evidenceTransactionV2Fixture struct {
 	expected    ValidatorEvidenceTransactionV2Expected
 	receipt     *types.Receipt
 	transaction *types.Transaction
+	handler     http.Handler
 	stateLock   sync.Mutex
 	requests    map[string]int
 }
@@ -206,6 +207,7 @@ func newEvidenceTransactionV2Fixture(t *testing.T, fault string, boundary func()
 		coordinator bool
 	}{
 		{name: "validatorEvidence", calldata: coordinator.PackValidatorEvidence(), value: journal, coordinator: true},
+		{name: "currentEpoch", calldata: coordinator.PackCurrentEpoch(), value: big.NewInt(7), coordinator: true},
 		{name: "epochStartBlock", calldata: coordinator.PackEpochStartBlock(big.NewInt(7)), value: big.NewInt(1000), coordinator: true},
 		{name: "epochEndBlock", calldata: coordinator.PackEpochEndBlock(big.NewInt(7)), value: big.NewInt(1100), coordinator: true},
 		{name: "coordinator", calldata: contract.PackCoordinator(), value: common.Address(domain.Coordinator)},
@@ -378,7 +380,7 @@ func newEvidenceTransactionV2Fixture(t *testing.T, fault string, boundary func()
 		}
 		return response
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fixture.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil || len(body) == 0 {
 			http.Error(w, "invalid request", 400)
@@ -404,7 +406,8 @@ func newEvidenceTransactionV2Fixture(t *testing.T, fault string, boundary func()
 			}
 			_ = json.NewEncoder(w).Encode(respond(request))
 		}
-	}))
+	})
+	server := httptest.NewServer(fixture.handler)
 	t.Cleanup(server.Close)
 	fixture.chain, err = DialReleaseChainContext(t.Context(), []string{server.URL}, common.Address(domain.Coordinator))
 	if err != nil {
