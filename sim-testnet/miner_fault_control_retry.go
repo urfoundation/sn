@@ -10,6 +10,37 @@ import (
 
 var errMinerControlLifecyclePending = errors.New("miner control lifecycle remains pending after bounded observations")
 
+// A failed checkpoint may join transport, storage and cancellation causes.
+// Every leaf must be recoverable; one semantic error keeps the result hard.
+func minerControlRetryable(err error, canceled bool) bool {
+	if err == nil {
+		return false
+	}
+	var invalid *minerControlInvalidStatusError
+	if errors.As(err, &invalid) {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !minerControlRetryable(cause, canceled) {
+				return false
+			}
+		}
+		return true
+	}
+	if minerControlRoundRetryable(err, canceled) || minerControlStorageRetryable(err) {
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return minerControlRetryable(wrapped.Unwrap(), canceled)
+	}
+	return false
+}
+
 // Match every leaf so a joined integrity error cannot inherit retry authority
 // from a timeout. These storage failures can recover without changing intent.
 func minerControlStorageRetryable(err error) bool {
@@ -40,7 +71,7 @@ func (self *liveScenarioFaultDriver) minerControlResult(spec scenarioFaultSpec, 
 	if spec.Kind != "miner-control" || err == nil || minerControlPending(err) {
 		return processes, err
 	}
-	if !minerControlRoundRetryable(err, true) && !minerControlStorageRetryable(err) {
+	if !minerControlRetryable(err, true) {
 		return processes, err
 	}
 	targets := make(map[string]bool, len(spec.Targets))

@@ -98,6 +98,7 @@ type liveScenarioFaultDriver struct {
 	minerControlParallel     int
 	minerControlRoundContext func(context.Context) (context.Context, context.CancelFunc)
 	minerControlPersist      func(string, []byte) error
+	minerControlRemove       func(string, activeFaultFile, int) error
 	minerControlHead         func(context.Context) (ChainHead, error)
 	minerControlCompleted    minerControlCompletedTransition
 	minerControlReconciled   map[string]map[string]minerControlGeneration
@@ -676,6 +677,12 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 		return nil, err
 	}
 	index, err := activeFaultIndex(active, spec)
+	if err != nil && spec.Kind == "miner-control" {
+		active, err = d.resumeMinerControlRemoval(active, spec)
+		if err == nil {
+			index, err = activeFaultIndex(active, spec)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -698,15 +705,22 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	if spec.Kind == "miner-control" {
 		active, err = readActiveFaultFile(d.activePath())
 		if err != nil {
-			return nil, err
+			return processes, err
 		}
 		index, err = activeFaultIndex(active, spec)
 		if err != nil {
-			return nil, err
+			return processes, err
+		}
+		if err := d.checkpointMinerControlRemoval(active, spec, processes); err != nil {
+			return processes, err
 		}
 	}
-	if err := removeActiveFault(d.activePath(), active, index); err != nil {
-		return nil, err
+	remove := removeActiveFault
+	if spec.Kind == "miner-control" && d.minerControlRemove != nil {
+		remove = d.minerControlRemove
+	}
+	if err := remove(d.activePath(), active, index); err != nil {
+		return processes, err
 	}
 	return processes, nil
 }

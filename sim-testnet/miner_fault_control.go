@@ -371,12 +371,12 @@ func (self *liveScenarioFaultDriver) decodeMinerControlSwarmStatus(raw []byte, s
 		return status, &minerControlInvalidStatusError{cause: err}
 	}
 	if wire.Configured == nil || wire.Running == nil {
-		return status, errors.New("miner control status omits its required population")
+		return status, &minerControlInvalidStatusError{cause: errors.New("miner control status omits its required population")}
 	}
 	status = minerControlSwarmStatus{Schema: wire.Schema, Configured: *wire.Configured, Running: *wire.Running, Disabled: wire.Disabled, Failures: wire.Failures}
 	want := self.cfg.Config.Topology.Miners / self.cfg.Config.Topology.MinerSwarmProcesses
 	if status.Schema != "urnetwork-provider-swarm-v1" || status.Configured != want || status.Running < 0 || status.Running > want-len(status.Disabled) {
-		return status, errors.New("miner control status has invalid schema or population")
+		return status, &minerControlInvalidStatusError{cause: errors.New("miner control status has invalid schema or population")}
 	}
 	seen := map[string]bool{}
 	validateId := func(id string) bool {
@@ -389,13 +389,13 @@ func (self *liveScenarioFaultDriver) decodeMinerControlSwarmStatus(raw []byte, s
 	}
 	for _, id := range status.Disabled {
 		if !validateId(id) || seen[id] {
-			return status, errors.New("miner control status has invalid disabled identities")
+			return status, &minerControlInvalidStatusError{cause: errors.New("miner control status has invalid disabled identities")}
 		}
 		seen[id] = true
 	}
 	for id := range status.Failures {
 		if !validateId(id) {
-			return status, errors.New("miner control status has a foreign failed identity")
+			return status, &minerControlInvalidStatusError{cause: errors.New("miner control status has a foreign failed identity")}
 		}
 	}
 	return status, nil
@@ -423,16 +423,16 @@ func (self *liveScenarioFaultDriver) observeMinerControl(ctx context.Context, sw
 			return observation, &minerControlInvalidStatusError{cause: err}
 		}
 		if observation.Schema != "urnetwork-provider-swarm-member-v1" || observation.Id != target {
-			return observation, errors.New("miner control member status has a different identity")
+			return observation, &minerControlInvalidStatusError{cause: errors.New("miner control member status has a different identity")}
 		}
 		if observation.State == "running" && observation.Failure != "" {
-			return observation, errors.New("miner control running status contains a failure")
+			return observation, &minerControlInvalidStatusError{cause: errors.New("miner control running status contains a failure")}
 		}
 		switch observation.State {
 		case "running", "disabled", "starting", "stopping", "failed":
 			return observation, nil
 		default:
-			return observation, errors.New("miner control member status has an unknown lifecycle state")
+			return observation, &minerControlInvalidStatusError{cause: errors.New("miner control member status has an unknown lifecycle state")}
 		}
 	}
 	if code != http.StatusNotFound {
@@ -527,7 +527,7 @@ func (self *liveScenarioFaultDriver) controlMiner(ctx context.Context, swarm int
 						disabled = disabled || id == target
 					}
 					if disabled != (action == "disable") || status.Failures[target] != "" {
-						return errors.New("miner control success response does not confirm the requested state")
+						return &minerControlInvalidStatusError{cause: errors.New("miner control success response does not confirm the requested state")}
 					}
 					return nil
 				}

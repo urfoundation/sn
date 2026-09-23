@@ -332,7 +332,7 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 					failure := fmt.Errorf("%s %s: %w", action, result.process.ID, result.err)
 					failures = append(failures, failure)
 					recordFailure(result.process.ID, result.err)
-					if !minerControlRoundRetryable(result.err, roundCtx.Err() != nil) && !minerControlStorageRetryable(result.err) && persistenceFailure == nil {
+					if !minerControlRetryable(result.err, roundCtx.Err() != nil) {
 						hardFailure = errors.Join(hardFailure, failure)
 						cancel()
 					}
@@ -348,7 +348,7 @@ func (self *liveScenarioFaultDriver) controlMinerRound(ctx context.Context, proc
 			return errors.Join(hardFailure, persistenceFailure)
 		}
 		if persistenceFailure != nil {
-			return persistenceFailure
+			return errors.Join(append(failures, persistenceFailure)...)
 		}
 	}
 	if err := ctx.Err(); err != nil {

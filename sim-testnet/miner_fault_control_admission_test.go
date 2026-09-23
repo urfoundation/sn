@@ -250,3 +250,34 @@ func TestMinerControlAdmissionRetryClassificationPreservesIntegrity(t *testing.T
 		t.Fatal(err)
 	}
 }
+
+// A failed diagnostic checkpoint cannot erase the malformed response that
+// caused it. Both causes remain visible and no control mutation is admitted.
+func TestMinerControlAdmissionFailedDiagnosticPreservesSemanticError(t *testing.T) {
+	fixture := newMinerControlTestFixture(t, "miner-1")
+	fixture.driver.minerControlClient.Transport = minerControlTestTransport(func(*http.Request) (*http.Response, error) {
+		return minerControlTestResponse(http.StatusOK, map[string]string{"id": "foreign-miner", "state": "running"}), nil
+	})
+	fixture.driver.minerControlPersist = func(path string, raw []byte) error {
+		var active activeFaultFile
+		if err := json.Unmarshal(raw, &active); err != nil {
+			return err
+		}
+		if active.MinerControls[0].LastError != "" {
+			return &os.PathError{Op: "sync", Path: path, Err: syscall.EIO}
+		}
+		return atomicWrite(path, raw, 0o600)
+	}
+	_, err := fixture.driver.Apply(t.Context(), fixture.fault)
+	var invalid *minerControlInvalidStatusError
+	if err == nil || minerControlPending(err) || !errors.As(err, &invalid) || !errors.Is(err, syscall.EIO) {
+		t.Fatalf("diagnostic failure concealed malformed status: %v", err)
+	}
+	fixture.requirePosts(t)
+	if !minerControlRetryable(errors.Join(context.Canceled, syscall.EIO, context.DeadlineExceeded), true) {
+		t.Fatal("joined transient checkpoint cancellation became hard")
+	}
+	if minerControlRetryable(errors.Join(context.Canceled, syscall.EIO, invalid), true) {
+		t.Fatal("joined semantic checkpoint failure became pending")
+	}
+}
