@@ -140,7 +140,8 @@ func TestPrecompileRecoveryPreflightSelectsOnlyApprovedFunding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		client, calls := precompileRecoveryPreflightClient(t, &evidence, c.failures)
+		code := f.base.payloads.ExpectedRuntime[common.HexToAddress(evidence.ProbeAddress)]
+		client, calls := precompileRecoveryPreflightClient(t, &evidence, code, c.failures)
 		executor := &Executor{cfg: f.cfg, deployer: &EvmTxManager{client: client}}
 		step, err := executor.preparePrecompileRecoveryStep(t.Context(), &evidence)
 		client.Close()
@@ -175,7 +176,7 @@ func TestPrecompileRecoveryPreflightSelectsOnlyApprovedFunding(t *testing.T) {
 
 // Answers only the pinned code/stake reads and the requested probe calls.
 // Any nonce, fee estimate or broadcast is an immediate fixture failure.
-func precompileRecoveryPreflightClient(t *testing.T, evidence *PrecompileConformanceEvidence, failures []error) (*ethclient.Client, *int) {
+func precompileRecoveryPreflightClient(t *testing.T, evidence *PrecompileConformanceEvidence, code []byte, failures []error) (*ethclient.Client, *int) {
 	t.Helper()
 	sample, move, settled, err := precompileRecoveryPositions(evidence)
 	if err != nil || !settled {
@@ -185,8 +186,7 @@ func precompileRecoveryPreflightClient(t *testing.T, evidence *PrecompileConform
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := []byte{0x60, 0x77}
-	if crypto.Keccak256Hash(code).Hex() != evidence.Recovery.Authorization.Request.ProbeRuntimeHash {
+	if len(code) == 0 || crypto.Keccak256Hash(code).Hex() != evidence.Recovery.Authorization.Request.ProbeRuntimeHash {
 		t.Fatal("synthetic probe code differs from signed authority")
 	}
 	calls := 0
