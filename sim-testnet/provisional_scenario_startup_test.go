@@ -25,6 +25,13 @@ func stoppedScenarioStartupFixture(t *testing.T) (*Executor, *provisionalStopped
 	}); err != nil {
 		t.Fatal(err)
 	}
+	return stoppedScenarioTopologyFixture(t, self)
+}
+
+// Both local-only and transaction-bearing approvals use the same stopped
+// process generation, explicit scenario provenance, and service observation.
+func stoppedScenarioTopologyFixture(t *testing.T, self *Executor) (*Executor, *provisionalStoppedTopology, SupervisorFile, SupervisorState, *provisionalLiveTopology) {
+	t.Helper()
 	options := cliOptions{Apply: true, ProvisionalResume: true, PlanHash: self.plan.PlanHash, Name: "release-1.0"}
 	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, "scenario", options, self.plan); err != nil {
 		t.Fatal(err)

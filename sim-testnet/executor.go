@@ -682,16 +682,16 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 					report.add("provisional-revision-setup-prefix", prefixErr)
 				}
 			}
-			if cmd == "resume" {
+			if provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) {
 				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
-					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+					retainedPlanResume, readErr = local.authenticateProvisionalRetainedPlan(ctx, active)
 				}
 				report.add("provisional-retained-plan-resume", readErr)
 			}
 			if planOnlyAdoption || retainedPlanResume {
 				needsDoctor = false
-				report.Checks = append(report.Checks, Check{Name: "provisional-plan-adoption", OK: true, Hard: false, Detail: "exact non-transaction approval; retained receipts/release authenticated; pending actions remain unverified and undispatched; final_acceptance=false"})
+				report.Checks = append(report.Checks, Check{Name: "provisional-plan-adoption", OK: true, Hard: false, Detail: "exact retained approval; receipts/release authenticated; pending actions remain unverified and undispatched; final_acceptance=false"})
 			} else if cmd == "scenario" {
 				// A retained provisional scenario neither applies pending setup
 				// actions nor spends their reserves. Its own action paths retain
@@ -730,7 +730,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			if report.add("carried plan history preflight", local.verifyProvisionalActionHistory(ctx)) {
 				active, readErr := readSetupPlanBytes(stateDir, "plan.json")
 				if readErr == nil {
-					retainedPlanResume, readErr = local.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+					retainedPlanResume, readErr = local.authenticateProvisionalRetainedPlan(ctx, active)
 				}
 				report.add("provisional-retained-plan-resume", readErr)
 				if retainedPlanResume {

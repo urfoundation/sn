@@ -1538,3 +1538,14 @@ parent's native reader stays borrowed. Supervised EVM egress and its readiness
 errors remain mandatory, with no direct-route fallback. Test both absent and
 existing native ownership, credential reload and drift, canceled construction,
 and refusal to bypass a stopped proxy.
+
+Retained process restart must distinguish approval of new work from continuation
+of an approved plan. A completed fleet renewal appends transaction actions, so an
+allowance-only classifier cannot admit its later process restart. Authenticate
+the exact active and archived approval, reconstruct the fleet append from its
+archived predecessor at the original journal checkpoint, then authenticate the
+full later journal independently. Valid preparation after that checkpoint must
+not be treated as conflicting renewal submission. Keep the original fleet-apply
+exclusion for new work. Use the same restart admission for preflight binary and
+readiness preparation, process startup and interrupted manifest publication;
+none of these paths may replay pending setup or alter final acceptance.

@@ -2,7 +2,7 @@
 
 package main
 
-// Restart an authenticated topology after a local-only successor approval.
+// Restart an authenticated topology under its exact retained successor approval.
 // Runtime inputs, chain actions and signed validator namespaces stay retained.
 import (
 	"bytes"
@@ -55,7 +55,7 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	if err != nil {
 		return err
 	}
-	if admitted, err := self.authenticateProvisionalPlanOnlyAdoption(ctx, active); err != nil || !admitted {
+	if admitted, err := self.authenticateProvisionalRetainedPlan(ctx, active); err != nil || !admitted {
 		return errors.Join(errors.New("retained publication has no current successor authority"), err)
 	}
 	relative, err := filepath.Rel(self.stateDir, publication.ProvenancePath)
@@ -125,8 +125,8 @@ func recoverRetainedProvisionalPublication(ctx context.Context, self *Executor) 
 	return atomicWrite(filepath.Join(self.stateDir, "supervisor.json"), publication.Original, 0o600)
 }
 
-// A current approved non-transaction successor can restart retained processes
-// without interpreting unfinished setup as an instruction to reconcile it.
+// An exact retained successor can restart processes without interpreting its
+// unfinished setup actions as an instruction to reconcile or dispatch them.
 func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string, start retainedProvisionalStarter) error {
 	if ctx == nil || self == nil || stopped == nil || start == nil || !provisionalResumeEnabled(self.cfg) || !provisionalRetainedStartupAllowed(self.cfg.provisionalResume.Record) || self.cfg.strictHistoryAdoption != nil {
 		return errors.New("retained startup requires explicit non-accepting resume or release scenario")
@@ -135,9 +135,9 @@ func executeRetainedProvisionalResume(ctx context.Context, self *Executor, stopp
 	if err != nil {
 		return err
 	}
-	admitted, err := self.authenticateProvisionalPlanOnlyAdoption(ctx, active)
+	admitted, err := self.authenticateProvisionalRetainedPlan(ctx, active)
 	if err != nil || !admitted {
-		return errors.Join(errors.New("retained startup lost its exact local-only successor approval"), err)
+		return errors.Join(errors.New("retained startup lost its exact approved successor"), err)
 	}
 	if err := self.verifyProvisionalActionHistory(ctx); err != nil {
 		return err
