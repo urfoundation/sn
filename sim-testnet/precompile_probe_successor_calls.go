@@ -110,7 +110,11 @@ func precompileProbeSuccessorCall(plan *SetupPlan, evidence *PrecompileConforman
 	case "precompile.move-forward", "precompile.move-back":
 		step, from, to, amount := evidence.Forward, sample, move, evidence.Seed.DeltaRao/2
 		if actionId == "precompile.move-back" {
-			step, from, to, amount = evidence.Back, move, sample, evidence.Forward.AmountRao
+			amount, err = precompileMoveObservedAmount(evidence.Forward)
+			if err != nil {
+				return nil, nil, recorded, fmt.Errorf("successor reverse move has no conserved forward credit: %w", err)
+			}
+			step, from, to = evidence.Back, move, sample
 		}
 		if amount == 0 || step.AmountRao != amount || step.FromBeforeRao < amount {
 			return nil, nil, recorded, errors.New("successor move differs from the approved round trip")
@@ -214,8 +218,18 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 			step, from, to = evidence.Back, move, sample
 		}
 		values, err = conformanceEventValues(parsed, "MoveRoundTrip", &filtered, from, to)
+		if err != nil {
+			return err
+		}
+		observed, observeErr := reconcilePrecompileMoveEvent(step, values)
+		if observeErr != nil {
+			return observeErr
+		}
 		fields = map[string]uint64{"amount": step.AmountRao, "fromBefore": step.FromBeforeRao, "toBefore": step.ToBeforeRao}
 		if !partial {
+			if observed.NativeShareResidueRao != step.NativeShareResidueRao {
+				return errors.New("successor move changed its native-share remainder")
+			}
 			fields["fromAfter"], fields["toAfter"] = step.FromAfterRao, step.ToAfterRao
 		}
 	case "precompile.snapshot":

@@ -109,15 +109,17 @@ type PrecompileValueStep struct {
 	DeltaRao        uint64 `json:"delta_alpha_rao"`
 }
 
+// Keeps requested units and the explicit conserved native-share remainder separate.
 type PrecompileMoveStep struct {
-	TransactionHash string `json:"transaction_hash"`
-	BlockNumber     uint64 `json:"block_number"`
-	BlockHash       string `json:"block_hash"`
-	AmountRao       uint64 `json:"amount_rao"`
-	FromBeforeRao   uint64 `json:"from_before_rao"`
-	FromAfterRao    uint64 `json:"from_after_rao"`
-	ToBeforeRao     uint64 `json:"to_before_rao"`
-	ToAfterRao      uint64 `json:"to_after_rao"`
+	TransactionHash       string `json:"transaction_hash"`
+	BlockNumber           uint64 `json:"block_number"`
+	BlockHash             string `json:"block_hash"`
+	AmountRao             uint64 `json:"amount_rao"`
+	FromBeforeRao         uint64 `json:"from_before_rao"`
+	FromAfterRao          uint64 `json:"from_after_rao"`
+	ToBeforeRao           uint64 `json:"to_before_rao"`
+	ToAfterRao            uint64 `json:"to_after_rao"`
+	NativeShareResidueRao uint64 `json:"native_share_residue_rao,omitempty"`
 }
 
 type PrecompileSnapshotStep struct {
@@ -461,10 +463,11 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		return e.executePrecompileMove(ctx, action, parsed, evidence, sample, move, &evidence.Forward, evidence.Seed.DeltaRao/2)
 
 	case "precompile.move-back":
-		if evidence.Forward.AmountRao == 0 {
-			return errors.New("forward move evidence is unavailable")
+		amount, err := precompileMoveObservedAmount(evidence.Forward)
+		if err != nil {
+			return fmt.Errorf("forward move evidence is unavailable: %w", err)
 		}
-		return e.executePrecompileMove(ctx, action, parsed, evidence, move, sample, &evidence.Back, evidence.Forward.AmountRao)
+		return e.executePrecompileMove(ctx, action, parsed, evidence, move, sample, &evidence.Back, amount)
 
 	case "precompile.snapshot":
 		if evidence.Snapshot.BaselineRao == 0 {
@@ -620,15 +623,11 @@ func (e *Executor) executePrecompileMove(ctx context.Context, action Action, par
 	if err != nil {
 		return err
 	}
-	eventAmount, amountOK := conformanceEventUint64(moveEvent, "amount")
-	fromBefore, fromBeforeOK := conformanceEventUint64(moveEvent, "fromBefore")
-	fromAfter, fromAfterOK := conformanceEventUint64(moveEvent, "fromAfter")
-	toBefore, toBeforeOK := conformanceEventUint64(moveEvent, "toBefore")
-	toAfter, toAfterOK := conformanceEventUint64(moveEvent, "toAfter")
-	if !amountOK || !fromBeforeOK || !fromAfterOK || !toBeforeOK || !toAfterOK || eventAmount != amount || fromBefore != step.FromBeforeRao || toBefore != step.ToBeforeRao || !exactDecrease(fromBefore, fromAfter, amount) || !exactIncrease(toBefore, toAfter, amount) {
-		return fmt.Errorf("precompile move event is not exact: from=%d->%d to=%d->%d amount=%d", fromBefore, fromAfter, toBefore, toAfter, amount)
+	observed, err := reconcilePrecompileMoveEvent(*step, moveEvent)
+	if err != nil {
+		return err
 	}
-	step.FromAfterRao, step.ToAfterRao = fromAfter, toAfter
+	*step = observed
 	step.TransactionHash, step.BlockNumber, step.BlockHash = receiptFields(receipt)
 	return writePrecompileEvidence(e.stateDir, evidence)
 }
@@ -751,7 +750,7 @@ func validConformanceTransaction(hash, blockHash string, block uint64) bool {
 }
 
 func precompileEvidenceComplete(evidence *PrecompileConformanceEvidence) bool {
-	if evidence == nil || !evidence.Complete || !evidence.Commitment.Restored || evidence.Commitment.CanonicalGeneration != precompileCanonicalFleetGeneration || evidence.Commitment.EncodedProbeBytes != 34 || evidence.Commitment.ProbeHash == evidence.Commitment.CanonicalHash || !evidence.Battery.Passed || evidence.Seed.DeltaRao == 0 || evidence.Forward.AmountRao == 0 || evidence.Back.AmountRao != evidence.Forward.AmountRao || evidence.Snapshot.BaselineRao == 0 || evidence.Dividend.DeltaRao == 0 || evidence.Transfer.AmountRao == 0 {
+	if evidence == nil || !evidence.Complete || !evidence.Commitment.Restored || evidence.Commitment.CanonicalGeneration != precompileCanonicalFleetGeneration || evidence.Commitment.EncodedProbeBytes != 34 || evidence.Commitment.ProbeHash == evidence.Commitment.CanonicalHash || !evidence.Battery.Passed || evidence.Seed.DeltaRao == 0 || evidence.Forward.AmountRao == 0 || evidence.Snapshot.BaselineRao == 0 || evidence.Dividend.DeltaRao == 0 || evidence.Transfer.AmountRao == 0 {
 		return false
 	}
 	if probeHash, ok := evidenceFixedHex(evidence.Commitment.ProbeHash, 32); !ok || new(big.Int).SetBytes(probeHash).Sign() == 0 {
@@ -768,10 +767,7 @@ func precompileEvidenceComplete(evidence *PrecompileConformanceEvidence) bool {
 	if !ok || evidence.Seed.TAORao == 0 || valueWei.Cmp(wantWei) != 0 || !exactIncrease(evidence.Seed.BeforeRao, evidence.Seed.AfterRao, evidence.Seed.DeltaRao) {
 		return false
 	}
-	if !exactDecrease(evidence.Forward.FromBeforeRao, evidence.Forward.FromAfterRao, evidence.Forward.AmountRao) || !exactIncrease(evidence.Forward.ToBeforeRao, evidence.Forward.ToAfterRao, evidence.Forward.AmountRao) || !exactDecrease(evidence.Back.FromBeforeRao, evidence.Back.FromAfterRao, evidence.Back.AmountRao) || !exactIncrease(evidence.Back.ToBeforeRao, evidence.Back.ToAfterRao, evidence.Back.AmountRao) {
-		return false
-	}
-	if evidence.Forward.FromBeforeRao != evidence.Seed.AfterRao || evidence.Back.FromBeforeRao != evidence.Forward.ToAfterRao || evidence.Back.ToBeforeRao != evidence.Forward.FromAfterRao || evidence.Back.FromAfterRao != evidence.Forward.ToBeforeRao || evidence.Back.ToAfterRao != evidence.Forward.FromBeforeRao {
+	if !precompileRoundTripRestored(evidence) {
 		return false
 	}
 	if evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao || evidence.Dividend.BaselineRao != evidence.Snapshot.BaselineRao || evidence.Dividend.SinceBlock != evidence.Snapshot.SinceBlock || !exactIncrease(evidence.Dividend.BaselineRao, evidence.Dividend.CurrentRao, evidence.Dividend.DeltaRao) {
@@ -977,9 +973,10 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	case "precompile.seed":
 		passed = evidence.Seed.TAORao == e.plan.LiveFacts.ProbeTAORao && exactIncrease(evidence.Seed.BeforeRao, evidence.Seed.AfterRao, evidence.Seed.DeltaRao) && evidence.Seed.DeltaRao > 0 && validConformanceTransaction(evidence.Seed.TransactionHash, evidence.Seed.BlockHash, evidence.Seed.BlockNumber)
 	case "precompile.move-forward":
-		passed = evidence.Forward.AmountRao > 0 && exactDecrease(evidence.Forward.FromBeforeRao, evidence.Forward.FromAfterRao, evidence.Forward.AmountRao) && exactIncrease(evidence.Forward.ToBeforeRao, evidence.Forward.ToAfterRao, evidence.Forward.AmountRao) && validConformanceTransaction(evidence.Forward.TransactionHash, evidence.Forward.BlockHash, evidence.Forward.BlockNumber)
+		_, moveErr := precompileMoveObservedAmount(evidence.Forward)
+		passed = moveErr == nil && evidence.Forward.AmountRao == evidence.Seed.DeltaRao/2 && validConformanceTransaction(evidence.Forward.TransactionHash, evidence.Forward.BlockHash, evidence.Forward.BlockNumber)
 	case "precompile.move-back":
-		passed = evidence.Back.AmountRao == evidence.Forward.AmountRao && evidence.Back.AmountRao > 0 && exactDecrease(evidence.Back.FromBeforeRao, evidence.Back.FromAfterRao, evidence.Back.AmountRao) && exactIncrease(evidence.Back.ToBeforeRao, evidence.Back.ToAfterRao, evidence.Back.AmountRao) && validConformanceTransaction(evidence.Back.TransactionHash, evidence.Back.BlockHash, evidence.Back.BlockNumber)
+		passed = precompileMoveBackValid(evidence) && validConformanceTransaction(evidence.Back.TransactionHash, evidence.Back.BlockHash, evidence.Back.BlockNumber)
 	case "precompile.snapshot":
 		passed = evidence.Snapshot.BaselineRao >= evidence.Seed.AfterRao && evidence.Snapshot.SinceBlock > 0 && validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber)
 	case "precompile.dividend":

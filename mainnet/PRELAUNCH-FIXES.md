@@ -1441,3 +1441,31 @@ the production implementations and the actual capability assumptions; mocks
 alone do not establish live precompile, governance or economic behavior.
 Keep the current sim-testnet finalization moving while these mainnet items are
 implemented, promoting only corrections that resolve a concrete active blocker.
+
+### Precompile stake requests versus native share rounding
+
+The conformance harness treated a requested stake amount as both observed balance
+changes. A finalized same-subnet move instead debited and credited the same amount
+one alpha-rao below its request: the remaining unit stayed at the source. The
+reverse path also tried to spend the original request rather than the amount
+actually received. Production acceptance must distinguish requested units, observed
+source debit, observed destination credit, and any explicitly recorded remainder.
+
+The testnet repair retains a checksum-bound `native_share_residue_rao` only when
+source debit equals destination credit exactly, both are positive, and the request
+exceeds that conserved amount by at most one rao. Receipt amount, both pre-state
+readings, approved roles, signer, nonce, chain, contract and transaction remain
+exact. Reverse calldata uses the authenticated credit. The same check governs live
+reconciliation, retained postconditions and successor receipt replay; finalized
+transactions are resumed without another broadcast. Historical exact evidence
+keeps its original encoding because zero residue is omitted.
+
+Final acceptance still requires the full round trip to restore both original
+positions and the recovery transfer to leave no unrecovered probe balance. A
+quantized reverse move leaving dust is recorded as such and cannot pass that gate.
+Before mainnet, exercise native share conversion in move and transfer operations,
+including even and odd requests, all-balance withdrawals, full custody recovery,
+finalized-before-evidence restart, and negative controls for unequal debit/credit,
+more than one unit of residue, changed signed requests and arithmetic overflow.
+Do not propagate this narrowly bounded probe rule into payout accounting without
+independently specifying and validating that contract's conservation model.

@@ -16,6 +16,13 @@ import (
 // Produces canonical read-only receipts for CREATE and all five probe calls.
 func precompileProbeSuccessorCallFixture(t *testing.T, fixture *precompileProbeSuccessorFixture) (*PrecompileConformanceEvidence, []JournalEntry, *deploymentBoundaryFixture) {
 	t.Helper()
+	return precompileProbeSuccessorCallFixtureWithMoveResidue(t, fixture, 0)
+}
+
+// The optional remainder keeps actual transfers fixed while changing the exact
+// signed forward request and all connected balances by synthetic units.
+func precompileProbeSuccessorCallFixtureWithMoveResidue(t *testing.T, fixture *precompileProbeSuccessorFixture, residue uint64) (*PrecompileConformanceEvidence, []JournalEntry, *deploymentBoundaryFixture) {
+	t.Helper()
 	plan := fixture.plan
 	plan.LiveFacts.ProbeTAORao = 3
 	evidence := plan.PrecompileProbeSuccessor.Evidence
@@ -29,6 +36,18 @@ func precompileProbeSuccessorCallFixture(t *testing.T, fixture *precompileProbeS
 	evidence.Snapshot = PrecompileSnapshotStep{BaselineRao: 100, SinceBlock: 214}
 	evidence.Transfer = PrecompileTransferStep{AmountRao: 110, ProbeBeforeRao: 110, ProbeAfterRao: 0, ProviderBeforeRao: 20, ProviderAfterRao: 130}
 	evidence.Complete = true
+	evidence.Seed.AfterRao += 2 * residue
+	evidence.Seed.DeltaRao += 2 * residue
+	evidence.Forward.AmountRao += residue
+	evidence.Forward.FromBeforeRao += 2 * residue
+	evidence.Forward.FromAfterRao += 2 * residue
+	evidence.Forward.NativeShareResidueRao = residue
+	evidence.Back.ToBeforeRao += 2 * residue
+	evidence.Back.ToAfterRao += 2 * residue
+	evidence.Snapshot.BaselineRao += 2 * residue
+	evidence.Transfer.AmountRao += 2 * residue
+	evidence.Transfer.ProbeBeforeRao += 2 * residue
+	evidence.Transfer.ProviderAfterRao += 2 * residue
 	roles, err := BuildRoleSecrets(fixture.cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -75,19 +94,19 @@ func precompileProbeSuccessorCallFixture(t *testing.T, fixture *precompileProbeS
 			sample, move, recovery := common.HexToHash(evidence.SampleHotkey), common.HexToHash(evidence.MoveHotkey), common.HexToHash(evidence.RecoveryColdkey)
 			switch actionId {
 			case "precompile.seed":
-				name, indexed, values = "Seeded", []common.Hash{sample}, []any{big.NewInt(3), big.NewInt(3000000000), big.NewInt(100)}
+				name, indexed, values = "Seeded", []common.Hash{sample}, []any{big.NewInt(3), big.NewInt(3000000000), new(big.Int).SetUint64(evidence.Seed.AfterRao)}
 				evidence.Seed.TransactionHash, evidence.Seed.BlockNumber, evidence.Seed.BlockHash = receiptFields(receipt)
 			case "precompile.move-forward":
-				name, indexed, values = "MoveRoundTrip", []common.Hash{sample, move}, []any{big.NewInt(50), big.NewInt(100), big.NewInt(50), big.NewInt(0), big.NewInt(50)}
+				name, indexed, values = "MoveRoundTrip", []common.Hash{sample, move}, []any{new(big.Int).SetUint64(evidence.Forward.AmountRao), new(big.Int).SetUint64(evidence.Forward.FromBeforeRao), new(big.Int).SetUint64(evidence.Forward.FromAfterRao), new(big.Int).SetUint64(evidence.Forward.ToBeforeRao), new(big.Int).SetUint64(evidence.Forward.ToAfterRao)}
 				evidence.Forward.TransactionHash, evidence.Forward.BlockNumber, evidence.Forward.BlockHash = receiptFields(receipt)
 			case "precompile.move-back":
-				name, indexed, values = "MoveRoundTrip", []common.Hash{move, sample}, []any{big.NewInt(50), big.NewInt(50), big.NewInt(0), big.NewInt(50), big.NewInt(100)}
+				name, indexed, values = "MoveRoundTrip", []common.Hash{move, sample}, []any{new(big.Int).SetUint64(evidence.Back.AmountRao), new(big.Int).SetUint64(evidence.Back.FromBeforeRao), new(big.Int).SetUint64(evidence.Back.FromAfterRao), new(big.Int).SetUint64(evidence.Back.ToBeforeRao), new(big.Int).SetUint64(evidence.Back.ToAfterRao)}
 				evidence.Back.TransactionHash, evidence.Back.BlockNumber, evidence.Back.BlockHash = receiptFields(receipt)
 			case "precompile.snapshot":
-				name, indexed, values = "DividendSnapshot", []common.Hash{sample}, []any{big.NewInt(100), uint64(214)}
+				name, indexed, values = "DividendSnapshot", []common.Hash{sample}, []any{new(big.Int).SetUint64(evidence.Snapshot.BaselineRao), uint64(214)}
 				evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockNumber, evidence.Snapshot.BlockHash = receiptFields(receipt)
 			case "precompile.transfer-out":
-				name, indexed, values = "TransferredOut", []common.Hash{recovery, sample}, []any{big.NewInt(110), big.NewInt(110), big.NewInt(0), big.NewInt(20), big.NewInt(130)}
+				name, indexed, values = "TransferredOut", []common.Hash{recovery, sample}, []any{new(big.Int).SetUint64(evidence.Transfer.AmountRao), new(big.Int).SetUint64(evidence.Transfer.ProbeBeforeRao), new(big.Int).SetUint64(evidence.Transfer.ProbeAfterRao), new(big.Int).SetUint64(evidence.Transfer.ProviderBeforeRao), new(big.Int).SetUint64(evidence.Transfer.ProviderAfterRao)}
 				evidence.Transfer.TransactionHash, evidence.Transfer.BlockNumber, evidence.Transfer.BlockHash = receiptFields(receipt)
 			}
 			event := parsed.Events[name]
