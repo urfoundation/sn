@@ -4103,6 +4103,11 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 	}
 	if err := preparationCtx.Err(); err != nil {
+		// The relay owns the parent cancellation cause. Its failure must remain
+		// distinguishable from this preparation child's readiness deadline.
+		if cause := context.Cause(ctx); cause != nil {
+			return initialFailure(start, fmt.Errorf("scenario preparation canceled by parent: %w", cause))
+		}
 		return initialFailure(start, fmt.Errorf("scenario preparation exhausted native readiness deadline: %w", err))
 	}
 	if !needsNativeWarmup && !preAcceptanceArmed {
