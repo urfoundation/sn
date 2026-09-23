@@ -24,18 +24,19 @@ const precompileRecoveryMaximumReseeds = 2
 const precompileRecoveryTopUpRao uint64 = 1_000_000_000
 const precompileRecoveryGasUnits uint64 = 500_000
 
-// The budget is an explicit retained campaign-reserve suballocation. Its source
-// document is hashed and the request is signed by both budget and custody owners.
+// The source document is hashed and signed by both budget and custody owners.
+// An exhausted campaign reserve may gain only its exact approved shortfall.
 type PrecompileRecoveryBudget struct {
-	Schema                   string      `json:"schema"`
-	PlanHash                 string      `json:"plan_hash"`
-	JournalHash              string      `json:"journal_hash"`
-	CampaignReserveWei       DecimalUint `json:"campaign_reserve_wei"`
-	CommittedOrPendingMaxWei DecimalUint `json:"committed_or_pending_max_wei"`
-	AvailableWei             DecimalUint `json:"available_wei"`
-	MaximumRecoveryWei       DecimalUint `json:"maximum_recovery_wei"`
-	MaximumReseedWei         DecimalUint `json:"maximum_reseed_wei"`
-	Verified                 bool        `json:"verified"`
+	Schema                   string                                `json:"schema"`
+	PlanHash                 string                                `json:"plan_hash"`
+	JournalHash              string                                `json:"journal_hash"`
+	CampaignReserveWei       DecimalUint                           `json:"campaign_reserve_wei"`
+	CommittedOrPendingMaxWei DecimalUint                           `json:"committed_or_pending_max_wei"`
+	AvailableWei             DecimalUint                           `json:"available_wei"`
+	MaximumRecoveryWei       DecimalUint                           `json:"maximum_recovery_wei"`
+	MaximumReseedWei         DecimalUint                           `json:"maximum_reseed_wei"`
+	Verified                 bool                                  `json:"verified"`
+	Supplemental             *PrecompileRecoverySupplementalBudget `json:"supplemental,omitempty"`
 }
 
 // The immutable basis stops authorization from migrating to another probe,
@@ -126,10 +127,10 @@ func validatePrecompileRecoveryAuthorization(evidence *PrecompileConformanceEvid
 		return errors.New("probe recovery changed its source identity or finite bounds")
 	}
 	budgetHash, err := canonicalHashHex(r.Budget)
-	if err != nil || budgetHash != r.BudgetHash || r.Budget.Schema != "urnetwork-precompile-recovery-budget-v1" || !r.Budget.Verified || r.Budget.PlanHash != r.PlanHash || !validCanonicalHashHex(r.Budget.JournalHash) {
+	if err != nil || budgetHash != r.BudgetHash || !r.Budget.Verified || r.Budget.PlanHash != r.PlanHash || !validCanonicalHashHex(r.Budget.JournalHash) {
 		return errors.New("probe recovery budget identity differs")
 	}
-	reserved, err := r.Budget.CampaignReserveWei.Big()
+	reserved, err := precompileRecoveryEffectiveReserve(r.Budget)
 	if err != nil {
 		return err
 	}
@@ -184,6 +185,9 @@ func validatePrecompileRecoveryPlan(plan *SetupPlan, evidence *PrecompileConform
 		if err != nil || reserve.Kind != "budget-reserve" || reserve.Spend.EVMGasWei != r.Budget.CampaignReserveWei {
 			return errors.New("probe recovery budget differs from the retained campaign reserve")
 		}
+	}
+	if err := validatePrecompileRecoverySupplementalPlan(plan, r.Budget); err != nil {
+		return err
 	}
 	return nil
 }

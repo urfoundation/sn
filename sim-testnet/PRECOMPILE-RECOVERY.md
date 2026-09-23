@@ -34,6 +34,16 @@ exposes this additional TAO separately from gas and charges both to an explicit
 suballocation of the retained campaign reserve. Current signed and queued
 liabilities are rechecked before execution and between turns.
 
+If that campaign suballocation is exhausted, the v2 proposal shows its exact
+shortfall: existing signed liabilities plus the bounded repair ceiling, less the
+original reserve. Both owners may allocate only that amount from the retained
+plan's unused lifetime caps. The proposal pins active plus superseded spend and
+the original approved limits; it charges the supplement against both EVM and
+total TAO, rounding native rao upward. It cannot increase a cap, add an arbitrary
+margin, or change any setup action. Earlier v1 approvals retain their exact
+encoding and original reserve-only authority. Stale proposals still fail if
+new liabilities consume the explicitly signed headroom before execution.
+
 For the current 20,000,000 TAO-rao seed, the worst-case supplemental authority is
 0.04 TAO of reseeds plus 0.4 TAO of gas. The original planned sample transfer keeps
 its existing plan budget. Successful steps and unused reserve are distinct;

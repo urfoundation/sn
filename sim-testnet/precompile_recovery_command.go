@@ -59,12 +59,12 @@ func (self *Executor) validatePrecompileRecoveryBudget(evidence *PrecompileConfo
 		value := new(big.Int).Mul(new(big.Int).SetUint64(step.Action.Spend.TAORao), big.NewInt(1_000_000_000))
 		remaining.Sub(remaining, value)
 	}
-	reserved, err := authorization.Request.Budget.CampaignReserveWei.Big()
+	reserved, err := precompileRecoveryEffectiveReserve(authorization.Request.Budget)
 	if err != nil {
 		return err
 	}
 	if remaining.Sign() < 0 || new(big.Int).Add(liability, remaining).Cmp(reserved) > 0 {
-		return errors.New("probe recovery and existing signed liabilities exceed retained campaign reserve")
+		return errors.New("probe recovery and existing signed liabilities exceed the explicitly signed reserve")
 	}
 	return nil
 }

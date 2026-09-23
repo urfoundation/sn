@@ -184,14 +184,10 @@ func newPrecompileRecoveryBudget(cfg *ResolvedConfig, stateDir string, plan *Set
 	if err != nil {
 		return nil, err
 	}
-	available := new(big.Int).Sub(reserved, liability)
 	fee := min(plan.MaximumEVMFeePerGasWei, uint64(100_000_000_000))
 	maximum := new(big.Int).Mul(new(big.Int).SetUint64(precompileRecoveryMaximumSteps*precompileRecoveryGasUnits), new(big.Int).SetUint64(fee))
 	reseed := new(big.Int).Mul(new(big.Int).SetUint64(plan.LiveFacts.ProbeTAORao), big.NewInt(precompileRecoveryMaximumReseeds*1_000_000_000))
 	maximum.Add(maximum, reseed)
-	if available.Cmp(maximum) < 0 {
-		return nil, errors.New("probe recovery proposal exceeds remaining campaign reserve")
-	}
 	anchor := ""
 	for index := len(entries) - 1; index >= 0; index-- {
 		if entries[index].PlanHash == plan.PlanHash && validCanonicalHashHex(entries[index].EntryHash) {
@@ -202,5 +198,9 @@ func newPrecompileRecoveryBudget(cfg *ResolvedConfig, stateDir string, plan *Set
 	if anchor == "" {
 		return nil, errors.New("probe recovery proposal has no current-plan journal anchor")
 	}
-	return &PrecompileRecoveryBudget{Schema: "urnetwork-precompile-recovery-budget-v1", PlanHash: plan.PlanHash, JournalHash: anchor, CampaignReserveWei: reserve.Spend.EVMGasWei, CommittedOrPendingMaxWei: DecimalUint(liability.String()), AvailableWei: DecimalUint(available.String()), MaximumRecoveryWei: DecimalUint(maximum.String()), MaximumReseedWei: DecimalUint(reseed.String()), Verified: true}, nil
+	budget := &PrecompileRecoveryBudget{Schema: "urnetwork-precompile-recovery-budget-v1", PlanHash: plan.PlanHash, JournalHash: anchor, CampaignReserveWei: reserve.Spend.EVMGasWei, CommittedOrPendingMaxWei: DecimalUint(liability.String()), MaximumRecoveryWei: DecimalUint(maximum.String()), MaximumReseedWei: DecimalUint(reseed.String()), Verified: true}
+	if err := allocatePrecompileRecoveryBudget(plan, budget, reserved, liability, maximum); err != nil {
+		return nil, err
+	}
+	return budget, nil
 }

@@ -1258,6 +1258,15 @@ state and checksum failures remain hard. Tests must force first-dispatch,
 partial-prefix and restore restart windows, cancellation, generation turnover,
 and a mixed readiness/identity failure without sleeps.
 
+Preserve every semantic failure when its diagnostic checkpoint also fails.
+Classify each joined cause; a malformed or foreign status remains hard even
+beside a retryable disk error or cancellation. Restoration cleanup has its own
+durability boundary: retain the exact completed census before removing active
+intent. A failed unlink/rename sync must resume from that checkpoint and observe
+each member again, including after process restart; a retained completion alone
+does not prove current state. Test both already restored and newly changed
+members, partial or substituted checkpoints, and missing recovery evidence.
+
 **PH-22 — Transport recovery and final signal.** Treat connect/read deadlines,
 EOF/reset and HTTP `429`, `502`, `503` and `504` as bounded retry candidates
 only for idempotent reads or controls with a retained idempotency key. Reuse the
@@ -1567,6 +1576,18 @@ fresh completion evidence before assigning a fault's applied block. Track queue
 write bytes, checkpoint latency, remaining historical work and admitted control
 requests independently from process health. Production sizing must reserve the
 agreed 2x margin without relying on filesystem stalls to throttle useful work.
+
+### Supplemental repair allocation within lifetime caps
+
+The repair proposal later exposed a separate budget boundary: fleet-renewal
+liabilities had consumed the local campaign reserve while approved lifetime
+headroom remained. Production must distinguish those two limits. A supplemental
+repair approval may allocate its exact documented shortfall within both retained
+lifetime caps, signed by the budget and custody owners, without replaying setup
+or changing its actions. Retain active and superseded spend in that calculation,
+round fractional native units upward, and recheck signed/queued exposure before
+execution. Tests must reject cap substitution, omitted historical liabilities,
+arbitrary extra margin, duplicate charging after restart, and integer overflow.
 
 ### Preparation must not acquire a stopped campaign's transport
 
