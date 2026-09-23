@@ -3720,9 +3720,15 @@ func assertionsPass(assertions []AssertionRecord) bool {
 func writeInitialScenarioFailure(cfg *ResolvedConfig, runDir, runID, definitionHash string, definition scenarioDefinition, started time.Time, observation *ScenarioObservation, attempt *scenarioCampaignAttempt, failure error) (*ScenarioResult, error) {
 	completed := time.Now().UTC()
 	observationHash := ""
+	var observationErr error
 	if observation != nil {
 		observationHash = observation.ObservationHash
-		_ = appendObservation(filepath.Join(runDir, "observations.jsonl"), observation)
+		observationErr = appendObservation(filepath.Join(runDir, "observations.jsonl"), observation)
+	} else if attempt == nil || attempt.payload.AcceptanceBoundary == nil {
+		observationErr = ensurePreAcceptanceObservationLog(runDir)
+	}
+	if observationErr != nil {
+		return nil, errors.Join(failure, fmt.Errorf("persist initial scenario observation: %w", observationErr))
 	}
 	assertion := AssertionRecord{ID: "initial_observation", Passed: false, Message: failure.Error(), StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano), DurationSeconds: completed.Sub(started).Seconds(), ObservationHash: observationHash}
 	result := &ScenarioResult{
@@ -3738,7 +3744,7 @@ func writeInitialScenarioFailure(cfg *ResolvedConfig, runDir, runID, definitionH
 	attachScenarioAnomalyGate(result, completed, nil, observation)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 	if err := writeScenarioOutputs(cfg, runDir, result, observation); err != nil {
-		return result, err
+		return result, errors.Join(failure, err)
 	}
 	return result, failure
 }

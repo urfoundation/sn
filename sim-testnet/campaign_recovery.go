@@ -729,6 +729,12 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 			return nil, err
 		}
 	}
+	// Legacy initial-read failures persisted a terminal result before creating
+	// any observation file. Only this authenticated writer may add the explicit
+	// empty marker; all existing result/observation evidence remains immutable.
+	if err := materializeMissingPreAcceptanceObservationLog(stateDir, prior); err != nil {
+		return nil, err
+	}
 	probe := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{PlanHash: planHash}}
 	plans := &scenarioCampaignPlanLookup{stateDir: stateDir}
 	recovery, terminal, err := readScenarioCampaignRecoverySourcesWithPlans(probe, prior, priorRelativePath, priorRaw, plans)
