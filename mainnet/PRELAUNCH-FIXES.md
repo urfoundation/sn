@@ -1515,6 +1515,44 @@ The final proof must include both recovered recipient positions, bounded native
 conversion residues, and zero source custody. Test forged extra credits, changed
 roles/amounts, duplicate spends and missing repair authorization independently.
 
+### Claim queue write amplification and admission budgets
+
+The first live acceptance interval exposed a storage saturation loop: claim
+workers reconciled old entries before checking their retry deadline, then
+rewrote and fsynced their complete queue for every repeated not-ready result.
+Readiness failures did not increment submission attempts, so their backoff never
+grew. The two relayers generated roughly 116 MB/s of queue writes and starved
+unrelated durable fault controls. The control round's deadline included its
+sequential persistence work, leaving healthy local endpoints little or no
+request time. Healthy process status alone did not establish useful progress.
+
+The production queue now checks retry admission before API/RPC work, records
+reconciliation attempts separately from transaction submissions, and combines
+retry diagnostics into one checkpoint per poll. Historical readiness backoff is
+bounded at one hour; the newest two epochs and exact uncertain transactions keep
+a one-minute cap. Ordinary historical reconciliation has a small per-poll work
+budget, with unvisited entries retained, so faster persistence does not create an
+API catch-up burst. Current work and uncertain transaction outcomes remain
+eligible. This is queue scheduling, not an RPC endpoint rate limit.
+
+Unchanged saves require a successful acknowledgement from this store plus
+matching current bytes in a private regular file. A reopened owner or failed
+durability boundary must sync again. Submitting intent, prepared signed bytes,
+broadcast checkpoints and finalized receipts remain immediately durable; the
+diagnostic batch never grants transaction authority or marks an uncertain send
+as absent. Deterministic tests cover historical backlog progress, future retry
+deadlines, restart/backoff persistence, recent-epoch readiness, exact uncertain
+outcomes, failed writes, cancellation, and changed or missing queue files.
+
+Before mainnet, qualify the control scheduler and queue together under slow
+durable writes. A network request's attempt budget must begin after required
+intent admission; expired queued work must remain resumable without canceling
+the observer. Batch intent where safe, keep one durable owner, and require exact
+fresh completion evidence before assigning a fault's applied block. Track queue
+write bytes, checkpoint latency, remaining historical work and admitted control
+requests independently from process health. Production sizing must reserve the
+agreed 2x margin without relying on filesystem stalls to throttle useful work.
+
 ### Preparation must not acquire a stopped campaign's transport
 
 Standalone precompile preparation reused completed chain evidence but then opened
