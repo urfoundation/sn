@@ -429,7 +429,7 @@ func TestVerifyAdversarySupplementalMetricsUseRealControlAndPoisonSamples(t *tes
 	}
 }
 
-// Binds healthy durable process identities and aggregate restart observations.
+// Identity and restart evidence remain stable across independent health changes.
 func TestOperatorSupervisorIdentityBindsDurableIdentityAndRestartCount(t *testing.T) {
 	state := SupervisorState{Processes: []ProcessState{
 		{ID: "operator-1-api", Role: "operator-api", Identity: "no:1", Restarts: 2, Healthy: true},
@@ -440,8 +440,12 @@ func TestOperatorSupervisorIdentityBindsDurableIdentityAndRestartCount(t *testin
 		t.Fatalf("supervisor identity restarts=%d fingerprint=%q error=%v", restarts, fingerprint, err)
 	}
 	state.Processes[0].Healthy = false
+	if observedRestarts, observedIdentity, err := operatorSupervisorIdentity(state); err != nil || observedRestarts != restarts || observedIdentity != fingerprint {
+		t.Fatalf("health change altered structural identity: restarts=%d identity=%s error=%v", observedRestarts, observedIdentity, err)
+	}
+	state.Processes[0].Identity = ""
 	if _, _, err := operatorSupervisorIdentity(state); err == nil {
-		t.Fatal("unhealthy supervisor process was accepted")
+		t.Fatal("malformed supervisor identity was accepted")
 	}
 }
 

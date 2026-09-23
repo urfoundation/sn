@@ -418,8 +418,8 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 		return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("valid verify SEED status=%d error=%v", status, err)
 	}
 	var assign connect.VerifyAssignResult
-	if json.Unmarshal(response, &assign) != nil || len(assign.Trail) != 1 || assign.Trail[0] != seedProvider {
-		return "", requests, verifyIntegrityEvidence{}, errors.New("valid verify SEED returned the wrong source hop")
+	if decodeErr := json.Unmarshal(response, &assign); decodeErr != nil || len(assign.Trail) != 1 || assign.Trail[0] != seedProvider {
+		return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("valid verify SEED returned the wrong source hop: operator=%d sequence=%d selected_provider=%s source=%s status=%d observed_trail=%v next_hop=%s response_bytes=%d response_sha256=%s decode_error=%v", operator, sequence, seedProvider, source, status, assign.Trail, assign.NextHop, len(response), bytesSHA256(response), decodeErr)
 	}
 	if err := validateAdversaryAssign(&assign, []connect.Id{seedProvider}, identity.public, keys); err != nil {
 		return "", requests, verifyIntegrityEvidence{}, err
