@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -167,9 +168,14 @@ func TestPrecompileContinuationTransientReadsPreserveHardFailures(t *testing.T) 
 		pending bool
 	}{
 		{err: errPrecompileDividendPending, pending: true},
+		{err: fmt.Errorf("action pending: %w", errPrecompileDividendPending), pending: true},
 		{err: fmt.Errorf("chain read: %w", context.DeadlineExceeded), pending: true},
+		{err: errors.Join(errPrecompileDividendPending, fmt.Errorf("chain read: %w", context.DeadlineExceeded)), pending: true},
 		{err: errors.New("probe identity mismatch")},
 		{err: errors.Join(context.DeadlineExceeded, errors.New("receipt identity mismatch"))},
+		{err: errors.Join(errPrecompileDividendPending, errors.New("receipt identity mismatch"))},
+		{err: fmt.Errorf("action failed: %w", errors.Join(errPrecompileDividendPending, errors.New("probe identity mismatch")))},
+		{err: errors.Join(errPrecompileDividendPending, &os.PathError{Op: "read", Path: "synthetic-receipt.json", Err: context.DeadlineExceeded})},
 		{err: context.Canceled},
 	} {
 		observed := false

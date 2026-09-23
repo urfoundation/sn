@@ -142,13 +142,45 @@ func precompileContinuationSnapshot(ctx context.Context, advance func(context.Co
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			if !errors.Is(err, errPrecompileDividendPending) && !historicalPreparationReadIsTransient(err) {
+			if !precompileContinuationMayWait(err) {
 				return nil, err
 			}
 			fmt.Fprintf(os.Stderr, "sim-testnet: precompile continuation pending; retained checkpoints preserved: %v\n", err)
 		}
 	}
 	return observe(ctx)
+}
+
+// Every cause of a composite failure must be pending or a transient chain read.
+// A wrapped or joined integrity/storage failure cannot borrow a pending label.
+func precompileContinuationMayWait(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if err == errPrecompileDividendPending {
+		return true
+	}
+	if _, fileError := err.(*os.PathError); fileError {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !precompileContinuationMayWait(cause) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		if cause := wrapped.Unwrap(); cause != nil {
+			return precompileContinuationMayWait(cause)
+		}
+	}
+	return historicalPreparationReadIsTransient(err)
 }
 
 // Checks one pinned dividend observation without sleeping or changing evidence.
