@@ -300,6 +300,51 @@ func TestAdversaryGetOperatorSampleRetainsRecoveryAndStrictFailures(t *testing.T
 	}
 }
 
+// A successful target response survives an unrelated scheduled process outage;
+// malformed identity and unscheduled target failures still consume error budget.
+func TestOperatorApiSuccessfulResponseAllowsUnhealthyUnrelatedProcess(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	state := SupervisorState{Processes: []ProcessState{
+		{ID: "operator-1-api", Role: "api", Identity: "synthetic-api", Healthy: true, Restarts: 1},
+		{ID: "miner-swarm-1", Role: "miner-swarm", Identity: "synthetic-miners", Healthy: false, Restarts: 2},
+	}}
+	path := filepath.Join(dir, "supervisor.state.json")
+	if err := writePublicJSON(path, state); err != nil {
+		t.Fatal(err)
+	}
+	status := http.StatusOK
+	client := adversaryGetTestClient(func(*http.Request) (*http.Response, error) {
+		return adversaryGetTestResponse(status, `{"healthy":true}`), nil
+	})
+	window := newAdversaryFaultWindow(time.Second)
+	window.Update([]string{"miner-swarm-1"})
+	actor := &operatorAPIAdversary{cfg: cfg, stateDir: dir, http: client, faults: window}
+	result := actor.Sample(t.Context(), adversaryControlPhase, 0)
+	if result.Outcome != adversaryOutcomeSuccess || result.Metrics["restart_count"] != 3 {
+		t.Fatalf("unrelated outage overrode a successful API observation: %+v", result)
+	}
+	state.Processes[1].Identity = ""
+	if err := writePublicJSON(path, state); err != nil {
+		t.Fatal(err)
+	}
+	if result := actor.Sample(t.Context(), adversaryControlPhase, 0); result.Outcome != adversaryOutcomeError {
+		t.Fatalf("successful response hid malformed process identity: %+v", result)
+	}
+	state.Processes[1].Identity = "synthetic-miners"
+	if err := writePublicJSON(path, state); err != nil {
+		t.Fatal(err)
+	}
+	status = http.StatusServiceUnavailable
+	if result := actor.Sample(t.Context(), adversaryControlPhase, 0); result.Outcome != adversaryOutcomeError {
+		t.Fatalf("unrelated scheduled outage hid target API failure: %+v", result)
+	}
+	window.Update([]string{"operator-1-api"})
+	if result := actor.Sample(t.Context(), adversaryControlPhase, 0); result.Outcome != adversaryOutcomeExpectedRejection {
+		t.Fatalf("target scheduled outage lost exact attribution: %+v", result)
+	}
+}
+
 // A malformed payout page is never attributed to an API outage. The exact
 // signed history and artifact validation remain outside the retry boundary.
 func TestAdversaryGetMalformedHistoryIsHardForArtifactAndMerkleActors(t *testing.T) {

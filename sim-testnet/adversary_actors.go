@@ -271,7 +271,8 @@ type operatorAPIAdversary struct {
 func (self *operatorAPIAdversary) ID() string                         { return "operator-api-pressure" }
 func (self *operatorAPIAdversary) FaultWindow() *adversaryFaultWindow { return self.faults }
 
-// Derives a stable healthy-process fingerprint and aggregate restart count.
+// Derives a stable process identity and aggregate restart count. Target API
+// liveness is proved by its response; unrelated scheduled faults are independent.
 func operatorSupervisorIdentity(state SupervisorState) (uint64, string, error) {
 	if len(state.Processes) == 0 {
 		return 0, "", errors.New("supervisor process state is empty")
@@ -280,8 +281,8 @@ func operatorSupervisorIdentity(state SupervisorState) (uint64, string, error) {
 	sort.Slice(processes, func(i, j int) bool { return processes[i].ID < processes[j].ID })
 	var restarts uint64
 	for _, process := range processes {
-		if process.ID == "" || process.Role == "" || process.Identity == "" || !process.Healthy || process.Restarts < 0 {
-			return 0, "", fmt.Errorf("supervisor process %q is malformed or unhealthy", process.ID)
+		if process.ID == "" || process.Role == "" || process.Identity == "" || process.Restarts < 0 {
+			return 0, "", fmt.Errorf("supervisor process %q has malformed identity or restart evidence", process.ID)
 		}
 		restarts += uint64(process.Restarts)
 	}
