@@ -23,6 +23,13 @@ func precompileProbeSuccessorCallFixture(t *testing.T, fixture *precompileProbeS
 // signed forward request and all connected balances by synthetic units.
 func precompileProbeSuccessorCallFixtureWithMoveResidue(t *testing.T, fixture *precompileProbeSuccessorFixture, residue uint64) (*PrecompileConformanceEvidence, []JournalEntry, *deploymentBoundaryFixture) {
 	t.Helper()
+	return precompileProbeSuccessorCallFixtureWithShareConversion(t, fixture, residue, 0, 0)
+}
+
+// Independent conversion fields exercise each signed probe phase, including a
+// full-clear reverse move whose destination share quote truncates one unit.
+func precompileProbeSuccessorCallFixtureWithShareConversion(t *testing.T, fixture *precompileProbeSuccessorFixture, residue, reverseCreditRounding, transferCreditRounding uint64) (*PrecompileConformanceEvidence, []JournalEntry, *deploymentBoundaryFixture) {
+	t.Helper()
 	plan := fixture.plan
 	plan.LiveFacts.ProbeTAORao = 3
 	evidence := plan.PrecompileProbeSuccessor.Evidence
@@ -48,6 +55,13 @@ func precompileProbeSuccessorCallFixtureWithMoveResidue(t *testing.T, fixture *p
 	evidence.Transfer.AmountRao += 2 * residue
 	evidence.Transfer.ProbeBeforeRao += 2 * residue
 	evidence.Transfer.ProviderAfterRao += 2 * residue
+	evidence.Back.ToAfterRao -= reverseCreditRounding
+	evidence.Back.NativeShareCreditRoundingRao = reverseCreditRounding
+	evidence.Snapshot.BaselineRao -= reverseCreditRounding
+	evidence.Transfer.AmountRao -= reverseCreditRounding
+	evidence.Transfer.ProbeBeforeRao -= reverseCreditRounding
+	evidence.Transfer.ProviderAfterRao -= reverseCreditRounding + transferCreditRounding
+	evidence.Transfer.NativeShareCreditRoundingRao = transferCreditRounding
 	roles, err := BuildRoleSecrets(fixture.cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -1451,21 +1451,28 @@ reverse path also tried to spend the original request rather than the amount
 actually received. Production acceptance must distinguish requested units, observed
 source debit, observed destination credit, and any explicitly recorded remainder.
 
-The testnet repair retains a checksum-bound `native_share_residue_rao` only when
-source debit equals destination credit exactly, both are positive, and the request
-exceeds that conserved amount by at most one rao. Receipt amount, both pre-state
-readings, approved roles, signer, nonce, chain, contract and transaction remain
-exact. Reverse calldata uses the authenticated credit. The same check governs live
-reconciliation, retained postconditions and successor receipt replay; finalized
-transactions are resumed without another broadcast. Historical exact evidence
-keeps its original encoding because zero residue is omitted.
+The testnet repair records separate checksum-bound fields for the request minus
+source debit (`native_share_residue_rao`) and source debit minus destination
+credit (`native_share_credit_rounding_rao`), each bounded to zero or one rao.
+A read-only call at the finalized forward receipt reproduced the adjacent reverse
+case: an all-balance request clears its source, while its destination's native
+share quote credits one fewer integer unit. Both conversions must be explicitly
+accounted for; negative deltas, inflation, unrecorded differences and larger
+rounding remain hard failures. Requested amount, pre-state, roles, signer, nonce,
+chain, contract and transaction remain exact. Reverse calldata uses actual credit.
 
-Final acceptance still requires the full round trip to restore both original
-positions and the recovery transfer to leave no unrecovered probe balance. A
-quantized reverse move leaving dust is recorded as such and cannot pass that gate.
+The shared accounting governs live reconciliation, retained postconditions,
+successor receipt replay and final recovery. Finalized transactions resume without
+another broadcast. Historical zero-rounding evidence keeps its original canonical
+encoding. Round-trip accounting requires returned stake plus explicit native
+credit quantization to equal the initial position and requires zero remaining
+stake on the intermediate hotkey. Final transfer requires zero probe custody and
+an exactly recorded destination credit plus its bounded conversion; rounding is
+reported, never silently counted as a recipient payment.
+
 Before mainnet, exercise native share conversion in move and transfer operations,
 including even and odd requests, all-balance withdrawals, full custody recovery,
-finalized-before-evidence restart, and negative controls for unequal debit/credit,
-more than one unit of residue, changed signed requests and arithmetic overflow.
-Do not propagate this narrowly bounded probe rule into payout accounting without
-independently specifying and validating that contract's conservation model.
+finalized-before-evidence restart, and negative controls for unmatched accounting,
+more than one unit at either conversion, changed requests and arithmetic overflow.
+Do not propagate this probe rule into payout accounting without independently
+specifying and validating that contract's conservation and principal guarantee.

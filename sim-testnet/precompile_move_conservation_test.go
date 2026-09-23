@@ -209,3 +209,88 @@ func TestPrecompileMoveRoundingSuccessorCallUsesActualCredit(t *testing.T) {
 		t.Fatal("reverse calldata overspent actual forward credit")
 	}
 }
+
+// The reverse native call can clear every source share while its destination
+// quote truncates one unit; that explicit credit conversion is not source dust.
+func TestPrecompileMoveRoundingRecordsReverseDestinationConversion(t *testing.T) {
+	intent := PrecompileMoveStep{AmountRao: 100, FromBeforeRao: 100, ToBeforeRao: 103}
+	values := map[string]any{"amount": uint64(100), "fromBefore": uint64(100), "fromAfter": uint64(0), "toBefore": uint64(103), "toAfter": uint64(202)}
+	observed, err := reconcilePrecompileMoveEvent(intent, values)
+	if err != nil || observed.NativeShareResidueRao != 0 || observed.NativeShareCreditRoundingRao != 1 || observed.FromAfterRao != 0 {
+		t.Fatalf("full-clear reverse conversion failed: %+v %v", observed, err)
+	}
+	observed.NativeShareCreditRoundingRao = 0
+	if _, err := precompileMoveObservedAmount(observed); err == nil {
+		t.Fatal("unrecorded destination loss passed")
+	}
+	values["toAfter"] = uint64(201)
+	if _, err := reconcilePrecompileMoveEvent(intent, values); err == nil {
+		t.Fatal("two-unit destination loss passed")
+	}
+}
+
+// Native credit quantization is accounted across the entire round trip and
+// recovery, while zero remaining probe custody remains a mandatory final gate.
+func TestPrecompileMoveRoundingFinalEvidenceAccountsAllConversions(t *testing.T) {
+	evidence := completePrecompileEvidence()
+	evidence.Forward.FromAfterRao++
+	evidence.Forward.ToAfterRao--
+	evidence.Forward.NativeShareResidueRao = 1
+	evidence.Back.AmountRao--
+	evidence.Back.FromBeforeRao--
+	evidence.Back.ToBeforeRao++
+	evidence.Back.ToAfterRao--
+	evidence.Back.NativeShareCreditRoundingRao = 1
+	evidence.Snapshot.BaselineRao--
+	evidence.Dividend.BaselineRao--
+	evidence.Dividend.CurrentRao--
+	evidence.Transfer.AmountRao--
+	evidence.Transfer.ProbeBeforeRao--
+	evidence.Transfer.ProviderAfterRao -= 2
+	evidence.Transfer.NativeShareCreditRoundingRao = 1
+	if !precompileEvidenceComplete(evidence) {
+		t.Fatal("fully accounted native conversions failed final acceptance")
+	}
+	evidence.Transfer.NativeShareCreditRoundingRao = 0
+	if precompileEvidenceComplete(evidence) {
+		t.Fatal("unrecorded recovery credit shortfall passed final acceptance")
+	}
+	evidence.Transfer.NativeShareCreditRoundingRao = 1
+	evidence.Transfer.ProbeAfterRao++
+	evidence.Transfer.ProviderAfterRao--
+	evidence.Transfer.NativeShareResidueRao = 1
+	if precompileEvidenceComplete(evidence) {
+		t.Fatal("explicit but unrecovered probe dust passed final acceptance")
+	}
+}
+
+// Both reverse and transfer receipts survive interruption before evidence was
+// written; their exact signed requests and every native conversion are replayed.
+func TestPrecompileMoveRoundingReplaysReverseAndRecoveryReceipts(t *testing.T) {
+	for _, consumed := range []int{4, 6} {
+		fixture := newPrecompileProbeSuccessorFixture(t)
+		evidence, entries, reader := precompileProbeSuccessorCallFixtureWithShareConversion(t, fixture, 1, 1, 1)
+		prefix := entries[:len(fixture.entries)+consumed]
+		entry := prefix[len(prefix)-1]
+		nonce := fixture.plan.PrecompileProbeSuccessor.DeployerNonce + uint64(consumed)
+		truncatePrecompileProbeSuccessorEvidence(evidence, consumed)
+		if err := verifyPrecompileProbeSuccessorCall(t.Context(), reader, reader.finalized, fixture.plan, evidence, entry, nonce-1, false); err != nil {
+			t.Fatalf("completed converted receipt failed: %v", err)
+		}
+		if consumed == 4 {
+			evidence.Back.TransactionHash, evidence.Back.BlockHash, evidence.Back.BlockNumber = "", "", 0
+			evidence.Back.FromAfterRao, evidence.Back.ToAfterRao = 0, 0
+			evidence.Back.NativeShareCreditRoundingRao = 0
+		} else {
+			evidence.Transfer.TransactionHash, evidence.Transfer.BlockHash, evidence.Transfer.BlockNumber = "", "", 0
+			evidence.Transfer.ProbeAfterRao, evidence.Transfer.ProviderAfterRao = 0, 0
+			evidence.Transfer.NativeShareCreditRoundingRao, evidence.Complete = 0, false
+		}
+		if err := writePrecompileEvidence(fixture.stateDir, evidence); err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyPrecompileProbeSuccessorCalls(t.Context(), fixture.cfg, fixture.stateDir, fixture.plan, prefix, reader, reader.finalized, nonce); err != nil {
+			t.Fatalf("interrupted converted receipt lost restart admission: %v", err)
+		}
+	}
+}

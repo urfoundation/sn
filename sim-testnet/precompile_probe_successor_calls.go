@@ -122,7 +122,7 @@ func precompileProbeSuccessorCall(plan *SetupPlan, evidence *PrecompileConforman
 		data, err = parsed.Pack("moveRoundTrip", from, to, new(big.Int).SetUint64(amount))
 		recorded.TransactionHash, recorded.BlockNumber, recorded.BlockHash = step.TransactionHash, step.BlockNumber, step.BlockHash
 	case "precompile.snapshot":
-		if evidence.Snapshot.BaselineRao == 0 || evidence.Snapshot.BaselineRao < evidence.Seed.AfterRao {
+		if evidence.Snapshot.BaselineRao == 0 || !precompileRoundTripRecovered(evidence) || evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao {
 			return nil, nil, recorded, errors.New("successor snapshot lost the completed round trip")
 		}
 		data, err = parsed.Pack("snapshot", sample)
@@ -227,7 +227,7 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 		}
 		fields = map[string]uint64{"amount": step.AmountRao, "fromBefore": step.FromBeforeRao, "toBefore": step.ToBeforeRao}
 		if !partial {
-			if observed.NativeShareResidueRao != step.NativeShareResidueRao {
+			if observed.NativeShareResidueRao != step.NativeShareResidueRao || observed.NativeShareCreditRoundingRao != step.NativeShareCreditRoundingRao {
 				return errors.New("successor move changed its native-share remainder")
 			}
 			fields["fromAfter"], fields["toAfter"] = step.FromAfterRao, step.ToAfterRao
@@ -240,6 +240,16 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 		}
 	case "precompile.transfer-out":
 		values, err = conformanceEventValues(parsed, "TransferredOut", &filtered, recovery, sample)
+		if err != nil {
+			return err
+		}
+		observed, observeErr := reconcilePrecompileTransferEvent(evidence.Transfer, values)
+		if observeErr != nil {
+			return observeErr
+		}
+		if !partial && (observed.NativeShareResidueRao != evidence.Transfer.NativeShareResidueRao || observed.NativeShareCreditRoundingRao != evidence.Transfer.NativeShareCreditRoundingRao) {
+			return errors.New("successor recovery changed its native-share conversion")
+		}
 		fields = map[string]uint64{"amount": evidence.Transfer.AmountRao, "sourceBefore": evidence.Transfer.ProbeBeforeRao, "destinationBefore": evidence.Transfer.ProviderBeforeRao}
 		if !partial {
 			fields["sourceAfter"], fields["destinationAfter"] = evidence.Transfer.ProbeAfterRao, evidence.Transfer.ProviderAfterRao

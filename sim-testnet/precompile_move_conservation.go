@@ -1,5 +1,5 @@
-// Probe moves retain the requested amount separately from conserved native
-// share quantization. Only an explicit one-rao remainder may stay at the source.
+// Probe stake movement distinguishes requested units, source residue and
+// destination share quantization. Each conversion has an explicit one-rao bound.
 package main
 
 import (
@@ -7,15 +7,15 @@ import (
 	"fmt"
 )
 
-// Returns the exact observed credit, requiring an equal debit and an explicitly
-// recorded remainder. This is not a tolerance for lost or manufactured stake.
+// Returns the exact observed credit after accounting for independently bounded
+// source residue and destination share quantization. Unrecorded loss is rejected.
 func precompileMoveObservedAmount(step PrecompileMoveStep) (uint64, error) {
 	if step.AmountRao == 0 || step.FromBeforeRao < step.AmountRao || step.FromAfterRao > step.FromBeforeRao || step.ToAfterRao < step.ToBeforeRao {
 		return 0, errors.New("precompile move has invalid direction or amount")
 	}
 	debit, credit := step.FromBeforeRao-step.FromAfterRao, step.ToAfterRao-step.ToBeforeRao
-	if debit == 0 || debit != credit || debit > step.AmountRao || step.AmountRao-debit > 1 || step.NativeShareResidueRao != step.AmountRao-debit {
-		return 0, errors.New("precompile move does not conserve its explicit native-share remainder")
+	if debit == 0 || credit == 0 || debit < credit || debit-credit > 1 || step.NativeShareCreditRoundingRao != debit-credit || debit > step.AmountRao || step.AmountRao-debit > 1 || step.NativeShareResidueRao != step.AmountRao-debit {
+		return 0, errors.New("precompile move does not account for its explicit native-share conversion")
 	}
 	return credit, nil
 }
@@ -28,11 +28,12 @@ func reconcilePrecompileMoveEvent(step PrecompileMoveStep, values map[string]any
 	fromAfter, fromAfterOk := conformanceEventUint64(values, "fromAfter")
 	toBefore, toBeforeOk := conformanceEventUint64(values, "toBefore")
 	toAfter, toAfterOk := conformanceEventUint64(values, "toAfter")
-	if !amountOk || !fromBeforeOk || !fromAfterOk || !toBeforeOk || !toAfterOk || amount != step.AmountRao || fromBefore != step.FromBeforeRao || toBefore != step.ToBeforeRao || fromAfter > fromBefore || fromBefore-fromAfter > amount {
+	if !amountOk || !fromBeforeOk || !fromAfterOk || !toBeforeOk || !toAfterOk || amount != step.AmountRao || fromBefore != step.FromBeforeRao || toBefore != step.ToBeforeRao || fromAfter > fromBefore || fromBefore-fromAfter > amount || toAfter < toBefore || toAfter-toBefore > fromBefore-fromAfter {
 		return PrecompileMoveStep{}, fmt.Errorf("precompile move event changed its approved intent: from=%d->%d to=%d->%d amount=%d", fromBefore, fromAfter, toBefore, toAfter, amount)
 	}
 	step.FromAfterRao, step.ToAfterRao = fromAfter, toAfter
 	step.NativeShareResidueRao = amount - (fromBefore - fromAfter)
+	step.NativeShareCreditRoundingRao = (fromBefore - fromAfter) - (toAfter - toBefore)
 	if _, err := precompileMoveObservedAmount(step); err != nil {
 		return PrecompileMoveStep{}, err
 	}
@@ -53,11 +54,48 @@ func precompileMoveBackValid(evidence *PrecompileConformanceEvidence) bool {
 	return err == nil
 }
 
-// A conformance round trip must still restore both original positions; a
-// quantized reverse move leaving any probe dust is not final acceptance.
-func precompileRoundTripRestored(evidence *PrecompileConformanceEvidence) bool {
-	return evidence != nil && evidence.Forward.AmountRao == evidence.Seed.DeltaRao/2 && precompileMoveBackValid(evidence) &&
-		evidence.Forward.FromBeforeRao == evidence.Seed.AfterRao &&
+// Both source positions must close exactly, with any native credit conversion
+// explicitly subtracted from the returned stake. Source dust cannot pass.
+func precompileRoundTripRecovered(evidence *PrecompileConformanceEvidence) bool {
+	if evidence == nil || evidence.Forward.AmountRao != evidence.Seed.DeltaRao/2 || !precompileMoveBackValid(evidence) {
+		return false
+	}
+	creditRounding := evidence.Forward.NativeShareCreditRoundingRao + evidence.Back.NativeShareCreditRoundingRao
+	return evidence.Forward.ToBeforeRao == 0 && evidence.Forward.FromBeforeRao == evidence.Seed.AfterRao &&
 		evidence.Back.FromBeforeRao == evidence.Forward.ToAfterRao && evidence.Back.ToBeforeRao == evidence.Forward.FromAfterRao &&
-		evidence.Back.FromAfterRao == evidence.Forward.ToBeforeRao && evidence.Back.ToAfterRao == evidence.Forward.FromBeforeRao
+		evidence.Back.FromAfterRao == 0 && evidence.Back.ToAfterRao <= evidence.Forward.FromBeforeRao &&
+		evidence.Forward.FromBeforeRao-evidence.Back.ToAfterRao == creditRounding
+}
+
+// Transfers across coldkeys use the same native share conversions as hotkey
+// moves, while retaining their own exact recovery recipient and request.
+func precompileTransferMoveStep(step PrecompileTransferStep) PrecompileMoveStep {
+	return PrecompileMoveStep{AmountRao: step.AmountRao, FromBeforeRao: step.ProbeBeforeRao, FromAfterRao: step.ProbeAfterRao,
+		ToBeforeRao: step.ProviderBeforeRao, ToAfterRao: step.ProviderAfterRao,
+		NativeShareResidueRao: step.NativeShareResidueRao, NativeShareCreditRoundingRao: step.NativeShareCreditRoundingRao}
+}
+
+// Reuses exact receipt accounting; no different rounding allowance exists for
+// payout recovery and a caller must still require zero remaining probe custody.
+func reconcilePrecompileTransferEvent(step PrecompileTransferStep, values map[string]any) (PrecompileTransferStep, error) {
+	observed, err := reconcilePrecompileMoveEvent(precompileTransferMoveStep(step), map[string]any{
+		"amount": values["amount"], "fromBefore": values["sourceBefore"], "fromAfter": values["sourceAfter"],
+		"toBefore": values["destinationBefore"], "toAfter": values["destinationAfter"],
+	})
+	if err != nil {
+		return PrecompileTransferStep{}, err
+	}
+	step.ProbeAfterRao, step.ProviderAfterRao = observed.FromAfterRao, observed.ToAfterRao
+	step.NativeShareResidueRao, step.NativeShareCreditRoundingRao = observed.NativeShareResidueRao, observed.NativeShareCreditRoundingRao
+	return step, nil
+}
+
+// Final recovery accounts for the explicit credit conversion and still requires
+// the complete originally observed probe position to be debited with no dust.
+func precompileTransferRecovered(evidence *PrecompileConformanceEvidence) bool {
+	if evidence == nil || evidence.Transfer.ProbeBeforeRao <= evidence.Seed.BeforeRao || evidence.Transfer.ProbeAfterRao != evidence.Seed.BeforeRao || evidence.Transfer.AmountRao != evidence.Transfer.ProbeBeforeRao-evidence.Seed.BeforeRao {
+		return false
+	}
+	_, err := precompileMoveObservedAmount(precompileTransferMoveStep(evidence.Transfer))
+	return err == nil && evidence.Transfer.NativeShareResidueRao == 0
 }

@@ -111,15 +111,16 @@ type PrecompileValueStep struct {
 
 // Keeps requested units and the explicit conserved native-share remainder separate.
 type PrecompileMoveStep struct {
-	TransactionHash       string `json:"transaction_hash"`
-	BlockNumber           uint64 `json:"block_number"`
-	BlockHash             string `json:"block_hash"`
-	AmountRao             uint64 `json:"amount_rao"`
-	FromBeforeRao         uint64 `json:"from_before_rao"`
-	FromAfterRao          uint64 `json:"from_after_rao"`
-	ToBeforeRao           uint64 `json:"to_before_rao"`
-	ToAfterRao            uint64 `json:"to_after_rao"`
-	NativeShareResidueRao uint64 `json:"native_share_residue_rao,omitempty"`
+	TransactionHash              string `json:"transaction_hash"`
+	BlockNumber                  uint64 `json:"block_number"`
+	BlockHash                    string `json:"block_hash"`
+	AmountRao                    uint64 `json:"amount_rao"`
+	FromBeforeRao                uint64 `json:"from_before_rao"`
+	FromAfterRao                 uint64 `json:"from_after_rao"`
+	ToBeforeRao                  uint64 `json:"to_before_rao"`
+	ToAfterRao                   uint64 `json:"to_after_rao"`
+	NativeShareResidueRao        uint64 `json:"native_share_residue_rao,omitempty"`
+	NativeShareCreditRoundingRao uint64 `json:"native_share_credit_rounding_rao,omitempty"`
 }
 
 type PrecompileSnapshotStep struct {
@@ -139,14 +140,16 @@ type PrecompileDividendStep struct {
 }
 
 type PrecompileTransferStep struct {
-	TransactionHash   string `json:"transaction_hash"`
-	BlockNumber       uint64 `json:"block_number"`
-	BlockHash         string `json:"block_hash"`
-	AmountRao         uint64 `json:"amount_rao"`
-	ProbeBeforeRao    uint64 `json:"probe_before_rao"`
-	ProbeAfterRao     uint64 `json:"probe_after_rao"`
-	ProviderBeforeRao uint64 `json:"provider_before_rao"`
-	ProviderAfterRao  uint64 `json:"provider_after_rao"`
+	TransactionHash              string `json:"transaction_hash"`
+	BlockNumber                  uint64 `json:"block_number"`
+	BlockHash                    string `json:"block_hash"`
+	AmountRao                    uint64 `json:"amount_rao"`
+	ProbeBeforeRao               uint64 `json:"probe_before_rao"`
+	ProbeAfterRao                uint64 `json:"probe_after_rao"`
+	ProviderBeforeRao            uint64 `json:"provider_before_rao"`
+	ProviderAfterRao             uint64 `json:"provider_after_rao"`
+	NativeShareResidueRao        uint64 `json:"native_share_residue_rao,omitempty"`
+	NativeShareCreditRoundingRao uint64 `json:"native_share_credit_rounding_rao,omitempty"`
 }
 
 // ABI tuple shape returned by STSubnetProbe.readBattery. Field order and
@@ -470,9 +473,12 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		return e.executePrecompileMove(ctx, action, parsed, evidence, move, sample, &evidence.Back, amount)
 
 	case "precompile.snapshot":
+		if !precompileRoundTripRecovered(evidence) {
+			return errors.New("round-trip stake or native share conversion is not accounted for")
+		}
 		if evidence.Snapshot.BaselineRao == 0 {
 			before, err := e.readStakeFinalized(ctx, sample, probeColdkey)
-			if err != nil || before < evidence.Seed.BeforeRao+evidence.Seed.DeltaRao {
+			if err != nil || before < evidence.Back.ToAfterRao {
 				return conformanceMismatch(fmt.Sprintf("round-trip stake not restored: stake=%d", before), err)
 			}
 			evidence.Snapshot.BaselineRao = before
@@ -573,16 +579,14 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		if err != nil {
 			return err
 		}
-		eventAmount, amountOK := conformanceEventUint64(transferEvent, "amount")
-		probeBefore, probeBeforeOK := conformanceEventUint64(transferEvent, "sourceBefore")
-		probeAfter, probeAfterOK := conformanceEventUint64(transferEvent, "sourceAfter")
-		providerBefore, providerBeforeOK := conformanceEventUint64(transferEvent, "destinationBefore")
-		providerAfter, providerAfterOK := conformanceEventUint64(transferEvent, "destinationAfter")
-		if !amountOK || !probeBeforeOK || !probeAfterOK || !providerBeforeOK || !providerAfterOK || eventAmount != amount || probeBefore != evidence.Transfer.ProbeBeforeRao || providerBefore != evidence.Transfer.ProviderBeforeRao || probeAfter != evidence.Seed.BeforeRao || !exactIncrease(providerBefore, providerAfter, amount) {
-			return fmt.Errorf("probe recovery event mismatch: probe=%d/%d provider=%d/%d amount=%d", probeBefore, probeAfter, providerBefore, providerAfter, amount)
+		observed, err := reconcilePrecompileTransferEvent(evidence.Transfer, transferEvent)
+		if err != nil {
+			return err
 		}
-		evidence.Transfer.ProbeAfterRao = probeAfter
-		evidence.Transfer.ProviderAfterRao = providerAfter
+		evidence.Transfer = observed
+		if !precompileTransferRecovered(evidence) {
+			return errors.New("probe recovery retained an unrecovered source balance")
+		}
 		evidence.Transfer.TransactionHash, evidence.Transfer.BlockNumber, evidence.Transfer.BlockHash = receiptFields(receipt)
 		evidence.Complete = true
 		return writePrecompileEvidence(e.stateDir, evidence)
@@ -767,13 +771,13 @@ func precompileEvidenceComplete(evidence *PrecompileConformanceEvidence) bool {
 	if !ok || evidence.Seed.TAORao == 0 || valueWei.Cmp(wantWei) != 0 || !exactIncrease(evidence.Seed.BeforeRao, evidence.Seed.AfterRao, evidence.Seed.DeltaRao) {
 		return false
 	}
-	if !precompileRoundTripRestored(evidence) {
+	if !precompileRoundTripRecovered(evidence) {
 		return false
 	}
 	if evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao || evidence.Dividend.BaselineRao != evidence.Snapshot.BaselineRao || evidence.Dividend.SinceBlock != evidence.Snapshot.SinceBlock || !exactIncrease(evidence.Dividend.BaselineRao, evidence.Dividend.CurrentRao, evidence.Dividend.DeltaRao) {
 		return false
 	}
-	if evidence.Transfer.ProbeBeforeRao != evidence.Dividend.CurrentRao || evidence.Transfer.ProbeAfterRao != evidence.Seed.BeforeRao || evidence.Transfer.AmountRao != evidence.Transfer.ProbeBeforeRao-evidence.Seed.BeforeRao || !exactDecrease(evidence.Transfer.ProbeBeforeRao, evidence.Transfer.ProbeAfterRao, evidence.Transfer.AmountRao) || !exactIncrease(evidence.Transfer.ProviderBeforeRao, evidence.Transfer.ProviderAfterRao, evidence.Transfer.AmountRao) {
+	if evidence.Transfer.ProbeBeforeRao != evidence.Dividend.CurrentRao || !precompileTransferRecovered(evidence) {
 		return false
 	}
 	return validConformanceTransaction(evidence.Commitment.WriteTransactionHash, evidence.Commitment.WriteFinalizedHead.Hash, evidence.Commitment.WriteFinalizedHead.Number) &&
@@ -978,7 +982,7 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	case "precompile.move-back":
 		passed = precompileMoveBackValid(evidence) && validConformanceTransaction(evidence.Back.TransactionHash, evidence.Back.BlockHash, evidence.Back.BlockNumber)
 	case "precompile.snapshot":
-		passed = evidence.Snapshot.BaselineRao >= evidence.Seed.AfterRao && evidence.Snapshot.SinceBlock > 0 && validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber)
+		passed = precompileRoundTripRecovered(evidence) && evidence.Snapshot.BaselineRao >= evidence.Back.ToAfterRao && evidence.Snapshot.SinceBlock > 0 && validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber)
 	case "precompile.dividend":
 		passed = evidence.Dividend.BaselineRao == evidence.Snapshot.BaselineRao && exactIncrease(evidence.Dividend.BaselineRao, evidence.Dividend.CurrentRao, evidence.Dividend.DeltaRao) && evidence.Dividend.DeltaRao > 0 && evidence.Dividend.FinalizedHead.Number >= evidence.Dividend.SinceBlock
 	case "precompile.transfer-out":
