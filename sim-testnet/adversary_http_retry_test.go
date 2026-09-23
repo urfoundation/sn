@@ -398,7 +398,8 @@ func TestAdversaryGetVerifyCallersCountRetriesAndRejectMalformedBodies(t *testin
 		}
 		return adversaryGetTestResponse(http.StatusOK, fmt.Sprintf(`{"schema":%q,"rows":[]}`, "synthetic-wrong-schema")), nil
 	})
-	if requests, err := actor.requireUniqueProof(context.Background(), 1, [16]byte{}); err == nil || requests != 2 || calls != 2 {
+	at := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	if requests, err := actor.requireUniqueProof(context.Background(), 1, [16]byte{}, at, at.Add(time.Second)); err == nil || requests != 2 || calls != 2 {
 		t.Fatalf("verify proof observation requests=%d calls=%d error=%v", requests, calls, err)
 	} else if result := actor.sampleError(1, err, requests, 1); result.Outcome != adversaryOutcomeError {
 		t.Fatalf("scheduled outage hid malformed proof history: %+v", result)

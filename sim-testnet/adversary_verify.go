@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -394,7 +395,10 @@ func verifyFinalIntegrityModels(result *connect.VerifyFinalResult, trailID conne
 	return evidence, nil
 }
 
+// Bind the proof-history read to this signed walk, excluding saturated older
+// history without reducing the signature, source, replay, or uniqueness checks.
 func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence uint64, replay bool) (string, uint64, verifyIntegrityEvidence, error) {
+	walkStarted := time.Now().UTC()
 	identity := self.validators[operator]
 	providers := self.seedProviders[operator]
 	if len(providers) == 0 {
@@ -516,7 +520,7 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 			if integrityErr != nil {
 				return "", requests, integrity, integrityErr
 			}
-			proofRequests, proofErr := self.requireUniqueProof(ctx, operator, trailID)
+			proofRequests, proofErr := self.requireUniqueProof(ctx, operator, trailID, walkStarted, time.Now().UTC())
 			requests += proofRequests
 			if proofErr != nil {
 				return "", requests, integrity, proofErr
@@ -536,8 +540,16 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 	return "", requests, verifyIntegrityEvidence{}, errors.New("verify trail never finalized")
 }
 
-func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator int, trailID connect.Id) (uint64, error) {
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/proofs?limit=10000", 18080+operator)
+// The index is oldest-first and has no cursor. Bound it to the completed walk,
+// round outward for timestamp precision, and reject a possibly truncated page.
+func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator int, trailID connect.Id, started, completed time.Time) (uint64, error) {
+	if started.IsZero() || completed.Before(started) || completed.Sub(started) > 93*24*time.Hour-2*time.Second {
+		return 0, &adversaryReadIntegrityError{cause: errors.New("verify proof observation has an invalid walk time range")}
+	}
+	from := started.UTC().Truncate(time.Second)
+	to := completed.UTC().Truncate(time.Second).Add(time.Second)
+	query := url.Values{"from": {from.Format(time.RFC3339Nano)}, "to": {to.Format(time.RFC3339Nano)}, "limit": {"10000"}}
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/proofs?%s", 18080+operator, query.Encode())
 	read := self.http.get(ctx, endpoint, "", 32*1024*1024)
 	status, body, err := read.Status, read.Body, read.Err
 	if err != nil || status != http.StatusOK {
@@ -556,6 +568,9 @@ func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator in
 	if json.Unmarshal(body, &proofs) != nil || proofs.Schema != "urnetwork-verify-proof-index-v1" {
 		return read.Requests, &adversaryReadIntegrityError{cause: errors.New("verify proof index is malformed")}
 	}
+	if len(proofs.Rows) >= 10000 {
+		return read.Requests, &adversaryReadIntegrityError{cause: fmt.Errorf("verify proof index reached its row limit in walk range %s..%s; uniqueness is unproven", from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano))}
+	}
 	count := 0
 	for _, proof := range proofs.Rows {
 		if proof.TrailID == trailID {
@@ -563,7 +578,7 @@ func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator in
 		}
 	}
 	if count != 1 {
-		return read.Requests, &adversaryReadIntegrityError{cause: fmt.Errorf("verify finalized trail %s appears %d times in proof history", trailID, count)}
+		return read.Requests, &adversaryReadIntegrityError{cause: fmt.Errorf("verify finalized trail %s appears %d times in proof history range %s..%s (%d rows)", trailID, count, from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano), len(proofs.Rows))}
 	}
 	return read.Requests, nil
 }
