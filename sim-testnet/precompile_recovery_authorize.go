@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"os"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -147,7 +148,7 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 	}
 	if options.Apply {
 		path := filepath.Join(stateDir, precompileRecoveryAuthorizationFilename)
-		if err := rejectFinalArtifactSymlinkComponents(stateDir, path); err != nil {
+		if err := validatePrecompileRecoveryArtifactPath(stateDir, path); err != nil {
 			return err
 		}
 		if err := writeCoordinatorRepairFile(path, &authorization); err != nil {
@@ -155,6 +156,23 @@ func runPrecompileRecoveryAuthorization(ctx context.Context, cfg *ResolvedConfig
 		}
 	}
 	return printResult(options.Format, map[string]any{"command": "probe-recovery", "authorization": authorization, "published": options.Apply, "transactions_sent": 0, "plan_hash": plan.PlanHash}, nil)
+}
+
+func validatePrecompileRecoveryArtifactPath(stateDir, path string) error {
+	if err := rejectFinalArtifactSymlinkComponents(stateDir, filepath.Dir(path)); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("probe recovery authorization path is not a regular file")
+	}
+	return nil
 }
 
 // A read-only proposal accounts for signed and queued liabilities before its

@@ -199,7 +199,7 @@ func (self *Executor) completePrecompileRecovery(ctx context.Context) (*Precompi
 		return nil, err
 	}
 	path := filepath.Join(self.stateDir, precompileRecoveryCompletionFilename)
-	if err := rejectFinalArtifactSymlinkComponents(self.stateDir, path); err != nil {
+	if err := validatePrecompileRecoveryArtifactPath(self.stateDir, path); err != nil {
 		return nil, err
 	}
 	if err := writeCoordinatorRepairFile(path, completion); err != nil {
