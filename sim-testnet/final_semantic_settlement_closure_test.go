@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Appends complete canonical four-hop trails with every durable checkpoint.

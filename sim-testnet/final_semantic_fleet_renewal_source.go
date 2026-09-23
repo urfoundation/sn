@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 func finalFleetRenewalMemberProjection(member uint64, binding FleetBindingEvidence) FinalFleetGenerationMemberEvidence {
