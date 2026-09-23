@@ -198,9 +198,9 @@ func (self *verifyAdversary) supplementalMetrics(operator int, phase adversarySa
 	return result, nil
 }
 
+// Attribute only confirmed request absence within the exact operator window.
 func (self *verifyAdversary) sampleError(operator int, err error, requests, maximumInFlight uint64) adversarySampleResult {
-	var invalidRead *adversaryReadIntegrityError
-	if !errors.As(err, &invalidRead) && self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
+	if adversaryVerifyFaultUnavailable(err) && self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
 		return adversarySampleResult{
 			Outcome:  adversaryOutcomeExpectedRejection,
 			Detail:   fmt.Sprintf("operator=%d scheduled verify API fault: %v", operator, err),
@@ -241,7 +241,7 @@ func (self *verifyAdversary) serverKeys(ctx context.Context, operator int) (map[
 	read := self.http.get(ctx, endpoint, "", 1*1024*1024)
 	status, body, err := read.Status, read.Body, read.Err
 	if err != nil || status/100 != 2 {
-		failure := fmt.Errorf("verify keys status=%d error=%v", status, err)
+		failure := adversaryVerifyHttpFailure("verify keys", status, err)
 		if !adversaryGetUnavailable(read) {
 			return nil, read.Requests, &adversaryReadIntegrityError{cause: failure}
 		}
@@ -419,7 +419,7 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 	status, response, err := self.post(ctx, operator, source, seed)
 	requests++
 	if err != nil || status/100 != 2 {
-		return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("valid verify SEED status=%d error=%v", status, err)
+		return "", requests, verifyIntegrityEvidence{}, adversaryVerifyHttpFailure("valid verify SEED", status, err)
 	}
 	var assign connect.VerifyAssignResult
 	if decodeErr := json.Unmarshal(response, &assign); decodeErr != nil || len(assign.Trail) != 1 || assign.Trail[0] != seedProvider {
@@ -449,6 +449,7 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 		}
 		extendSignature := ed25519.Sign(identity.private, extendMessage)
 		extend := &connect.VerifyExtendArgs{ClientId: identity.clientID, TrailId: trailID, Trail: trail, ExtendSig: extendSignature}
+		var requestErrors []error
 		if replay {
 			body, marshalErr := json.Marshal(extend)
 			if marshalErr != nil {
@@ -463,7 +464,8 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 			busy := -1
 			for index := range pair {
 				if pair[index].Err != nil {
-					return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("concurrent verify EXTEND depth=%d request=%d: %w", depth, index, pair[index].Err)
+					requestErrors = append(requestErrors, adversaryVerifyHttpFailure(fmt.Sprintf("concurrent verify EXTEND depth=%d request=%d", depth, index), pair[index].Status, pair[index].Err))
+					continue
 				}
 				switch pair[index].Status {
 				case http.StatusOK:
@@ -475,10 +477,13 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 				case http.StatusConflict:
 					busy = index
 				default:
-					return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("concurrent verify EXTEND depth=%d request=%d returned HTTP %d", depth, index, pair[index].Status)
+					requestErrors = append(requestErrors, adversaryVerifyHttpFailure(fmt.Sprintf("concurrent verify EXTEND depth=%d request=%d", depth, index), pair[index].Status, nil))
 				}
 			}
 			if winner == -1 {
+				if len(requestErrors) != 0 {
+					return "", requests, verifyIntegrityEvidence{}, errors.Join(requestErrors...)
+				}
 				return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("concurrent verify EXTEND depth=%d had no winner", depth)
 			}
 			response = pair[winner].Body
@@ -487,15 +492,18 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 				replayBusy++
 				retryStatus, retryBody, retryErr := self.post(ctx, operator, source, extend)
 				requests++
-				if retryErr != nil || retryStatus != http.StatusOK || !bytes.Equal(response, retryBody) {
-					return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("busy verify EXTEND replay depth=%d status=%d equal=%t error=%v", depth, retryStatus, bytes.Equal(response, retryBody), retryErr)
+				if retryErr != nil || retryStatus != http.StatusOK {
+					return "", requests, verifyIntegrityEvidence{}, adversaryVerifyHttpFailure(fmt.Sprintf("busy verify EXTEND replay depth=%d", depth), retryStatus, retryErr)
+				}
+				if !bytes.Equal(response, retryBody) {
+					return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("busy verify EXTEND replay depth=%d returned a different successful body", depth)
 				}
 			}
 		} else {
 			status, response, err = self.post(ctx, operator, source, extend)
 			requests++
 			if err != nil || status/100 != 2 {
-				return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("valid verify EXTEND depth=%d status=%d error=%v", depth, status, err)
+				return "", requests, verifyIntegrityEvidence{}, adversaryVerifyHttpFailure(fmt.Sprintf("valid verify EXTEND depth=%d", depth), status, err)
 			}
 		}
 		var envelope struct {
@@ -520,6 +528,9 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 			if integrityErr != nil {
 				return "", requests, integrity, integrityErr
 			}
+			if len(requestErrors) != 0 {
+				return "", requests, integrity, errors.Join(requestErrors...)
+			}
 			proofRequests, proofErr := self.requireUniqueProof(ctx, operator, trailID, walkStarted, time.Now().UTC())
 			requests += proofRequests
 			if proofErr != nil {
@@ -533,6 +544,9 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 		}
 		if err := validateAdversaryAssign(&next, trail, identity.public, keys); err != nil {
 			return "", requests, verifyIntegrityEvidence{}, err
+		}
+		if len(requestErrors) != 0 {
+			return "", requests, verifyIntegrityEvidence{}, errors.Join(requestErrors...)
 		}
 		confirmed = trail
 		assign = next
@@ -553,7 +567,7 @@ func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator in
 	read := self.http.get(ctx, endpoint, "", 32*1024*1024)
 	status, body, err := read.Status, read.Body, read.Err
 	if err != nil || status != http.StatusOK {
-		failure := fmt.Errorf("verify proof index status=%d error=%v", status, err)
+		failure := adversaryVerifyHttpFailure("verify proof index", status, err)
 		if !adversaryGetUnavailable(read) {
 			return read.Requests, &adversaryReadIntegrityError{cause: failure}
 		}
@@ -601,18 +615,32 @@ func (self *verifyAdversary) poison(ctx context.Context, operator int, sequence 
 	statusA, bodyA, errA := self.post(ctx, operator, source, seed)
 	statusB, bodyB, errB := self.post(ctx, operator, source, seed)
 	requests += 2
-	if errA != nil || errB != nil || statusA/100 != 2 || statusB/100 != 2 {
-		return "", requests, fmt.Errorf("poison SEED status=%d/%d error=%v/%v", statusA, statusB, errA, errB)
-	}
 	var first, second connect.VerifyAssignResult
-	if json.Unmarshal(bodyA, &first) != nil || json.Unmarshal(bodyB, &second) != nil || len(first.Trail) != 1 || len(second.Trail) != 1 || first.Trail[0] != second.Trail[0] {
+	var failures []error
+	for index, response := range []struct {
+		status int
+		body   []byte
+		err    error
+		assign *connect.VerifyAssignResult
+	}{
+		{status: statusA, body: bodyA, err: errA, assign: &first},
+		{status: statusB, body: bodyB, err: errB, assign: &second},
+	} {
+		if response.err != nil || response.status/100 != 2 {
+			failures = append(failures, adversaryVerifyHttpFailure(fmt.Sprintf("poison SEED request=%d", index), response.status, response.err))
+			continue
+		}
+		if json.Unmarshal(response.body, response.assign) != nil || len(response.assign.Trail) != 1 {
+			failures = append(failures, errors.New("poison SEED has an invalid assignment"))
+		} else if err := validateAdversaryAssign(response.assign, response.assign.Trail, public, keys); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	if len(failures) != 0 {
+		return "", requests, errors.Join(failures...)
+	}
+	if first.Trail[0] != second.Trail[0] {
 		return "", requests, errors.New("poison SEED exposes an unstable synthetic source")
-	}
-	if err := validateAdversaryAssign(&first, first.Trail, public, keys); err != nil {
-		return "", requests, err
-	}
-	if err := validateAdversaryAssign(&second, second.Trail, public, keys); err != nil {
-		return "", requests, err
 	}
 	if _, known := self.providerSources[operator][first.Trail[0]]; known {
 		return "", requests, errors.New("poison SEED exposed a real provider source")
@@ -672,10 +700,10 @@ func (self *verifyAdversary) malformed(ctx context.Context, operator int, sequen
 	source := fmt.Sprintf("127.92.%d.%d", operator, 1+sequence%200)
 	status, _, err := self.post(ctx, operator, source, seed)
 	if err != nil {
-		return "", 1, nil, err
+		return "", 1, nil, adversaryVerifyHttpFailure("malformed verify signature request", status, err)
 	}
 	if status != http.StatusBadRequest {
-		return "", 1, nil, fmt.Errorf("malformed signature returned HTTP %d, want 400", status)
+		return "", 1, nil, adversaryVerifyHttpFailure("malformed verify signature expected HTTP 400", status, nil)
 	}
 	return fmt.Sprintf("operator=%d %s_http=400", operator, strings.TrimSuffix(metric, "_rejections")), 1, map[string]uint64{
 		metric:                        1,
@@ -702,13 +730,13 @@ func (self *verifyAdversary) rateBound(ctx context.Context, operator int, sequen
 		seed := &connect.VerifySeedArgs{ClientId: self.validators[operator].clientID, Vpk: public, ClientNonce: nonce[:], SeedSig: make([]byte, ed25519.SignatureSize), M: connect.VerifyMMin}
 		status, _, err := self.post(ctx, operator, source, seed)
 		if err != nil {
-			return "", uint64(attempt), true, err
+			return "", uint64(attempt), true, adversaryVerifyHttpFailure("verify rate-bound request", status, err)
 		}
 		if attempt <= limit && status != http.StatusBadRequest {
-			return "", uint64(attempt), true, fmt.Errorf("pre-limit request %d returned HTTP %d", attempt, status)
+			return "", uint64(attempt), true, adversaryVerifyHttpFailure(fmt.Sprintf("pre-limit request %d expected HTTP 400", attempt), status, nil)
 		}
 		if attempt == limit+1 && status != http.StatusTooManyRequests {
-			return "", uint64(attempt), true, fmt.Errorf("hard-limit request returned HTTP %d, want 429", status)
+			return "", uint64(attempt), true, adversaryVerifyHttpFailure("hard-limit request expected HTTP 429", status, nil)
 		}
 	}
 	self.mu.Lock()
