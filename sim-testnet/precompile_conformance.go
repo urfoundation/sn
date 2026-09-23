@@ -48,6 +48,7 @@ type PrecompileConformanceEvidence struct {
 	Seed             PrecompileValueStep          `json:"seed"`
 	Forward          PrecompileMoveStep           `json:"move_forward"`
 	Back             PrecompileMoveStep           `json:"move_back"`
+	RoundTripCredits *PrecompileRoundTripCredits  `json:"round_trip_credits,omitempty"`
 	Snapshot         PrecompileSnapshotStep       `json:"snapshot"`
 	Dividend         PrecompileDividendStep       `json:"dividend"`
 	Transfer         PrecompileTransferStep       `json:"transfer_out"`
@@ -473,8 +474,8 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		return e.executePrecompileMove(ctx, action, parsed, evidence, move, sample, &evidence.Back, amount)
 
 	case "precompile.snapshot":
-		if !precompileRoundTripRecovered(evidence) {
-			return errors.New("round-trip stake or native share conversion is not accounted for")
+		if err := recordPrecompileRoundTripCredits(evidence); err != nil {
+			return err
 		}
 		if evidence.Snapshot.BaselineRao == 0 {
 			before, err := e.readStakeFinalized(ctx, sample, probeColdkey)
@@ -482,9 +483,9 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 				return conformanceMismatch(fmt.Sprintf("round-trip stake not restored: stake=%d", before), err)
 			}
 			evidence.Snapshot.BaselineRao = before
-			if err := writePrecompileEvidence(e.stateDir, evidence); err != nil {
-				return err
-			}
+		}
+		if err := writePrecompileEvidence(e.stateDir, evidence); err != nil {
+			return err
 		}
 		data, err := parsed.Pack("snapshot", sample)
 		if err != nil {
@@ -498,12 +499,14 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		if err != nil {
 			return err
 		}
-		baseline, baselineOK := conformanceEventUint64(snapshotEvent, "baseline")
-		since, sinceOK := conformanceEventUint64(snapshotEvent, "blockNumber")
-		if !baselineOK || !sinceOK || baseline != evidence.Snapshot.BaselineRao || since == 0 {
-			return fmt.Errorf("invalid DividendSnapshot event baseline=%d since=%d", baseline, since)
+		if receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() {
+			return errors.New("precompile snapshot has no receipt block")
 		}
-		evidence.Snapshot.SinceBlock = since
+		observed, err := reconcilePrecompileSnapshotEvent(evidence.Snapshot, snapshotEvent, receipt.BlockNumber.Uint64())
+		if err != nil {
+			return err
+		}
+		evidence.Snapshot = observed
 		evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockNumber, evidence.Snapshot.BlockHash = receiptFields(receipt)
 		return writePrecompileEvidence(e.stateDir, evidence)
 
@@ -982,7 +985,7 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	case "precompile.move-back":
 		passed = precompileMoveBackValid(evidence) && validConformanceTransaction(evidence.Back.TransactionHash, evidence.Back.BlockHash, evidence.Back.BlockNumber)
 	case "precompile.snapshot":
-		passed = precompileRoundTripRecovered(evidence) && evidence.Snapshot.BaselineRao >= evidence.Back.ToAfterRao && evidence.Snapshot.SinceBlock > 0 && validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber)
+		passed = precompileRoundTripAccounted(evidence) && evidence.Snapshot.BaselineRao >= evidence.Back.ToAfterRao && evidence.Snapshot.SinceBlock == evidence.Snapshot.BlockNumber && validConformanceTransaction(evidence.Snapshot.TransactionHash, evidence.Snapshot.BlockHash, evidence.Snapshot.BlockNumber)
 	case "precompile.dividend":
 		passed = evidence.Dividend.BaselineRao == evidence.Snapshot.BaselineRao && exactIncrease(evidence.Dividend.BaselineRao, evidence.Dividend.CurrentRao, evidence.Dividend.DeltaRao) && evidence.Dividend.DeltaRao > 0 && evidence.Dividend.FinalizedHead.Number >= evidence.Dividend.SinceBlock
 	case "precompile.transfer-out":

@@ -122,7 +122,7 @@ func precompileProbeSuccessorCall(plan *SetupPlan, evidence *PrecompileConforman
 		data, err = parsed.Pack("moveRoundTrip", from, to, new(big.Int).SetUint64(amount))
 		recorded.TransactionHash, recorded.BlockNumber, recorded.BlockHash = step.TransactionHash, step.BlockNumber, step.BlockHash
 	case "precompile.snapshot":
-		if evidence.Snapshot.BaselineRao == 0 || !precompileRoundTripRecovered(evidence) || evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao {
+		if evidence.Snapshot.BaselineRao == 0 || !precompileRoundTripAccounted(evidence) || evidence.Snapshot.BaselineRao < evidence.Back.ToAfterRao {
 			return nil, nil, recorded, errors.New("successor snapshot lost the completed round trip")
 		}
 		data, err = parsed.Pack("snapshot", sample)
@@ -234,9 +234,17 @@ func verifyPrecompileProbeSuccessorEvent(evidence *PrecompileConformanceEvidence
 		}
 	case "precompile.snapshot":
 		values, err = conformanceEventValues(parsed, "DividendSnapshot", &filtered, sample)
-		fields = map[string]uint64{"baseline": evidence.Snapshot.BaselineRao}
+		if err != nil {
+			return err
+		}
+		if receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() {
+			return errors.New("successor snapshot has no receipt block")
+		}
+		if _, err := reconcilePrecompileSnapshotEvent(evidence.Snapshot, values, receipt.BlockNumber.Uint64()); err != nil {
+			return err
+		}
 		if !partial {
-			fields["blockNumber"] = evidence.Snapshot.SinceBlock
+			fields = map[string]uint64{"baseline": evidence.Snapshot.BaselineRao, "blockNumber": evidence.Snapshot.SinceBlock}
 		}
 	case "precompile.transfer-out":
 		values, err = conformanceEventValues(parsed, "TransferredOut", &filtered, recovery, sample)
