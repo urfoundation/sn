@@ -98,7 +98,7 @@ func TestPrecompileMoveRoundingRejectsChangedEventIntent(t *testing.T) {
 		case "negative":
 			values["amount"] = big.NewInt(-1)
 		case "lost":
-			values["toAfter"] = uint64(116)
+			values["toAfter"] = uint64(115)
 		}
 		if _, err := reconcilePrecompileMoveEvent(intent, values); err == nil {
 			t.Fatalf("%s changed receipt passed", fault)
@@ -291,6 +291,66 @@ func TestPrecompileMoveRoundingReplaysReverseAndRecoveryReceipts(t *testing.T) {
 		}
 		if err := verifyPrecompileProbeSuccessorCalls(t.Context(), fixture.cfg, fixture.stateDir, fixture.plan, prefix, reader, reader.finalized, nonce); err != nil {
 			t.Fatalf("interrupted converted receipt lost restart admission: %v", err)
+		}
+	}
+}
+
+// Receipt-authorized conversion can be recorded at first reconciliation, but
+// retained amount, pre-state and rounding fields cannot later drift in replay.
+func TestPrecompileMoveRoundingReplayKeepsExactRecordedIntent(t *testing.T) {
+	fixture := newPrecompileProbeSuccessorFixture(t)
+	evidence, entries, reader := precompileProbeSuccessorCallFixtureWithShareConversion(t, fixture, 1, 1, 1)
+	for _, actionId := range []string{"precompile.move-back", "precompile.transfer-out"} {
+		var transactionHash string
+		for _, entry := range entries {
+			if entry.ActionID == actionId {
+				transactionHash = entry.TransactionHash
+			}
+		}
+		receipt := reader.receipts[common.HexToHash(transactionHash)]
+		if receipt == nil {
+			t.Fatal("fixture is missing its finalized receipt")
+		}
+		if err := verifyPrecompileProbeSuccessorEvent(evidence, actionId, receipt, false); err != nil {
+			t.Fatalf("exact retained conversion was rejected: %v", err)
+		}
+		for _, fault := range []string{"amount", "source before", "destination before", "rounding", "post-state"} {
+			changed := *evidence
+			if actionId == "precompile.move-back" {
+				switch fault {
+				case "amount":
+					changed.Back.AmountRao++
+				case "source before":
+					changed.Back.FromBeforeRao++
+				case "destination before":
+					changed.Back.ToBeforeRao++
+				case "rounding":
+					changed.Back.NativeShareCreditRoundingRao = 0
+				case "post-state":
+					changed.Back.ToAfterRao++
+				}
+			} else {
+				switch fault {
+				case "amount":
+					changed.Transfer.AmountRao++
+				case "source before":
+					changed.Transfer.ProbeBeforeRao++
+				case "destination before":
+					changed.Transfer.ProviderBeforeRao++
+				case "rounding":
+					changed.Transfer.NativeShareCreditRoundingRao = 0
+				case "post-state":
+					changed.Transfer.ProviderAfterRao++
+				}
+			}
+			if err := verifyPrecompileProbeSuccessorEvent(&changed, actionId, receipt, false); err == nil {
+				t.Fatalf("%s replay accepted changed %s", actionId, fault)
+			}
+			if fault == "amount" || fault == "source before" || fault == "destination before" {
+				if err := verifyPrecompileProbeSuccessorEvent(&changed, actionId, receipt, true); err == nil {
+					t.Fatalf("partial %s replay accepted changed %s", actionId, fault)
+				}
+			}
 		}
 	}
 }
