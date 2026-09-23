@@ -607,6 +607,16 @@ shared deadlines, cancellation joins, preserved successes, correct permanent
 classification and eventual continuation after a network outage. Exercise the
 real caller layers, including both validator paths and the artifact reader.
 
+**2026-09-23 release-interval follow-up.** The live RPC consistency actor
+opened fresh native-chain readers for each sample, repeatedly decoding runtime
+metadata and discarding an authenticated cache. Several sequential reads then
+inherited the nearly exhausted 10-second sample deadline and were reported as
+RPC timeouts even while direct LAN reads were fast. Production readers should
+reuse an owner-scoped chain client and bounded immutable metadata cache,
+authenticate each pinned block and runtime identity, and retry transport reads
+inside one measured sample budget. Test the complete multi-call sample under
+slow metadata and a one-call timeout; a fast isolated RPC probe is insufficient.
+
 **2026-09-22 cancellation follow-up.** Generation 24 reached its signed
 acceptance scope but a normal client-canceled immutable download became a
 blocking process warning. The production artifact handler now distinguishes a
@@ -959,6 +969,22 @@ Require fresh proof progress for every validator/operator domain and connect
 traffic to eligible usage, signed roots, native rows and paid entitlement;
 bytes acknowledged or a healthy process alone cannot satisfy that chain.
 
+**2026-09-23 reconnect follow-up.** Concurrent old/new Connect sessions can
+share a reverse egress key. An old session's cleanup must compare its lease
+owner before deletion, so it cannot remove the newer session's live mapping
+and produce a synthetic verification hop. Cover reconnect overlap, stale TTL
+expiry, proxy/direct handoff and replayed multi-hop verification in deterministic
+tests. Retain bounded response diagnostics that identify a rejected verification
+step without logging secrets.
+
+**2026-09-23 fault-selection follow-up.** A verification probe selected miners
+that a scheduled quality fault had deliberately disabled, then treated the
+expected missing source lease as a protocol failure. Resolve the exact logical
+miner before probe selection, exclude active fault targets and guard a signed
+walk against a fault starting mid-request. Continue to reject wrong source,
+signature and response content for every request actually issued; fault scope
+must not become a blanket waiver for an entire swarm or operator.
+
 ### PH-14 — Governed limits and real on-chain activation
 
 **Lesson.** The first run configured a future production policy but never
@@ -1057,6 +1083,17 @@ claim comes solely from a lock/state file. A completed soft-error recovery
 remains in the incident ledger for the improvement batch; missing required
 evidence remains visible in acceptance. Verify meaningful signals under both
 slow but progressing replay and an actual deadlock.
+
+**2026-09-23 release-heartbeat follow-up.** R31 entered the real release epoch
+and then stopped because a heartbeat treated process-log findings as a reason
+to terminate before the terminal acceptance block. Production monitoring must
+persist classified findings and keep the interval running; the final gate still
+rejects unresolved findings. Only evidence-integrity or authorization failures
+should stop the heartbeat itself. Attribute a fault-related log to the exact
+logical client and its authenticated event-time fault window, since a buffered
+line may be scanned only after the fault has been restored. The affected swarm
+process may remain healthy while one miner is intentionally disabled. Test both
+the continued run and strict terminal rejection of an unrelated error.
 
 ### PH-16 — Deterministic qualification and reviewable evidence
 
@@ -1740,3 +1777,60 @@ failure followed by recovery-chain validation, legacy backfill without result
 mutation, write-error propagation and observed-progress/source-substitution
 rejection. See [the regressions](../sim-testnet/scenario_initial_observation_test.go).
 Production crash-publication qualification remains required.
+
+### Keep release intervals running while classifying adversary failures
+
+R34 entered its signed release interval and continued making finalized-block
+observations while three adversary probes found hard errors. RPC consistency
+timeouts were successfully recorded as pending and then recovered. Separate
+operator artifact GET timeouts and verification `503` responses remained hard
+findings. A healthy fleet and advancing block head therefore show liveness,
+not final acceptance. Production should retain the exact failed probe, actor,
+target, block and fault window without terminating an otherwise useful interval;
+the final gate must still reject unresolved required probes. Recovery must never
+turn an unanswered read into a verified mismatch or a skipped probe into coverage.
+
+Give each HTTP operation its full configured attempt deadline before bounded
+retry. Dividing a ten-second sample into short attempts canceled artifact reads
+that were completing in roughly three seconds, creating failure during normal
+load. Retain one overall budget, retry only classified transport and server
+availability errors, and require the original content-addressed validation of
+every nonempty recovered response. An empty history after timeout carries no
+coverage. Test slow successful reads, timeout followed by success, exhausted
+retry, empty history, malformed response and cancellation through the full actor.
+
+For expected production GETs, use at least 60 seconds total and default to a
+five-minute retry horizon when no tighter protocol deadline applies. Give each
+attempt a real response deadline, back off between transient transport failures
+and retryable server responses, and preserve the original request identity and
+hash expectation throughout. A missing object, authorization refusal, malformed
+response or hash mismatch is a semantic finding; repeated transport success
+cannot waive it. Long retries must not hold the release heartbeat or silently
+extend a signed fault window: persist the pending read, let unrelated work
+continue, and complete or fail that exact read within its own bounded horizon.
+Test an outage lasting longer than 60 seconds, recovery before five minutes,
+exhaustion, cancellation and a fault-window transition during retry.
+
+Fault admission must distinguish a scheduled trigger from a physically active
+pre-arm. R34 installed exact validator-view exclusions before the release epoch
+so the quality-fault boundary could start safely, but the verification actor
+selected those excluded miners while their signed trigger was still pending.
+Pre-arm the exclusions before any dependent fleet lifecycle action; publish
+their exact target scope before installing physical files, and select probes
+only from the eligible census. Across recovery, adopt only the signed filter
+rules and verify their bytes, private-file mode and process ownership. Retain an
+existing filter file without replacing its inode until the authorized restore;
+reject unrelated faults or partial restoration. If an older predecessor removes
+the filter during shutdown, record that continuity gap explicitly; a successor
+that installs a fresh filter cannot claim uninterrupted protection.
+
+Qualify the whole rollover, not only the candidate binary: authenticate the
+sealed predecessor and signed invalidation, pin evidence hashes, verify the
+retained fault registry and physical filters before service replacement, then
+check their permitted state after the new supervisor starts. Require the exact
+binary provenance, manifest, 33-process identity and healthy fleet before the
+next interval. The handoff may tolerate a typed provisional predecessor and
+recoverable transient errors, but must reject changed authorization, substituted
+evidence, unexpected fault controls and missing physical safety rules. Exercise
+pending pre-arms, retained filters, intentional absence after old cleanup,
+interrupted install, changed registry, partial restore and rollback in tests.
