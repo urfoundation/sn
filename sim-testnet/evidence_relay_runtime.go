@@ -482,9 +482,7 @@ func (self *evidenceRelayRuntime) advanceClosedPublication(source *evidenceRelay
 		}()
 	}
 	source.nextEpoch++
-	if self.startupCache != nil || containsGap {
-		self.startupProgress = true
-	}
+	self.startupProgress = true
 	return self.ctx.Err()
 }
 
