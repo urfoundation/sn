@@ -1916,3 +1916,10 @@ exact log evidence. A warning while time remains is not a missed deadline:
 testnet epoch 597 warned with 7m48s left and both roots confirmed 37 seconds
 later. Keep imminent/passed deadlines blocking and independently verify the
 finalized root and deadline before accepting the epoch.
+If an on-chain policy change makes an old signed measurement source
+unpublishable, an explicitly new VPK/source generation can start at a future
+untouched epoch without pretending its sequence, EMA, or ledger continues the
+old source. Production needs one authenticated handoff controlling validator
+directories, client identities/JWTs, API admission contexts, relay routing and
+collector identity selection; preserve the old signed evidence and account
+for the excluded gap separately.

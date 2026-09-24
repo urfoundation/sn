@@ -53,6 +53,13 @@ a handoff after those appends. For any rollover, fence the writers after a
 newly finalized terminal, verify all four latest prefixes, and publish that
 terminal's adjacent-epoch activations before the adjacent epoch ends. Missing
 that window means waiting for the next terminal, not backdating signatures.
+An independent fresh-VPK source generation is now the preferred recovery for
+the next full interval. It keeps the four old signed namespaces immutable and
+records explicit lineage, but begins new sequence-1 ledgers and makes no
+continuity or carried-EMA claim. This path avoids replaying old-policy compact
+attempts under the new policy; it still requires four finalized activations,
+new validator client identities/JWTs, API upload-context refresh, relay source
+routing, and a generation-aware final collector before acceptance.
 Do not start another acceptance interval against this relay source until the
 policy-era activation/relay transition is fixed and qualified. Preserve the
 failed action, R40 result, signed boundary invalidation, completed receipts,
