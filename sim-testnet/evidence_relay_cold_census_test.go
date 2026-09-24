@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -209,9 +210,9 @@ func (self *evidenceRelayColdCensusTestFixture) serveChain(writer http.ResponseW
 
 // Build canonical synthetic public objects with the original configured keys.
 // This does not manufacture a retained receipt or a startup cache verdict.
-func (self *evidenceRelayColdCensusTestFixture) publication(t *testing.T, epoch, boundary uint64, subject protocol.ValidatorEvidenceSubject) any {
+func (self *evidenceRelayColdCensusTestFixture) publication(t *testing.T, epoch, boundary uint64, subject protocol.ValidatorEvidenceSubject, generationKeys ...map[uint64]ed25519.PrivateKey) any {
 	t.Helper()
-	source := &self.runtime.sources[0]
+	source := self.runtime.sources[0].forEpoch(epoch)
 	store := func(value any) ([]byte, [32]byte) {
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -228,7 +229,7 @@ func (self *evidenceRelayColdCensusTestFixture) publication(t *testing.T, epoch,
 		GenesisHash: self.runtime.executor.plan.GenesisHash, Coordinator: common.Address(source.activations[0].Domain.Coordinator).Hex(),
 		SettlementVault: common.Address(source.activations[0].Domain.SettlementVault).Hex(), ValidatorID: source.validatorId, Netuid: self.runtime.executor.plan.Netuid,
 		SubnetEpoch: subject.NativeEpoch, NativeSnapshotBlock: 101, NativeSnapshotHash: common.Hash{0x71}.Hex(), EVMSnapshotBlock: boundary,
-		EVMSnapshotHash: common.Hash{0x72}.Hex(), SettlementEpoch: subject.ObservationEpoch, PolicyHash: self.runtime.executor.plan.PolicyHash}
+		EVMSnapshotHash: common.Hash{0x72}.Hex(), SettlementEpoch: subject.ObservationEpoch, PolicyHash: common.Hash(source.activations[0].Domain.PolicyHash).Hex()}
 	closedCensus := validatorcomponent.ValidatorEvidenceCensusV2{Schema: validatorcomponent.ValidatorEvidenceCensusV2Schema, Hotkey: source.activations[0].Hotkey,
 		Boundary: validatorcomponent.AttemptBoundary{SettlementEpoch: epoch, EVMBlock: boundary, EVMBlockHash: decision.EVMSnapshotHash}}
 	auditCensus := validatorcomponent.ValidatorEvidenceDepositAuditV2Census{Schema: validatorcomponent.ValidatorEvidenceDepositAuditV2CensusSchema, Epoch: epoch,
@@ -264,6 +265,9 @@ func (self *evidenceRelayColdCensusTestFixture) publication(t *testing.T, epoch,
 		hotkey, key, err := runtimeEvidenceActivationKeysV2(self.runtime.executor.roles, source.validatorId, activation.NoID)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(generationKeys) == 1 {
+			key = generationKeys[0][activation.NoID]
 		}
 		vpkSignature, err := header.SignVPK(key)
 		if err != nil {

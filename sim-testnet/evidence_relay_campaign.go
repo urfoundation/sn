@@ -90,7 +90,7 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		if err := relay.WaitPublicAudit(bounded); err != nil {
 			return err
 		}
-		if err := relay.WaitThrough(bounded, end); err != nil {
+		if err := relay.WaitRange(bounded, window.FirstEpoch, end); err != nil {
 			return err
 		}
 		if err := relay.WaitAuditPass(bounded); err != nil {
@@ -98,7 +98,7 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		}
 		// Finish the worker before evidence collection finalizes the happy path.
 		// Its already-complete source slots remain independently replayable.
-		return relay.Close()
+		return errors.Join(relay.Close(), relay.WaitRange(bounded, window.FirstEpoch, end))
 	}
 	return runScenarioWithProbe(phaseCtx, cfg, stateDir, definition, probe, options)
 }

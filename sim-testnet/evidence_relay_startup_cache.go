@@ -237,6 +237,9 @@ func (self *evidenceRelayRuntime) newEvidenceRelayStartupSession(ctx context.Con
 	if ctx == nil || self == nil || self.executor == nil || self.executor.cfg == nil || self.executor.plan == nil || self.executor.plan.EvidenceRelayContinuation == nil {
 		return nil, nil
 	}
+	if self.hasPolicyRolloverSources() {
+		return nil, nil
+	}
 	advisory, err := evidenceRelayContinuationForecastAdvisory(self.executor.cfg, self.executor.plan)
 	if err != nil || !advisory {
 		return nil, err
@@ -691,17 +694,21 @@ func (self *evidenceRelayRuntime) evidenceRelayStartupInventories(ctx context.Co
 		if members == 0 {
 			return nil, errors.New("relay startup source has no configured members")
 		}
-		closedBytes := source.bounds.MaxHistoryBytes
-		closed, err := readEvidenceRelayStartupDirectory(ctx, self.executor.stateDir, filepath.Join(source.stateDir, "evidence-publications"), members, &remaining, &closedBytes, source.bounds.MaxClosureBytes)
-		if err != nil {
-			return nil, err
+		closedBytes, auditBytes := source.bounds.MaxHistoryBytes, source.bounds.MaxHistoryBytes
+		var inventory evidenceRelayStartupSourceInventory
+		for _, generation := range source.generations() {
+			closed, err := readEvidenceRelayStartupDirectory(ctx, self.executor.stateDir, filepath.Join(generation.stateDir, "evidence-publications"), members, &remaining, &closedBytes, source.bounds.MaxClosureBytes)
+			if err != nil {
+				return nil, err
+			}
+			audits, err := readEvidenceRelayStartupDirectory(ctx, self.executor.stateDir, filepath.Join(generation.stateDir, "evidence-deposit-audits"), members, &remaining, &auditBytes, source.bounds.MaxClosureBytes)
+			if err != nil {
+				return nil, err
+			}
+			inventory.closed = append(inventory.closed, closed...)
+			inventory.audits = append(inventory.audits, audits...)
 		}
-		auditBytes := source.bounds.MaxHistoryBytes
-		audits, err := readEvidenceRelayStartupDirectory(ctx, self.executor.stateDir, filepath.Join(source.stateDir, "evidence-deposit-audits"), members, &remaining, &auditBytes, source.bounds.MaxClosureBytes)
-		if err != nil {
-			return nil, err
-		}
-		result[source.validatorId] = evidenceRelayStartupSourceInventory{closed: closed, audits: audits}
+		result[source.validatorId] = inventory
 	}
 	return result, ctx.Err()
 }
@@ -728,6 +735,12 @@ func (self *evidenceRelayRuntime) readEvidenceRelayStartupManifests(ctx context.
 		if !self.matchEvidenceRelayStartupWitness(witness) {
 			return nil, nil, errors.New("relay startup closed manifest changed during suffix read")
 		}
+		if source.successor != nil {
+			path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.forEpoch(manifest.Epoch).stateDir, manifest.Epoch)
+			if err != nil || path != evidenceRelayStartupWitnessPath(self.executor.stateDir, witness) {
+				return nil, nil, errors.Join(errors.New("relay closed locator changes its approved source generation"), err)
+			}
+		}
 		closed = append(closed, *manifest)
 	}
 	audits := make([]validatorcomponent.ValidatorEvidenceDepositAuditV2Manifest, 0, len(inventory.audits)-auditStart)
@@ -738,6 +751,12 @@ func (self *evidenceRelayRuntime) readEvidenceRelayStartupManifests(ctx context.
 		}
 		if !self.matchEvidenceRelayStartupWitness(witness) {
 			return nil, nil, errors.New("relay startup audit manifest changed during suffix read")
+		}
+		if source.successor != nil {
+			path, err := validatorcomponent.ValidatorEvidenceDepositAuditV2ManifestPath(source.forEpoch(manifest.Epoch).stateDir, manifest.Epoch, manifest.Subject)
+			if err != nil || path != evidenceRelayStartupWitnessPath(self.executor.stateDir, witness) {
+				return nil, nil, errors.Join(errors.New("relay audit locator changes its approved source generation"), err)
+			}
 		}
 		audits = append(audits, *manifest)
 	}

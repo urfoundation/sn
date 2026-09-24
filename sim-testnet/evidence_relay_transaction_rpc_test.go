@@ -38,33 +38,34 @@ import (
 // Only serialized endpoint state changes; no acceptance callback is supplied
 // to either the funded sender or the independent evidence verifier.
 type evidenceRelayRpcFixture struct {
-	manager               *EvmTxManager
-	chain                 *validatorcomponent.ChainClient
-	expected              validatorcomponent.ValidatorEvidenceTransactionV2Expected
-	action                Action
-	planHash              string
-	stateDir              string
-	key                   *ecdsa.PrivateKey
-	transaction           *types.Transaction
-	thirdPartyTransaction *types.Transaction
-	transactionBytes      []byte
-	calldata              []byte
-	publicationKey        string
-	responses             map[string][]byte
-	stateLock             sync.Mutex
-	mode                  string
-	finalizedBlock        uint64
-	finalizedHash         common.Hash
-	baseFee               uint64
-	tip                   uint64
-	balanceWei            *big.Int
-	effectiveGasPrice     uint64
-	winner                *types.Transaction
-	receipts              map[common.Hash]*types.Receipt
-	requestCounts         map[string]int
-	sentBytes             [][]byte
-	pendingNonceReads     int
-	requestError          func(evidenceRelayRpcRequest) error
+	manager                  *EvmTxManager
+	chain                    *validatorcomponent.ChainClient
+	expected                 validatorcomponent.ValidatorEvidenceTransactionV2Expected
+	action                   Action
+	planHash                 string
+	stateDir                 string
+	key                      *ecdsa.PrivateKey
+	transaction              *types.Transaction
+	thirdPartyTransaction    *types.Transaction
+	transactionBytes         []byte
+	calldata                 []byte
+	publicationKey           string
+	responses                map[string][]byte
+	stateLock                sync.Mutex
+	mode                     string
+	finalizedBlock           uint64
+	finalizedHash            common.Hash
+	baseFee                  uint64
+	tip                      uint64
+	balanceWei               *big.Int
+	effectiveGasPrice        uint64
+	winner                   *types.Transaction
+	receipts                 map[common.Hash]*types.Receipt
+	requestCounts            map[string]int
+	sentBytes                [][]byte
+	pendingNonceReads        int
+	requestError             func(evidenceRelayRpcRequest) error
+	historicalPolicyGapReads bool
 }
 
 // Preserve request identifiers even when a real client batches mixed methods.
@@ -481,10 +482,14 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 		return value, nil
 	case "eth_getBlockByHash":
 		var hash common.Hash
-		if len(request.Params) != 2 || json.Unmarshal(request.Params[0], &hash) != nil || hash != self.finalizedHash {
+		if len(request.Params) != 2 || json.Unmarshal(request.Params[0], &hash) != nil || hash != self.finalizedHash && !(self.historicalPolicyGapReads && hash == (common.Hash{0xa1})) {
 			return fail("unexpected finalized block hash")
 		}
-		return map[string]any{"number": hexutil.EncodeUint64(self.finalizedBlock), "hash": hash}, nil
+		number := self.finalizedBlock
+		if self.historicalPolicyGapReads && hash == (common.Hash{0xa1}) {
+			number = 1200
+		}
+		return map[string]any{"number": hexutil.EncodeUint64(number), "hash": hash}, nil
 	case "eth_maxPriorityFeePerGas":
 		return hexutil.EncodeUint64(self.tip), nil
 	case "eth_getBalance", "eth_getTransactionCount":
@@ -605,7 +610,7 @@ func (self *evidenceRelayRpcFixture) resultWithLock(request evidenceRelayRpcRequ
 		return receipt.Logs, nil
 	case "eth_getCode", "eth_call":
 		var selector gethrpc.BlockNumberOrHash
-		if len(request.Params) != 2 || json.Unmarshal(request.Params[1], &selector) != nil || selector.BlockHash == nil || *selector.BlockHash != self.finalizedHash || !selector.RequireCanonical || selector.BlockNumber != nil {
+		if len(request.Params) != 2 || json.Unmarshal(request.Params[1], &selector) != nil || selector.BlockHash == nil || *selector.BlockHash != self.finalizedHash && !(self.historicalPolicyGapReads && *selector.BlockHash == (common.Hash{0xa1})) || !selector.RequireCanonical || selector.BlockNumber != nil {
 			return fail("state observation omitted exact canonical finalized hash")
 		}
 		if request.Method == "eth_getCode" {

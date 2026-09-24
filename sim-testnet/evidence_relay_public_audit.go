@@ -63,9 +63,9 @@ func (self *evidenceRelayRuntime) preparePublicCensus(horizon *evidenceRelayHori
 		if inventory, found := inventories[source.validatorId]; found {
 			closed, audits, err = self.readEvidenceRelayStartupManifests(self.ctx, source, inventory)
 		} else {
-			closed, err = validatorcomponent.DiscoverValidatorEvidencePublicationV2Manifests(self.ctx, source.stateDir, source.bounds)
+			closed, err = discoverEvidenceRelayClosedGenerations(self.ctx, source)
 			if err == nil {
-				audits, err = validatorcomponent.DiscoverValidatorEvidenceDepositAuditV2Manifests(self.ctx, source.stateDir, source.bounds)
+				audits, err = discoverEvidenceRelayAuditGenerations(self.ctx, source)
 			}
 		}
 		if err != nil {

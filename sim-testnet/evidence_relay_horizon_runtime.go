@@ -104,7 +104,8 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 		return nil, errors.New("evidence relay discovered a terminal publication outside the funded finalized epoch geometry")
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: end}
-	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
+	active := source.forEpoch(manifest.Epoch)
+	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: active.activations, Window: window, Origins: self.origins, Bounds: active.bounds}
 	var census *evidenceRelayColdCensusSource
 	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
 		census = censuses[0]
@@ -132,7 +133,7 @@ func (self *evidenceRelayRuntime) readClosedPublication(ctx context.Context, sou
 	result := make([]validatorcomponent.ValidatorEvidenceTransactionV2Expected, len(publication.Members))
 	for member, artifact := range publication.Members {
 		result[member] = validatorcomponent.ValidatorEvidenceTransactionV2Expected{Journal: self.executor.plan.ValidatorEvidence.Address, RuntimeHash: [32]byte(self.executor.plan.ValidatorEvidence.RuntimeCodeHash),
-			Activation: source.activations[member], Window: window, Evidence: artifact.Evidence, MaxTransactionBytes: 64 * 1024, MaxReceiptLogs: 1024}
+			Activation: active.activations[member], Window: window, Evidence: artifact.Evidence, MaxTransactionBytes: 64 * 1024, MaxReceiptLogs: 1024}
 	}
 	return result, nil
 }
@@ -156,7 +157,8 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 		return nil, errors.New("evidence audit publication is outside the funded finalized epoch geometry")
 	}
 	window := protocol.ValidatorEvidenceWindow{Epoch: manifest.Epoch, StartBlock: start, EndBlock: end, FinalizedBlock: block, Subject: manifest.Subject}
-	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: source.activations, Window: window, Origins: self.origins, Bounds: source.bounds}
+	active := source.forEpoch(manifest.Epoch)
+	options := validatorcomponent.ValidatorEvidencePublicationV2ReadOptions{Activations: active.activations, Window: window, Origins: self.origins, Bounds: active.bounds}
 	var census *evidenceRelayColdCensusSource
 	if len(censuses) == 1 && censuses[0] != nil && censuses[0].session.runtime == self && censuses[0].source == source {
 		census = censuses[0]
@@ -189,7 +191,7 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 		ownedWindow := window
 		ownedWindow.FinalizedBlock = max(end, artifact.Evidence.Header.BoundaryBlock)
 		result[member] = validatorcomponent.ValidatorEvidenceTransactionV2Expected{Journal: self.executor.plan.ValidatorEvidence.Address, RuntimeHash: [32]byte(self.executor.plan.ValidatorEvidence.RuntimeCodeHash),
-			Activation: source.activations[member], Window: ownedWindow, Evidence: artifact.Evidence, MaxTransactionBytes: 64 * 1024, MaxReceiptLogs: 1024}
+			Activation: active.activations[member], Window: ownedWindow, Evidence: artifact.Evidence, MaxTransactionBytes: 64 * 1024, MaxReceiptLogs: 1024}
 	}
 	return result, nil
 }
@@ -357,6 +359,7 @@ func (self *evidenceRelayRuntime) readHorizon(started time.Time, firstHead *Chai
 		return errors.New("evidence relay original activation Evm anchor is not canonical")
 	}
 	var inventories map[uint64]evidenceRelayStartupSourceInventory
+	self.installPolicyRolloverHorizon(horizon)
 	if horizon.continuation != nil && horizon.forecastAdvisory {
 		inventories, err = self.evidenceRelayStartupInventories(self.ctx, horizon.maximum)
 		if err != nil {

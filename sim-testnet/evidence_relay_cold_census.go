@@ -123,6 +123,9 @@ func (self *evidenceRelayRuntime) newEvidenceRelayColdCensusSession(ctx context.
 	if ctx == nil || self == nil || self.executor == nil || self.executor.cfg == nil || self.executor.plan == nil || self.executor.plan.EvidenceRelayContinuation == nil || self.executor.cfg.readOnlyAudit || self.retainedPublications != nil {
 		return nil, nil
 	}
+	if self.hasPolicyRolloverSources() {
+		return nil, nil
+	}
 	advisory, err := evidenceRelayContinuationForecastAdvisory(self.executor.cfg, self.executor.plan)
 	if err != nil || !advisory {
 		return nil, err
