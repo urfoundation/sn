@@ -95,7 +95,7 @@ func validatePrecompileProbeSeedFailureEvidence(plan *SetupPlan, predecessor *Pr
 	}
 	original := predecessor.Evidence
 	coldkey := ss58Mirror(common.HexToAddress(predecessor.Probe))
-	if evidence.Schema != original.Schema || evidence.ProbeAddress != predecessor.Probe || evidence.ProbeColdkey != hexBytesValue(coldkey[:]) || evidence.DeploymentID != plan.DeploymentID || evidence.ChainID != plan.ChainID || evidence.GenesisHash != plan.GenesisHash || evidence.Netuid != plan.Netuid || evidence.PolicyHash != plan.PolicyHash || evidence.Owner != original.Owner || evidence.SampleHotkey != original.SampleHotkey || evidence.SampleUID != original.SampleUID || evidence.AbsentHotkey != original.AbsentHotkey || evidence.MoveHotkey != original.MoveHotkey || evidence.RecoveryColdkey != original.RecoveryColdkey || evidence.Commitment != original.Commitment || !reflect.DeepEqual(evidence.CommitmentSource, precompileProbeCommitmentSource(predecessor)) {
+	if evidence.Schema != original.Schema || evidence.ProbeAddress != predecessor.Probe || evidence.ProbeColdkey != hexBytesValue(coldkey[:]) || evidence.DeploymentID != plan.DeploymentID || evidence.ChainID != plan.ChainID || evidence.GenesisHash != plan.GenesisHash || evidence.Netuid != plan.Netuid || evidence.PolicyHash != original.PolicyHash || evidence.Owner != original.Owner || evidence.SampleHotkey != original.SampleHotkey || evidence.SampleUID != original.SampleUID || evidence.AbsentHotkey != original.AbsentHotkey || evidence.MoveHotkey != original.MoveHotkey || evidence.RecoveryColdkey != original.RecoveryColdkey || evidence.Commitment != original.Commitment || !reflect.DeepEqual(evidence.CommitmentSource, precompileProbeCommitmentSource(predecessor)) {
 		return errors.New("precompile seed retirement changed original proof or custody roles")
 	}
 	value := new(big.Int).Mul(new(big.Int).SetUint64(plan.LiveFacts.ProbeTAORao), big.NewInt(1_000_000_000)).String()
@@ -193,8 +193,8 @@ func readPrecompileProbeRetirementSource(cfg *ResolvedConfig, stateDir string, p
 	return source, nil
 }
 
-// Only the probe generation changes: retained custody, repair, policies and
-// value inputs must still match the authenticated predecessor approval.
+// Retained custody, repair and value inputs still match the authenticated
+// predecessor; an exact approved rate amendment retains its historical policy.
 func validatePrecompileProbeRetirementSource(cfg *ResolvedConfig, stateDir string, plan, source *SetupPlan, entries []JournalEntry) error {
 	if err := validatePrecompileProbeSuccessor(plan); err != nil {
 		return err
@@ -205,7 +205,7 @@ func validatePrecompileProbeRetirementSource(cfg *ResolvedConfig, stateDir strin
 	}
 	baseline := source.CoordinatorUpgradeBaseline
 	baseline.ReleaseDeploymentHash = plan.CoordinatorUpgradeBaseline.ReleaseDeploymentHash
-	if source.DeploymentID != plan.DeploymentID || source.ChainID != plan.ChainID || source.GenesisHash != plan.GenesisHash || source.Netuid != plan.Netuid || source.PolicyHash != plan.PolicyHash || source.Owner != plan.Owner || !reflect.DeepEqual(source.Roles, plan.Roles) || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || source.CoordinatorUpgrade != plan.CoordinatorUpgrade || baseline != plan.CoordinatorUpgradeBaseline || !reflect.DeepEqual(source.CoordinatorRepairCarry, plan.CoordinatorRepairCarry) || source.LiveFacts.ProbeTAORao != plan.LiveFacts.ProbeTAORao || source.LiveFacts.NominatorMinimumRao != plan.LiveFacts.NominatorMinimumRao {
+	if source.DeploymentID != plan.DeploymentID || source.ChainID != plan.ChainID || source.GenesisHash != plan.GenesisHash || source.Netuid != plan.Netuid || (source.PolicyHash != plan.PolicyHash && !policyRateAmendmentAllowsAncestor(plan, source)) || source.Owner != plan.Owner || !reflect.DeepEqual(source.Roles, plan.Roles) || !contractDeploymentAddressesEqual(source.Deployment, plan.Deployment) || !contractDeploymentRuntimeHashesCompatible(source.Deployment, plan.Deployment) || source.CoordinatorUpgrade != plan.CoordinatorUpgrade || baseline != plan.CoordinatorUpgradeBaseline || !reflect.DeepEqual(source.CoordinatorRepairCarry, plan.CoordinatorRepairCarry) || source.LiveFacts.ProbeTAORao != plan.LiveFacts.ProbeTAORao || source.LiveFacts.NominatorMinimumRao != plan.LiveFacts.NominatorMinimumRao {
 		return errors.New("precompile retirement changed retained deployment, policy or value input")
 	}
 	var prefix []JournalEntry
@@ -222,7 +222,7 @@ func validatePrecompileProbeRetirementSource(cfg *ResolvedConfig, stateDir strin
 	if err != nil || !reflect.DeepEqual(create, retirement.Create) || !reflect.DeepEqual(battery, retirement.Battery) || !reflect.DeepEqual(failure, retirement.SeedFailure) {
 		return errors.Join(errors.New("precompile retirement changed exact phase references"), err)
 	}
-	owner := &Executor{cfg: historicalPlanConfig(cfg, source), stateDir: stateDir, plan: source, journal: &Journal{entries: prefix}}
+	owner := &Executor{cfg: historicalPlanConfig(cfg, source, plan), stateDir: stateDir, plan: source, journal: &Journal{entries: prefix}}
 	if err := owner.validatePrecompileEvidence(approvedPrecompileProbe(source), &retirement.Evidence); err != nil {
 		return err
 	}

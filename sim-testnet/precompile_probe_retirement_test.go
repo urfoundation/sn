@@ -139,6 +139,58 @@ func TestPrecompileProbeRetirementAdmitsNewLockedArtifact(t *testing.T) {
 	}
 }
 
+// A later rate amendment cannot relabel the retired proof, but its exact
+// approved ancestor remains replayable with the original policy document.
+func TestPrecompileProbeRetirementRetainsRateAmendmentAncestor(t *testing.T) {
+	fixture := newPrecompileProbeRetirementFixture(t)
+	prior := fixture.successor(t)
+	plan := clonePrecompileProbeSuccessorPlan(t, prior)
+	plan.PriorPlanHashes = append(plan.PriorPlanHashes, prior.PlanHash)
+	cfg := *fixture.cfg
+	cfg.Policy = rateAmendmentTestPolicy(t, fixture.cfg.Policy)
+	var err error
+	cfg.PolicyHash, err = cfg.Policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.PolicyHash = cfg.PolicyHash
+	plan.PolicyRateAmendment = &PolicyRateAmendment{Schema: policyRateAmendmentSchema, PriorPlanHash: prior.PlanHash, Previous: *fixture.cfg.Policy, Next: *cfg.Policy}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPrecompileProbeSuccessorSource(&cfg, fixture.stateDir, plan, fixture.entries); err != nil {
+		t.Fatalf("exact historical retirement rejected after rate amendment: %v", err)
+	}
+	if plan.PrecompileProbeSuccessor.Retirement.Evidence.PolicyHash != fixture.cfg.PolicyHash {
+		t.Fatal("historical proof was relabelled with the successor policy")
+	}
+	for _, mutation := range []string{"missing amendment", "unapproved ancestor", "foreign policy", "relabelled evidence"} {
+		t.Run(mutation, func(t *testing.T) {
+			changed := clonePrecompileProbeSuccessorPlan(t, plan)
+			switch mutation {
+			case "missing amendment":
+				changed.PolicyRateAmendment = nil
+			case "unapproved ancestor":
+				changed.PriorPlanHashes = []string{prior.PlanHash}
+			case "foreign policy":
+				changed.PolicyRateAmendment.Previous.PolicyID++
+			case "relabelled evidence":
+				evidence := &changed.PrecompileProbeSuccessor.Retirement.Evidence
+				evidence.PolicyHash = changed.PolicyHash
+				evidence.EvidenceHash = ""
+				evidence.EvidenceHash, err = canonicalHashHex(evidence)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := readPrecompileProbeSuccessorSource(&cfg, fixture.stateDir, changed, fixture.entries); err == nil {
+				t.Fatal("changed historical policy lineage was accepted")
+			}
+		})
+	}
+}
+
 // Tampering with current bytes, predecessor bytes or any exact phase witness
 // cannot reuse approval, even if the caller reconstructs the descriptor hash.
 func TestPrecompileProbeRetirementRejectsTamperedLineage(t *testing.T) {
