@@ -1873,3 +1873,29 @@ recoverable transient errors, but must reject changed authorization, substituted
 evidence, unexpected fault controls and missing physical safety rules. Exercise
 pending pre-arms, retained filters, intentional absence after old cleanup,
 interrupted install, changed registry, partial restore and rollback in tests.
+
+**PH-27 — Policy rollover must include validator evidence activation.** R40
+failed its live release interval while relaying a closed-census header for epoch
+594. The signed header carried policy hash `0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`,
+but the finalized coordinator `policyAt(594)` returned
+`0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd`.
+The LAN-node `eth_call` returned `InvalidEvidence()` (`0xc9779e3c`); the
+write-once slot was empty, so rebroadcasting the same signed bytes cannot
+repair it. The old activation was published at block 7,975,571, well before
+the policy-v2 effective epoch. This is a policy-era authority mismatch, not
+an RPC timeout or a nonce race. The original failed action and result remain
+in the R40 evidence bundle.
+
+Before mainnet, make a policy transition atomically schedule a new validator
+evidence activation for each controlled operator and both validators, with
+dual-key consent, publication and finalized readback before the first epoch
+whose evidence uses the new policy. Bind the new activation to that policy and
+its actual future epoch; do not rewrite historical signed headers or backdate
+activation. The relay must compare each header's policy with finalized
+`policyAt(header.epoch)` before budget admission or gas estimation, retain an
+explicit unpublishable historical gap when they differ, and continue to valid
+future slots without misreporting the gap as accepted coverage. Acceptance
+must require every counted epoch's headers to have valid policy-era activation
+and on-chain commitments. Test rollover at the exact effective boundary,
+delayed deployment, interrupted activation, mixed old/new validators,
+historical mismatch, and resumption after an unpublishable gap.

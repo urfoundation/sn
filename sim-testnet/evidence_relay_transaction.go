@@ -165,6 +165,11 @@ func (self *EvmTxManager) relayValidatorEvidenceTransaction(ctx context.Context,
 		return &evidenceRelayTransactionResult{Winner: confirmed, OwnReceipt: confirmed.Receipt}, nil
 	}
 	if !broadcast {
+		if err := chain.ValidateValidatorEvidencePolicyEraV2Context(ctx, expected.Evidence.Header); err != nil {
+			return nil, err
+		}
+	}
+	if !broadcast {
 		if !hasIntent {
 			if err := self.journal.Append(JournalEntry{DeploymentID: self.deploymentID, PlanHash: planHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
 				return nil, err

@@ -13,6 +13,41 @@ mistaken and do not add work to this goal.
 The earlier shortened-run instructions below are retained as historical scope
 for those attempts, whose `final_acceptance=false` results remain unchanged.
 
+R40 terminal incident, 2026-09-24 09:27 UTC: the signed release interval began
+at block 8,074,774 and observed epoch 598, then ended with
+`final_acceptance=false` before its five-epoch terminal block. The exact result
+is `sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260924T082911.840323196Z-release-1.0/result.json`.
+The fleet remains active. Both epoch-597 root commits succeeded before their
+deadline after an RPC timeout and a successful retry. The release-blocking
+relay action `evidence.relay.40daf579caf54edd403c73af4f925a553893787b1d43a1cd0881eea09ffc2840`
+failed gas estimation with contract `InvalidEvidence()` (`0xc9779e3c`). Its
+epoch-594 header is signed under policy hash `0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`,
+but finalized `policyAt(594)` is
+`0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd`.
+The write-once slot is empty. Retrying the same transaction cannot succeed.
+The original activation and signed headers cannot be rewritten or backdated.
+Both validator state directories retain closed manifests through epoch 600, and
+their configured activation files still name the original policy-era
+activation. The mismatch is therefore a continuing source problem, not one
+bad epoch-594 transaction. An isolated repair branch at
+`/mnt/data/sn-testnet/qualification/policy-era-evidence-20260924/source/sn`
+adds a finalized `policyAt(epoch)` preflight and a deterministic transaction
+test; it is only a diagnostic guard until new future activations are published
+and both validators select them for future evidence.
+The new activation must attest the actual ledger prefix at handoff
+(`firstSequence` and `priorRoot`), so merely publishing a far-future activation
+against today's prefix is unsafe while the validator continues appending.
+Implement an append-only rollover checkpoint that snapshots the prefix,
+publishes and finalizes all four consents, then switches both validators at its
+future epoch. The relay must retain a separate explicit record for each
+unpublishable old-policy header and resume at valid future headers; strict
+acceptance must exclude those gaps from counted coverage.
+Do not start another acceptance interval against this relay source until the
+policy-era activation/relay transition is fixed and qualified. Preserve the
+failed action, R40 result, signed boundary invalidation, completed receipts,
+approved plan, and healthy fleet. The mainnet prevention requirement is PH-27
+in `mainnet/PRELAUNCH-FIXES.md`.
+
 Reports are numbered at the user's request: `sim-testnet/FINAL.md` remains
 report 1, `sim-testnet/FINAL-2.md` covers this full finalization, and later
 finalizations use `FINAL-3.md`, `FINAL-4.md`, and so on. Preserve each earlier

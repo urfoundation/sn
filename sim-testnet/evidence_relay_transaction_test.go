@@ -15,9 +15,36 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/urfoundation/sn/stabi"
 )
+
+// A finalized policy change makes old signed bytes unpublishable. Refuse them
+// before allocating a nonce or recording a new transaction intent.
+func TestEvidenceRelayTransactionRejectsHistoricalPolicyEraBeforeCustody(t *testing.T) {
+	fixture := newEvidenceRelayRpcFixture(t, "success")
+	coordinator := stabi.NewSTCoordinator()
+	parsed, err := stabi.STCoordinatorMetaData.ParseABI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := stabi.STCoordinatorPolicySnapshot{PolicyHash: common.Hash{0x99}, EffectiveEpoch: 7, EpochDepositCapRao: big.NewInt(0), CampaignDepositCapRao: big.NewInt(0)}
+	encoded, err := parsed.Methods["policyAt"].Outputs.Pack(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := common.Address(fixture.expected.Evidence.Header.Domain.Coordinator).Hex() + ":" + hexutil.Encode(coordinator.PackPolicyAt(big.NewInt(7)))
+	fixture.responses[key] = encoded
+	result, err := fixture.manager.relayValidatorEvidenceTransaction(t.Context(), fixture.chain, fixture.planHash, fixture.action, fixture.expected)
+	if err == nil || result != nil || !strings.Contains(err.Error(), "another policy era") {
+		t.Fatalf("old signed header reached transaction custody: %v", err)
+	}
+	if fixture.requestCount("eth_estimateGas") != 0 || fixture.requestCount("eth_sendRawTransaction") != 0 || len(fixture.manager.journal.Entries()) != 0 {
+		t.Fatal("policy-era mismatch allocated transaction custody")
+	}
+}
 
 // The observed 20.134 gwei base produces a 40.268 gwei quote. Its exact
 // authenticated relay can retain a 25 gwei ceiling, including after restart.

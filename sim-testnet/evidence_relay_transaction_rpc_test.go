@@ -186,6 +186,7 @@ func newEvidenceRelayRpcFixtureWithFees(t *testing.T, mode string, baseFee, tip,
 		coordinator bool
 	}{
 		{name: "validatorEvidence", calldata: coordinator.PackValidatorEvidence(), value: journalAddress, coordinator: true},
+		{name: "policyAt", calldata: coordinator.PackPolicyAt(big.NewInt(7)), value: stabi.STCoordinatorPolicySnapshot{PolicyHash: domain.PolicyHash, EffectiveEpoch: 7, EpochDepositCapRao: big.NewInt(0), CampaignDepositCapRao: big.NewInt(0)}, coordinator: true},
 		{name: "epochStartBlock", calldata: coordinator.PackEpochStartBlock(big.NewInt(7)), value: big.NewInt(1000), coordinator: true},
 		{name: "epochEndBlock", calldata: coordinator.PackEpochEndBlock(big.NewInt(7)), value: big.NewInt(1100), coordinator: true},
 		{name: "coordinator", calldata: contract.PackCoordinator(), value: common.Address(domain.Coordinator)},
