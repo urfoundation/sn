@@ -20,7 +20,9 @@ hashes are `0x2cbb4cdd991d9463f321f0de7f7bd77d028da611c2b5eb656626eac31ab5a356`,
 `0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`,
 and `0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd`.
 The production scheduler's current two-policy admission is therefore a known
-next-stage blocker; a narrow authenticated-history correction is in testing.
+next-stage blocker in the live executable. A narrow authenticated-history
+correction is on main as `402e6b1b` and has focused normal/race evidence;
+integrated current-main checks are pending before production adoption.
 R42 validator 2 later restarted after its current source could not authenticate
 an occupied native commitment slot. At finalized block **8,078,196**, both
 `CommitmentOf` and `LastCommitment` matched the old source generation's applied
