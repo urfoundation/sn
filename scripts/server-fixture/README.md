@@ -51,3 +51,14 @@ settings consumers, including expiration and changed-key refusals. No fixture
 test opens a production service or grants release qualification. Run
 `go test ./scripts/server-fixture` for the generator checks; the complete gates
 also run the actual server adapter roots in both modes.
+
+The synthetic `mmdb/places.yml` resource has schema and value checks for four
+countries and five cities, including a city without a subdivision and a city
+with coordinate spread. These checks preserve the exact generated fixture
+bytes. Exporter and loader parity remains pending: the pinned server checkout
+does not provide the proposed `server/geo` API or GeoLite2 exporter. This
+fixture test does not claim that missing integration has passed.
+The manifest selects one of two exact resource profiles: the existing 30-file
+contract with disabled ipinfo and empty country/city catalogs, or the intended
+28-file place-list contract. Unknown, mixed, incomplete and duplicate profiles
+fail before any fixture output is created.
