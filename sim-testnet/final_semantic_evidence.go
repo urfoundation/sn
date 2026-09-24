@@ -3007,6 +3007,11 @@ func summarizeFinalAdversarialCampaign(campaign *AdversaryCampaignEvidence, matr
 	if campaign == nil || campaign.Schema != "urnetwork-adversary-campaign-v1" || campaign.Release != "1.0" || campaign.Status != "stopped" || !campaign.StartedBeforeHappyPath || !campaign.StoppedAfterHappyPath {
 		return FinalAdversarialCampaignEvidence{}, errors.New("adversarial campaign is incomplete or did not overlap the happy path")
 	}
+	for _, actor := range campaign.Actors {
+		if err := validateCurrentAdversaryAvailability(actor); err != nil {
+			return FinalAdversarialCampaignEvidence{}, err
+		}
+	}
 	if err := requireFinalHex32("adversarial campaign matrix hash", campaign.MatrixHash); err != nil {
 		return FinalAdversarialCampaignEvidence{}, err
 	}

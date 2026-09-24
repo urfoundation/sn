@@ -191,6 +191,9 @@ type AdversaryActorEvidence struct {
 	AttackControlP95RatioPPM uint64                             `json:"attack_control_p95_ratio_ppm"`
 	Metrics                  map[string]AdversaryMetricEvidence `json:"metrics,omitempty"`
 	LastDetail               string                             `json:"last_detail,omitempty"`
+	RpcAvailability          []AdversaryRpcRecoveryEvidence     `json:"rpc_availability_recovery,omitempty"`
+	HttpAvailability         []AdversaryHttpRecoveryEvidence    `json:"http_availability_recovery,omitempty"`
+	AvailabilityAttempts     uint64                             `json:"availability_attempts,omitempty"`
 }
 
 // AdversaryMetricEvidence preserves bounded numeric observations across the
@@ -781,6 +784,9 @@ func adversaryAssertions(evidence *AdversaryCampaignEvidence, started time.Time,
 	}
 	for _, actor := range evidence.Actors {
 		minimum := actor.Samples >= uint64(evidence.MinimumSamplesPerActor) && actor.ControlSamples > 0 && actor.AttackSamples > 0
+		if err := validateCurrentAdversaryAvailability(actor); err != nil {
+			assertions = append(assertions, build("adversary_"+actor.ID+"_availability_recovery", false, err.Error()))
+		}
 		errorHealthy := actor.ErrorRatePPM <= evidence.MaximumActorErrorRatePPM && (evidence.MaximumActorErrorRatePPM != 0 || actor.Errors == 0)
 		ratioHealthy := actor.AttackControlP95RatioPPM == 0 || actor.AttackControlP95RatioPPM <= evidence.MaximumAttackControlRatio
 		healthy := actor.Status == "stopped" && errorHealthy && ratioHealthy && actor.P99LatencyMilliseconds <= int64(evidence.MaximumP99Milliseconds)
