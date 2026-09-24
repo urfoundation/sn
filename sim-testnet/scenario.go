@@ -4078,6 +4078,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	}
 	adversariesFinalized := false
 	snapshotRetries := &scenarioSnapshotRetryState{runDir: runDir, phase: definition.Name, now: options.Now, wait: waitFinalSemanticRPCRetry}
+	snapshotRetries.provisional = provisionalResumeEnabled(cfg) && cfg.provisionalResume.Record.Provisional && !cfg.provisionalResume.Record.FinalAcceptance
 	observationHistory := []*ScenarioObservation{}
 	var faults []ScenarioFaultRecord
 	prearmedFaults := map[string][]FaultProcessEvidence{}
