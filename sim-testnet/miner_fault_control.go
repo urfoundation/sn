@@ -108,6 +108,15 @@ func (self *liveScenarioFaultDriver) RecoveryTimeout() time.Duration {
 	}
 	budget := 30 * time.Second
 	for _, spec := range active.Faults {
+		if spec.Kind == "process-restart" {
+			// Replacement readiness has the same bounded startup allowance as
+			// one supervisor phase, without blocking the live heartbeat.
+			budget += supervisorStartupPhaseTimeout
+			if budget >= scenarioFaultRecoveryMaximumTimeout {
+				return scenarioFaultRecoveryMaximumTimeout
+			}
+			continue
+		}
 		if spec.Kind != "miner-control" {
 			continue
 		}

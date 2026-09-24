@@ -698,7 +698,7 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	} else if spec.Kind == "validator-view-filter" {
 		processes, restoreErr = d.restoreValidatorViewFilter(ctx, spec)
 	} else if spec.Kind == "process-restart" {
-		processes, restoreErr = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
+		processes, restoreErr = d.observeRestartTargets(ctx, spec)
 	} else {
 		processes, restoreErr = d.signal(spec, syscall.SIGCONT)
 	}
@@ -728,45 +728,6 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	return processes, nil
 }
 
-func (d *liveScenarioFaultDriver) waitTargetsHealthy(ctx context.Context, spec scenarioFaultSpec, timeout time.Duration) ([]FaultProcessEvidence, error) {
-	active, err := readActiveFaultFile(d.activePath())
-	if err != nil {
-		return nil, err
-	}
-	if len(active.Faults) == 0 {
-		return nil, errors.New("invalid active restart evidence")
-	}
-	prior := map[string]int{}
-	for _, process := range active.Processes {
-		prior[process.ID] = process.PID
-	}
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		states, specs, err := d.processSnapshot()
-		if err == nil {
-			ready := make([]FaultProcessEvidence, 0, len(spec.Targets))
-			for _, id := range spec.Targets {
-				state, stateOK := states[id]
-				processSpec, specOK := specs[id]
-				if !stateOK || !specOK || state.PID <= 1 || state.PID == prior[id] || !state.Healthy || syscall.Kill(state.PID, syscall.Signal(0)) != nil {
-					ready = nil
-					break
-				}
-				ready = append(ready, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID})
-			}
-			if len(ready) == len(spec.Targets) {
-				return ready, nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(500 * time.Millisecond):
-		}
-	}
-	return nil, fmt.Errorf("restart targets did not become healthy: %v", spec.Targets)
-}
-
 func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 	active, err := readActiveFaultFile(d.activePath())
 	if err != nil {
@@ -776,7 +737,7 @@ func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 		return d.removeOrphanValidatorViewFilters()
 	}
 	for _, fault := range active.Faults {
-		if _, err := waitMinerFaultTransition(ctx, func() ([]FaultProcessEvidence, error) { return d.Restore(ctx, fault) }); err != nil {
+		if _, err := waitScenarioFaultRestore(ctx, fault, func() ([]FaultProcessEvidence, error) { return d.Restore(ctx, fault) }, func() error { return waitSupervisorRestart(ctx, minerControlRetryDelay) }); err != nil {
 			return fmt.Errorf("recover active fault %s: %w", fault.ID, err)
 		}
 	}
@@ -1393,6 +1354,18 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Restore(ctx, specs[i])
 			if err != nil {
+				if processRestartPending(specs[i], err) {
+					if record.RestorePendingRounds == ^uint64(0) {
+						record.Status, record.Error = "failed", "process restart restore round counter exhausted"
+						return errors.New(record.Error)
+					}
+					if record.RestoreStartedBlock == 0 {
+						record.RestoreStartedBlock, record.RestoreStartedBlockHash = head.Number, head.Hash
+					}
+					record.RestorePendingRounds++
+					record.Error = err.Error()
+					continue
+				}
 				if record.Kind == "miner-control" && minerControlPending(err) {
 					if record.ControlPendingRounds == ^uint64(0) {
 						record.Status, record.Error = "failed", "miner control pending round counter exhausted"
