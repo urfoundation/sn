@@ -58,18 +58,16 @@ func validateOperatorConfigSources(cfg *ResolvedConfig) error {
 		}
 	}
 	for _, resource := range []struct{ group, name string }{
-		// the one packaged ip database (connect/GEOMAP.md §3.1)
-		{"mmdb", "geolite2.mmdb"},
-		// the place list the location seeder reads, exported beside the
-		// GeoLite2 database (connect/GEOMAP.md §4.1)
-		{"mmdb", "places.yml"},
-		{"arindb", "arin.mmdb"},
+		// Match the server readers used by this release, not a future
+		// geography migration whose assets are not deployed yet.
+		{group: "mmdb", name: "ip-ipinfo.mmdb"},
+		{group: "arindb", name: "arin.mmdb"},
 	} {
 		if _, err := requiredVersionedConfigResource(cfg.Repos.PlatformConfig, resource.group, resource.name); err != nil {
 			return err
 		}
 	}
-	for _, name := range []string{"apple_roots.pem"} {
+	for _, name := range []string{"apple_roots.pem", "city-list.yml", "iso-country-list.yml"} {
 		path := filepath.Join(cfg.Repos.PlatformConfig, "all", name)
 		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return stateMismatchError(err, "required shared config resource %s is unavailable", path)

@@ -15,9 +15,10 @@ func testOperatorConfigSources(t *testing.T) string {
 		"local/settings.yml":               "all: {}\n",
 		"local/redis.yml":                  "authority: local\n",
 		"all/apple_roots.pem":              "certificate\n",
-		"all/mmdb/2026.9.23/geolite2.mmdb": "mmdb\n",
-		"all/mmdb/2026.9.23/places.yml":    "version: 1\n",
-		"all/arindb/2026.2.18/arin.mmdb":   "arin\n",
+		"all/mmdb/2000.1.2/ip-ipinfo.mmdb": "synthetic mmdb\n",
+		"all/city-list.yml":                "cities: []\n",
+		"all/iso-country-list.yml":         "countries: []\n",
+		"all/arindb/2000.1.2/arin.mmdb":    "synthetic arin\n",
 	}
 	for name, contents := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
@@ -34,6 +35,12 @@ func testOperatorConfigSources(t *testing.T) string {
 func TestOperatorConfigOverlayExposesLocalAndSharedResources(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Repos.PlatformConfig = testOperatorConfigSources(t)
+	for _, name := range []string{"geolite2.mmdb", "places.yml"} {
+		matches, err := filepath.Glob(filepath.Join(cfg.Repos.PlatformConfig, "all", "mmdb", "*", name))
+		if err != nil || len(matches) != 0 {
+			t.Fatalf("current server fixture unexpectedly requires future resource %s: %v, %v", name, matches, err)
+		}
+	}
 	stateDir := t.TempDir()
 	if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
 		t.Fatal(err)
@@ -49,9 +56,10 @@ func TestOperatorConfigOverlayExposesLocalAndSharedResources(t *testing.T) {
 		for _, path := range []string{
 			filepath.Join(home, operatorEnvironment(operator), "settings.yml"),
 			filepath.Join(home, "all", "apple_roots.pem"),
-			filepath.Join(home, "all", "mmdb", "2026.9.23", "geolite2.mmdb"),
-			filepath.Join(home, "all", "mmdb", "2026.9.23", "places.yml"),
-			filepath.Join(home, "all", "arindb", "2026.2.18", "arin.mmdb"),
+			filepath.Join(home, "all", "mmdb", "2000.1.2", "ip-ipinfo.mmdb"),
+			filepath.Join(home, "all", "city-list.yml"),
+			filepath.Join(home, "all", "iso-country-list.yml"),
+			filepath.Join(home, "all", "arindb", "2000.1.2", "arin.mmdb"),
 		} {
 			if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 				t.Fatalf("resolved operator resource %s is unavailable: %v", path, err)
@@ -63,7 +71,7 @@ func TestOperatorConfigOverlayExposesLocalAndSharedResources(t *testing.T) {
 func TestOperatorConfigOverlayFailsClosedForMissingOrRepointedSources(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Repos.PlatformConfig = testOperatorConfigSources(t)
-	missing := filepath.Join(cfg.Repos.PlatformConfig, "all", "arindb", "2026.2.18", "arin.mmdb")
+	missing := filepath.Join(cfg.Repos.PlatformConfig, "all", "arindb", "2000.1.2", "arin.mmdb")
 	if err := os.Remove(missing); err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +95,54 @@ func TestOperatorConfigOverlayFailsClosedForMissingOrRepointedSources(t *testing
 	}
 	if err := ensureOperatorConfigOverlays(cfg, stateDir); err == nil || !strings.Contains(err.Error(), "not the approved link") {
 		t.Fatalf("repointed operator config overlay was accepted: %v", err)
+	}
+}
+
+// Unrelated databases cannot replace the exact one the server opens. Missing
+// and empty seeder resources must also fail before any overlay is published.
+func TestOperatorConfigOverlayRequiresConsumedCurrentResources(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Repos.PlatformConfig = testOperatorConfigSources(t)
+	for _, name := range []string{"geolite2.mmdb", "ip.mmdb", "places.yml"} {
+		path := filepath.Join(cfg.Repos.PlatformConfig, "all", "mmdb", "2000.1.2", name)
+		if err := os.WriteFile(path, []byte("unrelated synthetic resource\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{
+		"mmdb/2000.1.2/ip-ipinfo.mmdb",
+		"arindb/2000.1.2/arin.mmdb",
+		"apple_roots.pem",
+		"city-list.yml",
+		"iso-country-list.yml",
+	} {
+		path := filepath.Join(cfg.Repos.PlatformConfig, "all", filepath.FromSlash(name))
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		stateDir := t.TempDir()
+		if err := ensureOperatorConfigOverlays(cfg, stateDir); err == nil || !strings.Contains(err.Error(), filepath.Base(name)) {
+			t.Fatalf("missing consumed resource %s was accepted: %v", name, err)
+		}
+		if _, err := os.Lstat(operatorConfigHome(stateDir, 1)); !os.IsNotExist(err) {
+			t.Fatalf("missing resource %s published an operator overlay: %v", name, err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateOperatorConfigSources(cfg); err == nil || !strings.Contains(err.Error(), filepath.Base(name)) {
+			t.Fatalf("empty consumed resource %s was accepted: %v", name, err)
+		}
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateOperatorConfigSources(cfg); err != nil {
+			t.Fatalf("restored consumed resource %s remained unavailable: %v", name, err)
+		}
 	}
 }
 
