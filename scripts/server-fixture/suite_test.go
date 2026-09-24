@@ -217,8 +217,10 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 			t.Fatalf("fixture override %d lost its synthetic location fields", index)
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", "geolite2.mmdb")); !os.IsNotExist(err) {
-		t.Fatalf("portable fixture unexpectedly materialized the location database: %v", err)
+	for _, name := range []string{"ip-ipinfo.mmdb", "ip.mmdb", "geolite2.mmdb"} {
+		if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", name)); !os.IsNotExist(err) {
+			t.Fatalf("portable fixture unexpectedly materialized location database %s: %v", name, err)
+		}
 	}
 }
 
@@ -246,7 +248,7 @@ func TestServerFixtureSuiteLoopbackResolvesWithoutDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"mmdb/geolite2.mmdb", "arindb/arin.mmdb"} {
+	for _, name := range []string{"mmdb/ip-ipinfo.mmdb", "mmdb/ip.mmdb", "mmdb/geolite2.mmdb", "arindb/arin.mmdb"} {
 		if _, err := os.Lstat(filepath.Join(report.Workspace, "config", name)); !os.IsNotExist(err) {
 			t.Fatalf("portable fixture unexpectedly has database %s: %v", name, err)
 		}
