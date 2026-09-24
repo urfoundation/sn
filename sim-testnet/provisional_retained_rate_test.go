@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -25,9 +26,27 @@ func retainedRateStartupRepairFixture(t *testing.T, retireUnused bool) (*Executo
 	if retireUnused {
 		source = clonePrecompileProbeSuccessorPlan(t, source)
 		source.PriorPlanHashes = append(source.PriorPlanHashes, source.PlanHash)
+		minimum, err := minimumAlphaTransferRao(source.LiveFacts.DefaultMinTransferRao, source.LiveFacts.AlphaPriceQ9, source.AlphaTransferMarginBPS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		committed, ok := checkedAdd(source.MaximumSpend.AlphaRao, source.SupersededSpend.AlphaRao)
+		limit, addOk := checkedAdd(committed, minimum)
+		if !ok || !addOk || limit > source.Limits.AlphaRao {
+			t.Fatal("synthetic source has no reserve tranche capacity")
+		}
+		base := actionByID(t, source, "alpha.transfer.validator.1")
+		parameters := alphaTransferActionParameters(minimum, 0, minimum, &source.LiveFacts, source.AlphaTransferMarginBPS)
+		parameters[alphaRepairForActionParameter] = base.ID
+		parameters[alphaRepairReserveShareParameter] = "true"
+		parameters[alphaRepairCumulativeBeforeParameter] = strconv.FormatUint(committed, 10)
+		parameters[alphaRepairCumulativeLimitParameter] = strconv.FormatUint(limit, 10)
+		parameters[alphaRepairMaximumTrancheParameter] = strconv.FormatUint(minimum, 10)
+		parameters["reserve_target_share_bps"] = base.Parameters["reserve_target_share_bps"]
+		parameters["reserve_minimum_share_bps"] = base.Parameters["reserve_minimum_share_bps"]
 		repair := Action{ID: "alpha.repair.validator.1.11", Kind: "substrate-extrinsic", Target: "validator:1", Description: "synthetic unused reserve tranche",
-			Parameters: map[string]string{alphaRepairReserveShareParameter: "true", "repair_for_action": "alpha.transfer.validator.1"},
-			Spend:      Spend{AlphaRao: 1, EVMGasWei: "0"}, DependsOn: []string{"alpha.transfer.validator.1"}, AcceptedPriorIntentHashes: []string{"0x" + strings.Repeat("a1", 32)}}
+			Parameters: parameters,
+			Spend:      Spend{AlphaRao: minimum, EVMGasWei: "0"}, DependsOn: []string{base.ID}}
 		repair.IntentHash, _ = actionIntentHash(repair)
 		index := slices.IndexFunc(source.Actions, func(a Action) bool { return a.ID == "validator.reserve-majority" })
 		if index < 0 {
@@ -37,7 +56,6 @@ func retainedRateStartupRepairFixture(t *testing.T, retireUnused bool) (*Executo
 		barrier := &source.Actions[index+1]
 		barrier.DependsOn = append(barrier.DependsOn, repair.ID)
 		barrier.IntentHash, _ = actionIntentHash(*barrier)
-		var err error
 		source.MaximumSpend, err = maximumActionSpend(source.Actions)
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +149,6 @@ func TestRetainedRateStartupRetiresOnlyNeverStartedReserveRepair(t *testing.T) {
 	for _, entry := range []JournalEntry{
 		{ActionID: retired.ID, IntentHash: "0x" + strings.Repeat("b2", 32), PlanHash: "0x" + strings.Repeat("c3", 32), Stage: StageIntent},
 		{ActionID: "synthetic-other-action", IntentHash: retired.IntentHash, Stage: StageIntent},
-		{ActionID: "synthetic-other-action", IntentHash: retired.AcceptedPriorIntentHashes[0], Stage: StageIntent},
 	} {
 		changed := *self
 		changed.journal = &Journal{entries: append(append([]JournalEntry(nil), before...), entry)}
