@@ -2111,3 +2111,67 @@ before topology stop when possible, and test both the supported legacy and
 future profiles without mixing their manifests. A missing resource must be
 reported precisely; it must not be fabricated or silently linked to a
 different database schema.
+
+### R43 peer transport: qualify and pin the complete dependency build
+
+**Lesson.** R43 retained five impaired miner–validator peer pairs, with ten
+paired TLS handshake timeouts and five receiver gap timeouts. Return sequences
+for those pairs repeatedly wrote message 0 over reliable routes without a head
+acknowledgment while unrelated peers remained healthy. These were sustained
+peer failures, not justification for a broad timeout exemption. Exact log
+offsets and hashes are retained in the R43 peer-transport evidence bundle;
+the logs do not reveal the peers' in-memory keys, so the live lost-key state
+remains an inference from the separately reproduced source defect.
+
+The active Connect revision `6e27c533` did not contain the previously prepared
+contract-recovery fix `fbb86a7a`. Rebuilding SN against that unchanged dependency
+could not deploy the fix. Successful isolated tests, a commit in another
+worktree, and a new SN executable are three distinct facts; none establishes
+which dependency code the running executable contains.
+
+**Production change.** Extend the composed release manifest and build receipt
+to bind every selected source revision, module replacement and toolchain,
+including Connect and its selected SCTP source. Resolve these from the actual
+build inputs rather than assuming the neighboring checkout is the qualified
+one. Before successor adoption, match the tested dependency revision and source
+tree to the retained build manifest and executable receipt. Preserve the old
+run's manifest and results. A dependency patch must not erase authenticated
+financial checkpoints or trigger unrelated historical revalidation.
+
+The retained-key failure occurs when a responder keeps its old cipher after
+the initiator has lost it. The responder encrypts the new contract-only
+sequence head with that old key; the plaintext replacement TLS flight then
+waits behind the unreadable head. Keep contract open and ahead controls
+readable during replacement, including retained controls first written before
+replacement and controls queued after the replacement times out. Pin each
+control's recovery encoding across retries. Application frames, including
+empty application bodies attached to a contract, retain encryption in both
+required and opportunistic modes. A timeout must not turn an unresolved
+replacement into evidence that its old key is usable by the peer.
+
+The adjacent optimistic handshake reader must carry the same epoch identity
+as the ordered reader. Check the exact current generation, server role and
+handshake phase together before capturing the target TLS transport. An old or
+future Finished cannot be fed into the current epoch merely because its record
+prefix looks valid. Malformed named epochs must not become the empty legacy
+generation in handshake, identity-proof or unknown-wrap recovery paths. Keep
+legacy compatibility in the ordered path without allowing its optimistic
+shortcut to cross into a named epoch.
+
+**Qualification and status.** The isolated Connect successor is `3b7eca94`,
+composing `6c0d1a71` (the retained-key fix), `545bb774` (recovery after failed
+replacement; originally `da543fa5`) and `3b7eca94` (optimistic generation
+ownership; originally `8f433c7a`). Individual normal/race qualifications pass,
+and restoring each prior implementation reproduces its failure deterministically.
+The combined artifact still needs its own build/adoption receipt and live
+operational proof; these commits have not changed R43's running binaries.
+
+Before mainnet closure, retain causal and normal/race evidence for ordinary and
+companion contracts, first writes and resends, late contract admission after
+rekey failure, unchanged encrypted application data, and both wire decoders'
+exact/older/newer/legacy/malformed control generations. Cover the required-mode
+gate and unknown-wrap recovery in the composed dependency build. Rehearse
+asymmetric session loss and interrupted replacement without replacing the
+entire validator fleet. Then complete a clean full acceptance interval under
+the deployed manifest. Preserve R43's original findings; a repaired transport
+does not retroactively pass its log gate.
