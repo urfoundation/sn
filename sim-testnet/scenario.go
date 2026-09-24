@@ -1238,17 +1238,6 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 	if cfg == nil || artifact == nil || len(minerClients) != cfg.Config.Topology.Miners || artifact.NoID != uint64(noID) || len(candidates) != cfg.Config.Topology.fleetCandidateMiners() {
 		return result, errors.New("payout tier membership inputs are incomplete")
 	}
-	expectedCandidate, expectedTail := 0, 0
-	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		if operatorForMiner(cfg, miner) != noID {
-			continue
-		}
-		if candidates[miner] {
-			expectedCandidate++
-		} else {
-			expectedTail++
-		}
-	}
 	leaves := make(map[[16]byte]bool, len(artifact.Leaves))
 	for _, leaf := range artifact.Leaves {
 		miner := minerClients[leaf.ClientID]
@@ -1287,6 +1276,11 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 			return result, fmt.Errorf("artifact provider has an unknown, foreign, or duplicate client id")
 		}
 	}
+	for clientID := range leaves {
+		if !providers[clientID] {
+			return result, errors.New("artifact payout leaf lacks its provider row")
+		}
+	}
 	// Validate every provider identity before classifying a cohort mismatch.
 	// Otherwise an early candidate mismatch could hide a later corrupt entry.
 	var cohortError *payoutCohortExpectationError
@@ -1317,8 +1311,12 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 	if cohortError != nil {
 		return result, cohortError
 	}
-	if result.CandidateProviders != expectedCandidate || result.CandidateHeadExcluded != expectedCandidate || result.PoolTailProviders != expectedTail || result.CandidateLeaves != 0 || result.PoolTailHeadExcluded != 0 || result.PoolTailLeaves == 0 {
-		return result, &payoutCohortExpectationError{fmt.Sprintf("tier membership candidate=%d/%d excluded=%d leaves=%d tail=%d/%d excluded=%d leaves=%d", result.CandidateProviders, expectedCandidate, result.CandidateHeadExcluded, result.CandidateLeaves, result.PoolTailProviders, expectedTail, result.PoolTailHeadExcluded, result.PoolTailLeaves)}
+	// Provider rows represent completed usage in this epoch, not the registered
+	// miner inventory. Inactive configured clients can be absent. Every present
+	// row and leaf must still prove its exact tier, with actual head exclusion
+	// and pool payout evidence. Runtime and assignment checks own the full fleet.
+	if result.CandidateProviders == 0 || result.CandidateHeadExcluded != result.CandidateProviders || result.PoolTailProviders == 0 || result.CandidateLeaves != 0 || result.PoolTailHeadExcluded != 0 || result.PoolTailLeaves == 0 {
+		return result, &payoutCohortExpectationError{fmt.Sprintf("tier membership candidate=%d excluded=%d leaves=%d tail=%d excluded=%d leaves=%d", result.CandidateProviders, result.CandidateHeadExcluded, result.CandidateLeaves, result.PoolTailProviders, result.PoolTailHeadExcluded, result.PoolTailLeaves)}
 	}
 	return result, nil
 }

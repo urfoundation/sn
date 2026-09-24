@@ -74,7 +74,6 @@ func TestPayoutTierMembershipRejectsAuxiliaryParticipationAndSubstitution(t *tes
 		{name: "leaf", change: func(a *payoutArtifact, p *payoutartifact.ProviderInput) {
 			a.Leaves = append(a.Leaves, payoutartifact.Leaf{ClientID: p.ClientID})
 		}},
-		{name: "missing configured provider", change: func(a *payoutArtifact, _ *payoutartifact.ProviderInput) { a.Providers = a.Providers[1:] }},
 	} {
 		cfg, artifact, clients, auxiliary := auxiliaryPayoutTierFixture(t)
 		test.change(artifact, &auxiliary)

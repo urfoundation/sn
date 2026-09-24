@@ -749,7 +749,7 @@ func TestHeadPromotionTransitionMustAdvanceInsideCurrentCampaign(t *testing.T) {
 	}
 }
 
-func TestPayoutTierMembershipExcludesEveryLiveCandidate(t *testing.T) {
+func TestPayoutTierMembershipExcludesEveryObservedCandidate(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Config.Topology.Miners = 10
 	cfg.Config.Topology.HeadFleets = 2
@@ -792,7 +792,7 @@ func TestPayoutTierMembershipExcludesEveryLiveCandidate(t *testing.T) {
 	mutated = *artifact
 	mutated.Providers = append([]payoutartifact.ProviderInput(nil), artifact.Providers[:len(artifact.Providers)-1]...)
 	if _, err := summarizePayoutTierMembership(cfg, 1, &mutated, clients); err == nil {
-		t.Fatal("incomplete operator provider population was accepted")
+		t.Fatal("payout leaf without its provider row was accepted")
 	}
 }
 
