@@ -4,12 +4,26 @@ package main
 
 import (
 	"context"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 )
+
+func TestPolicyRolloverCurrentActivationStillReservesFutureFullInterval(t *testing.T) {
+	for _, epoch := range []uint64{604, 605} {
+		if err := validatePolicyRolloverSnapshotEpochV2(big.NewInt(604), epoch); err != nil || epoch+1 <= 604 {
+			t.Fatalf("current or future activation rejected: epoch=%d err=%v", epoch, err)
+		}
+	}
+	for _, current := range []*big.Int{nil, big.NewInt(-1), new(big.Int).Lsh(big.NewInt(1), 65), big.NewInt(605)} {
+		if err := validatePolicyRolloverSnapshotEpochV2(current, 604); err == nil {
+			t.Fatal("past or unauthenticated activation epoch accepted")
+		}
+	}
+}
 
 func TestPolicyRolloverExecutorUsesExactActivationAuthorityWithoutDeploymentReplay(t *testing.T) {
 	f := newRuntimeEvidenceProvisionV2TestFixture(t)

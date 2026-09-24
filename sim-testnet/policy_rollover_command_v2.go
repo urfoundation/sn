@@ -65,8 +65,11 @@ func (e *Executor) authenticatePolicyRolloverSnapshotsV2(ctx context.Context, ch
 	}
 	coordinator := stabi.NewSTCoordinator()
 	current, err := rawCoordinatorCallAt(ctx, e.keeper, common.Address(p.Members[0].Activation.Domain.Coordinator), coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch, p.EVM.Number)
-	if err != nil || current == nil || !current.IsUint64() || current.Uint64() >= p.Epoch {
-		return errors.Join(errors.New("rollover snapshot does not precede the explicitly selected future epoch"), err)
+	if err != nil {
+		return err
+	}
+	if err := validatePolicyRolloverSnapshotEpochV2(current, p.Epoch); err != nil {
+		return err
 	}
 	policy, err := rawCoordinatorCallAt(ctx, e.keeper, e.plan.ValidatorEvidence.Coordinator, coordinator.PackPolicyAt(new(big.Int).SetUint64(p.Epoch)), coordinator.UnpackPolicyAt, p.EVM.Number)
 	if err != nil || policy.PolicyHash != p.Members[0].Activation.Domain.PolicyHash || policy.EffectiveEpoch > p.Epoch {
@@ -94,6 +97,15 @@ func (e *Executor) authenticatePolicyRolloverSnapshotsV2(ctx context.Context, ch
 		return errors.Join(errors.New("rollover immutable snapshot changed during authority reads"), err)
 	}
 	return ctx.Err()
+}
+
+// The contract and independent validator both permit the current activation
+// epoch. Its partial interval is always excluded by FirstFullEpoch=epoch+1.
+func validatePolicyRolloverSnapshotEpochV2(current *big.Int, activation uint64) error {
+	if current == nil || !current.IsUint64() || activation == 0 || activation == ^uint64(0) || current.Uint64() > activation {
+		return errors.New("rollover snapshot follows the selected activation epoch")
+	}
+	return nil
 }
 
 func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *validatorcomponent.ChainClient, epoch, generation uint64, limit uint64) (*policyRolloverPlanV2, error) {
