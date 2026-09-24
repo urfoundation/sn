@@ -752,9 +752,18 @@ func createScenarioCampaignRecovery(cfg *ResolvedConfig, stateDir string, roles 
 	if !now.After(terminal) {
 		return nil, errors.New("campaign recovery cannot start before predecessor completion and invalidation")
 	}
-	carryPreparation := prior.payload.AcceptanceBoundary == nil && prior.payload.PreparationComplete && prior.payload.PlanHash == planHash && prior.payload.ConfigHash == cfg.ConfigHash
-	if carryPreparation {
-		recovery.InheritedPreparationSha256 = recovery.PriorAttemptSha256
+	// An accepted failed interval may already carry an authenticated earlier
+	// preparation checkpoint. Preserve that exact source through a same-plan
+	// recovery; its acceptance window, faults and runtime evidence still reset.
+	carryPreparation := false
+	if prior.payload.PreparationComplete && prior.payload.PlanHash == planHash && prior.payload.ConfigHash == cfg.ConfigHash {
+		if prior.payload.AcceptanceBoundary == nil {
+			recovery.InheritedPreparationSha256 = recovery.PriorAttemptSha256
+			carryPreparation = true
+		} else if prior.payload.Recovery != nil && prior.payload.Recovery.InheritedPreparationSha256 != "" {
+			recovery.InheritedPreparationSha256 = prior.payload.Recovery.InheritedPreparationSha256
+			carryPreparation = true
+		}
 	}
 	started := now.UTC()
 	attempt := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, roles: roles, payload: scenarioCampaignAttemptPayload{

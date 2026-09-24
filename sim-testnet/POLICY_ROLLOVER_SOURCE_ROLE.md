@@ -27,9 +27,10 @@ The plan is inactive. Preparation reads retained source files and writes only
 new immutable review files; it does not acquire the deployment writer, publish
 transactions, restart a process, or change the selected validator config.
 
-For a campaign successor, first retain the actual signed terminal result and
-restore every scheduled fault. After the ordinary launcher/supervisor is
-stopped, apply the reviewed plan with its exact `plan_hash`:
+Retain the prior campaign's actual result and signed exit/invalidation before
+stopping its topology. A failed preterminal run may receive this local repair;
+it still cannot authorize production soak. After the ordinary launcher and
+supervisor are stopped, apply the reviewed plan with its exact `plan_hash`:
 
 ```sh
 sim-testnet policy-rollover \
@@ -54,6 +55,11 @@ rechecks the historical native proof; later writes are authenticated through
 the fresh generation's own intent store. An exact already-selected apply retry
 retains the original signed receipt and does not require the old slot to remain
 current after those later writes.
+
+The overlay preserves any outstanding `active-faults.json` recovery ledger.
+The next release runner must restore those exact faults before taking its first
+observation or signing a new acceptance boundary. A restart fault needs a new
+live, healthy process identity; deleting or editing its ledger is not recovery.
 
 This overlay does not authorize a production campaign or alter any prior
 assertion/result. The provisional production handoff separately requires the

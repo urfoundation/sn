@@ -660,6 +660,54 @@ func TestScenarioCampaignRecoveryCarriesCompletedPreAcceptancePreparation(t *tes
 	}
 }
 
+// R41-shaped preparation is already authenticated when R42 starts. A failed
+// accepted R42 must carry that same source to R43 without importing its window
+// or rewriting any failed result, logs, observations, or signed source record.
+func TestScenarioCampaignRecoveryCarriesInheritedPreparationThroughFailedAcceptance(t *testing.T) {
+	t.Parallel()
+	fixture := newCampaignSuccessionFixture(t)
+	_, _ = bindCampaignRecoveryFixture(t, fixture)
+	first, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.updateProgress(false, true); err != nil {
+		t.Fatal(err)
+	}
+	bindPreAcceptanceFailedRecoveryGeneration(t, fixture, first)
+	second, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(2*time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := second.payload.Recovery.InheritedPreparationSha256
+	runDir := bindFailedRecoveryGeneration(t, fixture, second, 8)
+	before := campaignProcessRecoveryBytes(t, first.path(), second.path(),
+		filepath.Join(runDir, "result.json"), filepath.Join(runDir, scenarioCampaignStartFilename),
+		filepath.Join(runDir, "observations.jsonl"), filepath.Join(runDir, processLogEvidenceFilename))
+	third, err := loadOrCreateScenarioCampaignAttempt(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, "release-1.0", nil, fixture.now.Add(3*time.Hour), fixture.journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validSHA256String(source) || !third.payload.PreparationComplete || third.payload.Recovery.InheritedPreparationSha256 != source || third.payload.Recovery.PriorAttemptSha256 != bytesSHA256(before[second.path()]) || third.payload.AcceptanceBoundary != nil || third.payload.AcceptanceInvalidation != "" || third.payload.RunID == second.payload.RunID {
+		t.Fatalf("failed accepted successor lost preparation or imported acceptance: %+v", third.payload)
+	}
+	prepareCalls, boundaryCalls := 0, 0
+	if err := beginScenarioCampaignPreparation(t.Context(), "release-1.0", third.payload.RunID, scenarioRunOptions{
+		Attempt:              third,
+		Prepare:              func(context.Context) error { prepareCalls++; return nil },
+		BeforeFleetLifecycle: func(context.Context) error { boundaryCalls++; return nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if prepareCalls != 0 || boundaryCalls != 1 {
+		t.Fatalf("preparation reuse changed fresh lifecycle work: prepare=%d boundary=%d", prepareCalls, boundaryCalls)
+	}
+	if err := validateScenarioCampaignRecovery(third); err != nil {
+		t.Fatal(err)
+	}
+	requireCampaignProcessRecoveryBytes(t, before)
+}
+
 func TestScenarioCampaignRecoveryRejectsUnbackedPreparationCarry(t *testing.T) {
 	t.Parallel()
 	fixture := newCampaignSuccessionFixture(t)
