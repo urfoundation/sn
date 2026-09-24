@@ -72,7 +72,7 @@ func (self *Executor) verifyPrecompileRecoveryFinalEvidence(ctx context.Context,
 	if err := verifyEVMCheckpoint(ctx, self.deployer.client, head, head); err != nil {
 		return err
 	}
-	if err := validatePrecompileRecoveryPlan(self.plan, evidence, &evidence.Recovery.Authorization); err != nil {
+	if _, err := readPrecompileRecoveryHistoryPlan(self.cfg, self.stateDir, self.plan, self.journal.Entries(), evidence); err != nil {
 		return err
 	}
 	if !precompileEvidenceComplete(evidence) {

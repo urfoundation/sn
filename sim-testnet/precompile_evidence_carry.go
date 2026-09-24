@@ -113,6 +113,9 @@ func readPrecompileEvidenceSource(cfg *ResolvedConfig, stateDir string, plan *Se
 	// probe, or coldkey evidence never enters historical source resolution.
 	identity := *cfg
 	identity.ConfigHash = evidence.ConfigHash
+	if policyRateAmendmentFundingHash(plan, evidence.PolicyHash) {
+		identity.PolicyHash = evidence.PolicyHash
+	}
 	if err := validatePrecompileEvidenceIdentity(&identity, probe, evidence); err != nil {
 		return nil, err
 	}
@@ -152,8 +155,16 @@ func readPrecompileEvidenceSource(cfg *ResolvedConfig, stateDir string, plan *Se
 // executor continues enforcing its own transaction intents and spend limits.
 func (self *Executor) validatePrecompileEvidence(probe common.Address, evidence *PrecompileConformanceEvidence) error {
 	if evidence != nil && evidence.Recovery != nil {
-		if err := validatePrecompileRecoveryPlan(self.plan, evidence, &evidence.Recovery.Authorization); err != nil {
+		var entries []JournalEntry
+		if self.journal != nil {
+			entries = self.journal.Entries()
+		}
+		source, err := readPrecompileRecoveryHistoryPlan(self.cfg, self.stateDir, self.plan, entries, evidence)
+		if err != nil {
 			return err
+		}
+		if source.PlanHash != self.plan.PlanHash {
+			return validatePrecompileEvidenceCarry(self.cfg, self.plan, source, probe, evidence)
 		}
 	}
 	if err := validatePrecompileEvidenceIdentity(self.cfg, probe, evidence); err == nil {
@@ -180,8 +191,23 @@ func (self *liveScenarioProbe) validatePrecompileEvidence(probe common.Address, 
 				return err
 			}
 		}
-		if err := validatePrecompileRecoveryPlan(self.precompilePlan, evidence, &evidence.Recovery.Authorization); err != nil {
+		var entries []JournalEntry
+		if self.precompileJournal != nil {
+			entries = self.precompileJournal.Entries()
+		} else {
+			var err error
+			entries, err = readJournalEntries(self.stateDir)
+			if err != nil {
+				return err
+			}
+		}
+		source, err := readPrecompileRecoveryHistoryPlan(self.cfg, self.stateDir, self.precompilePlan, entries, evidence)
+		if err != nil {
 			return err
+		}
+		if source.PlanHash != self.precompilePlan.PlanHash {
+			self.precompileSourcePlan = source
+			return validatePrecompileEvidenceCarry(self.cfg, self.precompilePlan, source, probe, evidence)
 		}
 	}
 	if err := validatePrecompileEvidenceIdentity(self.cfg, probe, evidence); err == nil {

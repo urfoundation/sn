@@ -420,7 +420,11 @@ func verifyPrecompileProbeSuccessorAt(ctx context.Context, cfg *ResolvedConfig, 
 			return errors.New("probe successor receipt evidence belongs to another probe")
 		}
 	}
-	if _, err := precompileProbeSuccessorPrefixWithRecovery(plan, entries, nonce, evidence); err != nil {
+	replayPlan, err := readPrecompileRecoveryHistoryPlan(cfg, stateDir, plan, entries, evidence)
+	if err != nil {
+		return err
+	}
+	if _, err := precompileProbeSuccessorPrefixWithRecovery(replayPlan, entries, nonce, evidence); err != nil {
 		return errors.Join(errors.New("precompile probe successor nonce is outside approval"), err)
 	}
 	if err := verifyPrecompileProbeRetirementAt(ctx, cfg, stateDir, plan, entries, client, head, nonce); err != nil {

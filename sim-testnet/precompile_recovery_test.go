@@ -41,7 +41,11 @@ func newPrecompileRecoveryTestFixture(t *testing.T) *precompileRecoveryTestFixtu
 }
 func precompileRecoveryTestFixtureWithSampleResidual(t *testing.T, residual bool) *precompileRecoveryTestFixture {
 	t.Helper()
-	base := newPrecompileProbeSuccessorFixture(t)
+	return precompileRecoveryTestFixtureWithBase(t, residual, newPrecompileProbeSuccessorFixture(t))
+}
+
+func precompileRecoveryTestFixtureWithBase(t *testing.T, residual bool, base *precompileProbeSuccessorFixture, configure ...func(*precompileRecoveryTestFixture)) *precompileRecoveryTestFixture {
+	t.Helper()
 	if err := os.Chmod(base.stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +64,9 @@ func precompileRecoveryTestFixtureWithSampleResidual(t *testing.T, residual bool
 				t.Fatal(err)
 			}
 		}
+	}
+	for _, apply := range configure {
+		apply(f)
 	}
 	evidence.Battery = completePrecompileEvidence().Battery
 	evidence.Seed = PrecompileValueStep{TAORao: 3, ValueWei: "3000000000", AfterRao: 4_000_000_000, DeltaRao: 4_000_000_000, BlockNumber: 211}

@@ -310,7 +310,11 @@ func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return err
 	}
-	prefix, err := precompileProbeSuccessorPrefixWithRecovery(plan, entries, nonce, evidence)
+	replayPlan, err := readPrecompileRecoveryHistoryPlan(cfg, stateDir, plan, entries, evidence)
+	if err != nil {
+		return err
+	}
+	prefix, err := precompileProbeSuccessorPrefixWithRecovery(replayPlan, entries, nonce, evidence)
 	if err != nil || len(prefix) <= 1 {
 		return err
 	}
@@ -327,7 +331,7 @@ func verifyPrecompileProbeSuccessorCalls(ctx context.Context, cfg *ResolvedConfi
 	}
 	for index, entry := range prefix[1:] {
 		if strings.HasPrefix(entry.ActionID, precompileRecoveryActionPrefix) {
-			if err := verifyPrecompileRecoveryCall(ctx, reader, head, plan, evidence, entry, plan.PrecompileProbeSuccessor.DeployerNonce+uint64(index)+1, index == len(prefix)-2); err != nil {
+			if err := verifyPrecompileRecoveryCall(ctx, reader, head, replayPlan, evidence, entry, plan.PrecompileProbeSuccessor.DeployerNonce+uint64(index)+1, index == len(prefix)-2); err != nil {
 				return err
 			}
 			continue
