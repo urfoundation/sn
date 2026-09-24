@@ -1,5 +1,46 @@
 # Testnet execution plan
 
+## Current R42 release interval — 2026-09-24
+
+Recovery generation 42 is running as `urnetwork-sim-release-608.service`
+against the owned LAN RPC `192.168.1.162:9944`. Its signed campaign attempt is
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.42.evidence.json`,
+and its run ID is `20260924T181314.486418853Z-release-1.0`. The retained
+acceptance boundary starts with epoch 608 at block 8,077,774, covers five full
+epochs through block 8,079,274, and has terminal block 8,079,424. The LAN node
+finalized the start block on 2026-09-24 at about 18:46 UTC. The release process
+and fleet remain separate active services. Do not replace or stop the live
+release process merely to apply an observation fix; assess whether it can
+continue first.
+
+`urnetwork-sim-r42-terminal-diagnostics.service` is a separate read-only
+watcher. It authenticated the exact signed R42 start, waits on the LAN node for
+block 8,079,424, then collects independent terminal checks into
+`/mnt/data/sn-testnet/qualification/policy-rollover-20260924/terminal-diagnostics/report-20260924T192429.130612934Z-3a3ae49fdfb2`.
+It neither replaces the live runner nor rewrites its signed evidence. The
+watcher's executable SHA-256 is
+`3a3ae49fdfb2c073d22bdc4e57198d6e24c2d10011da91aca550025cdc34cfff`
+from main commit `e9002acd`, built with the pinned `server684.mod` source. Its
+`progress.json` is expected to remain `running` until the terminal inventory;
+inspect `report.json` only after that inventory completes.
+
+This run is explicitly provisional. An inherited lifecycle handoff records
+that Subtensor would have pruned UID 1 instead of the planned UID 7, so the
+churn registration/pruning exercise was bypassed with zero mutations. Preserve
+that signed exception and complete the live interval and terminal inventory to
+expose all other failures; do not claim the skipped exercise passed or that
+strict final acceptance is true. Early active-generation observations also
+reported missing legacy validator handoff and excess path-proof rows because
+the original collector read a retired generation. A separate, tested
+generation-aware read-only probe verified both validators' current proofs and
+removed those collector errors. It still found no recorded local native
+intents, which is a separate diagnostic finding. One operator verification GET
+timed out in an observation and succeeded on independent retry; preserve both
+facts. The terminal diagnostic command is described in
+`sim-testnet/TERMINAL_DIAGNOSTICS.md`. The next required steps remain the full
+R42 terminal inventory, repair or explicit exception accounting for findings,
+the production soak, on-chain reconciliation, and `sim-testnet/FINAL-2.md`.
+
 Updated 2026-09-18. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full functional requirements in [FINALIZE.md](FINALIZE.md) govern completion.
