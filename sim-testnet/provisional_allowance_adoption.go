@@ -72,6 +72,9 @@ func (self *Executor) authenticateProvisionalPlanAdoption(ctx context.Context, a
 		}
 	}
 	matched, err := self.provisionalPlanOnlyTransform(source, sourceBytes)
+	if err == nil && !matched && retainedStartup && self.plan.PolicyRateAmendment != nil {
+		matched, err = self.authenticateRetainedPolicyRateAmendment(ctx, source)
+	}
 	if err == nil && !matched && retainedStartup && len(self.plan.FleetRenewals) != 0 {
 		renewal := self.plan.FleetRenewals[len(self.plan.FleetRenewals)-1]
 		if renewal.SourcePlanHash == source.PlanHash {
