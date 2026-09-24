@@ -285,6 +285,9 @@ func TestInitialScenarioFailurePreservesExactProductionPredecessor(t *testing.T)
 		t.Fatal(err)
 	}
 	runDir := filepath.Join(stateDir, "runs", attempt.payload.RunID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	result, gotErr := writeInitialScenarioFailure(cfg, runDir, attempt.payload.RunID, "0x"+strings.Repeat("55", 32), scenarioDefinition{Name: "production-soak"}, started, nil, attempt, errors.New("fixture failure"))
 	if gotErr == nil || result == nil || !releaseCampaignGatesEqual(result.PriorRelease, gate) {
 		t.Fatalf("initial failure result=%+v error=%v", result, gotErr)
