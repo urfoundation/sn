@@ -296,7 +296,7 @@ func runPolicyRolloverV2(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	defer journal.Close()
 	executorCfg := *cfg
 	executorCfg.readOnlyAudit = !o.Apply
-	e, err := NewExecutor(ctx, &executorCfg, stateDir, base, journal, roles)
+	e, err := newPolicyRolloverExecutorV2(ctx, &executorCfg, stateDir, base, journal, roles)
 	if err != nil {
 		return err
 	}
