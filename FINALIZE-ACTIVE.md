@@ -1,17 +1,23 @@
 # Testnet execution plan
 
-## Current R42 release interval — 2026-09-24
+## R42 failed early; prepare R43 recovery — 2026-09-24
 
-Recovery generation 42 is running as `urnetwork-sim-release-608.service`
+Recovery generation 42 ran as `urnetwork-sim-release-608.service`
 against the owned LAN RPC `192.168.1.162:9944`. Its signed campaign attempt is
 `sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.42.evidence.json`,
 and its run ID is `20260924T181314.486418853Z-release-1.0`. The retained
 acceptance boundary starts with epoch 608 at block 8,077,774, covers five full
 epochs through block 8,079,274, and has terminal block 8,079,424. The LAN node
-finalized the start block on 2026-09-24 at about 18:46 UTC. The release process
-and fleet remain separate active services. Do not replace or stop the live
-release process merely to apply an observation fix; assess whether it can
-continue first.
+finalized the start block on 2026-09-24 at about 18:46 UTC. The release owner
+exited with status 1 at 20:42 UTC, before terminal; the fleet remains active.
+Its signed result is `fail`, `final_acceptance=false`, with invalidation
+`execution-exited-before-completion`. The result SHA-256 is
+`7288e099489a1525b4f2f80ff1f77e76766031c007c0c7f364e1884e0f7961f4`;
+the signed attempt SHA-256 is
+`c3a9f6b0511eb0f7fe9dbd5de38af19ed5a24449acc870984ad68e4c554ab305`.
+The last end head was block 8,078,257 in epoch 609. R42 cannot qualify for
+production handoff or final acceptance. Preserve it and start a future-boundary
+R43 after fault recovery and the early-exit repairs qualify.
 
 `urnetwork-sim-r42-terminal-diagnostics.service` is a separate read-only
 watcher. It authenticated the exact signed R42 start, waits on the LAN node for
@@ -29,13 +35,17 @@ after the terminal block when assertions remain failed, the separate
 run's `result.json` and then invokes the same pinned, read-only diagnostic
 binary again into a new report directory. Its script is
 `/mnt/data/sn-testnet/qualification/policy-rollover-20260924/terminal-diagnostics/r42-signed-result-followup.sh`.
-The first watcher captures early terminal findings; the follow-up captures the
-signed result and remaining checks. Neither writes live campaign state.
-The signed schedule's two lifecycle tail faults can remain active until block
-8,080,234, after nominal terminal block 8,079,424. Do not stop at the terminal
-block alone: wait for all fault restorations, a signed terminal observation and
-the runner's result. The unmodified release watchdog is approximately
-2026-09-25 03:41 UTC. The current coordinator's finalized `policyCount()` is
+The result file appeared before owner exit, so this watcher is not a post-exit
+assertion. `urnetwork-sim-r42-owner-exit-diagnostics.service` waits for owner
+exit before its read-only terminal diagnostic. None writes live campaign state.
+R42 left `release-rolling-15` active: its process-restart recovery awaited a
+different healthy `miner-swarm-8` PID. The original child stuck after graceful
+shutdown; it was killed after verifying its PID, parent, command, and retained
+fault record. The fault driver must still restore the ledger entry. R42's last
+heartbeat saw nine blocking process-log classes and 914 open anomalies; the
+provisional deferral omitted validator steering continuity and ended the run
+early. Final acceptance must retain these findings while a provisional live
+heartbeat allows the full interval to finish. The current coordinator's finalized `policyCount()` is
 three at block 8,078,129; the production scheduler's older two-policy gate is
 repaired in main commit `402e6b1b`. Its normal/race focused tests passed in an
 isolated worktree. The combined production policy-history, provisional handoff,
@@ -46,7 +56,7 @@ executable has not changed.
 This run is explicitly provisional. An inherited lifecycle handoff records
 that Subtensor would have pruned UID 1 instead of the planned UID 7, so the
 churn registration/pruning exercise was bypassed with zero mutations. Preserve
-that signed exception and complete the live interval and terminal inventory to
+that signed exception in R43 and complete its interval and terminal inventory to
 expose all other failures; do not claim the skipped exercise passed or that
 strict final acceptance is true. Early active-generation observations also
 reported missing legacy validator handoff and excess path-proof rows because
@@ -56,9 +66,10 @@ removed those collector errors. It still found no recorded local native
 intents, which is a separate diagnostic finding. One operator verification GET
 timed out in an observation and succeeded on independent retry; preserve both
 facts. The terminal diagnostic command is described in
-`sim-testnet/TERMINAL_DIAGNOSTICS.md`. The next required steps remain the full
-R42 terminal inventory, repair or explicit exception accounting for findings,
-the production soak, on-chain reconciliation, and `sim-testnet/FINAL-2.md`.
+`sim-testnet/TERMINAL_DIAGNOSTICS.md`. The next required steps are R42 terminal
+diagnostics, fault-ledger restoration, qualified early-exit fixes, R43's full
+interval and terminal inventory, the production soak, on-chain reconciliation,
+and `sim-testnet/FINAL-2.md`.
 
 Updated 2026-09-18. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.

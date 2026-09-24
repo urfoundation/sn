@@ -1,15 +1,20 @@
 # Sim-testnet finalization report 2
 
-**Current status, 2026-09-24: R42's real release interval is running;
-`final_acceptance=false` remains provisional.** The signed attempt
+**Current status, 2026-09-24: R42 started its real release interval but failed
+before terminal; `final_acceptance=false`.** The signed attempt
 `campaign-attempts/release-1.0.recovery.42.evidence.json` began at finalized
 block 8,077,774 (epoch 608) and covers five 300-block epochs through block
 8,079,274, with terminal block 8,079,424. The release service and an
-independent read-only terminal diagnostic watcher are active against the LAN
+independent read-only terminal diagnostic watchers use the LAN
 RPC at `192.168.1.162:9944`. The inherited UID-churn exercise was explicitly
 bypassed because the chain would prune UID 1 rather than the planned UID 7;
-no churn transaction was sent. The run is continuing to terminal so its other
-errors can be collected and repaired in a later run. This exception cannot be
+no churn transaction was sent. R42's owner exited at 20:42 UTC after observing
+through epoch 609, before terminal block 8,079,424. Its signed result failed
+with nine blocking process-log classes, 914 open anomalies, and an interrupted
+`miner-swarm-8` restart fault. The missing provisional deferral for validator
+steering continuity caused the heartbeat to reject the full class set early.
+Read-only watchers still collect terminal diagnostics, while recovery fixes
+and a future-boundary R43 are prepared. This exception cannot be
 reported as a passing strict acceptance check. The exact current state and
 watcher artifact path are in [FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
 An independent finalized read at block **8,078,129** (hash
