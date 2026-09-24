@@ -38,8 +38,10 @@ the runner's result. The unmodified release watchdog is approximately
 2026-09-25 03:41 UTC. The current coordinator's finalized `policyCount()` is
 three at block 8,078,129; the production scheduler's older two-policy gate is
 repaired in main commit `402e6b1b`. Its normal/race focused tests passed in an
-isolated worktree; integrated current-main checks are in progress. The live
-R42 executable has not changed.
+isolated worktree. The combined production policy-history, provisional handoff,
+release gate and postcondition selectors passed on current main normally and
+with race detection (81.948s / 420.484s, pinned `server684.mod`). The live R42
+executable has not changed.
 
 This run is explicitly provisional. An inherited lifecycle handoff records
 that Subtensor would have pruned UID 1 instead of the planned UID 7, so the
