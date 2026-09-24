@@ -206,6 +206,17 @@ func retainedProvisionalSupervisor(cfg *ResolvedConfig, plan *SetupPlan, stopped
 	return manifest, nil
 }
 
+func attachRetainedProvisionalProcessHandoff(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, specs []ProcessSpec) error {
+	rollover, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, plan)
+	if err != nil {
+		return err
+	}
+	if rollover != nil {
+		return attachPolicyRolloverProcessConfigsV2(ctx, cfg, stateDir, plan, specs)
+	}
+	return attachProvisionalActivationSetup(cfg, stateDir, plan, roles, specs)
+}
+
 // Reuse exact static inputs and refresh only process ownership/handoff. The
 // new supervisor performs its normal local cleanup and independent child start.
 func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stopped *provisionalStoppedTopology, bins map[string]string) (returnErr error) {
@@ -237,7 +248,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 	if err != nil {
 		return err
 	}
-	if err := attachProvisionalActivationSetup(cfg, stateDir, self.plan, self.roles, manifest.Specs); err != nil {
+	if err := attachRetainedProvisionalProcessHandoff(ctx, cfg, stateDir, self.plan, self.roles, manifest.Specs); err != nil {
 		return err
 	}
 	boundary, err := processLogCursors(stateDir, manifest)

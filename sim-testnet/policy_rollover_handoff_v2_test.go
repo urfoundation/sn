@@ -143,6 +143,43 @@ func TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext(
 	}
 }
 
+func TestRetainedScenarioSelectsActiveRolloverProcessInputs(t *testing.T) {
+	g, p, h, j := newPolicyRolloverHandoffTestV2(t)
+	f := g.fixture
+	activatePolicyRolloverHandoffTestV2(t, g, p, h, j)
+	specs := buildClientSpecs(f.cfg, f.stateDir, map[string]string{"sim-testnet": "test-binary"}, f.roles)
+	for index := range specs {
+		if specs[index].Role == "validator" {
+			specs[index].Args = append(specs[index].Args, "--provisional-activation-setup=old", "--provisional-activation-setup-sha256=old")
+		}
+	}
+	if err := attachRetainedProvisionalProcessHandoff(t.Context(), f.cfg, f.stateDir, f.plan, f.roles, specs); err != nil {
+		t.Fatal(err)
+	}
+	for _, validator := range h.Validators {
+		var found bool
+		for _, spec := range specs {
+			if spec.ID != fmt.Sprintf("validator-%d", validator.ValidatorID) {
+				continue
+			}
+			found = true
+			if spec.Env["URNETWORK_STATE_DIR"] != validator.ClientStateDir || !strings.Contains(strings.Join(spec.Args, " "), "--config="+validator.Config.Path) || strings.Contains(strings.Join(spec.Args, " "), "provisional-activation-setup") {
+				t.Fatalf("retained validator did not select fresh handoff: %+v", spec)
+			}
+		}
+		if !found {
+			t.Fatalf("missing retained validator %d", validator.ValidatorID)
+		}
+	}
+	path := h.Validators[0].Evidence.Operators[0].Context.Path
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := attachRetainedProvisionalProcessHandoff(t.Context(), f.cfg, f.stateDir, f.plan, f.roles, specs); err == nil {
+		t.Fatal("tampered fresh handoff fell back to old process inputs")
+	}
+}
+
 func TestPolicyRolloverAPIContextsSelectEveryFreshMember(t *testing.T) {
 	g, p, h, j := newPolicyRolloverHandoffTestV2(t)
 	f := g.fixture
