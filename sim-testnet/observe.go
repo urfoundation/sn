@@ -255,6 +255,19 @@ func statusJournalSummary(path string) (JournalSummary, error) {
 }
 
 func Status(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*DeploymentStatus, error) {
+	return statusWithContractReader(ctx, cfg, stateDir, inspectContracts)
+}
+
+// Keep partial diagnostic status, but do not turn a transient deployed-contract
+// read failure into an apparent absence. The scenario's bounded retry owner
+// must receive the original typed cause rather than only its warning text.
+func statusWithContractReader(ctx context.Context, cfg *ResolvedConfig, stateDir string, readContracts func(context.Context, *ResolvedConfig, string, string) (*ContractView, error)) (*DeploymentStatus, error) {
+	if ctx == nil || cfg == nil || cfg.Config == nil || readContracts == nil {
+		return nil, errors.New("deployment status has no observation owner")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s := &DeploymentStatus{
 		Schema:       "urnetwork-sim-status-v1",
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
@@ -291,16 +304,24 @@ func Status(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*Deploym
 	}
 	s.Journal = summary
 	if _, err := os.Stat(filepath.Join(stateDir, "public", "contracts.json")); err == nil {
-		view, viewErr := inspectContracts(ctx, cfg, stateDir, "")
+		view, viewErr := readContracts(ctx, cfg, stateDir, "")
 		if viewErr != nil {
 			s.Warnings = append(s.Warnings, viewErr.Error())
 			s.Healthy = false
+			if ctx.Err() != nil || scenarioSnapshotTransportError(viewErr, false) {
+				return s, fmt.Errorf("deployed contract observation: %w", errors.Join(viewErr, ctx.Err()))
+			}
 		} else {
+			if view == nil {
+				return s, errors.New("deployed contract observation returned no view")
+			}
 			s.Contracts = view
 			if !view.ConservationHolds || !view.RuntimeCodeMatches {
 				s.Healthy = false
 			}
 		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return s, fmt.Errorf("read deployed contract manifest: %w", err)
 	}
 	return s, nil
 }
