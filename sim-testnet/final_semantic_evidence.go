@@ -5190,12 +5190,21 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 		return err
 	}
 	tailLeaves := 0
+	operatorNetworks := map[[16]byte]bool{}
+	for _, provider := range artifact.Providers {
+		if assignment, ok := epochAssignments[connect.Id(provider.ClientID)]; ok && assignment.NoID == expected.NoID && provider.NetworkID != ([16]byte{}) {
+			operatorNetworks[provider.NetworkID] = true
+		}
+	}
 	providerByClient := make(map[connect.Id]payoutartifact.ProviderInput, len(artifact.Providers))
 	providerByColdkey := make(map[[32]byte]connect.Id, len(artifact.Providers))
 	for _, provider := range artifact.Providers {
 		clientID := connect.Id(provider.ClientID)
 		assignment, ok := epochAssignments[clientID]
 		if !ok {
+			if unpaidAuxiliaryPayoutProvider(provider, operatorNetworks) {
+				continue
+			}
 			return fmt.Errorf("payout provider %s is absent from miner tier assignments", clientID.String())
 		}
 		if assignment.NoID != expected.NoID {

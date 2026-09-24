@@ -1217,13 +1217,14 @@ func bytesSHA256(b []byte) string {
 }
 
 type payoutTierMembership struct {
-	Providers             int
-	CandidateProviders    int
-	CandidateHeadExcluded int
-	CandidateLeaves       int
-	PoolTailProviders     int
-	PoolTailHeadExcluded  int
-	PoolTailLeaves        int
+	Providers                     int
+	ExcludedUnconfiguredProviders int
+	CandidateProviders            int
+	CandidateHeadExcluded         int
+	CandidateLeaves               int
+	PoolTailProviders             int
+	PoolTailHeadExcluded          int
+	PoolTailLeaves                int
 }
 
 // The release's configured cohort is distinct from actual epoch binding state.
@@ -1269,13 +1270,30 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 			result.PoolTailLeaves++
 		}
 	}
+	// The signed provider census also contains usage from clients without a
+	// payout wallet. They cannot join either configured payout tier. Authenticate
+	// their operator network against the configured providers before excluding
+	// only unpaid, unbound rows with no verification activity from the cohort.
+	operatorNetworks := map[[16]byte]bool{}
+	for _, provider := range artifact.Providers {
+		if miner := minerClients[provider.ClientID]; miner != 0 && operatorForMiner(cfg, miner) == noID && provider.NetworkID != ([16]byte{}) {
+			operatorNetworks[provider.NetworkID] = true
+		}
+	}
 	providers := make(map[[16]byte]bool, len(artifact.Providers))
 	for _, provider := range artifact.Providers {
 		miner := minerClients[provider.ClientID]
-		if miner == 0 || operatorForMiner(cfg, miner) != noID || providers[provider.ClientID] {
+		if provider.ClientID == ([16]byte{}) || providers[provider.ClientID] {
 			return result, fmt.Errorf("artifact provider has an unknown, foreign, or duplicate client id")
 		}
 		providers[provider.ClientID] = true
+		if miner == 0 && unpaidAuxiliaryPayoutProvider(provider, operatorNetworks) {
+			result.ExcludedUnconfiguredProviders++
+			continue
+		}
+		if miner == 0 || operatorForMiner(cfg, miner) != noID {
+			return result, fmt.Errorf("artifact provider has an unknown, foreign, or duplicate client id")
+		}
 	}
 	// Validate every provider identity before classifying a cohort mismatch.
 	// Otherwise an early candidate mismatch could hide a later corrupt entry.
@@ -1283,6 +1301,9 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 	for _, provider := range artifact.Providers {
 		miner := minerClients[provider.ClientID]
 		result.Providers++
+		if miner == 0 {
+			continue
+		}
 		if candidates[miner] {
 			result.CandidateProviders++
 			if provider.HeadExcluded {
@@ -1639,6 +1660,7 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 		sort.Strings(o.LatestHeadExcludedClientIDs)
 		membership, membershipErr := summarizePayoutTierMembershipForCandidates(p.cfg, noID, latestMatching, minerClients, fleetLifecycleCandidateMinerSet(p.cfg, lifecycle, latestMatching.Epoch))
 		o.LatestArtifactProviders = membership.Providers
+		o.ExcludedUnconfiguredProviders = membership.ExcludedUnconfiguredProviders
 		o.CandidateProviders = membership.CandidateProviders
 		o.CandidateHeadExcluded = membership.CandidateHeadExcluded
 		o.CandidateLeaves = membership.CandidateLeaves
