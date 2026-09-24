@@ -31,6 +31,13 @@ binary again into a new report directory. Its script is
 `/mnt/data/sn-testnet/qualification/policy-rollover-20260924/terminal-diagnostics/r42-signed-result-followup.sh`.
 The first watcher captures early terminal findings; the follow-up captures the
 signed result and remaining checks. Neither writes live campaign state.
+The signed schedule's two lifecycle tail faults can remain active until block
+8,080,234, after nominal terminal block 8,079,424. Do not stop at the terminal
+block alone: wait for all fault restorations, a signed terminal observation and
+the runner's result. The unmodified release watchdog is approximately
+2026-09-25 03:41 UTC. The current coordinator's finalized `policyCount()` is
+three at block 8,078,129; the production scheduler's older two-policy gate is
+being repaired and tested before any production action.
 
 This run is explicitly provisional. An inherited lifecycle handoff records
 that Subtensor would have pruned UID 1 instead of the planned UID 7, so the
