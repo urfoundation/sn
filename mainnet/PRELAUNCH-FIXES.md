@@ -2052,6 +2052,18 @@ read-only auditor independent; collect at the block for timely diagnosis, then
 collect again after the exact signed result appears. Bind both inventories to
 the same run ID, plan, boundary and source hash. A diagnostic report never
 creates a pass marker or substitutes for the original signed result.
+
+The production cadence scheduler and its receipt verifier must share one
+finalized policy-history reader. R42's coordinator already has three versions
+because an approved rate amendment added one before production; a fixed
+two-version gate rejected that legitimate history. Admit only the exact
+approved predecessor and amended policy, then one future production version;
+pin every read to one finalized block and verify the append-only indices,
+effective coordinates, active snapshot and receipt. Reentry after a partial
+write must recover the same transaction without scheduling a fifth or using
+an unreviewed policy version. The testnet correction is `402e6b1b`; mainnet
+must rehearse its own approved policy sequence before launch.
+
 An operational continuation from a failed testnet release must retain every
 failed assertion and a distinct non-accepting gate. Before production can
 start, authenticate the exact signed terminal source and result, recompute
