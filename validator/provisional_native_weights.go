@@ -35,9 +35,11 @@ func provisionalNativeWeightRejectionEnabled(cfg *ReleaseConfig, history *releas
 	return provisionalFreshNativePreparationEnabled(cfg, history, current)
 }
 
-// No published native intent may be deferred by the fresh-generation owner.
+// No published native intent may be deferred by the pre-intent owner. Retained
+// operator cuts or settlement history do not create a native intent; restarting
+// after collecting them must preserve the same bounded preparation retries.
 func provisionalFreshNativePreparationEnabled(cfg *ReleaseConfig, history *releaseEvidenceV2StartupHistory, current *SteeringIntent) bool {
-	return history != nil && !history.retainedStartup && history.historyAdoption == nil && current == nil && cfg != nil &&
+	return history != nil && history.historyAdoption == nil && current == nil && cfg != nil &&
 		cfg.ProvisionalRuntimeCompatibility == crv4.ProvisionalRuntimeCompatibilityProfile &&
 		validateReleaseProvisionalRuntimeCompatibility(cfg) == nil
 }
