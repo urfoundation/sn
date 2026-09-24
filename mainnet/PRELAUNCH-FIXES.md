@@ -2081,3 +2081,23 @@ signed observation. The active-fault recovery ledger must be empty. Keep
 historical lifecycle plan identity separate from the current plan authorizing
 new actions. This permits diagnosis to continue without laundering a failed
 release into a strict pass or overlapping old fault injection with production.
+
+R42 ended before terminal because a provisional heartbeat treated a known
+validator steering-continuity finding as a reason to stop the entire interval.
+Production should keep collecting through recognized provisional findings and
+report the full set at final acceptance; unknown process-log classes and
+integrity failures remain hard. An interrupted process-restart fault must
+checkpoint its exact signed target generation and retry a bounded health
+observation on later heartbeats. A stuck child may need a targeted operator
+repair, but neither a retry nor a restart may erase the active-fault ledger
+without observing a different healthy supervised PID. Add deterministic tests
+for mixed known findings, an unchanged unhealthy PID, replacement recovery,
+and a changed manifest identity.
+
+The source-role rollout's read-only native precheck met a new runtime 471 while
+its retained config pinned 467. Every current-runtime reader, including
+review/apply commands, must install the explicitly approved provisional
+compatibility profile before authenticating the live artifact; historical
+source signatures and blocks remain exact-pinned. Test a consumed-interface
+successor and a real metadata/API incompatibility separately. A precheck must
+not rewrite the original config or signed campaign evidence.
