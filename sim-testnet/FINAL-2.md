@@ -1,6 +1,20 @@
 # Sim-testnet finalization report 2
 
-**Current status: in progress; `final_acceptance=false`.** The corrected
+**Current status, 2026-09-24: R42's real release interval is running;
+`final_acceptance=false` remains provisional.** The signed attempt
+`campaign-attempts/release-1.0.recovery.42.evidence.json` began at finalized
+block 8,077,774 (epoch 608) and covers five 300-block epochs through block
+8,079,274, with terminal block 8,079,424. The release service and an
+independent read-only terminal diagnostic watcher are active against the LAN
+RPC at `192.168.1.162:9944`. The inherited UID-churn exercise was explicitly
+bypassed because the chain would prune UID 1 rather than the planned UID 7;
+no churn transaction was sent. The run is continuing to terminal so its other
+errors can be collected and repaired in a later run. This exception cannot be
+reported as a passing strict acceptance check. The exact current state and
+watcher artifact path are in [FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
+
+The following September 16 checkpoint is retained as historical evidence; it
+does not describe R42's current state. The corrected
 provisional topology admission passed at **19:57:09 UTC on September 16**. A
 qualified incremental release retry subsequently reopened the signed durable
 successor and reauthenticated all 4,674 retained receipts. It reached the real
