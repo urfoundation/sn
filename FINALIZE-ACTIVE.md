@@ -2,7 +2,7 @@
 
 ## R43 recovery startup — 2026-09-24 21:02 UTC
 
-`urnetwork-sim-release-r43.service` is active with PID 2374365, using the
+`urnetwork-sim-release-r43.service` started with PID 2374365, using the
 qualified runner SHA-256
 `6fdf0dcc1728362476edc83f6f27fa6cbba85e7f238c82d261bfe32f2bbb5e58`
 and the owned LAN RPC `192.168.1.162:9944`. The controlled fleet stop
@@ -12,8 +12,14 @@ was applied and produced an owner-signed selection receipt at
 `policy-rollover/source-role/generation-00000000000000000001/handoff.evidence.json`
 (SHA-256 `0x50cd5b10cbe20b61994553c6b2e32da6cdfd617d1d1d778961c759cf46359053`).
 The original R42 failed result, original rollover handoff and active-fault
-ledger remain intact. R43 is still in startup; no new signed acceptance
-boundary or completed interval has been observed yet. The runner must recover
+ledger remain intact. This R43 startup exited at 21:04:10 UTC before a new
+signed acceptance boundary or transaction. Its local audit covered all 11,181
+actions, authenticated 9,859 receipts and found zero failures, then the
+`release-host` preflight failed: `operator config overlay: required versioned
+config resource all/mmdb/*/geolite2.mmdb is unavailable`. The pinned server
+actually reads `mmdb/ip-ipinfo.mmdb`; the live config repository has that
+resource and `ip.mmdb`, but no `geolite2.mmdb` or `places.yml`. The overlay's
+resource list was stale. The next startup must correct that list, recover
 `release-rolling-15`, relaunch the fleet with the selected validator config,
 and sign a future-boundary attempt before the interval can be called running.
 Focused normal/race/causal tests for native role, heartbeat continuation,
@@ -22,7 +28,7 @@ native-role, policy-history, handoff and continuity selectors passed normally
 and under race detection (validator 29.653s/135.541s; simulator
 70.846s/338.366s) with the pinned `server684.mod`.
 
-## R42 failed early; prepare R43 recovery — 2026-09-24
+## R42 failed early; recover in next signed interval — 2026-09-24
 
 Recovery generation 42 ran as `urnetwork-sim-release-608.service`
 against the owned LAN RPC `192.168.1.162:9944`. Its signed campaign attempt is
@@ -31,7 +37,8 @@ and its run ID is `20260924T181314.486418853Z-release-1.0`. The retained
 acceptance boundary starts with epoch 608 at block 8,077,774, covers five full
 epochs through block 8,079,274, and has terminal block 8,079,424. The LAN node
 finalized the start block on 2026-09-24 at about 18:46 UTC. The release owner
-exited with status 1 at 20:42 UTC, before terminal; the fleet remains active.
+exited with status 1 at 20:42 UTC, before terminal; the fleet remained active
+until the later controlled R43 restart.
 Its signed result is `fail`, `final_acceptance=false`, with invalidation
 `execution-exited-before-completion`. The result SHA-256 is
 `7288e099489a1525b4f2f80ff1f77e76766031c007c0c7f364e1884e0f7961f4`;

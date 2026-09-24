@@ -1,11 +1,16 @@
 # Sim-testnet finalization report 2
 
-**Current status, 2026-09-24 21:02 UTC: R43 recovery startup is active.**
+**Current status, 2026-09-24 21:04 UTC: R43 recovery startup failed before
+signing an interval.**
 After R42's signed early failure, the fleet was stopped with on-chain state
 preserved and an owner-signed native source-role overlay selected for validator
 2. Both native slots were checked at finalized runtime 471 using the approved
-consumed-interface profile. The supervised R43 runner is active, but it has
-not yet signed a new acceptance boundary or completed a release interval.
+consumed-interface profile. The supervised R43 runner authenticated 9,859
+retained receipts with zero failures, then stopped at a stale operator overlay
+resource check before topology startup. It has not signed a new acceptance
+boundary or completed a release interval. The overlay expects `geolite2.mmdb`;
+the pinned server requests `ip-ipinfo.mmdb`, which exists in the live config
+repository.
 The retained R42 active-fault record must be restored by the recovery driver.
 The exact service, binary hash and selection receipt are in
 [FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
@@ -14,9 +19,9 @@ The exact service, binary hash and selection receipt are in
 before terminal; `final_acceptance=false`.** The signed attempt
 `campaign-attempts/release-1.0.recovery.42.evidence.json` began at finalized
 block 8,077,774 (epoch 608) and covers five 300-block epochs through block
-8,079,274, with terminal block 8,079,424. The release service and an
-independent read-only terminal diagnostic watchers use the LAN
-RPC at `192.168.1.162:9944`. The inherited UID-churn exercise was explicitly
+8,079,274, with terminal block 8,079,424. Independent read-only terminal
+diagnostic watchers use the LAN RPC at
+`192.168.1.162:9944`. The inherited UID-churn exercise was explicitly
 bypassed because the chain would prune UID 1 rather than the planned UID 7;
 no churn transaction was sent. R42's owner exited at 20:42 UTC after observing
 through epoch 609, before terminal block 8,079,424. Its signed result failed
