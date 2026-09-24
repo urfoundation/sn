@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"reflect"
 	"testing"
 )
 
@@ -47,6 +48,98 @@ func TestRetainedCampaignNativeOwnerAcquiresMissingReader(t *testing.T) {
 	executor, runtime, err := openCampaignExecutorWithNativeOwner(t.Context(), cfg, local.stateDir, local.plan, local.journal, &reloadedRoles, local, factory)
 	if err != nil || opened != 1 || executor == nil || executor.substrate == nil || executor.nativeOwner != nil || runtime == nil || local.substrate != nil {
 		t.Fatalf("retained metadata failed reader handoff: opens%d executor%v error%v", opened, executor, err)
+	}
+}
+
+// The retained owner precedes scenario entry's authenticated rate-history copy.
+func retainedRateCampaignOwnerFixture(t *testing.T) (*ResolvedConfig, *Executor) {
+	t.Helper()
+	cfg, local := retainedCampaignOwnerFixture(t)
+	rateConfig, _, amendment := rateAmendmentTestPlans(t)
+	cfg.Policy, cfg.PolicyHash = rateConfig.Policy, rateConfig.PolicyHash
+	local.plan.PolicyHash = amendment.PolicyHash
+	local.plan.PolicyRateAmendment = amendment.PolicyRateAmendment
+	local.plan.PriorPlanHashes = append(local.plan.PriorPlanHashes, amendment.PolicyRateAmendment.PriorPlanHash)
+	var err error
+	local.plan.PlanHash, err = local.plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.provisionalResume.Record.PlanHash = local.plan.PlanHash
+	return cfg, local
+}
+
+// Use the actual scenario policy derivation and reader handoff together. The
+// approved history view must not replace or mutate the local connection owner.
+func TestRetainedCampaignNativeOwnerAcquiresApprovedRateHistoryReader(t *testing.T) {
+	cfg, local := retainedRateCampaignOwnerFixture(t)
+	local.auditAuthorizedConfig = cfg
+	amended, err := configWithPolicyRateAmendment(cfg, local.plan)
+	if err != nil || amended == cfg {
+		t.Fatal("scenario did not derive an owned rate-history configuration", err)
+	}
+	opened := 0
+	executor, runtime, err := openCampaignExecutorWithNativeOwner(t.Context(), amended, local.stateDir, local.plan, local.journal, local.roles, local,
+		func(_ context.Context, authorized, runtime *ResolvedConfig, dir string, plan *SetupPlan, journal *Journal, roles *RoleSecrets, owner *Executor) (*Executor, error) {
+			opened++
+			if authorized != amended || owner != nil || dir != local.stateDir || plan != local.plan || journal != local.journal || roles != local.roles {
+				t.Fatal("rate history changed the authenticated campaign handoff")
+			}
+			if runtime.OperationalEVM != "http://"+campaignEVMAuthority() || validateCampaignRPCTransport(amended, runtime) != nil || !reflect.DeepEqual(runtime.previousPolicy, &plan.PolicyRateAmendment.Previous) {
+				t.Fatal("new reader lost the governed history or shared campaign route")
+			}
+			return &Executor{cfg: runtime, plan: plan, journal: journal, roles: roles, substrate: &SubstrateManager{}}, nil
+		})
+	if err != nil || opened != 1 || executor == nil || executor.substrate == nil || executor.nativeOwner != nil || runtime == nil {
+		t.Fatalf("approved rate copy prevented reader acquisition: opens=%d err=%v", opened, err)
+	}
+	if local.cfg != cfg || local.auditAuthorizedConfig != cfg || local.substrate != nil || cfg.previousPolicy != nil {
+		t.Fatal("rate history replaced or mutated the retained local owner")
+	}
+}
+
+// Equal plan hashes cannot authorize a changed route, budget, secret, policy,
+// invocation or audit owner in the derived scenario configuration.
+func TestRetainedCampaignNativeOwnerRejectsChangedRateHistoryAuthority(t *testing.T) {
+	cfg, local := retainedRateCampaignOwnerFixture(t)
+	for _, fault := range []string{"unamended", "config", "route", "budget", "secret", "policy", "history", "invocation", "audit owner"} {
+		amended, err := configWithPolicyRateAmendment(cfg, local.plan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner := *local
+		switch fault {
+		case "unamended":
+			amended.previousPolicy = nil
+		case "config":
+			amended.ConfigHash += "changed"
+		case "route":
+			amended.OperationalSubstrate = "ws://changed.example:9944"
+		case "budget":
+			amended.MaximumAlphaRao++
+		case "secret":
+			amended.WalletMaterial = "synthetic-changed-credential"
+		case "policy":
+			policy := *amended.Policy
+			policy.PolicyID++
+			amended.Policy = &policy
+		case "history":
+			amended.previousPolicy.Deposit.Tiers[0].RateNumeratorRaoPerGiB++
+		case "invocation":
+			amended.provisionalRPCAuthority = "192.0.2.55:9944"
+		case "audit owner":
+			copy := *cfg
+			owner.auditAuthorizedConfig = &copy
+		}
+		opened := 0
+		_, _, err = openCampaignExecutorWithNativeOwner(t.Context(), amended, owner.stateDir, owner.plan, owner.journal, owner.roles, &owner,
+			func(context.Context, *ResolvedConfig, *ResolvedConfig, string, *SetupPlan, *Journal, *RoleSecrets, *Executor) (*Executor, error) {
+				opened++
+				return nil, nil
+			})
+		if err == nil || opened != 0 {
+			t.Errorf("%s rate-history authority reached reader construction: opens=%d err=%v", fault, opened, err)
+		}
 	}
 }
 

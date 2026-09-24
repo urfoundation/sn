@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"reflect"
 )
 
 // Only transport construction is replaceable in deterministic orchestration
@@ -19,8 +20,19 @@ func retainedCampaignNativeOwner(cfg *ResolvedConfig, stateDir string, plan *Set
 	if owner == nil || owner.substrate != nil {
 		return owner, nil
 	}
-	if !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record.Command != "scenario" || !provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) || plan == nil || journal == nil || roles == nil || owner.roles == nil || owner.cfg != cfg || owner.stateDir != stateDir || owner.plan != plan || owner.journal != journal || cfg.provisionalResume.Record.PlanHash != plan.PlanHash || (owner.auditAuthorizedConfig != nil && owner.auditAuthorizedConfig != cfg) {
+	if !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record.Command != "scenario" || !provisionalRetainedStartupAllowed(cfg.provisionalResume.Record) || plan == nil || journal == nil || roles == nil || owner.roles == nil || owner.cfg == nil || owner.stateDir != stateDir || owner.plan != plan || owner.journal != journal || cfg.provisionalResume.Record.PlanHash != plan.PlanHash || (owner.auditAuthorizedConfig != nil && owner.auditAuthorizedConfig != owner.cfg) {
 		return nil, errors.New("retained campaign reader acquisition lacks its exact approved local owner")
+	}
+	if owner.cfg != cfg {
+		// Scenario entry adds approved rate history to an owned config copy.
+		// Reconstruct that exact copy; no other authority or runtime field may vary.
+		if plan.PolicyRateAmendment == nil {
+			return nil, errors.New("retained campaign reader acquisition changed its local configuration owner")
+		}
+		amended, err := configWithPolicyRateAmendment(owner.cfg, plan)
+		if err != nil || !reflect.DeepEqual(amended, cfg) {
+			return nil, errors.Join(errors.New("retained campaign reader acquisition differs from its approved rate configuration"), err)
+		}
 	}
 	// Scenario startup reloads authenticated secrets. Equal credentials must not
 	// require the earlier allocation, but any changed role remains a hard error.
