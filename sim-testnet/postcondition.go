@@ -1198,22 +1198,20 @@ func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head Cha
 	if err != nil {
 		return nil, fmt.Errorf("production policy transaction: %w", err)
 	}
-	coordinator := stabi.NewSTCoordinator()
 	address := e.payloads.Manifest.CoordinatorProxy
-	count, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyCount(), coordinator.UnpackPolicyCount)
-	if err != nil || !count.IsUint64() || count.Uint64() < 2 || count.Uint64() > 3 {
-		return nil, stateMismatchError(err, "policy count=%v, want fresh or migrated release history", count)
+	history, err := readProductionPolicyHistory(ctx, e.cfg, e.plan, e.owner, address, head.Number)
+	if err != nil {
+		return nil, err
 	}
-	lastIndex := new(big.Int).Sub(new(big.Int).Set(count), big.NewInt(1))
-	policy, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyByIndex(lastIndex), coordinator.UnpackPolicyByIndex)
-	if err != nil || !productionPolicyMatches(e.cfg, policy) || policy.EffectiveEpoch != evidence.EffectiveEpoch || policy.EffectiveBlock != evidence.EffectiveBlock {
-		return nil, stateMismatchError(err, "finalized production policy does not match evidence")
+	policy := history.policies[len(history.policies)-1]
+	if !history.scheduled || policy.EffectiveEpoch != evidence.EffectiveEpoch || policy.EffectiveBlock != evidence.EffectiveBlock {
+		return nil, errors.New("finalized production policy does not match evidence")
 	}
-	if err := productionPolicyReceiptMatches(receipt, address, policy, count.Uint64()-1); err != nil {
+	if err := productionPolicyReceiptMatches(receipt, address, policy, uint64(len(history.policies)-1)); err != nil {
 		return nil, err
 	}
 	state["effective_epoch"], state["effective_block"], state["epoch_blocks"] = policy.EffectiveEpoch, policy.EffectiveBlock, policy.EpochBlocks
-	state["policy_count"] = count.String()
+	state["policy_count"] = strconv.Itoa(len(history.policies))
 	return state, nil
 }
 

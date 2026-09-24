@@ -2776,42 +2776,25 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	if err != nil {
 		return fmt.Errorf("production release gate: %w", err)
 	}
-	epochValues, err := contractCall(ctx, e.owner.client, address, parsed, "currentEpoch")
-	if err != nil || len(epochValues) != 1 {
-		return stateMismatchError(err, "read current epoch returned %d values", len(epochValues))
+	head, err := finalizedEVMHead(ctx, e.owner.client)
+	if err != nil {
+		return err
 	}
-	current, ok := epochValues[0].(*big.Int)
-	if !ok || !current.IsUint64() {
-		return fmt.Errorf("currentEpoch returned %T", epochValues[0])
+	history, err := readProductionPolicyHistory(ctx, e.cfg, e.plan, e.owner, address, head.Number)
+	if err != nil {
+		return err
 	}
-	currentEpoch := current.Uint64()
+	currentEpoch := history.currentEpoch
 	p := e.cfg.Policy.ProductionCadence
-	countValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyCount")
-	if err != nil || len(countValues) != 1 {
-		return stateMismatchError(err, "read policy count returned %d values", len(countValues))
-	}
-	count, ok := countValues[0].(*big.Int)
-	if !ok || !count.IsUint64() || count.Sign() == 0 {
-		return fmt.Errorf("policyCount returned %T", countValues[0])
-	}
-	lastIndex := new(big.Int).Sub(new(big.Int).Set(count), big.NewInt(1))
-	lastValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyByIndex", lastIndex)
-	if err != nil {
-		return err
-	}
-	lastPolicy, err := coordinatorPolicy(lastValues)
-	if err != nil {
-		return err
-	}
-	alreadyScheduled := productionPolicyMatches(e.cfg, lastPolicy)
+	lastPolicy := history.policies[len(history.policies)-1]
 	scheduledEffectiveEpoch := uint64(0)
-	if alreadyScheduled {
+	if history.scheduled {
 		scheduledEffectiveEpoch = lastPolicy.EffectiveEpoch
 	}
 	if err := validateProductionScheduleEpoch(currentEpoch, gate.EndEpoch, scheduledEffectiveEpoch); err != nil {
 		return err
 	}
-	if alreadyScheduled {
+	if history.scheduled {
 		evidencePath := filepath.Join(e.stateDir, "public", "production-policy.json")
 		var evidence ProductionPolicyEvidence
 		if readErr := decodeStrictJSONFile(evidencePath, &evidence); readErr == nil {
@@ -2822,28 +2805,11 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 		} else if !errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("read production policy evidence: %w", readErr)
 		}
-		receipt, recoverErr := e.recoverProductionPolicyReceipt(ctx, a, parsed, address, lastPolicy, count.Uint64()-1)
+		receipt, recoverErr := e.recoverProductionPolicyReceipt(ctx, a, parsed, address, lastPolicy, uint64(len(history.policies)-1))
 		if recoverErr != nil {
 			return recoverErr
 		}
 		return e.writeProductionPolicyEvidence(lastPolicy, lastPolicy.EffectiveEpoch-1, gate, receipt)
-	}
-	// A migrated deployment has one historical policy plus the canonical
-	// accelerated snapshot. A fresh deployment has only the latter. Anything
-	// else is an unreviewed policy history.
-	if count.Uint64() > 2 || !bootstrapPolicyMatches(e.cfg, lastPolicy) {
-		return fmt.Errorf("coordinator has an unreviewed %d-version policy history before production", count.Uint64())
-	}
-	priorValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyAt", current)
-	if err != nil {
-		return err
-	}
-	prior, err := coordinatorPolicy(priorValues)
-	if err != nil {
-		return err
-	}
-	if prior.EpochBlocks != e.cfg.Policy.Settlement.EpochBlocks || prior.RootCommitWindowBlocks != e.cfg.Policy.Settlement.RootCommitWindowBlocks || prior.FinalizeOffsetBlocks != e.cfg.Policy.Settlement.FinalizeOffsetBlocks || prior.CloseGraceBlocks != e.cfg.Policy.Settlement.CloseGraceBlocks {
-		return errors.New("active accelerated policy is not canonical; refusing production transition")
 	}
 	if p.EpochBlocks > ^uint64(0)/2 {
 		return errors.New("production policy arithmetic overflows uint64")
@@ -2875,22 +2841,22 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	if err != nil {
 		return err
 	}
-	postValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyAt", new(big.Int).SetUint64(next.EffectiveEpoch))
+	postHistory, err := readProductionPolicyHistory(ctx, e.cfg, e.plan, e.owner, address, receipt.BlockNumber.Uint64())
 	if err != nil {
 		return err
 	}
-	post, err := coordinatorPolicy(postValues)
-	if err != nil || !productionPolicyMatches(e.cfg, post) || post.EffectiveEpoch != next.EffectiveEpoch {
+	post := postHistory.policies[len(postHistory.policies)-1]
+	if !postHistory.scheduled || len(postHistory.policies) != len(history.policies)+1 || post.EffectiveEpoch != next.EffectiveEpoch {
 		return errors.New("production policy post-state does not match the approved cadence")
 	}
-	// Scheduling must not mutate the current short epoch snapshot.
-	currentValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyAt", current)
-	if err != nil {
-		return err
+	// Scheduling appends one version and cannot rewrite retained liabilities.
+	for index, prior := range history.policies {
+		if !policySnapshotEqual(postHistory.policies[index], prior) {
+			return errors.New("production scheduling changed an existing policy")
+		}
 	}
-	currentPost, err := coordinatorPolicy(currentValues)
-	if err != nil || !policySnapshotEqual(currentPost, prior) {
-		return errors.New("production scheduling changed the active accelerated policy")
+	if err := productionPolicyReceiptMatches(receipt, address, post, uint64(len(history.policies))); err != nil {
+		return err
 	}
 	return e.writeProductionPolicyEvidence(post, window.CurrentEpoch, gate, receipt)
 }
