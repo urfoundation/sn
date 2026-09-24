@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.9.19
+  version: 2026.9.23
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -18,9 +18,10 @@ info:
     staging era beginning at epoch zero. Staging submissions are fee-free but
     traverse the same durable FIFO and evaluator as production. Each staging
     epoch publishes its poll results after admission closes and all accepted
-    work drains. It automatically names the highest-ranked placeable,
-    statistically significant candidate passing every gate, or no winner if
-    none qualifies. Staging has no honesty review or source promotion, and
+    work drains. It automatically names the highest-ranked placeable candidate
+    passing every gate, without a significance or takeover-margin requirement;
+    an empty or wholly unplaceable round has no winner. Staging has no honesty
+    review or source promotion, and
     even its winner has honesty_review=not_reviewed. A named staging winner
     is not an honesty or safety approval and never changes evaluated source
     or the significance threshold. Historical finalized results are preserved.
@@ -110,7 +111,7 @@ paths:
         Returns only finalized production epochs by default. Set
         include_staging=true to also return finalized staging epochs through
         the same reconciliation shape. Staging epochs are explicitly marked
-        and automatically name the highest-ranked eligible significant winner,
+        and automatically name the highest-ranked placeable winner passing every gate,
         or publish winner_job_id as null if none qualifies. Even a staging
         winner has honesty_review=not_reviewed and is never promoted. Entries are
         deterministically ordered by absolute raw score ascending, submission
@@ -804,7 +805,7 @@ components:
           type: string
           format: date-time
         winner_job_id:
-          description: Automatically selected eligible significant staging winner or honesty-approved production winner; null when there is no winner. Historical finalized results are preserved.
+          description: Automatically selected placeable staging winner passing every gate, or honesty-approved significant production winner; null when no candidate qualifies. Historical finalized results are preserved.
           oneOf:
             - type: string
               format: uuid
@@ -1008,7 +1009,7 @@ components:
           type: boolean
         takeover_eligible:
           type: boolean
-          description: True only when correctness gates, the epoch margin, and the per-candidate shared-control significance test all pass; honesty review is still required before winner selection.
+          description: True only when correctness gates, the epoch margin, and the per-candidate shared-control significance test all pass; production additionally requires honesty review. Staging records this diagnostic but does not require it to name its best placeable winner.
         gates:
           type: object
           additionalProperties:
