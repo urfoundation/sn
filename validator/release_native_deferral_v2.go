@@ -14,8 +14,18 @@ import (
 // and both ordinary/terminal signatures are checked again before deferral.
 // A second input is never manufactured for the same native epoch.
 func (self *releaseEvidenceV2StartupHistory) provisionalClosedInputDeferral(ctx context.Context, current *SteeringIntent, nativeEpoch, nativeBlock uint64, nativeHash string, snapshot *ReleaseSnapshot) error {
-	if !provisionalClosedNativeInputEnabled(&self.cfg) {
+	fresh := provisionalFreshNativePreparationEnabled(&self.cfg, self, current)
+	if !provisionalClosedNativeInputEnabled(&self.cfg) && !fresh {
 		return nil
+	}
+	return self.authenticateClosedNativeInputDeferral(ctx, current, nativeEpoch, nativeBlock, nativeHash, snapshot, fresh)
+}
+
+// Permission and evidence are separate: even a fresh pre-intent owner must
+// authenticate the unchanged ordinary journal and its complete signed terminal.
+func (self *releaseEvidenceV2StartupHistory) authenticateClosedNativeInputDeferral(ctx context.Context, current *SteeringIntent, nativeEpoch, nativeBlock uint64, nativeHash string, snapshot *ReleaseSnapshot, beforeFirstIntent bool) error {
+	if beforeFirstIntent && current != nil {
+		return errors.New("fresh provisional native input deferral cannot follow an existing intent")
 	}
 	if ctx == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
 		return errors.New("provisional native input decision is incomplete")
@@ -107,5 +117,5 @@ func (self *releaseEvidenceV2StartupHistory) provisionalClosedInputDeferral(ctx 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return &provisionalClosedNativeInput{nativeEpoch: nativeEpoch, activeSettlement: active}
+	return &provisionalClosedNativeInput{nativeEpoch: nativeEpoch, activeSettlement: active, beforeFirstIntent: beforeFirstIntent}
 }

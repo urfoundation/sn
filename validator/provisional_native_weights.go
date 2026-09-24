@@ -32,7 +32,12 @@ func provisionalNativeWeightRejectionEnabled(cfg *ReleaseConfig, history *releas
 	if history.retainedStartup && provisionalClosedNativeInputEnabled(cfg) {
 		return true
 	}
-	return !history.retainedStartup && history.historyAdoption == nil && current == nil && cfg != nil &&
+	return provisionalFreshNativePreparationEnabled(cfg, history, current)
+}
+
+// No published native intent may be deferred by the fresh-generation owner.
+func provisionalFreshNativePreparationEnabled(cfg *ReleaseConfig, history *releaseEvidenceV2StartupHistory, current *SteeringIntent) bool {
+	return history != nil && !history.retainedStartup && history.historyAdoption == nil && current == nil && cfg != nil &&
 		cfg.ProvisionalRuntimeCompatibility == crv4.ProvisionalRuntimeCompatibilityProfile &&
 		validateReleaseProvisionalRuntimeCompatibility(cfg) == nil
 }

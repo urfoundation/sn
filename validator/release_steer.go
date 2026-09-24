@@ -1052,12 +1052,13 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 				err = submit()
 				var closedInput *provisionalClosedNativeInput
 				var rejected *provisionalNativeWeightRejection
+				var interrupted *provisionalNativeReadInterruption
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
 					retryableCut = false
 					weightRejected = false
 					pendingErr = nil
-				} else if allowDeferral && errors.As(err, &closedInput) && closedInput.nativeEpoch == targetEpoch && releaseOnlyErrors(err, errProvisionalClosedNativeInput) {
+				} else if errors.As(err, &closedInput) && (allowDeferral || allowFreshWeights && closedInput.beforeFirstIntent) && closedInput.nativeEpoch == targetEpoch && releaseOnlyErrors(err, errProvisionalClosedNativeInput) && pendingErr == nil {
 					deferred, failures, pendingErr = true, 0, nil
 					retryableCut = false
 					fmt.Printf("release steer: %v; waiting for next native epoch\n", closedInput)
@@ -1069,6 +1070,10 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					retryableCut = false
 					rejectedAttempts++
 					fmt.Printf("release steer: %v; rejected attempt %d; retrying on next poll\n", rejected, rejectedAttempts)
+				} else if allowFreshWeights && errors.As(err, &interrupted) && interrupted.nativeEpoch == targetEpoch && releaseOnlyErrors(err, interrupted) {
+					weightRejected = false
+					retryableCut = pendingErr == nil
+					fmt.Printf("release steer: %v; retrying authenticated preparation on next poll\n", interrupted)
 				} else if releaseOnlyErrors(err, errAttemptCutPending) {
 					weightRejected = false
 					retryableCut = allowDeferral && pendingErr == nil

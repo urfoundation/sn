@@ -252,7 +252,7 @@ func (self *ReleaseSteerer) checkSourceRoleV2(ctx context.Context, snapshot *Rel
 	return errors.New("validator source native slot belongs to another role or unretained write")
 }
 
-func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
+func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) {
 	// Runtime authentication mutates a signing view, never the process-wide
 	// metadata pointer used concurrently by independent native observers.
 	owned := *self
@@ -330,6 +330,10 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 		}
 	}
 	allowWeightRejection := provisionalNativeWeightRejectionEnabled(self.cfg, self.runtimeV2.history, current)
+	allowReadRetry := provisionalFreshNativePreparationEnabled(self.cfg, self.runtimeV2.history, current)
+	defer func() {
+		resultErr = classifyProvisionalNativeRead(allowReadRetry, nativeState.SubnetEpochIndex, resultErr)
+	}()
 	if err := loadHotkeyUids(); err != nil {
 		return err
 	}
@@ -475,6 +479,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// From this point an intent may exist even when its write returns an error.
+	// Its normal durable reconciliation must own every subsequent retry.
+	allowReadRetry = false
 	intent, err := self.intents.beginV2(ctx, SteeringIntent{
 		ValidatorID:             self.cfg.ValidatorID,
 		Netuid:                  self.cfg.Netuid,

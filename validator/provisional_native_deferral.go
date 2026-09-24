@@ -10,8 +10,9 @@ var errProvisionalClosedNativeInput = errors.New("provisional native input belon
 // Deferral records no native success. It preserves an authenticated immutable
 // input while allowing independent trails and settlement publication to run.
 type provisionalClosedNativeInput struct {
-	nativeEpoch      uint64
-	activeSettlement uint64
+	nativeEpoch       uint64
+	activeSettlement  uint64
+	beforeFirstIntent bool
 }
 
 func (self *provisionalClosedNativeInput) Error() string {

@@ -14,7 +14,7 @@ import (
 // drained, unsigned reservations so normal terminal closure can proceed; any
 // signed journal remains immutable and is handled by closed-input deferral.
 func (self *releaseRuntimeV2) cancelExpiredNativeReservationOwned(ctx context.Context, current *SteeringIntent, nativeEpoch uint64, snapshot *ReleaseSnapshot) error {
-	if !provisionalClosedNativeInputEnabled(&self.cfg) {
+	if !provisionalClosedNativeInputEnabled(&self.cfg) && !provisionalFreshNativePreparationEnabled(&self.cfg, self.history, current) {
 		return nil
 	}
 	if ctx == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {

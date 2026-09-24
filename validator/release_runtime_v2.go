@@ -528,7 +528,7 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		inputOptions := releaseMeasurementInputV2Options{MaxJournalBytes: bounds.MaxInputJournalBytes,
 			Stats: releaseStatsV2Options{Activation: expected.Activation, Policy: operator.Policy, Bounds: bounds.Cut, Seal: seal,
 				Stats: AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, Replay: operator.Measurement.Replay}}}
-		if provisionalClosedNativeInputEnabled(&self.cfg) {
+		if provisionalClosedNativeInputEnabled(&self.cfg) || provisionalFreshNativePreparationEnabled(&self.cfg, self.history, current) {
 			if self.nativeReservations == nil {
 				self.nativeReservations = make(map[uint64]uint64)
 			}
