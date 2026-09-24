@@ -111,7 +111,7 @@ func TestPolicyRateAmendmentWaitRetainsReadinessProgress(t *testing.T) {
 			t.Fatal(err)
 		}
 		pending := &ScenarioObservation{PolicyRateReadiness: &PolicyRateReadinessObservation{Detail: "incomplete source"}}
-		ready := &ScenarioObservation{PolicyRateReadiness: &PolicyRateReadinessObservation{Ready: true}}
+		ready := policyRateReadinessTestObservation(cfg, 24*1024*1024)
 		probe := &scenarioIntervalProbe{observations: []*ScenarioObservation{pending, ready}}
 		var retained []*ScenarioObservation
 		started := time.Now()

@@ -480,15 +480,7 @@ func buildScenarioAcceptanceWindow(cfg *ResolvedConfig, definition scenarioDefin
 		return nil, errors.New("strict V2 acceptance requires both fresh native applications and payout readiness")
 	}
 	if cfg.previousPolicy != nil && definition.Name == "release-1.0" {
-		proof := baseline.PolicyRateReadiness
-		if proof == nil || !proof.Ready || proof.Head != baseline.Status.Contracts.FinalizedHead {
-			return nil, errors.New("rate amendment acceptance lacks its exact complete usage source and native-floor margin")
-		}
-		price, ok := new(big.Int).SetString(proof.AlphaPriceWei, 10)
-		if !ok {
-			return nil, errors.New("rate amendment acceptance alpha price is malformed")
-		}
-		if err := validatePolicyRateReadiness(cfg, baseline.Status.Contracts, proof.Sources, price); err != nil {
+		if err := validateScenarioPolicyRateAdmission(cfg, baseline); err != nil {
 			return nil, err
 		}
 	}
