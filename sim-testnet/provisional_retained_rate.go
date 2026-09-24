@@ -76,9 +76,34 @@ func (self *Executor) authenticateRetainedPolicyRateAmendment(ctx context.Contex
 		if !strings.HasPrefix(action.ID, "alpha.repair.validator.1.") || !provisionalLiveSetupRepair(action) {
 			return false, fmt.Errorf("retained rate amendment removed unrelated action %s", action.ID)
 		}
-		if err := authenticate(action); err != nil {
+		if _, completed := verified.find(action, true); completed {
+			if err := authenticate(action); err != nil {
+				return false, err
+			}
+			continue
+		}
+		// A later approved reserve tranche may replace a source repair which
+		// never started. Its absence is not a completed transfer: require no
+		// journal reference at any stage, including foreign approvals and
+		// accepted aliases, and retain the current reserve verification barrier.
+		if action.Parameters[alphaRepairReserveShareParameter] != "true" {
+			return false, fmt.Errorf("retained rate amendment removed incomplete non-reserve repair %s", action.ID)
+		}
+		for _, entry := range entries {
+			if entry.ActionID == action.ID || actionAcceptsIntent(action, entry.IntentHash) {
+				return false, fmt.Errorf("retained rate amendment removed repair %s has execution evidence", action.ID)
+			}
+		}
+		reserve, present := current["validator.reserve-majority"]
+		if !present || !provisionalLiveSetupRepair(reserve) {
+			return false, errors.New("retained rate amendment has no current reserve verification")
+		}
+		if err := authenticate(reserve); err != nil {
 			return false, err
 		}
+	}
+	if !slices.Equal(entries, self.journal.Entries()) {
+		return false, errors.New("retained rate amendment journal changed during authentication")
 	}
 	return true, ctx.Err()
 }

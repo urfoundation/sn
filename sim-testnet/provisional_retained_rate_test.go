@@ -7,13 +7,49 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 )
 
 func retainedRateStartupFixture(t *testing.T) (*Executor, *SetupPlan, []byte) {
+	return retainedRateStartupRepairFixture(t, false)
+}
+
+// A fully archived source may contain an unused tranche replaced by an exact
+// successor repair. Both current transfer and reserve-barrier receipts exist.
+func retainedRateStartupRepairFixture(t *testing.T, retireUnused bool) (*Executor, *SetupPlan, []byte) {
 	t.Helper()
 	self, _ := provisionalAllowanceAdoptionFixture(t)
 	source := self.plan
+	if retireUnused {
+		source = clonePrecompileProbeSuccessorPlan(t, source)
+		source.PriorPlanHashes = append(source.PriorPlanHashes, source.PlanHash)
+		repair := Action{ID: "alpha.repair.validator.1.11", Kind: "substrate-extrinsic", Target: "validator:1", Description: "synthetic unused reserve tranche",
+			Parameters: map[string]string{alphaRepairReserveShareParameter: "true", "repair_for_action": "alpha.transfer.validator.1"},
+			Spend:      Spend{AlphaRao: 1, EVMGasWei: "0"}, DependsOn: []string{"alpha.transfer.validator.1"}, AcceptedPriorIntentHashes: []string{"0x" + strings.Repeat("a1", 32)}}
+		repair.IntentHash, _ = actionIntentHash(repair)
+		index := slices.IndexFunc(source.Actions, func(a Action) bool { return a.ID == "validator.reserve-majority" })
+		if index < 0 {
+			t.Fatal("fixture has no reserve barrier")
+		}
+		source.Actions = slices.Insert(source.Actions, index, repair)
+		barrier := &source.Actions[index+1]
+		barrier.DependsOn = append(barrier.DependsOn, repair.ID)
+		barrier.IntentHash, _ = actionIntentHash(*barrier)
+		var err error
+		source.MaximumSpend, err = maximumActionSpend(source.Actions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source.PlanHash, err = source.hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archiveReviewedSetupPlan(self.stateDir, source); err != nil {
+			t.Fatal(err)
+		}
+	}
 	previous := *self.cfg.Policy
 	self.cfg.Policy = rateAmendmentTestPolicy(t, &previous)
 	self.cfg.PolicyHash, _ = self.cfg.Policy.HashHex()
@@ -23,6 +59,18 @@ func retainedRateStartupFixture(t *testing.T) (*Executor, *SetupPlan, []byte) {
 	current.PriorPlanHashes = append(current.PriorPlanHashes, source.PlanHash)
 	for index := range current.Actions {
 		action := &current.Actions[index]
+		if retireUnused && action.ID == "alpha.repair.validator.1.11" {
+			action.ID, action.Description, action.AcceptedPriorIntentHashes = "alpha.repair.validator.1.12", "synthetic completed successor tranche", nil
+			action.IntentHash, _ = actionIntentHash(*action)
+		}
+		if retireUnused && action.ID == "validator.reserve-majority" {
+			for i, dependency := range action.DependsOn {
+				if dependency == "alpha.repair.validator.1.11" {
+					action.DependsOn[i] = "alpha.repair.validator.1.12"
+				}
+			}
+			action.IntentHash, _ = actionIntentHash(*action)
+		}
 		if action.ID == "policy.schedule-bootstrap" || action.ID == "policy.await-bootstrap" || action.ID == "config.render" || action.ID == "topology.launch" {
 			action.Parameters["policy_hash"] = current.PolicyHash
 			action.IntentHash, _ = actionIntentHash(*action)
@@ -40,7 +88,11 @@ func retainedRateStartupFixture(t *testing.T) (*Executor, *SetupPlan, []byte) {
 	if err := prepareProvisionalResume(t.Context(), self.cfg, self.stateDir, "resume", cliOptions{Apply: true, ProvisionalResume: true, PlanHash: current.PlanHash}, current); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"policy.schedule-bootstrap", "policy.await-bootstrap", "config.render", "topology.launch"} {
+	completedIds := []string{"policy.schedule-bootstrap", "policy.await-bootstrap", "config.render", "topology.launch"}
+	if retireUnused {
+		completedIds = append(completedIds, "alpha.repair.validator.1.12", "validator.reserve-majority")
+	}
+	for _, id := range completedIds {
 		action := actionByID(t, current, id)
 		head := testEVMHead(20, 0x35)
 		record := &ActionPostcondition{Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: current.DeploymentID,
@@ -57,6 +109,43 @@ func retainedRateStartupFixture(t *testing.T) (*Executor, *SetupPlan, []byte) {
 		}
 	}
 	return self, source, raw
+}
+
+func TestRetainedRateStartupRetiresOnlyNeverStartedReserveRepair(t *testing.T) {
+	self, source, raw := retainedRateStartupRepairFixture(t, true)
+	before := self.journal.Entries()
+	if ok, err := self.authenticateProvisionalRetainedPlan(t.Context(), raw); err != nil || !ok {
+		t.Fatalf("unused source reserve tranche prevented authenticated successor startup: %v", err)
+	}
+	if !reflect.DeepEqual(before, self.journal.Entries()) {
+		t.Fatal("retirement fabricated a completed transfer")
+	}
+	retired := actionByID(t, source, "alpha.repair.validator.1.11")
+	for _, stage := range []JournalStage{StageIntent, StageFailed, JournalStage("signed"), StageBroadcast, StageFinalized, StageVerified} {
+		changed := *self
+		changed.journal = &Journal{entries: append(append([]JournalEntry(nil), before...), JournalEntry{DeploymentID: source.DeploymentID, PlanHash: source.PlanHash, ActionID: retired.ID, IntentHash: retired.IntentHash, Stage: stage})}
+		if ok, err := changed.authenticateRetainedPolicyRateAmendment(t.Context(), source); err == nil || ok {
+			t.Errorf("removed repair with %s evidence was admitted", stage)
+		}
+	}
+	for _, entry := range []JournalEntry{
+		{ActionID: retired.ID, IntentHash: "0x" + strings.Repeat("b2", 32), PlanHash: "0x" + strings.Repeat("c3", 32), Stage: StageIntent},
+		{ActionID: "synthetic-other-action", IntentHash: retired.IntentHash, Stage: StageIntent},
+		{ActionID: "synthetic-other-action", IntentHash: retired.AcceptedPriorIntentHashes[0], Stage: StageIntent},
+	} {
+		changed := *self
+		changed.journal = &Journal{entries: append(append([]JournalEntry(nil), before...), entry)}
+		if ok, err := changed.authenticateRetainedPolicyRateAmendment(t.Context(), source); err == nil || ok {
+			t.Error("foreign action/approval or accepted-intent reference was ignored")
+		}
+	}
+	for _, missing := range []string{"alpha.repair.validator.1.12", "validator.reserve-majority"} {
+		changed := *self
+		changed.journal = &Journal{entries: slices.DeleteFunc(append([]JournalEntry(nil), before...), func(entry JournalEntry) bool { return entry.ActionID == missing })}
+		if ok, err := changed.authenticateRetainedPolicyRateAmendment(t.Context(), source); err == nil || ok {
+			t.Errorf("unused source repair hid incomplete current action %s", missing)
+		}
+	}
 }
 
 func TestRetainedRateStartupAuthenticatesCompletedAmendmentOnly(t *testing.T) {
