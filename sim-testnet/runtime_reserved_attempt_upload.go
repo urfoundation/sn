@@ -3,6 +3,7 @@ package main
 // Rendering copies explicit reserved capacity and independently approved
 // deployment pins. Only an explicit provisional resume grants retained staging.
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -86,14 +87,9 @@ func runtimeReservedAttemptUploads(cfg *ResolvedConfig, stateDir string, contrac
 		if cfg.provisionalResume.Record.PlanHash != plan.PlanHash || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
 			return nil, errors.New("provisional retained staging requires the exact non-accepting approval")
 		}
-		resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+		retainedContexts, err = runtimeReservedAttemptUploadContexts(context.Background(), cfg, stateDir, plan)
 		if err != nil {
 			return nil, fmt.Errorf("provisional retained staging inputs: %w", err)
-		}
-		for _, source := range resolved.Config.ValidatorEvidenceV2 {
-			for _, operator := range source.Evidence.Operators {
-				retainedContexts = append(retainedContexts, operator.Context)
-			}
 		}
 	}
 	result := slices.Clone(cfg.Config.Artifacts.ReservedAttemptUploads)
@@ -157,6 +153,47 @@ func runtimeReservedAttemptUploads(cfg *ResolvedConfig, stateDir string, contrac
 		return nil, err
 	}
 	return result, nil
+}
+
+// The active source generation is selected by its authenticated handoff. An
+// absent handoff keeps the original four immutable context pins; malformed or
+// incomplete handoffs never silently fall back to the old producer.
+func runtimeReservedAttemptUploadContexts(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan) ([]validatorpkg.ReleaseEvidenceV2File, error) {
+	handoff, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, plan)
+	if err != nil {
+		return nil, err
+	}
+	var sources []validatorpkg.ReleaseValidatorEvidenceV2Config
+	if handoff != nil {
+		if !handoff.Activated || len(handoff.Validators) != cfg.Config.Topology.Validators {
+			return nil, errors.New("active source generation has no complete validator census")
+		}
+		for index, validator := range handoff.Validators {
+			if validator.ValidatorID != uint64(index+1) || len(validator.Evidence.Operators) != cfg.Config.Topology.Operators {
+				return nil, errors.New("active source generation has no complete operator census")
+			}
+			sources = append(sources, validatorpkg.ReleaseValidatorEvidenceV2Config{ValidatorID: validator.ValidatorID, Evidence: validator.Evidence})
+		}
+	} else {
+		resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+		if err != nil {
+			return nil, err
+		}
+		sources = resolved.Config.ValidatorEvidenceV2
+	}
+	contexts := make([]validatorpkg.ReleaseEvidenceV2File, 0, cfg.Config.Topology.Validators*cfg.Config.Topology.Operators)
+	for _, source := range sources {
+		for _, operator := range source.Evidence.Operators {
+			if err := operator.Context.Validate(source.Evidence.Bounds.Cut.MaxHeaderBytes); err != nil {
+				return nil, err
+			}
+			contexts = append(contexts, operator.Context)
+		}
+	}
+	if len(contexts) != cfg.Config.Topology.Validators*cfg.Config.Topology.Operators {
+		return nil, errors.New("reserved staging context census is incomplete")
+	}
+	return contexts, nil
 }
 
 // Rendering reopens the original approved transaction and its verified source
