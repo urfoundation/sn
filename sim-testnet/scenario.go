@@ -360,10 +360,13 @@ type scenarioProbe interface {
 }
 
 type liveScenarioProbe struct {
-	cfg        *ResolvedConfig
-	stateDir   string
-	client     *http.Client
-	pathProofs *scenarioPathProofCache
+	cfg *ResolvedConfig
+	// The campaign proxy is a transport derivative, not the persisted plan's
+	// resolved-input identity. Local evidence retains the approved authority.
+	authorizedCfg *ResolvedConfig
+	stateDir      string
+	client        *http.Client
+	pathProofs    *scenarioPathProofCache
 	// payoutArtifacts retains artifacts already authenticated by this live
 	// probe. The cache is scoped to one scenario process: every new hash still
 	// reaches the operator, and strict final acceptance creates a fresh probe.
@@ -663,27 +666,9 @@ func (p *liveScenarioProbe) observeSnapshot(ctx context.Context) (*ScenarioObser
 	if p.cfg.previousPolicy != nil {
 		observation.PolicyRateReadiness = p.observePolicyRateReadiness(ctx, status.Contracts, observation.Operators)
 	}
-	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
-		var validator ValidatorObservation
-		if provisionalResumeEnabled(p.cfg) {
-			validator = inspectProvisionalValidatorIntent(ctx, p.cfg, p.stateDir, validatorID)
-		} else if finalUsesEvidenceV2(p.cfg) {
-			validator = inspectValidatorIntentV2(ctx, p.cfg, p.stateDir, validatorID)
-		} else {
-			validator = inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
-		}
-		if p.pathProofs == nil {
-			p.pathProofs = newDurableScenarioPathProofCache(p.cfg, p.stateDir)
-		}
-		validator.PathProofCounts, err = inspectValidatorPathProofsCached(ctx, p.cfg, p.stateDir, validatorID, observation.Operators, p.pathProofs)
-		if err != nil {
-			if validator.Error == "" {
-				validator.Error = err.Error()
-			} else {
-				validator.Error += "; " + err.Error()
-			}
-		}
-		observation.Validators = append(observation.Validators, validator)
+	observation.Validators, err = p.inspectValidators(ctx, observation.Operators)
+	if err != nil {
+		return nil, err
 	}
 	for minerID := 1; minerID <= p.cfg.Config.Topology.Miners; minerID++ {
 		observation.Claims = append(observation.Claims, inspectClaimQueue(p.cfg, p.stateDir, minerID))
@@ -5344,7 +5329,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		}
 		return nil
 	}
-	probe := &liveScenarioProbe{cfg: runtimeCfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
+	probe := &liveScenarioProbe{cfg: runtimeCfg, authorizedCfg: cfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
 	if scenarioExecutor != nil {
 		probe.precompilePlan, probe.precompileJournal = scenarioExecutor.plan, journal
 		if name == "release-1.0" && provisionalResumeEnabled(cfg) {
