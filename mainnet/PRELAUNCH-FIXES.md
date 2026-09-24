@@ -78,7 +78,11 @@ the new segment, keep generation-1 and same-domain successor rules strict, and
 make current and historical API/validator readers choose their exact domain.
 Test populated migration, concurrent rollover, retries, rotation, retirement,
 network identity changes and old-epoch replay. The migration monitor's expected
-schema must advance with the actual table shape. Do not treat HTTP success as
+schema must advance with the actual table shape. Retained resume must run both
+operator migrations before starting the successor APIs; its older path omitted
+that barrier. Any consumer using persistent peer key pins also needs an
+authenticated policy transition for its domain ratchet, rather than clearing
+pins. Do not treat HTTP success as
 processed client-key success or mark a provider ready before its current-domain
 registration completes. The active testnet resume retained its supervisor on the
 bounded readiness timeout, so the repair should reuse that generation's durable
