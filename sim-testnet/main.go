@@ -33,6 +33,7 @@ type cliOptions struct {
 	WaitForTerminal                                                                                                                 bool
 	RolloverPlan, RolloverPlanHash                                                                                                  string
 	RolloverEpoch, RolloverGeneration                                                                                               uint64
+	RolloverSourceRole                                                                                                              bool
 	ProbeRecoveryExecute                                                                                                            bool
 	ProbeRecoveryReviseGas                                                                                                          bool
 	ProbeRecoveryBudget, ProbeRecoveryBudgetSHA256                                                                                  string
@@ -115,6 +116,7 @@ Common options:
   --renewal-max-fee-per-gas-wei N  renewal ceiling bounded by the configured maximum
   --rollover-epoch N --rollover-generation N  explicit future activation and fresh source generation
   --rollover-plan PATH --rollover-plan-hash HASH  immutable rollover subplan; required for apply
+  --rollover-source-role  review or select a role-only predecessor proof for the active generation
   --renewal-plan PATH  exact JSON plan emitted by fleet-renew; required for apply/resume
   --renewal-transaction-evidence PATH  JSON array of signed external EVM transaction hex strings
   --detach            persistent supervisor mode for launch
@@ -185,6 +187,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RolloverPlanHash, "rollover-plan-hash", "", "")
 	fs.Uint64Var(&o.RolloverEpoch, "rollover-epoch", 0, "")
 	fs.Uint64Var(&o.RolloverGeneration, "rollover-generation", 0, "")
+	fs.BoolVar(&o.RolloverSourceRole, "rollover-source-role", false, "")
 	fs.StringVar(&o.RenewalPlan, "renewal-plan", "", "")
 	fs.StringVar(&o.RenewalTransactionEvidence, "renewal-transaction-evidence", "", "")
 	fs.Uint64Var(&o.RenewalValidFrom, "renewal-valid-from-epoch", 0, "")

@@ -61,34 +61,36 @@ type policyRolloverPlanV2 struct {
 }
 
 type policyRolloverValidatorHandoffV2 struct {
-	ValidatorID      uint64                                     `json:"validator_id"`
-	PreviousStateDir string                                     `json:"previous_state_dir"`
-	StateDir         string                                     `json:"state_dir"`
-	ClientStateDir   string                                     `json:"client_state_dir"`
-	Evidence         validatorcomponent.ReleaseEvidenceV2Config `json:"evidence"`
-	Config           validatorcomponent.ReleaseEvidenceV2File   `json:"config"`
-	Identities       validatorcomponent.ReleaseEvidenceV2File   `json:"identities"`
+	ValidatorID             uint64                                     `json:"validator_id"`
+	PreviousStateDir        string                                     `json:"previous_state_dir"`
+	StateDir                string                                     `json:"state_dir"`
+	ClientStateDir          string                                     `json:"client_state_dir"`
+	Evidence                validatorcomponent.ReleaseEvidenceV2Config `json:"evidence"`
+	Config                  validatorcomponent.ReleaseEvidenceV2File   `json:"config"`
+	Identities              validatorcomponent.ReleaseEvidenceV2File   `json:"identities"`
+	SourceRolePredecessorV2 *validatorcomponent.ReleaseEvidenceV2File  `json:"source_role_predecessor_v2,omitempty"`
 }
 
 // Activation switches only an immutable manifest after every publication and
 // generation input is complete. Original ledgers and identities remain lineage;
 // a fresh VPK starts an independent sequence and makes no continuity claim.
 type policyRolloverHandoffV2 struct {
-	Schema                  string                                   `json:"schema"`
-	PlanHash                string                                   `json:"plan_hash"`
-	SourcePlanHash          string                                   `json:"source_plan_hash"`
-	DeploymentID            string                                   `json:"deployment_id"`
-	Activated               bool                                     `json:"activated"`
-	Generation              uint64                                   `json:"generation"`
-	LedgerContinuityClaimed bool                                     `json:"ledger_continuity_claimed"`
-	CutoffEpoch             uint64                                   `json:"cutoff_epoch"`
-	FirstFullEpoch          uint64                                   `json:"first_full_epoch"`
-	Native                  ChainHead                                `json:"native"`
-	EVM                     ChainHead                                `json:"evm"`
-	Boundary                ChainHead                                `json:"boundary"`
-	Members                 []runtimeEvidenceActivationMemberV2      `json:"members"`
-	Validators              []policyRolloverValidatorHandoffV2       `json:"validators"`
-	Identities              validatorcomponent.ReleaseEvidenceV2File `json:"identities"`
+	Schema                  string                                    `json:"schema"`
+	PlanHash                string                                    `json:"plan_hash"`
+	SourcePlanHash          string                                    `json:"source_plan_hash"`
+	DeploymentID            string                                    `json:"deployment_id"`
+	Activated               bool                                      `json:"activated"`
+	Generation              uint64                                    `json:"generation"`
+	LedgerContinuityClaimed bool                                      `json:"ledger_continuity_claimed"`
+	CutoffEpoch             uint64                                    `json:"cutoff_epoch"`
+	FirstFullEpoch          uint64                                    `json:"first_full_epoch"`
+	Native                  ChainHead                                 `json:"native"`
+	EVM                     ChainHead                                 `json:"evm"`
+	Boundary                ChainHead                                 `json:"boundary"`
+	Members                 []runtimeEvidenceActivationMemberV2       `json:"members"`
+	Validators              []policyRolloverValidatorHandoffV2        `json:"validators"`
+	Identities              validatorcomponent.ReleaseEvidenceV2File  `json:"identities"`
+	SourceRoleOverlay       *validatorcomponent.ReleaseEvidenceV2File `json:"source_role_overlay,omitempty"`
 	sourceSHA256            string
 }
 

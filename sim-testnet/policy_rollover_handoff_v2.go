@@ -19,6 +19,14 @@ import (
 // bytes, incomplete activation or changed files always fail closed. Public
 // contract finality is independently rechecked by the relay/validator root.
 func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) (*policyRolloverHandoffV2, error) {
+	h, err := readBasePolicyRolloverHandoffV2(ctx, cfg, stateDir, base)
+	if err != nil || h == nil {
+		return h, err
+	}
+	return readPolicyRolloverSourceRoleOverlayV2(ctx, cfg, stateDir, base, h)
+}
+
+func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) (*policyRolloverHandoffV2, error) {
 	if cfg == nil || cfg.Config == nil || !cfg.Config.ProvisionValidatorEvidenceV2 {
 		_, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(policyRolloverRoot(stateDir), "handoff.json"), 1)
 		if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
@@ -42,7 +50,7 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 	if err != nil {
 		return nil, err
 	}
-	if h.Schema != policyRolloverHandoffV2Schema || !h.Activated || h.LedgerContinuityClaimed || h.PlanHash != p.PlanHash || h.SourcePlanHash != p.SourcePlanHash || h.DeploymentID != p.DeploymentID || h.Generation != p.Generation ||
+	if h.Schema != policyRolloverHandoffV2Schema || !h.Activated || h.LedgerContinuityClaimed || h.SourceRoleOverlay != nil || h.PlanHash != p.PlanHash || h.SourcePlanHash != p.SourcePlanHash || h.DeploymentID != p.DeploymentID || h.Generation != p.Generation ||
 		h.CutoffEpoch != p.Epoch || h.FirstFullEpoch != p.Epoch+1 || h.Native != p.Native || h.EVM != p.EVM || h.Boundary.Number <= p.EVM.Number || !validCanonicalHashHex(h.Boundary.Hash) ||
 		!reflect.DeepEqual(h.Members, p.Members) || len(h.Validators) != 2 {
 		return nil, errors.New("activated rollover manifest differs from its exact approved generation")
@@ -103,7 +111,7 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 	for index, validator := range h.Validators {
 		id := uint64(index + 1)
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", id), "evidence-generations", fmt.Sprintf("generation-%020d", h.Generation))
-		if validator.ValidatorID != id || validator.PreviousStateDir != p.Validators[index].StateDir || validator.StateDir != filepath.Join(root, "coordinator-state-v2") || validator.ClientStateDir != filepath.Join(root, "state") || validator.Config.Path != filepath.Join(root, "validator.yml") || validator.Identities != h.Identities ||
+		if validator.ValidatorID != id || validator.SourceRolePredecessorV2 != nil || validator.PreviousStateDir != p.Validators[index].StateDir || validator.StateDir != filepath.Join(root, "coordinator-state-v2") || validator.ClientStateDir != filepath.Join(root, "state") || validator.Config.Path != filepath.Join(root, "validator.yml") || validator.Identities != h.Identities ||
 			!reflect.DeepEqual(validator.Evidence.Bounds, approved.Config.ValidatorEvidenceV2[index].Evidence.Bounds) || len(validator.Evidence.Operators) != 2 {
 			return nil, errors.New("rollover validator config, state namespace or approved bounds differ")
 		}
@@ -117,7 +125,7 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 		if err != nil {
 			return nil, err
 		}
-		if config.ValidatorID != id || config.DeploymentID != p.DeploymentID || config.StateDir != validator.StateDir || config.PolicyHash != p.PolicyHash || !reflect.DeepEqual(config.Policy, *cfg.Policy) || config.PreviousPolicy != nil || !reflect.DeepEqual(config.EvidenceV2, validator.Evidence) {
+		if config.ValidatorID != id || config.SourceRolePredecessorV2 != nil || config.DeploymentID != p.DeploymentID || config.StateDir != validator.StateDir || config.PolicyHash != p.PolicyHash || !reflect.DeepEqual(config.Policy, *cfg.Policy) || config.PreviousPolicy != nil || !reflect.DeepEqual(config.EvidenceV2, validator.Evidence) {
 			return nil, errors.New("rollover rendered validator config changed its approved identity or policy")
 		}
 		for j, operator := range validator.Evidence.Operators {

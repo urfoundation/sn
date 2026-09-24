@@ -21,7 +21,7 @@ import (
 )
 
 func validatePolicyRolloverOptionsV2(command string, o cliOptions) error {
-	used := o.RolloverPlan != "" || o.RolloverPlanHash != "" || o.RolloverEpoch != 0 || o.RolloverGeneration != 0
+	used := o.RolloverPlan != "" || o.RolloverPlanHash != "" || o.RolloverEpoch != 0 || o.RolloverGeneration != 0 || o.RolloverSourceRole
 	if command != "policy-rollover" {
 		if used {
 			return errors.New("rollover options require policy-rollover")
@@ -37,6 +37,12 @@ func validatePolicyRolloverOptionsV2(command string, o cliOptions) error {
 		}
 	} else if o.RolloverPlanHash != "" {
 		return errors.New("--rollover-plan-hash requires --apply")
+	}
+	if o.RolloverSourceRole {
+		if o.RolloverEpoch != 0 || o.RolloverGeneration != 0 || !o.ProvisionalResume || (o.RolloverPlan != "" && (!filepath.IsAbs(o.RolloverPlan) || filepath.Clean(o.RolloverPlan) != o.RolloverPlan)) {
+			return errors.New("--rollover-source-role requires provisional continuation of the active generation without a replacement epoch or generation")
+		}
+		return nil
 	}
 	if o.RolloverPlan != "" {
 		if !filepath.IsAbs(o.RolloverPlan) || filepath.Clean(o.RolloverPlan) != o.RolloverPlan || o.RolloverEpoch != 0 || o.RolloverGeneration != 0 {
@@ -306,6 +312,9 @@ func runPolicyRolloverV2(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 		return err
 	}
 	defer journal.Close()
+	if o.RolloverSourceRole {
+		return runPolicyRolloverSourceRoleV2(ctx, cfg, stateDir, base, roles, o)
+	}
 	executorCfg := *cfg
 	executorCfg.readOnlyAudit = !o.Apply
 	e, err := newPolicyRolloverExecutorV2(ctx, &executorCfg, stateDir, base, journal, roles)
