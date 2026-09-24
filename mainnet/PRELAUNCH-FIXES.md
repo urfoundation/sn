@@ -2039,3 +2039,12 @@ read-only auditor independent; collect at the block for timely diagnosis, then
 collect again after the exact signed result appears. Bind both inventories to
 the same run ID, plan, boundary and source hash. A diagnostic report never
 creates a pass marker or substitutes for the original signed result.
+An operational continuation from a failed testnet release must retain every
+failed assertion and a distinct non-accepting gate. Before production can
+start, authenticate the exact signed terminal source and result, recompute
+custody and identity checks from the signed observation, and require every
+scheduled release fault to be restored in both records with a subsequent
+signed observation. The active-fault recovery ledger must be empty. Keep
+historical lifecycle plan identity separate from the current plan authorizing
+new actions. This permits diagnosis to continue without laundering a failed
+release into a strict pass or overlapping old fault injection with production.
