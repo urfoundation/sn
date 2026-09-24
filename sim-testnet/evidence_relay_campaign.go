@@ -39,6 +39,18 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		return nil, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, relay.Close(), context.Cause(phaseCtx)) }()
+	if relay.policyRolloverPlanHash != "" {
+		if len(relay.policyGapFirstEpoch) != len(relay.sources) {
+			return nil, errors.New("release rollover lacks a complete first-full-epoch census")
+		}
+		for _, source := range relay.sources {
+			first := relay.policyGapFirstEpoch[source.validatorId]
+			if first == 0 || options.MinimumAcceptanceEpoch != 0 && options.MinimumAcceptanceEpoch != first {
+				return nil, errors.New("release rollover has conflicting first-full-epoch boundaries")
+			}
+			options.MinimumAcceptanceEpoch = first
+		}
+	}
 	if err := relay.WaitReady(phaseCtx); err != nil {
 		return nil, err
 	}

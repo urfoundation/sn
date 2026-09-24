@@ -481,3 +481,28 @@ func TestScenarioIntervalRecoveryBudgetIsFiniteAndCohortAware(t *testing.T) {
 		}
 	}
 }
+
+func TestScenarioAcceptanceWindowRequiresFirstFullRolloverEpoch(t *testing.T) {
+	t.Parallel()
+	cfg := testResolvedConfig(t)
+	definition := scenarioDefinition{Name: "release-1.0", GoalEpochs: uint64(cfg.Config.Scenarios.ShortEpochs)}
+	for _, tc := range []struct {
+		baseline uint64
+		allowed  bool
+	}{
+		{baseline: 8, allowed: false}, // epoch 9 is the partial activation epoch
+		{baseline: 9, allowed: true},  // epoch 10 is the first full epoch
+		{baseline: 10, allowed: true},
+	} {
+		window, err := buildScenarioAcceptanceWindow(cfg, definition, testScenarioObservation(cfg, tc.baseline))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := requireScenarioAcceptanceEpochFloor(window, 10) == nil; got != tc.allowed {
+			t.Fatalf("baseline=%d first=%d allowed=%t, want %t", tc.baseline, window.FirstEpoch, got, tc.allowed)
+		}
+	}
+	if err := requireScenarioAcceptanceEpochFloor(nil, 10); err == nil {
+		t.Fatal("missing release window bypassed active generation floor")
+	}
+}

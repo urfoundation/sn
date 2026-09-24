@@ -424,6 +424,7 @@ type scenarioRunOptions struct {
 	NativeWarmupV2              scenarioNativeWarmupReadV2
 	NativeWarmupCompleteV2      func(context.Context) error
 	NativeWarmupBudgetV2        *ScenarioNativeWarmupBudgetV2
+	MinimumAcceptanceEpoch      uint64
 	ProcessLogs                 scenarioProcessLogGate
 	CollectFinalSemantic        finalSemanticCampaignInputCollector
 	WaitFinalSettlementClosures func(context.Context, *ResolvedConfig, string, *ScenarioObservation, *ScenarioAcceptanceWindow, time.Time, time.Duration) error
@@ -4185,6 +4186,9 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	window, err = buildScenarioAcceptanceWindow(cfg, definition, current)
 	if err != nil {
 		return initialFailure(current, fmt.Errorf("build complete-epoch acceptance window: %w", err))
+	}
+	if err := requireScenarioAcceptanceEpochFloor(window, options.MinimumAcceptanceEpoch); err != nil {
+		return initialFailure(current, err)
 	}
 	if window != nil {
 		start = current

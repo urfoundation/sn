@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+// A fresh evidence generation starts with a partial activation epoch. The
+// acceptance baseline must select its first complete successor epoch or later.
+func requireScenarioAcceptanceEpochFloor(window *ScenarioAcceptanceWindow, firstFullEpoch uint64) error {
+	if firstFullEpoch == 0 {
+		return nil
+	}
+	if window == nil || window.FirstEpoch < firstFullEpoch {
+		return fmt.Errorf("release acceptance begins before first full fresh-source epoch %d", firstFullEpoch)
+	}
+	return nil
+}
+
 // Epoch advancement alone is insufficient: the final settlement offset must
 // also be finalized. Non-window scenarios keep their existing check loop.
 func scenarioAcceptanceIntervalObserved(window *ScenarioAcceptanceWindow, observation *ScenarioObservation) bool {
