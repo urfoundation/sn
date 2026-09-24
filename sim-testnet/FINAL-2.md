@@ -12,6 +12,15 @@ no churn transaction was sent. The run is continuing to terminal so its other
 errors can be collected and repaired in a later run. This exception cannot be
 reported as a passing strict acceptance check. The exact current state and
 watcher artifact path are in [FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
+An independent finalized read at block **8,078,129** (hash
+`0xea7d377b2479e183f1900b1df979b900916837be9dce86a2fb142dd1627793e7`)
+found `policyCount()=3` on coordinator
+`0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8`. The three stored policy
+hashes are `0x2cbb4cdd991d9463f321f0de7f7bd77d028da611c2b5eb656626eac31ab5a356`,
+`0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`,
+and `0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd`.
+The production scheduler's current two-policy admission is therefore a known
+next-stage blocker; a narrow authenticated-history correction is in testing.
 
 The following September 16 checkpoint is retained as historical evidence; it
 does not describe R42's current state. The corrected
