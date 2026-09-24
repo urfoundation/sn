@@ -919,8 +919,8 @@ func (attempt *scenarioCampaignAttempt) loadAuthenticatedRuntimeForensicsAtBound
 	if attempt.payload.AcceptanceBoundary == nil {
 		return nil, nil, nil, nil, nil, errors.New("scenario campaign attempt has no signed acceptance boundary")
 	}
-	path := filepath.Join(runDir, "observations.jsonl")
-	data, err := os.ReadFile(path)
+	name := filepath.ToSlash(filepath.Join("runs", attempt.payload.RunID, "observations.jsonl"))
+	data, err := readCampaignObservationHistory(attempt.stateDir, name)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("read authenticated scenario observation log: %w", err)
 	}
@@ -1013,7 +1013,7 @@ func (attempt *scenarioCampaignAttempt) bindAcceptanceBoundary(runDir, processSe
 	if baselineHead != window.BaselineHead || baselineEpoch != window.BaselineEpoch || !strings.EqualFold(baselineHash, window.BaselineObservationHash) {
 		return errors.New("scenario campaign acceptance window differs from its baseline observation")
 	}
-	data, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+	data, err := readCampaignObservationHistory(attempt.stateDir, filepath.ToSlash(filepath.Join("runs", attempt.payload.RunID, "observations.jsonl")))
 	if err != nil {
 		return err
 	}
@@ -1080,7 +1080,7 @@ func (attempt *scenarioCampaignAttempt) updateAuthenticatedRuntime(runDir string
 		if current.payload.RunID != attempt.payload.RunID || current.payload.AcceptanceBoundary == nil || current.payload.AcceptanceInvalidation != "" || !releaseCampaignGatesEqual(current.payload.PriorRelease, attempt.payload.PriorRelease) {
 			return errors.New("scenario campaign attempt boundary changed while updating runtime evidence")
 		}
-		data, err := os.ReadFile(filepath.Join(runDir, "observations.jsonl"))
+		data, err := readCampaignObservationHistory(attempt.stateDir, filepath.ToSlash(filepath.Join("runs", attempt.payload.RunID, "observations.jsonl")))
 		if err != nil {
 			return err
 		}

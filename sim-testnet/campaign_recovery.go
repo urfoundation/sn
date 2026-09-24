@@ -304,15 +304,23 @@ func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampai
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	observationRaw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, runRelative+"/observations.jsonl", maximumCampaignEvidenceRawFileBytes)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
+	observationName := runRelative + "/observations.jsonl"
+	var observationHash string
+	var observationBytes uint64
 	if preAcceptance {
+		observationRaw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, observationName, maximumCampaignEvidenceRawFileBytes)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
 		if _, err := decodeScenarioObservationLog(observationRaw); err != nil {
 			return nil, time.Time{}, err
 		}
+		observationHash, observationBytes = bytesSHA256(observationRaw), uint64(len(observationRaw))
 	} else {
+		observationHash, observationBytes, err = hashCampaignObservationHistory(attempt.stateDir, observationName)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
 		if _, _, _, _, _, err := prior.loadAuthenticatedRecoveryRuntimeForensics(filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative))); err != nil {
 			return nil, time.Time{}, err
 		}
@@ -370,7 +378,7 @@ func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampai
 		Schema: scenarioCampaignRecoverySchema, PriorRunID: prior.payload.RunID,
 		PriorAttemptSha256:        bytesSHA256(priorRaw),
 		PriorResultSha256:         bytesSHA256(resultRaw),
-		PriorObservationLogSha256: bytesSHA256(observationRaw), PriorObservationLogBytes: uint64(len(observationRaw)),
+		PriorObservationLogSha256: observationHash, PriorObservationLogBytes: observationBytes,
 		PriorProcessLogSha256: bytesSHA256(processLogRaw), ApprovedPlanSha256: planRawHash,
 	}
 	if preAcceptance {
