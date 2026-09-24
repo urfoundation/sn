@@ -2,6 +2,20 @@
 
 ## R43 recovery startup — 2026-09-24 21:02 UTC
 
+Two additional unsigned startup retries were attempted after the first local
+resource failure. The first, `urnetwork-sim-release-r43-retry1.service`, exited
+at 21:13:30 because its review binary was built from an uncommitted worktree
+and failed Git executable attestation; it performed no topology action. The
+second, `urnetwork-sim-release-r43-retry2.service`, used committed revision
+`ce5f45a8` and passed the corrected operator resource check. It exited at
+21:17:34 before topology because the retained runtime manifest reader inferred
+the original validator-2 generation's `hotkey.seed` location from the newly
+selected source-role overlay config path. The sealed 3,138-file manifest still
+correctly names the original generation inputs. The reader must authenticate
+the signed overlay separately while deriving historical inventory paths from
+the original handoff. No recovery-43 attempt or new acceptance boundary exists;
+the fleet remains stopped and the active fault ledger is unchanged.
+
 `urnetwork-sim-release-r43.service` started with PID 2374365, using the
 qualified runner SHA-256
 `6fdf0dcc1728362476edc83f6f27fa6cbba85e7f238c82d261bfe32f2bbb5e58`

@@ -1,5 +1,14 @@
 # Sim-testnet finalization report 2
 
+**Latest update, 2026-09-24 21:17 UTC:** Two R43 startup retries also stopped
+before a signed interval. The first failed executable Git attestation because
+its binary was built before the fix was committed. The second used committed
+revision `ce5f45a8`, passed the corrected operator resource preflight, and
+found a retained runtime-manifest reader that used the selected source-role
+config path to infer the original validator-2 seed path. The sealed original
+manifest is intact; the fleet is stopped, no recovery-43 attempt exists, and
+the reader fix is being qualified. See [FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
+
 **Current status, 2026-09-24 21:04 UTC: R43 recovery startup failed before
 signing an interval.**
 After R42's signed early failure, the fleet was stopped with on-chain state
