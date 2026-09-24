@@ -229,7 +229,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeFinalizedSourceReachesOriginalEventVe
 		t.Fatalf("finalized original source did not reach event verification: events=%d error=%v", events, err)
 	}
 	canonical[0] ^= 1
-	if err := authenticateReleaseNativeSourceReferenceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.artifact); err == nil || !strings.Contains(err.Error(), "V2 prepared signer lacks actual canonical native schedule/eligibility") || events != 1 {
+	if err := authenticateReleaseNativeSourceReferenceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.artifact); err == nil || !strings.Contains(err.Error(), "validator identity block is not canonical at its pinned height") || events != 1 {
 		t.Fatalf("substituted native block escaped original schedule authentication: events=%d error=%v", events, err)
 	}
 }

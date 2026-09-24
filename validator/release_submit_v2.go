@@ -135,6 +135,10 @@ func newReleaseSteererV2(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Ch
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err
 	}
+	self.sourceRolePredecessorV2, err = authenticateReleaseSourceRolePredecessorV2(runtime.ctx, &ownedCfg, native, self.hotkey.PublicKey())
+	if err != nil {
+		return nil, err
+	}
 	return self, nil
 }
 
@@ -238,6 +242,9 @@ func (self *ReleaseSteerer) checkSourceRoleV2(ctx context.Context, snapshot *Rel
 		return intent != nil && intent.Prepared != nil && intent.Prepared.SourceCommitment != nil && intent.FinalizedBlock != 0 && intent.Prepared.SourceCommitment.Hash == releaseHex32(observed.Hash) && intent.FinalizedBlock == observed.CommitmentBlock
 	}
 	if matches(previous) {
+		return ctx.Err()
+	}
+	if self.sourceRolePredecessorV2.matches(self.cfg.Netuid, self.hotkey.PublicKey(), observed) {
 		return ctx.Err()
 	}
 	history, err := self.intents.authenticatedIntentsV2(ctx)

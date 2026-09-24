@@ -457,6 +457,10 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 	owned.cfg.EvidenceV2.Operators = slices.Clone(cfg.EvidenceV2.Operators)
 	owned.cfg.ControlledNOIDs = slices.Clone(cfg.ControlledNOIDs)
 	owned.cfg.RPC, owned.cfg.Substrate = slices.Clone(cfg.RPC), slices.Clone(cfg.Substrate)
+	if cfg.SourceRolePredecessorV2 != nil {
+		reference := *cfg.SourceRolePredecessorV2
+		owned.cfg.SourceRolePredecessorV2 = &reference
+	}
 	if cfg.historyAdoptionV2 != nil {
 		request := *cfg.historyAdoptionV2
 		owned.cfg.historyAdoptionV2 = &request

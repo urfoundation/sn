@@ -70,6 +70,8 @@ type ReleaseConfig struct {
 	Operators           []OperatorConfig        `yaml:"operators" json:"operators"`
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
 
+	SourceRolePredecessorV2 *ReleaseEvidenceV2File `yaml:"source_role_predecessor_v2,omitempty" json:"source_role_predecessor_v2,omitempty"`
+
 	ProvisionalDeferClosedNativeInput bool   `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
 	ProvisionalRuntimeCompatibility   string `yaml:"provisional_runtime_compatibility,omitempty" json:"provisional_runtime_compatibility,omitempty"`
 	historyAdoptionV2                 *ReleaseHistoryAdoptionV2
@@ -425,6 +427,11 @@ func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObserva
 		}
 		if !seenNO[id] {
 			return fmt.Errorf("controlled no_id %d is not in the operator directory", id)
+		}
+	}
+	if c.SourceRolePredecessorV2 != nil {
+		if err := c.SourceRolePredecessorV2.Validate(ReleaseSourceRolePredecessorV2MaximumBytes); err != nil {
+			return fmt.Errorf("source role predecessor: %w", err)
 		}
 	}
 	return c.EvidenceV2.Validate(c.Operators, c.StateDir, c.HotkeySeedFile)

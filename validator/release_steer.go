@@ -39,6 +39,8 @@ type ReleaseSteerer struct {
 	intents   *IntentStore
 	headEMA   *HeadEMAStore
 
+	sourceRolePredecessorV2 *releaseSourceRoleWitnessV2
+
 	// A native-tempo egress window is detached exactly once and then reused for
 	// retries in that epoch. Without this cache, a transient EVM read failure
 	// after rotation could make the retry score a new, nearly empty window.
