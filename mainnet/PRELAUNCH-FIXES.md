@@ -2009,6 +2009,14 @@ submission failures remain hard errors. The offline correction is covered by
 deterministic transport, pending-cut, cancellation and regression tests; R42's
 already-running fleet keeps its original executable and its failures remain in
 the run evidence.
+Another R42 exit occurred after a compact live-head binding census timed out
+on an `eth_call` at a pinned canonical block while advancing an incomplete
+native epoch. The timeout supplied no differing block hash and must be
+retried as a transport interruption using the same pinned read context and
+retained pending cut. A retry must not fabricate a completed census or turn
+the timeout into a reorg/integrity error. Cover batched EVM reads, individual
+GETs, source snapshots and native scheduler reads with the same typed policy;
+keep actual changed canonical hashes and malformed results hard failures.
 
 R42 validator 2 also exhausted steering retries after switching to a fresh
 measurement source while retaining its native hotkey. The finalized native
