@@ -73,6 +73,9 @@ type ScenarioFaultRecord struct {
 	ControlStartedBlock        uint64                 `json:"control_started_block,omitempty"`
 	ControlStartedBlockHash    string                 `json:"control_started_block_hash,omitempty"`
 	ControlPendingRounds       uint64                 `json:"control_pending_rounds,omitempty"`
+	RestoreStartedBlock        uint64                 `json:"restore_started_block,omitempty"`
+	RestoreStartedBlockHash    string                 `json:"restore_started_block_hash,omitempty"`
+	RestorePendingRounds       uint64                 `json:"restore_pending_rounds,omitempty"`
 }
 
 type scenarioFaultDriver interface {
