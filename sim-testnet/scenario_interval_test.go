@@ -239,9 +239,10 @@ func TestScenarioIntervalRetainsRepairableProcessFindingThroughTerminal(t *testi
 	}
 }
 
-// Reproduce the incident's heartbeat path while a full snapshot is blocked.
-// The repairable log cannot stop the loop or rewrite the saved baseline object.
-func TestScenarioIntervalHeartbeatDefersFindingWithoutMutatingHistory(t *testing.T) {
+// Reproduce a native timeout's continuity exit alongside earlier retry logs
+// while a full snapshot is blocked. The diagnostic interval keeps collecting;
+// final acceptance still fails and the saved baseline remains immutable.
+func TestScenarioIntervalHeartbeatDefersContinuityWithoutMutatingHistory(t *testing.T) {
 	t.Parallel()
 	cfg, definition, window, observations := newScenarioIntervalFixture(t)
 	fixture := newProcessLogGateFixture(t, "", "")
@@ -275,7 +276,7 @@ func TestScenarioIntervalHeartbeatDefersFindingWithoutMutatingHistory(t *testing
 		if index != 1 {
 			return nil
 		}
-		if err := os.WriteFile(fixture.stdoutPath, []byte("release steer: subnet epoch 42 attempt 1: retryable native submission\n"), 0o600); err != nil {
+		if err := os.WriteFile(fixture.stdoutPath, []byte("release steer: subnet epoch 42 attempt 1: retryable native submission\nsim-testnet: release steering advanced from incomplete epoch 42 to 43\n"), 0o600); err != nil {
 			return err
 		}
 		close(requestReady)
@@ -293,6 +294,20 @@ func TestScenarioIntervalHeartbeatDefersFindingWithoutMutatingHistory(t *testing
 	result, err := runScenarioWithProbe(t.Context(), cfg, fixture.dir, definition, heartbeat, scenarioRunOptions{PollInterval: time.Millisecond, Timeout: time.Hour, ProcessLogs: gate, FaultDriver: driver})
 	if err == nil || result == nil || result.EndHead.Number != window.TerminalBlock || probe.calls.Load() != int64(len(observations)) || !faultsComplete(result.Faults) {
 		t.Fatalf("heartbeat repairable finding interrupted the interval: result=%+v reads=%d error=%v", result, probe.calls.Load(), err)
+	}
+	classified, scanErr := fixture.gate.Scan(false)
+	if scanErr != nil {
+		t.Fatal(scanErr)
+	}
+	classes := map[string]bool{}
+	for _, finding := range classified.Findings {
+		if !finding.Blocking || finding.Disposition != "unexplained" || finding.FirstLineSHA256 == "" {
+			t.Fatalf("continuity finding lost its original final-acceptance severity: %+v", finding)
+		}
+		classes[finding.Class] = true
+	}
+	if !classes["release-steering-continuity"] || !classes["release-steering-attempt-failure"] || fixture.gate.RequireClean(true) == nil || result.Result != "fail" {
+		t.Fatal("diagnostic continuation granted completion despite native continuity failure")
 	}
 	// The baseline line is independently hashed on disk; later snapshots may
 	// contain the finding, but the earlier one must remain its original evidence.
@@ -429,7 +444,7 @@ func TestScenarioIntervalProcessDeferralIsTypedAndNarrow(t *testing.T) {
 		errors.Join(repairable, errors.New("source hash mismatch")),
 		processLogFindingsError([]ProcessLogFinding{{Blocking: true, Class: "panic"}}),
 		processLogFindingsError([]ProcessLogFinding{{Blocking: true, Class: "fatal"}}),
-		processLogFindingsError([]ProcessLogFinding{{Blocking: true, Class: "release-steering-continuity"}}),
+		processLogFindingsError([]ProcessLogFinding{{Blocking: true, Class: "release-steering-continuity"}, {Blocking: true, Class: "unknown-class"}}),
 		processLogFindingsError([]ProcessLogFinding{{Blocking: true, Class: "unknown-class"}}),
 		&processLogFindingsFailure{},
 	} {
