@@ -1,0 +1,62 @@
+{
+  "captured_utc": "2026-09-24T20:11:57.843812+00:00",
+  "rpc_url": "http://192.168.1.162:9944",
+  "finalized_head": {
+    "number": 8078196,
+    "hash": "0xd2c26fad9af8046b103ac27dd75547462a3d1b56409b3e79e02595b8880d09ea"
+  },
+  "netuid": 521,
+  "validator_id": 2,
+  "hotkey": "0xeef93451764e40c9f9a78d052c6b61db164396b558adc9032efe473c88da9847",
+  "previous_intent_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2/steering-intents.json",
+  "previous_intent_sha256": "0de9867f8c0b699954e9ef25c66759b0390214ddaf8313d9ca7f42df63e27727",
+  "previous_intent": {
+    "subnet_epoch": 1405,
+    "status": "applied",
+    "finalized_block": 7987774,
+    "finalized_block_hash": "0xb30e815261b9f719e299aaf2b9ec75b022730462ed33cf992f037dc0d0384fab",
+    "measurement_artifact_hash": "sha256:47613a71616ee4cc63546b147257744ec6d10a1ef2a3dbe56abf5d4d3eaacf9c",
+    "measurement_artifact_path": "measurements/47613a71616ee4cc63546b147257744ec6d10a1ef2a3dbe56abf5d4d3eaacf9c.json",
+    "measurement_artifact_size": 1378087,
+    "measurement_envelope_hash": "sha256:2e0451c57301ed989b86b31cf8e07109982d884aeefe959662d5cd34d403d3e2",
+    "measurement_envelope_path": "measurements/envelopes/2e0451c57301ed989b86b31cf8e07109982d884aeefe959662d5cd34d403d3e2.json",
+    "measurement_envelope_size": 1538
+  },
+  "prepared_public": {
+    "hotkey_hex": "0xeef93451764e40c9f9a78d052c6b61db164396b558adc9032efe473c88da9847",
+    "extrinsic_hash": "0x5e0da9793f3d430ab32d8e202ca0c3c0e1b6c10d82a81d716fd3728b384d66fb",
+    "source_commitment": {
+      "hash": "0x23080255d5d65deaee2f6d59d83b2bbd5bf23ac427c52f7ebdd63beb46d74cf9",
+      "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+      "runtime_spec": 455,
+      "transaction_version": 1
+    }
+  },
+  "active_generation_intent_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json",
+  "active_generation_intent_present": false,
+  "storage": [
+    {
+      "pallet": "Commitments",
+      "item": "CommitmentOf",
+      "rpc_method": "state_getStorage",
+      "params": [
+        "0xca407206ec1ab726b2636c4b145ac287419a60ae8b01e6dcaebd7317e43c69bf09027531d126b176cabdeef93451764e40c9f9a78d052c6b61db164396b558adc9032efe473c88da9847",
+        "0xd2c26fad9af8046b103ac27dd75547462a3d1b56409b3e79e02595b8880d09ea"
+      ],
+      "value": "0x00000000000000003ee27900048323080255d5d65deaee2f6d59d83b2bbd5bf23ac427c52f7ebdd63beb46d74cf9",
+      "commitment_block": 7987774,
+      "source_hash": "0x23080255d5d65deaee2f6d59d83b2bbd5bf23ac427c52f7ebdd63beb46d74cf9"
+    },
+    {
+      "pallet": "Commitments",
+      "item": "LastCommitment",
+      "rpc_method": "state_getStorage",
+      "params": [
+        "0xca407206ec1ab726b2636c4b145ac28712e87f5eb6c957418d3a44e4809a0ebc09027531d126b176cabdeef93451764e40c9f9a78d052c6b61db164396b558adc9032efe473c88da9847",
+        "0xd2c26fad9af8046b103ac27dd75547462a3d1b56409b3e79e02595b8880d09ea"
+      ],
+      "value": "0x3ee27900",
+      "commitment_block": 7987774
+    }
+  ]
+}

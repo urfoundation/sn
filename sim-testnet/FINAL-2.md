@@ -21,6 +21,14 @@ hashes are `0x2cbb4cdd991d9463f321f0de7f7bd77d028da611c2b5eb656626eac31ab5a356`,
 and `0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd`.
 The production scheduler's current two-policy admission is therefore a known
 next-stage blocker; a narrow authenticated-history correction is in testing.
+R42 validator 2 later restarted after its current source could not authenticate
+an occupied native commitment slot. At finalized block **8,078,196**, both
+`CommitmentOf` and `LastCommitment` matched the old source generation's applied
+intent (finalized block **7,987,774**), while the active generation-1 intent
+file was absent. The exact read-only RPC keys/results and source hashes are in
+the [native-slot evidence bundle](peerreview/evidence/FINAL-2-r42-native-slot-20260924/README.md).
+The validator's refusal and restart remain R42 findings; a predecessor-proof
+repair is pending for later continuation.
 
 The following September 16 checkpoint is retained as historical evidence; it
 does not describe R42's current state. The corrected
