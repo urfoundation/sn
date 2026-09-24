@@ -22,6 +22,21 @@ func (err *provisionalNativeWeightRejection) Error() string {
 
 func (err *provisionalNativeWeightRejection) Unwrap() error { return err.cause }
 
+// A fresh provisional generation may have no eligible weights before its
+// first native intent. It can retry this typed pre-intent rejection without
+// manufacturing a submission or admitting gaps after an intent exists.
+func provisionalNativeWeightRejectionEnabled(cfg *ReleaseConfig, history *releaseEvidenceV2StartupHistory, current *SteeringIntent) bool {
+	if history == nil {
+		return false
+	}
+	if history.retainedStartup && provisionalClosedNativeInputEnabled(cfg) {
+		return true
+	}
+	return !history.retainedStartup && history.historyAdoption == nil && current == nil && cfg != nil &&
+		cfg.ProvisionalRuntimeCompatibility == crv4.ProvisionalRuntimeCompatibilityProfile &&
+		validateReleaseProvisionalRuntimeCompatibility(cfg) == nil
+}
+
 func classifyProvisionalNativeWeights(ctx context.Context, enabled bool, nativeEpoch, settlementEpoch uint64, err error) error {
 	if !enabled || err == nil || ctx == nil || ctx.Err() != nil {
 		return err

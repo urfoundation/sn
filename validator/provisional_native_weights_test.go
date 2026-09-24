@@ -48,6 +48,51 @@ func TestProvisionalNativeWeightsClassifiesOnlyActualPreIntentRejections(t *test
 	}
 }
 
+func TestFreshProvisionalWeightsDeferOnlyBeforeFirstIntent(t *testing.T) {
+	cfg := &ReleaseConfig{ChainID: 945, GenesisHash: provisionalRuntimeTestnetGenesis, StateDir: t.TempDir(), ProvisionalRuntimeCompatibility: crv4.ProvisionalRuntimeCompatibilityProfile}
+	cfg.Policy.NetworkProfile = "testnet"
+	history := &releaseEvidenceV2StartupHistory{}
+	if !provisionalNativeWeightRejectionEnabled(cfg, history, nil) {
+		t.Fatal("fresh provisional generation could not retry empty pre-intent weights")
+	}
+	for name, change := range map[string]func(){
+		"prior intent":    func() {},
+		"strict config":   func() { cfg.ProvisionalRuntimeCompatibility = "" },
+		"wrong genesis":   func() { cfg.GenesisHash = "0x00" },
+		"strict adoption": func() { history.historyAdoption = &releaseHistoryAdoptionV2{} },
+	} {
+		originalCfg, originalHistory := *cfg, *history
+		change()
+		var current *SteeringIntent
+		if name == "prior intent" {
+			current = &SteeringIntent{Status: "finalized"}
+		}
+		if provisionalNativeWeightRejectionEnabled(cfg, history, current) {
+			t.Fatalf("%s admitted a weight rejection", name)
+		}
+		*cfg, *history = originalCfg, originalHistory
+	}
+	reads, attempts := 0, 0
+	err := runReleaseSteeringLoopWithWaitAndPermissions(context.Background(), func() (uint64, error) { reads++; return 1653, nil }, func() error {
+		attempts++
+		if attempts <= releaseSteeringFailureLimit+1 {
+			return classifyProvisionalNativeWeights(context.Background(), provisionalNativeWeightRejectionEnabled(cfg, history, nil), 1653, 605, errNoPositiveUnmaskedWeights)
+		}
+		return nil
+	}, func() bool { return reads < releaseSteeringFailureLimit+3 }, false, true)
+	if err != nil || attempts != releaseSteeringFailureLimit+2 {
+		t.Fatalf("pre-intent retry consumed failure budget: attempts=%d err=%v", attempts, err)
+	}
+	attempts = 0
+	err = runReleaseSteeringLoopWithWaitAndDeferral(context.Background(), func() (uint64, error) { return 1653, nil }, func() error {
+		attempts++
+		return classifyProvisionalNativeWeights(context.Background(), provisionalNativeWeightRejectionEnabled(cfg, history, &SteeringIntent{Status: "finalized"}), 1653, 605, errNoPositiveUnmaskedWeights)
+	}, func() bool { return true }, false)
+	if !errors.Is(err, errNoPositiveUnmaskedWeights) || attempts != releaseSteeringFailureLimit {
+		t.Fatalf("post-intent failure budget changed: attempts=%d err=%v", attempts, err)
+	}
+}
+
 func TestProvisionalNativeWeightsRetriesPastFailureLimitAndAcceptsLaterFunding(t *testing.T) {
 	for _, cause := range []error{errNoPositiveUnmaskedWeights, &crv4.InfeasibleWeightLimitError{MaxWeightLimit: 32768, PositiveWeights: 1}} {
 		t.Run(cause.Error(), func(t *testing.T) {

@@ -977,19 +977,23 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 }
 
 func runReleaseSteeringLoopWithDeferral(ctx context.Context, poll time.Duration, epoch func() (uint64, error), submit func() error, allowDeferral bool) error {
+	return runReleaseSteeringLoopWithPermissions(ctx, poll, epoch, submit, allowDeferral, false)
+}
+
+func runReleaseSteeringLoopWithPermissions(ctx context.Context, poll time.Duration, epoch func() (uint64, error), submit func() error, allowDeferral, allowFreshWeights bool) error {
 	if ctx == nil || poll <= 0 || epoch == nil || submit == nil {
 		return errors.New("release steering loop configuration is incomplete")
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
-	return runReleaseSteeringLoopWithWaitAndDeferral(ctx, epoch, submit, func() bool {
+	return runReleaseSteeringLoopWithWaitAndPermissions(ctx, epoch, submit, func() bool {
 		select {
 		case <-ctx.Done():
 			return false
 		case <-ticker.C:
 			return true
 		}
-	}, allowDeferral)
+	}, allowDeferral, allowFreshWeights)
 }
 
 // Injects only the existing poll decision so tests can force a ready tick
@@ -999,6 +1003,10 @@ func runReleaseSteeringLoopWithWait(ctx context.Context, epoch func() (uint64, e
 }
 
 func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func() (uint64, error), submit func() error, wait func() bool, allowDeferral bool) error {
+	return runReleaseSteeringLoopWithWaitAndPermissions(ctx, epoch, submit, wait, allowDeferral, false)
+}
+
+func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch func() (uint64, error), submit func() error, wait func() bool, allowDeferral, allowFreshWeights bool) error {
 	if ctx == nil || epoch == nil || submit == nil || wait == nil {
 		return errors.New("release steering loop configuration is incomplete")
 	}
@@ -1053,7 +1061,7 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 					deferred, failures, pendingErr = true, 0, nil
 					retryableCut = false
 					fmt.Printf("release steer: %v; waiting for next native epoch\n", closedInput)
-				} else if allowDeferral && errors.As(err, &rejected) && rejected.nativeEpoch == targetEpoch && releaseOnlyErrors(err, rejected) {
+				} else if (allowDeferral || allowFreshWeights) && errors.As(err, &rejected) && rejected.nativeEpoch == targetEpoch && releaseOnlyErrors(err, rejected) {
 					// Funding and eligibility can change before this native epoch
 					// ends. Keep the existing poll/retry, without killing independent
 					// proof workers or erasing an unrelated unresolved failure.
@@ -1143,7 +1151,7 @@ func releaseSteeringOperationTimeout(cfg *ReleaseConfig) time.Duration {
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
 	operationTimeout := releaseSteeringOperationTimeout(s.cfg)
-	return runReleaseSteeringLoopWithDeferral(ctx, poll, func() (uint64, error) {
+	return runReleaseSteeringLoopWithPermissions(ctx, poll, func() (uint64, error) {
 		var epoch uint64
 		err := runReleaseSteeringOperation(ctx, operationTimeout, func(operationCtx context.Context) error {
 			finalized, err := authenticatePinnedNativeRuntimeContext(operationCtx, s.native, s.cfg)
@@ -1160,5 +1168,5 @@ func (s *ReleaseSteerer) Run(ctx context.Context) error {
 		return epoch, err
 	}, func() error {
 		return runReleaseSteeringOperation(ctx, operationTimeout, s.SubmitOnce)
-	}, provisionalClosedNativeInputEnabled(s.cfg))
+	}, provisionalClosedNativeInputEnabled(s.cfg), provisionalNativeWeightRejectionEnabled(s.cfg, s.runtimeV2.history, nil))
 }

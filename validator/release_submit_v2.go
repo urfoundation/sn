@@ -259,7 +259,6 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	native := *self.native
 	owned.native = &native
 	self = &owned
-	allowWeightRejection := self.runtimeV2.history.retainedStartup && provisionalClosedNativeInputEnabled(self.cfg)
 	nativeHash, err := authenticatePinnedNativeRuntimeContext(ctx, self.native, self.cfg)
 	if err != nil {
 		return fmt.Errorf("authenticate native runtime before steering snapshot: %w", err)
@@ -330,6 +329,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 			return fmt.Errorf("prior subnet epoch %d intent is %s; refusing a new commit", current.SubnetEpoch, current.Status)
 		}
 	}
+	allowWeightRejection := provisionalNativeWeightRejectionEnabled(self.cfg, self.runtimeV2.history, current)
 	if err := loadHotkeyUids(); err != nil {
 		return err
 	}
