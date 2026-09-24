@@ -5137,6 +5137,7 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 }
 
 func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor, attempt *scenarioCampaignAttempt, observationTimeout time.Duration) error {
+	commandCfg := cfg
 	if executor != nil && executor.plan != nil && executor.plan.PolicyRateAmendment != nil {
 		resolved, err := configWithPolicyRateAmendment(cfg, executor.plan)
 		if err != nil {
@@ -5148,7 +5149,9 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		if observationTimeout != 0 || attempt != nil {
 			return errors.New("precompile preparation cannot carry a campaign interval or timeout override")
 		}
-		return runPrecompilePreparation(ctx, cfg, stateDir, journal, executor)
+		// Standalone preparation borrows the original command's connections;
+		// the authenticated history copy belongs to the nested campaign below.
+		return runPrecompilePreparation(ctx, commandCfg, stateDir, journal, executor)
 	}
 	if observationTimeout < 0 || observationTimeout > 6*time.Hour {
 		return errors.New("provisional observation timeout must be between 0 and 6h")

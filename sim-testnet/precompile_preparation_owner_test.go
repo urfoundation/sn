@@ -81,6 +81,38 @@ func TestPrecompilePreparationRetainsDirectOwnerWithStoppedTopology(t *testing.T
 	}
 }
 
+// Enter through the real scenario boundary with an approved rate amendment.
+// An empty action census stops before dispatch only after the exact owner is
+// borrowed, distinguishing the old pointer refusal without any chain activity.
+func TestPrecompilePreparationRateScenarioPreservesCommandOwner(t *testing.T) {
+	cfg, executor, calls := precompilePreparationOwnerFixture(t)
+	rateConfig, _, amendment := rateAmendmentTestPlans(t)
+	cfg.Policy, cfg.PolicyHash = rateConfig.Policy, rateConfig.PolicyHash
+	executor.plan.PolicyHash = amendment.PolicyHash
+	executor.plan.PolicyRateAmendment = amendment.PolicyRateAmendment
+	executor.plan.PriorPlanHashes = append(executor.plan.PriorPlanHashes, amendment.PolicyRateAmendment.PriorPlanHash)
+	executor.plan.Actions = nil
+	var err error
+	executor.plan.PlanHash, err = executor.plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.provisionalResume.Record.PlanHash = executor.plan.PlanHash
+	const censusRefusal = "precompile continuation has 0 actions, want 10"
+	err = runScenarioCampaignAttemptWithTimeout(t.Context(), cfg, executor.stateDir, precompilePreparationScenario, executor.journal, executor, nil, 0)
+	if err == nil || err.Error() != censusRefusal {
+		t.Fatalf("scenario did not borrow its exact original preparation owner: %v", err)
+	}
+	if executor.cfg != cfg || executor.auditAuthorizedConfig != cfg || cfg.previousPolicy != nil || calls.Load() != 0 || len(executor.journal.Entries()) != 0 {
+		t.Fatal("preparation replaced its original configuration or dispatched work")
+	}
+	executor.plan.PolicyRateAmendment.Next.PolicyID++
+	err = runScenarioCampaignAttemptWithTimeout(t.Context(), cfg, executor.stateDir, precompilePreparationScenario, executor.journal, executor, nil, 0)
+	if err == nil || err.Error() == censusRefusal || calls.Load() != 0 {
+		t.Fatalf("preparation bypassed amendment authentication: %v", err)
+	}
+}
+
 // Borrowing does not admit another journal, plan, route, or independently built
 // approval owner even when it presents the same apparent runtime purpose.
 func TestPrecompilePreparationRejectsOwnerAndRouteDrift(t *testing.T) {
