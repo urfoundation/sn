@@ -23,6 +23,14 @@ watcher's executable SHA-256 is
 from main commit `e9002acd`, built with the pinned `server684.mod` source. Its
 `progress.json` is expected to remain `running` until the terminal inventory;
 inspect `report.json` only after that inventory completes.
+Because the release watchdog can keep the original runner alive for hours
+after the terminal block when assertions remain failed, the separate
+`urnetwork-sim-r42-signed-result-diagnostics.service` waits for this exact
+run's `result.json` and then invokes the same pinned, read-only diagnostic
+binary again into a new report directory. Its script is
+`/mnt/data/sn-testnet/qualification/policy-rollover-20260924/terminal-diagnostics/r42-signed-result-followup.sh`.
+The first watcher captures early terminal findings; the follow-up captures the
+signed result and remaining checks. Neither writes live campaign state.
 
 This run is explicitly provisional. An inherited lifecycle handoff records
 that Subtensor would have pruned UID 1 instead of the planned UID 7, so the
