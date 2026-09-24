@@ -35,6 +35,7 @@ The active testnet finalization continues independently.
 | PF-02 | Give simulator operator taskworkers an explicit workload profile, including retained queue handling | — | Astra | In progress | Required subnet/operator tasks run for both operators; excluded queued tasks and post hooks remain untouched; production defaults and restart behavior pass affected tests and managed startup. |
 | PF-03 | Include every retained operator signature in recovery and renewal accounting | — | Astra | Planned | Recovery discovers original, replacement and cancellation attempts across both operator databases and existing evidence stores, reconciles canonical receipts, and resumes without manual signature copying or duplicate actions. |
 | PF-04 | Diagnose validator warmup and support bounded, resumable semantic startup | — | Astra | In progress | Retained validators produce fresh proofs through both operators; startup exposes the pending criterion, uses a justified warmup budget, and preserves valid recovery progress without counting stale proofs as acceptance. |
+| PF-05 | Give client-key histories an authenticated policy-scoped rollover | — | Astra | In progress | A scheduled policy change starts a new signed generation-1 segment for each client; old signed rows remain byte-identical and historically readable, current readers select only the active domain, and all miners regain processed-key readiness without bypassing it. |
 
 Prioritize PF-01, PF-02 and PF-04 for the current testnet recovery. RT-01 through RT-08
 form the subsequent runtime-resilience workstream required before mainnet
@@ -63,6 +64,25 @@ For each update, attach the implementation commit, affected checks, preserved
 results, deployment evidence and next action to its stable ID. A new issue only
 blocks operations that depend on it. Keep future mainnet work out of the active
 testnet launch path unless that run exposes a concrete dependency.
+
+PF-05 follows the 2026-09-24 testnet policy-rate rollover. The new policy
+activated and its runtime was published, but all 20 provider swarms reported
+zero ready members even though their processes and both operator services were
+live. `/connect/control` returned HTTP 200 with the application error
+`client-key registration cannot replace a retired or different-domain head`.
+The existing head is keyed by client ID while the signed history domain includes
+the policy hash; a new policy therefore cannot append to the old segment.
+Keep the old signed records immutable and introduce an additive domain-scoped
+head and generation namespace. Authenticate policy activation before admitting
+the new segment, keep generation-1 and same-domain successor rules strict, and
+make current and historical API/validator readers choose their exact domain.
+Test populated migration, concurrent rollover, retries, rotation, retirement,
+network identity changes and old-epoch replay. The migration monitor's expected
+schema must advance with the actual table shape. Do not treat HTTP success as
+processed client-key success or mark a provider ready before its current-domain
+registration completes. The active testnet resume retained its supervisor on the
+bounded readiness timeout, so the repair should reuse that generation's durable
+setup evidence rather than redoing on-chain actions.
 
 RL-01 follows an actual 2026-09-16 launch interruption: the qualified executable
 was built at `541e13cf`, then publishing reports advanced main to `0fd7ffc0`.
