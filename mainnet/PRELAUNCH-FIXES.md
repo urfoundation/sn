@@ -1899,3 +1899,10 @@ must require every counted epoch's headers to have valid policy-era activation
 and on-chain commitments. Test rollover at the exact effective boundary,
 delayed deployment, interrupted activation, mixed old/new validators,
 historical mismatch, and resumption after an unpublishable gap.
+The existing activation-history file replays only legacy-to-V2 closures; it
+cannot attest a V2-to-V2 rollover. The production handoff must verify the
+latest signed V2 terminal closure and bind each new activation's
+`firstSequence` and `priorRoot` to that operator's exact terminal cut while
+writers are fenced. Preserve the old activation and ledger as immutable
+history; verify the new policy at the activation epoch and start the new
+producer only after all four new publications are finalized.

@@ -42,6 +42,9 @@ publishes and finalizes all four consents, then switches both validators at its
 future epoch. The relay must retain a separate explicit record for each
 unpublishable old-policy header and resume at valid future headers; strict
 acceptance must exclude those gaps from counted coverage.
+The first producer primitive now verifies a complete signed V2 terminal and
+derives each next-policy activation from its exact terminal sequence/root.
+It does not publish the activation or switch a running validator.
 Do not start another acceptance interval against this relay source until the
 policy-era activation/relay transition is fixed and qualified. Preserve the
 failed action, R40 result, signed boundary invalidation, completed receipts,
