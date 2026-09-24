@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 type FleetRenewal struct {

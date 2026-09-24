@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 func attachProvisionalActivationSetup(cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, specs []ProcessSpec) error {

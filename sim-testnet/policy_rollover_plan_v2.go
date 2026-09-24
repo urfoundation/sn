@@ -17,9 +17,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const policyRolloverPlanV2Schema = "urnetwork-sim-policy-rollover-plan-v2"

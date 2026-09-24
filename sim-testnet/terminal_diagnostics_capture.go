@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Actual local sources are sampled separately from original signed observations.

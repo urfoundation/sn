@@ -12,9 +12,9 @@ import (
 	"io"
 	"path/filepath"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 	"gopkg.in/yaml.v3"
 )
 

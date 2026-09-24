@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	serverpkg "github.com/urnetwork/server"
-	servermodel "github.com/urnetwork/server/model"
+	serverpkg "github.com/urnetwork/server/v2026"
+	servermodel "github.com/urnetwork/server/v2026/model"
 	"gopkg.in/yaml.v3"
 )
 

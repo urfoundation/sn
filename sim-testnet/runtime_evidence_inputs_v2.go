@@ -16,8 +16,8 @@ import (
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Explicit fresh provisioning accepts capacities and the complete source

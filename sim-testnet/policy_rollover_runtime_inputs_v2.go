@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The normal runtime manifest includes the selected generation's exact inputs
