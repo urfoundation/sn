@@ -82,6 +82,9 @@ func expectedRuntimeConfigFiles(cfg *ResolvedConfig, stateDir string) (map[strin
 		return nil, errors.New("runtime config manifest context is incomplete")
 	}
 	paths := map[string]os.FileMode{}
+	if err := addPolicyRolloverRuntimeInputsV2(cfg, stateDir, paths); err != nil {
+		return nil, err
+	}
 	if cfg.Config.ProvisionValidatorEvidenceV2 {
 		for _, name := range []string{"prepared.json", "completed.json"} {
 			if err := addRuntimeConfigPath(paths, stateDir, filepath.Join(stateDir, "evidence-v2-setup", name), 0o600); err != nil {

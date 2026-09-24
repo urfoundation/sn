@@ -831,11 +831,19 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	}
 	stopTemporaryCommands(stateDir, temporary)
 	specs := append(serverSpecs, buildClientSpecs(cfg, stateDir, bins, roles)...)
-	if err := attachProvisionalActivationSetup(cfg, stateDir, p, roles, specs); err != nil {
-		return fmt.Errorf("provisional validator activation handoff: %w", err)
+	rollover, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, p)
+	if err != nil {
+		return err
 	}
-	if err := attachStrictHistoryAdoption(cfg, stateDir, p, specs); err != nil {
-		return fmt.Errorf("strict validator history handoff: %w", err)
+	if rollover == nil {
+		if err := attachProvisionalActivationSetup(cfg, stateDir, p, roles, specs); err != nil {
+			return fmt.Errorf("provisional validator activation handoff: %w", err)
+		}
+		if err := attachStrictHistoryAdoption(cfg, stateDir, p, specs); err != nil {
+			return fmt.Errorf("strict validator history handoff: %w", err)
+		}
+	} else if err := attachPolicyRolloverProcessConfigsV2(ctx, cfg, stateDir, p, specs); err != nil {
+		return fmt.Errorf("policy rollover process handoff: %w", err)
 	}
 	binaryHash, err := fileSHA256(bins["sim-testnet"])
 	if err != nil {

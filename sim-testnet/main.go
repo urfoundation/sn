@@ -28,6 +28,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	RolloverPlan, RolloverPlanHash                                                                                                  string
+	RolloverEpoch, RolloverGeneration                                                                                               uint64
 	ProbeRecoveryExecute                                                                                                            bool
 	ProbeRecoveryBudget, ProbeRecoveryBudgetSHA256                                                                                  string
 	RelayContinuationPlan                                                                                                           string
@@ -67,6 +69,7 @@ Commands:
   coordinator-repair  apply one bounded provisional coordinator implementation correction
   probe-recovery  authorize bounded probe recovery, or execute it with --execute-recovery under exclusive journal ownership
   fleet-renew  plan or resume an exact next-generation renewal of existing fleets
+  policy-rollover  review or publish a fresh policy evidence generation and durable handoff
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
@@ -103,6 +106,8 @@ Common options:
   --repair-budget PATH --repair-budget-sha256 HASH  exact campaign allowance suballocation receipt
   --renewal-valid-from-epoch N --renewal-valid-to-epoch N  exact common future binding window
   --renewal-max-fee-per-gas-wei N  renewal ceiling bounded by the configured maximum
+  --rollover-epoch N --rollover-generation N  explicit future activation and fresh source generation
+  --rollover-plan PATH --rollover-plan-hash HASH  immutable rollover subplan; required for apply
   --renewal-plan PATH  exact JSON plan emitted by fleet-renew; required for apply/resume
   --renewal-transaction-evidence PATH  JSON array of signed external EVM transaction hex strings
   --detach            persistent supervisor mode for launch
@@ -119,6 +124,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	cmd := args[0]
 	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	valid["probe-recovery"] = true
+	valid["policy-rollover"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -161,6 +167,10 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RepairArtifactSHA256, "repair-artifact-sha256", "", "")
 	fs.StringVar(&o.RepairBudget, "repair-budget", "", "")
 	fs.StringVar(&o.RepairBudgetSHA256, "repair-budget-sha256", "", "")
+	fs.StringVar(&o.RolloverPlan, "rollover-plan", "", "")
+	fs.StringVar(&o.RolloverPlanHash, "rollover-plan-hash", "", "")
+	fs.Uint64Var(&o.RolloverEpoch, "rollover-epoch", 0, "")
+	fs.Uint64Var(&o.RolloverGeneration, "rollover-generation", 0, "")
 	fs.StringVar(&o.RenewalPlan, "renewal-plan", "", "")
 	fs.StringVar(&o.RenewalTransactionEvidence, "renewal-transaction-evidence", "", "")
 	fs.Uint64Var(&o.RenewalValidFrom, "renewal-valid-from-epoch", 0, "")
@@ -218,6 +228,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validatePrecompileRecoveryOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validatePolicyRolloverOptionsV2(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
@@ -483,7 +496,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
-	requireSecrets = requireSecrets || cmd == "probe-recovery"
+	requireSecrets = requireSecrets || cmd == "probe-recovery" || cmd == "policy-rollover"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -529,6 +542,8 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return runEvidenceRelayContinuation(ctx, resolved, stateDir, o)
 	case "fleet-renew":
 		return runFleetRenewal(ctx, resolved, stateDir, o)
+	case "policy-rollover":
+		return runPolicyRolloverV2(ctx, resolved, stateDir, o)
 	case "history-adoption":
 		bundle, err := captureStrictHistoryAdoption(ctx, resolved, stateDir, o.FirstNativeEpoch)
 		if err != nil {

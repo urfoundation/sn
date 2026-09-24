@@ -1220,6 +1220,9 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 // Verify optional exact transaction fields which are hash-bound into critical
 // deployment actions. Either the complete field set is present or none is.
 func validateApprovedEVMTransactionFields(action Action, signer common.Address, nonce uint64, to *common.Address, value *big.Int, data []byte) error {
+	if err := validatePolicyRolloverEVMFields(action, signer, to, value, data); err != nil {
+		return err
+	}
 	if err := validatePrecompileRecoveryTransactionFields(action, signer, to, value, data); err != nil {
 		return err
 	}

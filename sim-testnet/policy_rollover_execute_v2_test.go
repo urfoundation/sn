@@ -111,7 +111,7 @@ func TestPolicyRolloverRetryBudgetSurvivesRestartAndTransportNeverAuthorizesSend
 	if _, err := publishPolicyRolloverV2(t.Context(), p, journal, limit, io); err == nil {
 		t.Fatal("transport failure accepted")
 	}
-	if reads != 3 || sends != 0 {
+	if reads != 4 || sends != 0 {
 		t.Fatalf("reads/sends = %d/%d", reads, sends)
 	}
 	if err := journal.Close(); err != nil {
@@ -125,11 +125,11 @@ func TestPolicyRolloverRetryBudgetSurvivesRestartAndTransportNeverAuthorizesSend
 	if _, err := publishPolicyRolloverV2(t.Context(), p, journal, limit, io); err == nil {
 		t.Fatal("exhausted retry budget accepted")
 	}
-	if reads != 4 || sends != 0 {
+	if reads != 8 || sends != 0 {
 		t.Fatalf("restart reset durable retry budget: %d/%d", reads, sends)
 	}
 	attempts, _ := policyRolloverPriorV2(p, p.Actions[0], journal.Entries())
-	if attempts != 3 {
+	if attempts != 0 {
 		t.Fatalf("durable attempts = %d", attempts)
 	}
 }
@@ -147,5 +147,39 @@ func TestPolicyRolloverChangedCheckpointAndCalldataFailClosed(t *testing.T) {
 	}
 	if policyRolloverPlanPathV2(p.StateDir, 1, 10) == policyRolloverPlanPathV2(p.StateDir, 2, 11) || filepath.Dir(policyRolloverPlanPathV2(p.StateDir, 1, 10)) == policyRolloverRoot(p.StateDir) {
 		t.Fatal("future retry overwrites original immutable plan")
+	}
+}
+
+func TestPolicyRolloverTimeoutsBeforeAuthenticatedAbsenceDoNotSpendSendBudget(t *testing.T) {
+	p, journal, limit := policyRolloverPublicationFixtureV2(t)
+	defer journal.Close()
+	reads, sends := 0, 0
+	present := false
+	io := policyRolloverPublicationIOV2{
+		Observe: func(_ context.Context, member runtimeEvidenceActivationMemberV2) (uint64, error) {
+			if member.ValidatorId != 1 || member.NoId != 1 {
+				return 230, nil
+			}
+			reads++
+			if reads <= 3 {
+				return 0, context.DeadlineExceeded
+			}
+			if present {
+				return 230, nil
+			}
+			return 0, validatorcomponent.ErrValidatorEvidenceAbsent
+		},
+		Send: func(context.Context, Action, runtimeEvidenceActivationMemberV2) error {
+			sends++
+			present = true
+			return nil
+		},
+	}
+	if _, err := publishPolicyRolloverV2(t.Context(), p, journal, limit, io); err != nil {
+		t.Fatal(err)
+	}
+	attempts, _ := policyRolloverPriorV2(p, p.Actions[0], journal.Entries())
+	if sends != 1 || attempts != 1 || reads != 5 {
+		t.Fatalf("pre-send read retries consumed durable budget: sends=%d attempts=%d reads=%d", sends, attempts, reads)
 	}
 }

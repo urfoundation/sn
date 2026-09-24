@@ -104,9 +104,29 @@ func persistPolicyRolloverPostconditionV2(ctx context.Context, p *policyRollover
 }
 
 func policyRolloverObserveV2(ctx context.Context, p *policyRolloverPlanV2, io policyRolloverPublicationIOV2, member runtimeEvidenceActivationMemberV2) (uint64, error) {
-	operation, cancel := context.WithTimeout(ctx, time.Duration(p.AttemptTimeoutSeconds)*time.Second)
-	defer cancel()
-	return io.Observe(operation, member)
+	var lastErr error
+	// Read failures cannot reserve a nonce or consume the durable send budget.
+	// Four independently bounded 90-second production attempts tolerate a
+	// transient RPC outage for up to 360 seconds without changing the plan.
+	for attempt := 0; attempt < 4; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		operation, cancel := context.WithTimeout(ctx, time.Duration(p.AttemptTimeoutSeconds)*time.Second)
+		block, err := io.Observe(operation, member)
+		cancel()
+		if err == nil && block != 0 {
+			return block, nil
+		}
+		if errors.Is(err, validatorcomponent.ErrValidatorEvidenceAbsent) {
+			return 0, err
+		}
+		lastErr = err
+		if lastErr == nil {
+			lastErr = errors.New("rollover publication has no block")
+		}
+	}
+	return 0, lastErr
 }
 
 // The retry count is durable across invocations. Every retry first reconciles
@@ -126,40 +146,41 @@ func publishPolicyRolloverV2(ctx context.Context, p *policyRolloverPlanV2, journ
 		attempts, verified := policyRolloverPriorV2(p, action, journal.Entries())
 		var published uint64
 		var lastErr error
-		// Even an exhausted operation may discover a transaction that became
-		// finalized after the last timeout. It never obtains a fresh send.
-		if verified != nil || attempts >= p.MaximumAttempts {
+		for {
 			published, lastErr = policyRolloverObserveV2(ctx, p, io, member)
-		} else {
-			for attempts < p.MaximumAttempts {
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
-				if err := journal.Append(JournalEntry{DeploymentID: p.DeploymentID, PlanHash: p.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
-					return nil, err
-				}
-				attempts++
-				published, lastErr = policyRolloverObserveV2(ctx, p, io, member)
-				if errors.Is(lastErr, validatorcomponent.ErrValidatorEvidenceAbsent) {
-					operation, cancel := context.WithTimeout(ctx, time.Duration(p.AttemptTimeoutSeconds)*time.Second)
-					sendErr := io.Send(operation, action, member)
-					cancel()
-					published, lastErr = policyRolloverObserveV2(ctx, p, io, member)
-					if lastErr != nil {
-						lastErr = errors.Join(sendErr, lastErr)
-					}
-				}
-				if lastErr == nil && published != 0 {
-					break
-				}
-				if lastErr == nil {
-					lastErr = errors.New("rollover publication has no block")
-				}
-				if err := journal.Append(JournalEntry{DeploymentID: p.DeploymentID, PlanHash: p.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFailed, Error: lastErr.Error()}); err != nil {
-					return nil, err
-				}
+			if lastErr == nil && published != 0 {
+				break
+			}
+			// Only authenticated absence can proceed to a send. An exhausted
+			// budget still gets the read above, so late finality can finish resume.
+			if !errors.Is(lastErr, validatorcomponent.ErrValidatorEvidenceAbsent) || verified != nil || attempts >= p.MaximumAttempts {
+				break
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if err := journal.Append(JournalEntry{DeploymentID: p.DeploymentID, PlanHash: p.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
+				return nil, err
+			}
+			attempts++
+			operation, cancel := context.WithTimeout(ctx, time.Duration(p.AttemptTimeoutSeconds)*time.Second)
+			sendErr := io.Send(operation, action, member)
+			cancel()
+			published, lastErr = policyRolloverObserveV2(ctx, p, io, member)
+			if lastErr == nil && published != 0 {
+				break
+			}
+			lastErr = errors.Join(sendErr, lastErr)
+			if err := journal.Append(JournalEntry{DeploymentID: p.DeploymentID, PlanHash: p.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFailed, Error: lastErr.Error()}); err != nil {
+				return nil, err
+			}
+			// Uncertain post-send reads do not justify another broadcast. A later
+			// invocation reconciles again and reuses the keeper's exact signed bytes.
+			if !errors.Is(lastErr, validatorcomponent.ErrValidatorEvidenceAbsent) {
+				break
 			}
 		}
+
 		if lastErr != nil || published == 0 {
 			return nil, errors.Join(fmt.Errorf("rollover %s has no exact finalized publication after %d of %d attempts", action.ID, attempts, p.MaximumAttempts), lastErr)
 		}

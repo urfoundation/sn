@@ -13,7 +13,7 @@ import (
 // checks, so planning, repair and doctor cannot disagree about the same scope.
 func provisionalReviewedPlan(command string, readOnly bool) (bool, error) {
 	switch command {
-	case "probe-recovery":
+	case "probe-recovery", "policy-rollover":
 		return false, nil
 	case "doctor":
 		if readOnly {
