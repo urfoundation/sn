@@ -28,6 +28,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	DiagnosticOutput                                                                                                                string
+	WaitForTerminal                                                                                                                 bool
 	RolloverPlan, RolloverPlanHash                                                                                                  string
 	RolloverEpoch, RolloverGeneration                                                                                               uint64
 	ProbeRecoveryExecute                                                                                                            bool
@@ -66,6 +68,7 @@ Commands:
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
   audit    read-only retained-plan and action-history checks; reports all findings
+  terminal-diagnostics  independent non-accepting terminal checks; writes only an external diagnostic directory
   resume   reconcile the journal and continue an interrupted approved action
   coordinator-repair  apply one bounded provisional coordinator implementation correction
   probe-recovery  authorize bounded probe recovery, or execute it with --execute-recovery under exclusive journal ownership
@@ -116,6 +119,8 @@ Common options:
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
   --run-id ID         exact signed campaign run for public analyze
+  --diagnostic-output PATH  new external terminal diagnostic directory
+  --wait-for-terminal wait for the signed finalized terminal block before diagnostics
 `)
 }
 
@@ -127,12 +132,15 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	valid["probe-recovery"] = true
 	valid["policy-rollover"] = true
+	valid["terminal-diagnostics"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var o cliOptions
+	fs.StringVar(&o.DiagnosticOutput, "diagnostic-output", "", "")
+	fs.BoolVar(&o.WaitForTerminal, "wait-for-terminal", false, "")
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
 	fs.BoolVar(&o.ProbeRecoveryExecute, "execute-recovery", false, "")
 	fs.BoolVar(&o.ProbeRecoveryReviseGas, "revise-recovery-gas", false, "")
@@ -209,7 +217,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if cmd == "audit" && (o.Apply || o.Detach || o.ProvisionalResume || o.PrepareOnly || o.Manifest != "") {
 		return "", o, errors.New("audit is read-only and cannot apply, detach, prepare, resume provisionally, or override the manifest")
 	}
-	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
+	if o.RunID != "" && cmd != "terminal-diagnostics" && (cmd != "analyze" || o.Manifest == "") {
 		return "", o, errors.New("--run-id is valid only for public analyze with --manifest")
 	}
 	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
@@ -219,6 +227,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, errors.New("precompile-prepare requires an exact provisional scenario approval and cannot launch or accept a campaign")
 	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateTerminalDiagnosticOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateAllowanceOnlyOptions(cmd, o); err != nil {
@@ -499,7 +510,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
-	requireSecrets = requireSecrets || cmd == "probe-recovery" || cmd == "policy-rollover"
+	requireSecrets = requireSecrets || cmd == "probe-recovery" || cmd == "policy-rollover" || cmd == "terminal-diagnostics"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -538,6 +549,9 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 	}
 	switch cmd {
+	case "terminal-diagnostics":
+		report, err := runTerminalDiagnostics(ctx, resolved, stateDir, o)
+		return printResult(o.Format, report, err)
 	case "audit":
 		report, err := runHistoricalAudit(ctx, resolved, readResolved, stateDir, o.PlanHash)
 		return printResult(o.Format, report, err)

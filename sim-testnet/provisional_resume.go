@@ -77,6 +77,9 @@ func provisionalAcceptedPlanHashes(plan *SetupPlan) ([]string, error) {
 }
 
 func validateProvisionalResumeOptions(command string, options cliOptions) error {
+	if command == "terminal-diagnostics" {
+		return validateTerminalDiagnosticOptions(command, options)
+	}
 	if options.ProvisionalCapture {
 		return validateProvisionalRelayCaptureOptions(command, options)
 	}

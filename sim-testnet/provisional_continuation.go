@@ -15,7 +15,7 @@ func provisionalReviewedPlan(command string, readOnly bool) (bool, error) {
 	switch command {
 	case "probe-recovery", "policy-rollover":
 		return false, nil
-	case "doctor":
+	case "doctor", "terminal-diagnostics":
 		if readOnly {
 			return false, nil
 		}
