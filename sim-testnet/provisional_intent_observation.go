@@ -32,7 +32,7 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 		result.Error = "local runtime intents: " + result.LocalRuntimeIntents.Error
 		return result, ""
 	}
-	if !provisionalResumeEnabled(cfg) || cfg.provisionalResume.Record == nil {
+	if ctx == nil || !provisionalResumeEnabled(cfg) || cfg.Config == nil {
 		return fail(errors.New("provisional intent observation has no admitted plan"))
 	}
 	acceptedPlanHashes := cfg.provisionalResume.AcceptedPlanHashes
@@ -102,10 +102,15 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 			return fail(err)
 		}
 		observed, err := observeProvisionalValidatorSourceV2(ctx, cfg, stateDir, validatorID, spec, hotkey)
-		result.LocalRuntimeIntents = observed
 		if err != nil {
 			return fail(err)
 		}
+		if observed == nil {
+			return fail(errors.New("local intent validator source returned no observation"))
+		}
+		// Preserve the unknown fallback until the selected source succeeds.
+		// A missing or invalid source legitimately returns a nil observation.
+		result.LocalRuntimeIntents = observed
 		return result, generation + ":" + observed.HandoffSHA256
 	}
 	return fail(errors.New("local intent validator is missing from the manifest"))
@@ -114,7 +119,7 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 // The manifest and argv have already established the live child. Select its
 // exact approved source; a new generation cannot inherit the old setup waiver.
 func observeProvisionalValidatorSourceV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, validatorID int, spec ProcessSpec, hotkey [32]byte) (*validatorpkg.ProvisionalIntentObservationV2, error) {
-	if cfg == nil || cfg.Config == nil || !provisionalResumeEnabled(cfg) || validatorID < 1 || validatorID > cfg.Config.Topology.Validators || spec.ID != fmt.Sprintf("validator-%d", validatorID) || spec.Role != "validator" || len(spec.Args) == 0 || spec.Args[0] != "__validator" {
+	if ctx == nil || cfg == nil || cfg.Config == nil || !provisionalResumeEnabled(cfg) || validatorID < 1 || validatorID > cfg.Config.Topology.Validators || spec.ID != fmt.Sprintf("validator-%d", validatorID) || spec.Role != "validator" || len(spec.Args) == 0 || spec.Args[0] != "__validator" {
 		return nil, errors.New("local intent validator source has no exact provisional owner")
 	}
 	var configPath, handoffPath, handoffHash string
