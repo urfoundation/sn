@@ -89,6 +89,7 @@ type policyRolloverHandoffV2 struct {
 	Members                 []runtimeEvidenceActivationMemberV2      `json:"members"`
 	Validators              []policyRolloverValidatorHandoffV2       `json:"validators"`
 	Identities              validatorcomponent.ReleaseEvidenceV2File `json:"identities"`
+	sourceSHA256            string
 }
 
 func policyRolloverRoot(stateDir string) string { return filepath.Join(stateDir, "policy-rollover") }

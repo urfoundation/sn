@@ -229,7 +229,7 @@ func CollectFinalSemanticInputs(ctx context.Context, cfg *ResolvedConfig, stateD
 	} else if _, err := authenticateFinalPriorCaptureV2Context(ctx, cfg, stateRoot, result); err != nil {
 		return nil, err
 	}
-	pathAuthority, err := loadFinalOperatorPathAuthority(cfg, stateRoot, finalConfiguredValidatorIDs(cfg))
+	pathAuthority, err := loadFinalOperatorPathAuthorityV2(ctx, cfg, stateRoot, finalConfiguredValidatorIDs(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("path identity seed is unavailable: %w", err)
 	}

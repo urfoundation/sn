@@ -60,21 +60,34 @@ func finalReleaseCaptureConfigV2(ctx context.Context, cfg *ResolvedConfig, state
 }
 
 func finalReleaseCaptureConfigWithAdoptionV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string, validatorId uint64) (*validatorpkg.ReleaseConfig, []byte, []byte, error) {
-	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateRoot)
+	handoff, err := readPolicyRolloverObservationV2(ctx, cfg, stateRoot)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	var expected *validatorpkg.ReleaseEvidenceV2Config
-	for index := range resolved.Config.ValidatorEvidenceV2 {
-		if resolved.Config.ValidatorEvidenceV2[index].ValidatorID == validatorId {
-			expected = &resolved.Config.ValidatorEvidenceV2[index].Evidence
-			break
+	path := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "validator.yml")
+	wantState := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "state")
+	if handoff != nil {
+		selected, err := policyRolloverObservationValidatorV2(handoff, int(validatorId))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		expected, path, wantState = &selected.Evidence, selected.Config.Path, selected.StateDir
+	} else {
+		resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateRoot)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for index := range resolved.Config.ValidatorEvidenceV2 {
+			if resolved.Config.ValidatorEvidenceV2[index].ValidatorID == validatorId {
+				expected = &resolved.Config.ValidatorEvidenceV2[index].Evidence
+				break
+			}
 		}
 	}
 	if expected == nil {
 		return nil, nil, nil, errors.New("compact capture configured validator is absent")
 	}
-	path := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "validator.yml")
 	encoded, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, path, min(expected.Bounds.MaxControlBytes, uint64(maximumCampaignEvidenceRawFileBytes)))
 	if err != nil {
 		return nil, nil, nil, err
@@ -99,7 +112,6 @@ func finalReleaseCaptureConfigWithAdoptionV2(ctx context.Context, cfg *ResolvedC
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	wantState := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "state")
 	if release.ValidatorID != validatorId || release.StateDir != wantState || release.DeploymentID != cfg.Config.Deployment.DeploymentID || release.ChainID != cfg.ChainID || release.Netuid != cfg.Netuid || !strings.EqualFold(release.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(release.PolicyHash, cfg.PolicyHash) || common.HexToAddress(release.Coordinator) != deployment.CoordinatorProxy || common.HexToAddress(release.SettlementVault) != deployment.SettlementVault || !reflect.DeepEqual(release.EvidenceV2, *expected) || len(release.Operators) != len(cfg.OperatorAPIOrigins) {
 		return nil, nil, nil, errors.New("compact capture runtime config differs from original setup/deployment")
 	}
@@ -107,6 +119,14 @@ func finalReleaseCaptureConfigWithAdoptionV2(ctx context.Context, cfg *ResolvedC
 		if operator.NoID != uint64(index+1) || operator.APIURL != cfg.OperatorAPIOrigins[index] {
 			return nil, nil, nil, errors.New("compact capture runtime origins differ")
 		}
+	}
+	if handoff != nil {
+		// The handoff already authenticates this exact production config and
+		// independent fresh sequence; a predecessor adoption is inapplicable.
+		if bytesSHA256(encoded) != "sha256:"+strings.TrimPrefix(handoff.Validators[validatorId-1].Config.SHA256, "0x") {
+			return nil, nil, nil, errors.New("compact active generation config changed after authentication")
+		}
+		return &release, encoded, nil, ctx.Err()
 	}
 	adoption, adoptionBytes, err := finalCaptureHistoryAdoptionV2(ctx, cfg, stateRoot, &release, encoded)
 	if err != nil {
@@ -471,7 +491,7 @@ func waitFinalValidatorPublicationsV2(ctx context.Context, cfg *ResolvedConfig, 
 	if terminal == nil || terminal.Status == nil || terminal.Status.Contracts == nil || window == nil || window.EpochCount == 0 || window.EpochBlocks == 0 || len(cfg.OperatorAPIOrigins) != 2 {
 		return errors.New("compact terminal wait authority is incomplete")
 	}
-	authority, err := loadFinalOperatorPathAuthority(cfg, stateRoot, finalConfiguredValidatorIDs(cfg))
+	authority, err := loadFinalOperatorPathAuthorityV2(ctx, cfg, stateRoot, finalConfiguredValidatorIDs(cfg))
 	if err != nil {
 		return err
 	}

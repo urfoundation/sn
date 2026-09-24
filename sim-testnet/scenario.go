@@ -1989,12 +1989,16 @@ func inspectValidatorPathProofsCached(ctx context.Context, cfg *ResolvedConfig, 
 			serverKeys[operator.NoID][key.ServerKeyID] = append(ed25519.PublicKey(nil), key.PublicKey...)
 		}
 	}
-	authority, err := loadFinalOperatorPathAuthority(cfg, stateDir, []uint64{uint64(validatorID)})
+	authority, generation, err := loadScenarioPathAuthorityV2(ctx, cfg, stateDir, validatorID)
 	if err != nil {
 		return nil, fmt.Errorf("validator %d client seed is unavailable or invalid: %w", validatorID, err)
 	}
 	counts := make(map[int]int, cfg.Config.Topology.Operators)
 	limits, cacheConfigured, cacheErr := configuredScenarioPathProofLimits(cfg, validatorID)
+	if generation != nil {
+		limits, cacheErr = scenarioPathProofLimitsV2(generation.Evidence.Bounds)
+		cacheConfigured = true
+	}
 	if cache != nil {
 		if cacheErr != nil {
 			return nil, cacheErr
@@ -2007,6 +2011,9 @@ func inspectValidatorPathProofsCached(ctx context.Context, cfg *ResolvedConfig, 
 	}
 	for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "operators", fmt.Sprintf("no-%d", noID))
+		if generation != nil {
+			root = filepath.Join(generation.ClientStateDir, "operators", fmt.Sprintf("no-%d", noID))
+		}
 		expectedVPK := authority.keysByValidator[uint64(validatorID)][uint64(noID)]
 		path := filepath.Join(root, "proofs.jsonl")
 		verify := func(record *validatorpkg.ProofRecord, lineIndex int) error {

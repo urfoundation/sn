@@ -55,17 +55,19 @@ func configuredScenarioPathProofLimits(cfg *ResolvedConfig, validatorID int) (sc
 		if configured.ValidatorID != uint64(validatorID) {
 			continue
 		}
-		disk := configured.Evidence.Bounds.Disk
-		maximumLine := disk.MaxRecordBytes
-		if configured.Evidence.Bounds.Replay.MaxProofBytes > maximumLine {
-			maximumLine = configured.Evidence.Bounds.Replay.MaxProofBytes
-		}
-		if disk.MaxProofBytes == 0 || disk.MaxTrailCount == 0 || maximumLine == 0 || maximumLine > disk.MaxProofBytes {
-			return scenarioPathProofLimits{}, true, errors.New("scenario path-proof bounds are incomplete")
-		}
-		return scenarioPathProofLimits{maximumBytes: disk.MaxProofBytes, maximumProofs: disk.MaxTrailCount, maximumLine: maximumLine}, true, nil
+		limits, err := scenarioPathProofLimitsV2(configured.Evidence.Bounds)
+		return limits, true, err
 	}
 	return scenarioPathProofLimits{}, false, nil
+}
+
+func scenarioPathProofLimitsV2(bounds validatorpkg.ReleaseEvidenceV2Bounds) (scenarioPathProofLimits, error) {
+	disk := bounds.Disk
+	maximumLine := max(disk.MaxRecordBytes, bounds.Replay.MaxProofBytes)
+	if disk.MaxProofBytes == 0 || disk.MaxTrailCount == 0 || maximumLine == 0 || maximumLine > disk.MaxProofBytes {
+		return scenarioPathProofLimits{}, errors.New("scenario path-proof bounds are incomplete")
+	}
+	return scenarioPathProofLimits{maximumBytes: disk.MaxProofBytes, maximumProofs: disk.MaxTrailCount, maximumLine: maximumLine}, nil
 }
 
 type scenarioPathProofServerKey struct {

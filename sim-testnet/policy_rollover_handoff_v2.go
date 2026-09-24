@@ -157,6 +157,7 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 			}
 		}
 	}
+	h.sourceSHA256 = bytesSHA256(raw)
 	return &h, ctx.Err()
 }
 

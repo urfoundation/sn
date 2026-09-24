@@ -647,7 +647,20 @@ func completedReleaseProofCount(path string) (int, error) {
 // Snapshots proof progress for every validator/operator pair.
 func releaseTopologyProofCounts(cfg *ResolvedConfig, stateDir string) (map[string]int, error) {
 	counts := map[string]int{}
-	for identity, path := range releaseTopologyProofPaths(cfg, stateDir) {
+	paths := releaseTopologyProofPaths(cfg, stateDir)
+	handoff, err := readPolicyRolloverObservationV2(context.Background(), cfg, stateDir)
+	if err != nil {
+		return nil, err
+	}
+	if handoff != nil {
+		for _, validator := range handoff.Validators {
+			for _, operator := range validator.Evidence.Operators {
+				identity := fmt.Sprintf("validator-%d/no-%d", validator.ValidatorID, operator.NoID)
+				paths[identity] = filepath.Join(validator.ClientStateDir, "operators", fmt.Sprintf("no-%d", operator.NoID), "proofs.jsonl")
+			}
+		}
+	}
+	for identity, path := range paths {
 		count, err := completedReleaseProofCount(path)
 		if err != nil {
 			return nil, fmt.Errorf("read %s release proofs: %w", identity, err)

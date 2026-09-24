@@ -97,34 +97,69 @@ func observeProvisionalValidatorIntent(ctx context.Context, cfg *ResolvedConfig,
 		if !matched {
 			return fail(errors.New("local intent validator is absent from the live generation"))
 		}
-		var configPath, handoffPath, handoffHash string
-		fs := flag.NewFlagSet(id, flag.ContinueOnError)
-		fs.SetOutput(io.Discard)
-		fs.StringVar(&configPath, "config", "", "")
-		fs.StringVar(&handoffPath, "provisional-activation-setup", "", "")
-		fs.StringVar(&handoffHash, "provisional-activation-setup-sha256", "", "")
-		if err := fs.Parse(spec.Args[1:]); err != nil || fs.NArg() != 0 || configPath != filepath.Join(stateDir, "runtime", id, "validator.yml") || handoffPath == "" || handoffHash == "" {
-			return fail(errors.New("local intent validator lacks its explicit activation handoff"))
-		}
-		handoff, err := readProvisionalActivationSetup(configPath, handoffPath)
-		if err != nil {
-			return fail(err)
-		}
 		hotkey, err := ss58.DecodeWithPrefix(spec.Identity, ss58.BittensorPrefix)
 		if err != nil {
 			return fail(err)
 		}
-		observed, err := validatorpkg.ObserveProvisionalIntentsV2(ctx, validatorpkg.ProvisionalIntentObservationV2Options{
-			ConfigPath: configPath, Handoff: handoff, HandoffSHA256: handoffHash, PlanHash: cfg.provisionalResume.Record.PlanHash,
-			AcceptedPlanHashes: slices.Clone(acceptedPlanHashes), DeploymentID: manifest.DeploymentID, ValidatorID: uint64(validatorID), Netuid: cfg.Netuid, Hotkey: hotkey,
-		})
+		observed, err := observeProvisionalValidatorSourceV2(ctx, cfg, stateDir, validatorID, spec, hotkey)
 		result.LocalRuntimeIntents = observed
 		if err != nil {
 			return fail(err)
 		}
-		return result, generation
+		return result, generation + ":" + observed.HandoffSHA256
 	}
 	return fail(errors.New("local intent validator is missing from the manifest"))
+}
+
+// The manifest and argv have already established the live child. Select its
+// exact approved source; a new generation cannot inherit the old setup waiver.
+func observeProvisionalValidatorSourceV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, validatorID int, spec ProcessSpec, hotkey [32]byte) (*validatorpkg.ProvisionalIntentObservationV2, error) {
+	if cfg == nil || cfg.Config == nil || !provisionalResumeEnabled(cfg) || validatorID < 1 || validatorID > cfg.Config.Topology.Validators || spec.ID != fmt.Sprintf("validator-%d", validatorID) || spec.Role != "validator" || len(spec.Args) == 0 || spec.Args[0] != "__validator" {
+		return nil, errors.New("local intent validator source has no exact provisional owner")
+	}
+	var configPath, handoffPath, handoffHash string
+	fs := flag.NewFlagSet(spec.ID, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&configPath, "config", "", "")
+	fs.StringVar(&handoffPath, "provisional-activation-setup", "", "")
+	fs.StringVar(&handoffHash, "provisional-activation-setup-sha256", "", "")
+	if err := fs.Parse(spec.Args[1:]); err != nil || fs.NArg() != 0 {
+		return nil, errors.Join(errors.New("local intent validator arguments differ"), err)
+	}
+	active, err := readPolicyRolloverObservationV2(ctx, cfg, stateDir)
+	if err != nil {
+		return nil, err
+	}
+	selected, err := policyRolloverObservationValidatorV2(active, validatorID)
+	if err != nil {
+		return nil, err
+	}
+	if selected != nil {
+		if configPath != selected.Config.Path || handoffPath != "" || handoffHash != "" || spec.Env["URNETWORK_STATE_DIR"] != selected.ClientStateDir {
+			return nil, errors.New("local intent validator differs from activated source generation")
+		}
+		for _, member := range active.Members {
+			if member.ValidatorId == uint64(validatorID) && member.Activation.Hotkey != hotkey {
+				return nil, errors.New("local intent validator hotkey differs from activated source")
+			}
+		}
+		return validatorpkg.ObserveProvisionalConfiguredIntentsV2(ctx, validatorpkg.ProvisionalConfiguredIntentObservationV2Options{
+			Config: selected.Config, HandoffSHA256: active.sourceSHA256, StateDir: selected.StateDir,
+			DeploymentID: active.DeploymentID, ValidatorID: uint64(validatorID), Netuid: cfg.Netuid, Hotkey: hotkey,
+		})
+	}
+	if configPath != filepath.Join(stateDir, "runtime", spec.ID, "validator.yml") || handoffPath == "" || handoffHash == "" {
+		return nil, errors.New("local intent validator lacks its explicit activation handoff")
+	}
+	handoff, err := readProvisionalActivationSetup(configPath, handoffPath)
+	if err != nil {
+		return nil, err
+	}
+	return validatorpkg.ObserveProvisionalIntentsV2(ctx, validatorpkg.ProvisionalIntentObservationV2Options{
+		ConfigPath: configPath, Handoff: handoff, HandoffSHA256: handoffHash, PlanHash: cfg.provisionalResume.Record.PlanHash,
+		AcceptedPlanHashes: slices.Clone(cfg.provisionalResume.AcceptedPlanHashes), DeploymentID: cfg.Config.Deployment.DeploymentID,
+		ValidatorID: uint64(validatorID), Netuid: cfg.Netuid, Hotkey: hotkey,
+	})
 }
 
 // Observe both sides of the local projection. Neither the shared projection nor

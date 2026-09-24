@@ -26,6 +26,17 @@ type ProvisionalIntentObservationV2Options struct {
 	Hotkey             [32]byte
 }
 
+// A fresh source generation has a pinned production config rather than the
+// predecessor-only activation-setup projection. The caller authenticates its
+// approved handoff; this API still returns local claims, never chain acceptance.
+type ProvisionalConfiguredIntentObservationV2Options struct {
+	Config                                ReleaseEvidenceV2File
+	HandoffSHA256, DeploymentID, StateDir string
+	ValidatorID                           uint64
+	Netuid                                uint16
+	Hotkey                                [32]byte
+}
+
 // Receipts are recorded runtime claims, not independently verified chain facts.
 // Prepared signed bytes are never returned by this observation API.
 type ProvisionalIntentReceiptV2 struct {
@@ -84,12 +95,7 @@ func validateProvisionalIntentPlanLineage(current string, accepted []string, han
 
 func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentObservationV2Options) (result *ProvisionalIntentObservationV2, resultErr error) {
 	result = &ProvisionalIntentObservationV2{Scope: "local-runtime-observation", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), State: "unknown"}
-	defer func() {
-		if resultErr != nil {
-			result.State, result.Error = "unknown", fmt.Sprintf("%.1024s", resultErr.Error())
-			result.Receipts, result.RecordedFinalizedIntents, result.RecordedAppliedIntents = nil, nil, nil
-		}
-	}()
+	defer func() { failProvisionalIntentObservationV2(result, resultErr) }()
 	if ctx == nil || options.Hotkey == ([32]byte{}) || !filepath.IsAbs(options.ConfigPath) || filepath.Clean(options.ConfigPath) != options.ConfigPath || len(options.Handoff) == 0 || len(options.Handoff) > ProvisionalActivationSetupV2MaximumBytes || provisionalActivationSetupSHA256(options.Handoff) != options.HandoffSHA256 {
 		return result, errors.New("local intent observation lacks its pinned runtime handoff")
 	}
@@ -121,6 +127,43 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		return result, err
 	}
 	result.StateDirectory, result.HandoffSHA256 = cfg.StateDir, options.HandoffSHA256
+	return observeProvisionalIntentStoreV2(ctx, cfg, options.Hotkey, result)
+}
+
+func failProvisionalIntentObservationV2(result *ProvisionalIntentObservationV2, err error) {
+	if err != nil {
+		result.State, result.Error = "unknown", fmt.Sprintf("%.1024s", err.Error())
+		result.Receipts, result.RecordedFinalizedIntents, result.RecordedAppliedIntents = nil, nil, nil
+	}
+}
+
+// Read and decode the same pinned bytes. This never opens the ledger for
+// writing, creates a synthetic setup handoff, or credits local receipts as final.
+func ObserveProvisionalConfiguredIntentsV2(ctx context.Context, options ProvisionalConfiguredIntentObservationV2Options) (result *ProvisionalIntentObservationV2, resultErr error) {
+	result = &ProvisionalIntentObservationV2{Scope: "local-runtime-observation", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), State: "unknown"}
+	defer func() { failProvisionalIntentObservationV2(result, resultErr) }()
+	if ctx == nil || options.Hotkey == ([32]byte{}) || !filepath.IsAbs(options.Config.Path) || filepath.Clean(options.Config.Path) != options.Config.Path || !filepath.IsAbs(options.StateDir) || filepath.Clean(options.StateDir) != options.StateDir {
+		return result, errors.New("local configured intent observation has no exact source owner")
+	}
+	if _, err := parseReleaseContentHash(options.HandoffSHA256); err != nil {
+		return result, err
+	}
+	encoded, err := ReadReleaseEvidenceV2File(ctx, options.Config, ProvisionalActivationSetupV2MaximumBytes)
+	if err != nil {
+		return result, err
+	}
+	cfg, err := decodeReleaseConfigBytes(options.Config.Path, encoded)
+	if err != nil {
+		return result, err
+	}
+	if cfg.DeploymentID != options.DeploymentID || cfg.ValidatorID != options.ValidatorID || cfg.Netuid != options.Netuid || cfg.StateDir != options.StateDir {
+		return result, errors.New("local configured intent observation differs from its approved identity")
+	}
+	result.StateDirectory, result.HandoffSHA256 = cfg.StateDir, options.HandoffSHA256
+	return observeProvisionalIntentStoreV2(ctx, cfg, options.Hotkey, result)
+}
+
+func observeProvisionalIntentStoreV2(ctx context.Context, cfg *ReleaseConfig, hotkey [32]byte, result *ProvisionalIntentObservationV2) (_ *ProvisionalIntentObservationV2, resultErr error) {
 	limit := cfg.EvidenceV2.Bounds.IntentFileLimit()
 	custody := &releaseEvidenceV2StartupReferences{remaining: limit}
 	defer func() { resultErr = errors.Join(resultErr, custody.check(), custody.close(), ctx.Err()) }()
@@ -151,7 +194,7 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 	if err := decodeAttemptStreamV2JSON(encoded, limit, &file); err != nil {
 		return result, err
 	}
-	canonical, err = marshalAttemptSettlementV2JSON(ctx, &file, limit, true, true)
+	canonical, err := marshalAttemptSettlementV2JSON(ctx, &file, limit, true, true)
 	if err != nil || !bytes.Equal(encoded, canonical) || file.Schema != SteeringIntentSchema || len(file.History) > 16384 {
 		return result, errors.Join(errors.New("local intent store schema, bytes or census differs"), err)
 	}
@@ -176,7 +219,7 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		if _, err := ReleasePolicyForHash(cfg, intent.PolicyHash); err != nil {
 			return result, err
 		}
-		if intent.ValidatorID != cfg.ValidatorID || intent.Netuid != cfg.Netuid || intent.Prepared.HotkeyHex != releaseHex32(options.Hotkey) || intent.Prepared.Netuid != cfg.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, intent.UIDs) {
+		if intent.ValidatorID != cfg.ValidatorID || intent.Netuid != cfg.Netuid || intent.Prepared.HotkeyHex != releaseHex32(hotkey) || intent.Prepared.Netuid != cfg.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, intent.UIDs) {
 			return result, errors.New("local intent differs from its configured validator identity")
 		}
 		if err := intent.VerifyVectorHash(); err != nil {
