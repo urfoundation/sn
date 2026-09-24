@@ -34,6 +34,7 @@ type evidenceRelayPolicyGapActivation struct {
 type evidenceRelayPolicyGapRecord struct {
 	Schema                  string                                                    `json:"schema"`
 	PlanHash                string                                                    `json:"plan_hash"`
+	RolloverPlanHash        string                                                    `json:"rollover_plan_hash,omitempty"`
 	ConfigHash              string                                                    `json:"config_hash"`
 	ValidatorID             uint64                                                    `json:"validator_id"`
 	ManifestHash            string                                                    `json:"manifest_hash"`
@@ -212,7 +213,7 @@ func (self *evidenceRelayRuntime) retainHistoricalPolicyGap(ctx context.Context,
 	// The reader's moving observation head is not part of either signature.
 	// Preserve the minimal proved window so audit retries have a stable record.
 	expected.Window.FinalizedBlock = max(expected.Window.EndBlock, expected.Evidence.Header.BoundaryBlock)
-	record := evidenceRelayPolicyGapRecord{Schema: evidenceRelayPolicyGapSchema, PlanHash: self.executor.plan.PlanHash, ConfigHash: self.executor.cfg.ConfigHash,
+	record := evidenceRelayPolicyGapRecord{Schema: evidenceRelayPolicyGapSchema, PlanHash: self.executor.plan.PlanHash, RolloverPlanHash: self.policyRolloverPlanHash, ConfigHash: self.executor.cfg.ConfigHash,
 		ValidatorID: source.validatorId, ManifestHash: manifestHash, Cutoff: *cutoff, Request: expected, Mismatch: *mismatch,
 		SourceGenerationChanged: cutoff.Activation.VPK != expected.Activation.VPK, FirstAcceptanceEpoch: self.policyGapFirstEpoch[source.validatorId]}
 	path := filepath.Join(self.executor.stateDir, "evidence-relay", "policy-gaps-v2", strings.TrimPrefix(record.PlanHash, "0x"), fmt.Sprintf("%x.json", slot))

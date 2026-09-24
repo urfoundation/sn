@@ -33,40 +33,41 @@ type evidenceRelaySource struct {
 // The worker alone mutates sources and admits actions. The small state lock
 // protects only progress/error notification, never HTTP, files or chain calls.
 type evidenceRelayRuntime struct {
-	executor             *Executor
-	chain                *validatorcomponent.ChainClient
-	origins              [2]string
-	sources              []evidenceRelaySource
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	done                 chan struct{}
-	fail                 func(error)
-	poll                 time.Duration
-	phase                string
-	prepared             bool
-	work                 evidenceRelayWork
-	horizon              *evidenceRelayHorizon
-	nativeWarmupBudget   *ScenarioNativeWarmupBudgetV2
-	nativeWarmupComplete bool
-	startupCache         *evidenceRelayStartupSession
-	pendingPublicCensus  *evidenceRelayPublicCensus
-	publicAudit          *evidenceRelayPublicAudit
-	retainedPublications *evidenceRelayRetainedPublications
-	startupProgress      bool
-	ready                chan struct{}
-	remainingRequests    chan evidenceRelayRemainingRequest
-	stateLock            sync.Mutex
-	changed              chan struct{}
-	through              map[uint64]uint64
-	completed            map[uint64]bool
-	workerStarted        bool
-	policyGapCutoffs     map[uint64][]evidenceRelayPolicyGapActivation
-	policyGapFirstEpoch  map[uint64]uint64
-	policyGaps           map[[32]byte]evidenceRelayPolicyGapProgress
-	policyGapAudits      map[evidenceRelayAuditKey][32]byte
-	startedAuditPasses   uint64
-	completedAuditPasses uint64
-	resultErr            error
+	executor               *Executor
+	chain                  *validatorcomponent.ChainClient
+	origins                [2]string
+	sources                []evidenceRelaySource
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	done                   chan struct{}
+	fail                   func(error)
+	poll                   time.Duration
+	phase                  string
+	prepared               bool
+	work                   evidenceRelayWork
+	horizon                *evidenceRelayHorizon
+	nativeWarmupBudget     *ScenarioNativeWarmupBudgetV2
+	nativeWarmupComplete   bool
+	startupCache           *evidenceRelayStartupSession
+	pendingPublicCensus    *evidenceRelayPublicCensus
+	publicAudit            *evidenceRelayPublicAudit
+	retainedPublications   *evidenceRelayRetainedPublications
+	startupProgress        bool
+	ready                  chan struct{}
+	remainingRequests      chan evidenceRelayRemainingRequest
+	stateLock              sync.Mutex
+	changed                chan struct{}
+	through                map[uint64]uint64
+	completed              map[uint64]bool
+	workerStarted          bool
+	policyGapCutoffs       map[uint64][]evidenceRelayPolicyGapActivation
+	policyGapFirstEpoch    map[uint64]uint64
+	policyRolloverPlanHash string
+	policyGaps             map[[32]byte]evidenceRelayPolicyGapProgress
+	policyGapAudits        map[evidenceRelayAuditKey][32]byte
+	startedAuditPasses     uint64
+	completedAuditPasses   uint64
+	resultErr              error
 }
 
 // Construction authenticates fixed inputs and opens an owned chain client
@@ -158,6 +159,10 @@ func openEvidenceRelayRuntime(ctx context.Context, approved *ResolvedConfig, exe
 	}
 	self.chain, err = executor.runtimeEvidenceActivationChainV2(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := self.installAuthenticatedPolicyRolloverHandoffV2(ctx, approved); err != nil {
+		self.chain.Close()
 		return nil, err
 	}
 	self.ctx, self.cancel = context.WithCancel(ctx)
