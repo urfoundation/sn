@@ -2030,3 +2030,12 @@ projection. Fixture tests must validate the selected source's real schema and
 bytes; exporter parity remains pending until the exporter exists in the pinned
 server source. These are build and qualification safeguards, not evidence that
 R42's live acceptance has passed.
+
+Terminal diagnostics must distinguish the chain's terminal block from the
+runner's signed terminal result. A failed provisional interval may continue
+until its watchdog after the block, so a short result-file wait can produce an
+early inventory that lacks the final failure set. Keep the live runner and
+read-only auditor independent; collect at the block for timely diagnosis, then
+collect again after the exact signed result appears. Bind both inventories to
+the same run ID, plan, boundary and source hash. A diagnostic report never
+creates a pass marker or substitutes for the original signed result.
