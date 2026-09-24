@@ -28,10 +28,12 @@ type scenarioCampaignRecoveryProjection struct {
 // mutable attempts. The lock joins simultaneous readers without sharing their
 // payload maps, slices or per-attempt runtime caches.
 type scenarioCampaignRecoveryChainCache struct {
-	stateLock   sync.Mutex
-	contextHash string
-	witnesses   []fleetCensusFileWitness
-	projections []scenarioCampaignRecoveryProjection
+	stateLock       sync.Mutex
+	contextHash     string
+	witnesses       []fleetCensusFileWitness
+	prefixWitnesses []fleetCensusFileWitness
+	journalPrefix   scenarioCampaignJournalCut
+	projections     []scenarioCampaignRecoveryProjection
 }
 
 type scenarioCampaignRecoveryChainRead func(*ResolvedConfig, string, *RoleSecrets, string, []scenarioCampaignRecoveryFile, []scenarioCampaignRecoveryRecord) ([]scenarioCampaignRecoveryRecord, error)
@@ -97,15 +99,15 @@ func scenarioCampaignRecoverySourceWitness(stateDir, name string, directory bool
 }
 
 // The existing conservative inventory covers original and failed-run evidence,
-// including absent terminal markers. Add the active plan and complete journal:
-// even a valid append invalidates this immutable invocation snapshot.
+// including absent terminal markers. The journal uses its authenticated byte
+// prefix instead of file metadata, so ordinary appends do not discard history.
 func scenarioCampaignRecoveryChainWitnesses(cfg *ResolvedConfig, stateDir, runId string) ([]fleetCensusFileWitness, bool) {
 	probe := &scenarioCampaignAttempt{cfg: cfg, stateDir: stateDir, payload: scenarioCampaignAttemptPayload{RunID: runId}}
 	witnesses, ok := scenarioCampaignRecoveryProofWitnesses(probe)
 	if !ok {
 		return nil, false
 	}
-	for _, name := range []string{"plan.json", "journal.jsonl", "campaign-attempts/production-soak.evidence.json"} {
+	for _, name := range []string{"plan.json", "campaign-attempts/production-soak.evidence.json"} {
 		witness, ok := scenarioCampaignRecoverySourceWitness(stateDir, name, false)
 		if !ok {
 			return nil, false
@@ -113,6 +115,18 @@ func scenarioCampaignRecoveryChainWitnesses(cfg *ResolvedConfig, stateDir, runId
 		witnesses = append(witnesses, witness)
 	}
 	return witnesses, true
+}
+
+// Only the latest envelope may change as this invocation records observations
+// and faults. It is read again before use; every earlier envelope stays fenced.
+func scenarioCampaignRecoveryPrefixWitnesses(witnesses []fleetCensusFileWitness, latest scenarioCampaignRecoveryFile) []fleetCensusFileWitness {
+	prefix := make([]fleetCensusFileWitness, 0, len(witnesses))
+	for _, witness := range witnesses {
+		if witness.Name != latest.relativePath {
+			prefix = append(prefix, witness)
+		}
+	}
+	return prefix
 }
 
 // Check every positive and negative dependency of the retained prefix. New
@@ -137,6 +151,9 @@ func scenarioCampaignRecoveryProject(records []scenarioCampaignRecoveryRecord) (
 	for _, record := range records {
 		if record.attempt == nil || len(record.raw) == 0 {
 			return nil, errors.New("recovery chain projection has no authenticated envelope")
+		}
+		if record.attempt.cfg == nil || record.attempt.cfg.Policy == nil {
+			return nil, errors.New("recovery chain projection has no authenticated policy")
 		}
 		payload, err := json.Marshal(record.attempt.payload)
 		if err != nil {
@@ -198,7 +215,8 @@ func scenarioCampaignRecoverySelectedRun(stateDir string, files []scenarioCampai
 }
 
 // Cache successful immutable provisional prefixes only within this invocation.
-// Failed, changed, over-budget and strict reads retain complete validation.
+// A failed current link cannot replace or discard an unchanged older proof;
+// altered historical sources and strict readers still need full validation.
 func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, planHash string, files []scenarioCampaignRecoveryFile, read scenarioCampaignRecoveryChainRead) ([]scenarioCampaignRecoveryRecord, error) {
 	if !provisionalResumeEnabled(cfg) || cfg.strictHistoryAdoption != nil || cfg.relayCapturePlanHash != "" || len(files) == 0 {
 		return read(cfg, stateDir, roles, planHash, files, nil)
@@ -216,13 +234,23 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 	cache.stateLock.Lock()
 	defer cache.stateLock.Unlock()
 	var prefix []scenarioCampaignRecoveryRecord
-	if cache.contextHash == contextHash && len(cache.projections) != 0 && len(cache.projections) <= len(files) && scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.witnesses) {
+	var retainedWitnesses []fleetCensusFileWitness
+	if cache.contextHash == contextHash && len(cache.projections) != 0 && len(cache.projections) <= len(files) && scenarioCampaignRecoveryProofJournal(stateDir, cache.journalPrefix) {
 		matches := true
 		for index, projection := range cache.projections {
 			matches = matches && projection.file == files[index]
 		}
 		if matches {
-			prefix, err = scenarioCampaignRecoveryExpand(cfg, stateDir, roles, cache.projections)
+			projections := cache.projections
+			if scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.witnesses) {
+				retainedWitnesses = cache.witnesses
+			} else if len(projections) > 1 && scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.prefixWitnesses) {
+				projections = projections[:len(projections)-1]
+				retainedWitnesses = cache.prefixWitnesses
+			} else {
+				projections = nil
+			}
+			prefix, err = scenarioCampaignRecoveryExpand(cfg, stateDir, roles, projections)
 			if err != nil {
 				return nil, err
 			}
@@ -230,17 +258,18 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 	}
 	if len(prefix) == len(files) {
 		contextAfter, contextErr := scenarioCampaignRecoveryChainContext(cfg, stateDir, roles, planHash)
-		if contextErr == nil && contextHash == contextAfter && scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.witnesses) {
+		if contextErr == nil && contextHash == contextAfter && scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) {
 			return prefix, nil
 		}
 		prefix = nil
 	}
-	cache.projections = nil
 	selectedRun := scenarioCampaignRecoverySelectedRun(stateDir, files)
 	before, safeBefore := scenarioCampaignRecoveryChainWitnesses(cfg, stateDir, selectedRun)
+	prefixBefore := scenarioCampaignRecoveryPrefixWitnesses(before, files[len(files)-1])
+	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshot(stateDir, nil, nil)
 	// Do not bind a newly changed source snapshot to an older prefix simply
 	// because the change landed between the lookup and the full inventory.
-	if len(prefix) != 0 && !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.witnesses) {
+	if len(prefix) != 0 && !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) {
 		prefix = nil
 	}
 	records, err := read(cfg, stateDir, roles, planHash, files, prefix)
@@ -248,18 +277,23 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 		return nil, err
 	}
 	contextAfter, contextErr := scenarioCampaignRecoveryChainContext(cfg, stateDir, roles, planHash)
-	if len(prefix) != 0 && (contextErr != nil || contextHash != contextAfter || !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, cache.witnesses)) {
+	if len(prefix) != 0 && (contextErr != nil || contextHash != contextAfter || !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) || !scenarioCampaignRecoveryProofJournal(stateDir, cache.journalPrefix)) {
 		return nil, errors.New("recovery chain source or context changed during authenticated prefix reuse")
 	}
 	if len(records) != len(files) || records[len(records)-1].attempt.payload.RunID != selectedRun {
 		return records, nil
 	}
 	after, safeAfter := scenarioCampaignRecoveryChainWitnesses(cfg, stateDir, selectedRun)
+	prefixAfter := scenarioCampaignRecoveryPrefixWitnesses(after, files[len(files)-1])
 	contextAfter, contextErr = scenarioCampaignRecoveryChainContext(cfg, stateDir, roles, planHash)
-	if safeBefore && safeAfter && contextErr == nil && contextHash == contextAfter && reflect.DeepEqual(before, after) {
+	if safeBefore && safeAfter && contextErr == nil && contextHash == contextAfter && journalErr == nil && scenarioCampaignRecoveryProofJournal(stateDir, journalBefore) && reflect.DeepEqual(prefixBefore, prefixAfter) {
 		projections, err := scenarioCampaignRecoveryProject(records)
 		if err == nil {
-			cache.contextHash, cache.witnesses, cache.projections = contextHash, after, projections
+			cache.contextHash, cache.prefixWitnesses, cache.journalPrefix, cache.projections = contextHash, prefixAfter, journalBefore, projections
+			cache.witnesses = nil
+			if reflect.DeepEqual(before, after) {
+				cache.witnesses = after
+			}
 		}
 	}
 	return records, nil

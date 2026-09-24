@@ -206,8 +206,8 @@ func TestScenarioCampaignRecoveryChainCacheMissingEmptyAndCanceledReads(t *testi
 	}
 }
 
-// Newly written production evidence and journal suffixes are live authority;
-// negative witnesses and the journal identity keep them outside old successes.
+// Valid journal suffixes preserve historical authority. Invalid suffixes and
+// newly written production evidence still reject reuse of old successes.
 func TestScenarioCampaignRecoveryChainCacheNewJournalAndTerminalMarkers(t *testing.T) {
 	t.Parallel()
 	fixture, _, _, files := campaignRecoveryChainCacheFixture(t)
@@ -222,14 +222,14 @@ func TestScenarioCampaignRecoveryChainCacheNewJournalAndTerminalMarkers(t *testi
 	if err := fixture.journal.Append(JournalEntry{DeploymentID: fixture.current.DeploymentID, PlanHash: fixture.current.PlanHash, ActionID: "chain-cache-progress", IntentHash: "0x" + strings.Repeat("a8", 32), Stage: StageIntent}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err != nil || calls != 2 {
-		t.Fatalf("journal append did not revalidate: calls=%d error=%v", calls, err)
+	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err != nil || calls != 1 {
+		t.Fatalf("valid journal append replayed historical sources: calls=%d error=%v", calls, err)
 	}
 	path := scenarioCampaignAttemptPath(fixture.stateDir, "production-soak")
 	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err == nil || calls != 3 || !strings.Contains(err.Error(), "production descendant") {
+	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err == nil || calls != 2 || !strings.Contains(err.Error(), "production descendant") {
 		t.Fatalf("new production descendant reused old proof: calls=%d error=%v", calls, err)
 	}
 	if err := os.Remove(path); err != nil {
@@ -243,7 +243,7 @@ func TestScenarioCampaignRecoveryChainCacheNewJournalAndTerminalMarkers(t *testi
 	if err := errors.Join(writeErr, file.Close()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err == nil || calls != 4 || !strings.Contains(err.Error(), "hash mismatch") {
+	if _, err := readScenarioCampaignRecoveryChainMemo(fixture.cfg, fixture.stateDir, fixture.roles, fixture.current.PlanHash, files, read); err == nil || calls != 3 || !strings.Contains(err.Error(), "hash mismatch") {
 		t.Fatalf("invalid journal suffix reused old proof: calls=%d error=%v", calls, err)
 	}
 }
@@ -488,8 +488,20 @@ func TestScenarioCampaignRecoveryChainCacheBoundsAndUnsafeWitnesses(t *testing.T
 	if _, err := scenarioCampaignRecoveryProject([]scenarioCampaignRecoveryRecord{{}}); err == nil {
 		t.Fatal("incomplete reader output produced a successful projection")
 	}
-	record := scenarioCampaignRecoveryRecord{attempt: &scenarioCampaignAttempt{}, raw: make([]byte, scenarioCampaignRecoveryChainCacheBytes)}
-	if _, err := scenarioCampaignRecoveryProject([]scenarioCampaignRecoveryRecord{record}); err == nil {
+	record := scenarioCampaignRecoveryRecord{attempt: &scenarioCampaignAttempt{cfg: newCampaignSuccessionFixture(t).cfg}, raw: make([]byte, scenarioCampaignRecoveryChainCacheBytes)}
+	if _, err := scenarioCampaignRecoveryProject([]scenarioCampaignRecoveryRecord{record}); err == nil || !strings.Contains(err.Error(), "cache byte bound") {
 		t.Fatal("payload plus envelope exceeded the cache bound without rejection")
+	}
+}
+
+// A partial decoder result cannot panic the cache or retain an attempt that
+// lacks the governed policy needed to expand a historical generation.
+func TestScenarioCampaignRecoveryChainCacheRejectsIncompletePolicy(t *testing.T) {
+	t.Parallel()
+	for _, cfg := range []*ResolvedConfig{nil, {}} {
+		record := scenarioCampaignRecoveryRecord{attempt: &scenarioCampaignAttempt{cfg: cfg}, raw: []byte("{}")}
+		if _, err := scenarioCampaignRecoveryProject([]scenarioCampaignRecoveryRecord{record}); err == nil || !strings.Contains(err.Error(), "authenticated policy") {
+			t.Fatalf("incomplete policy became a reusable projection: %v", err)
+		}
 	}
 }
