@@ -36,10 +36,24 @@ func newProvisionalProductionTestFixture(t *testing.T, terminalEdits ...func(*Sc
 		t.Fatal(err)
 	}
 	completed := started.Add(8 * time.Hour)
-	terminal := testScenarioObservation(f.campaign.cfg, boundary.AcceptanceWindow.FirstEpoch+boundary.AcceptanceWindow.EpochCount)
+	terminalBlock := boundary.AcceptanceWindow.TerminalBlock + 1
+	for index := range boundary.Faults {
+		fault := &boundary.Faults[index]
+		fault.Status, fault.AppliedBlock, fault.AppliedBlockHash = "restored", fault.TriggerBlock, "0x"+strings.Repeat("b1", 32)
+		fault.RestoredBlock, fault.RestoredBlockHash = fault.RestoreBlock, "0x"+strings.Repeat("b2", 32)
+		for index, target := range fault.Targets {
+			fault.Processes = append(fault.Processes, FaultProcessEvidence{ID: target, Role: "fixture", Identity: target, PID: 100 + index})
+			fault.RestoredProcesses = append(fault.RestoredProcesses, FaultProcessEvidence{ID: target, Role: "fixture", Identity: target, PID: 200 + index})
+		}
+		if fault.RestoredBlock >= terminalBlock {
+			terminalBlock = fault.RestoredBlock + 1
+		}
+	}
+	terminalEpoch := boundary.AcceptanceWindow.FirstEpoch + (terminalBlock-boundary.AcceptanceWindow.StartBlock)/boundary.AcceptanceWindow.EpochBlocks
+	terminal := testScenarioObservation(f.campaign.cfg, terminalEpoch)
 	terminal.PublicIdentitiesValid = true
 	terminal.ReserveValidatorRegistered, terminal.EscrowHotkeyRegistered = true, true
-	terminal.Status.Contracts.FinalizedHead = ChainHead{Number: boundary.AcceptanceWindow.TerminalBlock + 1, Hash: "0x" + strings.Repeat("a7", 32)}
+	terminal.Status.Contracts.FinalizedHead = ChainHead{Number: terminalBlock, Hash: "0x" + strings.Repeat("a7", 32)}
 	terminal.ObservedAt = completed.Add(-time.Second).Format(time.RFC3339Nano)
 	for _, edit := range terminalEdits {
 		edit(terminal)
@@ -243,6 +257,57 @@ func TestProvisionalProductionHandoffRejectsUnsafeOrChangedSource(t *testing.T) 
 			}
 			if _, err := os.Stat(provisionalProductionHandoffPath(c.stateDir, f.result.RunID)); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("failed preflight published provisional authority")
+			}
+		})
+	}
+}
+
+func TestProvisionalProductionHandoffRequiresRestoredFaults(t *testing.T) {
+	for _, mode := range []string{"signed-active", "signed-pending", "result-active", "future-restoration", "active-recovery-ledger"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newProvisionalProductionTestFixture(t)
+			c := f.history.campaign
+			boundary := f.history.attempt.payload.AcceptanceBoundary
+			index := len(boundary.Faults) - 1
+			signedFault, resultFault := &boundary.Faults[index], &f.result.Faults[index]
+			clearRestoration := func(fault *ScenarioFaultRecord) {
+				fault.Status, fault.RestoredBlock, fault.RestoredBlockHash = "active", 0, ""
+				fault.RestoredProcesses = nil
+			}
+			switch mode {
+			case "signed-active":
+				clearRestoration(signedFault)
+			case "signed-pending":
+				clearRestoration(signedFault)
+				signedFault.Status, signedFault.AppliedBlock, signedFault.AppliedBlockHash = "pending", 0, ""
+				signedFault.Processes = nil
+			case "result-active":
+				clearRestoration(resultFault)
+			case "future-restoration":
+				signedFault.RestoredBlock, resultFault.RestoredBlock = boundary.LastObservationHead.Number+1, boundary.LastObservationHead.Number+1
+			case "active-recovery-ledger":
+				active := activeFaultFile{Schema: "urnetwork-sim-active-faults-v1", Faults: []scenarioFaultSpec{{ID: signedFault.ID, Kind: signedFault.Kind, Targets: signedFault.Targets}}, Processes: signedFault.Processes}
+				if err := writePublicJSON(filepath.Join(c.stateDir, "active-faults.json"), active); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := writeScenarioCampaignAttempt(f.history.attempt); err != nil {
+				t.Fatal(err)
+			}
+			f.result.EvidenceHash, _ = canonicalScenarioResultHash(f.result)
+			if err := writePublicJSON(filepath.Join(f.runDir, "result.json"), f.result); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeScenarioFaultEvidence(f.runDir, f.result.Faults); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.prepare(t); err == nil || !strings.Contains(err.Error(), "fault") {
+				t.Fatalf("unrestored release fault admitted: %v", err)
+			}
+			for _, path := range []string{provisionalProductionHandoffPath(c.stateDir, f.result.RunID), scenarioCampaignAttemptPath(c.stateDir, "production-soak")} {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("unrestored fault published production authority at %s", path)
+				}
 			}
 		})
 	}

@@ -149,8 +149,20 @@ func validateProvisionalProductionTerminal(cfg *ResolvedConfig, source *scenario
 	if result.ScenarioDefinition != definitionHash || result.ScenarioMatrix != definition.MatrixHash || result.AdversarialMatrix != definition.AdversarialMatrixHash || boundary.ScenarioDefinitionHash != definitionHash || !scenarioAcceptanceWindowsEqual(result.AcceptanceWindow, &boundary.AcceptanceWindow) || result.CampaignStartHead != boundary.CampaignStartHead || result.CampaignStartEpoch != boundary.CampaignStartEpoch || result.EndHead != boundary.LastObservationHead || result.EndEpoch != boundary.LastObservationEpoch || boundary.LastObservationHead.Number < boundary.AcceptanceWindow.TerminalBlock {
 		return errors.New("provisional production requires the entire exact signed release interval through terminal finalization")
 	}
-	// Fault success remains in the unmodified result. Geometry is still the
-	// canonical five complete epochs plus their finalization offset.
+	// Fault evidence assertions remain in the unmodified result, but release
+	// perturbations must be signed as restored before another phase starts.
+	// A locally edited result cannot supply cleanup absent from its checkpoint.
+	for _, inventory := range []struct {
+		name    string
+		records []ScenarioFaultRecord
+	}{{"signed source", boundary.Faults}, {"terminal result", result.Faults}} {
+		for _, fault := range inventory.records {
+			if fault.Status != "restored" || fault.RestoredBlock == 0 || fault.RestoredBlock > boundary.LastObservationHead.Number {
+				return fmt.Errorf("provisional production requires restored release faults: %s fault %s status=%s restored_block=%d terminal_block=%d", inventory.name, fault.ID, fault.Status, fault.RestoredBlock, boundary.LastObservationHead.Number)
+			}
+		}
+	}
+	// Geometry is still the canonical five complete epochs plus finalization.
 	geometry := *result
 	geometry.Faults = nil
 	if err := validateScenarioAcceptanceResult(cfg, definition, &geometry); err != nil {
@@ -256,6 +268,17 @@ func prepareProvisionalProductionHandoff(ctx context.Context, cfg *ResolvedConfi
 		return nil, errors.New("provisional production handoff requires the explicit source and exclusive deployment journal writer")
 	}
 	if err := validateProvisionalProductionAuthority(cfg, plan.PlanHash); err != nil {
+		return nil, err
+	}
+	// A retry after production begins may have that phase's own active faults.
+	// Before its first durable attempt, the release recovery ledger must be
+	// empty as well as every release transition being signed as restored.
+	if _, err := os.Lstat(scenarioCampaignAttemptPath(stateDir, "production-soak")); errors.Is(err, os.ErrNotExist) {
+		active, err := readActiveFaultFile(filepath.Join(stateDir, "active-faults.json"))
+		if err != nil || len(active.Faults) != 0 {
+			return nil, errors.Join(errors.New("provisional production cannot overlap active or ambiguous release fault recovery state"), err)
+		}
+	} else if err != nil {
 		return nil, err
 	}
 	path := provisionalProductionHandoffPath(stateDir, runID)

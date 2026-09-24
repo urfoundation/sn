@@ -27,6 +27,13 @@ diagnostic report alone does not authorize this handoff. The normal runner can
 continue until its watchdog when failures persist; this command does not shorten
 the source interval or stop its process.
 
+Every scheduled release fault must be `restored` in both the signed checkpoint
+and terminal result, with restoration no later than the signed terminal head.
+The active-fault recovery ledger must also be empty before the first production
+attempt. An unsigned cleanup claim or an active/pending release fault cannot
+authorize production, including when a lifecycle tail extends beyond the five
+accepted epochs.
+
 The command creates an immutable owner-signed
 `runs/EXACT_RELEASE_RUN_ID/provisional-production-handoff.evidence.json` before
 creating the production attempt. It binds the original signed attempt,
