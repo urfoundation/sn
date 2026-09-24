@@ -1,5 +1,15 @@
 # Sim-testnet finalization report 2
 
+**Current status, 2026-09-24 21:02 UTC: R43 recovery startup is active.**
+After R42's signed early failure, the fleet was stopped with on-chain state
+preserved and an owner-signed native source-role overlay selected for validator
+2. Both native slots were checked at finalized runtime 471 using the approved
+consumed-interface profile. The supervised R43 runner is active, but it has
+not yet signed a new acceptance boundary or completed a release interval.
+The retained R42 active-fault record must be restored by the recovery driver.
+The exact service, binary hash and selection receipt are in
+[FINALIZE-ACTIVE.md](../FINALIZE-ACTIVE.md).
+
 **Current status, 2026-09-24: R42 started its real release interval but failed
 before terminal; `final_acceptance=false`.** The signed attempt
 `campaign-attempts/release-1.0.recovery.42.evidence.json` began at finalized

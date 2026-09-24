@@ -1,5 +1,27 @@
 # Testnet execution plan
 
+## R43 recovery startup — 2026-09-24 21:02 UTC
+
+`urnetwork-sim-release-r43.service` is active with PID 2374365, using the
+qualified runner SHA-256
+`6fdf0dcc1728362476edc83f6f27fa6cbba85e7f238c82d261bfe32f2bbb5e58`
+and the owned LAN RPC `192.168.1.162:9944`. The controlled fleet stop
+completed with `on_chain_state_preserved=true`. The reviewed source-role plan
+`0x007e8168129004e81afcfcad799d993eb86692f570470f81f4a53bb131630dc0`
+was applied and produced an owner-signed selection receipt at
+`policy-rollover/source-role/generation-00000000000000000001/handoff.evidence.json`
+(SHA-256 `0x50cd5b10cbe20b61994553c6b2e32da6cdfd617d1d1d778961c759cf46359053`).
+The original R42 failed result, original rollover handoff and active-fault
+ledger remain intact. R43 is still in startup; no new signed acceptance
+boundary or completed interval has been observed yet. The runner must recover
+`release-rolling-15`, relaunch the fleet with the selected validator config,
+and sign a future-boundary attempt before the interval can be called running.
+Focused normal/race/causal tests for native role, heartbeat continuation,
+retained preparation, and process-restart recovery passed. The integrated
+native-role, policy-history, handoff and continuity selectors passed normally
+and under race detection (validator 29.653s/135.541s; simulator
+70.846s/338.366s) with the pinned `server684.mod`.
+
 ## R42 failed early; prepare R43 recovery — 2026-09-24
 
 Recovery generation 42 ran as `urnetwork-sim-release-608.service`
