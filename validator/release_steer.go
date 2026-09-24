@@ -1021,17 +1021,19 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 	// At most the existing failure budget is retained. Expected drain polls
 	// keep prior causes; a completed retry clears the recovered failures.
 	var pendingErr error
+	var schedulerErr error
 	for {
 		// A ready poll may win alongside cancellation; never let that
 		// decision authorize another scheduler read or submission.
 		if ctx.Err() != nil {
-			return releaseRuntimeError(ctx, pendingErr)
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr))
 		}
 		currentEpoch, err := epoch()
 		if ctx.Err() != nil {
-			return releaseRuntimeError(ctx, errors.Join(pendingErr, err))
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr, err))
 		}
 		if err == nil {
+			schedulerErr = nil
 			if targetKnown && currentEpoch < targetEpoch {
 				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr)
 			}
@@ -1108,7 +1110,13 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					fmt.Printf("release steer: subnet epoch %d attempt %d: %v\n", targetEpoch, failures, err)
 				}
 			}
+		} else if RetryableEvidenceTransportError(err) {
+			// This read creates no native intent. Keep the current epoch and
+			// pending submission unchanged while its bounded transport retries.
+			schedulerErr = err
+			fmt.Printf("release steer: finalized scheduler read interrupted: %v; retrying on next poll\n", err)
 		} else {
+			schedulerErr = nil
 			weightRejected = false
 			retryableCut = false
 			failures++
@@ -1119,7 +1127,7 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 			return releaseRuntimeError(ctx, fmt.Errorf("release steering failed %d consecutive attempts: %w", failures, pendingErr))
 		}
 		if !wait() {
-			return releaseRuntimeError(ctx, pendingErr)
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr))
 		}
 	}
 }
