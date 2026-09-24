@@ -139,6 +139,28 @@ func TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext(
 	}
 }
 
+func TestPolicyRolloverAPIContextsSelectEveryFreshMember(t *testing.T) {
+	g, p, h, j := newPolicyRolloverHandoffTestV2(t)
+	f := g.fixture
+	activatePolicyRolloverHandoffTestV2(t, g, p, h, j)
+	contexts, err := runtimeReservedAttemptUploadContexts(t.Context(), f.cfg, f.stateDir, f.plan)
+	if err != nil || len(contexts) != 4 {
+		t.Fatalf("fresh API context census: count=%d err=%v", len(contexts), err)
+	}
+	for index, context := range contexts {
+		want := h.Validators[index/2].Evidence.Operators[index%2].Context
+		if context != want || !strings.Contains(context.Path, "evidence-generations/generation-") {
+			t.Fatalf("API context %d selected another generation: got=%+v want=%+v", index, context, want)
+		}
+	}
+	if err := os.WriteFile(contexts[3].Path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtimeReservedAttemptUploadContexts(t.Context(), f.cfg, f.stateDir, f.plan); err == nil {
+		t.Fatal("changed fresh API context fell back to an old source")
+	}
+}
+
 func TestPolicyRolloverCLIRequiresBothSourceAndSubplanApproval(t *testing.T) {
 	hash := common.Hash{1}.Hex()
 	for _, args := range [][]string{{"policy-rollover", "--plan-hash", hash, "--rollover-generation", "1", "--rollover-epoch", "15"}, {"policy-rollover", "--apply", "--plan-hash", hash, "--rollover-plan", "/tmp/rollover.json", "--rollover-plan-hash", hash, "--provisional-resume", "--owned-rpc-authority", "10.0.0.1:9944"}} {
