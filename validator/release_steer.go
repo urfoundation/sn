@@ -1057,6 +1057,7 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 				var closedInput *provisionalClosedNativeInput
 				var rejected *provisionalNativeWeightRejection
 				var interrupted *provisionalNativeReadInterruption
+				retryablePreparation, interruptedPreparation := classifyReleasePreparationRetry(err)
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
 					retryableCut = false
@@ -1078,31 +1079,21 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					fmt.Printf("release steer: %v; retrying authenticated preparation on next poll\n", interrupted)
-				} else if releaseOnlyErrors(err, errAttemptCutPending) {
+				} else if retryablePreparation && !interruptedPreparation {
 					weightRejected = false
 					retryableCut = allowDeferral && pendingErr == nil
-					// Admitted trails drain under their existing contexts. Waiting
-					// neither spends nor resets the real native-failure budget. A
-					// provisional run can continue the retained cut in a fresh epoch.
-				} else if releaseOnlyErrors(err, errAttemptCutSnapshotStale) {
-					weightRejected = false
-					retryableCut = allowDeferral && pendingErr == nil
-					// A cut keeps its reservation while the next submission reads
-					// a fresh canonical snapshot. Earlier signed operator inputs
-					// remain immutable and are reused by the retry.
-					fmt.Printf("release steer: %v; retrying on next poll\n", err)
-				} else if releaseOnlyErrors(err, errAttemptSettlementSnapshotStale) {
-					weightRejected = false
-					retryableCut = allowDeferral && pendingErr == nil
-					// A competing refresh already advanced the coherent settlement
-					// owner. Recapture it without weakening mixed-error handling.
-					fmt.Printf("release steer: %v; retrying on next poll\n", err)
-				} else if allowDeferral && transientReleaseSnapshotError(err) {
+					// Parallel operators may report different cut waits. Keep each
+					// reservation and the previous failure budget while trails drain
+					// or the next poll supplies the fresh canonical snapshot.
+					if !releaseOnlyErrors(err, errAttemptCutPending) {
+						fmt.Printf("release steer: %v; retrying on next poll\n", err)
+					}
+				} else if allowDeferral && (retryablePreparation || transientReleaseSnapshotError(err)) {
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					// An interrupted authenticated replica body retains its immutable
-					// cut and retry context. Replay it in-process; mixed integrity or
-					// lifecycle errors remain outside this narrow classifier.
+					// cut and retry context, including another operator's cut wait.
+					// Mixed integrity or lifecycle errors remain nonretryable.
 					fmt.Printf("release steer: %v; retrying authenticated collection on next poll\n", err)
 				} else {
 					weightRejected = false
