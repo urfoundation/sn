@@ -2101,3 +2101,13 @@ compatibility profile before authenticating the live artifact; historical
 source signatures and blocks remain exact-pinned. Test a consumed-interface
 successor and a real metadata/API incompatibility separately. A precheck must
 not rewrite the original config or signed campaign evidence.
+
+R43 startup stopped at a stale operator overlay resource list: the current
+pinned server reads `mmdb/ip-ipinfo.mmdb` and `arindb/arin.mmdb`, but the
+simulator demanded future `geolite2.mmdb` and `places.yml` files absent from
+the selected config repository. The production preflight must derive required
+resources from its pinned server/config profile, validate every required file
+before topology stop when possible, and test both the supported legacy and
+future profiles without mixing their manifests. A missing resource must be
+reported precisely; it must not be fabricated or silently linked to a
+different database schema.
