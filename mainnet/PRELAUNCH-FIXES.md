@@ -2010,6 +2010,19 @@ deterministic transport, pending-cut, cancellation and regression tests; R42's
 already-running fleet keeps its original executable and its failures remain in
 the run evidence.
 
+R42 validator 2 also exhausted steering retries after switching to a fresh
+measurement source while retaining its native hotkey. The finalized native
+source commitment slot still matches an applied, signed intent in the older
+source generation, but the new generation's local intent store is empty. The
+current role check therefore treats its own historical commitment as an
+unretained write. Before mainnet, authenticate a narrow predecessor-source
+handoff (exact hotkey, finalized commitment hash/block, owner and immutable
+intent) across source generations. Never accept an occupied slot merely
+because the hotkey matches, and never invent a missing local intent. Cover
+legitimate retained predecessor, different role, altered hash/block, missing
+signature and retry after interruption in deterministic tests. The R42 exit
+and restart remain findings even if a later executable fixes this class.
+
 R42 also reauthenticated 42 historical recovery generations on each live
 checkpoint because mutable current journal and attempt files invalidated a
 cache witness for otherwise immutable predecessor evidence. A mainnet recovery
