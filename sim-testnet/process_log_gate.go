@@ -21,7 +21,9 @@ import (
 
 const (
 	processLogGateSchema        = "urnetwork-sim-process-log-gate-v1"
-	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v10"
+	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v12"
+	processLogClassifierV11     = "urnetwork-sim-process-log-classifier-v11"
+	processLogClassifierV10     = "urnetwork-sim-process-log-classifier-v10"
 	processLogClassifierV2      = "urnetwork-sim-process-log-classifier-v2"
 	processLogClassifierV3      = "urnetwork-sim-process-log-classifier-v3"
 	processLogClassifierV4      = "urnetwork-sim-process-log-classifier-v4"
@@ -249,6 +251,11 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return processLogClassification{class: "release-steering-attempt-failure", summary: "release steering reported a failed native epoch attempt"}, true
 	case processLogReleaseSteeringContinuityFailure(lower):
 		return processLogClassification{class: "release-steering-continuity", summary: "release steering advanced past an incomplete native epoch"}, true
+	case processLogEarlyCommitDeadlineAlert(text):
+		// This alert says the commit is still unconfirmed while there is time
+		// to retry. Finalized root and deadline checks make the actual outcome
+		// authoritative; retain the warning without calling it a failure.
+		return processLogClassification{class: "commit-deadline-warning", summary: "root commit was unconfirmed before its deadline", nonblockingDisposition: "pending-commit-retry"}, true
 	case strings.Contains(lower, "failed to sufficiently increase receive buffer size") || strings.Contains(lower, "failed to increase receive buffer size"):
 		return processLogClassification{class: "quic-receive-buffer", summary: "QUIC receive-buffer configuration is ineffective"}, true
 	case strings.Contains(lower, "tls handshake timeout"):
@@ -318,6 +325,26 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 		return processLogClassification{class: "warning", summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	return processLogClassification{}, false
+}
+
+func processLogEarlyCommitDeadlineAlert(line string) bool {
+	const marker = " commit DEADLINE ALERT: unconfirmed with ~"
+	start := strings.Index(line, marker)
+	if start < 0 || !strings.Contains(line[:start], "[st]epoch ") {
+		return false
+	}
+	remaining := line[start+len(marker):]
+	durationText, blocksText, ok := strings.Cut(remaining, " left (deadline block ")
+	if !ok {
+		return false
+	}
+	remainingTime, err := time.ParseDuration(durationText)
+	if err != nil || remainingTime < time.Minute {
+		return false
+	}
+	var deadline, head uint64
+	count, err := fmt.Sscanf(blocksText, "%d, head %d)", &deadline, &head)
+	return err == nil && count == 2 && deadline > head && strings.HasSuffix(blocksText, ")")
 }
 
 // The validator admits at most 128 trail workers, numbered from zero. Match
@@ -674,7 +701,7 @@ func sameProcessLogCursorInventory(actual, expected []processLogCursor) bool {
 }
 
 func validatePersistedProcessLogGate(state processLogGateState) error {
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
+	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
 		return errors.New("process log gate schema or classifier does not match this release")
 	}
 	if state.Classifier == processLogClassifierV2 {
@@ -700,7 +727,7 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 		return errors.New("process log gate supervisor generation is incomplete")
 	}
 	for _, cursor := range state.Cursors {
-		if state.Classifier != processLogClassifierVersion && cursor.ArtifactCancellationContinuation {
+		if state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && cursor.ArtifactCancellationContinuation {
 			return errors.New("legacy process log classifier has a future artifact continuation")
 		}
 		if cursor.InitialOffset < 0 || cursor.Offset < cursor.InitialOffset || cursor.DigestOffset < cursor.InitialOffset || cursor.DigestOffset > cursor.Offset || (cursor.Device == 0) != (cursor.Inode == 0) || cursor.InitialOffset > 0 && cursor.Inode == 0 || cursor.ScannedBytes != uint64(cursor.Offset-cursor.InitialOffset) || cursor.ChunkChain == "" {
@@ -767,7 +794,7 @@ func migrateProcessLogClassifier(state *processLogGateState) (bool, error) {
 	if state.Classifier == processLogClassifierVersion {
 		return false, nil
 	}
-	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV9 {
+	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV11 {
 		return false, errors.New("process log classifier has no supported migration")
 	}
 	if err := validatePersistedProcessLogGate(*state); err != nil {

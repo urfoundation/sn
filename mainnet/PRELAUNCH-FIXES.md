@@ -1906,3 +1906,13 @@ latest signed V2 terminal closure and bind each new activation's
 writers are fenced. Preserve the old activation and ledger as immutable
 history; verify the new policy at the activation epoch and start the new
 producer only after all four new publications are finalized.
+Do not restore the old policy merely to make old activation signatures
+publishable: testnet policy v2 materially changed pool rates, and labeling
+those rates with the old hash would misstate the governed policy. A fresh VPK
+and namespace is a different measurement source, not a continuity proof;
+admit it only through explicit source-generation and public lineage controls.
+Classify an early root-commit deadline alert as a pending retry, retaining its
+exact log evidence. A warning while time remains is not a missed deadline:
+testnet epoch 597 warned with 7m48s left and both roots confirmed 37 seconds
+later. Keep imminent/passed deadlines blocking and independently verify the
+finalized root and deadline before accepting the epoch.

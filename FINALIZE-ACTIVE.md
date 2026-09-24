@@ -45,11 +45,25 @@ acceptance must exclude those gaps from counted coverage.
 The first producer primitive now verifies a complete signed V2 terminal and
 derives each next-policy activation from its exact terminal sequence/root.
 It does not publish the activation or switch a running validator.
+At 2026-09-24 13:16 UTC the LAN RPC finalized block 8,076,129 in epoch 602;
+both validators had sealed epoch 601, while their live ledgers had already
+appended epoch-602 records. Epoch 602 ends at block 8,076,274 (300-block
+cadence). A candidate derived from the epoch-601 root is therefore stale for
+a handoff after those appends. For any rollover, fence the writers after a
+newly finalized terminal, verify all four latest prefixes, and publish that
+terminal's adjacent-epoch activations before the adjacent epoch ends. Missing
+that window means waiting for the next terminal, not backdating signatures.
 Do not start another acceptance interval against this relay source until the
 policy-era activation/relay transition is fixed and qualified. Preserve the
 failed action, R40 result, signed boundary invalidation, completed receipts,
 approved plan, and healthy fleet. The mainnet prevention requirement is PH-27
 in `mainnet/PRELAUNCH-FIXES.md`.
+The R40 process-log gate also reported two taskworker `error` classes at
+epoch 597. Their exact lines were early `commit DEADLINE ALERT` warnings with
+7m48s left; both roots finalized 37 seconds later. The classifier fix retains
+these as pending-commit warnings when at least one minute remains and keeps
+imminent or passed deadlines blocking. Finalized root evidence remains the
+authority for whether the commit actually succeeded.
 
 Reports are numbered at the user's request: `sim-testnet/FINAL.md` remains
 report 1, `sim-testnet/FINAL-2.md` covers this full finalization, and later

@@ -27,6 +27,9 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 		{name: "structured-fatal", line: `time=now level=fatal msg="peer connection memory budget exhausted"`, wantClass: "fatal"},
 		{name: "release-steering-attempt", line: "release steer: subnet epoch 1511 attempt 1: V2 intent 2: compact measurement envelope artifact", wantClass: "release-steering-attempt-failure"},
 		{name: "release-steering-continuity", line: "sim-testnet: release steering advanced from incomplete epoch 1511 to 1512", wantClass: "release-steering-continuity"},
+		{name: "early-commit-alert", line: "E0924 08:48:16.375559 1387508 st_controller.go:3327] [st]epoch 597 commit DEADLINE ALERT: unconfirmed with ~7m48s left (deadline block 8074824, head 8074785)", wantClass: "commit-deadline-warning", wantDisposition: "pending-commit-retry"},
+		{name: "imminent-commit-alert-remains-blocking", line: "E0924 08:48:16.375559 1387508 st_controller.go:3327] [st]epoch 597 commit DEADLINE ALERT: unconfirmed with ~48s left (deadline block 8074824, head 8074820)", wantClass: "error"},
+		{name: "passed-commit-deadline-remains-blocking", line: "E0924 08:48:16.375559 1387508 st_controller.go:3327] [st]epoch 597 commit DEADLINE ALERT: unconfirmed with ~7m48s left (deadline block 8074824, head 8074825)", wantClass: "error"},
 		{name: "quic-buffer", line: "failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB)", wantClass: "quic-receive-buffer"},
 		{name: "tls-timeout", line: "E0902 18:07:08 completeHandshake failed: tls handshake timeout", wantClass: "tls-handshake-timeout", wantFaultAttributable: true},
 		{name: "h3-internal-error", line: "E0902 18:07:08 h3 connect err = CRYPTO_ERROR 0x150 (remote): tls: internal error", wantClass: "h3-tls-internal"},
@@ -476,6 +479,24 @@ func TestProcessLogGateMigratesV3SignedScopeWithoutRewritingEvidence(t *testing.
 	}
 	if migrated.state.Classifier != processLogClassifierVersion || !reflect.DeepEqual(migrated.state.Cursors, wantCursors) || !reflect.DeepEqual(migrated.state.Findings, wantFindings) || !reflect.DeepEqual(migrated.state.AcceptanceBoundary, &wantBoundary) {
 		t.Fatalf("classifier migration changed signed evidence: %+v", migrated.state)
+	}
+}
+
+func TestProcessLogGateMigratesV11WithoutReclassifyingRetainedAlerts(t *testing.T) {
+	t.Parallel()
+	fixture := newProcessLogGateFixture(t, "", "")
+	appendProcessLog(t, fixture.stderrPath, "E0924 08:48:16.375559 1387508 st_controller.go:3327] [st]epoch 597 commit DEADLINE ALERT: unconfirmed with ~7m48s left (deadline block 8074824, head 8074785)\n")
+	if _, err := fixture.gate.Scan(false); err != nil {
+		t.Fatal(err)
+	}
+	retained := append([]ProcessLogFinding(nil), fixture.gate.state.Findings...)
+	fixture.gate.state.Classifier = processLogClassifierV11
+	if err := fixture.gate.persistWithLock(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor)
+	if err != nil || migrated.state.Classifier != processLogClassifierVersion || !reflect.DeepEqual(migrated.state.Findings, retained) {
+		t.Fatalf("classifier migration changed retained evidence: %v", err)
 	}
 }
 
