@@ -475,10 +475,10 @@ func TestCampaignEvidencePopulationV2StreamsPhaseCensusWithBoundedOwners(t *test
 	t.Logf("logical ownership: producer_original_peak=%d readback_original_peak=%d staged_carrier_peak=%d retained_tape_controls=%d client_body_peak=%d store_reader_peak=%d final_active_readers=%d fixture_buffer_bytes=%d; publication_elapsed=%s readback_elapsed=%s; heap/maxRSS is a separate Terra observation", peakOriginalBytes, readback.peakOriginalBytes, replicas[0].peakWireBytes.Load(), readback.retainedControlBytes, httpMetrics.peak.Load(), storeMetrics.peak.Load(), storeMetrics.active.Load(), len(buffer), publicationElapsed, readbackElapsed)
 }
 
-// Every configured metadata slot is actually admitted and drained, but no
-// payload is fabricated for these slots. A one-over URI is an atomic refusal.
-func TestCampaignEvidencePopulationV2AdmitsFullConfiguredMetadataCensus(t *testing.T) {
-	cfg := runtimeEvidenceLaunchConfigTest(t)
+// Materialize the historical 256-slot profile without coupling a large fixture
+// allocation to later deployment sizing. Current geometry is tested by counts.
+func TestCampaignEvidencePopulationV2AdmitsHistoricalMetadataCensus(t *testing.T) {
+	cfg := campaignMetadataConfigTestV2(t)
 	if cfg.Config.Topology.Miners != 1000 || cfg.Config.Topology.HeadSlots != 200 || cfg.Config.Topology.Validators != 2 || cfg.Config.Topology.Operators != 2 {
 		t.Fatal("metadata census requires the unchanged four-source launch")
 	}

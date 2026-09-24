@@ -146,6 +146,43 @@ func TestCampaignEvidenceCapacityV2ExactObjectCensusDeduplicatesRunReferences(t 
 	}
 }
 
+// Exercise the current configured owner with a small exact count override.
+// Mixed original/external one-over batches refuse atomically before any names
+// become known; the millions of admitted production slots need no allocation.
+func TestCampaignEvidenceCapacityV2CurrentProfileQueueRefusalIsAtomic(t *testing.T) {
+	cfg := runtimeEvidenceLaunchConfigTest(t)
+	limits, err := campaignEvidenceLimitsForConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Config.ValidatorEvidenceRelay.MaxSlots != 2048 || limits.maximumObjects != 8531968 {
+		t.Fatal("current metadata profile changed")
+	}
+	limits.maximumObjects = 3
+	files := map[string]string{"original.bin": "sha256:" + strings.Repeat("11", 32)}
+	queue, err := newCampaignArtifactQueueV2(files, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.admit(map[string]bool{"original.bin": true, "a.bin": true, "b.bin": true, "c.bin": true}); err == nil || queue.objects != 1 || len(queue.known) != 0 || len(queue.names) != 0 {
+		t.Fatal("one-over batch left partially admitted source names")
+	}
+	if err := queue.admit(map[string]bool{"original.bin": true, "a.bin": true, "b.bin": true}); err != nil || queue.objects != 3 || len(queue.known) != 3 || len(queue.names) != 3 {
+		t.Fatalf("exact current-profile queue boundary failed: %v", err)
+	}
+	for _, name := range []string{"a.bin", "b.bin", "original.bin"} {
+		if actual, found := queue.next(); !found || actual != name {
+			t.Fatalf("bounded traversal differs: %q %t, want %q", actual, found, name)
+		}
+	}
+	if err := queue.admit(map[string]bool{"a.bin": true, "original.bin": true, "c.bin": true}); err == nil || queue.objects != 3 || len(queue.known) != 3 || len(queue.names) != 0 {
+		t.Fatal("one-over replay requeued an already consumed source")
+	}
+	if err := queue.admit(map[string]bool{"a.bin": true, "original.bin": true}); err != nil || len(queue.names) != 0 {
+		t.Fatalf("exact repeated references consumed additional capacity: %v", err)
+	}
+}
+
 // Overflow never wraps into a small allocation, and candidates cannot obtain
 // capacity by changing a claimed archive field or omitting an original owner.
 func TestCampaignEvidenceCapacityV2RejectsOverflowAndIncompleteOwnerCensus(t *testing.T) {

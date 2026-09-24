@@ -503,7 +503,7 @@ func verifyReleaseGateCaptureSourceCensus(script string, sources []string) error
 		return fmt.Errorf("capture lifecycle source lost its separate owner")
 	}
 	for _, name := range []string{
-		"TestCampaignEvidencePopulationV2AdmitsFullConfiguredMetadataCensus",
+		"TestCampaignEvidencePopulationV2AdmitsHistoricalMetadataCensus",
 		"TestCampaignEvidenceCapacityV2MetadataCompletionWriteBindsExactSignedObject",
 	} {
 		if !slices.Contains(selected, name) || !selectors["capture_evidence_tests"].MatchString(name) || evidenceSkip.MatchString(name) {
@@ -640,7 +640,7 @@ func TestProducerGateCaptureSelectionRejectsPopulationPartitionDrift(t *testing.
 		{name: "looped population registration", original: start, replacement: "for omitted in; do\n" + start + "\ndone"},
 		{name: "subshell population registration", original: start, replacement: "(\n" + start + "\n)"},
 		{name: "broader population selector", original: assignment, replacement: "capture_population_tests='^TestCampaignEvidencePopulationV2'"},
-		{name: "foreign population selector", original: assignment, replacement: "capture_population_tests='^TestCampaignEvidencePopulationV2AdmitsFullConfiguredMetadataCensus$'"},
+		{name: "foreign population selector", original: assignment, replacement: "capture_population_tests='^TestCampaignEvidencePopulationV2AdmitsHistoricalMetadataCensus$'"},
 		{name: "duplicate metadata execution", original: assignment, replacement: "capture_population_tests='^TestCampaignEvidence(CapacityV2MetadataFullCensusMaterializesFlatWireAndCarrier|PopulationV2StreamsPhaseCensusWithBoundedOwners)$'"},
 		{name: "hidden normal failure", original: normal, replacement: normal + " || true"},
 		{name: "missing race execution", original: race, replacement: "# " + race},
