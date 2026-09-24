@@ -586,7 +586,7 @@ func TestScenarioCampaignRecoverySinglePhaseEntryExtendsLatestGeneration(t *test
 	if readErr == nil {
 		generation, readErr = scenarioCampaignRecoveryGeneration(latest.payload.Recovery)
 	}
-	if err == nil || !strings.Contains(err.Error(), "invalid RPC endpoint") || readErr != nil || generation != 3 || latest.payload.Recovery.PriorGeneration != 2 || latest.payload.Recovery.PriorRunID != second.payload.RunID {
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "open campaign executor through shared EVM egress") || readErr != nil || generation != 3 || latest.payload.Recovery.PriorGeneration != 2 || latest.payload.Recovery.PriorRunID != second.payload.RunID {
 		t.Fatalf("single-phase recovery did not extend the latest generation: error=%v read=%v generation=%d attempt=%+v", err, readErr, generation, latest)
 	}
 }

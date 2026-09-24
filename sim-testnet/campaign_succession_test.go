@@ -511,40 +511,42 @@ func installCampaignSuccessionLogFixture(t *testing.T, f *campaignSuccessionFixt
 	}
 }
 
-func TestScenarioCampaignAttemptSuccessionBothRuntimeEntryPoints(t *testing.T) {
+// The composite entry point persists a fresh successor before preparation.
+func TestScenarioCampaignAttemptSuccessionReleaseCandidateEntryPoint(t *testing.T) {
 	t.Parallel()
-	t.Run("release-candidate", func(t *testing.T) {
-		f := newCampaignSuccessionFixture(t)
-		stop := errors.New("full successor preparation reached")
-		called := false
-		err := runReleaseCandidateCampaignWithAnalyzer(t.Context(), f.cfg, f.stateDir, f.journal, &Executor{plan: f.current}, f.roles,
-			func(ctx context.Context, _ *ResolvedConfig, _, phase string, _ *Journal, _ *Executor, attempt *scenarioCampaignAttempt) error {
-				called = true
-				if phase != "release-1.0" || attempt.payload.Succession == nil || attempt.payload.PreparationComplete {
-					t.Fatal("composite did not begin a fresh full release")
-				}
-				return beginScenarioCampaignPreparation(ctx, phase, attempt.payload.RunID, scenarioRunOptions{Attempt: attempt, Prepare: func(context.Context) error { return stop }})
-			}, noOpCampaignPreflight, func(context.Context, *ResolvedConfig, string, string, *RoleSecrets, *ScenarioResult) error {
-				return nil
-			})
-		if !called || !errors.Is(err, stop) {
-			t.Fatalf("composite succession did not reach preparation: %v", err)
-		}
-	})
-	t.Run("release-1.0", func(t *testing.T) {
-		f := newCampaignSuccessionFixture(t)
-		installCampaignSuccessionLogFixture(t, f)
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		// The real entry point creates its owned successor before opening the
-		// shared execution transport. The fixture deliberately supplies no RPC
-		// endpoint, so it must stop there without inheriting preparation.
-		err := runScenarioCampaignAttemptWithTimeout(ctx, f.cfg, f.stateDir, "release-1.0", f.journal, &Executor{plan: f.current}, nil, 0)
-		next, readErr := readScenarioCampaignAttempt(f.cfg, f.stateDir, f.roles, f.current.PlanHash, "release-1.0")
-		if err == nil || !strings.Contains(err.Error(), "open campaign executor through shared EVM egress: execution RPC configuration: invalid RPC endpoint") || readErr != nil || next.payload.Succession == nil || next.payload.PreparationComplete {
-			t.Fatalf("single-phase succession did not reach the real execution-owner boundary: error=%v read=%v", err, readErr)
-		}
-	})
+	f := newCampaignSuccessionFixture(t)
+	stop := errors.New("full successor preparation reached")
+	called := false
+	err := runReleaseCandidateCampaignWithAnalyzer(t.Context(), f.cfg, f.stateDir, f.journal, &Executor{plan: f.current}, f.roles,
+		func(ctx context.Context, _ *ResolvedConfig, _, phase string, _ *Journal, _ *Executor, attempt *scenarioCampaignAttempt) error {
+			called = true
+			if phase != "release-1.0" || attempt.payload.Succession == nil || attempt.payload.PreparationComplete {
+				t.Fatal("composite did not begin a fresh full release")
+			}
+			return beginScenarioCampaignPreparation(ctx, phase, attempt.payload.RunID, scenarioRunOptions{Attempt: attempt, Prepare: func(context.Context) error { return stop }})
+		}, noOpCampaignPreflight, func(context.Context, *ResolvedConfig, string, string, *RoleSecrets, *ScenarioResult) error {
+			return nil
+		})
+	if !called || !errors.Is(err, stop) {
+		t.Fatalf("composite succession did not reach preparation: %v", err)
+	}
+}
+
+// Cancellation at transport ownership preserves the newly authenticated
+// successor and must not depend on endpoint validation winning that race.
+func TestScenarioCampaignAttemptSuccessionCanceledReleaseEntryPoint(t *testing.T) {
+	t.Parallel()
+	f := newCampaignSuccessionFixture(t)
+	installCampaignSuccessionLogFixture(t, f)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	// The successor is durable before the shared execution transport opens.
+	// A canceled caller does not start network work or inherit preparation.
+	err := runScenarioCampaignAttemptWithTimeout(ctx, f.cfg, f.stateDir, "release-1.0", f.journal, &Executor{plan: f.current}, nil, 0)
+	next, readErr := readScenarioCampaignAttempt(f.cfg, f.stateDir, f.roles, f.current.PlanHash, "release-1.0")
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "open campaign executor through shared EVM egress") || readErr != nil || next.payload.Succession == nil || next.payload.PreparationComplete {
+		t.Fatalf("single-phase succession did not reach the real execution-owner boundary: error=%v read=%v", err, readErr)
+	}
 }
 
 func TestScenarioCampaignAttemptSuccessionAcceptanceUsesSuccessorBytes(t *testing.T) {
