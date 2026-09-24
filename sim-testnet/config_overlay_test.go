@@ -15,9 +15,8 @@ func testOperatorConfigSources(t *testing.T) string {
 		"local/settings.yml":               "all: {}\n",
 		"local/redis.yml":                  "authority: local\n",
 		"all/apple_roots.pem":              "certificate\n",
-		"all/iso-country-list.yml":         "US: United States\n",
-		"all/city-list.yml":                "US: {}\n",
-		"all/mmdb/2026.7.2/ip-ipinfo.mmdb": "mmdb\n",
+		"all/mmdb/2026.9.23/geolite2.mmdb": "mmdb\n",
+		"all/mmdb/2026.9.23/places.yml":    "version: 1\n",
 		"all/arindb/2026.2.18/arin.mmdb":   "arin\n",
 	}
 	for name, contents := range files {
@@ -50,9 +49,8 @@ func TestOperatorConfigOverlayExposesLocalAndSharedResources(t *testing.T) {
 		for _, path := range []string{
 			filepath.Join(home, operatorEnvironment(operator), "settings.yml"),
 			filepath.Join(home, "all", "apple_roots.pem"),
-			filepath.Join(home, "all", "iso-country-list.yml"),
-			filepath.Join(home, "all", "city-list.yml"),
-			filepath.Join(home, "all", "mmdb", "2026.7.2", "ip-ipinfo.mmdb"),
+			filepath.Join(home, "all", "mmdb", "2026.9.23", "geolite2.mmdb"),
+			filepath.Join(home, "all", "mmdb", "2026.9.23", "places.yml"),
 			filepath.Join(home, "all", "arindb", "2026.2.18", "arin.mmdb"),
 		} {
 			if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {

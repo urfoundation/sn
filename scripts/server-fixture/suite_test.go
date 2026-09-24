@@ -18,6 +18,7 @@ import (
 	"time"
 
 	serverpkg "github.com/urnetwork/server"
+	servergeo "github.com/urnetwork/server/geo"
 	servermodel "github.com/urnetwork/server/model"
 	"gopkg.in/yaml.v3"
 )
@@ -77,13 +78,13 @@ func TestServerFixtureSuiteSatisfiesActualResourceCensus(t *testing.T) {
 		if kind == "vault_tree" {
 			kind = "vault"
 		}
-		info, err := os.Lstat(filepath.Join(report.Workspace, kind, name))
+		info, err := os.Lstat(filepath.Join(report.Workspace, kind, filepath.FromSlash(name)))
 		if err != nil || info.Mode()&os.ModeSymlink != 0 {
 			t.Fatalf("required physical %s: %v", line, err)
 		}
 		count++
 	}
-	if count != 30 {
+	if count != 28 {
 		t.Fatalf("independent suite census changed: %d", count)
 	}
 	err = filepath.Walk(report.Workspace, func(path string, info os.FileInfo, err error) error {
@@ -175,7 +176,7 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 			t.Fatalf("fixture override %d lost its synthetic location fields", index)
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", "ip-ipinfo.mmdb")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", "geolite2.mmdb")); !os.IsNotExist(err) {
 		t.Fatalf("portable fixture unexpectedly materialized the location database: %v", err)
 	}
 }
@@ -204,7 +205,7 @@ func TestServerFixtureSuiteLoopbackResolvesWithoutDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"mmdb/ip-ipinfo.mmdb", "arindb/arin.mmdb"} {
+	for _, name := range []string{"mmdb/geolite2.mmdb", "arindb/arin.mmdb"} {
 		if _, err := os.Lstat(filepath.Join(report.Workspace, "config", name)); !os.IsNotExist(err) {
 			t.Fatalf("portable fixture unexpectedly has database %s: %v", name, err)
 		}
@@ -253,6 +254,78 @@ func TestServerFixtureSuiteProConfigIsSyntheticAndParseable(t *testing.T) {
 	}
 	if config.MaxReferrals != 0 || config.ReferralsCapped(0) || config.SeekerDataMultiplier() != 1 || config.ReferralGrantPeriod() <= 0 {
 		t.Fatal("portable Pro fixture lost the inert referral/task contract")
+	}
+}
+
+// The place list is the server exporter's own output for the fixture's
+// synthetic networks, byte for byte, and loads with the server's loader, so the
+// portable seeder reads exactly the format a deployment ships.
+func TestServerFixtureSuitePlacesAreTheExportFormat(t *testing.T) {
+	parent, server := suiteFixtureTestInputs(t)
+	report, err := createSuiteFixture(parent, server, "127.0.0.1:35431", "127.0.0.1:36371")
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(filepath.Join(report.Workspace, "config", "mmdb", "places.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := servergeo.NewExporter()
+	add := func(network servergeo.ExportNetwork, networks int) {
+		network.HasCoordinates = true
+		exporter.Add(&network, networks)
+	}
+	gb := servergeo.ExportNetwork{CountryCode: "GB", CountryGeonameId: 2635167, Country: "United Kingdom", ContinentCode: "EU", Continent: "Europe", RegionGeonameId: 6269131, Region: "England", TimeZone: "Europe/London"}
+	london := gb
+	london.CityGeonameId, london.City, london.Latitude, london.Longitude, london.AccuracyRadiusKm = 2643743, "London", 51.5081, -0.1278, 5
+	add(london, 3)
+	finchley := gb
+	finchley.CityGeonameId, finchley.City, finchley.Latitude, finchley.Longitude, finchley.AccuracyRadiusKm = 2650444, "East Finchley", 51.5967, -0.1593, 5
+	add(finchley, 1)
+	us := servergeo.ExportNetwork{CountryCode: "US", CountryGeonameId: 6252001, Country: "United States", ContinentCode: "NA", Continent: "North America", RegionGeonameId: 5332921, Region: "California", TimeZone: "America/Los_Angeles"}
+	paloAlto := us
+	paloAlto.CityGeonameId, paloAlto.City, paloAlto.Latitude, paloAlto.Longitude, paloAlto.AccuracyRadiusKm = 5380748, "Palo Alto", 37.4419, -122.143, 10
+	add(paloAlto, 3)
+	// a second coordinate carried by fewer networks: the representative stays
+	// and the spread records the variant
+	paloAltoVariant := paloAlto
+	paloAltoVariant.Latitude, paloAltoVariant.Longitude, paloAltoVariant.AccuracyRadiusKm = 37.4, -122.1, 20
+	add(paloAltoVariant, 1)
+	// GeoLite2 files Singapore's cities under no subdivision
+	sg := servergeo.ExportNetwork{CountryCode: "SG", CountryGeonameId: 1880251, Country: "Singapore", ContinentCode: "AS", Continent: "Asia", TimeZone: "Asia/Singapore"}
+	bedok := sg
+	bedok.CityGeonameId, bedok.City, bedok.Latitude, bedok.Longitude, bedok.AccuracyRadiusKm = 1884382, "Bedok New Town", 1.3264, 103.9394, 5
+	add(bedok, 1)
+	de := servergeo.ExportNetwork{CountryCode: "DE", CountryGeonameId: 2921044, Country: "Germany", ContinentCode: "EU", Continent: "Europe", RegionGeonameId: 2905330, Region: "Hesse", TimeZone: "Europe/Berlin"}
+	frankfurt := de
+	frankfurt.CityGeonameId, frankfurt.City, frankfurt.Latitude, frankfurt.Longitude, frankfurt.AccuracyRadiusKm = 2925533, "Frankfurt am Main", 50.1155, 8.6842, 20
+	add(frankfurt, 2)
+	export, err := exporter.Export("fixture", 946684800)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := export.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(written, exported) {
+		t.Fatalf("fixture place list is not the exporter's output:\n%s\n---\n%s", written, exported)
+	}
+
+	places, err := servergeo.LoadPlaces(written)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if places.CityCount() != 5 || len(places.Countries()) != 4 {
+		t.Fatalf("fixture place list has %d cities and %d countries", places.CityCount(), len(places.Countries()))
+	}
+	bedokPlace := places.CityByGeonameId(1884382)
+	if bedokPlace == nil || bedokPlace.Region != "Singapore" || bedokPlace.RegionGeonameId != 0 {
+		t.Fatalf("fixture subdivision-less city = %+v", bedokPlace)
+	}
+	if paloAltoPlace := places.CityByGeonameId(5380748); paloAltoPlace == nil || paloAltoPlace.SpreadKm <= 0 {
+		t.Fatalf("fixture multi-coordinate city = %+v", paloAltoPlace)
 	}
 }
 
