@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,9 +19,12 @@ import (
 // Shared with integration tests for the API/relay selectors: all activation
 // signatures, immutable file references and journal receipts are real; chain
 // finality itself is owned by the narrowly scoped publication test transport.
-func newPolicyRolloverHandoffTestV2(t *testing.T) (*policyRolloverGenerationTestV2, *policyRolloverPlanV2, *policyRolloverHandoffV2, *Journal) {
+func newPolicyRolloverHandoffTestV2(t *testing.T, configure ...func(*policyRolloverGenerationTestV2)) (*policyRolloverGenerationTestV2, *policyRolloverPlanV2, *policyRolloverHandoffV2, *Journal) {
 	t.Helper()
 	g := newPolicyRolloverGenerationTestV2(t)
+	for _, apply := range configure {
+		apply(g)
+	}
 	f := g.fixture
 	g.provision(t)
 	validators, err := g.stage(t)
@@ -158,6 +162,44 @@ func TestPolicyRolloverAPIContextsSelectEveryFreshMember(t *testing.T) {
 	}
 	if _, err := runtimeReservedAttemptUploadContexts(t.Context(), f.cfg, f.stateDir, f.plan); err == nil {
 		t.Fatal("changed fresh API context fell back to an old source")
+	}
+}
+
+func TestPolicyRolloverHandoffUsesApprovedSourceBoundsFromEitherConfigView(t *testing.T) {
+	g, p, h, j := newPolicyRolloverHandoffTestV2(t, func(g *policyRolloverGenerationTestV2) {
+		f := g.fixture
+		continuation := &EvidenceRelayContinuation{Schema: evidenceRelayContinuationSourceExpansionSchema}
+		for _, configured := range f.cfg.Config.ValidatorEvidenceV2 {
+			bounds, err := doubledEvidenceRelaySourceBounds(configured.Evidence.Bounds)
+			if err != nil {
+				t.Fatal(err)
+			}
+			continuation.SourceBounds = append(continuation.SourceBounds, evidenceRelaySourceBounds{ValidatorId: configured.ValidatorID, Original: configured.Evidence.Bounds, Approved: bounds})
+		}
+		f.plan.EvidenceRelayContinuation = continuation
+		// A resolved old-source view can carry historical policy. The fresh
+		// generation must still render only its independent current policy.
+		f.cfg.previousPolicy = f.cfg.Policy
+	})
+	f := g.fixture
+	activatePolicyRolloverHandoffTestV2(t, g, p, h, j)
+	resolved, err := evidenceRelaySourceCapacityConfig(f.cfg, f.plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cfg := range []*ResolvedConfig{f.cfg, resolved} {
+		got, err := readPolicyRolloverHandoffV2(t.Context(), cfg, f.stateDir, f.plan)
+		if err != nil || got == nil {
+			t.Fatalf("approved source bounds rejected: %v", err)
+		}
+		for index, validator := range got.Validators {
+			if !reflect.DeepEqual(validator.Evidence.Bounds, f.plan.EvidenceRelayContinuation.SourceBounds[index].Approved) {
+				t.Fatal("generation lost the approved source bounds")
+			}
+		}
+	}
+	if reflect.DeepEqual(f.cfg.Config.ValidatorEvidenceV2[0].Evidence.Bounds, resolved.Config.ValidatorEvidenceV2[0].Evidence.Bounds) {
+		t.Fatal("approved projection mutated the original template")
 	}
 }
 

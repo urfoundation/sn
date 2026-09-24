@@ -235,6 +235,10 @@ func stagePolicyRolloverGenerationV2(ctx context.Context, cfg *ResolvedConfig, b
 	if basePlan == nil || basePlan.ValidatorEvidence == nil || basePlan.DeploymentID != roles.DeploymentID || basePlan.ChainID != testnetChainID || basePlan.Netuid != cfg.Netuid || len(members) != cfg.Config.Topology.Validators*cfg.Config.Topology.Operators {
 		return nil, errors.New("policy rollover generation requires the exact deployment and complete activation census")
 	}
+	cfg, err = evidenceRelaySourceCapacityConfig(cfg, basePlan)
+	if err != nil {
+		return nil, err
+	}
 	first := members[0].Activation
 	prepared := &runtimeEvidenceActivationPreparedV2{Schema: "urnetwork-sim-evidence-activation-prepared-v2", PlanHash: basePlan.PlanHash, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Epoch: first.Domain.Epoch,
 		Native: ChainHead{Number: first.NativeBlock, Hash: common.Hash(first.NativeHash).Hex()}, Evm: ChainHead{Number: first.EVMBlock, Hash: common.Hash(first.EVMHash).Hex()}, Members: members}
@@ -319,6 +323,9 @@ func stagePolicyRolloverGenerationV2(ctx context.Context, cfg *ResolvedConfig, b
 			files = append(files, stagedFile{filepath.Join(clientRoot, "client.key"), seed, ed25519.SeedSize})
 		}
 		renderConfig := *cfg
+		// This independent ledger starts under the current policy and carries
+		// no predecessor policy or replay authority from the retained source.
+		renderConfig.previousPolicy = nil
 		renderHarness := *cfg.Config
 		renderHarness.ValidatorEvidenceV2 = evidence
 		renderConfig.Config = &renderHarness

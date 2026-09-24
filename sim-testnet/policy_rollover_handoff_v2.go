@@ -96,11 +96,15 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 	if _, err := validatorcomponent.ReadReleaseEvidenceV2File(ctx, h.Identities, limit); err != nil {
 		return nil, err
 	}
+	approved, err := evidenceRelaySourceCapacityConfig(cfg, base)
+	if err != nil {
+		return nil, err
+	}
 	for index, validator := range h.Validators {
 		id := uint64(index + 1)
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", id), "evidence-generations", fmt.Sprintf("generation-%020d", h.Generation))
 		if validator.ValidatorID != id || validator.PreviousStateDir != p.Validators[index].StateDir || validator.StateDir != filepath.Join(root, "coordinator-state-v2") || validator.ClientStateDir != filepath.Join(root, "state") || validator.Config.Path != filepath.Join(root, "validator.yml") || validator.Identities != h.Identities ||
-			!reflect.DeepEqual(validator.Evidence.Bounds, cfg.Config.ValidatorEvidenceV2[index].Evidence.Bounds) || len(validator.Evidence.Operators) != 2 {
+			!reflect.DeepEqual(validator.Evidence.Bounds, approved.Config.ValidatorEvidenceV2[index].Evidence.Bounds) || len(validator.Evidence.Operators) != 2 {
 			return nil, errors.New("rollover validator config, state namespace or approved bounds differ")
 		}
 		if _, err := validatorcomponent.ReadReleaseEvidenceV2File(ctx, p.Validators[index].Config, limit); err != nil {
@@ -113,7 +117,7 @@ func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, state
 		if err != nil {
 			return nil, err
 		}
-		if config.ValidatorID != id || config.DeploymentID != p.DeploymentID || config.StateDir != validator.StateDir || config.PolicyHash != p.PolicyHash || !reflect.DeepEqual(config.Policy, *cfg.Policy) || !reflect.DeepEqual(config.EvidenceV2, validator.Evidence) {
+		if config.ValidatorID != id || config.DeploymentID != p.DeploymentID || config.StateDir != validator.StateDir || config.PolicyHash != p.PolicyHash || !reflect.DeepEqual(config.Policy, *cfg.Policy) || config.PreviousPolicy != nil || !reflect.DeepEqual(config.EvidenceV2, validator.Evidence) {
 			return nil, errors.New("rollover rendered validator config changed its approved identity or policy")
 		}
 		for j, operator := range validator.Evidence.Operators {
