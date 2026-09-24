@@ -1995,3 +1995,38 @@ prospective immutable usage boundary, legacy-contract drainage, a complete new
 policy source epoch, and a signed source/price/minimum readiness proof. There is
 no historical backfill or acceptance waiver. Mainnet parameters require their
 own measured economic and native-minimum qualification.
+
+### R42 continuation: scheduler, recovery cache and fixture authority
+
+The live R42 release interval exposed validator steering exits after repeated
+native scheduler reads timed out during the injected RPC-proxy fault. A read
+timeout creates no intent and does not establish a changed epoch or bad
+evidence. Production steering must retry typed transport failures across
+normal polls without spending the native submission-failure budget or clearing
+the completed epoch, pending cut or unresolved submission. Cancellation still
+ends owner work; epoch regression, joined integrity errors and actual
+submission failures remain hard errors. The offline correction is covered by
+deterministic transport, pending-cut, cancellation and regression tests; R42's
+already-running fleet keeps its original executable and its failures remain in
+the run evidence.
+
+R42 also reauthenticated 42 historical recovery generations on each live
+checkpoint because mutable current journal and attempt files invalidated a
+cache witness for otherwise immutable predecessor evidence. A mainnet recovery
+cache must authenticate immutable generation sources once, verify the retained
+journal prefix and only the appended suffix on continuation, and check the
+current envelope afresh. It must reject modified old bytes, missing or
+reordered entries and forged tails, including concurrent append during a cold
+audit. Cache identity must follow authenticated evidence and authority rather
+than executable hash or a mutable file's whole hash. Keep cache loss
+recoverable by full verification, with bounded work and memory.
+
+Finally, repository fixture generation must select an explicit supported
+server manifest profile before comparing resources. The current pinned server
+uses the 30-resource legacy geography profile; a proposed 28-resource
+GeoLite profile is not an available server API. Reject mixed, incomplete and
+unknown profiles, and guard missing decoded configuration or policy before
+projection. Fixture tests must validate the selected source's real schema and
+bytes; exporter parity remains pending until the exporter exists in the pinned
+server source. These are build and qualification safeguards, not evidence that
+R42's live acceptance has passed.
