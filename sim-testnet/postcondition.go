@@ -1152,6 +1152,7 @@ func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPol
 	return evidence.Schema == "urnetwork-production-policy-evidence-v2" && evidence.DeploymentID == cfg.Config.Deployment.DeploymentID &&
 		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.ReleaseRunID == gate.RunID &&
 		strings.EqualFold(evidence.ReleaseResultHash, gate.ResultHash) && strings.EqualFold(evidence.ReleaseCompleteHash, gate.CompleteContentHash) &&
+		evidence.ProvisionalReleaseHandoffHash == gate.ProvisionalHandoffHash && (evidence.ReleaseGate == nil || releaseCampaignGatesEqual(evidence.ReleaseGate, gate)) &&
 		strings.EqualFold(evidence.ReleaseHandoffHash, gate.LifecycleHandoff.ContentHash) && evidence.ReleaseHandoffSize == gate.LifecycleHandoff.SizeBytes &&
 		evidence.CampaignStartEpoch == gate.StartEpoch && evidence.CampaignEndEpoch == gate.EndEpoch && evidence.ScheduledFromEpoch >= gate.EndEpoch &&
 		evidence.EffectiveEpoch == evidence.ScheduledFromEpoch+1 && evidence.EffectiveBlock != 0 &&
@@ -1161,6 +1162,10 @@ func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPol
 }
 
 func productionPolicyReleaseGate(evidence ProductionPolicyEvidence) *ReleaseCampaignGate {
+	if evidence.ReleaseGate != nil {
+		gate := *evidence.ReleaseGate
+		return &gate
+	}
 	return &ReleaseCampaignGate{
 		Schema: releaseCampaignGateSchema, RunID: evidence.ReleaseRunID, ResultHash: evidence.ReleaseResultHash,
 		CompleteContentHash: evidence.ReleaseCompleteHash, StartEpoch: evidence.CampaignStartEpoch, EndEpoch: evidence.CampaignEndEpoch,

@@ -63,13 +63,14 @@ type ScenarioLifecycleHandoff struct {
 // ReleaseCampaignGate is the authenticated live-topology interval which must
 // complete before the simulator may schedule production cadence.
 type ReleaseCampaignGate struct {
-	Schema              string                   `json:"schema"`
-	RunID               string                   `json:"run_id"`
-	ResultHash          string                   `json:"result_hash"`
-	CompleteContentHash string                   `json:"complete_content_hash"`
-	StartEpoch          uint64                   `json:"start_epoch"`
-	EndEpoch            uint64                   `json:"end_epoch"`
-	LifecycleHandoff    ScenarioLifecycleHandoff `json:"lifecycle_handoff"`
+	Schema                 string                   `json:"schema"`
+	RunID                  string                   `json:"run_id"`
+	ResultHash             string                   `json:"result_hash"`
+	CompleteContentHash    string                   `json:"complete_content_hash"`
+	ProvisionalHandoffHash string                   `json:"provisional_handoff_hash,omitempty"`
+	StartEpoch             uint64                   `json:"start_epoch"`
+	EndEpoch               uint64                   `json:"end_epoch"`
+	LifecycleHandoff       ScenarioLifecycleHandoff `json:"lifecycle_handoff"`
 }
 
 type scenarioCompletePayload struct {
@@ -484,7 +485,10 @@ func validateScenarioLifecycleHandoffFile(cfg *ResolvedConfig, runDir string, bi
 }
 
 func validateReleaseCampaignGateShape(cfg *ResolvedConfig, gate *ReleaseCampaignGate) error {
-	if cfg == nil || cfg.Config == nil || gate == nil || gate.Schema != releaseCampaignGateSchema || gate.RunID == "" || !validCanonicalHashHex(gate.ResultHash) || !validSHA256ContentHash(gate.CompleteContentHash) || gate.StartEpoch == 0 || gate.EndEpoch < gate.StartEpoch || gate.LifecycleHandoff.Schema != scenarioLifecycleHandoffSchema || gate.LifecycleHandoff.ReleaseRunID != gate.RunID || gate.LifecycleHandoff.Stage != fleetLifecycleStageReleaseHandoff || gate.LifecycleHandoff.File != scenarioLifecycleHandoffFilename || !validSHA256ContentHash(gate.LifecycleHandoff.ContentHash) || gate.LifecycleHandoff.SizeBytes == 0 {
+	if gate != nil && gate.Schema == provisionalProductionGateSchema {
+		return validateProvisionalProductionGateShape(cfg, gate)
+	}
+	if cfg == nil || cfg.Config == nil || gate == nil || gate.Schema != releaseCampaignGateSchema || gate.ProvisionalHandoffHash != "" || gate.RunID == "" || !validCanonicalHashHex(gate.ResultHash) || !validSHA256ContentHash(gate.CompleteContentHash) || gate.StartEpoch == 0 || gate.EndEpoch < gate.StartEpoch || gate.LifecycleHandoff.Schema != scenarioLifecycleHandoffSchema || gate.LifecycleHandoff.ReleaseRunID != gate.RunID || gate.LifecycleHandoff.Stage != fleetLifecycleStageReleaseHandoff || gate.LifecycleHandoff.File != scenarioLifecycleHandoffFilename || !validSHA256ContentHash(gate.LifecycleHandoff.ContentHash) || gate.LifecycleHandoff.SizeBytes == 0 {
 		return errors.New("release campaign gate is incomplete or noncanonical")
 	}
 	if err := validateScenarioLifecycleHandoffProvenance(cfg, gate.LifecycleHandoff); err != nil {
@@ -703,7 +707,10 @@ func loadOrCreateScenarioCampaignAttempt(cfg *ResolvedConfig, stateDir string, r
 		if recoveryErr != nil {
 			return recoveryErr
 		}
-		if len(recoveryFiles) != 0 || phase == "release-1.0" && successorExists {
+		// Release recovery files own only the release namespace. A completed
+		// recovered release must still be able to create its first production
+		// successor, whose distinct signed predecessor is validated below.
+		if phase == "release-1.0" && (len(recoveryFiles) != 0 || successorExists) {
 			return err
 		}
 		if !errors.Is(err, os.ErrNotExist) || existing && phase == "release-1.0" {
@@ -1698,6 +1705,10 @@ func validateExactReleaseCampaignGate(cfg *ResolvedConfig, stateDir string, role
 
 // No detached background scan continues after the current phase is cancelled.
 func validateExactReleaseCampaignGateContext(ctx context.Context, cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, gate *ReleaseCampaignGate) (*ScenarioResult, []byte, error) {
+	if gate != nil && gate.Schema == provisionalProductionGateSchema {
+		_, result, handoff, err := readProvisionalProductionHandoff(ctx, cfg, stateDir, roles, gate.RunID, gate)
+		return result, handoff, err
+	}
 	if ctx == nil {
 		return nil, nil, errors.New("release gate context is absent")
 	}
@@ -1838,6 +1849,10 @@ func loadReleaseCampaignGate(cfg *ResolvedConfig, stateDir string, roles *RoleSe
 
 // Resumption uses the same context owner as live phase execution.
 func loadReleaseCampaignGateContext(ctx context.Context, cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) (*ReleaseCampaignGate, error) {
+	if cfg != nil && cfg.provisionalProductionSourceRunID != "" {
+		gate, _, _, err := readProvisionalProductionHandoff(ctx, cfg, stateDir, roles, cfg.provisionalProductionSourceRunID, nil)
+		return gate, err
+	}
 	result, _, err := loadCompletedScenarioCampaignContext(ctx, cfg, stateDir, roles, "release-1.0")
 	if err != nil {
 		return nil, err

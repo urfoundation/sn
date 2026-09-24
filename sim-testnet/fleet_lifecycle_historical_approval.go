@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"os"
 )
@@ -12,6 +14,7 @@ type provisionalLifecycleAncestorApproval struct {
 	CurrentConfigHash string
 	SourceRunId       string
 	SourcePlan        *SetupPlan
+	SourceHandoffHash string
 }
 
 // Archive provenance remains readable after the new acceptance starts. Unlike
@@ -99,6 +102,9 @@ func (self *liveFleetLifecycle) provisionalLifecycleEvidencePlan(phase string, e
 	if evidence.PlanHash == current.PlanHash && (phase != "release-1.0" || self.attempt == nil || self.attempt.payload.RunID == evidence.RunID) {
 		return current, nil
 	}
+	if self.attempt != nil && self.attempt.payload.Phase == "production-soak" {
+		return self.provisionalProductionLifecycleEvidencePlan(evidence)
+	}
 	if phase != "release-1.0" || self.attempt == nil || self.attempt.payload.PlanHash != current.PlanHash ||
 		self.attempt.payload.ConfigHash != self.cfg.ConfigHash || self.attempt.payload.PolicyHash != self.cfg.PolicyHash ||
 		current.ConfigHash != self.cfg.ConfigHash || current.PolicyHash != self.cfg.PolicyHash {
@@ -127,6 +133,50 @@ func (self *liveFleetLifecycle) provisionalLifecycleEvidencePlan(phase string, e
 		!fleetLifecycleCanonicalEqual(current.FleetLifecycleRenewal, proof.SourcePlan.FleetLifecycleRenewal) ||
 		!fleetLifecycleCanonicalEqual(evidence.Renewal, proof.SourcePlan.FleetLifecycleRenewal) {
 		return nil, errors.New("historical lifecycle approval changed after admission")
+	}
+	return proof.SourcePlan, nil
+}
+
+// A production successor uses the exact current release's signed handoff as
+// its source. It does not reopen or rename the old lifecycle acceptance run.
+// The source plan may be historical, while every new mutation keeps the current
+// approved plan and existing action receipts.
+func (self *liveFleetLifecycle) provisionalProductionLifecycleEvidencePlan(evidence *FleetLifecycleEvidence) (*SetupPlan, error) {
+	current := self.executor.plan
+	gate := self.attempt.payload.PriorRelease
+	if gate == nil || self.attempt.payload.PlanHash != current.PlanHash || self.attempt.payload.ConfigHash != self.cfg.ConfigHash || self.attempt.payload.PolicyHash != self.cfg.PolicyHash || current.ConfigHash != self.cfg.ConfigHash || current.PolicyHash != self.cfg.PolicyHash {
+		return nil, errors.New("historical production lifecycle differs from its exact current approval")
+	}
+	if err := validateReleaseCampaignGateShape(self.cfg, gate); err != nil {
+		return nil, err
+	}
+	binding := gate.LifecycleHandoff
+	if binding.InheritedPlanHash == "" || binding.InheritedPlanHash != evidence.PlanHash || binding.InheritedReleaseRunID != evidence.RunID || !current.allowedPlanHashes()[evidence.PlanHash] {
+		return nil, errors.New("historical production lifecycle has no exact inherited release binding")
+	}
+	proof := self.retainedProvisionalApproval
+	if proof == nil || proof.SourcePlan == nil || proof.CurrentPlanHash != current.PlanHash || proof.CurrentConfigHash != self.cfg.ConfigHash || proof.SourceRunId != evidence.RunID || proof.SourcePlan.PlanHash != evidence.PlanHash || proof.SourceHandoffHash != binding.ContentHash {
+		_, raw, err := validateExactReleaseCampaignGateContext(context.Background(), self.cfg, self.stateDir, self.executor.roles, gate)
+		if err != nil {
+			return nil, err
+		}
+		projection, err := fleetLifecycleCanonicalBytes(fleetLifecycleReleaseProjection(evidence))
+		if err != nil || !bytes.Equal(raw, projection) {
+			return nil, errors.Join(errors.New("historical production lifecycle differs from its immutable source"), err)
+		}
+		plans := &scenarioCampaignPlanLookup{stateDir: self.stateDir}
+		source, _, err := plans.read(self.stateDir, evidence.PlanHash)
+		if err != nil {
+			return nil, err
+		}
+		if err := plans.check(); err != nil {
+			return nil, err
+		}
+		proof = &provisionalLifecycleAncestorApproval{CurrentPlanHash: current.PlanHash, CurrentConfigHash: self.cfg.ConfigHash, SourceRunId: evidence.RunID, SourcePlan: source, SourceHandoffHash: binding.ContentHash}
+		self.retainedProvisionalApproval = proof
+	}
+	if !scenarioCampaignLineagePlansMatch(current, proof.SourcePlan) || !fleetLifecycleCanonicalEqual(current.FleetLifecycleRenewal, proof.SourcePlan.FleetLifecycleRenewal) || !fleetLifecycleCanonicalEqual(evidence.Renewal, proof.SourcePlan.FleetLifecycleRenewal) {
+		return nil, errors.New("historical production lifecycle changed custody, deployment, policy or renewal")
 	}
 	return proof.SourcePlan, nil
 }

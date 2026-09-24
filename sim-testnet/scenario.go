@@ -5174,6 +5174,11 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		if executor == nil || executor.plan == nil || !validCanonicalHashHex(executor.plan.PlanHash) {
 			return errors.New("release campaign attempt requires the approved setup plan")
 		}
+		if name == "production-soak" && cfg.provisionalProductionSourceRunID != "" {
+			if _, err := prepareProvisionalProductionHandoff(ctx, cfg, stateDir, roles, executor.plan, journal, cfg.provisionalProductionSourceRunID); err != nil {
+				return fmt.Errorf("prepare provisional production predecessor: %w", err)
+			}
+		}
 		if attempt == nil {
 			loaded, loadErr := readScenarioCampaignAttempt(cfg, stateDir, roles, executor.plan.PlanHash, name)
 			if loadErr == nil {

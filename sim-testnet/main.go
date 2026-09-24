@@ -29,6 +29,7 @@ var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
 	DiagnosticOutput                                                                                                                string
+	ProvisionalReleaseRunID                                                                                                         string
 	WaitForTerminal                                                                                                                 bool
 	RolloverPlan, RolloverPlanHash                                                                                                  string
 	RolloverEpoch, RolloverGeneration                                                                                               uint64
@@ -97,6 +98,7 @@ Common options:
   --allowance-only    plan an EVM/TAO cap increase over --plan-hash without changing any action or release proof
   --provisional-resume  reuse authenticated testnet evidence for diagnostics, continuation and exact setup/fleet repairs; no final release acceptance
                         doctor observes the exact retained --plan-hash without --apply
+  --provisional-release-run-id ID  exact failed terminal release predecessor for an explicitly provisional production soak
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
   --relay-end-block N  fixed absolute end for read-only relay continuation capture
   --relay-slots 2048  capture an explicit doubled aggregate relay funding revision
@@ -157,6 +159,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.Name, "name", "", "")
 	fs.StringVar(&o.Manifest, "manifest", "", "")
 	fs.StringVar(&o.RunID, "run-id", "", "")
+	fs.StringVar(&o.ProvisionalReleaseRunID, "provisional-release-run-id", "", "")
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.PrepareOnly, "prepare-only", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
@@ -245,6 +248,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validatePolicyRolloverOptionsV2(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateProvisionalProductionOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {

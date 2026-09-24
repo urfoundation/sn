@@ -515,6 +515,14 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateProvisionalProductionOptions(cmd, o); err != nil {
+		return err
+	}
+	if o.ProvisionalReleaseRunID != "" {
+		copyConfig := *cfg
+		copyConfig.provisionalProductionSourceRunID = o.ProvisionalReleaseRunID
+		cfg = &copyConfig
+	}
 	if err := validateStrictResumeCampaignOptions(cmd, o); err != nil {
 		return err
 	}
@@ -2560,27 +2568,29 @@ func (e *Executor) awaitBootstrapPolicy(ctx context.Context) error {
 }
 
 type ProductionPolicyEvidence struct {
-	Schema                 string `json:"schema"`
-	DeploymentID           string `json:"deployment_id"`
-	PolicyHash             string `json:"policy_hash"`
-	ReleaseRunID           string `json:"release_run_id"`
-	ReleaseResultHash      string `json:"release_result_hash"`
-	ReleaseCompleteHash    string `json:"release_complete_hash"`
-	ReleaseHandoffHash     string `json:"release_handoff_hash"`
-	ReleaseHandoffSize     uint64 `json:"release_handoff_size_bytes"`
-	CampaignStartEpoch     uint64 `json:"campaign_start_epoch"`
-	CampaignEndEpoch       uint64 `json:"campaign_end_epoch"`
-	ScheduledFromEpoch     uint64 `json:"scheduled_from_epoch"`
-	EffectiveEpoch         uint64 `json:"effective_epoch"`
-	EffectiveBlock         uint64 `json:"effective_block"`
-	PriorEpochBlocks       uint64 `json:"prior_epoch_blocks"`
-	EpochBlocks            uint64 `json:"epoch_blocks"`
-	RootCommitWindowBlocks uint64 `json:"root_commit_window_blocks"`
-	FinalizeOffsetBlocks   uint64 `json:"finalize_offset_blocks"`
-	CloseGraceBlocks       uint64 `json:"close_grace_blocks"`
-	TransactionHash        string `json:"transaction_hash,omitempty"`
-	FinalizedBlock         uint64 `json:"finalized_block,omitempty"`
-	FinalizedBlockHash     string `json:"finalized_block_hash,omitempty"`
+	Schema                        string               `json:"schema"`
+	DeploymentID                  string               `json:"deployment_id"`
+	PolicyHash                    string               `json:"policy_hash"`
+	ReleaseRunID                  string               `json:"release_run_id"`
+	ReleaseResultHash             string               `json:"release_result_hash"`
+	ReleaseCompleteHash           string               `json:"release_complete_hash"`
+	ProvisionalReleaseHandoffHash string               `json:"provisional_release_handoff_hash,omitempty"`
+	ReleaseGate                   *ReleaseCampaignGate `json:"release_gate,omitempty"`
+	ReleaseHandoffHash            string               `json:"release_handoff_hash"`
+	ReleaseHandoffSize            uint64               `json:"release_handoff_size_bytes"`
+	CampaignStartEpoch            uint64               `json:"campaign_start_epoch"`
+	CampaignEndEpoch              uint64               `json:"campaign_end_epoch"`
+	ScheduledFromEpoch            uint64               `json:"scheduled_from_epoch"`
+	EffectiveEpoch                uint64               `json:"effective_epoch"`
+	EffectiveBlock                uint64               `json:"effective_block"`
+	PriorEpochBlocks              uint64               `json:"prior_epoch_blocks"`
+	EpochBlocks                   uint64               `json:"epoch_blocks"`
+	RootCommitWindowBlocks        uint64               `json:"root_commit_window_blocks"`
+	FinalizeOffsetBlocks          uint64               `json:"finalize_offset_blocks"`
+	CloseGraceBlocks              uint64               `json:"close_grace_blocks"`
+	TransactionHash               string               `json:"transaction_hash,omitempty"`
+	FinalizedBlock                uint64               `json:"finalized_block,omitempty"`
+	FinalizedBlockHash            string               `json:"finalized_block_hash,omitempty"`
 }
 
 func (e *Executor) boundProductionReleaseGate() (*ReleaseCampaignGate, error) {
@@ -2897,6 +2907,11 @@ func (e *Executor) writeProductionPolicyEvidence(policy stabi.STCoordinatorPolic
 		EffectiveBlock: policy.EffectiveBlock, PriorEpochBlocks: e.cfg.Policy.Settlement.EpochBlocks,
 		EpochBlocks: policy.EpochBlocks, RootCommitWindowBlocks: policy.RootCommitWindowBlocks,
 		FinalizeOffsetBlocks: policy.FinalizeOffsetBlocks, CloseGraceBlocks: policy.CloseGraceBlocks,
+	}
+	if gate.Schema == provisionalProductionGateSchema || scenarioLifecycleHandoffInherited(gate.LifecycleHandoff) {
+		copyGate := *gate
+		evidence.ReleaseGate = &copyGate
+		evidence.ProvisionalReleaseHandoffHash = gate.ProvisionalHandoffHash
 	}
 	if receipt != nil {
 		evidence.TransactionHash = receipt.TxHash.Hex()

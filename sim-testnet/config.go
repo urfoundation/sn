@@ -364,10 +364,11 @@ type ResolvedConfig struct {
 	// and plan hash. Value copies retain the explicit provisional mode.
 	readOnlyAudit bool
 	// Only the stopped relay capture reader may reconcile a pending marker.
-	relayCapturePlanHash    string
-	provisionalResume       *provisionalResumeState
-	strictHistoryAdoption   *strictHistoryAdoptionState
-	provisionalRPCAuthority string
+	relayCapturePlanHash             string
+	provisionalResume                *provisionalResumeState
+	provisionalProductionSourceRunID string
+	strictHistoryAdoption            *strictHistoryAdoptionState
+	provisionalRPCAuthority          string
 	// This strict invocation route is separately bound into SetupPlan and
 	// ResolvedInputsHash, preserving the original activation ConfigHash.
 	ownedRPCAuthority    string

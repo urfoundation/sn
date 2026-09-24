@@ -145,6 +145,7 @@ func (self *liveFleetLifecycle) AuthenticateReleaseHandoff(encoded []byte, expec
 	}
 	self.authenticatedReleaseHandoff = &handoff
 	self.authenticatedReleaseHandoffHash = expectedHash
+	self.retainedProvisionalApproval = checker.retainedProvisionalApproval
 	return nil
 }
 
