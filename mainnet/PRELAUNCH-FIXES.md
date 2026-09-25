@@ -2137,6 +2137,18 @@ source signatures and blocks remain exact-pinned. Test a consumed-interface
 successor and a real metadata/API incompatibility separately. A precheck must
 not rewrite the original config or signed campaign evidence.
 
+R45 qualification exposed a second runtime-version trap in tests rather than
+the fleet code: four current-runtime fixtures still expected spec 461 while
+the production constants, lockfile and reviewed artifact already agreed on
+467. Mainnet's current-runtime tests must authenticate the independently
+reviewed source commit and metadata hashes for the selected launch artifact,
+then require production selection to match that evidence. Keep older versions
+as explicit historical decode/rejection cases; an old fixture must not silently
+become current authority. Run the full miner and on-chain suites normally and
+under race detection after changing the launch runtime pin. The testnet repair
+is SN `5a53b33c`, with the old-fixture tests causally reproducing all four
+failures.
+
 R43 startup stopped at a stale operator overlay resource list: the current
 pinned server reads `mmdb/ip-ipinfo.mmdb` and `arindb/arin.mmdb`, but the
 simulator demanded future `geolite2.mmdb` and `places.yml` files absent from
