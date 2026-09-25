@@ -13,6 +13,19 @@ completion; no `complete.json` exists. The owner additionally failed evidence
 publication (operator 1 HTTP 400) and process-log publication. The remaining
 assertion failures retain their original identities and messages.
 
+The operator taskworker also logged `Bucket quota exceeded` during that
+publication window. The API did not retain its underlying HTTP 400 cause, so
+the quota is a strongly supported shared-store cause rather than a proven
+historical response body. An admin read showed the `blob` bucket's 32 GiB hard
+quota already exceeded by about 122 MiB. The approved bounded repair raised
+it to 64 GiB with exact admin readback and no object deletion. Both operators'
+separate new preflight envelopes then passed two POSTs and exact immutable
+content/history readbacks through the pinned handler. These prospective
+checks do not retroactively pass R44's failed `evidence_publication` assertion.
+[Quota receipt](peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-quota-expansion.json),
+[operator-1 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator1-publication-preflight.json),
+[operator-2 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator2-publication-preflight.json).
+
 **Known exception R44-LC-1 remains narrow.** The approved bypass omitted the
 terminal-effective lifecycle mutation required by the companion filter's
 early-restore condition. The filter was hard-restored at finalized block

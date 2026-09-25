@@ -18,6 +18,17 @@ It was still running after the fleet stop and successor-plan archive, so late
 source-health and receipt failures are post-stop availability findings. The
 sealed R44 result remains the authority for original-owner acceptance.
 
+The `blob` bucket was above its 32 GiB hard quota during R44 terminal
+publication. A bounded admin update raised it to 64 GiB, read back exactly,
+with no object or lifecycle mutation. Both operators' new preflight envelopes
+then passed two POSTs and exact content/history readbacks using the pinned
+handler. The underlying HTTP 400 body was not retained, so the quota is the
+strongest evidenced shared-store cause, not a proven original response. The
+[quota receipt](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-quota-expansion.json)
+and [operator probes](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/README.md)
+are prospective repair evidence; R44 acceptance stays failed. Persist the
+64 GiB quota in configuration before any storage redeploy.
+
 The guarded fleet stop exited 0 after R44 ended, preserving on-chain state.
 Vault's reviewed alpha-ceiling edit was committed as `df003713` without
 changing the retained plan. Clean SN `6100394b` plus Connect `c98eb715`

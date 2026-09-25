@@ -29,3 +29,15 @@ RPC at `http://192.168.1.162:9944` using `chain_getBlockHash` or
 `chain_getHeader`; these files do not claim independent public-RPC
 reproduction of the R44 run. Off-chain assertion messages remain original
 owner claims unless separately corroborated by source artifacts.
+
+The separate storage repair is documented by `blob-quota-expansion.json`:
+the `blob` bucket hard quota rose from 32 GiB to 64 GiB on 2026-09-25, with
+one quota PUT, matching admin readback, and no object or lifecycle mutation.
+The operator-1 and operator-2 `publication-preflight.json` receipts each
+record two accepted POSTs through the pinned handler and exact immutable
+content/history readbacks. They use distinct new preflight namespaces and
+`final_acceptance=false`; they do not republish or relabel R44 evidence.
+Contemporaneous operator logs reported `Bucket quota exceeded` during R44's
+evidence-publication window. The handler hid the exact cause of its HTTP 400,
+so quota is the strongest evidenced shared-store cause, not a recovered
+historical response body.
