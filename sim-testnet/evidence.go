@@ -1246,7 +1246,16 @@ func publishEvidence(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecret
 			return nil, readErr
 		}
 		if resp.StatusCode/100 != 2 {
-			return nil, fmt.Errorf("operator %d evidence API returned HTTP %d", operator, resp.StatusCode)
+			detail := strings.TrimSpace(string(body))
+			if detail == "" {
+				return nil, fmt.Errorf("operator %d evidence API returned HTTP %d", operator, resp.StatusCode)
+			}
+			// Retain actionable public diagnostics without letting a response
+			// create unbounded or multiline entries in signed run evidence.
+			if len(detail) > 1024 {
+				detail = detail[:1024] + " [truncated]"
+			}
+			return nil, fmt.Errorf("operator %d evidence API returned HTTP %d: %q", operator, resp.StatusCode, detail)
 		}
 		var result PublishedEvidence
 		if err := json.Unmarshal(body, &result); err != nil || !strings.EqualFold(result.ContentHash, envelope.ContentHash) {
