@@ -2380,3 +2380,21 @@ remain terminal; read retry authority does not authorize transaction retry or
 extend a live worker's context. Test recovered and exhausted reads, unchanged
 hash/prefix ownership, cancellation and integrity failure without another
 startup generation or a write.
+
+**PH-06 — Empty usage is not a settled payout.** R45's low-usage startup gate
+compared the newest signed usage source with the latest on-chain payout. Epoch
+627 had a valid empty signed artifact for each operator, but no providers,
+leaves or payout root. The server correctly skipped root publication and the
+contract rejected a zero root; the latest committed payout therefore remained
+at epoch 623. Waiting for the commit window could never make those identities
+match. A provisional empty-source deferral must retain the exact signed source,
+reviewed artifact signer, deployment, current policy and complete epoch geometry;
+read its two canonical boundaries and recheck the observation head before
+admission. Require no conflicting chain root or artifact hash. Empty sources
+grant no native-margin, payout, deposit, accepted-epoch or final-acceptance
+credit. Keep nonempty uncommitted sources on the original gate, preserve the
+last settled payout unchanged, and reject foreign signers, modified source
+hashes, structural changes, boundary drift and partial authentication. A failed
+read clears the entire observation's canonical markers before retry. Rehearse
+this through the real artifact-history producer and both startup gates, including
+an older settled payout and a fresh signed empty source.

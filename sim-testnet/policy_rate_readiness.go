@@ -105,7 +105,7 @@ func validatePolicyRateReadiness(cfg *ResolvedConfig, contracts *ContractView, s
 
 // Recheck the signed, chain-matching source census and structural membership.
 // A separate recorded cohort expectation is allowed, never a malformed member.
-func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, proof *PolicyRateReadinessObservation, operators []OperatorObservation, lowUsage *policyRateLowUsageError) *PolicyRateLowUsageDeferral {
+func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, contracts *ContractView, proof *PolicyRateReadinessObservation, operators []OperatorObservation, lowUsage *policyRateLowUsageError) *PolicyRateLowUsageDeferral {
 	if !provisionalResumeEnabled(cfg) || cfg.readOnlyAudit || cfg.Config == nil || proof == nil || lowUsage == nil || len(lowUsage.shortfalls) == 0 {
 		return nil
 	}
@@ -119,7 +119,17 @@ func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, proof *PolicyRateReadine
 	}
 	for _, operator := range operators {
 		source, ok := sourcesKVs[uint64(operator.NoID)]
-		if !ok || operator.Error != "" || !operator.Healthy || operator.RateSource == nil || *operator.RateSource != source || operator.ValidArtifacts == 0 || operator.MatchingArtifacts == 0 || !slices.Contains(operator.ArtifactHashes, source.ContentHash) || operator.LatestArtifactEpoch != source.Epoch || operator.LatestArtifactHash != source.ContentHash {
+		if !ok || operator.Error != "" || !operator.Healthy || operator.RateSource == nil || *operator.RateSource != source || operator.ValidArtifacts == 0 || operator.MatchingArtifacts == 0 || !slices.Contains(operator.ArtifactHashes, source.ContentHash) {
+			return nil
+		}
+		if operator.EmptyRateSource != nil {
+			if contracts == nil || operator.EmptyRateSource.CanonicalHead != contracts.FinalizedHead || !emptyPolicyRateSourceArtifact(cfg, contracts, source, operator.EmptyRateSource) {
+				return nil
+			}
+			delete(sourcesKVs, source.NoId)
+			continue
+		}
+		if operator.LatestArtifactEpoch != source.Epoch || operator.LatestArtifactHash != source.ContentHash {
 			return nil
 		}
 		if !operator.TierMembershipValid {
@@ -159,7 +169,7 @@ func validateScenarioPolicyRateAdmission(cfg *ResolvedConfig, observation *Scena
 	if proof.Ready || !errors.As(err, &lowUsage) || proof.Detail != err.Error() {
 		return err
 	}
-	want := provisionalPolicyRateLowUsage(cfg, proof, observation.Operators, lowUsage)
+	want := provisionalPolicyRateLowUsage(cfg, contracts, proof, observation.Operators, lowUsage)
 	got := proof.ProvisionalLowUsage
 	if want == nil || got == nil || got.Scope != want.Scope || !got.Provisional || got.FinalAcceptance || !slices.Equal(got.Shortfalls, want.Shortfalls) {
 		return err
@@ -174,7 +184,7 @@ func completePolicyRateReadiness(cfg *ResolvedConfig, contracts *ContractView, o
 		result.Detail = err.Error()
 		var lowUsage *policyRateLowUsageError
 		if errors.As(err, &lowUsage) {
-			result.ProvisionalLowUsage = provisionalPolicyRateLowUsage(cfg, result, operators, lowUsage)
+			result.ProvisionalLowUsage = provisionalPolicyRateLowUsage(cfg, contracts, result, operators, lowUsage)
 		}
 		return
 	}
@@ -205,6 +215,10 @@ func (self *liveScenarioProbe) observePolicyRateReadiness(ctx context.Context, c
 		return result
 	}
 	defer client.Close()
+	if err := authenticateEmptyPolicyRateSources(ctx, self.cfg, contracts, operators, ethEVMBlockReader{client: client}); err != nil {
+		result.Detail = err.Error()
+		return result
+	}
 	parsed, err := abi.JSON(strings.NewReader(alphaPricePrecompileABI))
 	if err != nil {
 		result.Detail = err.Error()

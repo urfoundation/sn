@@ -110,6 +110,7 @@ type OperatorObservation struct {
 	LatestArtifactProviders       int                                          `json:"latest_artifact_providers,omitempty"`
 	ExcludedUnconfiguredProviders int                                          `json:"excluded_unconfigured_providers,omitempty"`
 	RateSource                    *PolicyRateSourceObservation                 `json:"rate_source,omitempty"`
+	EmptyRateSource               *PolicyRateEmptySourceEvidence               `json:"empty_rate_source,omitempty"`
 	CandidateProviders            int                                          `json:"candidate_providers,omitempty"`
 	CandidateHeadExcluded         int                                          `json:"candidate_head_excluded,omitempty"`
 	CandidateLeaves               int                                          `json:"candidate_leaves,omitempty"`
@@ -1639,6 +1640,7 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 			o.ValidArtifacts++
 			if p.cfg.previousPolicy != nil && contracts != nil && artifact.PolicyHash == p.cfg.PolicyHash && artifact.Epoch < contracts.CurrentEpoch && (o.RateSource == nil || artifact.Epoch > o.RateSource.Epoch) {
 				o.RateSource = &PolicyRateSourceObservation{NoId: uint64(noID), Epoch: artifact.Epoch, PolicyHash: artifact.PolicyHash, ContentHash: artifact.ContentHash, TotalUsageBytes: artifact.TotalUsageBytes}
+				o.EmptyRateSource = observeEmptyPolicyRateSource(p.cfg, contracts, *o.RateSource, artifact, expectedSigner)
 			}
 			o.ArtifactHashes = append(o.ArtifactHashes, artifact.ContentHash)
 			if payoutArtifactMatchesChain(&artifact, contracts) {
