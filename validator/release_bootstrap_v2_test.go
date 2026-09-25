@@ -54,13 +54,16 @@ func writeReleaseBootstrapV2TestFile(t *testing.T, path string, data []byte) Rel
 
 // The byte identities come from independent fixture construction, not from a
 // candidate under test. Config keeps the reviewed production runtime pins.
-func newReleaseBootstrapV2TestFixture(t *testing.T) *releaseBootstrapV2TestFixture {
+func newReleaseBootstrapV2TestFixture(t *testing.T, configure ...func(*ReleaseConfig)) *releaseBootstrapV2TestFixture {
 	t.Helper()
 	fixture := &releaseBootstrapV2TestFixture{cfg: validReleaseConfig(t)}
 	fixture.providers = [2]*releaseActivationV2TestFixture{newReleaseActivationV2TestFixture(t, ""), newReleaseActivationV2TestFixture(t, "")}
 	first := fixture.providers[0].authority.Expected
 	fixture.cfg.GenesisHash, fixture.cfg.Netuid = attemptHex32(first.Domain.GenesisHash), first.Domain.Netuid
 	fixture.cfg.Coordinator, fixture.cfg.SettlementVault = common.Address(first.Domain.Coordinator).Hex(), common.Address(first.Domain.SettlementVault).Hex()
+	for _, apply := range configure {
+		apply(&fixture.cfg)
+	}
 	for index := range fixture.cfg.Operators {
 		fixture.cfg.Operators[index].NoID = uint64(index + 2)
 	}
@@ -83,6 +86,8 @@ func newReleaseBootstrapV2TestFixture(t *testing.T) *releaseBootstrapV2TestFixtu
 		key := ed25519.NewKeyFromSeed(seed[:])
 		writeReleaseBootstrapV2TestFile(t, fixture.cfg.Operators[index].ClientKeySeedFile, seed[:])
 		expected := provider.authority.Expected
+		expected.Domain.Coordinator = [20]byte(common.HexToAddress(fixture.cfg.Coordinator))
+		expected.Domain.SettlementVault = [20]byte(common.HexToAddress(fixture.cfg.SettlementVault))
 		expected.NoID = operator.NoID
 		expected.Domain.PolicyHash = policyHash
 		expected.Domain.DeploymentIDHash = sha256.Sum256([]byte(fixture.cfg.DeploymentID))
