@@ -76,6 +76,8 @@ type ScenarioFaultRecord struct {
 	RestoreStartedBlock        uint64                 `json:"restore_started_block,omitempty"`
 	RestoreStartedBlockHash    string                 `json:"restore_started_block_hash,omitempty"`
 	RestorePendingRounds       uint64                 `json:"restore_pending_rounds,omitempty"`
+
+	LifecycleCleanup *ScenarioLifecycleCleanup `json:"provisional_lifecycle_cleanup,omitempty"`
 }
 
 type scenarioFaultDriver interface {
@@ -1328,6 +1330,14 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			record.Status, record.AppliedBlock, record.AppliedBlockHash, record.Processes = "active", completedHead.Number, completedHead.Hash, processes
 			record.Error = ""
 		case "active":
+			// The signed owner has handed this exact filter to terminal cleanup.
+			// Its next full observation owns completion; do not issue a second restore.
+			if record.LifecycleCleanup != nil {
+				if err := validateScenarioLifecycleCleanup(&ScenarioAcceptanceWindow{TerminalBlock: record.LifecycleCleanup.RequestedHead.Number}, *record); err != nil {
+					return err
+				}
+				continue
+			}
 			minimumDuration := specs[i].MinimumDurationBlocks
 			if specs[i].RestoreCondition == "" {
 				minimumDuration = specs[i].DurationBlocks
