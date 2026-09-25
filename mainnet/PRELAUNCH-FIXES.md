@@ -2290,3 +2290,93 @@ classification, original-child signaling proof, write-ahead fault intent,
 pending container restore and post-transition completion heads in the
 composed recovery rehearsal. A documentation-only main advance should not
 change the approved executable, but it must not conceal a missing code patch.
+
+### R45: strict successors after provisional evidence
+
+R45's 2026-09-25 review separated three independent admission requirements:
+the retained v6 continuation ended at block 8,070,107, the protected publication
+forecast exceeded the configured object/retry rates, and provisional startup
+had skipped all five governance drill actions. A provisional forecast warning
+changes no enforced quota, slot allowance or final-acceptance requirement.
+The signed continuation retains 2,048 funded relay slots and a 51.2 TAO relay
+gas reserve; later admitted, failed, pending and signed requests continue to
+consume their original liabilities. A current raw count is useful monitoring,
+but only the authenticated stopped-source census can approve remaining work.
+
+**PH-18/PH-23 — Renewal must span activated generations.** An ordinary v6
+refresh can move an expired end through a new exact approval with fresh
+canonical EVM/native snapshots, original signatures, cumulative debits and an
+unchanged complete-work forecast. It retains the existing source-bound
+doubling and cannot double those limits again. R45 additionally has a new
+policy generation: the current v6 retained census permits only the original
+activation, while runtime publication reads both generations. A production
+successor therefore needs an explicit versioned generation census binding
+every original and successor activation, cutoff, namespace, immutable prefix,
+measured source capacity and publication receipt. Each publication must select
+its actual generation; all generations debit one existing aggregate reserve.
+Retain old approvals byte for byte. Do not erase historical subjects, replace
+activation identities, restart source counters or infer new money from a fresh
+clock. Capture, import, startup and final replay must authenticate the same
+generation census, including a partially populated successor and old audits
+arriving after the cutoff.
+
+**PH-06/PH-23 — Capacity changes need their own configuration bridge.** Derive
+quota changes from the exact rendered policy-v2 configuration. R45's canonical
+repository template is policy-v1 and contains unrelated differences. The
+retained rollover reader intentionally rejects a changed configuration hash;
+a successful capacity-only plan-builder test does not prove the actual
+generation can launch. Bind both original and successor configuration bytes,
+authenticate their semantic difference, and permit only the reviewed rate
+fields through a dedicated retained-read bridge. Preserve policy, activation,
+custody, routes, keys, source bounds, action economics and lifetime spend caps.
+New actions remain owned by the current approval. Qualify launcher, manifest,
+source-role, relay, observation and final readers together; assigning the
+original hash to different semantics is never a bridge. The API copies quota
+budgets at construction, so staged adoption must also activate a new server
+generation and read back its limits. Preserve existing quota counters and
+owner namespaces. Independently measure physical bucket capacity, and require
+strict forecast admission with the reviewed margin in every rate/storage
+dimension before establishing an accepted baseline.
+
+**PH-02/PH-07 — Governance owns one recoverable mutation sequence.** Complete
+configuration, release, relay and fleet revisions before the governance drill:
+its evidence is bound to the exact current plan. After the previous campaign
+has sealed its outcome and restored its faults, hand off the deployment
+journal and coordinator exclusively. Run pause, adversarial upgrade, four
+failed custody probes, reviewed implementation restoration and unpause under
+that owner before opening the new acceptance interval. No parallel executor
+may attach a drill to a live campaign. Retain the original custody snapshot
+and exact signed pause transaction before broadcast. A pause receipt followed
+by a read or evidence-write failure must resume the same guardian, nonce,
+transaction, action and plan, then independently re-read its canonical
+baseline and post-state. Missing, corrupt or foreign preparation cannot be
+replaced with a fresh baseline while paused. Apply this interruption review
+to every later drill stage and require bounded restoration ownership before
+making the adversarial implementation active. Completion still requires the
+four failed probes, unchanged immutable custody/roles/policy/entitlement,
+nondecreasing reserve/claim accounting and the restored unpaused coordinator.
+
+**Strict closure.** Refresh only through an exclusive stopped-source handoff
+with enough fixed runway remaining after capture and review. Reconcile any
+provisional capture marker using the separately approved current release and
+runtime authority; historical compatibility permission cannot grant strict
+signing or acceptance. Preserve completed setup proofs, funded fleet bindings,
+original journal bytes and signed campaign evidence. Start a fresh strict
+campaign interval once governance, source readiness and the current policy's
+complete-epoch economic minimum pass. A later successor cannot promote the
+old provisional result. Test exact-boundary runway loss, one-over slot/rate/
+storage limits, mixed-generation public subjects, immutable predecessor
+replay, API generation interruption, every drill crash boundary and wrong
+owner/nonce/plan refusal normally and under the race detector. A composed
+successor using the actual signed policy-v2 predecessor remains a separate
+qualification gate from isolated fixture tests.
+
+R45 startup also showed repeated full supervised replays after single
+30-second canonical UID and semantic read failures. Retry bounded typed reads
+at their original hash, retain the authenticated completed batch prefix, and
+retry only the interrupted suffix. Keep failed UID reads distinct from a
+proved absent UID. Cancellation, signature errors and semantic mismatches
+remain terminal; read retry authority does not authorize transaction retry or
+extend a live worker's context. Test recovered and exhausted reads, unchanged
+hash/prefix ownership, cancellation and integrity failure without another
+startup generation or a write.

@@ -54,6 +54,7 @@ type GovernanceDrillEvidence struct {
 	After        *GovernanceCustodySnapshot `json:"after,omitempty"`
 	ProbeResults map[string]bool            `json:"probe_call_succeeded,omitempty"`
 	Transactions map[string]string          `json:"transactions"`
+	PauseIntent  *governancePauseIntent     `json:"pause_intent,omitempty"`
 }
 
 func governanceStageRank(stage string) int {
@@ -261,43 +262,6 @@ func (e *Executor) executeGovernanceDrillAction(ctx context.Context, a Action) e
 	default:
 		return fmt.Errorf("unknown governance drill action %s", a.ID)
 	}
-}
-
-func (e *Executor) governancePause(ctx context.Context, a Action) error {
-	if prior, err := e.loadGovernanceEvidence(); err == nil && governanceStageRank(prior.Stage) >= 1 {
-		return nil
-	}
-	epoch, noID, entitlement, err := e.findFinalizedEntitlement(ctx)
-	if err != nil {
-		return err
-	}
-	before, err := e.governanceSnapshot(ctx, epoch, noID)
-	if err != nil {
-		return err
-	}
-	if before.Paused || !strings.EqualFold(before.Implementation, e.payloads.CoordinatorUpgrade.Implementation.Hex()) {
-		return errors.New("governance drill must start unpaused on the reviewed implementation")
-	}
-	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
-	if err != nil {
-		return err
-	}
-	data, err := parsed.Pack("setPaused", true)
-	if err != nil {
-		return err
-	}
-	proxy := e.payloads.Manifest.CoordinatorProxy
-	receipt, err := e.guardian.Send(ctx, e.plan.PlanHash, a, &proxy, big.NewInt(0), data)
-	if err != nil {
-		return err
-	}
-	after, err := e.governanceSnapshot(ctx, epoch, noID)
-	if err != nil || !after.Paused {
-		return stateMismatchError(err, "guardian pause postcondition is false")
-	}
-	evidence := &GovernanceDrillEvidence{Schema: "urnetwork-governance-drill-evidence-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, Stage: "paused", Before: before, Transactions: map[string]string{a.ID: receipt.TxHash.Hex()}}
-	_ = entitlement // selected value is represented in before at one finalized checkpoint
-	return e.writeGovernanceEvidence(evidence)
 }
 
 func (e *Executor) governanceUpgrade(ctx context.Context, a Action, implementation common.Address, stage string) error {
