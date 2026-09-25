@@ -34,6 +34,15 @@ release acceptance interval or a successful finalization.
 - `publication-capacity-advisory.txt`: exact nonblocking provisional forecast
   advisory from the active R45 service journal at 13:54 UTC. The run's pinned
   publication limits remain unchanged; this is an open terminal risk.
+- `relay-forecast-advisory.txt`: exact 13:58–13:59 UTC elapsed-horizon and
+  pending-public-census advisories. The public census is deferred, not waived
+  for final audit.
+- `blob-early-census-summary.json`: complete bucket-listing summary at
+  14:07 UTC. The 38,669,627-byte listing is retained externally at
+  `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/storage-census-early-20260925T1400-retry/blob-object-census.jsonl`
+  with SHA-256 `aaa37e5cce7c6e965908cfa8f963da8c76de79a8ca996ea83f9509ed1efa00d0`.
+  Its 13:38–14:00 window precedes renewed-binding activation and cannot prove
+  the active-epoch storage margin.
 
 `SHA256SUMS` hashes the portable JSON files. The live candidate, binary, scripts,
 and service journals remain under

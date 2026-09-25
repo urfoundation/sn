@@ -1,0 +1,3 @@
+2026-09-25T13:58:01+00:00 goofe run-release-r45-6100394b.sh[3792501]: sim-testnet: provisional evidence relay phase forecast; observed_block=8083526 requested_remaining=7570 requested_end=8091096 forecast_end=8070107 forecast_waived=true final_acceptance=false
+2026-09-25T13:59:01+00:00 goofe run-release-r45-6100394b.sh[3792501]: sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+2026-09-25T13:59:02+00:00 goofe run-release-r45-6100394b.sh[3792501]: sim-testnet: provisional evidence relay phase forecast; observed_block=8083538 requested_remaining=7570 requested_end=8091108 forecast_end=8070107 forecast_waived=true final_acceptance=false

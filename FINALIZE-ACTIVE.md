@@ -22,6 +22,11 @@ and 8,388,608 versus 10,947,548 retry requests/hour. Byte capacity passes.
 The active limits were not changed; retain the advisory in terminal evidence
 and do not treat its waiver as acceptance. Do not mutate the pinned config
 under the current owner.
+The read-only 14:07 UTC object listing established a 34,505,448,693-byte
+baseline and 7,658,670 bytes of preactivation writes. It does not close the
+active-binding storage gate. The owner also logged an elapsed relay horizon
+forecast and deferred public census; the latter remains required at final
+audit. The owner and supervisor are still running.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 

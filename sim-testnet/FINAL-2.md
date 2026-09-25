@@ -39,6 +39,21 @@ higher limits, but substituting it mid-attempt would change the pinned
 configuration. Keep R45 running and evaluate any capacity correction against
 its immutable continuation boundary. [Exact advisory](peerreview/evidence/FINAL-2-R45-renewal-20260925/publication-capacity-advisory.txt).
 
+The owner also recorded an elapsed evidence-relay horizon forecast and a
+pending public census at 13:58–13:59 UTC. Both are provisional advisories;
+the public census remains a final-audit requirement, and no accepted relay
+result is implied. [Exact relay log](peerreview/evidence/FINAL-2-R45-renewal-20260925/relay-forecast-advisory.txt).
+An independent read-only bucket listing completed at 14:07 UTC with **162,362
+objects and 34,505,448,693 bytes**. In the 13:38–14:00 UTC preactivation
+window it identified 12 new objects totaling 7,658,670 bytes, including the
+nonaccepting publication probes. This gives a fresh baseline, not an
+active-binding rate. The complete 38,669,627-byte listing remains at the
+external path in the [bundle README](peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md);
+the [summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-early-census-summary.json)
+contains its `census_sha256`. The initial listing attempt
+hit its own three-minute timeout; a read-only retry with a 20-minute bound
+completed without touching the live run.
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
