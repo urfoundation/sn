@@ -1,5 +1,19 @@
 # Sim-testnet finalization report 2
 
+**R46 retained continuation started 2026-09-25 17:18 UTC; terminal result pending.**
+The new owner is running as `urnetwork-sim-release-r46.service` from clean
+source revision `ad5c05ec` with the unchanged approved plan, 2,048 funded
+slots, retained fleet supervisor, and LAN RPC `192.168.1.162:9944`.
+Its in-service preflight authenticated R45's sealed failure and signed
+invalidation, the retained journal and supervisor identities, pinned input
+hashes, and finalized LAN block 8,084,535. The narrow code change permits
+authenticated provisional process-log findings to be retained while the
+owner continues observing; the strict terminal gate still sees them. No
+new signed R46 interval or final acceptance is claimed at this cut.
+[Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
+The companion-filter dependency remains known exception **R44-LC-1** below,
+with its lifecycle assertion failed rather than waived as a pass.
+
 **R45 sealed owner result, 2026-09-25 16:56 UTC — failed before a measured observation.**
 The live owner crossed the signed start block on-chain, but its last completed
 observation was still epoch 629 at finalized block **8,084,357**, before the
