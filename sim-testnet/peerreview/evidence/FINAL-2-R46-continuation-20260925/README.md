@@ -98,3 +98,10 @@ a final-acceptance result.
 `head-boundary-restored.receipt.json` preserves the sampled, hash-bound fault
 file rows showing restoration of both signed head-boundary faults while the
 owner remained active. Other faults and final acceptance remain open.
+
+`validator1-restart-2049.receipt.json` binds a new validator-1 steering
+failure to the signed rolling-30 termination and replacement process. Its
+paired gate, fault and supervisor copies retain exact raw identities.
+`swarm-health-2047.receipt.json` reports all 1,000 providers running, and
+`proof-progress-2047.receipt.json` records proof growth before the restart.
+These do not establish post-restart validator-1 steering or final acceptance.

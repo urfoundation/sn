@@ -153,6 +153,22 @@ owner remained active and kept observing after both. The read-only
 (SHA-256 `70137f9ca120522d416bbd1080b8deafb58604fafd4b11373681cb205c72f769`)
 binds both rows to the sampled fault-file hash; it does not claim the other
 scheduled faults or final interval are complete.
+At the 20:49 cut, R46 retained a new validator-1
+`release-steering-attempt-failure`: its local client-observation POST was
+canceled by a termination signal during the signed `release-rolling-30`
+validator-1 restart. The fault ledger records that restart restored at block
+**8,085,579**; a replacement validator process was active. The raw finding
+remains blocking even though its trigger was scheduled. All 1,000 provider
+processes were running in the read-only health sample, and validator 1 had
+produced fresh proofs before the restart. No post-restart proof or new
+validator-1 intent/weight recovery had been established at this cut.
+Validator 2's prior steering gap remained open, and its own scheduled rolling
+restart had begun. [Bound restart receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/validator1-restart-2049.receipt.json)
+(SHA-256 `eecf23fc6a73e4943cd6eee5692f701400343ad9235ba3d73e00a3f9e40d5f4d`),
+[provider health](peerreview/evidence/FINAL-2-R46-continuation-20260925/swarm-health-2047.receipt.json)
+(SHA-256 `e872f264cd605908e5abe40df861ba9b3533c878b4e42e196125142548288521`),
+[proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-2047.receipt.json)
+(SHA-256 `3bc0227b5f26129309826f5d3e6f4839f895d9476df19ced46e6410c91e5519e`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
