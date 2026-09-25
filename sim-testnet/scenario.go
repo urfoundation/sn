@@ -426,7 +426,9 @@ func (p *liveScenarioProbe) FinalizedHead(ctx context.Context) (ChainHead, error
 		return ChainHead{}, err
 	}
 	defer client.Close()
-	return finalizedEVMHead(ctx, client)
+	// Scheduler and post-transition reads must not reuse an earlier snapshot's
+	// context-bound head. Their purpose is to observe progress after that cut.
+	return finalizedEVMHeadFromReader(ctx, ethEVMBlockReader{client: client})
 }
 
 type scenarioCheck struct {
@@ -3356,7 +3358,7 @@ func annotateScenarioExpectedFaults(observation *ScenarioObservation, records []
 	observation.ExpectedFaultTargets = nil
 	seenTargets := map[string]bool{}
 	for _, record := range records {
-		if record.Status != "active" {
+		if record.Status != "active" && !scenarioFaultApplyPending(record) {
 			continue
 		}
 		observation.ExpectedFaultIDs = append(observation.ExpectedFaultIDs, record.ID)
@@ -3378,7 +3380,7 @@ func annotateScenarioExpectedFaults(observation *ScenarioObservation, records []
 func scenarioFaultTargets(records []ScenarioFaultRecord, head uint64, includeDue bool) []string {
 	seen := map[string]bool{}
 	for _, record := range records {
-		expected := record.Status == "active" || record.Status == "pending" && record.ControlStartedBlock != 0
+		expected := record.Status == "active" || scenarioFaultApplyPending(record)
 		if includeDue && record.Status == "pending" && head >= record.TriggerBlock {
 			expected = true
 		}
@@ -5448,7 +5450,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		}
 		fleetLifecycle = &liveFleetLifecycle{cfg: runtimeCfg, stateDir: stateDir, executor: scenarioExecutor, attempt: attempt}
 	}
-	faultDriver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg, minerControlHead: probe.FinalizedHead}
+	faultDriver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg, faultCompletionHead: probe.FinalizedHead}
 	if scenarioExecutor != nil && scenarioExecutor.plan != nil && scenarioExecutor.payloads != nil {
 		faultDriver.planHash = scenarioExecutor.plan.PlanHash
 		faultDriver.coordinator = strings.ToLower(scenarioExecutor.payloads.Manifest.CoordinatorProxy.Hex())

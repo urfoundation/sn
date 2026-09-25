@@ -82,14 +82,6 @@ func upgradeMinerControlProgress(active *activeFaultFile) {
 	active.Schema = minerControlProgressSchema
 }
 
-// The completion read happens after actual control reconciliation, before the
-// driver releases durable recovery intent. It cannot backdate a fault window.
-type minerControlCompletedTransition struct {
-	faultId string
-	action  string
-	head    ChainHead
-}
-
 // Workers request persistence through this channel and wait for its result.
 // The coordinator stays alive through every result, including cancellation.
 type minerControlProgressRequest struct {
@@ -164,16 +156,22 @@ func waitMinerFaultTransition(ctx context.Context, transition func() ([]FaultPro
 
 // Existing/prearmed transitions may predate the current observation. New
 // control completion can only move the observed timestamp forward.
-func minerFaultCompletedHead(driver scenarioFaultDriver, spec scenarioFaultSpec, action string, observed ChainHead) (ChainHead, error) {
-	if live, ok := driver.(*liveScenarioFaultDriver); ok && spec.Kind == "miner-control" {
-		completed := live.minerControlCompleted
-		if completed.faultId == spec.ID && completed.action == action {
+func faultCompletedHead(driver scenarioFaultDriver, spec scenarioFaultSpec, action string, observed ChainHead) (ChainHead, error) {
+	if live, ok := driver.(*liveScenarioFaultDriver); ok {
+		completed := live.faultCompleted
+		faultHash, err := canonicalHashHex(spec)
+		if err != nil {
+			return ChainHead{}, err
+		}
+		if completed.faultId == spec.ID && completed.action == action && completed.faultHash == faultHash {
 			if completed.head.Number == observed.Number && completed.head.Hash != observed.Hash {
-				return ChainHead{}, errors.New("miner control completion substituted the observed finalized block")
+				return ChainHead{}, errors.New("fault completion substituted the observed finalized block")
 			}
 			if completed.head.Number > observed.Number {
 				return completed.head, nil
 			}
+		} else if live.faultCompletionHead != nil {
+			return ChainHead{}, errors.New("fault completion does not belong to the current transition")
 		}
 	}
 	return observed, nil
