@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-09-25T18:06:11.128238+00:00",
+  "final_acceptance": false,
+  "journal_event": {
+    "MESSAGE": "sim-testnet: provisional evidence relay pending_public_census=false public_census_audit_passed=true final_acceptance=false",
+    "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+    "_PID": "4123621",
+    "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+    "_SYSTEMD_USER_UNIT": "urnetwork-sim-release-r46.service",
+    "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=4223b;b=484e122110374a108279bc05397861eb;m=35ef024b18;t=65c5286dfae8c;x=a6f4f4a3e2ffddfc",
+    "__MONOTONIC_TIMESTAMP": "231643171608",
+    "__REALTIME_TIMESTAMP": "1790359380143756"
+  },
+  "meaning": "Running owner completed the deferred public source census. This is a progress receipt, not a terminal verdict.",
+  "message_sha256": "ec813e4d5f1097f925d8390417d3dc3f058acce67e3aae4c0a9848df640d89e7",
+  "owner_binary_sha256": "e8d2c017760e17bc9fb72c6b8d1802c18c7686c2c39a4f2b2ba75b32ff448cfa",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-public-census-receipt-v1",
+  "signed_window_sha256": "4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd"
+}

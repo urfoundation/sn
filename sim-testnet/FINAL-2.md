@@ -26,6 +26,12 @@ acceptance are still separate requirements.
 (SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`),
 [first measured observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-observation.json)
 (SHA-256 `99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`).
+The displayed contract head hash is the **EVM block hash**: an independent
+LAN `eth_getBlockByNumber` read at 8,084,680 returned it exactly. The
+Substrate `chain_getBlockHash` at the same height is a different hash by
+design; the two should not be compared as if they were the same namespace.
+[Exact RPC responses](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-chain-hashes.receipt.json)
+(SHA-256 `f456e08e4719854328eaa254dc37e68ef9687ee5bfa4c82a1b6760a042169261`).
 One later snapshot at finalized block **8,084,710** marked rate readiness
 false because both local operator stats and proofs GETs exceeded their
 30-second single-attempt deadline. The owner stayed active. Its next durable
@@ -38,7 +44,10 @@ by the recovery. [Timeout](peerreview/evidence/FINAL-2-R46-continuation-20260925
 (SHA-256 `6009dcaf3a37e0865e8a373506faf089254100e5132d379985dcea81458d4150`).
 At 18:03 UTC, the live owner also logged
 `public_census_audit_passed=true`; this closes that deferred preparation
-audit while strict terminal acceptance remains open.
+audit while strict terminal acceptance remains open. The
+[bound owner-journal receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/public-census-passed.receipt.json)
+(SHA-256 `2af3a976a778093f1e711a01102fefa43b4d0bf1f61f2ac357fb0513148315d7`)
+retains the exact cursor and owner identity.
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No

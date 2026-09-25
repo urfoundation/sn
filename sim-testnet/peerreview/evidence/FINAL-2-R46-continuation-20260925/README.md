@@ -42,9 +42,14 @@ block 8,084,680, six blocks into the window. Its SHA-256 is
 `99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`.
 It reports 808 valid fleet bindings and policy rate readiness, but cannot
 establish complete epoch or terminal outcomes by itself.
+`first-measured-chain-hashes.receipt.json` independently reads the same height
+from the LAN RPC. The owner's contract head uses the EVM block hash; the
+Substrate hash at that height is a different value, as expected.
 
 `local-get-timeout-observation.json` and
 `local-get-recovered-observation.json` preserve consecutive owner snapshots:
 the former at block 8,084,710 has a local stats/proofs GET deadline failure;
 the latter at block 8,084,740 restores policy rate readiness without changing
 the signed acceptance window. This transient remains visible to final review.
+`public-census-passed.receipt.json` binds the 18:03 UTC owner's deferred
+public-census pass to its exact journal cursor, process and signed window.
