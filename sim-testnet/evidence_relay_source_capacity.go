@@ -35,7 +35,7 @@ func (self *EvidenceRelayContinuation) validateSourceBounds() error {
 	if self == nil {
 		return errors.New("relay source lifetime owner is absent")
 	}
-	if self.Schema != evidenceRelayContinuationSourceExpansionSchema {
+	if self.Schema != evidenceRelayContinuationSourceExpansionSchema && self.Schema != evidenceRelayContinuationGenerationSchema {
 		if len(self.SourceBounds) != 0 {
 			return errors.New("relay source lifetime revision requires its explicit v6 approval")
 		}
@@ -55,7 +55,7 @@ func (self *EvidenceRelayContinuation) validateSourceBounds() error {
 
 // Both expanded successors retain the same approved relay funding profile.
 func evidenceRelayExpandedFunding(schema string) bool {
-	return schema == evidenceRelayContinuationExpansionSchema || schema == evidenceRelayContinuationSourceExpansionSchema
+	return schema == evidenceRelayContinuationExpansionSchema || schema == evidenceRelayContinuationSourceExpansionSchema || schema == evidenceRelayContinuationGenerationSchema
 }
 
 // Ordinary capture and exact import preserve an existing revision. The only

@@ -87,6 +87,18 @@ func verifyFinalHistoryAdoptionV2(plan *SetupPlan, stateRoot string, release *va
 	if plan == nil || release == nil || request == nil || plan.DeploymentID != release.DeploymentID || request.DeploymentID != plan.DeploymentID || request.ValidatorID != release.ValidatorID || request.ApprovedPlanHash != plan.PlanHash || request.SourcePlanHash == plan.PlanHash || !plan.allowedPlanHashes()[request.SourcePlanHash] || request.ConfigSHA256 != bytesSHA256(configBytes) {
 		return errors.New("final history request differs from its exact approved plan or rendered config")
 	}
+	if plan.EvidenceRelayContinuation != nil && plan.EvidenceRelayContinuation.ActiveGeneration != nil {
+		generation := plan.EvidenceRelayContinuation.ActiveGeneration
+		if release.ValidatorID == 0 || release.ValidatorID > uint64(len(generation.Runtime)) || release.ValidatorID*2 > uint64(len(generation.Sources)) {
+			return errors.New("final history active generation is absent")
+		}
+		owner := generation.Sources[(release.ValidatorID-1)*2]
+		runtime := generation.Runtime[release.ValidatorID-1]
+		if request.SourcePlanHash != generation.SourcePlanHash || request.CoordinatorStateDir != owner.CoordinatorStateDir || release.StateDir != owner.CoordinatorStateDir || runtime.Content != string(configBytes) || bytesSHA256(configBytes) != "sha256:"+strings.TrimPrefix(runtime.Config.SHA256, "0x") {
+			return errors.New("final history changed the active generation namespace or runtime")
+		}
+		return nil
+	}
 	want := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", release.ValidatorID), "coordinator-state-v2")
 	if request.CoordinatorStateDir != want || release.StateDir != filepath.Join(filepath.Dir(want), "state") {
 		return errors.New("final history request changes the retained coordinator namespace")

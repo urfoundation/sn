@@ -29,6 +29,7 @@ const evidenceRelayOriginalFee uint64 = 100_000_000_000
 // approved plan and retains its full liability and activation ancestry. Ordinary
 // restart never moves an end; capture and exact import authenticate a new one.
 type EvidenceRelayContinuation struct {
+	ActiveGeneration       *evidenceRelayActiveGeneration                              `json:"active_generation,omitempty"`
 	ProvisionalCapture     *EvidenceRelayProvisionalCapture                            `json:"provisional_capture,omitempty"`
 	Schema                 string                                                      `json:"schema"`
 	SourcePlanHash         string                                                      `json:"source_plan_hash"`
@@ -86,7 +87,7 @@ func (self *EvidenceRelayContinuation) feeTerms() (uint64, uint64, error) {
 		return 50_000_000_000, 512, nil
 	case evidenceRelayContinuationSchema, evidenceRelayContinuationRefreshSchema:
 		return evidenceRelayContinuationFee, evidenceRelayContinuationSlots, nil
-	case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema:
+	case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema, evidenceRelayContinuationGenerationSchema:
 		return evidenceRelayContinuationFee, evidenceRelayContinuationExpandedSlots, nil
 	default:
 		return 0, 0, errors.New("relay continuation fee approval version is unsupported")
@@ -212,7 +213,13 @@ func (c *EvidenceRelayContinuation) requiredSubjects(headers map[[32]byte]protoc
 			return nil
 		}
 		key := nativeSource{header.Hotkey, header.NoID, header.Subject.NativeEpoch}
-		if header.Subject.NativeEpoch < c.NativeEpoch || seen[key] {
+		active := c.ActiveGeneration == nil
+		if c.ActiveGeneration != nil {
+			for _, source := range c.ActiveGeneration.Sources {
+				active = active || source.Activation.Hotkey == header.Hotkey && source.NoID == header.NoID && source.Activation.VPK == header.VPK
+			}
+		}
+		if !active || header.Subject.NativeEpoch < c.NativeEpoch || seen[key] {
 			return add(1)
 		}
 		seen[key] = true
@@ -336,6 +343,9 @@ func validateEvidenceRelayContinuationPlan(plan *SetupPlan) error {
 	if err := c.validateSourceBounds(); err != nil {
 		return err
 	}
+	if err := c.validateActiveGeneration(plan); err != nil {
+		return err
+	}
 	if err := validateEvidenceRelayContinuationBudget(plan); err != nil {
 		return err
 	}
@@ -393,10 +403,8 @@ func validateEvidenceRelayContinuationPlan(plan *SetupPlan) error {
 		if !seen[key] {
 			return errors.New("relay continuation retained request names an unknown source")
 		}
-		for _, source := range c.Sources {
-			if source.Activation.Hotkey == key.hotkey && source.NoID == key.noId && source.Activation != request.Activation {
-				return errors.New("relay continuation retained request replaced original activation")
-			}
+		if !c.acceptsActivation(request.Activation, request.Evidence.Header) {
+			return errors.New("relay continuation retained request replaced original activation or cutoff owner")
 		}
 		slot, err := request.Evidence.Header.SlotKey()
 		if err != nil {

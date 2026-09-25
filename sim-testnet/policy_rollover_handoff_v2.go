@@ -19,6 +19,16 @@ import (
 // bytes, incomplete activation or changed files always fail closed. Public
 // contract finality is independently rechecked by the relay/validator root.
 func readPolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) (*policyRolloverHandoffV2, error) {
+	handoff, err := readPolicyRolloverSourceHandoffV2(ctx, cfg, stateDir, base)
+	if err != nil || handoff == nil {
+		return handoff, err
+	}
+	return readEvidenceRelayGenerationRuntime(ctx, cfg, stateDir, base, handoff)
+}
+
+// Historical capture authenticates the immutable selected source before any
+// current-runtime projection is applied.
+func readPolicyRolloverSourceHandoffV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) (*policyRolloverHandoffV2, error) {
 	h, err := readBasePolicyRolloverHandoffV2(ctx, cfg, stateDir, base)
 	if err != nil || h == nil {
 		return h, err

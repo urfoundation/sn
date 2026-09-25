@@ -128,29 +128,67 @@ func preflightEvidenceRelayContinuationHistory(ctx context.Context, cfg *Resolve
 	if err != nil {
 		return err
 	}
-	for _, source := range c.Sources {
-		if source.ValidatorID == 0 || source.ValidatorID > uint64(len(state.requests)) || source.ValidatorID > uint64(len(resolved.Config.ValidatorEvidenceV2)) {
-			return errors.New("relay continuation history source is absent")
+	var activeConfigs []*validatorcomponent.ReleaseConfig
+	if c.ActiveGeneration != nil {
+		handoff, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, plan)
+		if err != nil || handoff == nil {
+			return errors.Join(errors.New("relay history active handoff is absent"), err)
 		}
+		for _, owner := range handoff.Validators {
+			config, err := policyRolloverSourceRoleConfigV2(ctx, owner.Config, owner.Config.Bytes)
+			if err != nil {
+				return err
+			}
+			activeConfigs = append(activeConfigs, config)
+		}
+	}
+	sources, requests := c.Sources, state.requests
+	if c.ActiveGeneration != nil {
+		sources, requests = c.ActiveGeneration.Frozen, state.frozenRequests
+	}
+	check := func(source EvidenceRelayContinuationSource, requestBytes []byte, operatorDir string, bounds validatorcomponent.ReleaseEvidenceV2Bounds, forecast bool) error {
 		var request validatorcomponent.ReleaseHistoryAdoptionV2
-		if err := json.Unmarshal(state.requests[source.ValidatorID-1], &request); err != nil {
+		if err := json.Unmarshal(requestBytes, &request); err != nil {
 			return err
 		}
 		if request.CoordinatorStateDir != source.CoordinatorStateDir || request.IntentPrefixSHA256 != source.IntentPrefixSHA256 || request.IntentPrefixCount != source.IntentPrefixCount || request.LastNativeEpoch != source.LastNativeEpoch || request.LastArtifactHash != source.LastArtifactHash {
 			return errors.New("relay continuation adopted another coordinator history prefix")
 		}
-		bounds := resolved.Config.ValidatorEvidenceV2[source.ValidatorID-1].Evidence.Bounds
-		operatorDir := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", source.ValidatorID), "state", "operators", fmt.Sprintf("no-%d", source.NoID))
 		capacity, err := state.capacityCache.Read(ctx, operatorDir, source.Capacity.Identity, source.Capacity.Coordinator, ed25519.PublicKey(source.Activation.VPK[:]), bounds.Disk, source.Capacity.Head)
 		if err != nil {
 			return err
+		}
+		if !forecast {
+			return nil
 		}
 		span, err := evidenceRelayContinuationCapacitySpan(c, head.Number)
 		if err != nil {
 			return err
 		}
-		if err := validateEvidenceRelayContinuationCapacity(cfg, bounds, span, capacity); err != nil {
+		return validateEvidenceRelayContinuationCapacity(cfg, bounds, span, capacity)
+	}
+	for _, source := range sources {
+		if source.ValidatorID == 0 || source.ValidatorID > uint64(len(requests)) || source.ValidatorID > uint64(len(resolved.Config.ValidatorEvidenceV2)) {
+			return errors.New("relay continuation history source is absent")
+		}
+		bounds := resolved.Config.ValidatorEvidenceV2[source.ValidatorID-1].Evidence.Bounds
+		operatorDir := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", source.ValidatorID), "state", "operators", fmt.Sprintf("no-%d", source.NoID))
+		if err := check(source, requests[source.ValidatorID-1], operatorDir, bounds, c.ActiveGeneration == nil); err != nil {
 			return err
+		}
+	}
+	if c.ActiveGeneration != nil {
+		for _, source := range c.ActiveGeneration.Sources {
+			if source.ValidatorID == 0 || source.ValidatorID > uint64(len(state.requests)) || source.ValidatorID > uint64(len(activeConfigs)) {
+				return errors.New("relay continuation active source is absent")
+			}
+			config := activeConfigs[source.ValidatorID-1]
+			if source.NoID == 0 || source.NoID > uint64(len(config.Operators)) {
+				return errors.New("relay continuation active operator is absent")
+			}
+			if err := check(source, state.requests[source.ValidatorID-1], config.Operators[source.NoID-1].StateDir, config.EvidenceV2.Bounds, true); err != nil {
+				return err
+			}
 		}
 	}
 	latest, err := finalizedEVMHead(ctx, client)

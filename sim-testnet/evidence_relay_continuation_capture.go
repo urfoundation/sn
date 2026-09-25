@@ -328,7 +328,9 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 		if !evidenceRelayExpandedFunding(schema) {
 			return nil, errors.New("relay source lifetime expansion requires exactly 2048 aggregate relay slots")
 		}
-		schema = evidenceRelayContinuationSourceExpansionSchema
+		if schema != evidenceRelayContinuationGenerationSchema {
+			schema = evidenceRelayContinuationSourceExpansionSchema
+		}
 	}
 	historyConfig, err := relayContinuationHistoryConfig(resolved)
 	if err != nil {
@@ -451,6 +453,13 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	if err := c.validateClocks(work); err != nil {
 		return nil, err
 	}
+	handoff, err := readPolicyRolloverSourceHandoffV2(ctx, cfg, stateDir, base)
+	if err != nil {
+		return nil, err
+	}
+	if handoff != nil && (capture || base.EvidenceRelayContinuation == nil || len(sourceBounds) != 2) {
+		return nil, errors.New("activated generation continuation requires strict retained v6 authority")
+	}
 	for index, configured := range resolved.Config.ValidatorEvidenceV2 {
 		id := int(configured.ValidatorID)
 		configBytes, err := marshalRuntimeValidatorConfig(historyConfig, stateDir, roles, renderBase, id)
@@ -500,6 +509,9 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			var prefixes []validatorcomponent.AttemptLedgerHead
 			if prior := base.EvidenceRelayContinuation; prior != nil {
 				previous := prior.Sources[len(c.Sources)]
+				if prior.ActiveGeneration != nil {
+					previous = prior.ActiveGeneration.Frozen[len(c.Sources)]
+				}
 				if err := checkEvidenceRelayContinuationHistoryPrefix(ctx, configPath, configBytes, request, previous); err != nil {
 					return nil, err
 				}
@@ -509,10 +521,17 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 			if err != nil {
 				return nil, err
 			}
-			if err := validateEvidenceRelayContinuationCapacity(cfg, forecastSources[index].Evidence.Bounds, endBlock-block, capacity); err != nil {
-				return nil, fmt.Errorf("validator %d operator %d: %w", id, operator.NoID, err)
+			if handoff == nil {
+				if err := validateEvidenceRelayContinuationCapacity(cfg, forecastSources[index].Evidence.Bounds, endBlock-block, capacity); err != nil {
+					return nil, fmt.Errorf("validator %d operator %d: %w", id, operator.NoID, err)
+				}
 			}
 			c.Sources = append(c.Sources, EvidenceRelayContinuationSource{ValidatorID: configured.ValidatorID, NoID: operator.NoID, CoordinatorStateDir: request.CoordinatorStateDir, IntentPrefixSHA256: request.IntentPrefixSHA256, IntentPrefixCount: request.IntentPrefixCount, LastNativeEpoch: request.LastNativeEpoch, LastArtifactHash: request.LastArtifactHash, Activation: activation, Capacity: capacity})
+		}
+	}
+	if handoff != nil {
+		if err := captureEvidenceRelayActiveGeneration(ctx, cfg, executor, runtime, handoff, &c, hash); err != nil {
+			return nil, err
 		}
 	}
 	c.Debits, c.Retained, err = readEvidenceRelayContinuationDebits(ctx, stateDir, base, entries)
@@ -541,6 +560,13 @@ func captureEvidenceRelayContinuationWithLimitsAt(ctx context.Context, cfg *Reso
 	c.Nonces = transactionCensus.nonces
 	admitted := map[string]bool{}
 	for _, entry := range entries {
+		if handoff != nil && entry.TransactionHash != "" && entry.PlanHash == handoff.PlanHash {
+			for _, member := range handoff.Members {
+				if entry.ActionID == policyRolloverActionID(uint64(member.ValidatorId), uint64(member.NoId)) {
+					admitted[entry.TransactionHash] = true
+				}
+			}
+		}
 		if entry.TransactionHash == "" || !base.allowedPlanHashes()[entry.PlanHash] {
 			continue
 		}

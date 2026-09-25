@@ -100,6 +100,11 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 		if err := validateEvidenceRelayContinuationSource(stateDir, base, journal.Entries()); err != nil {
 			return err
 		}
+		if base.EvidenceRelayContinuation.ActiveGeneration != nil {
+			if _, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, base); err != nil {
+				return err
+			}
+		}
 		return printResult(o.Format, map[string]any{"command": "relay-continuation", "plan_hash": plan.PlanHash, "end_block": plan.EvidenceRelayContinuation.EndBlock, "status": "already_adopted"}, nil)
 	}
 	if base.PlanHash != plan.EvidenceRelayContinuation.SourcePlanHash {
@@ -120,6 +125,9 @@ func runEvidenceRelayContinuation(ctx context.Context, cfg *ResolvedConfig, stat
 		return err
 	}
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := installEvidenceRelayGenerationRuntime(ctx, plan); err != nil {
 		return err
 	}
 	if err := writeRunInputs(commandConfig, stateDir, plan, roles); err != nil {

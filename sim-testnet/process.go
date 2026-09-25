@@ -862,6 +862,11 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	} else if err := attachPolicyRolloverProcessConfigsV2(ctx, cfg, stateDir, p, specs); err != nil {
 		return fmt.Errorf("policy rollover process handoff: %w", err)
 	}
+	if rollover != nil {
+		if err := attachStrictHistoryAdoption(cfg, stateDir, p, specs); err != nil {
+			return fmt.Errorf("strict active generation history handoff: %w", err)
+		}
+	}
 	binaryHash, err := fileSHA256(bins["sim-testnet"])
 	if err != nil {
 		return err

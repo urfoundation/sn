@@ -313,6 +313,13 @@ func (self *evidenceRelayRuntime) readHorizon(started time.Time, firstHead *Chai
 				return errors.New("relay continuation runtime source differs from its original activation")
 			}
 		}
+		if c.ActiveGeneration != nil {
+			for index, source := range c.ActiveGeneration.Sources {
+				if index/2 >= len(self.sources) || self.sources[index/2].successor == nil || index%2 >= len(self.sources[index/2].successor.activations) || self.sources[index/2].successor.activations[index%2] != source.Activation {
+					return errors.New("relay continuation runtime lost the approved active generation")
+				}
+			}
+		}
 		canonical, err := self.chain.BlockHashContext(self.ctx, c.EVMHead.Number)
 		if err != nil {
 			return fmt.Errorf("read relay continuation approved snapshot: %w", err)

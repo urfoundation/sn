@@ -57,15 +57,32 @@ func validateEvidenceRelayContinuationRefresh(base *SetupPlan, current *Evidence
 	}
 	for index, previous := range prior.Sources {
 		next := current.Sources[index]
-		if next.ValidatorID != previous.ValidatorID || next.NoID != previous.NoID || next.CoordinatorStateDir != previous.CoordinatorStateDir || next.Activation != previous.Activation || next.Capacity.Identity != previous.Capacity.Identity || next.Capacity.Coordinator != previous.Capacity.Coordinator || next.IntentPrefixCount < previous.IntentPrefixCount || next.LastNativeEpoch < previous.LastNativeEpoch || next.Capacity.Head.LastSequence < previous.Capacity.Head.LastSequence || next.Capacity.Head.TrailCount < previous.Capacity.Head.TrailCount || next.Capacity.Head.RecordBytes < previous.Capacity.Head.RecordBytes {
-			return errors.New("relay refresh reset or replaced an authenticated source prefix")
+		if err := validateEvidenceRelaySourceAdvance(previous, next); err != nil {
+			return err
 		}
-		if next.IntentPrefixCount == previous.IntentPrefixCount && (next.IntentPrefixSHA256 != previous.IntentPrefixSHA256 || next.LastNativeEpoch != previous.LastNativeEpoch || next.LastArtifactHash != previous.LastArtifactHash) {
-			return errors.New("relay refresh changed unchanged native intent history")
+	}
+	if current.ActiveGeneration != nil {
+		if !reflect.DeepEqual(current.Sources, prior.Sources) {
+			return errors.New("relay active generation replaced immutable original sources")
 		}
-		if next.Capacity.Head.LastSequence == previous.Capacity.Head.LastSequence && next.Capacity.Head != previous.Capacity.Head {
-			return errors.New("relay refresh changed unchanged signed ledger history")
+		if previous := prior.ActiveGeneration; previous != nil {
+			left, right := *previous, *current.ActiveGeneration
+			left.Frozen, left.Sources = nil, nil
+			right.Frozen, right.Sources = nil, nil
+			if !reflect.DeepEqual(left, right) || len(current.ActiveGeneration.Frozen) != 4 || len(current.ActiveGeneration.Sources) != 4 {
+				return errors.New("relay refresh replaced its selected generation")
+			}
+			for index := range previous.Sources {
+				if err := validateEvidenceRelaySourceAdvance(previous.Sources[index], current.ActiveGeneration.Sources[index]); err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(previous.Frozen[index], current.ActiveGeneration.Frozen[index]) {
+					return errors.New("relay refresh changed a frozen generation")
+				}
+			}
 		}
+	} else if prior.ActiveGeneration != nil {
+		return errors.New("relay refresh removed its active generation")
 	}
 	if err := validateEvidenceRelayContinuationRetained(prior, current.Retained); err != nil {
 		return err

@@ -23,6 +23,7 @@ const strictHistoryAdoptionMaximumBytes = 256 * 1024
 // campaign acceptance receipt. Both the original setup and current approval
 // remain separate, immutable authorities.
 type strictHistoryAdoptionBundle struct {
+	FrozenValidators []json.RawMessage `json:"frozen_validators,omitempty"`
 	Schema           string            `json:"schema"`
 	DeploymentID     string            `json:"deployment_id"`
 	ApprovedPlanHash string            `json:"approved_plan_hash"`
@@ -37,6 +38,7 @@ type strictHistoryAdoptionState struct {
 	path, hash        string
 	bundle            strictHistoryAdoptionBundle
 	requests          [][]byte
+	frozenRequests    [][]byte
 	capacityCache     validatorcomponent.StoppedAttemptLedgerCapacityCache
 	invocationContext context.Context
 }
@@ -173,17 +175,23 @@ func captureStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, stat
 		return nil, err
 	}
 	bundle := &strictHistoryAdoptionBundle{Schema: strictHistoryAdoptionSchema, DeploymentID: plan.DeploymentID, ApprovedPlanHash: plan.PlanHash, SourcePlanHash: source, PreparedSHA256: prepared, CompletedSHA256: completed, FirstNativeEpoch: firstNativeEpoch}
-	for id := 1; id <= cfg.Config.Topology.Validators; id++ {
-		configBytes, err := marshalRuntimeValidatorConfig(resolved, stateDir, roles, base, id)
+	active, frozen, err := strictHistoryConfigInputs(ctx, cfg, stateDir, plan, resolved, roles, base, source)
+	if err != nil {
+		return nil, err
+	}
+	for _, input := range active {
+		raw, err := validatorcomponent.CaptureReleaseHistoryAdoptionV2(ctx, input.path, input.content, plan.PlanHash, input.source, firstNativeEpoch)
 		if err != nil {
 			return nil, err
 		}
-		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", id), "validator.yml")
-		raw, err := validatorcomponent.CaptureReleaseHistoryAdoptionV2(ctx, path, configBytes, plan.PlanHash, source, firstNativeEpoch)
-		if err != nil {
-			return nil, fmt.Errorf("validator %d history capture: %w", id, err)
-		}
 		bundle.Validators = append(bundle.Validators, json.RawMessage(raw))
+	}
+	for _, input := range frozen {
+		raw, err := validatorcomponent.CaptureReleaseHistoryAdoptionV2(ctx, input.path, input.content, plan.PlanHash, input.source, firstNativeEpoch)
+		if err != nil {
+			return nil, err
+		}
+		bundle.FrozenValidators = append(bundle.FrozenValidators, json.RawMessage(raw))
 	}
 	return bundle, nil
 }
@@ -222,26 +230,48 @@ func prepareStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, stat
 		return errors.New("strict history adoption bundle changed its approved owner or census")
 	}
 	state := &strictHistoryAdoptionState{path: options.StrictHistoryAdoption, hash: options.StrictHistoryAdoptionSHA256, bundle: bundle, invocationContext: ctx}
-	for index, value := range bundle.Validators {
-		var request validatorcomponent.ReleaseHistoryAdoptionV2
-		decoder := json.NewDecoder(bytes.NewReader(value))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&request); err != nil {
-			return err
+	decode := func(values []json.RawMessage, source string) ([][]byte, error) {
+		var requests [][]byte
+		for index, value := range values {
+			var request validatorcomponent.ReleaseHistoryAdoptionV2
+			decoder := json.NewDecoder(bytes.NewReader(value))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&request); err != nil {
+				return nil, err
+			}
+			encoded, err := json.MarshalIndent(request, "", "  ")
+			if err != nil {
+				return nil, err
+			}
+			encoded = append(encoded, '\n')
+			if _, err := validatorcomponent.DecodeReleaseHistoryAdoptionV2(encoded, bytesSHA256(encoded)); err != nil {
+				return nil, err
+			}
+			if request.DeploymentID != bundle.DeploymentID || request.ValidatorID != uint64(index+1) || request.ApprovedPlanHash != bundle.ApprovedPlanHash || request.SourcePlanHash != source || request.FirstNativeEpoch != bundle.FirstNativeEpoch {
+				return nil, errors.New("strict history adoption member differs from its bundle authority")
+			}
+			requests = append(requests, encoded)
 		}
-		encoded, err := json.MarshalIndent(request, "", "  ")
-		if err != nil {
-			return err
-		}
-		encoded = append(encoded, '\n')
-		if _, err := validatorcomponent.DecodeReleaseHistoryAdoptionV2(encoded, bytesSHA256(encoded)); err != nil {
-			return err
-		}
-		if request.DeploymentID != bundle.DeploymentID || request.ValidatorID != uint64(index+1) || request.ApprovedPlanHash != bundle.ApprovedPlanHash || request.SourcePlanHash != bundle.SourcePlanHash || request.FirstNativeEpoch != bundle.FirstNativeEpoch {
-			return errors.New("strict history adoption member differs from its bundle authority")
-		}
-		state.requests = append(state.requests, encoded)
+		return requests, nil
 	}
+	activeSource := bundle.SourcePlanHash
+	if plan.EvidenceRelayContinuation != nil && plan.EvidenceRelayContinuation.ActiveGeneration != nil {
+		activeSource = plan.EvidenceRelayContinuation.ActiveGeneration.SourcePlanHash
+		if len(bundle.FrozenValidators) != 2 {
+			return errors.New("strict history generation lost its frozen witnesses")
+		}
+	} else if len(bundle.FrozenValidators) != 0 {
+		return errors.New("strict history has unapproved frozen witnesses")
+	}
+	state.requests, err = decode(bundle.Validators, activeSource)
+	if err != nil {
+		return err
+	}
+	state.frozenRequests, err = decode(bundle.FrozenValidators, bundle.SourcePlanHash)
+	if err != nil {
+		return err
+	}
+
 	previous := cfg.strictHistoryAdoption
 	cfg.strictHistoryAdoption = state
 	if err := preflightStrictHistoryAdoption(ctx, cfg, stateDir); err != nil {
@@ -279,13 +309,16 @@ func preflightStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, st
 	if source != state.bundle.SourcePlanHash || prepared != state.bundle.PreparedSHA256 || completed != state.bundle.CompletedSHA256 {
 		return errors.New("strict history adoption changed its retained original activation inputs")
 	}
-	for index, request := range state.requests {
-		configBytes, err := marshalRuntimeValidatorConfig(resolved, stateDir, roles, base, index+1)
-		if err != nil {
-			return err
-		}
-		path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", index+1), "validator.yml")
-		if err := validatorcomponent.CheckReleaseHistoryAdoptionV2Source(ctx, path, configBytes, request, bytesSHA256(request)); err != nil {
+	active, frozen, err := strictHistoryConfigInputs(ctx, cfg, stateDir, plan, resolved, roles, base, source)
+	if err != nil {
+		return err
+	}
+	if len(active) != len(state.requests) || len(frozen) != len(state.frozenRequests) {
+		return errors.New("strict history generation census changed")
+	}
+	requests := append(append([][]byte(nil), state.requests...), state.frozenRequests...)
+	for index, input := range append(active, frozen...) {
+		if err := validatorcomponent.CheckReleaseHistoryAdoptionV2Source(ctx, input.path, input.content, requests[index], bytesSHA256(requests[index])); err != nil {
 			return err
 		}
 	}
@@ -308,6 +341,9 @@ func attachStrictHistoryAdoption(cfg *ResolvedConfig, stateDir string, plan *Set
 	for index, raw := range cfg.strictHistoryAdoption.requests {
 		id := fmt.Sprintf("validator-%d", index+1)
 		configPath := filepath.Join(stateDir, "runtime", id, "validator.yml")
+		if plan.EvidenceRelayContinuation != nil && plan.EvidenceRelayContinuation.ActiveGeneration != nil {
+			configPath = plan.EvidenceRelayContinuation.ActiveGeneration.Runtime[index].Config.Path
+		}
 		var request validatorcomponent.ReleaseHistoryAdoptionV2
 		if err := json.Unmarshal(raw, &request); err != nil {
 			return err

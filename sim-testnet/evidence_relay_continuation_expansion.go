@@ -36,7 +36,7 @@ func evidenceRelayContinuationCaptureSchema(base *SetupPlan, requestedSlots uint
 		switch prior.Schema {
 		case evidenceRelayContinuationSchema, evidenceRelayContinuationRefreshSchema:
 			schema = evidenceRelayContinuationRefreshSchema
-		case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema:
+		case evidenceRelayContinuationExpansionSchema, evidenceRelayContinuationSourceExpansionSchema, evidenceRelayContinuationGenerationSchema:
 			schema = prior.Schema
 		default:
 			return "", errors.New("relay refresh cannot change an older approved fee version")
@@ -46,7 +46,7 @@ func evidenceRelayContinuationCaptureSchema(base *SetupPlan, requestedSlots uint
 		if requestedSlots != evidenceRelayContinuationExpandedSlots || base.EvidenceRelayContinuation == nil {
 			return "", errors.New("relay funding revision requires an existing continuation and exactly 2048 aggregate slots")
 		}
-		if schema != evidenceRelayContinuationSourceExpansionSchema {
+		if schema != evidenceRelayContinuationSourceExpansionSchema && schema != evidenceRelayContinuationGenerationSchema {
 			schema = evidenceRelayContinuationExpansionSchema
 		}
 	}

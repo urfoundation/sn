@@ -121,16 +121,25 @@ func finalReleaseCaptureConfigWithAdoptionV2(ctx context.Context, cfg *ResolvedC
 		}
 	}
 	if handoff != nil {
-		// The handoff already authenticates this exact production config and
-		// independent fresh sequence; a predecessor adoption is inapplicable.
+		// A fresh generation needs no predecessor bridge. A terminal successor
+		// must also retain the exact strict history request used by its writer.
 		if bytesSHA256(encoded) != "sha256:"+strings.TrimPrefix(handoff.Validators[validatorId-1].Config.SHA256, "0x") {
 			return nil, nil, nil, errors.New("compact active generation config changed after authentication")
 		}
-		return &release, encoded, nil, ctx.Err()
+		plan, err := loadPersistedPlan(cfg, stateRoot)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if plan.EvidenceRelayContinuation == nil || plan.EvidenceRelayContinuation.ActiveGeneration == nil {
+			return &release, encoded, nil, ctx.Err()
+		}
 	}
 	adoption, adoptionBytes, err := finalCaptureHistoryAdoptionV2(ctx, cfg, stateRoot, &release, encoded)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if handoff != nil && adoption == nil {
+		return nil, nil, nil, errors.New("compact active generation lost its strict history request")
 	}
 	if adoption != nil {
 		release.StateDir = adoption.CoordinatorStateDir

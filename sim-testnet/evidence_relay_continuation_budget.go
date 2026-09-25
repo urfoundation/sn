@@ -148,14 +148,14 @@ func validateEvidenceRelayContinuationNamespace(plan *SetupPlan, validatorID uin
 		return errors.New("relay continuation namespace has no approval")
 	}
 	found := 0
-	for _, source := range plan.EvidenceRelayContinuation.Sources {
-		if source.ValidatorID != validatorID {
-			continue
+	sources := append([]EvidenceRelayContinuationSource(nil), plan.EvidenceRelayContinuation.Sources...)
+	if generation := plan.EvidenceRelayContinuation.ActiveGeneration; generation != nil {
+		sources = append(sources, generation.Sources...)
+	}
+	for _, source := range sources {
+		if source.ValidatorID == validatorID && source.CoordinatorStateDir == path {
+			found++
 		}
-		if source.CoordinatorStateDir != path {
-			return errors.New("relay continuation changed the adopted coordinator namespace")
-		}
-		found++
 	}
 	if found != 2 {
 		return errors.New("relay continuation namespace lost its two original operators")

@@ -48,7 +48,7 @@ func validateEvidenceRelayContinuationConfig(cfg *ResolvedConfig, plan *SetupPla
 	}
 	continuation := plan.EvidenceRelayContinuation
 	_, slots, err := continuation.feeTerms()
-	if err != nil || continuation.Schema != evidenceRelayContinuationSourceExpansionSchema || configured.MaxSlots != slots {
+	if err != nil || (continuation.Schema != evidenceRelayContinuationSourceExpansionSchema && continuation.Schema != evidenceRelayContinuationGenerationSchema) || configured.MaxSlots != slots {
 		return errors.Join(errors.New("relay continuation configured slots differ from its original or exact funded v6 approval"), err)
 	}
 	return nil
