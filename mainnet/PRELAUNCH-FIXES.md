@@ -2332,3 +2332,27 @@ cancellation and crash/reentry cases at the real HTTP publication owner before
 claiming this additional gate complete. None of these retries may advance an
 EMA, overwrite an intent or forgive a missing native epoch. The retained native
 gap remains a strict final failure requiring its own authenticated successor.
+
+R46's three swarm `exit-gap-timeout` findings shared validator-1 as sender.
+Each followed a 60-second ACK lifetime failure after nine sends, then a
+receiver still expecting sequence zero. The pinned Connect defaults retain
+send sequences for 300 idle seconds but receive sequences for only 120; the
+observed ACK-to-next-send gaps were approximately 282, 156 and 219 seconds.
+Receiver idle retirement followed by failed compact-head recovery is a
+hypothesis, not a proven packet-loss cause. The logs do not identify which
+missing-contract request or restored head failed. Preserve that uncertainty
+and the strict multi-worker failure; R46's existing provisional policy allowed
+continued observation without changing its final gate.
+
+Before selecting a future fix, add a deterministic full-path test: negotiate a
+compact contract between authenticated peers, acknowledge a nonzero prefix,
+advance virtual time past receiver idle but short of sender idle, and resume
+the same sequence. Require missing-contract feedback and full-proof recovery
+to deliver exactly once and release retained ownership. Cover a lost first
+recovery ACK, carrier replacement, cancellation, foreign contract and stale
+sequence. Existing compact-head helper tests do not prove that combined
+lifecycle. Reconcile the idle defaults only with that recovery proof; raising
+the gap deadline alone is not closure. The deployed-source
+`TestProcessLogIsolatedExitGapTimeoutRequiresSingleWorker` and
+`TestScenarioIntervalProcessDeferralIsTypedAndNarrow` passed during triage.
+No live binary or timeout was changed.
