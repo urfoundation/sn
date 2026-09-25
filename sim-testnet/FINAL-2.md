@@ -27,7 +27,14 @@ local filters after a complete signed terminal observation while retaining
 This exception does not cover other failures. Current-window claim discovery
 has stalled at epoch 617 for all 1,000 miners, leaving later accepted epochs
 without claim outcomes in the live queue. Fourteen acceptance-scoped process
-log findings remain under triage. Preserve their raw rows and report exact
+log findings remain: 10 `exit-gap-timeout` findings (14 events), two validator
+steering-attempt findings (20 events), and two steering-continuity findings
+(three events). The read-only
+[interim inventory](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/inventory.json)
+at 07:17:59 UTC records SHA-256
+`017fb1603eea127593b2a6e1f0f6115d86d1a9554640d9fd2a452cb219aafb9c`
+and hashes the signed start, all 1,000 claim queues, observations, faults,
+process logs, and watcher progress. Preserve their raw rows and report exact
 terminal counts when the watcher and owner results exist. No skipped check is
 reported as passed; the full campaign, production interval, accounting replay
 and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
