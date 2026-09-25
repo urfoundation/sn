@@ -2175,3 +2175,45 @@ asymmetric session loss and interrupted replacement without replacing the
 entire validator fleet. Then complete a clean full acceptance interval under
 the deployed manifest. Preserve R43's original findings; a repaired transport
 does not retroactively pass its log gate.
+
+### R42/R43 restart recovery: finish termination before waiting for health
+
+R42's rolling restart exposed a second recovery boundary: the original miner
+swarm received SIGTERM but remained alive during SDK shutdown. Its supervisor
+could not start a replacement until the original `Wait` completed. Reclassifying
+an unhealthy replacement as pending preserved the interval, but could not make
+that original process exit. Pending restoration can otherwise persist through
+the terminal block and exhaust the independent cleanup deadline.
+
+Production restart ownership must include bounded graceful termination and
+exact escalation, followed by independent replacement-health reconciliation.
+Record the original kernel start time with the durable restart intent; a numeric
+PID alone is insufficient. The process supervisor, which retains the original
+executable, argv and kernel identity, should allow the full normal shutdown
+grace and then escalate only that same original generation. Start grace when
+the supervisor first observes the retained restart, not at process launch or
+at an unrelated failed health check. Validate the complete target cohort before
+signaling any child. A changed fault, removed fault, replacement, or reused PID
+must not inherit the earlier deadline.
+
+Legacy receipts without the required kernel proof remain readable and retain
+their original recovery path; they must not silently acquire forced-kill
+authority. An external recovery command needs its own exact process ownership
+proof and should address a kernel process handle where available. A malformed
+fault ledger must prevent signaling without taking down unrelated processes.
+
+Keep the original fault record until the replacement is independently observed
+healthy. SIGKILL, an exited PID, and a successful restart request are not proof
+of restored service. Retain escalation diagnostics, pending rounds, replacement
+identity and actual restoration block in the evidence. This does not waive
+fault-completion or final process-log gates.
+
+The isolated successor implementation `2b78af30` passes focused normal/race
+tests and adjacent restart/shutdown tests; it has not changed R43. Disabling
+escalation reproduces the exact hung-original failure deterministically.
+Closure requires deployment evidence and tests with a SIGTERM-ignoring child
+ordered by a readiness barrier, bounded synthetic grace, real ownership-checked
+escalation, and unchanged fault evidence while replacement remains pending.
+Also cover legacy receipts, PID reuse, executable/argv changes, malformed later
+cohort members, owner cancellation, failed-signal retry, and successful
+replacement. Restore the old no-escalation behavior to prove the root test fails.
