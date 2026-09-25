@@ -107,30 +107,41 @@ type liveScenarioFaultDriver struct {
 	minerControlReconciled   map[string]map[string]minerControlGeneration
 }
 
-type dockerScenarioContainerRuntime struct{ docker dockerCLI }
+// Bound once to the checksum-locked supervisor generation. Tests inject only
+// the command boundary; production never selects a container by its name.
+type dockerScenarioContainerRuntime struct {
+	docker        dockerCLI
+	dependencyKVs map[string]supervisorDependency
+	command       func(context.Context, ...string) ([]byte, error)
+}
 
 type scenarioContainerState struct {
 	Running bool
 	PID     int
 }
 
-func (runtime *dockerScenarioContainerRuntime) inspect(ctx context.Context, spec managedContainerSpec) (scenarioContainerState, error) {
-	specHash, err := managedContainerSpecHash(spec)
+// Every read rechecks the captured id, name, image, and creation hash before
+// interpreting lifecycle state or authorizing another start.
+func (self *dockerScenarioContainerRuntime) inspect(ctx context.Context, spec managedContainerSpec) (scenarioContainerState, error) {
+	dependency, err := self.dependency(spec)
 	if err != nil {
 		return scenarioContainerState{}, err
 	}
-	format := "{{.State.Running}}|{{.State.Pid}}|{{.Config.Image}}|{{index .Config.Labels \"" + managedContainerSpecHashLabel + "\"}}"
-	output, err := runtime.docker.commandContext(ctx, "container", "inspect", "--format", format, spec.Name).CombinedOutput()
+	format := "{{.State.Running}}|{{.State.Pid}}|{{.Id}}|{{.Name}}|{{.Config.Image}}|{{index .Config.Labels \"" + managedContainerSpecHashLabel + "\"}}|{{.HostConfig.RestartPolicy.Name}}"
+	output, err := self.run(ctx, "container", "inspect", "--format", format, dependency.ContainerId)
 	if err != nil {
 		return scenarioContainerState{}, fmt.Errorf("inspect simulator dependency %s: %w: %s", spec.Name, err, strings.TrimSpace(string(output)))
 	}
 	parts := strings.Split(strings.TrimSpace(string(output)), "|")
-	if len(parts) != 4 || parts[2] != spec.Image || parts[3] != specHash {
-		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s no longer matches its release-locked container spec", spec.Name)
+	if len(parts) != 7 || parts[0] != "true" && parts[0] != "false" || parts[6] != "no" {
+		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s has invalid lifecycle fields", spec.Name)
+	}
+	if err := validateSupervisorDependencyObservation(dependency, supervisorDependencyObservation{containerId: parts[2], name: strings.TrimPrefix(parts[3], "/"), image: parts[4], specHash: parts[5]}); err != nil {
+		return scenarioContainerState{}, err
 	}
 	pid, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s has invalid PID %q", spec.Name, parts[1])
+	if err != nil || pid < 0 || pid == 1 || parts[0] == "true" && pid == 0 || parts[0] == "false" && pid != 0 {
+		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s has invalid pid %q", spec.Name, parts[1])
 	}
 	return scenarioContainerState{Running: parts[0] == "true", PID: pid}, nil
 }
@@ -143,7 +154,7 @@ func (runtime *dockerScenarioContainerRuntime) Stop(ctx context.Context, spec ma
 	if !before.Running || before.PID <= 1 {
 		return 0, fmt.Errorf("simulator dependency %s is not running", spec.Name)
 	}
-	output, err := runtime.docker.commandContext(ctx, "stop", "--time", "5", spec.Name).CombinedOutput()
+	output, err := runtime.run(ctx, "stop", "--time", "5", runtime.dependencyKVs[spec.Name].ContainerId)
 	if err != nil {
 		return 0, fmt.Errorf("stop simulator dependency %s: %w: %s", spec.Name, err, strings.TrimSpace(string(output)))
 	}
@@ -155,30 +166,6 @@ func (runtime *dockerScenarioContainerRuntime) Stop(ctx context.Context, spec ma
 		return 0, fmt.Errorf("simulator dependency %s remained running after stop", spec.Name)
 	}
 	return before.PID, nil
-}
-
-func (runtime *dockerScenarioContainerRuntime) Start(ctx context.Context, spec managedContainerSpec) (int, error) {
-	state, err := runtime.inspect(ctx, spec)
-	if err != nil {
-		return 0, err
-	}
-	if !state.Running {
-		output, startErr := runtime.docker.commandContext(ctx, "start", spec.Name).CombinedOutput()
-		if startErr != nil {
-			return 0, fmt.Errorf("start simulator dependency %s: %w: %s", spec.Name, startErr, strings.TrimSpace(string(output)))
-		}
-	}
-	if err := waitContainerReady(ctx, runtime.docker, spec); err != nil {
-		return 0, err
-	}
-	state, err = runtime.inspect(ctx, spec)
-	if err != nil {
-		return 0, err
-	}
-	if !state.Running || state.PID <= 1 {
-		return 0, fmt.Errorf("simulator dependency %s did not return with a live PID", spec.Name)
-	}
-	return state.PID, nil
 }
 
 type dependencyFaultTarget struct {
@@ -208,7 +195,11 @@ func (d *liveScenarioFaultDriver) containerRuntime(ctx context.Context) (scenari
 	if err != nil {
 		return nil, err
 	}
-	d.containers = &dockerScenarioContainerRuntime{docker: docker}
+	dependencyKVs, err := d.containerDependencies()
+	if err != nil {
+		return nil, err
+	}
+	d.containers = &dockerScenarioContainerRuntime{docker: docker, dependencyKVs: dependencyKVs}
 	return d.containers, nil
 }
 
@@ -488,8 +479,18 @@ func (d *liveScenarioFaultDriver) applyContainerFault(ctx context.Context, spec 
 	result := make([]FaultProcessEvidence, 0, len(ids))
 	stopped := make([]dependencyFaultTarget, 0, len(ids))
 	rollback := func() {
+		rollbackCtx, cancel := context.WithTimeout(context.Background(), supervisorStartupPhaseTimeout)
+		defer cancel()
 		for index := len(stopped) - 1; index >= 0; index-- {
-			_, _ = runtime.Start(context.Background(), stopped[index].spec)
+			for rollbackCtx.Err() == nil {
+				_, err := runtime.Start(rollbackCtx, stopped[index].spec)
+				if !containerStartPending(stopped[index].spec, err) {
+					break
+				}
+				if err := waitSupervisorRestart(rollbackCtx, minerControlRetryDelay); err != nil {
+					break
+				}
+			}
 		}
 	}
 	for _, id := range ids {
@@ -504,46 +505,6 @@ func (d *liveScenarioFaultDriver) applyContainerFault(ctx context.Context, spec 
 			return nil, stopErr
 		}
 		stopped = append(stopped, target)
-		result = append(result, FaultProcessEvidence{ID: id, Role: target.role, Identity: target.spec.Name, PID: pid})
-	}
-	return result, nil
-}
-
-func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
-	if d.cfg == nil || spec.Kind != "container-restart" || len(spec.Targets) == 0 {
-		return nil, fmt.Errorf("unsupported container fault %q", spec.Kind)
-	}
-	targets, err := dependencyFaultTargets(d.cfg)
-	if err != nil {
-		return nil, err
-	}
-	runtime, err := d.containerRuntime(ctx)
-	if err != nil {
-		return nil, err
-	}
-	prior := map[string]int{}
-	active, err := readActiveFaultFile(d.activePath())
-	if err != nil {
-		return nil, err
-	}
-	for _, process := range active.Processes {
-		prior[process.ID] = process.PID
-	}
-	ids := append([]string(nil), spec.Targets...)
-	sort.Strings(ids)
-	result := make([]FaultProcessEvidence, 0, len(ids))
-	for _, id := range ids {
-		target, ok := targets[id]
-		if !ok {
-			return nil, fmt.Errorf("container fault target %q is not a simulator-owned PostgreSQL/Redis dependency", id)
-		}
-		pid, startErr := runtime.Start(ctx, target.spec)
-		if startErr != nil {
-			return nil, startErr
-		}
-		if prior[id] > 1 && pid == prior[id] {
-			return nil, fmt.Errorf("simulator dependency %s restarted without replacing PID %d", target.spec.Name, pid)
-		}
 		result = append(result, FaultProcessEvidence{ID: id, Role: target.role, Identity: target.spec.Name, PID: pid})
 	}
 	return result, nil
@@ -1354,9 +1315,9 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Restore(ctx, specs[i])
 			if err != nil {
-				if processRestartPending(specs[i], err) {
+				if processRestartPending(specs[i], err) || containerRestartPending(specs[i], err) {
 					if record.RestorePendingRounds == ^uint64(0) {
-						record.Status, record.Error = "failed", "process restart restore round counter exhausted"
+						record.Status, record.Error = "failed", "restart restore round counter exhausted"
 						return errors.New(record.Error)
 					}
 					if record.RestoreStartedBlock == 0 {
