@@ -53,6 +53,7 @@ func verifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement 
 		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil {
 			result = VerifiedAttemptCutV2Measurement{}
+			resultErr = classifyAttemptReplayRead(resultErr)
 		}
 	}()
 	if err := ctx.Err(); err != nil {

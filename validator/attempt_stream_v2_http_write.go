@@ -13,9 +13,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/urfoundation/sn/protocol"
 )
+
+// Upload acknowledgement has separate ownership from retryable public reads.
+const attemptStreamV2HttpWriteIoTimeout = 30 * time.Second
 
 // Safe for concurrent calls with independently owned immutable input bytes.
 // The getter must be the release API session's live getter, not a startup JWT
@@ -54,7 +58,7 @@ func newHttpAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, meta
 	// Stream readers pause their I/O budget while replay owns CPU work. An
 	// upload instead owns one request and acknowledgement, both under the
 	// original finite HTTP budget even when its release context is long lived.
-	reader.client.Timeout = attemptStreamV2HTTPIOTimeout
+	reader.client.Timeout = attemptStreamV2HttpWriteIoTimeout
 	return &HTTPAttemptStreamV2Writer{endpoint: reader.endpoint, metadataBytes: reader.metadataBytes, recordBytes: reader.recordBytes, proofBytes: reader.proofBytes, byJwt: byJwt, client: reader.client}, nil
 }
 

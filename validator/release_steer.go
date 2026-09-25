@@ -1057,6 +1057,7 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 				var closedInput *provisionalClosedNativeInput
 				var rejected *provisionalNativeWeightRejection
 				var interrupted *provisionalNativeReadInterruption
+				var replayInterrupted *attemptReplayReadInterruption
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
 					retryableCut = false
@@ -1078,6 +1079,13 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					fmt.Printf("release steer: %v; retrying authenticated preparation on next poll\n", interrupted)
+				} else if errors.As(err, &replayInterrupted) && RetryableEvidenceTransportError(err) {
+					weightRejected = false
+					retryableCut = allowDeferral && pendingErr == nil
+					// Retained intent reads replay before the pre-intent handler.
+					// Retry the read without spending native failures; existing
+					// intent reconciliation and strict epoch continuity still apply.
+					fmt.Printf("release steer: %v; retrying authenticated compact replay on next poll\n", err)
 				} else if releaseOnlyErrors(err, errAttemptCutPending) {
 					weightRejected = false
 					retryableCut = allowDeferral && pendingErr == nil
@@ -1153,12 +1161,12 @@ func runReleaseSteeringOperation(ctx context.Context, timeout time.Duration, ope
 // A steering decision includes authenticated client-key capture. Its admitted
 // batch envelope is longer than the native-only observation window, so the
 // enclosing deadline must never cancel a valid batch before that envelope
-// expires. The additional native window covers the pinned reads before and
-// after the capture while keeping the whole retry finite.
+// expires. Separate compact transport and native windows cover retained replay
+// and pinned reads before/after capture while keeping the whole retry finite.
 func releaseSteeringOperationTimeout(cfg *ReleaseConfig) time.Duration {
 	native := releaseNativeEndpointTimeout(cfg)
 	batch := time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
-	return max(native, batch+native)
+	return batch + native + attemptStreamV2HttpReadIoTimeout
 }
 
 // Run supervises release steering until cancellation or a process-fatal state
