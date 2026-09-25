@@ -1,5 +1,25 @@
 # Testnet execution plan
 
+## R45 composed successor qualified externally — 2026-09-25 07:01 UTC
+
+The clean successor binary is
+`/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/sim-testnet-r45-18b13aea-connectc98eb715`,
+SHA-256 `cafccd167b70c6d9fcb79a08f541d0fe3dcbbb298cdc1d060485db95bf5b8e5a`.
+It reports SN `18b13aea`, `vcs.modified=false`, `trimpath=true`; its ten source
+repositories and pinned module inputs are recorded in the external
+`build/binary-manifest.json`. A fresh external-copy doctor passed all 66 checks
+in 73.162 seconds against the LAN RPC, `ready=true`, with no hard failures,
+unchanged live plan/journal prefix, and no new live provenance. Its three soft
+findings remain explicitly provisional: shared physical RPC, owned-node-only
+verification, and deferred current-source qualification. This is successor
+preflight, not a live R45 renewal or signed acceptance result.
+
+The bypass-aware lifecycle cleanup patch is SN `101ed51f`; its mainnet
+hardening note is `18b13aea`. Focused and affected adjacent normal/race tests
+and four old-behavior causal checks passed in the isolated source. Sol is
+confirming those exact files on composed main. R44 is still the active owner;
+do not use this binary to alter its live state before its sealed result.
+
 ## R44 lifecycle predicate finding — 2026-09-25 06:52 UTC
 
 R44 observation 77 reached finalized block 8,081,388. The owner is still
