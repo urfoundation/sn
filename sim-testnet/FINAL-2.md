@@ -1,5 +1,15 @@
 # Sim-testnet finalization report 2
 
+**Second read-only diagnostic, 2026-09-25 09:13 UTC:** A composed successor
+replayed the same retained R44 terminal checkpoint without changing the owner.
+Its [separate report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/second-terminal-5c2ee88c/report.json)
+(SHA-256 `5449a651f5ffb841e55e7a08303ea74afde63d3a641c1891ac50db13ca3b3d23`)
+passed the signed start but failed the latest-checkpoint reader on the retained
+`start_time_ticks` field. Its 30 dependent checks are unavailable, so this
+second result adds a diagnostic reader defect and does not supersede the first
+37-check report below. The reader is being repaired and will be rerun against
+the original signed bytes. R44 remains live and has no owner-sealed result.
+
 **Provisional R44 terminal evidence, updated 2026-09-25 08:27 UTC — not a final
 result.** The signed recovery-44 release attempt completed its five 300-block
 epochs at block 8,081,674 and its owner recorded the required terminal

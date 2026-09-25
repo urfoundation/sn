@@ -1,5 +1,25 @@
 # Testnet execution plan
 
+## R44 second terminal diagnostic exposed retained attempt reader gap — 2026-09-25 09:13 UTC
+
+The read-only diagnostic using composed successor `5c2ee88c` ran against the
+same original signed R44 terminal checkpoint. Its independent
+[`report.json`](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/second-terminal-5c2ee88c/report.json)
+has SHA-256 `5449a651f5ffb841e55e7a08303ea74afde63d3a641c1891ac50db13ca3b3d23`.
+It passed the signed start but failed `signed-latest-checkpoint` because the
+new reader rejects the retained attempt's `start_time_ticks` field. The 30
+dependent checks are unavailable in this second report; they are not evidence
+that the previously authenticated first report changed. Preserve both reports,
+fix the exact retained-format reader, and rerun into a third new output path.
+The R44 owner and its armed post-owner diagnostic remain active and unchanged.
+
+The composed source's diagnostic-only payout split is independently qualified:
+four focused tests and affected adjacent selectors pass normally and with race
+detection; the old-behavior causal overlay fails at the missing lifecycle index
+as expected. Its three-file source hash fence matches the committed patch.
+This qualification does not overcome the checkpoint reader failure or grant
+strict acceptance.
+
 ## R45 capture contract-address fix qualified — 2026-09-25 08:50 UTC
 
 The R44 terminal diagnostic's validator-2 signed-source capture failure was
