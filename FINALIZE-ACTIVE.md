@@ -12,10 +12,18 @@ and `TerminalEffectiveEpoch=0`; the companion filter's early condition requires
 a nonzero terminal-effective epoch. It cannot meet that condition in R44 and
 has a hard restore bound at 8,082,634. The strict
 `fleet_lifecycle_fault_tail_bounded` assertion will therefore fail even if the
-body reaches its terminal block. Do not treat the separate watcher report at
-8,081,824 as a sealed owner result or stop a still progressing owner. A
-successor-only bypass-aware schedule and an evidence-preserving post-terminal
-restore option are being reviewed; no live fault or service has been changed.
+body reaches its terminal block. The live image's timeout is 33,360 seconds
+from its post-boundary loop start, placing its wall deadline between
+11:46:04 and 11:47:38 UTC on 2026-09-25, plus any in-flight read and cleanup.
+Do not treat the separate watcher report at 8,081,824 as a sealed owner result
+or stop a still progressing owner. The live image has no authenticated
+in-place restore/exception command; an external restore would diverge from
+the owner's in-memory signed fault record. A successor-only bypass-aware
+schedule is being prepared. No live fault or service has been changed.
+The separate watcher waits only 16 minutes for the original result after
+block 8,081,824, so its first output is expected to be an early external
+inventory. Preserve it, then rerun the same qualified read-only diagnostics
+after the owner's signed result appears, into a new external output directory.
 
 The tested signed-window claim checks are now SN main `5615a382`; historical
 claim anomalies are also scoped to the new window in `ac2beccd`, with actual
