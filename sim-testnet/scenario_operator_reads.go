@@ -1,3 +1,5 @@
+// Operator observation surfaces have independent bounded read owners, so a
+// temporary endpoint outage cannot discard another surface's completed read.
 package main
 
 import (
@@ -5,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -17,29 +18,30 @@ const (
 )
 
 const scenarioOperatorReadConcurrency = 4
-const scenarioOperatorReadTimeout = 30 * time.Second
 
 type scenarioOperatorRead struct {
-	data   []byte
-	status int
-	err    error
+	data              []byte
+	status            int
+	err               error
+	attempts          uint64
+	transientFailures uint64
 }
 
 type scenarioOperatorSurfaces [scenarioOperatorSurfaceCount]scenarioOperatorRead
 
 // Independent observation endpoints share one bounded worker pool across all
-// operators. In particular, four slow stats/proof reads consume one timeout
+// operators. In particular, four slow stats/proof reads share one retry
 // interval. Every response and error retains its original operator and surface;
 // a timeout never supplies cached counters or authenticated success.
-func (p *liveScenarioProbe) readOperatorSurfaces(ctx context.Context, bases []string) []scenarioOperatorSurfaces {
+func (self *liveScenarioProbe) readOperatorSurfaces(ctx context.Context, bases []string) []scenarioOperatorSurfaces {
 	requests := [scenarioOperatorSurfaceCount]struct {
 		path  string
 		limit int64
 	}{
-		{path: "/status", limit: 1 << 20},
-		{path: "/verify/keys", limit: 1 << 20},
-		{path: "/verify/stats?limit=100000", limit: 32 << 20},
-		{path: "/verify/proofs?limit=10000", limit: 32 << 20},
+		{path: "/status", limit: 1024 * 1024},
+		{path: "/verify/keys", limit: 1024 * 1024},
+		{path: "/verify/stats?limit=100000", limit: 32 * 1024 * 1024},
+		{path: "/verify/proofs?limit=10000", limit: 32 * 1024 * 1024},
 	}
 	result := make([]scenarioOperatorSurfaces, len(bases))
 	jobs := make(chan int, len(bases)*scenarioOperatorSurfaceCount)
@@ -53,10 +55,7 @@ func (p *liveScenarioProbe) readOperatorSurfaces(ctx context.Context, bases []st
 			for index := range jobs {
 				operator, surface := index/scenarioOperatorSurfaceCount, index%scenarioOperatorSurfaceCount
 				request := requests[surface]
-				requestCtx, cancel := context.WithTimeout(ctx, scenarioOperatorReadTimeout)
-				data, status, err := p.get(requestCtx, strings.TrimSuffix(bases[operator], "/")+request.path, request.limit)
-				cancel()
-				result[operator][surface] = scenarioOperatorRead{data: data, status: status, err: err}
+				result[operator][surface] = self.readOperatorSurface(ctx, strings.TrimSuffix(bases[operator], "/")+request.path, request.limit)
 			}
 		})
 	}
