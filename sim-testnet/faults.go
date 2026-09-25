@@ -422,42 +422,35 @@ func (d *liveScenarioFaultDriver) processSnapshot() (map[string]ProcessState, ma
 	return states, specs, nil
 }
 
-func (d *liveScenarioFaultDriver) signal(spec scenarioFaultSpec, signal syscall.Signal) ([]FaultProcessEvidence, error) {
-	if (spec.Kind != "process-pause" && spec.Kind != "process-restart") || len(spec.Targets) == 0 {
-		return nil, fmt.Errorf("unsupported fault kind %q", spec.Kind)
-	}
-	states, specs, err := d.processSnapshot()
+// The same original-generation proof gates pause, continuation and rollback.
+// Validate the complete cohort first, then recheck each captured kernel identity.
+func (d *liveScenarioFaultDriver) signal(ctx context.Context, spec scenarioFaultSpec, signal syscall.Signal) ([]FaultProcessEvidence, error) {
+	commands, processes, err := d.captureFaultProcessCommands(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
-	targets := append([]string(nil), spec.Targets...)
-	sort.Strings(targets)
-	result := make([]FaultProcessEvidence, 0, len(targets))
-	for _, id := range targets {
-		state, stateOK := states[id]
-		processSpec, specOK := specs[id]
-		if !stateOK || !specOK || state.PID <= 1 {
-			return nil, fmt.Errorf("fault target %q is not a live manifest process", id)
-		}
-		group, groupErr := syscall.Getpgid(state.PID)
-		if groupErr != nil || group != state.PID {
-			return nil, fmt.Errorf("fault target %q pid %d is not its expected process-group leader", id, state.PID)
-		}
-		startTimeTicks, err := processStartTimeTicks(state.PID)
-		if err != nil || startTimeTicks == 0 {
-			return nil, stateMismatchError(err, "record fault target %q kernel generation", id)
-		}
-		if err := syscall.Kill(-state.PID, signal); err != nil {
-			if signal == syscall.SIGSTOP {
-				for _, prior := range result {
-					_ = syscall.Kill(-prior.PID, syscall.SIGCONT)
-				}
+	rollback := func(count int) {
+		if signal == syscall.SIGSTOP {
+			for _, command := range commands[:count] {
+				signalSupervisedCommand(command, syscall.SIGCONT)
 			}
-			return nil, fmt.Errorf("signal fault target %q: %w", id, err)
 		}
-		result = append(result, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID, StartTimeTicks: startTimeTicks})
 	}
-	return result, nil
+	for index, command := range commands {
+		if err := ctx.Err(); err != nil {
+			rollback(index)
+			return nil, err
+		}
+		var signalErr error
+		if !signalSupervisedCommandWithObserver(command, signal, observeSupervisedProcessIdentity, func(pid int, value syscall.Signal) error {
+			signalErr = syscall.Kill(pid, value)
+			return signalErr
+		}) {
+			rollback(index)
+			return nil, stateMismatchError(signalErr, "signal fault target %s original generation", command.spec.ID)
+		}
+	}
+	return processes, nil
 }
 
 func minerSwarmFor(cfg *ResolvedConfig, miner int) (int, error) {
@@ -619,13 +612,16 @@ func (d *liveScenarioFaultDriver) apply(ctx context.Context, spec scenarioFaultS
 	if spec.Kind == "process-restart" {
 		return d.requestProcessRestart(ctx, active, spec)
 	}
-	processes, err := d.signal(spec, syscall.SIGSTOP)
+	processes, err := d.signal(ctx, spec, syscall.SIGSTOP)
 	if err != nil {
 		return nil, err
 	}
 	if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
 		if spec.Kind == "process-pause" {
-			_, _ = d.signal(spec, syscall.SIGCONT)
+			// Rollback still owns the accepted pause after caller cancellation.
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			_, _ = d.signal(rollbackCtx, spec, syscall.SIGCONT)
+			cancel()
 		}
 		return nil, err
 	}
@@ -672,7 +668,7 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	} else if spec.Kind == "process-restart" {
 		processes, restoreErr = d.observeRestartTargets(ctx, spec)
 	} else {
-		processes, restoreErr = d.signal(spec, syscall.SIGCONT)
+		processes, restoreErr = d.signal(ctx, spec, syscall.SIGCONT)
 	}
 	if restoreErr != nil {
 		return processes, restoreErr
