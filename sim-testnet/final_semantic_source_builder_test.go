@@ -53,6 +53,10 @@ func TestFinalSemanticArchiveActionPostconditionUsesExactV4JournalObject(t *test
 		Schema: "urnetwork-sim-journal-v1", Sequence: 1, DeploymentID: record.DeploymentID, PlanHash: record.PlanHash,
 		ActionID: record.ActionID, IntentHash: record.IntentHash, Stage: StageVerified, PostconditionHash: postconditionHash, PostconditionPath: path,
 	}
+	entry.EntryHash, err = canonicalHashHex(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
 	journalBytes, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +69,11 @@ func TestFinalSemanticArchiveActionPostconditionUsesExactV4JournalObject(t *test
 	if !bytes.Equal(exact, recordBytes) || !finalJSONEqual(got, durable) {
 		t.Fatal("journal-selected v4 postcondition changed during strict decoding")
 	}
+	archive.files["launch-foundation/journal.jsonl"] = bytes.Replace(journalBytes, []byte(`"entry_hash":"`), []byte(`"entry_hash":"changed-`), 1)
+	if _, _, err := archive.actionPostcondition(actionID); err == nil || !strings.Contains(err.Error(), "hash-chain") {
+		t.Fatalf("tampered journal selected a valid postcondition body: %v", err)
+	}
+	archive.files["launch-foundation/journal.jsonl"] = append(journalBytes, '\n')
 	duplicated := bytes.Replace(recordBytes, []byte(`{"schema":`), []byte(`{"schema":"urnetwork-sim-action-postcondition-v4","schema":`), 1)
 	archive.files[path] = duplicated
 	if _, _, err := archive.actionPostcondition(actionID); err == nil || !strings.Contains(err.Error(), "duplicate") {
