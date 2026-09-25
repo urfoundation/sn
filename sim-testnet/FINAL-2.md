@@ -9,12 +9,19 @@ invalidation, the retained journal and supervisor identities, pinned input
 hashes, and finalized LAN block 8,084,535. The owner subsequently
 authenticated all 45 prior campaign generations and signed recovery
 generation 46 (run `20260925T172403.199659160Z-release-1.0`), binding
-the exact failed R45 result and invalidated envelope. This is a signed
-preparation checkpoint; its acceptance boundary is not yet set.
+the exact failed R45 result and invalidated envelope. The owner completed
+preparation and signed a fresh R46 acceptance boundary at 17:47:11 UTC:
+baseline epoch **630** at finalized block **8,084,658**, five measured
+epochs **631–635**, start block **8,084,674**, end block **8,086,174**, and
+terminal block **8,086,324**. The LAN node finalized block 8,084,682 after
+the signed start. This proves the interval was started; measured observations
+and terminal acceptance are still separate requirements.
+[Signed start envelope](peerreview/evidence/FINAL-2-R46-continuation-20260925/generation46-signed-start.evidence.json)
+(SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
-measured R46 interval or final acceptance is claimed at this cut.
+completed measured R46 interval or final acceptance is claimed at this cut.
 [Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).

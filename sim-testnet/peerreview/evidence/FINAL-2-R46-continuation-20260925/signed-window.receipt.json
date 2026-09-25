@@ -1,0 +1,351 @@
+{
+  "acceptance_started_at": "2026-09-25T17:47:11.270317354Z",
+  "adversary_happy_path_started_at": "2026-09-25T17:30:18.40452834Z",
+  "adversary_started_at": "2026-09-25T17:30:18.403968437Z",
+  "baseline_hash": "0xf2dc5c316e819564ade9727523b8a080bbdb7d8271f1086517bb91e635b6fb9f",
+  "campaign_start_finalized_head": {
+    "hash": "0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192",
+    "number": 8084596
+  },
+  "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+  "final_acceptance": false,
+  "generation": 46,
+  "notes": "Fresh interval; R45 failed predecessor and immutable journal prefix retained. This receipt is not a terminal verdict.",
+  "observed_at": "2026-09-25T17:48:18.317528+00:00",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+  "process_log_boundary_hash": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "process_session_id": "0x0093ab7f8f95f874522bb3bd4b3e378e6b25cda16ecb0bcb9e3802a955b5c095",
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "scheduled_faults": [
+    {
+      "id": "quality-cohort",
+      "kind": "miner-control",
+      "restore_block": 8084699,
+      "status": "pending",
+      "trigger_block": 8084679
+    },
+    {
+      "id": "validator-local-head-boundary",
+      "kind": "validator-view-filter",
+      "restore_block": 8085445,
+      "status": "pending",
+      "trigger_block": 8084703
+    },
+    {
+      "id": "head-boundary",
+      "kind": "miner-control",
+      "restore_block": 8085444,
+      "status": "pending",
+      "trigger_block": 8084704
+    },
+    {
+      "armed_block": 8084658,
+      "id": "fleet-lifecycle-target-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8087134,
+      "status": "pending",
+      "trigger_block": 8084675
+    },
+    {
+      "armed_block": 8084658,
+      "id": "fleet-lifecycle-companion-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8087134,
+      "status": "pending",
+      "trigger_block": 8084675
+    },
+    {
+      "id": "release-dependency-postgres-1",
+      "kind": "container-restart",
+      "restore_block": 8084729,
+      "status": "pending",
+      "trigger_block": 8084709
+    },
+    {
+      "id": "release-dependency-redis-1",
+      "kind": "container-restart",
+      "restore_block": 8084754,
+      "status": "pending",
+      "trigger_block": 8084734
+    },
+    {
+      "id": "release-dependency-postgres-2",
+      "kind": "container-restart",
+      "restore_block": 8084779,
+      "status": "pending",
+      "trigger_block": 8084759
+    },
+    {
+      "id": "release-dependency-redis-2",
+      "kind": "container-restart",
+      "restore_block": 8084804,
+      "status": "pending",
+      "trigger_block": 8084784
+    },
+    {
+      "id": "release-dependency-rpc-path",
+      "kind": "process-pause",
+      "restore_block": 8084829,
+      "status": "pending",
+      "trigger_block": 8084809
+    },
+    {
+      "id": "release-rolling-01",
+      "kind": "process-restart",
+      "restore_block": 8084854,
+      "status": "pending",
+      "trigger_block": 8084834
+    },
+    {
+      "id": "release-rolling-02",
+      "kind": "process-restart",
+      "restore_block": 8084879,
+      "status": "pending",
+      "trigger_block": 8084859
+    },
+    {
+      "id": "release-rolling-03",
+      "kind": "process-restart",
+      "restore_block": 8084904,
+      "status": "pending",
+      "trigger_block": 8084884
+    },
+    {
+      "id": "release-rolling-04",
+      "kind": "process-restart",
+      "restore_block": 8084929,
+      "status": "pending",
+      "trigger_block": 8084909
+    },
+    {
+      "id": "release-rolling-05",
+      "kind": "process-restart",
+      "restore_block": 8084954,
+      "status": "pending",
+      "trigger_block": 8084934
+    },
+    {
+      "id": "release-rolling-06",
+      "kind": "process-restart",
+      "restore_block": 8084979,
+      "status": "pending",
+      "trigger_block": 8084959
+    },
+    {
+      "id": "release-rolling-07",
+      "kind": "process-restart",
+      "restore_block": 8085004,
+      "status": "pending",
+      "trigger_block": 8084984
+    },
+    {
+      "id": "release-rolling-08",
+      "kind": "process-restart",
+      "restore_block": 8085029,
+      "status": "pending",
+      "trigger_block": 8085009
+    },
+    {
+      "id": "release-rolling-09",
+      "kind": "process-restart",
+      "restore_block": 8085054,
+      "status": "pending",
+      "trigger_block": 8085034
+    },
+    {
+      "id": "release-rolling-10",
+      "kind": "process-restart",
+      "restore_block": 8085079,
+      "status": "pending",
+      "trigger_block": 8085059
+    },
+    {
+      "id": "release-rolling-11",
+      "kind": "process-restart",
+      "restore_block": 8085104,
+      "status": "pending",
+      "trigger_block": 8085084
+    },
+    {
+      "id": "release-rolling-12",
+      "kind": "process-restart",
+      "restore_block": 8085129,
+      "status": "pending",
+      "trigger_block": 8085109
+    },
+    {
+      "id": "release-rolling-13",
+      "kind": "process-restart",
+      "restore_block": 8085154,
+      "status": "pending",
+      "trigger_block": 8085134
+    },
+    {
+      "id": "release-rolling-14",
+      "kind": "process-restart",
+      "restore_block": 8085179,
+      "status": "pending",
+      "trigger_block": 8085159
+    },
+    {
+      "id": "release-rolling-15",
+      "kind": "process-restart",
+      "restore_block": 8085204,
+      "status": "pending",
+      "trigger_block": 8085184
+    },
+    {
+      "id": "release-rolling-16",
+      "kind": "process-restart",
+      "restore_block": 8085229,
+      "status": "pending",
+      "trigger_block": 8085209
+    },
+    {
+      "id": "release-rolling-17",
+      "kind": "process-restart",
+      "restore_block": 8085254,
+      "status": "pending",
+      "trigger_block": 8085234
+    },
+    {
+      "id": "release-rolling-18",
+      "kind": "process-restart",
+      "restore_block": 8085279,
+      "status": "pending",
+      "trigger_block": 8085259
+    },
+    {
+      "id": "release-rolling-19",
+      "kind": "process-restart",
+      "restore_block": 8085304,
+      "status": "pending",
+      "trigger_block": 8085284
+    },
+    {
+      "id": "release-rolling-20",
+      "kind": "process-restart",
+      "restore_block": 8085329,
+      "status": "pending",
+      "trigger_block": 8085309
+    },
+    {
+      "id": "release-rolling-21",
+      "kind": "process-restart",
+      "restore_block": 8085354,
+      "status": "pending",
+      "trigger_block": 8085334
+    },
+    {
+      "id": "release-rolling-22",
+      "kind": "process-restart",
+      "restore_block": 8085379,
+      "status": "pending",
+      "trigger_block": 8085359
+    },
+    {
+      "id": "release-rolling-23",
+      "kind": "process-restart",
+      "restore_block": 8085404,
+      "status": "pending",
+      "trigger_block": 8085384
+    },
+    {
+      "id": "release-rolling-24",
+      "kind": "process-restart",
+      "restore_block": 8085429,
+      "status": "pending",
+      "trigger_block": 8085409
+    },
+    {
+      "id": "release-rolling-25",
+      "kind": "process-restart",
+      "restore_block": 8085454,
+      "status": "pending",
+      "trigger_block": 8085434
+    },
+    {
+      "id": "release-rolling-26",
+      "kind": "process-restart",
+      "restore_block": 8085479,
+      "status": "pending",
+      "trigger_block": 8085459
+    },
+    {
+      "id": "release-rolling-27",
+      "kind": "process-restart",
+      "restore_block": 8085504,
+      "status": "pending",
+      "trigger_block": 8085484
+    },
+    {
+      "id": "release-rolling-28",
+      "kind": "process-restart",
+      "restore_block": 8085529,
+      "status": "pending",
+      "trigger_block": 8085509
+    },
+    {
+      "id": "release-rolling-29",
+      "kind": "process-restart",
+      "restore_block": 8085554,
+      "status": "pending",
+      "trigger_block": 8085534
+    },
+    {
+      "id": "release-rolling-30",
+      "kind": "process-restart",
+      "restore_block": 8085579,
+      "status": "pending",
+      "trigger_block": 8085559
+    },
+    {
+      "id": "release-rolling-31",
+      "kind": "process-restart",
+      "restore_block": 8085604,
+      "status": "pending",
+      "trigger_block": 8085584
+    },
+    {
+      "id": "release-head-owner-rolling-01",
+      "kind": "process-restart",
+      "restore_block": 8085629,
+      "status": "pending",
+      "trigger_block": 8085609
+    }
+  ],
+  "schema": "urnetwork-r46-signed-acceptance-receipt-v1",
+  "signed_files": [
+    {
+      "content_hash": "sha256:96ff8c9c4f2144e7427c7f1c1ed3b0e686b161af9d19e2ca5bbc60d3bd76eba8",
+      "copy_path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/generation46-acceptance.evidence.json",
+      "sha256": "4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd",
+      "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.46.evidence.json"
+    },
+    {
+      "content_hash": "sha256:96ff8c9c4f2144e7427c7f1c1ed3b0e686b161af9d19e2ca5bbc60d3bd76eba8",
+      "copy_path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/campaign-start.evidence.json",
+      "sha256": "4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd",
+      "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/campaign-start.evidence.json"
+    }
+  ],
+  "window": {
+    "baseline_epoch": 630,
+    "baseline_finalized_head": {
+      "hash": "0x87e62543188a389570e1dc3717dfc553b505939de459d376850bdba6bfa7972a",
+      "number": 8084658
+    },
+    "baseline_observation_hash": "0xf2dc5c316e819564ade9727523b8a080bbdb7d8271f1086517bb91e635b6fb9f",
+    "end_block": 8086174,
+    "epoch_blocks": 300,
+    "epoch_count": 5,
+    "finalize_offset_blocks": 150,
+    "first_epoch": 631,
+    "policy_effective_block": 8073574,
+    "policy_effective_epoch": 594,
+    "schema": "urnetwork-sim-acceptance-window-v1",
+    "start_block": 8084674,
+    "terminal_block": 8086324
+  }
+}

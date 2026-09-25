@@ -28,3 +28,11 @@ measured R46 interval or final result. Those must come from later owner evidence
 signed preparation checkpoint. At finalized block 8,084,596 it proves 808
 valid fleet bindings and current-policy rate readiness from complete epoch
 629. It is not itself a signed acceptance boundary.
+
+`generation46-signed-start.evidence.json` is an exact signed copy captured
+after the owner set its acceptance boundary at 17:47:11 UTC. It records
+baseline epoch 630 and measured epochs 631–635, start block 8,084,674,
+end block 8,086,174 and terminal block 8,086,324. This is start evidence,
+not proof that every measured epoch or terminal check completed.
+`signed-window.receipt.json` records the source and copy hashes and the
+signed window fields for a compact independent comparison.
