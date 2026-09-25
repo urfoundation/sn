@@ -114,6 +114,20 @@ and remained active. They stay blocking in raw final evidence; provisional
 continuation does not convert them to passes.
 [Raw-line and continuation receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/exit-gap-three-1856.receipt-v2.json)
 (SHA-256 `c1d45234c8ea98037f15ac838c9b903e2767ead1d824343d93991fdbd1a4ef1a`).
+By the 19:09 read-only cut, this pattern had grown to **eight timeout events
+across six swarms**. It is recurring transport degradation, not a benign
+single warning. Continuing still yields useful measured evidence: **996 of
+1,000 providers** were running, the four disabled providers were the signed
+head-boundary targets, and validator 1 produced **175 fresh proofs** through
+both operators during 19:00–19:07:38. Validator 2's native steering gap
+remains a separate strict failure. The owner and fleet supervisor remained
+active; no live repair or waiver was applied.
+[Read-only synthesis](peerreview/evidence/FINAL-2-R46-continuation-20260925/exit-gap-spread-1908.receipt-v2.json)
+(SHA-256 `998b2924731a710b9cf0962121cf4e0e8771bcde5ff38c4f64167c214e881667`),
+[provider health](peerreview/evidence/FINAL-2-R46-continuation-20260925/swarm-health-1906.receipt.json)
+(SHA-256 `fa7abecea4d61206d7f88c1e23553ae7c01e4b19ed76e87197be0672acd32fd6`),
+[proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-1907.receipt.json)
+(SHA-256 `866584729cdce559badb5e0771ca84eda9d4d5372d7e8fa1142fd893914a2699`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No

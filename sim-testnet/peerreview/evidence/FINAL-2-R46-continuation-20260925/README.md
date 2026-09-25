@@ -80,3 +80,8 @@ receiver lines, their authenticated gate offsets/hashes and scope, matching
 validator-1 sender ACK-lifetime warnings, and the owner's explicit
 continuation record. The mechanism is still under investigation; the raw
 blocking process findings remain in the live owner's terminal gate.
+The later `exit-gap-spread-1908.receipt-v2.json` joins its exact raw gate copy,
+`swarm-health-1906.receipt.json` and `proof-progress-1907.receipt.json` to
+show that the recurring failures had spread to six swarms while useful
+validator-1 traffic and provider health continued. These read-only receipts
+support continuing the partial run; they do not certify acceptance.
