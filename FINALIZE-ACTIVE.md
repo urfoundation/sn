@@ -1,5 +1,20 @@
 # Testnet execution plan
 
+## R44 fourth terminal diagnostic complete — 2026-09-25 11:09 UTC
+
+The read-only `da7689f8` service exited successfully. Its
+[report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
+has SHA-256 `affad93c70b533e1a55f6e439dcec89f5243f5957d6ad76dfbd7ed984678d736`.
+Of 38 checks, 18 pass, three fail, one is the named exception, one is a
+finding, and 15 are unavailable. The longer exact-chunk capture passed
+validator-2 signed-source and native-application coverage; exact relay
+readback lacks its historical request owner. Validator 1 still lacks a compact
+input journal. Terminal assertions, original process logs and fault timing
+remain failed; they were evaluated before the companion hard restore and are
+not silently recomputed. Original R44 owner PID 2823030 remains active with
+no sealed result; the post-owner watcher remains armed. No diagnostic grants
+final acceptance.
+
 ## R45 payout-window and fixture repairs integrated — 2026-09-25 11:04 UTC
 
 Main now includes payout-window commit `f673ca9a` and validator-fixture commit

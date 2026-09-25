@@ -1,5 +1,21 @@
 # Sim-testnet finalization report 2
 
+**Fourth independent diagnostic completed 2026-09-25 11:08 UTC.** The
+clean Git-stamped `da7689f8` collector exited 0 after a read-only capture.
+Its [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
+has SHA-256 `affad93c70b533e1a55f6e439dcec89f5243f5957d6ad76dfbd7ed984678d736`:
+38 checks, **18 pass, three fail, one named exception, one finding and 15
+unavailable**, with `final_acceptance=false`. Validator 2's signed source
+capture and native application coverage now pass; its relay publication
+readback remains unavailable because the exact historical request owner is
+absent. Validator 1's compact input journal remains unavailable. Companion
+capture and ordinary signed payout artifacts pass. Terminal assertions,
+the original process-log report and fault timing fail independently. The
+diagnostic evaluated those assertions at its 10:19 UTC read cut, before the
+companion's later hard restore; it has not reclassified that failure. The
+R44 owner has not sealed `result.json`, so result-dependent checks and strict
+acceptance remain unavailable.
+
 **Companion hard restore observed 2026-09-25 after finalized block 8,082,634.**
 The owner fault record now shows `fleet-lifecycle-companion-prune` restored
 at its scheduled hard deadline, with no `RestoreConditionMet` proof. The
