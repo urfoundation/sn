@@ -2110,6 +2110,36 @@ collect again after the exact signed result appears. Bind both inventories to
 the same run ID, plan, boundary and source hash. A diagnostic report never
 creates a pass marker or substitutes for the original signed result.
 
+R44's first terminal capture also compared EVM addresses by presentation text:
+a checksum-case validator configuration and a lowercase signed measurement
+named the same coordinator and vault, but the collector rejected them. Validate
+each complete address before comparing its 20-byte identity. Do not repair this
+by remarshal, relabeling signed bytes, permissive padding/truncation, or ignoring
+chain, genesis, policy and intent checks. Apply the same rule to historical
+client-key decisions and artifact observation requests. Regression tests must
+accept checksum/lowercase equivalents with original bytes unchanged and reject
+different deployments, malformed addresses and wrong chain domains.
+
+An external non-accepting terminal diagnostic must retain its admitted plan
+when reading provisional companion and relay evidence. That read authority
+does not reconcile the plan for strict acceptance or authorize any mutation.
+Creation, anchoring and activation transactions keep their original approved
+ancestor, ordered broadcast/finality/verification rows, exact signed transaction
+and hashed postcondition. Authenticate the immutable archive and current
+approved ancestry before selecting them; closed pre-broadcast attempts cannot
+replace or invalidate a later authenticated original transaction. Keep the
+ordinary collector strict and test both read scopes, changed command/config/RPC
+authority, competing finality and tampered archives, signatures and receipts.
+
+Keep independent diagnostic obligations separate. A missing lifecycle payout
+index must remain unavailable, but it must not prevent collection of ordinary
+signed acceptance-window payouts. Preserve the original observation and every
+exception, validate ordinary signatures, content hashes and epoch coverage,
+and report malformed lifecycle evidence as failed rather than merely absent.
+The strict combined collector must continue requiring both scopes. Test this
+with original signed bytes and an accepting-owner negative control; a useful
+partial diagnostic is never evidence that the full qualification passed.
+
 The production cadence scheduler and its receipt verifier must share one
 finalized policy-history reader. R42's coordinator already has three versions
 because an approved rate amendment added one before production; a fixed
