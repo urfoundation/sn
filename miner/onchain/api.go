@@ -8,6 +8,7 @@ package onchain
 // through the same funcs, so there is a single packing + submission path.
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"fmt"
@@ -29,6 +30,26 @@ type ClaimIntent = claimIntent
 // BuildClaimCalldata ABI-packs STSettlementVault.claim via the stabi bindings.
 func BuildClaimCalldata(intent ClaimIntent) ([]byte, error) {
 	return buildClaimCalldata(&intent)
+}
+
+// DecodeClaimCalldata returns a canonical immutable-vault intent. Repacking
+// excludes trailing bytes and alternative ABI encodings from receipt recovery.
+func DecodeClaimCalldata(data []byte) (*ClaimIntent, error) {
+	if len(data) < 4 {
+		return nil, fmt.Errorf("claim calldata has no selector")
+	}
+	intent, err := decodeClaimCalldata(data)
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := buildClaimCalldata(intent)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(canonical, data) {
+		return nil, fmt.Errorf("claim calldata is not canonical")
+	}
+	return intent, nil
 }
 
 // BuildBindHeadCalldata ABI-packs bindHead(hotkey, clientId, clientIdSig) via
@@ -71,13 +92,14 @@ func LoadKeyFile(path string) (*ecdsa.PrivateKey, error) {
 // list, the signing key, ready-to-send calldata, and the usual chain-id / gas /
 // dry-run knobs.
 type SubmitParams struct {
-	Contract common.Address
-	Rpcs     []string
-	Key      *ecdsa.PrivateKey
-	Calldata []byte
-	ChainID  *big.Int // optional; when set, the rpc's chain id must match it
-	GasLimit uint64   // 0 = estimate + 20% headroom
-	DryRun   bool
+	Contract   common.Address
+	Rpcs       []string
+	Key        *ecdsa.PrivateKey
+	Calldata   []byte
+	ChainID    *big.Int // optional; when set, the rpc's chain id must match it
+	NonceFloor uint64   // optional durable minimum, owned by the calling relayer
+	GasLimit   uint64   // 0 = estimate + 20% headroom
+	DryRun     bool
 }
 
 // SubmitHooks make the signed-transaction durability boundary explicit for
@@ -143,13 +165,14 @@ func submit(ctx context.Context, p SubmitParams, mkPrint intentPrinter, hooks Su
 	}
 
 	return runTx(ctx, client, chainID, txRequest{
-		contract:  p.Contract,
-		from:      from,
-		key:       p.Key,
-		calldata:  p.Calldata,
-		gasLimit:  p.GasLimit,
-		dryRun:    p.DryRun,
-		prepared:  hooks.Prepared,
-		broadcast: hooks.Broadcast,
+		contract:   p.Contract,
+		from:       from,
+		key:        p.Key,
+		calldata:   p.Calldata,
+		gasLimit:   p.GasLimit,
+		nonceFloor: p.NonceFloor,
+		dryRun:     p.DryRun,
+		prepared:   hooks.Prepared,
+		broadcast:  hooks.Broadcast,
 	}, printIntent)
 }
