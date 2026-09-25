@@ -1,10 +1,10 @@
 # Sim-testnet finalization report 2
 
-**Provisional R44 exception register, updated 2026-09-25 07:42 UTC — not a final
-result.** The signed recovery-44 release attempt is still running in its fifth
-300-block epoch. Its complete interval ends at block 8,081,674 and requires a
-terminal observation at block 8,081,824. The last checked owner observation
-was block 8,081,637; no owner result or invalidation has been sealed. The
+**Provisional R44 exception register, updated 2026-09-25 07:51 UTC — not a final
+result.** The signed recovery-44 release attempt has crossed the end of its
+five 300-block epochs at block 8,081,674. Its latest checked owner observation
+was block 8,081,684 in epoch 621. It still requires a terminal observation at
+block 8,081,824; no owner result or invalidation has been sealed. The
 signed attempt is
 [`release-1.0.recovery.44.evidence.json`](runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json).
 
