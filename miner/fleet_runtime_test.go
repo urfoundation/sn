@@ -162,9 +162,10 @@ func TestFleetRuntimeArtifactMatchesReleaseManifests(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, reviewed, _, _ := fleetRuntimeCurrentTestArtifactInputs(t)
 	artifact := fleetReleaseRuntimeArtifact()
 	if lock.Runtime.SourceTag != "" || lock.Runtime.SourceRefKind != "commit" ||
-		lock.Runtime.SourceRefName != "7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b" ||
+		lock.Runtime.SourceRefName != reviewed.SourceCommit ||
 		lock.Runtime.SourceCommit != lock.Runtime.SourceRefName || artifact.Version.SpecName != fleetReleaseRuntimeSpecName ||
 		artifact.Version.SpecVersion != lock.Runtime.SpecVersion ||
 		artifact.Version.TransactionVersion != lock.Runtime.TransactionVersion ||
