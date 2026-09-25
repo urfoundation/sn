@@ -1,0 +1,1 @@
+2026-09-25T14:08:22+00:00 goofe run-release-r45-6100394b.sh[3792501]: sim-testnet: precompile preparation verified; native dividend continuation runs during release; governance_drill_startup_waived=true; incomplete proof cannot pass; final_acceptance=false

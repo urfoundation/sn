@@ -27,6 +27,11 @@ baseline and 7,658,670 bytes of preactivation writes. It does not close the
 active-binding storage gate. The owner also logged an elapsed relay horizon
 forecast and deferred public census; the latter remains required at final
 audit. The owner and supervisor are still running.
+At 14:08 UTC the owner verified precompile preparation but logged
+`governance_drill_startup_waived=true`; its expected public drill evidence was
+absent at the later read cut. This is an open strict acceptance failure, not a
+reason to interrupt the current release owner before it yields terminal
+evidence.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 

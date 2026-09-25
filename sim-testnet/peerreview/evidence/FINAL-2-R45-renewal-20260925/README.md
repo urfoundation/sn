@@ -43,7 +43,11 @@ release acceptance interval or a successful finalization.
   with SHA-256 `aaa37e5cce7c6e965908cfa8f963da8c76de79a8ca996ea83f9509ed1efa00d0`.
   Its 13:38–14:00 window precedes renewed-binding activation and cannot prove
   the active-epoch storage margin.
+- `governance-startup-advisory.txt` and `governance-readcut.json`: owner log
+  showing the provisional startup skip and a later read-only observation that
+  the expected public drill record was absent. This is a current acceptance
+  gap, not an exception that makes the assertion pass.
 
-`SHA256SUMS` hashes the portable JSON files. The live candidate, binary, scripts,
+`SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under
 `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/`.

@@ -54,6 +54,15 @@ contains its `census_sha256`. The initial listing attempt
 hit its own three-minute timeout; a read-only retry with a 20-minute bound
 completed without touching the live run.
 
+At 14:08 UTC, the R45 owner verified precompile preparation but explicitly
+skipped the governance drill at startup under its provisional continuation.
+Its own log states that incomplete proof cannot pass. A read-only 14:15 UTC
+check found the expected `public/governance-drill.json` absent. The release
+still continues; final acceptance must independently account for this missing
+drill rather than infer it from native dividend activity.
+[Owner log](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-startup-advisory.txt),
+[read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-readcut.json).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
