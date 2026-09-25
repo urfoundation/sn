@@ -22,7 +22,16 @@ release acceptance interval or a successful finalization.
 - `recovery-45.evidence.json`: signed recovery-attempt envelope with run ID
   `20260925T134346.277250758Z-release-1.0`. This is a checkpoint before
   acceptance, not a completion record.
+- `operator{1,2}-publication-preflight.json`: separate, signed, nonaccepting
+  preflight receipts against the pinned HTTP handler with the resumed runtime
+  configuration. Each records two POSTs and two exact content/history readbacks.
+  The first local invocation lacked the storage hostname variable and reached
+  no POST; these are the successful corrected invocations. They do not assert
+  acceptance or repair R44's original failed publication assertion.
+- `blob-quota-readback.json`: fresh admin read of the 64 GiB hard quota. The
+  separate data-usage response remained cached at 13:39 UTC and cannot serve
+  as an active-binding growth measurement.
 
-`SHA256SUMS` hashes these five files. The live candidate, binary, scripts,
+`SHA256SUMS` hashes the portable JSON files. The live candidate, binary, scripts,
 and service journals remain under
 `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/`.

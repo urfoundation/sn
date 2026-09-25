@@ -18,6 +18,16 @@ at epoch 628. Storage headroom must be remeasured under active bindings with a
 twofold projected-growth margin before the acceptance boundary. No R45
 acceptance result is claimed here.
 
+At 13:52 UTC, separate nonaccepting publication probes using each operator's
+resumed runtime configuration and the pinned HTTP handler each passed two
+POSTs with exact content/history readbacks. The fresh admin read confirmed a
+64 GiB hard quota. The admin usage report was cached at 13:39 UTC, so it cannot
+measure the active-binding write rate. These probes establish prospective
+publication behavior only; the active-epoch storage gate remains open.
+[Operator 1](peerreview/evidence/FINAL-2-R45-renewal-20260925/operator1-publication-preflight.json),
+[operator 2](peerreview/evidence/FINAL-2-R45-renewal-20260925/operator2-publication-preflight.json),
+[quota readback](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-quota-readback.json).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

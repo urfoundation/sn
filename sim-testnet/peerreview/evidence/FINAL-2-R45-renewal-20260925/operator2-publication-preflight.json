@@ -1,0 +1,18 @@
+{
+  "completed_at": "2026-09-25T13:52:33.426635837Z",
+  "content_hash": "sha256:5374287598df632b60566cba4647c0755e19ee75a2314ffd6c9f69baec496e76",
+  "exact_content_and_history_readbacks": 2,
+  "final_acceptance": false,
+  "idempotent": true,
+  "kind": "publication-preflight",
+  "post_count": 2,
+  "provisional": true,
+  "published": {
+    "content_hash": "sha256:5374287598df632b60566cba4647c0755e19ee75a2314ffd6c9f69baec496e76",
+    "content_key": "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/content/sha256/5374287598df632b60566cba4647c0755e19ee75a2314ffd6c9f69baec496e76.json",
+    "history_key": "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/history/ur-subnet-testnet-v1/521/publication-preflight/r45-publication-preflight-20260925T1354b-operator2/5374287598df632b60566cba4647c0755e19ee75a2314ffd6c9f69baec496e76.json",
+    "bucket": "blob"
+  },
+  "run_id": "r45-publication-preflight-20260925T1354b-operator2",
+  "wire_bytes": 1600747
+}

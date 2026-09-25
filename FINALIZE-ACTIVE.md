@@ -13,6 +13,9 @@ do not launch a second writer or treat the signed attempt as completion.
 Before its acceptance boundary, remeasure `blob` storage growth with active
 epoch-628 bindings and require a twofold projected-growth margin. Preserve
 R44's failed owner verdict and scoped R44-LC-1 exception without widening it.
+Both resumed-configuration operator probes passed two exact content/history
+readbacks at 13:52 UTC, and the live 64 GiB quota was re-read. The admin usage
+snapshot was stale; this does not close the active-epoch storage gate.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
