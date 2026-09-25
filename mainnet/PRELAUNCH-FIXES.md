@@ -2117,6 +2117,29 @@ historical lifecycle plan identity separate from the current plan authorizing
 new actions. This permits diagnosis to continue without laundering a failed
 release into a strict pass or overlapping old fault injection with production.
 
+R44 exposed an impossible restoration predicate after its explicit testnet
+lifecycle bypass: the bypass correctly retained no terminal-effective mutation
+epoch, while a local companion filter required that epoch before removal.
+Separate operational cleanup from proof that a lifecycle transition occurred.
+A diagnostic successor may remove only the exact two authenticated local
+filters after the full signed interval and their minimum durations, retaining
+`RestoreConditionMet=false`, the original failed assertions, and
+`final_acceptance=false`. Mainnet acceptance must still prove the actual
+lifecycle transitions; diagnostic cleanup is not a substitute. Installed, paid,
+and effective mutation predicates must not infer success from an operational
+handoff stage reached through a bypass.
+
+Checkpoint the exact cleanup request before touching the filter, retain the
+removed target/role/identity census, and date completion from a subsequent
+complete observation. If removal outlives its active ledger entry, reconcile
+only through the retained plan/operator/rule-bound removal receipt and proof
+that the exact rule is absent. Ordinary restore must not acquire this special
+missing-ledger authority. A public evidence file written before its owner
+checkpoint is not authoritative: recovery reads the signed fault state and
+independently reconciles the physical outcome. Rehearse both interruption
+windows, foreign receipts, reappeared rules, and the failed-release to
+non-accepting production handoff without changing strict acceptance.
+
 R42 ended before terminal because a provisional heartbeat treated a known
 validator steering-continuity finding as a reason to stop the entire interval.
 Production should keep collecting through recognized provisional findings and
