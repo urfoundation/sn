@@ -24,6 +24,12 @@ const (
 	scenarioSnapshotRetryTimeout      = 5 * time.Minute
 	scenarioSnapshotRetryDelay        = 250 * time.Millisecond
 	scenarioSnapshotRetryFilename     = "snapshot-retries.json"
+	// This is a diagnostic storage bound, independent of the number of
+	// isolated transient outages tolerated by strict final acceptance.
+	scenarioProvisionalSnapshotMaximumRecords = 4096
+	// Allow even a fully escaped diagnostic at every record boundary.
+	scenarioProvisionalSnapshotMaximumBytes = 32 * 1024 * 1024
+	scenarioProvisionalSnapshotMaximumDelay = 5 * time.Second
 )
 
 // A typed terminal result keeps the outer observation loop from retrying a
@@ -53,8 +59,15 @@ func scenarioSnapshotTransportError(err error, transportOrigin bool) bool {
 		return true
 	}
 	switch cause := err.(type) {
+	case *scenarioSnapshotTerminalError:
+		return false
 	case *os.PathError:
 		return false
+	case *evmReadRpcExhaustedError:
+		// This owner performed only RPC reads. Its typed deadline may be
+		// retried by the bounded snapshot owner without admitting unrelated
+		// context deadlines or any mixed integrity failure.
+		return scenarioSnapshotTransportError(cause.cause, true)
 	case *url.Error:
 		return scenarioSnapshotTransportError(cause.Err, true)
 	case *net.OpError:
@@ -63,16 +76,25 @@ func scenarioSnapshotTransportError(err error, transportOrigin bool) bool {
 		return scenarioSnapshotTransportError(cause.cause, true)
 	case gethrpc.HTTPError:
 		switch cause.StatusCode {
-		case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 			return true
 		}
 		return false
+	case *gethrpc.HTTPError:
+		return scenarioSnapshotTransportError(*cause, transportOrigin)
+	case gethrpc.Error:
+		// Preserve the lower read owner's explicit provider-response rules,
+		// including refusal of pruned state and contract reverts.
+		return evmReadRpcErrorIsTransient(cause)
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
 		return scenarioSnapshotTransportError(wrapped.Unwrap(), transportOrigin)
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
 		return transportOrigin
+	}
+	if errors.Is(err, gethrpc.ErrMissingBatchResponse) {
+		return true
 	}
 	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ETIMEDOUT) {
 		return true
@@ -84,13 +106,15 @@ func scenarioSnapshotTransportError(err error, transportOrigin bool) bool {
 // One state owns the whole release/production phase, including preparation.
 // Its lock also protects final evidence reads while a canceled probe unwinds.
 type scenarioSnapshotRetryState struct {
-	stateLock     sync.Mutex
-	runDir        string
-	phase         string
-	now           func() time.Time
-	wait          func(context.Context, time.Duration) error
-	records       []AssertionRecord
-	terminalError string
+	stateLock      sync.Mutex
+	runDir         string
+	phase          string
+	now            func() time.Time
+	wait           func(context.Context, time.Duration) error
+	records        []AssertionRecord
+	terminalError  string
+	provisional    bool
+	retainedStrict bool
 }
 
 type scenarioSnapshotRetryEvidence struct {
@@ -101,12 +125,30 @@ type scenarioSnapshotRetryEvidence struct {
 	RetryTimeoutSeconds int               `json:"retry_timeout_seconds"`
 	Records             []AssertionRecord `json:"records"`
 	TerminalError       string            `json:"terminal_error,omitempty"`
+	Provisional         bool              `json:"provisional,omitempty"`
+}
+
+// Disk evidence may retain a stricter old policy, but cannot authorize a more
+// permissive retry owner than this invocation's admitted provisional mode.
+func (self *scenarioSnapshotRetryState) provisionalRetries() bool {
+	return self.provisional && !self.retainedStrict
+}
+
+func (self *scenarioSnapshotRetryState) maximumRecords() int {
+	if self.provisionalRetries() {
+		return scenarioProvisionalSnapshotMaximumRecords
+	}
+	return scenarioSnapshotMaximumRecoveries
 }
 
 // Existing pre-acceptance diagnostics retain their budget after a process
 // restart. The signed acceptance interval still cannot restart in place.
 func (self *scenarioSnapshotRetryState) load() error {
-	raw, err := readValidatorEvidenceHistoricalFile(self.runDir, scenarioSnapshotRetryFilename, 64*1024)
+	maximumBytes := int64(64 * 1024)
+	if self.provisional {
+		maximumBytes = scenarioProvisionalSnapshotMaximumBytes
+	}
+	raw, err := readValidatorEvidenceHistoricalFile(self.runDir, scenarioSnapshotRetryFilename, maximumBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -117,7 +159,15 @@ func (self *scenarioSnapshotRetryState) load() error {
 	if err := decodeStrictJSONBytes(raw, &evidence); err != nil {
 		return err
 	}
-	if evidence.Schema != "urnetwork-sim-snapshot-retries-v1" || evidence.RunID != filepath.Base(self.runDir) || evidence.Phase != self.phase || evidence.MaximumRecoveries != scenarioSnapshotMaximumRecoveries || evidence.RetryTimeoutSeconds != int(scenarioSnapshotRetryTimeout/time.Second) || len(evidence.Records) > scenarioSnapshotMaximumRecoveries+1 {
+	retainedStrict := false
+	maximumRecords := scenarioProvisionalSnapshotMaximumRecords
+	if evidence.Schema == "urnetwork-sim-snapshot-retries-v1" && !evidence.Provisional {
+		retainedStrict = true
+		maximumRecords = scenarioSnapshotMaximumRecoveries
+	} else if evidence.Schema != "urnetwork-sim-snapshot-retries-v2" || !evidence.Provisional || !self.provisional {
+		return errors.New("scenario snapshot retry evidence has no admitted retry policy")
+	}
+	if evidence.RunID != filepath.Base(self.runDir) || evidence.Phase != self.phase || evidence.MaximumRecoveries != maximumRecords || evidence.RetryTimeoutSeconds != int(scenarioSnapshotRetryTimeout/time.Second) || len(evidence.Records) > maximumRecords+1 {
 		return errors.New("scenario snapshot retry evidence has a different phase or budget")
 	}
 	for index, record := range evidence.Records {
@@ -138,15 +188,20 @@ func (self *scenarioSnapshotRetryState) load() error {
 	}
 	self.records = evidence.Records
 	self.terminalError = evidence.TerminalError
+	self.retainedStrict = retainedStrict
 	return nil
 }
 
 // Atomic evidence precedes every retry, so a second outage cannot erase the
 // first incident, including when the next observation never completes.
 func (self *scenarioSnapshotRetryState) persistWithLock() error {
+	schema := "urnetwork-sim-snapshot-retries-v1"
+	if self.provisionalRetries() {
+		schema = "urnetwork-sim-snapshot-retries-v2"
+	}
 	return writePublicJSON(filepath.Join(self.runDir, scenarioSnapshotRetryFilename), scenarioSnapshotRetryEvidence{
-		Schema: "urnetwork-sim-snapshot-retries-v1", RunID: filepath.Base(self.runDir), Phase: self.phase,
-		MaximumRecoveries: scenarioSnapshotMaximumRecoveries, RetryTimeoutSeconds: int(scenarioSnapshotRetryTimeout / time.Second), Records: self.records, TerminalError: self.terminalError,
+		Schema: schema, RunID: filepath.Base(self.runDir), Phase: self.phase,
+		MaximumRecoveries: self.maximumRecords(), RetryTimeoutSeconds: int(scenarioSnapshotRetryTimeout / time.Second), Records: self.records, TerminalError: self.terminalError, Provisional: self.provisionalRetries(),
 	})
 }
 
@@ -163,6 +218,9 @@ func (self *scenarioSnapshotRetryState) terminal(failure error) error {
 	defer self.stateLock.Unlock()
 	if len(self.records) != 0 {
 		self.terminalError = failure.Error()
+		if self.provisionalRetries() && len(self.terminalError) > 4*1024 {
+			self.terminalError = self.terminalError[:4*1024] + " [diagnostic truncated]"
+		}
 		failure = errors.Join(failure, self.persistWithLock())
 	}
 	return &scenarioSnapshotTerminalError{cause: failure}
@@ -189,7 +247,7 @@ func (self *scenarioSnapshotRetryState) pendingRetryBudget() (time.Duration, boo
 			pending = append(pending, record)
 		}
 	}
-	if len(self.records) > scenarioSnapshotMaximumRecoveries || len(pending) > 1 {
+	if len(self.records) > self.maximumRecords() || !self.provisionalRetries() && len(pending) > 1 {
 		return 0, false, errors.New("scenario snapshot transport retry budget exhausted before restart")
 	}
 	if len(pending) == 0 {
@@ -211,9 +269,13 @@ func (self *scenarioSnapshotRetryState) record(failure error) (bool, error) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	now := self.now().UTC()
+	message := failure.Error()
+	if self.provisionalRetries() && len(message) > 1024 {
+		message = message[:1024] + " [diagnostic truncated]"
+	}
 	self.records = append(self.records, AssertionRecord{ID: fmt.Sprintf("scenario_snapshot_retry_%06d", len(self.records)+1),
-		Message: "retryable transport observation failed: " + failure.Error(), StartedAt: now.Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano)})
-	return len(self.records) <= scenarioSnapshotMaximumRecoveries, self.persistWithLock()
+		Message: "retryable transport observation failed: " + message, StartedAt: now.Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano)})
+	return len(self.records) <= self.maximumRecords(), self.persistWithLock()
 }
 
 // A successful fresh observation resolves pending diagnostics, without
@@ -221,7 +283,7 @@ func (self *scenarioSnapshotRetryState) record(failure error) (bool, error) {
 func (self *scenarioSnapshotRetryState) recovered() error {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	if len(self.records) > scenarioSnapshotMaximumRecoveries {
+	if len(self.records) > self.maximumRecords() {
 		return errors.New("scenario snapshot transport retry phase budget is exhausted")
 	}
 	changed := false
@@ -250,9 +312,9 @@ type scenarioSnapshotRetryProbe struct {
 	retries *scenarioSnapshotRetryState
 }
 
-// The original read has its normal RPC/context deadline. Its one retry has an
-// additional five-minute ceiling, shortened by any caller deadline. A second
-// consecutive transport failure or third phase incident remains a hard failure.
+// The original read keeps its normal deadline. Strict runs allow one retry.
+// An explicitly provisional owner may continue transient reads inside the
+// same five-minute incident deadline; neither a retry nor a crash resets it.
 func (self *scenarioSnapshotRetryProbe) Snapshot(ctx context.Context) (*ScenarioObservation, error) {
 	if err := self.retries.priorTerminal(); err != nil {
 		return nil, err
@@ -269,7 +331,10 @@ func (self *scenarioSnapshotRetryProbe) Snapshot(ctx context.Context) (*Scenario
 		readCtx, cancel = context.WithTimeout(ctx, remaining)
 		defer cancel()
 	}
-	for attempt := firstAttempt; attempt < 2; attempt++ {
+	for attempt := firstAttempt; ; attempt++ {
+		if err := readCtx.Err(); err != nil {
+			return nil, self.retries.terminal(err)
+		}
 		observation, err := self.source.Snapshot(readCtx)
 		if readCtx.Err() != nil {
 			return nil, self.retries.terminal(readCtx.Err())
@@ -277,6 +342,9 @@ func (self *scenarioSnapshotRetryProbe) Snapshot(ctx context.Context) (*Scenario
 		if err == nil {
 			if observation == nil {
 				return nil, self.retries.terminal(errors.New("scenario snapshot returned no observation"))
+			}
+			if _, _, budgetErr := self.retries.pendingRetryBudget(); budgetErr != nil {
+				return nil, self.retries.terminal(budgetErr)
 			}
 			if err := self.retries.recovered(); err != nil {
 				return nil, self.retries.terminal(err)
@@ -290,17 +358,31 @@ func (self *scenarioSnapshotRetryProbe) Snapshot(ctx context.Context) (*Scenario
 		if persistErr != nil {
 			return nil, self.retries.terminal(errors.Join(err, fmt.Errorf("persist snapshot retry: %w", persistErr)))
 		}
-		if !allowed || attempt != 0 {
+		if !allowed || !self.retries.provisionalRetries() && attempt != 0 {
 			return nil, self.retries.terminal(fmt.Errorf("scenario snapshot transport retry budget exhausted: %w", err))
 		}
-		var cancel context.CancelFunc
-		readCtx, cancel = context.WithTimeout(ctx, scenarioSnapshotRetryTimeout)
-		defer cancel()
-		if err := self.retries.wait(readCtx, scenarioSnapshotRetryDelay); err != nil {
+		if attempt == 0 {
+			remaining, _, budgetErr := self.retries.pendingRetryBudget()
+			if budgetErr != nil {
+				return nil, self.retries.terminal(budgetErr)
+			}
+			var cancel context.CancelFunc
+			readCtx, cancel = context.WithTimeout(ctx, remaining)
+			defer cancel()
+		}
+		delay := scenarioSnapshotRetryDelay
+		if self.retries.provisionalRetries() {
+			for count := 0; count < attempt && delay < scenarioProvisionalSnapshotMaximumDelay; count++ {
+				delay = min(2*delay, scenarioProvisionalSnapshotMaximumDelay)
+			}
+		}
+		if err := self.retries.wait(readCtx, delay); err != nil {
 			return nil, self.retries.terminal(fmt.Errorf("scenario snapshot transport retry deadline: %w", err))
 		}
+		if _, _, budgetErr := self.retries.pendingRetryBudget(); budgetErr != nil {
+			return nil, self.retries.terminal(budgetErr)
+		}
 	}
-	return nil, self.retries.terminal(errors.New("scenario snapshot transport retries exhausted"))
 }
 
 // Preserve the optional scheduler interface exactly: heartbeats must continue

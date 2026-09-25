@@ -81,6 +81,13 @@ func newFleetRenewalTestFixture(t *testing.T) fleetRenewalTestFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return newFleetRenewalConfiguredTestFixture(t, cfg, base, roles)
+}
+
+// Share the exact signed fleet geometry with retained-generation integration
+// tests that already own a different evidence-journal deployment.
+func newFleetRenewalConfiguredTestFixture(t *testing.T, cfg *ResolvedConfig, base *SetupPlan, roles *RoleSecrets) fleetRenewalTestFixture {
+	t.Helper()
 	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 			miner := fleetMemberMinerIndex(cfg, fleet, member)

@@ -13,7 +13,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"time"
+	"net/url"
 
 	"github.com/urnetwork/sdk"
 )
@@ -25,7 +25,14 @@ func readReleaseServerKeysV2(ctx context.Context, cfg *ReleaseConfig) (result ma
 }
 
 func readReleaseServerKeysV2WithCapture(ctx context.Context, cfg *ReleaseConfig, retain func(ReleaseEvidenceV2CaptureSource, []byte) error) (result map[uint64]map[byte]ed25519.PublicKey, resultErr error) {
-	if ctx == nil || cfg == nil || len(cfg.Operators) == 0 || uint64(len(cfg.Operators)) > cfg.EvidenceV2.Bounds.MaxOperators {
+	client := &http.Client{Timeout: releaseHttpGetAttemptTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return readReleaseServerKeysV2WithCaptureAndRetry(ctx, cfg, retain, client, releaseHttpGetRetryHooks{})
+}
+
+// The public owner fixes client policy; tests inject only transport and timing.
+// Successful decoded key sets are captured once after all retries have ended.
+func readReleaseServerKeysV2WithCaptureAndRetry(ctx context.Context, cfg *ReleaseConfig, retain func(ReleaseEvidenceV2CaptureSource, []byte) error, client *http.Client, hooks releaseHttpGetRetryHooks) (result map[uint64]map[byte]ed25519.PublicKey, resultErr error) {
+	if ctx == nil || cfg == nil || client == nil || len(cfg.Operators) == 0 || uint64(len(cfg.Operators)) > cfg.EvidenceV2.Bounds.MaxOperators {
 		return nil, errors.New("release server-key census is incomplete")
 	}
 	limit := cfg.EvidenceV2.Bounds.MaxControlBytes
@@ -49,35 +56,45 @@ func readReleaseServerKeysV2WithCapture(ctx context.Context, cfg *ReleaseConfig,
 		}
 		endpoint := reader.endpoint
 		endpoint.Path = "/verify/keys"
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-		if err != nil {
-			return nil, err
-		}
-		request.Header.Set("Accept", "application/json")
-		request.Header.Set("Accept-Encoding", "identity")
-		client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		response, err := client.Do(request)
-		if err != nil {
-			return nil, err
-		}
-		encoded, err := func() (encoded []byte, resultErr error) {
+		var encoded []byte
+		err = retryReleaseHttpGet(ctx, func(attemptCtx context.Context) (resultErr error) {
+			encoded = nil
+			request, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, endpoint.String(), nil)
+			if err != nil {
+				return err
+			}
+			request.Header.Set("Accept", "application/json")
+			request.Header.Set("Accept-Encoding", "identity")
+			response, err := client.Do(request)
+			if err != nil {
+				if response != nil && response.Body != nil {
+					err = errors.Join(err, response.Body.Close())
+				}
+				return err
+			}
 			defer func() {
-				resultErr = errors.Join(resultErr, response.Body.Close(), ctx.Err())
+				resultErr = errors.Join(resultErr, response.Body.Close(), attemptCtx.Err())
 				if resultErr != nil {
 					encoded = nil
 				}
 			}()
+			if response.StatusCode != http.StatusOK {
+				return &releaseHttpGetStatusError{endpoint: endpoint.String(), status: response.StatusCode, retryAfter: attemptStreamHttpRetryAfter(response.Header)}
+			}
 			contentType, _, typeErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
-			if response.StatusCode != http.StatusOK || typeErr != nil || len(response.Header.Values("Content-Type")) != 1 || contentType != "application/json" ||
+			if typeErr != nil || len(response.Header.Values("Content-Type")) != 1 || contentType != "application/json" ||
 				response.Uncompressed || response.Header.Get("Content-Encoding") != "" || response.Header.Get("Content-Range") != "" || response.ContentLength > int64(limit) {
-				return nil, fmt.Errorf("release server-key endpoint returned invalid bounded JSON framing (status %d)", response.StatusCode)
+				return fmt.Errorf("release server-key endpoint returned invalid bounded JSON framing (status %d)", response.StatusCode)
 			}
-			encoded, resultErr = io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
+			encoded, err = io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 			if uint64(len(encoded)) > limit {
-				return nil, errors.New("release server-key response exceeds its control bound")
+				return errors.Join(errors.New("release server-key response exceeds its control bound"), err)
 			}
-			return encoded, resultErr
-		}()
+			if err != nil {
+				return &url.Error{Op: "Read", URL: endpoint.String(), Err: err}
+			}
+			return nil
+		}, hooks)
 		if err != nil {
 			return nil, err
 		}

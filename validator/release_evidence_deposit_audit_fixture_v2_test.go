@@ -47,21 +47,22 @@ func (self *depositAuditNativeRpcTestClient) URL() string { return self.endpoint
 
 // Mutable controls change actual HTTP responses, never a source verdict.
 type depositAuditPublicationV2TestFixture struct {
-	base        *releaseRuntimeV2TestFixture
-	chain       *releaseDecisionV2TestFixture
-	artifact    *ReleaseMeasurementArtifact
-	options     ValidatorEvidencePublicationV2ReadOptions
-	mode        string
-	sourceNoIds [2]uint64
-	payout      *payoutartifact.Artifact
-	payoutBytes []byte
-	payoutReads atomic.Uint64
-	publicReads atomic.Uint64
-	posts       atomic.Uint64
-	nativeReads atomic.Uint64
-	outage      atomic.Bool
-	refuseLast  atomic.Bool
-	stopOrigins [2]func()
+	negativeRetryElapsed time.Duration
+	base                 *releaseRuntimeV2TestFixture
+	chain                *releaseDecisionV2TestFixture
+	artifact             *ReleaseMeasurementArtifact
+	options              ValidatorEvidencePublicationV2ReadOptions
+	mode                 string
+	sourceNoIds          [2]uint64
+	payout               *payoutartifact.Artifact
+	payoutBytes          []byte
+	payoutReads          atomic.Uint64
+	publicReads          atomic.Uint64
+	posts                atomic.Uint64
+	nativeReads          atomic.Uint64
+	outage               atomic.Bool
+	refuseLast           atomic.Bool
+	stopOrigins          [2]func()
 }
 
 // Extend the existing actual activation/runtime fixture with independently
@@ -280,6 +281,11 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 		reader, err := NewHTTPArtifactReader(operator.APIURL, cfg.DeploymentID, cfg.Netuid)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if mode == "negative" {
+			// Advance the existing full retry deadline at the first wait. The
+			// actual response, signed custody and replay remain production paths.
+			reader.retryHooks = releaseHttpGetTestDeadlineHooks(t, &self.negativeRetryElapsed, releaseHttpGetRetryTimeout)
 		}
 		contexts[operator.NoID] = &ReleaseMeasurementContext{NoID: operator.NoID, Artifacts: reader}
 		operators[operator.NoID] = operator

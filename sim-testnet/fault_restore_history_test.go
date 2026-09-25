@@ -139,7 +139,7 @@ func TestScenarioFaultRestoreHistoryRejectsMalformedStateAndProgress(t *testing.
 		Status:    "active", Error: "synthetic readiness is pending",
 	}
 	window := &ScenarioAcceptanceWindow{StartBlock: 10}
-	for _, kind := range []string{"process-restart", "process-pause", "container-restart"} {
+	for _, kind := range []string{"process-restart", "process-pause", "container-restart", "validator-view-filter"} {
 		valid := record
 		valid.Kind = kind
 		if err := validateScenarioCampaignFaultState(window, valid); err != nil {
@@ -150,7 +150,7 @@ func TestScenarioFaultRestoreHistoryRejectsMalformedStateAndProgress(t *testing.
 		name   string
 		change func(*ScenarioFaultRecord)
 	}{
-		{name: "unsupported kind", change: func(r *ScenarioFaultRecord) { r.Kind = "validator-view-filter" }},
+		{name: "unsupported kind", change: func(r *ScenarioFaultRecord) { r.Kind = "unknown-control" }},
 		{name: "pending state", change: func(r *ScenarioFaultRecord) { r.Status = "pending" }},
 		{name: "signed failed state", change: func(r *ScenarioFaultRecord) { r.Status = "failed" }},
 		{name: "early restore", change: func(r *ScenarioFaultRecord) { r.RestoreStartedBlock-- }},

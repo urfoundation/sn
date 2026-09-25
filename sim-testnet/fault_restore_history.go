@@ -14,7 +14,7 @@ func validateScenarioCampaignFaultRestore(record ScenarioFaultRecord) error {
 		}
 		return nil
 	}
-	if (record.Kind != "process-restart" && record.Kind != "process-pause" && record.Kind != "container-restart") || (record.Status != "active" && record.Status != "restored") {
+	if !faultCompletionKind(record.Kind) || (record.Status != "active" && record.Status != "restored") {
 		return fmt.Errorf("scenario campaign fault %q has foreign restore retry evidence", record.ID)
 	}
 	minimum := record.MinimumDurationBlocks

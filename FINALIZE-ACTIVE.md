@@ -1,5 +1,457 @@
 # Testnet execution plan
 
+## R44 fourth terminal diagnostic complete — 2026-09-25 11:09 UTC
+
+The read-only `da7689f8` service exited successfully. Its
+[report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
+has SHA-256 `affad93c70b533e1a55f6e439dcec89f5243f5957d6ad76dfbd7ed984678d736`.
+Of 38 checks, 18 pass, three fail, one is the named exception, one is a
+finding, and 15 are unavailable. The longer exact-chunk capture passed
+validator-2 signed-source and native-application coverage; exact relay
+readback lacks its historical request owner. Validator 1 still lacks a compact
+input journal. Terminal assertions, original process logs and fault timing
+remain failed; they were evaluated before the companion hard restore and are
+not silently recomputed. Original R44 owner PID 2823030 remains active with
+no sealed result; the post-owner watcher remains armed. No diagnostic grants
+final acceptance.
+
+## R45 payout-window and fixture repairs integrated — 2026-09-25 11:04 UTC
+
+Main now includes payout-window commit `f673ca9a` and validator-fixture commit
+`6a407a1f` after the reviewed core successor stack. The payout reader binds
+cohort and tier checks to the signed accepted epochs and matching root/hash;
+it cannot substitute a later epoch's artifact. Legacy R44 diagnostics now
+report missing additive claim-observation fields as unavailable instead of
+inventing zero counts. The fixture repair updates stale policy/runtime
+expectations and tests the 300-second deposit read deadline without sleeping.
+Sol's focused and adjacent checks passed normally and under race detection on
+the isolated patches, and the full fixture-tree validator normal suite passed.
+Sol is checking their combined main source now; those results and the native
+published-cut recovery patch remain outstanding before a final R45 build.
+No R44 executable or live state was changed.
+
+## R44 companion filter hard-restored — 2026-09-25 10:59 UTC
+
+The live fault record shows `fleet-lifecycle-companion-prune` restored at its
+scheduled block 8,082,634. The
+[read-only observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`.
+The bypassed mutation still supplies no terminal-effective epoch or
+`RestoreConditionMet` proof, so R44-LC-1 stays an exception and strict
+acceptance stays false. R44 owner PID 2823030 remains active, without
+`result.json` or `complete.json`; the fourth read-only collector and post-owner
+watcher remain active. Do not stop the owner merely because the filter restored.
+Collect its sealed result and the independent reports when available; keep
+all other failed checks visible.
+
+## Qualified R45 recovery stack integrated — 2026-09-25 10:53 UTC
+
+The eleven missing successor fixes are now on main through `c745d8b1` in
+their reviewed dependency order. Sol independently passed focused and affected
+adjacent simulator/validator selectors normally and under race detection on the
+clean isolated `54079077` source. The 43-file
+[source fence](/mnt/data/sn-testnet/qualification/r45-core-successor-20260925/source.sha256)
+matches main byte-for-byte; the [review](/mnt/data/sn-testnet/qualification/r45-core-successor-20260925/REVIEW.md)
+records each original patch, causal failure, conflict resolution and rollout
+boundary. This integration changes no active R44 executable or live state.
+The final R45 image still needs the separately qualified payout-window patch,
+the native published-cut retry repair, validator fixture qualification and a
+fresh post-R44 doctor/renewal plan. Do not infer live readiness from this source
+integration alone.
+
+## R45 composition audit found missing qualified recovery stack — 2026-09-25 10:38 UTC
+
+Source comparison against current main `55454c52` found eight qualified
+successor commits present in isolated history but absent from main:
+`247c86d0`, `313fd977`, `38397969`, `f10fd309`, `2b78af30`,
+`cc6fe1ba`, `9488bfb0`, and `b5211301`. They cover durable snapshot retries,
+status transport errors, local validator authority, joined preparation,
+exact process identity/termination, pre-termination fault intent, pending
+container restore, and terminal RPC error attribution. The existing clean
+`da7689f8` diagnostic image does not include this stack and must not be used
+as the final R45 mutation runner merely because read-only diagnostics pass.
+Astra is composing the dependency-ordered fixes from current main in an
+isolated tree, reconciling overlaps such as the already integrated fault-process
+wire field, and Sol will run affected normal/race and causal tests. The active
+R44 owner and fourth read-only diagnostic remain unchanged.
+
+## R44 fourth read-only diagnostic launched — 2026-09-25 10:16 UTC
+
+Diagnostic-only capture resilience is integrated on main as `da7689f8` and
+passed focused/adjacent normal and race tests plus two causal controls. It
+raises the source-capture allowance to 60 minutes and reuses exact authenticated
+chunks within one invocation; the strict final collector is unchanged. The
+clean stamped binary has SHA-256
+`25978b8478c6c02b9b7f2edce06e5209b260b22687e63b4f2ce16b13188b8509`,
+revision `da7689f82fc80f791edb4d276406fe78671ef1e9`, and
+`vcs.modified=false`. The hash-pinned wrapper is
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/run-fourth-terminal-diagnostic-da7689f8.sh`
+(SHA-256 `1a0b030fc3c1725c1064fec39ee2f819f5346820a2dbad244af618efd2288e91`).
+`urnetwork-sim-r44-fourth-terminal-da7689f8.service` is active and will write
+to the new external `fourth-terminal-da7689f8` directory. Verify its eventual
+service result and `report.json` before interpreting any check outcome. It is
+read-only; the original R44 owner and its post-owner watcher remain active.
+
+## R44 third read-only terminal diagnostic complete — 2026-09-25 10:00 UTC
+
+The Git-stamped `d56709aa` diagnostic finished successfully as a read-only
+collector; its 38-check [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/report.json)
+has SHA-256 `38d7b721aaebc291918053635dd6ba9f014dc42c20c7b7654e457984c6185838`.
+Sixteen checks pass, four fail, one is the recorded lifecycle exception, one
+is a finding, and 16 are unavailable. Companion evidence capture and ordinary
+signed payout artifacts pass. Strict lifecycle payout evidence remains
+unavailable, and the active companion filter still fails strict timing.
+Validator-2 signed-source capture exhausted its 15-minute stream-read budget;
+validator 1 lacks its retained compact input journal. The terminal scenario
+assertions and process-log report still fail independently. The original owner
+remains active without `result.json`; no strict final acceptance is claimed.
+
+The validator-2 capture work was quantified separately in
+`/mnt/data/sn-testnet/qualification/r45-capture-stream-progress-20260925/read-only-census.json`:
+62 cuts, 106 nonempty stream references, 94 distinct references, and about
+1.63 GB of scheduled chunk GETs across two origins. All 102 native reads
+completed before stream capture began. A known 4,187,969-byte chunk returned
+HTTP 200 with its expected hash and size but took 18.30 seconds. A bounded,
+diagnostic-only capture budget and verified-chunk reuse are being qualified;
+they do not change the live owner or strict collector.
+
+## R44 third terminal diagnostic authenticating retained evidence — 2026-09-25 09:47 UTC
+
+The historical fault-process wire fix is on main as `d56709aa`. It restores
+the optional `start_time_ticks` field in signed fault process records without
+relaxing unknown-field rejection or giving forensic reads process-signaling
+authority. Four focused and affected adjacent roots pass normally and under
+race detection; the old reader reproduces the exact signed-checkpoint error.
+A real-copy probe verified both original signed envelopes, their hashes and
+36 retained tick proofs without changing the bytes.
+
+The clean-clone diagnostic image is
+`/mnt/data/sn-testnet/qualification/r45-fault-process-wire-20260925/build/sim-testnet-r45-d56709aa-clone-connectc98eb715`,
+SHA-256 `171cb6e3b50e3110303a458a78b2930a9a76e193aeaf8a07d5889a1d32704a8d`.
+Go build metadata reports revision `d56709aae03d3de2383d37615baedb4b86dfa391`
+and `vcs.modified=false`; the external [binary manifest](/mnt/data/sn-testnet/qualification/r45-fault-process-wire-20260925/build/binary-manifest-d56709aa.json)
+has SHA-256 `e8c344f789f7d31a57409c95d691511029ebc2b5787edf4b0cd35e812ae706b9`.
+An earlier worktree-built image lacked a Git stamp and was refused by
+attestation before creating a diagnostic output; it is not the selected image.
+
+`urnetwork-sim-r44-third-terminal-d56709aa-stamped.service` is conducting a
+read-only replay into a new external directory. It has authenticated the signed
+start/checkpoint, all 44 retained recovery generations, the observation prefix,
+the complete five-epoch terminal, both operators' current signed artifacts,
+and both validator path/config checks. Strict terminal assertions still fail,
+validator 1 lacks the retained compact input journal, and validator 2 capture
+is in progress. This is not a final result. The R44 owner and its post-owner
+diagnostic watcher remain active and unchanged.
+
+## R44 second terminal diagnostic exposed retained attempt reader gap — 2026-09-25 09:13 UTC
+
+The read-only diagnostic using composed successor `5c2ee88c` ran against the
+same original signed R44 terminal checkpoint. Its independent
+[`report.json`](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/second-terminal-5c2ee88c/report.json)
+has SHA-256 `5449a651f5ffb841e55e7a08303ea74afde63d3a641c1891ac50db13ca3b3d23`.
+It passed the signed start but failed `signed-latest-checkpoint` because the
+new reader rejects the retained attempt's `start_time_ticks` field. The 30
+dependent checks are unavailable in this second report; they are not evidence
+that the previously authenticated first report changed. Preserve both reports,
+fix the exact retained-format reader, and rerun into a third new output path.
+The R44 owner and its armed post-owner diagnostic remain active and unchanged.
+
+The composed source's diagnostic-only payout split is independently qualified:
+four focused tests and affected adjacent selectors pass normally and with race
+detection; the old-behavior causal overlay fails at the missing lifecycle index
+as expected. Its three-file source hash fence matches the committed patch.
+This qualification does not overcome the checkpoint reader failure or grant
+strict acceptance.
+
+## R45 capture contract-address fix qualified — 2026-09-25 08:50 UTC
+
+The R44 terminal diagnostic's validator-2 signed-source capture failure was
+caused by comparing checksum-cased config EVM addresses with lowercase
+measurement addresses as raw strings. The production fix `26038272`
+compares validated 20-byte addresses in capture, client-key request admission
+and artifact observation; signed measurement bytes remain unchanged. Focused
+normal/race (0.319/1.814 seconds) and affected adjacent normal/race
+(76.580/119.246 seconds) pass. An old-production overlay reproduces both
+positive-case failures. A pre-existing stale `Http 500` test assertion was
+corrected separately in `d17fa421` and passes in both adjacent modes. All
+seven committed file bytes match the independently qualified isolated source.
+This code is not in R44's pinned executable or the older `2662f5f0` successor
+image. A further companion read-only authority fix and a newly stamped clean
+image are required before R45 adoption or a fresh diagnostic replay.
+
+## R45 retained-renewal reader race qualification complete — 2026-09-25 08:39 UTC
+
+The frozen round-7 historical authority fix in main `bbd33365` has passed
+focused normal and all three focused race cases: generation/inventory/launcher
+1,842.99 seconds, source-role retained approval 1,904.69 seconds, and negative
+history/custody 32.31 seconds. Affected adjacent normal/race tests also pass,
+and both old-reader causal overlays fail at the intended prior rejection.
+The combined race command hit its 60-minute package bound because its two
+positive fixtures alone take more than 60 minutes; independent bounded runs
+passed without race findings. The clean `2662f5f0` image and 66-check external
+doctor below are valid for this reader fix. New terminal-diagnostic findings
+have exposed separate capture-reader issues under qualification, so do not yet
+select that image for live R45 renewal or resume. R44 remains active.
+
+## R44 signed terminal reached; external supplement retained — 2026-09-25 08:24 UTC
+
+R44 crossed the five-epoch release end at block 8,081,674 and recorded its
+signed terminal observation at block 8,081,824. The original owner remains
+active without a sealed result. The qualified separate diagnostic has passed
+the signed start, latest checkpoint, all 44 retained lineage generations,
+observation prefix and complete-epoch terminal checks. Terminal scenario
+assertions fail; absent original result and completion remain unavailable.
+This is a read-only diagnostic, not a substituted owner seal.
+
+The independent supplement completed successfully with explicit absent-result
+findings. Its immutable
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-supplement/manifest.json`
+has SHA-256 `7a5f9209d9a4e42cc0d28c05bc90f7866f4459b57f40c54a232b24f27e0ebce4`.
+It retained 1,073 files including all 1,000 claim queues, the authenticated
+observation prefix, the complete process-log report and 144,427,524 accepted
+log bytes. All queues still show last discovery epoch 617; epochs 618–620
+have no entries. Fifteen acceptance-scoped blocking process rows remain.
+These are independent findings beyond the named lifecycle companion-filter
+exception. The separate diagnostic has now completed with immutable
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/report.json`
+(SHA-256 `c207225f44bb5962f231345770b9a8aa71c293917c596c7bda26c6efe8e7e384`).
+Of 37 checks, 14 pass, six fail, one is a finding, one is the named exception
+and 15 are unavailable without the owner result or other source evidence.
+The six failed groups and exact evidence are listed in `sim-testnet/FINAL-2.md`;
+two capture-reader mismatches are under separate root-cause review for R45.
+Keep the live owner running to its original
+result or bounded watchdog, then compare exact owner artifacts and rerun the
+post-owner diagnostic without rewriting this first terminal copy.
+`urnetwork-sim-r44-post-owner-diagnostic.service` is armed for the original
+owner becoming inactive with `result.json` present. It verifies the same
+qualified image SHA-256, runs the reviewed read-only post-owner command into a
+new external directory, and cannot start while the owner remains active. Its
+existence does not imply an owner result; verify its exit and report after the
+watchdog.
+
+## R45 clean successor built; race gate pending — 2026-09-25 07:57 UTC
+
+The retained policy generation and source-role readers now resolve their
+original approval through its immutable archived ancestor when round-7 fleet
+renewal appends a descendant plan. SN code/tests `bbd33365` and mainnet lesson
+`c2171654` are on main; two separate old-reader overlays reproduced the exact
+round-7 rejection. Focused normal and affected adjacent normal/race tests pass.
+The focused three-test signed-renewal race run remains active; do not adopt the
+image for live renewal until it exits successfully.
+
+The new clean image is
+`/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/sim-testnet-r45-2662f5f0-connectc98eb715`,
+SHA-256 `a79072fa7a03db3452cec4c5bef942fb2424e05b5dbd79ed6cfbfa219006e2ef`.
+Its [external binary manifest](/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/binary-manifest-2662f5f0.json)
+records SN `2662f5f0`, Connect `c98eb715`, a clean VCS stamp and the pinned
+module inputs. An external-copy doctor passed 66 checks in 67.225 seconds,
+`ready=true`, no hard failures, no new live provenance and unchanged live
+plan/journal prefix. The same three provisional soft findings remain: shared
+physical RPC, owned-node-only verification and deferred source qualification.
+This is read-only successor preflight, not a round-7 plan, transaction or
+signed acceptance result. R44 remains the active owner.
+
+## R44 independent terminal capture armed — 2026-09-25 07:42 UTC
+
+The owner remains active. The named `R44-LC-1` bypass exception is recorded in
+`sim-testnet/FINAL-2.md`; it does not convert the strict lifecycle assertion
+into a pass or waive any other finding. The read-only external review is
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/REVIEW.md`
+(SHA-256 `96527e79611ef920d0711781acbe69233dd98c1879d96dd39f1ad5d94a4a75bf`).
+Its qualified diagnostic image has SHA-256
+`2953bc1e135e5704e2b5f321ef4eed6336bf4a07c917276103390eb840f26ade`.
+
+`urnetwork-sim-r44-automatic-terminal-capture.service` is armed for the exact
+signed checkpoint at or after block 8,081,824. It performs the reviewed
+read-only diagnostic without the original-result wait, then starts a bounded
+external supplement after the diagnostic has begun. The supplement requires
+four authenticated terminal checks before copying the signed observation
+prefix, all 1,000 claim queues, the complete process-log report and accepted
+log ranges. These are unsigned, point-in-time review artifacts, not an owner
+seal. The pre-existing watcher and live owner are unchanged. Verify the
+service's actual result and artifact hashes after terminal; an armed service
+is not evidence of a completed capture.
+
+## R45 renewal plan-history blocker — 2026-09-25 07:13 UTC
+
+Static successor review found that the retained activated policy-rollover and
+source-role readers compare their original `SourcePlanHash` with the current
+plan hash. Round-7 fleet renewal necessarily appends a descendant plan, so
+the clean `18b13aea` image's 66-check doctor does not prove it can restart
+after renewal. Do not use that image for a live round-7 apply or retained
+resume. Astra is fixing read-only historical source selection from the exact
+approved plan archive, with a deterministic descendant-plan test; new rollover
+or overlay mutations must still require current-plan approval. Rebuild and
+requalify a composed successor after this fix before the post-R44 handoff.
+R44 remains active and is not changed by this finding.
+
+## R45 composed successor qualified externally — 2026-09-25 07:01 UTC
+
+The clean successor binary is
+`/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/sim-testnet-r45-18b13aea-connectc98eb715`,
+SHA-256 `cafccd167b70c6d9fcb79a08f541d0fe3dcbbb298cdc1d060485db95bf5b8e5a`.
+It reports SN `18b13aea`, `vcs.modified=false`, `trimpath=true`; its ten source
+repositories and pinned module inputs are recorded in the external
+`build/binary-manifest.json`. A fresh external-copy doctor passed all 66 checks
+in 73.162 seconds against the LAN RPC, `ready=true`, with no hard failures,
+unchanged live plan/journal prefix, and no new live provenance. Its three soft
+findings remain explicitly provisional: shared physical RPC, owned-node-only
+verification, and deferred current-source qualification. This is successor
+preflight, not a live R45 renewal or signed acceptance result.
+
+The bypass-aware lifecycle cleanup patch is SN `101ed51f`; its mainnet
+hardening note is `18b13aea`. Focused and affected adjacent normal/race tests
+and four old-behavior causal checks passed in the isolated source. The combined
+focused and affected adjacent selectors also passed on composed main normally
+(39.378 seconds) and under race detection (202.982 seconds), with all eight
+lifecycle files matching the qualified source fence. R44 is still the active owner;
+do not use this binary to alter its live state before its sealed result.
+
+## R44 lifecycle predicate finding — 2026-09-25 06:52 UTC
+
+R44 observation 77 reached finalized block 8,081,388. The owner is still
+active and has no sealed result. Its old predicate restored
+`fleet-lifecycle-target-prune` at that block with
+`RestoreConditionMet=true`; the same observation's lifecycle evidence has
+`stage=release-handoff`, `ProvisionalBypass=true`, and no terminal-effective
+epoch. This condition was satisfied by the bypass stage, not by proof of a
+provider payout. The companion filter remains active, so 41 of 42 faults are
+restored. Preserve the false condition flag as an R44 evidence finding; do not
+promote it into lifecycle conformance. The R45 successor patch makes
+installed, paid and effective mutation predicates false under this bypass and
+tests the old behavior causally. Do not stop the live owner.
+
+## R44 continuation and R45 claim repair — 2026-09-25 06:17 UTC
+
+R44 remains live under its original release owner. Observation 65 reached
+finalized block 8,081,204 in epoch 619; 40 faults were restored and the two
+signed post-acceptance lifecycle view filters remained active. There was no
+sealed owner result or invalidation. Do not stop the owner on the basis of the
+separate terminal watcher or the expected lifecycle-tail failure; retain its
+complete diagnostic result. The successor-only bypass-aware cleanup is under
+qualification and has not changed the live process.
+
+The shared miner claim admission repair is now SN main `2aacdf22`. It admits
+recent and historical claim work fairly, seeds the shared nonce floor from
+authenticated signed queues before workers start, and reconciles signed
+receipts before trusting a local API status. Focused miner and on-chain tests
+passed normally and under race detection on composed main; three old-behavior
+causal overlays failed as intended. The four broader fleet runtime manifest
+fixture failures reproduce on the unchanged base and are being repaired
+separately. This code is not in R44's pinned executable. Current acceptance
+must continue to allow `pending` and `retry` through claim TTL while keeping
+outstanding liability conserved; `submitting`, unreconciled `uncertain` and
+`failed` outcomes remain blocking at the acceptance cut.
+
+## R44 evidence tail and successor gates — 2026-09-25 05:58 UTC
+
+R44's release owner and read-only terminal watcher remain active. Observation
+59 reached block 8,081,111 in epoch 619; 39 faults were restored and three
+active, with none pending. Two active lifecycle validator-view filters are
+explicit `post_acceptance_evidence_tail` faults. The signed five-epoch terminal
+block remains 8,081,824, but the scenario owner also waits for the tail faults
+to restore. The inherited approved lifecycle bypass has stage `release-handoff`
+and `TerminalEffectiveEpoch=0`; the companion filter's early condition requires
+a nonzero terminal-effective epoch. It cannot meet that condition in R44 and
+has a hard restore bound at 8,082,634. The strict
+`fleet_lifecycle_fault_tail_bounded` assertion will therefore fail even if the
+body reaches its terminal block. The live image's timeout is 33,360 seconds
+from its post-boundary loop start, placing its wall deadline between
+11:46:04 and 11:47:38 UTC on 2026-09-25, plus any in-flight read and cleanup.
+Do not treat the separate watcher report at 8,081,824 as a sealed owner result
+or stop a still progressing owner. The live image has no authenticated
+in-place restore/exception command; an external restore would diverge from
+the owner's in-memory signed fault record. A successor-only bypass-aware
+schedule is being prepared. No live fault or service has been changed.
+The separate watcher waits only 16 minutes for the original result after
+block 8,081,824, so its first output is expected to be an early external
+inventory. Preserve it, then rerun the same qualified read-only diagnostics
+after the owner's signed result appears, into a new external output directory.
+The companion filter's hard restore at block 8,082,634 does not satisfy its
+`RestoreConditionMet` assertion. The old owner has no early-seal command and
+continues to wait on that failed assertion. Label terminal diagnostics at
+block 8,081,824 as external evidence with the owner result pending; retain
+the live owner until it seals its result or reaches its bounded watchdog.
+
+The tested signed-window claim checks are now SN main `5615a382`; historical
+claim anomalies are also scoped to the new window in `ac2beccd`, with actual
+in-window uncertain and failed claims still open. The R44 live queue census
+at finalized block 8,081,014 showed 256 miners at discovery epoch 617 and 744
+at 614; a later read-only census found all 1,000 had reached 617, but epochs
+615–617 still had a substantial submission backlog. A fair shared admission
+and durable nonce-floor successor patch is in development. These fixes are not
+in the R44 executable. Round-7 renewal, authenticated traffic warmup and a
+fresh signed release boundary remain required after the actual R44 result.
+
+## Current continuation — 2026-09-25 05:26 UTC
+
+R44 remains owned by `urnetwork-sim-release-r44.service` (PID 2823030), with
+the fleet and the separate read-only terminal diagnostic watcher active. The
+signed attempt has no result or invalidation. Observation 50 reached finalized
+block 8,080,944 in epoch 618; the LAN node had finalized block 8,080,972.
+Thirty-three faults were restored, three active and six pending. The signed
+five-epoch window still requires terminal block 8,081,824. Preserve the live
+run through that block and collect its exact result and terminal inventory.
+Known process-log findings remain final-blocking but are being retained as
+provisional observations, not used to interrupt the interval.
+
+Epoch 617 finalized with zero funded settlement for both operators. The
+[accounting evidence](/mnt/data/sn-testnet/qualification/r44-native-weight-lineage-20260925/REVIEW.md)
+shows the later operator-2 stake arrived after its epoch-617 capture and
+remained in that operator's vault pool; conservation holds. A cross-epoch
+regression was pushed as commit `7e1782a6` after 48 Forge tests and Go model
+normal/race passed, with an emission-carry mutation failing the new test.
+
+The [R45 renewal proposal](/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/migration-review/RENEWAL-PROPOSAL.md)
+is ready for a fresh post-terminal plan. Its clean composed image is SN
+`d9ab57c9` plus Connect `c98eb715`, SHA-256
+`53b26bdc9e1778f105872dfb103dd8e5350c623ae9668719f4b40411ad295b4a`;
+an external-copy doctor passed all 66 checks. Round 7 must renew 808 expired
+candidate bindings before another acceptance boundary; its projected totals
+remain below the approved 512 TAO and 512 EVM limits. No renewal transaction
+or live R45 write has occurred. A separate claim-queue investigation found
+that a shared submission mutex can let hundreds of older claims delay current
+epoch discovery. The bounded admission and acceptance-window fixes are in
+progress; they must be qualified and included in a new image before R45.
+
+## R44 live release interval — 2026-09-25 02:59 UTC
+
+R43 ended before its terminal block when a post-restart
+`restart-stale-contract` process-log finding was not eligible for provisional
+observation continuation. Its signed generation-43 attempt and failed result
+remain immutable in `sim-testnet/runs/ur-subnet-testnet-v1-attempt-4`. The
+minimal correction, commit `6d9c8d38`, passed normal, race and old-source
+causal tests; it continues the diagnostic interval while retaining the
+finding as unexplained and final-blocking. The composed successor is clean SN
+`8edc91ea` with Connect `3b7eca94` and server `4b2c4587`, executable SHA-256
+`0c1bd59d469ef9f985f2efd00595b34e3986e8dbb551abf6b7175997b368ad59`.
+Its pre-stop evidence copy and qualification are under
+`/mnt/data/sn-testnet/qualification/r44-retained-relaunch-20260925/`.
+
+The controlled fleet stop and retained resume succeeded with zero setup
+actions. The fleet supervisor is `urnetwork-sim-ur-subnet-testnet-v1.service`;
+the live release owner is `urnetwork-sim-release-r44.service`. The owner uses
+the approved plan
+`0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb`
+and owned LAN RPC `192.168.1.162:9944`. Its signed attempt is
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json`;
+the run is
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T021136.926474885Z-release-1.0/`.
+The signed boundary began at 02:30:04 UTC, covers five complete epochs
+616–620 from block 8,080,174 through 8,081,674, and requires terminal block
+8,081,824. This is a provisional run: `final_acceptance=false`; prior fleet
+binding and rate-readiness findings remain visible for later strict review.
+
+At this snapshot, R44 has no signed invalidation or result and no blocking
+acceptance-scoped process-log finding. The quality-cohort control and first
+PostgreSQL restart restored; the Redis-1 restart and four longer controls were
+active, with 35 faults pending. Keep the live owner and fleet running. Read
+their actual current service, signed attempt, observations, fault ledger and
+process-log scope before any intervention. A stale snapshot or transient RPC
+timeout is not evidence of a stopped run. The separate typed process-log
+catalog, fault chronology and journal replay fixes are isolated future-build
+work; they are not in the R44 executable.
+
 ## R43 recovery startup — 2026-09-24 21:02 UTC
 
 Two additional unsigned startup retries were attempted after the first local
@@ -205,9 +657,9 @@ Current work:
 1. The retained campaign, signer-authority and gate corrections are composed
    and published; their focused qualification and required failure confirmations
    are complete. Preserve the existing deployment, wallets, approvals and journals.
-2. Use Terra (`gpt-5.6-terra`, reasoning effort `medium`) for all tests and gate
-   execution. Use Sol (`gpt-5.6-sol`, reasoning effort `max`) to diagnose and
-   fix failures and flakiness, then return corrected source to Terra for reruns.
+2. Use Sol (`gpt-6-sol`, reasoning effort `medium`) for all tests and gate
+   execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
+   fix failures and flakiness, then return corrected source to Sol for reruns.
 3. Complete producer and aggregate coverage using valid retained phase results
    plus failed, missing or patch-affected checks. Collect independent failures
    in a batch; preserve completed phases when a gate is interrupted.
@@ -2296,3 +2748,96 @@ then replayed retained epochs without a durable `through` marker. The checkpoint
 must validate only append-only suffixes during provisional recovery and must be
 ignored for strict final acceptance. None of these source changes alters the
 retained supervisor or rewrites R20/R24 evidence.
+
+
+## Future recovered-read accounting — R44/R45 review
+
+R44's first interval epoch cannot meet strict acceptance. Both validators
+reported `release steering advanced from incomplete epoch 1662 to 1663` at the
+first interval boundary (settlement epoch 616). The exact stderr source offsets
+are 300896970 for validator-1 and 243603097 for validator-2 in
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/`. R44 continues through
+terminal capture by user direction; the continuity failures remain blocking.
+The preserved offset-bounded error blocks and individually indexed stdout
+events are recorded in
+`/mnt/data/sn-testnet/evidence/r44-compact-replay-retry-20260925/boundary-manifest.json`.
+
+These continuity failures are distinct from a read interruption that later
+recovers. Validator-1 retained a finalized-scheduler WebSocket close before 27
+no-submission weight rejections for one positive weight under limit 32768.
+Validator-2 retained compact settlement/operator replay deadlines, a runtime
+version read deadline, a finalized-scheduler WebSocket close, a refused artifact
+Get, and later replica Post/native-operator deadlines. Longer read and steering
+budgets do not by themselves establish that all native epoch work can finish.
+R45 needs the independent scheduler and infeasible-weight dispositions reviewed
+and a complete mature-history replay/native-completion qualification under the
+fault schedule, while preserving immutable evidence and strict continuity.
+
+R44 keeps its recorded process-log findings, v12 terminal policy, raw line
+hashes, counters, and signed acceptance boundary unchanged. A later generic
+progress event does not discharge a `release-steering-attempt-failure`.
+Current findings aggregate by process/stream/class and acceptance scope; they
+do not identify each failed read by native epoch and immutable artifact. The
+existing successful steering return also carries no independently verifiable
+recovery identity. Consequently this repair does not add a recovered-read
+disposition or relax terminal acceptance.
+
+For future runs, a transport-only read failure may become nonblocking only
+under a separately versioned recovery protocol with all of these properties:
+
+- Retain every original event, count, source offset/hash, process identity and
+  acceptance scope. Native-write, continuity, integrity, custody and independent
+  close failures remain terminal-blocking, including mixed error trees.
+- Emit a typed read-interruption identity covering the native epoch, exact
+  immutable artifact/cut, operator and replay purpose. Preserve the distinction
+  between a canceled service, an expired read attempt and a permanent refusal.
+- Bind recovery to complete authenticated replay of those same inputs, after
+  all dependent projections and closes succeed. Where the interval requires a
+  native result, additionally verify the exact finalized/applied intent and
+  receipt; a log string or progress in another epoch is insufficient.
+- Reconcile every occurrence individually. One successful read must not clear
+  another operator, artifact, epoch, process, restart, pending native write or
+  later interruption. Unresolved or exhausted retries remain blocking.
+- Version the classifier for new runs while preserving earlier findings and
+  signed acceptance-scope hashes. Do not reinterpret an old signed boundary or
+  drop raw errors to obtain a clean report.
+- Add deterministic tests for complete recovery plus wrong-process, wrong-epoch,
+  wrong-artifact, partial-census, mixed-close, canceled-parent, restart, missing
+  native finality and unrelated-success counterexamples. Race qualification
+  must exercise the real event/replay/terminal-accounting integration.
+
+The compact replay repair and ordinary artifact/server-key Get retries are
+future-build work in isolated worktrees. Public artifact retries happen before
+one final HTTP exchange is signed; once that observation is retained, later
+replay consumes its exact bytes and cannot replace a historical negative with
+another live request. No live R44 process, configuration or evidence is changed
+by these fixes.
+
+## R45 scoped systemd doctor qualification — 2026-09-25
+
+The external-copy doctor for clean SN `6ec90bf2` plus Connect `c98eb715`
+completed 66 checks; its only hard failure was `supervisor/systemd-user`.
+The user manager was degraded by ten historical release units while the exact
+owned fleet service was loaded, active/running, and startable. Original argv,
+failed-unit names, report and live-prefix checks remain under
+`/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/migration-review/external-doctor/`.
+No failed latch, live state, service or transaction was changed.
+
+The corrected doctor retains the complete failed-unit inventory and explicitly
+observes the exact deployment service's identity, load state and startability.
+An unrelated historical failure no longer rejects current launch capability.
+An unavailable manager, failed read, malformed or aliased unit observation,
+masked unit, or unstartable loaded service remains a hard failure. A startable
+owned failed service remains eligible for the existing recovery route; the
+separate live service ownership, terminal-state and child-generation readiness
+checks are unchanged. Adjacent review found no other global manager-health
+gate. The tests permit only the three exact read-only status queries.
+
+Focused and adjacent simulator tests passed normally in 15.136s and under
+race detection in 104.124s using the pinned integration module. Restoring the
+old doctor function made four intended scoped-unit tests fail; overlay evidence
+is `/mnt/data/sn-testnet/qualification/r45-doctor-pool-causal-20260925/doctor.json`.
+This qualifies the source fix. A newly stamped composed image and another
+external-copy doctor are still required; it does not establish final acceptance
+or authenticate the whole retained startup. R44 continues through its terminal
+capture with all strict findings preserved.

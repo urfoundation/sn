@@ -667,9 +667,19 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 		t.Fatalf("unexpected restart state: %+v", state)
 	}
 	childPID := state.Processes[0].PID
+	childStartTimeTicks, err := processStartTimeTicks(childPID)
+	if err != nil || state.Processes[0].StartTimeTicks == 0 || state.Processes[0].StartTimeTicks != childStartTimeTicks {
+		cancel()
+		<-done
+		t.Fatalf("supervisor published a PID without its original kernel generation: %+v, actual=%d, %v", state.Processes[0], childStartTimeTicks, err)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	stopped, err := readSupervisorRestartTestState(filepath.Join(dir, "supervisor.state.json"))
+	if err != nil || len(stopped.Processes) != 1 || stopped.Processes[0].PID != 0 || stopped.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("stopped supervisor retained live kernel authority: %+v, %v", stopped, err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && syscall.Kill(childPID, syscall.Signal(0)) == nil {
@@ -781,8 +791,10 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	admitted := make(chan struct{})
 	go func() {
 		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			close(admitted)
 			return nil
 		}, restartWait)
 	}()
@@ -800,11 +812,25 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 		}
 	})
 
+	// Authenticate the executable before measuring child recovery. A race
+	// binary can take longer to hash than the child lifecycle budget, and no
+	// child exists until this authenticated pre-start callback is reached.
+	select {
+	case <-admitted:
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before authenticated admission: %v", err)
+	case <-time.After(time.Minute):
+		t.Fatal("supervisor did not reach authenticated admission")
+	}
 	select {
 	case delay := <-restartDelays:
 		if delay != restartBackoff(1) {
 			t.Fatalf("first retry delay=%s", delay)
 		}
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before the first child restart: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("first child exit did not schedule a restart")
 	}
@@ -814,16 +840,26 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 		if cooldownDelay <= 0 || cooldownDelay > supervisorRestartBudgetRecoveryWindow || cooldownDelay < supervisorRestartBudgetRecoveryWindow-time.Second {
 			t.Fatalf("cooldown delay=%s", cooldownDelay)
 		}
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before the child cooldown: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("exhausted child did not schedule a cooldown")
 	}
 	stopped := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
 		return process.PID == 0 && process.Restarts == 1 && process.ExitError != ""
 	})
+	if stopped.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("exited child retained its generation: %+v", stopped.Processes[0])
+	}
 	release()
 	recovered := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
 		return process.PID > 1 && process.Restarts == 2 && process.ExitError == ""
 	})
+	startTimeTicks, err := processStartTimeTicks(recovered.Processes[0].PID)
+	if err != nil || recovered.Processes[0].StartTimeTicks == 0 || recovered.Processes[0].StartTimeTicks != startTimeTicks {
+		t.Fatalf("replacement state lost original kernel generation: %+v, actual=%d, %v", recovered.Processes[0], startTimeTicks, err)
+	}
 	if stopped.SupervisorPID != recovered.SupervisorPID || stopped.SupervisorStartTimeTicks != recovered.SupervisorStartTimeTicks {
 		t.Fatalf("cooldown replaced supervisor generation: before=%d/%d after=%d/%d", stopped.SupervisorPID, stopped.SupervisorStartTimeTicks, recovered.SupervisorPID, recovered.SupervisorStartTimeTicks)
 	}
@@ -912,19 +948,12 @@ exit 17
 			return ctx.Err()
 		}
 	}
-	nextRestartWait := func() restartWaitRequest {
-		select {
-		case request := <-restartWaitRequests:
-			return request
-		case <-time.After(10 * time.Second):
-			t.Fatal("supervisor did not request its next restart wait")
-			return restartWaitRequest{}
-		}
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	admitted := make(chan struct{})
 	go func() {
 		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			close(admitted)
 			return nil
 		}, restartWait)
 	}()
@@ -941,6 +970,28 @@ exit 17
 		}
 	})
 
+	// The child budget starts only after the real executable hash and
+	// manifest have passed admission, as in the recovery test above.
+	select {
+	case <-admitted:
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before authenticated admission: %v", err)
+	case <-time.After(time.Minute):
+		t.Fatal("supervisor did not reach authenticated admission")
+	}
+	nextRestartWait := func() restartWaitRequest {
+		select {
+		case request := <-restartWaitRequests:
+			return request
+		case err := <-done:
+			finished = true
+			t.Fatalf("supervisor exited before its next restart wait: %v", err)
+		case <-time.After(10 * time.Second):
+			t.Fatal("supervisor did not request its next restart wait")
+		}
+		return restartWaitRequest{}
+	}
 	first := nextRestartWait()
 	if first.delay != restartBackoff(1) {
 		t.Fatalf("first retry delay=%s", first.delay)
@@ -968,6 +1019,9 @@ exit 17
 	})
 	if failed.SupervisorPID != os.Getpid() {
 		t.Fatalf("failed launch replaced supervisor pid: %+v", failed)
+	}
+	if failed.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("failed launch retained previous kernel authority: %+v", failed.Processes[0])
 	}
 	select {
 	case request := <-restartWaitRequests:

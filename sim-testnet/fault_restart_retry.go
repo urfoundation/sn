@@ -93,7 +93,7 @@ func waitScenarioFaultRestore(ctx context.Context, spec scenarioFaultSpec, resto
 			return nil, err
 		}
 		processes, err := restore()
-		if !(spec.Kind == "miner-control" && minerControlPending(err) || processRestartPending(spec, err)) {
+		if !(spec.Kind == "miner-control" && minerControlPending(err) || processRestartPending(spec, err) || containerRestartPending(spec, err) || faultCompletionPending(spec, "enable", err)) {
 			return processes, err
 		}
 		if err := wait(); err != nil {

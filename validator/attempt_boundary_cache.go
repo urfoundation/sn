@@ -439,8 +439,11 @@ func (self *chainAttemptBoundaryRPC) Snapshot(ctx context.Context) (AttemptBound
 		return AttemptBoundary{}, fmt.Errorf("attempt finalized EVM head: %w", err)
 	}
 	epoch, err := chainViewAtHashContext(ctx, self.chain, block, hash, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
-	if err != nil || epoch == nil || !epoch.IsUint64() {
+	if err != nil {
 		return AttemptBoundary{}, fmt.Errorf("attempt finalized EVM epoch: %w", err)
+	}
+	if epoch == nil || !epoch.IsUint64() {
+		return AttemptBoundary{}, errors.New("attempt finalized EVM epoch is outside uint64")
 	}
 	return AttemptBoundary{SettlementEpoch: epoch.Uint64(), EVMBlock: block, EVMBlockHash: attemptHex32(hash)}, nil
 }

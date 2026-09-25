@@ -1,5 +1,152 @@
 # Sim-testnet finalization report 2
 
+**Fourth independent diagnostic completed 2026-09-25 11:08 UTC.** The
+clean Git-stamped `da7689f8` collector exited 0 after a read-only capture.
+Its [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
+has SHA-256 `affad93c70b533e1a55f6e439dcec89f5243f5957d6ad76dfbd7ed984678d736`:
+38 checks, **18 pass, three fail, one named exception, one finding and 15
+unavailable**, with `final_acceptance=false`. Validator 2's signed source
+capture and native application coverage now pass; its relay publication
+readback remains unavailable because the exact historical request owner is
+absent. Validator 1's compact input journal remains unavailable. Companion
+capture and ordinary signed payout artifacts pass. Terminal assertions,
+the original process-log report and fault timing fail independently. The
+diagnostic evaluated those assertions at its 10:19 UTC read cut, before the
+companion's later hard restore; it has not reclassified that failure. The
+R44 owner has not sealed `result.json`, so result-dependent checks and strict
+acceptance remain unavailable.
+
+**Companion hard restore observed 2026-09-25 after finalized block 8,082,634.**
+The owner fault record now shows `fleet-lifecycle-companion-prune` restored
+at its scheduled hard deadline, with no `RestoreConditionMet` proof. The
+read-only [hard-restore observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`
+and preserves the source file hash and LAN finalized head. This is the named
+R44-LC-1 exception, not a successful lifecycle assertion. The owner remains
+active without `result.json` or signed completion. The fourth independent
+read-only diagnostic continues collecting the remaining terminal evidence;
+other failed and unavailable checks remain separate.
+
+**Third read-only terminal diagnostic, completed 2026-09-25 10:00 UTC:**
+The clean Git-stamped successor authenticated the same signed R44 start,
+checkpoint, all 44 recovery generations, observation prefix and completed
+five-epoch terminal without changing the live owner. Its separate
+[report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/report.json)
+has SHA-256 `38d7b721aaebc291918053635dd6ba9f014dc42c20c7b7654e457984c6185838`
+and 38 checks: **16 pass, four fail, one named exception, one finding and 16
+unavailable**. Both operators' current signed artifacts and both validators'
+path/config checks pass. The [companion evidence bundle](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/final-inputs/bundles/validator-evidence-companion.json)
+is retained with content SHA-256
+`0faed897bd8de3d7dcb90f7fac827d52e3c48447580072af9949ad47b48ea3f4`;
+the companion capture and ordinary signed payout-artifact checks both pass.
+This improves the first diagnostic's reader-limited outcomes, but it does not
+qualify the bypassed lifecycle mutation or erase the companion filter's failed
+restoration timing. The lifecycle payout index remains unavailable.
+
+The four failed groups are the terminal scenario assertions, validator-2
+signed-source capture, the original process-log report and acceptance fault
+timing. Validator-2's capture authenticated native/path/config inputs but
+exhausted its 15-minute budget while reading retained stream data; it reported
+an incomplete HTTP body and deadline errors, so native application and relay
+readback remain unavailable. Validator 1's compact input journal is absent in
+its retained generation, leaving its capture and dependent checks unavailable.
+The owner has not sealed `result.json` or signed completion; strict acceptance,
+result-dependent semantic checks and full finalization remain unavailable.
+These outcomes are distinct from exception R44-LC-1 below. The diagnostic is
+`read_only=true` and `final_acceptance=false`.
+
+**Second read-only diagnostic, 2026-09-25 09:13 UTC:** A composed successor
+replayed the same retained R44 terminal checkpoint without changing the owner.
+Its [separate report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/second-terminal-5c2ee88c/report.json)
+(SHA-256 `5449a651f5ffb841e55e7a08303ea74afde63d3a641c1891ac50db13ca3b3d23`)
+passed the signed start but failed the latest-checkpoint reader on the retained
+`start_time_ticks` field. Its 30 dependent checks are unavailable, so this
+second result adds a diagnostic reader defect and does not supersede the first
+37-check report below. The reader is being repaired and will be rerun against
+the original signed bytes. R44 remains live and has no owner-sealed result.
+
+**Provisional R44 terminal evidence, updated 2026-09-25 08:27 UTC — not a final
+result.** The signed recovery-44 release attempt completed its five 300-block
+epochs at block 8,081,674 and its owner recorded the required terminal
+observation at block 8,081,824. The original owner remains active; no owner
+result or invalidation has been sealed. The
+signed attempt is
+[`release-1.0.recovery.44.evidence.json`](runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json).
+
+The independent [terminal diagnostic progress](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/progress.json)
+has passed the signed start, latest checkpoint, complete 44-generation
+lineage, signed observation prefix and complete-epoch terminal checks. Its
+terminal assertions fail, and the owner result and signed completion are
+unavailable. The separate [terminal supplement](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-supplement/manifest.json)
+is an unsigned external copy, SHA-256
+`7a5f9209d9a4e42cc0d28c05bc90f7866f4459b57f40c54a232b24f27e0ebce4`.
+It retained 1,073 source files, including all 1,000 decodable claim queues,
+the authenticated observation prefix, the full process report and 144,427,524
+accepted process-log bytes. Its two copy findings are the absent original
+`result.json` and `complete.json`; it did not synthesize either file. The
+completed read-only [terminal diagnostic report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/report.json)
+has SHA-256
+`c207225f44bb5962f231345770b9a8aa71c293917c596c7bda26c6efe8e7e384`
+and 37 checks: 14 pass, six fail, one finding, one named exception and 15
+unavailable. The six failed groups are terminal scenario assertions,
+validator-2 signed-source capture, the original process-log report, acceptance
+fault timing, companion evidence capture and signed payout artifacts. The
+validator-1 local-intents check is a finding. Result-dependent checks remain
+unavailable because the original owner has not sealed its result. R44-LC-1
+does not convert any of those outcomes into a pass.
+The terminal assertion group lists 23 failed assertions, including invalid
+fleet binding evidence despite 808/808 bindings, no fresh applied native
+weight decision or vector for validator 1, an eligible/selected/rejected
+count of 0/0/0 where 202/200/2 was required, 423 `uncertain_or_failed`
+claim outcomes, and a duplicate or invalid operator-1 terminal status for
+epoch 620. The lifecycle-tail assertion is only one member of this group.
+These are the diagnostic's reported conditions, pending comparison with the
+owner's eventual sealed result.
+
+**Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
+The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
+uses identifier `R44-COMPANION-LIFECYCLE-FILTER` for this same exception;
+its SHA-256 is
+`b28e5bbef7d9faa4399ceb7e0a794e08e73548b35f4bb84142fd66d9daa7dcde`.
+The approved provisional lifecycle bypass leaves no terminal-effective
+mutation epoch. The companion validator-view filter's early restoration
+condition therefore cannot be proved. Keep that filter and the lifecycle
+assertion failed in strict acceptance; do not infer a mutation from a
+`release-handoff` stage. At owner observation 77, finalized block 8,081,388,
+the old binary incorrectly restored the *target* filter with
+`RestoreConditionMet=true` solely because it counted the bypass stage as
+provider-paid. That flag is preserved as a finding, not lifecycle conformance.
+The separate read-only diagnostic authenticated the signed terminal window;
+its report remains diagnostic until the owner seals a result. The qualified
+successor cleanup can restore the two
+local filters after a complete signed terminal observation while retaining
+`RestoreConditionMet=false`, the failed strict assertions, and
+`final_acceptance=false`; it has not been installed in R44.
+An [independent terminal capture review](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/REVIEW.md)
+documents the exact read-only commands and evidence limits.
+
+This exception does not cover other failures. At the terminal supplement cut,
+all 1,000 miners had `last_discovered=617`; no queue entry exists for accepted
+epochs 618–620. Epoch 616 still has 359 `submitting` entries and epoch 617
+has 47. The retained process report contains 15 blocking acceptance-scoped
+rows: 10 `exit-gap-timeout` rows (14 events), two validator
+steering-attempt rows (24 events), two steering-continuity rows (three
+events), and one TLS handshake timeout. The later final diagnostic process
+scan records 26 steering-attempt events across the same two rows; this is a
+later read cut, not a rewrite of the supplement. The earlier read-only
+[interim inventory](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/inventory.json)
+at 07:17:59 UTC records SHA-256
+`017fb1603eea127593b2a6e1f0f6115d86d1a9554640d9fd2a452cb219aafb9c`
+and hashes the signed start, all 1,000 claim queues, observations, faults,
+process logs, and watcher progress. Its
+[read-only assessment](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/ASSESSMENT.md)
+distinguishes the known Connect/transport repairs from historical gaps they
+cannot prove repaired, and identifies expired bindings, absent positive native
+weights, below-threshold rate readiness, and missing current-window claims.
+Preserve both raw cuts and compare them with the eventual owner result. No skipped check is
+reported as passed; the full campaign, production interval, accounting replay
+and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
+
 **Latest update, 2026-09-24 21:17 UTC:** Two R43 startup retries also stopped
 before a signed interval. The first failed executable Git attestation because
 its binary was built before the fix was committed. The second used committed

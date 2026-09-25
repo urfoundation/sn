@@ -133,23 +133,21 @@ in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and
 ACK/join controls; language migration must not weaken lifecycle guarantees.
 
-Release qualification assigns all test and gate execution to Terra
-(`gpt-5.6-terra`) with reasoning effort `medium`, including preflight tests,
+Release qualification assigns all test and gate execution to Sol
+(`gpt-6-sol`) with reasoning effort `medium`, including preflight tests,
 normal and race suites, confirmation runs, and reruns. If a test or gate fails
 or shows suspected flakiness, retain its exact output and assign root-cause
 diagnosis, adjacent-path review, implementation, and the deterministic
 regression to Astra (`gpt-6-astra`) with reasoning effort `max`. Test execution
-stays with Terra while Astra owns debugging and fixes; preserve these roles
-across agent handoffs. The user's subsequent update changes future
-test execution to Terra medium and debugging/fixes to Astra max; retain completed
-evidence and let active commands finish without restarting them for a model
-change.
+stays with Sol while Astra owns debugging and fixes; preserve these roles
+across agent handoffs. Retain completed evidence and let active commands finish
+without restarting them for a model change.
 Follow [Connect's bug-fix and test policy](../../connect/CODESTYLE.md):
 deterministically reproduce the pre-fix failure, verify the corrected behavior
 at the failing layer, and inspect surrounding code, sibling call sites and
 similar patterns. Record the adjacent paths checked. Use synthetic fixtures
 and top-level tests; ordinary case variations use plain table loops.
-Terra then runs the affected test matrix. Collect independent preparation and
+Sol then runs the affected test matrix. Collect independent preparation and
 gate failures in one batch, fix them in parallel, and continue unaffected live
 jobs. Mark work blocked by a failed prerequisite as pending and resume it when
 that prerequisite is repaired. Each admitted job keeps immutable source and
@@ -736,17 +734,16 @@ isolated suites that pass. Independent source fixes and causal controls may
 retain their own exact preimages, but do not create another source checkout
 for a corrected selector, output filename, or report.
 
-During implementation, keep two Astra max implementation/fix agents and one
-Terra medium execution agent. Once independent integration suites are ready,
-use two Terra medium execution agents and one Astra max production/fix agent;
-the primary agent takes the second review role. The user explicitly requested
-this integration dispatch on 2026-09-09. Split validator/simulator qualification
+During the current finalization, assign implementation and root-cause fixes to
+Astra max and independent test/gate execution to Sol medium. Scale parallel
+agents to independent work and available capacity; the primary agent owns
+integration review. Split validator/simulator qualification
 from fixture/database/Solidity qualification. An execution agent's command
 preparation queue is not a dependency for another lane. Routine test-fixture
 or launcher repairs must not preempt the production lane. The primary agent
 owns integration, source boundaries and review while execution continues.
 
-The Terra agent drives multiple independent isolated build/test/gate jobs
+The Sol agent drives multiple independent isolated build/test/gate jobs
 concurrently; one agent is not a one-process or one-core execution limit.
 Transfer every live handle, command, source/binary fence, capture and remaining
 obligation when changing owners. Join or explicitly transfer already-running

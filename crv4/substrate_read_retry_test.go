@@ -23,15 +23,24 @@ type substrateReconnectFixture struct {
 	client      *contextSubstrateClient
 	mu          sync.Mutex
 	requests    []chainContextRPCRequest
+	barriers    []chainContextRPCRequest
 	connections []*websocket.Conn
 	release     chan struct{}
+	closeReady  chan substrateReconnectCloseBarrier
 	joined      sync.WaitGroup
+}
+
+const substrateReconnectBarrierMethod = "fixture_send_completed"
+
+type substrateReconnectCloseBarrier struct {
+	connection *websocket.Conn
+	closed     chan struct{}
 }
 
 // Every local websocket, including deliberately reset peers, has one joined owner.
 func newSubstrateReconnectFixture(t *testing.T, action func(int, int, chainContextRPCRequest) string) *substrateReconnectFixture {
 	t.Helper()
-	f := &substrateReconnectFixture{release: make(chan struct{})}
+	f := &substrateReconnectFixture{release: make(chan struct{}), closeReady: make(chan substrateReconnectCloseBarrier)}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 		if err != nil {
@@ -53,11 +62,10 @@ func newSubstrateReconnectFixture(t *testing.T, action func(int, int, chainConte
 			f.requests = append(f.requests, request)
 			count := len(f.requests)
 			f.mu.Unlock()
-			switch action(number, count, request) {
-			case "drop":
-				if tcp, ok := conn.UnderlyingConn().(*net.TCPConn); ok {
-					_ = tcp.SetLinger(0)
-				}
+			decision := action(number, count, request)
+			switch decision {
+			case "normal_close", "drop":
+				f.closeAfterSend(t, conn, decision)
 				return
 			case "hold":
 				continue
@@ -90,7 +98,73 @@ func newSubstrateReconnectFixture(t *testing.T, action func(int, int, chainConte
 		t.Fatal(err)
 	}
 	f.client = &contextSubstrateClient{Client: client, url: url}
+	f.joined.Add(1)
+	go func() {
+		defer f.joined.Done()
+		for {
+			select {
+			case barrier := <-f.closeReady:
+				ctx, cancel := context.WithCancel(t.Context())
+				stopped := make(chan struct{})
+				go func() {
+					defer close(stopped)
+					select {
+					case <-barrier.closed:
+					case <-f.release:
+					}
+					cancel()
+				}()
+				var ignored json.RawMessage
+				// Use the same client's serialized send path. Admission of this
+				// control request proves reqSent released the faulted request.
+				_ = client.CallContext(ctx, &ignored, substrateReconnectBarrierMethod)
+				cancel()
+				_ = barrier.connection.Close()
+				<-stopped
+			case <-f.release:
+				return
+			}
+		}
+	}()
 	return f
+}
+
+// GSRPC exempts its current send from disconnect notification until reqSent
+// is processed. An immediate synthetic close can therefore strand that call
+// until its real deadline, especially when retry pacing advances virtually.
+// Receiving the next request proves that the prior send is no longer exempt.
+func (self *substrateReconnectFixture) closeAfterSend(t *testing.T, connection *websocket.Conn, action string) {
+	t.Helper()
+	barrier := substrateReconnectCloseBarrier{connection: connection, closed: make(chan struct{})}
+	defer close(barrier.closed)
+	defer connection.Close()
+	select {
+	case self.closeReady <- barrier:
+	case <-self.release:
+		return
+	}
+	var request chainContextRPCRequest
+	if err := connection.ReadJSON(&request); err != nil {
+		return
+	}
+	if request.Method != substrateReconnectBarrierMethod || len(request.Params) != 0 {
+		t.Errorf("disconnect barrier changed request: %+v", request)
+		return
+	}
+	self.mu.Lock()
+	self.barriers = append(self.barriers, request)
+	self.mu.Unlock()
+	if action == "normal_close" {
+		_ = connection.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+	} else if tcp, ok := connection.UnderlyingConn().(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+}
+
+func (self *substrateReconnectFixture) completedSendBarriers() int {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	return len(self.barriers)
 }
 
 func (f *substrateReconnectFixture) snapshot() ([]chainContextRPCRequest, int) {
@@ -197,11 +271,20 @@ func TestSubstrateReadReconnectKeepsRetryAndWriteBounds(t *testing.T) {
 		{"submit", "author_submitExtrinsic", "drop", 1, false},
 		{"watch_call", "author_submitAndWatchExtrinsic", "drop", 1, false},
 		{"watch_subscription", "author_submitAndWatchExtrinsic", "drop", 1, true},
+		{"normal_close_submit", "author_submitExtrinsic", "normal_close", 1, false},
+		{"normal_close_watch", "author_submitAndWatchExtrinsic", "normal_close", 1, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newSubstrateReconnectFixture(t, func(_ int, _ int, _ chainContextRPCRequest) string { return test.action })
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
+			var budget *substrateReadTestBudget
+			if test.name == "exhaustion" {
+				var hooks substrateRpcReadRetryHooks
+				budget, hooks = newSubstrateReadTestBudget(t, 75*time.Second)
+				f.client.readRetry = hooks
+			}
+			// Exhaustion is governed by its virtual operation clock. An
+			// unrelated real parent deadline must not race that assertion.
+			ctx := t.Context()
 			var result string
 			var err error
 			if test.subscribe {
@@ -212,9 +295,15 @@ func TestSubstrateReadReconnectKeepsRetryAndWriteBounds(t *testing.T) {
 			if err == nil {
 				t.Fatal("failed request was accepted")
 			}
+			if budget != nil && (!errors.Is(err, context.DeadlineExceeded) || budget.elapsed != 300*time.Second) {
+				t.Fatalf("disconnect retry abandoned its full time budget: elapsed=%s err=%v", budget.elapsed, err)
+			}
 			requests, _ := f.snapshot()
 			if len(requests) != test.attempts {
 				t.Fatalf("attempts=%d want=%d err=%v", len(requests), test.attempts, err)
+			}
+			if test.action != "error" && f.completedSendBarriers() != test.attempts {
+				t.Fatalf("disconnect preceded send completion: barriers=%d attempts=%d", f.completedSendBarriers(), test.attempts)
 			}
 		})
 	}

@@ -79,7 +79,14 @@ func processStates(observation *ScenarioObservation) map[string]ProcessState {
 	return states
 }
 
+// Legacy callers without a signed acceptance window retain lifetime scope.
 func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, current *ScenarioObservation, assertions []AssertionRecord, faults []ScenarioFaultRecord, adversaries *AdversaryCampaignEvidence, history ...*ScenarioObservation) *ScenarioAnomalyLedger {
+	return buildScenarioAnomalyLedgerForWindow(runID, generatedAt, start, current, assertions, faults, adversaries, nil, history...)
+}
+
+// A signed window scopes claim observations only. Actual in-window uncertainty
+// remains open until independently authenticated reconciliation is available.
+func buildScenarioAnomalyLedgerForWindow(runID string, generatedAt time.Time, start, current *ScenarioObservation, assertions []AssertionRecord, faults []ScenarioFaultRecord, adversaries *AdversaryCampaignEvidence, window *ScenarioAcceptanceWindow, history ...*ScenarioObservation) *ScenarioAnomalyLedger {
 	when := generatedAt.UTC().Format(time.RFC3339Nano)
 	observations := make([]*ScenarioObservation, 0, len(history)+2)
 	for _, observation := range history {
@@ -210,8 +217,8 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 			if !expected {
 				collector.add("claim-error", "critical", source, claim.Error, observation.ObservedAt)
 			}
-			if (claim.Uncertain != 0 || claim.Failed != 0) && !expected {
-				collector.add("claim-terminal-state", "critical", source, fmt.Sprintf("uncertain=%d failed=%d", claim.Uncertain, claim.Failed), observation.ObservedAt)
+			if !expected {
+				collector.addClaimWindowIncidents(claim, window, observation)
 			}
 		}
 		collector.add("native-custody-error", "critical", "native-custody", observation.NativeCustodyError, observation.ObservedAt)
@@ -292,7 +299,7 @@ func attachScenarioAnomalyGate(result *ScenarioResult, generatedAt time.Time, st
 		}
 	}
 	result.Assertions = assertions
-	result.Anomalies = buildScenarioAnomalyLedger(result.RunID, generatedAt, start, current, result.Assertions, result.Faults, result.Adversaries, history...)
+	result.Anomalies = buildScenarioAnomalyLedgerForWindow(result.RunID, generatedAt, start, current, result.Assertions, result.Faults, result.Adversaries, result.AcceptanceWindow, history...)
 	annotateInterruptedScenarioAnomalies(result)
 	observationHash := ""
 	if current != nil {

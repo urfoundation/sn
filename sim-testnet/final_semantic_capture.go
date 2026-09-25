@@ -137,6 +137,9 @@ func captureFinalSemanticClosedInputsWithPriorLimitsV2(ctx context.Context, stat
 	// semantic builder never has to trust a mutable state-directory read.
 	foundationNames := finalSemanticLaunchFoundationNames()
 	foundation, err := finalCollectedNamedEntriesWithReader(stateRoot, foundationNames, func(root, name string) (FinalCollectedFileBundleEntry, error) {
+		if name == "journal.jsonl" {
+			return finalCollectedJournalEntryContext(ctx, root)
+		}
 		if name == "plan.json" {
 			return finalCollectedFileEntryWithLimit(root, name, maximumSetupPlanFileBytes)
 		}
@@ -481,6 +484,9 @@ func verifyFinalCollectedFileBundle(bundle *FinalCollectedFileBundle) error {
 		}
 		if entry.SizeBytes > finalPlanBundleSourceBytes(bundle.Name, entry.Path) {
 			return fmt.Errorf("collected file %s exceeds its typed source capacity", entry.Path)
+		}
+		if err := validateFinalJournalBundleEntry(bundle.Name, entry); err != nil {
+			return err
 		}
 	}
 	encodedBytes, err := finalCollectedBundleOverhead(bundle.Name)

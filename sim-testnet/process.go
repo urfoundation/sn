@@ -52,15 +52,19 @@ type ProcessSpec struct {
 	H3ProbeCAFile                        string
 	RestartLimit                         int
 }
+
+// Optional original start ticks preserve legacy readback; only a state emitted
+// by the child owner with that proof can authorize a new process fault signal.
 type ProcessState struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Identity  string `json:"identity"`
-	PID       int    `json:"pid"`
-	StartedAt string `json:"started_at"`
-	Restarts  int    `json:"restarts"`
-	Healthy   bool   `json:"healthy"`
-	ExitError string `json:"exit_error,omitempty"`
+	ID             string `json:"id"`
+	Role           string `json:"role"`
+	Identity       string `json:"identity"`
+	PID            int    `json:"pid"`
+	StartTimeTicks uint64 `json:"start_time_ticks,omitempty"`
+	StartedAt      string `json:"started_at"`
+	Restarts       int    `json:"restarts"`
+	Healthy        bool   `json:"healthy"`
+	ExitError      string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
 	Schema                                    string                 `json:"schema"`
@@ -1425,12 +1429,23 @@ func ensureManagedVolume(ctx context.Context, docker dockerCLI, name, specHash s
 // waitContainerReady polls an in-container dependency probe until its bounded
 // startup deadline or caller cancellation.
 func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedContainerSpec) error {
+	return waitContainerReadyWithProbe(ctx, spec, func(ctx context.Context) ([]byte, error) {
+		args := append([]string{"exec", spec.Name}, spec.ReadyProbe...)
+		return docker.commandContext(ctx, args...).CombinedOutput()
+	})
+}
+
+// Both initial startup and fault recovery use the same semantic readiness
+// probe. The injected command boundary permits deterministic timeout tests.
+func waitContainerReadyWithProbe(ctx context.Context, spec managedContainerSpec, probe func(context.Context) ([]byte, error)) error {
 	deadline := time.Now().Add(spec.ReadyTimeout)
 	var lastOutput string
 	var lastErr error
 	for time.Now().Before(deadline) {
-		args := append([]string{"exec", spec.Name}, spec.ReadyProbe...)
-		output, err := docker.commandContext(ctx, args...).CombinedOutput()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		output, err := probe(ctx)
 		lastOutput = strings.TrimSpace(string(output))
 		lastErr = err
 		if err == nil && (spec.ReadyExpected == "" || lastOutput == spec.ReadyExpected) {
@@ -3243,7 +3258,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	if err != nil {
 		return err
 	}
-	hash, err := fileSHA256(executable)
+	hash, err := fileSHA256Context(ctx, executable)
 	if err != nil {
 		return err
 	}
@@ -3311,6 +3326,8 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	start := func(r *running) error {
 		r.cmd = nil
 		r.identity = supervisedProcessIdentity{}
+		r.state.PID = 0
+		r.state.StartTimeTicks = 0
 		r.startedAt = time.Now()
 		cmd, exited, err := startSpecWithExit(childCtx, r.spec)
 		if err != nil {
@@ -3326,6 +3343,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 		r.identity = identity
 		r.generation++
 		r.state.PID = cmd.Process.Pid
+		r.state.StartTimeTicks = identity.StartTimeTicks
 		r.state.StartedAt = time.Now().UTC().Format(time.RFC3339)
 		r.state.ExitError = ""
 		generation := r.generation
@@ -3384,6 +3402,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	faultRestartRecovery := &supervisorFaultRestartRecovery{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -3395,6 +3414,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 			stopSupervisorCommands(commands)
 			for _, current := range runs {
 				current.state.PID = 0
+				current.state.StartTimeTicks = 0
 				current.state.Healthy = false
 				current.state.ExitError = "supervisor stopped"
 			}
@@ -3408,6 +3428,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 			r.cmd = nil
 			r.identity = supervisedProcessIdentity{}
 			r.state.PID = 0
+			r.state.StartTimeTicks = 0
 			r.state.Healthy = false
 			if notice.err != nil {
 				r.state.ExitError = notice.err.Error()
@@ -3447,6 +3468,20 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 				return err
 			}
 		case <-ticker.C:
+			commands := make([]supervisedCommand, 0, len(runs))
+			for _, spec := range sf.Specs {
+				current := runs[spec.ID]
+				commands = append(commands, supervisedCommand{spec: current.spec, cmd: current.cmd, identity: current.identity})
+			}
+			escalations, faultErr := faultRestartRecovery.reconcile(ctx, time.Now(), stateDir, commands, func(command supervisedCommand, signal syscall.Signal) bool {
+				return signalSupervisedCommandWithObserver(command, signal, observeSupervisedProcessIdentity, syscall.Kill)
+			})
+			if faultErr != nil && ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "sim-testnet: retained process restart observation: %v; supervisor continues\n", faultErr)
+			}
+			for _, escalation := range escalations {
+				fmt.Fprintf(os.Stderr, "sim-testnet: retained process restart %s escalated original %s pid=%d start=%d after %s graceful shutdown; replacement readiness remains pending\n", escalation.faultId, escalation.processId, escalation.identity.PID, escalation.identity.StartTimeTicks, supervisorFaultRestartGrace)
+			}
 			for _, r := range runs {
 				r.state.Healthy = r.state.PID > 1 && healthOK(r.spec.HealthURL)
 			}
@@ -3648,14 +3683,6 @@ func Tail(ctx context.Context, stateDir string, w io.Writer) error {
 			}
 		}
 	}
-}
-func fileSHA256(path string) (string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	h := sha256.Sum256(b)
-	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
 
 var _ = strconv.Itoa

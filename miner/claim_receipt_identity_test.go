@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -31,6 +30,8 @@ func claimReceiptIdentityTestRPC(t *testing.T, receipt *types.Receipt, canonical
 		}
 		var result any
 		switch call.Method {
+		case "eth_chainId":
+			result = "0x3b1"
 		case "eth_getTransactionReceipt":
 			result = receipt
 		case "chain_getFinalizedHead":
@@ -79,20 +80,21 @@ func claimReceiptIdentityFixture(t *testing.T) (*types.Receipt, map[string]any) 
 func TestFinalizedClaimReceiptPreservesSyntheticRPCIdentity(t *testing.T) {
 	receipt, block := claimReceiptIdentityFixture(t)
 	endpoint := claimReceiptIdentityTestRPC(t, receipt, block)
-	got, err := finalizedClaimReceipt(context.Background(), &ClaimDaemonConfig{RPC: []string{endpoint}}, receipt.TxHash.Hex())
+	got, err := finalizedClaimReceipt(context.Background(), &ClaimDaemonConfig{RPC: []string{endpoint}}, receipt.TxHash.Hex(), big.NewInt(945))
 	if err != nil || got == nil || got.BlockHash != receipt.BlockHash || got.BlockNumber.Cmp(receipt.BlockNumber) != 0 {
 		t.Fatalf("synthetic finalized receipt = %+v, %v", got, err)
 	}
 }
 
-// A canonical failed transaction is retryable even when Header.Hash differs.
-func TestUncertainClaimRetryablePreservesSyntheticRPCIdentity(t *testing.T) {
+// Receipt reads preserve canonical failure evidence without authorizing a
+// new signature; signed-outcome reconciliation owns that disposition.
+func TestFinalizedClaimReceiptRetainsFailedSyntheticReceipt(t *testing.T) {
 	receipt, block := claimReceiptIdentityFixture(t)
 	receipt.Status = types.ReceiptStatusFailed
 	endpoint := claimReceiptIdentityTestRPC(t, receipt, block)
-	got, err := uncertainClaimRetryable(context.Background(), &ClaimDaemonConfig{RPC: []string{endpoint}}, receipt.TxHash.Hex())
-	if err != nil || !got {
-		t.Fatalf("synthetic failed claim retryable = %t, %v", got, err)
+	got, err := finalizedClaimReceipt(context.Background(), &ClaimDaemonConfig{RPC: []string{endpoint}}, receipt.TxHash.Hex(), big.NewInt(945))
+	if err != nil || got == nil || got.Status != types.ReceiptStatusFailed {
+		t.Fatalf("failed receipt = %+v, %v", got, err)
 	}
 }
 
@@ -133,22 +135,34 @@ func TestClaimReceiptIdentityRejectsAdjacentRPCFailures(t *testing.T) {
 		canonical := test.mutate(receipt, block)
 		endpoint := claimReceiptIdentityTestRPC(t, receipt, canonical)
 		cfg := &ClaimDaemonConfig{RPC: []string{endpoint}}
-		if retryable, err := uncertainClaimRetryable(context.Background(), cfg, hash); retryable || err == nil {
-			t.Errorf("%s: retryable=%t error=%v", test.name, retryable, err)
-		}
-		if recovered, err := finalizedClaimReceipt(context.Background(), cfg, hash); recovered != nil || err == nil {
+		if recovered, err := finalizedClaimReceipt(context.Background(), cfg, hash, big.NewInt(945)); recovered != nil || err == nil {
 			t.Errorf("%s: recovered=%+v error=%v", test.name, recovered, err)
 		}
 	}
 }
 
-// Successful finality cannot authorize replay merely because the API's
-// leafClaimed observation has not converged yet.
-func TestUncertainClaimRetryableRejectsSuccessfulSyntheticReceipt(t *testing.T) {
-	receipt, block := claimReceiptIdentityFixture(t)
-	endpoint := claimReceiptIdentityTestRPC(t, receipt, block)
-	retryable, err := uncertainClaimRetryable(context.Background(), &ClaimDaemonConfig{RPC: []string{endpoint}}, receipt.TxHash.Hex())
-	if retryable || err == nil || !strings.Contains(err.Error(), "finalized successfully") {
-		t.Fatalf("successful synthetic receipt retryable=%t error=%v", retryable, err)
+// A null or wrong chain response cannot qualify otherwise matching receipts.
+func TestFinalizedClaimReceiptRejectsMalformedChainIdentity(t *testing.T) {
+	for _, chainId := range []any{nil, "0x3b2", "not-a-chain"} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			var call struct {
+				Id     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&call); err != nil {
+				t.Error(err)
+				return
+			}
+			if call.Method != "eth_chainId" {
+				t.Errorf("unverified chain read receipt: %s", call.Method)
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.Id, "result": chainId})
+		}))
+		cfg := &ClaimDaemonConfig{RPC: []string{server.URL}}
+		receipt, err := finalizedClaimReceipt(context.Background(), cfg, common.HexToHash("0x12").Hex(), big.NewInt(945))
+		server.Close()
+		if receipt != nil || err == nil {
+			t.Fatalf("malformed chain %v admitted receipt: %+v %v", chainId, receipt, err)
+		}
 	}
 }

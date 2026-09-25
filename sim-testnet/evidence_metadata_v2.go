@@ -68,7 +68,7 @@ func campaignMetadataLimitsForConfigV2(cfg *ResolvedConfig, objects uint64) (*ca
 		result.capacity = &capacity
 	}
 	hash := "sha256:" + strings.Repeat("f", 64)
-	sourcePath := "final-inputs/validators/v2/" + strings.Repeat("f", 64) + ".bin"
+	sourcePath := finalJournalCapturePrefixV2 + strings.Repeat("f", 64) + ".jsonl"
 	maximum := ^uint64(0)
 	origin := ""
 	for _, candidate := range cfg.OperatorAPIOrigins {

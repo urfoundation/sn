@@ -106,7 +106,7 @@ func TestReleaseMeasurementV2CadenceReplaysTwoSettlementsForOneNativeSuccessor(t
 		t.Fatal("fixture lost its independent 1-native/2-settlement cadence")
 	}
 	first := previous.operators[9].seal
-	cfg := ReleaseConfig{ChainID: 945, Policy: previous.artifact.Policy, EvidenceV2: ReleaseEvidenceV2Config{Bounds: ReleaseEvidenceV2Bounds{Cut: first.bounds, Replay: first.replay, MaxParticipants: 2, MaxTransitionBytes: 256 * 1024, MaxClosureBytes: 1024 * 1024, MaxProviders: 64, MaxEgressHashes: 64, MaxFleetPrefixes: 64}}}
+	cfg := ReleaseConfig{ChainID: 945, Policy: previous.artifact.Policy, PolicyHash: previous.artifact.PolicyHash, EvidenceV2: ReleaseEvidenceV2Config{Bounds: ReleaseEvidenceV2Bounds{Cut: first.bounds, Replay: first.replay, MaxParticipants: 2, MaxTransitionBytes: 256 * 1024, MaxClosureBytes: 1024 * 1024, MaxProviders: 64, MaxEgressHashes: 64, MaxFleetPrefixes: 64}}}
 	positive := false
 	for _, input := range previous.artifact.Inputs {
 		operator := previous.operators[input.NoID]

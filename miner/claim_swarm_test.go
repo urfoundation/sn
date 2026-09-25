@@ -92,3 +92,39 @@ func TestClaimSwarmStatusFailsClosedOnMissingMember(t *testing.T) {
 		t.Fatalf("complete claim swarm status = %d, want 200", response.Code)
 	}
 }
+
+// Config files may be distinct while their queues alias the same directory,
+// including a not-yet-created child under a symlinked parent.
+func TestClaimSwarmRejectsDuplicatePhysicalQueueOwners(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "synthetic-relay.key")
+	if err := os.WriteFile(keyFile, []byte(strings.Repeat("01", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := writeClaimSwarmMemberConfig(t, dir, "first", keyFile, "https://rpc.example")
+	second := writeClaimSwarmMemberConfig(t, dir, "second", keyFile, "https://rpc.example")
+	firstCfg, err := LoadClaimDaemonConfig(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondCfg, err := LoadClaimDaemonConfig(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(dir, alias); err != nil {
+		t.Fatal(err)
+	}
+	secondCfg.StateDir = filepath.Join(alias, filepath.Base(firstCfg.StateDir))
+	encoded, err := yaml.Marshal(secondCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := &ClaimSwarmConfig{Members: []ClaimSwarmMember{{ID: "first", ConfigPath: first}, {ID: "second", ConfigPath: second}}}
+	if _, _, err := loadClaimSwarmMembers(config); err == nil || !strings.Contains(err.Error(), "share one queue state directory") {
+		t.Fatalf("aliased queue admitted: %v", err)
+	}
+}

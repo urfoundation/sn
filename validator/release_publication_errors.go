@@ -28,3 +28,13 @@ func (e *attemptStreamHTTPIncompleteError) Error() string {
 	return "attempt stream HTTP body closed before complete authenticated EOF"
 }
 func (e *attemptStreamHTTPIncompleteError) Unwrap() error { return e.cause }
+
+// A real Http body supplies these causes; local decoder eof and diagnostic
+// text never acquire transport provenance through the retry classifier.
+type attemptStreamHttpReadError struct{ cause error }
+
+// Keep the original read diagnostic while carrying its physical source.
+func (self *attemptStreamHttpReadError) Error() string { return self.cause.Error() }
+
+// The complete tree still rejects independent integrity and close failures.
+func (self *attemptStreamHttpReadError) Unwrap() error { return self.cause }

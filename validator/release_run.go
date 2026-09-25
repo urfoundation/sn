@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/gorilla/websocket"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 
@@ -142,16 +143,30 @@ func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText
 		return actualTransient || siblingCancellation, actualTransient
 	}
 	switch cause := err.(type) {
+	case *websocket.CloseError:
+		switch cause.Code {
+		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure,
+			websocket.CloseInternalServerErr, websocket.CloseServiceRestart, websocket.CloseTryAgainLater:
+			return true, true
+		default:
+			return false, false
+		}
 	case *url.Error:
 		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
 	case *net.OpError:
 		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
+	case *attemptStreamHttpReadError:
+		return classifyReleaseSnapshotRetryMode(cause.cause, siblingCancellation, legacyText, true)
 	}
 	if _, observationStatus := err.(*clientKeyObservationHttpStatusError); observationStatus {
 		retryable := retryableClientKeyObservationHttpError(err)
 		return retryable, retryable
 	}
 	if status, ok := err.(*attemptStreamHttpStatusError); ok {
+		retryable := status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
+		return retryable, retryable
+	}
+	if status, ok := err.(*releaseHttpGetStatusError); ok {
 		retryable := status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
 		return retryable, retryable
 	}
@@ -435,8 +450,11 @@ func releasePriorSettlementBoundary(ctx context.Context, chain *ChainClient, sna
 		return AttemptBoundary{}, errors.New("cannot resolve the prior settlement boundary")
 	}
 	startBlock, err := chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
-	if err != nil || startBlock == 0 {
+	if err != nil {
 		return AttemptBoundary{}, fmt.Errorf("current settlement start block: %w", err)
+	}
+	if startBlock == 0 {
+		return AttemptBoundary{}, errors.New("current settlement start block is zero")
 	}
 	block := startBlock - 1
 	hash, err := chain.BlockHashContext(ctx, block)
@@ -444,7 +462,10 @@ func releasePriorSettlementBoundary(ctx context.Context, chain *ChainClient, sna
 		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal block: %w", err)
 	}
 	epoch, err := chainViewAtHashContext(ctx, chain, block, hash, chain.coordinator.PackCurrentEpoch(), chain.coordinator.UnpackCurrentEpoch)
-	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64()+1 != snapshot.Epoch.Uint64() {
+	if err != nil {
+		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal epoch: %w", err)
+	}
+	if epoch == nil || !epoch.IsUint64() || epoch.Uint64() != snapshot.Epoch.Uint64()-1 {
 		return AttemptBoundary{}, errors.New("prior settlement terminal block has the wrong epoch")
 	}
 	return AttemptBoundary{SettlementEpoch: epoch.Uint64(), EVMBlock: block, EVMBlockHash: attemptHex32(hash)}, nil

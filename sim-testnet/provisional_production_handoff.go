@@ -219,8 +219,11 @@ func readProvisionalProductionSources(ctx context.Context, cfg *ResolvedConfig, 
 		return nil, nil, nil, errors.New("provisional production start differs from signed terminal source")
 	}
 	if replay {
-		_, _, baseline, terminal, _, err := source.loadAuthenticatedRecoveryRuntimeForensics(runDir)
+		history, _, baseline, terminal, _, err := source.loadAuthenticatedRecoveryRuntimeForensics(runDir)
 		if err != nil {
+			return nil, nil, nil, err
+		}
+		if err := validateProvisionalLifecycleCleanupHistory(cfg, &result, history); err != nil {
 			return nil, nil, nil, err
 		}
 		// A terminal result is local until this owner signs its handoff. Its

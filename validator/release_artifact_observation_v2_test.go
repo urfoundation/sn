@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urfoundation/sn/crv4"
 )
@@ -52,8 +53,10 @@ func TestArtifactHttpObservationRetainsNegativeAndReplaysWithoutNetwork(t *testi
 	}))
 	t.Cleanup(server.Close)
 	reader := artifactHttpCaptureTest(t, server.URL)
+	var elapsed time.Duration
+	reader.reader.retryHooks = releaseHttpGetTestDeadlineHooks(t, &elapsed, 5*time.Minute)
 	artifact, observedErr, hash, err := reader.capture(t.Context(), 1, 9)
-	if err != nil || artifact != nil || !errors.Is(observedErr, ErrArtifactUnavailable) || hash == "" || requests.Load() != 1 {
+	if err != nil || artifact != nil || !errors.Is(observedErr, ErrArtifactUnavailable) || hash == "" || requests.Load() != 1 || elapsed != 5*time.Minute {
 		t.Fatalf("actual negative capture artifact=%v observation=%v hash=%s fatal=%v calls=%d", artifact, observedErr, hash, err, requests.Load())
 	}
 	server.Close()

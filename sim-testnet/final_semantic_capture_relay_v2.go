@@ -95,7 +95,7 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 	if ctx == nil || cfg == nil || retain == nil || len(publications) == 0 {
 		return errors.New("compact relay capture source census is absent")
 	}
-	plan, err := loadPersistedPlan(cfg, stateRoot)
+	plan, err := loadFinalCapturePlanV2(cfg, stateRoot)
 	if err != nil || plan.ValidatorEvidence == nil {
 		return errors.Join(errors.New("compact relay capture approved companion is missing"), err)
 	}
@@ -103,7 +103,7 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 	if err != nil {
 		return err
 	}
-	journal, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateRoot, "journal.jsonl"), maximumCampaignEvidenceRawFileBytes)
+	journal, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return err
 	}
@@ -219,11 +219,11 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 // finalized companion views and logs. The approved journal selects every fixed
 // action; missing receipts never become placeholder observations.
 func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, stateRoot, runRoot string, terminal *ScenarioObservation) ([]FinalArtifactLocator, error) {
-	plan, err := loadPersistedPlan(cfg, stateRoot)
+	plan, err := loadFinalCapturePlanV2(cfg, stateRoot)
 	if err != nil || plan.ValidatorEvidence == nil || terminal == nil || terminal.Status == nil || terminal.Status.Contracts == nil {
 		return nil, errors.Join(errors.New("compact companion capture authority is incomplete"), err)
 	}
-	journal, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateRoot, "journal.jsonl"), maximumCampaignEvidenceRawFileBytes)
+	journal, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +237,10 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			names = append(names, runtimeEvidenceActivationActionId(validatorId, noId))
 		}
 	}
+	selected, err := finalCompanionActionJournalV2(cfg, stateRoot, plan, entries, names)
+	if err != nil {
+		return nil, err
+	}
 	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
@@ -244,7 +248,11 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	defer client.Close()
 	var files []FinalCollectedFileBundleEntry
 	add := func(name string, raw []byte) error {
-		if len(raw) == 0 || len(raw) > finalCollectedBundleMaximumRawBytes {
+		maximum := uint64(finalCollectedBundleMaximumRawBytes)
+		if name == "journal.jsonl" {
+			maximum = maximumFinalJournalBytes
+		}
+		if len(raw) == 0 || uint64(len(raw)) > maximum {
 			return errors.New("compact companion source exceeds the unchanged bundle bound")
 		}
 		files = append(files, FinalCollectedFileBundleEntry{Path: name, ContentHash: bytesSHA256(raw), SizeBytes: uint64(len(raw)), Data: raw})
@@ -255,33 +263,17 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	}
 	fromBlock := uint64(0)
 	for _, name := range names {
-		action, err := exactPlanActionByID(plan, name)
-		if err != nil {
-			return nil, err
-		}
-		var selected *JournalEntry
-		for index := range entries {
-			entry := &entries[index]
-			if entry.PlanHash == plan.PlanHash && entry.ActionID == name && entry.Stage == StageFinalized {
-				if !actionAcceptsIntent(action, entry.IntentHash) || entry.BlockNumber == 0 || selected != nil && (selected.TransactionHash != entry.TransactionHash || selected.BlockHash != entry.BlockHash) {
-					return nil, errors.New("compact companion fixed action has conflicting finality")
-				}
-				selected = entry
-			}
-		}
-		if selected == nil {
-			return nil, fmt.Errorf("compact companion action %s lacks actual finalized journal evidence", name)
-		}
-		transaction, pending, err := client.TransactionByHash(ctx, common.HexToHash(selected.TransactionHash))
-		if err := captureRpcObservationError(err, transaction != nil && !pending && strings.EqualFold(transaction.Hash().Hex(), selected.TransactionHash), errors.New("compact companion signed transaction is absent")); err != nil {
+		finalized := selected[name]
+		transaction, pending, err := client.TransactionByHash(ctx, common.HexToHash(finalized.TransactionHash))
+		if err := captureRpcObservationError(err, transaction != nil && !pending && strings.EqualFold(transaction.Hash().Hex(), finalized.TransactionHash), errors.New("compact companion signed transaction is absent")); err != nil {
 			return nil, err
 		}
 		receipt, err := client.TransactionReceipt(ctx, transaction.Hash())
-		if err := captureRpcObservationError(err, receipt != nil && receipt.BlockNumber != nil && receipt.BlockNumber.IsUint64() && receipt.BlockNumber.Uint64() == selected.BlockNumber && strings.EqualFold(receipt.BlockHash.Hex(), selected.BlockHash) && receipt.TxHash == transaction.Hash() && receipt.Status == types.ReceiptStatusSuccessful, errors.New("compact companion actual receipt differs from finalized journal")); err != nil {
+		if err := captureRpcObservationError(err, receipt != nil && receipt.BlockNumber != nil && receipt.BlockNumber.IsUint64() && receipt.BlockNumber.Uint64() == finalized.BlockNumber && strings.EqualFold(receipt.BlockHash.Hex(), finalized.BlockHash) && receipt.TxHash == transaction.Hash() && receipt.Status == types.ReceiptStatusSuccessful, errors.New("compact companion actual receipt differs from finalized journal")); err != nil {
 			return nil, err
 		}
 		head, err := (ethEVMBlockReader{client: client}).EVMBlockByNumber(ctx, receipt.BlockNumber)
-		if err := captureRpcObservationError(err, head.Number == selected.BlockNumber && strings.EqualFold(head.Hash, selected.BlockHash), errors.New("compact companion receipt block is not canonical")); err != nil {
+		if err := captureRpcObservationError(err, head.Number == finalized.BlockNumber && strings.EqualFold(head.Hash, finalized.BlockHash), errors.New("compact companion receipt block is not canonical")); err != nil {
 			return nil, err
 		}
 		signed, err := transaction.MarshalBinary()
@@ -302,7 +294,7 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			if receipt.ContractAddress != plan.ValidatorEvidence.Address || transaction.To() != nil {
 				return nil, errors.New("compact companion creation receipt identifies another contract")
 			}
-			fromBlock = selected.BlockNumber
+			fromBlock = finalized.BlockNumber
 		}
 	}
 	head := terminal.Status.Contracts.FinalizedHead

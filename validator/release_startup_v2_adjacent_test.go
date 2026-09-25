@@ -79,7 +79,11 @@ func TestReleaseStartupV2InitialImagePreservesActualPositiveLegacyHistory(t *tes
 	for index, participant := range fixture.runtime.participants {
 		operators[index] = OperatorConfig{NoID: participant.NoID, StateDir: participant.StateDir}
 	}
-	cfg := ReleaseConfig{StateDir: fixture.runtime.coordinator, Operators: operators, Policy: fixture.runtime.fixtures[0].policy, EvidenceV2: releaseEvidenceV2TestConfig(newAttemptSettlementRuntimeV2TestStateDir(t), operators)}
+	policyHash, err := fixture.runtime.fixtures[0].policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := ReleaseConfig{StateDir: fixture.runtime.coordinator, Operators: operators, Policy: fixture.runtime.fixtures[0].policy, PolicyHash: policyHash, EvidenceV2: releaseEvidenceV2TestConfig(newAttemptSettlementRuntimeV2TestStateDir(t), operators)}
 	cfg.EvidenceV2.Bounds.MaxHistoryBytes = fixture.options.MaxBytes
 	history := &releaseEvidenceV2StartupHistory{cfg: cfg, initial: map[uint64]ReleaseEvidenceV2ActivationContext{}, keys: fixture.options.ServerKeys, activationHistory: last, current: map[uint64]releaseEvidenceV2StartupCursor{}}
 	replicas, _ := newAttemptCutV2ReplicaTestStores(t)

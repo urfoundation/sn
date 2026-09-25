@@ -205,35 +205,85 @@ func releaseRequiredTools(effectiveUserID int) []string {
 	return tools
 }
 
-// A degraded manager remains launch-capable when its complete failed-unit set
-// contains only this deployment's prior supervisor. Launch resets that latch.
+// Manager degradation includes unrelated historical campaign failures. Retain
+// that evidence while checking this deployment's exact unit can be started.
+// This is launch capability, not live readiness or process ownership: those
+// gates still authenticate the current service, generation and child inventory.
+// An owned failed unit remains recoverable here; only launch may reset its latch.
 func inspectSystemdUserManager(run func(...string) ([]byte, error), ownedService string) (string, error) {
+	if run == nil || ownedService == "" {
+		return "", errors.New("systemd user manager inspection has no runner or owned service")
+	}
 	output, runErr := run("--user", "is-system-running")
 	state := strings.TrimSpace(string(output))
-	if state == "running" && runErr == nil {
-		return state, nil
-	}
-	if state != "degraded" {
-		if runErr != nil {
-			return state, runErr
+	if runErr != nil {
+		// is-system-running reports degraded with exit 1. A canceled query,
+		// unavailable manager or joined error is not that status observation.
+		exit, ok := runErr.(interface{ ExitCode() int })
+		if state != "degraded" || !ok || exit.ExitCode() != 1 {
+			return state, fmt.Errorf("inspect systemd user manager: %w", runErr)
 		}
+	}
+	if state != "running" && state != "degraded" {
 		return state, fmt.Errorf("systemd user manager is %q", state)
 	}
-	failedOutput, failedErr := run("--user", "list-units", "--state=failed", "--all", "--plain", "--no-legend", "--no-pager")
-	if failedErr != nil {
-		return state, fmt.Errorf("list failed systemd user units: %w: %s", failedErr, strings.TrimSpace(string(failedOutput)))
-	}
-	var failedUnits []string
-	for _, line := range strings.Split(string(failedOutput), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 0 {
-			failedUnits = append(failedUnits, fields[0])
+	detail := state
+	if state == "degraded" {
+		failedOutput, failedErr := run("--user", "list-units", "--state=failed", "--all", "--plain", "--no-legend", "--no-pager")
+		if failedErr != nil {
+			return detail, fmt.Errorf("list failed systemd user units: %w: %s", failedErr, strings.TrimSpace(string(failedOutput)))
+		}
+		var failedUnits []string
+		for _, line := range strings.Split(string(failedOutput), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) != 0 {
+				failedUnits = append(failedUnits, fields[0])
+			}
+		}
+		detail += fmt.Sprintf("; failed_units=%q", failedUnits)
+		if len(failedUnits) == 0 {
+			return detail, errors.New("systemd user manager is degraded without observable failed units")
 		}
 	}
-	if len(failedUnits) != 1 || failedUnits[0] != ownedService {
-		return state, fmt.Errorf("systemd user manager is degraded with failed units %q", failedUnits)
+	unitOutput, unitErr := run("--user", "show", ownedService, "--property=Id", "--property=LoadState", "--property=ActiveState", "--property=SubState", "--property=CanStart", "--no-pager")
+	if unitErr != nil {
+		return detail, fmt.Errorf("inspect owned systemd user unit %s: %w: %s", ownedService, unitErr, strings.TrimSpace(string(unitOutput)))
 	}
-	return fmt.Sprintf("degraded; sole_failed_unit=%s", ownedService), nil
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSuffix(string(unitOutput), "\n"), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || key == "" || value == "" {
+			return detail, errors.New("owned systemd user unit observation is malformed")
+		}
+		if _, duplicate := values[key]; duplicate {
+			return detail, fmt.Errorf("owned systemd user unit observation repeats %s", key)
+		}
+		values[key] = value
+	}
+	for _, key := range []string{"Id", "LoadState", "ActiveState", "SubState", "CanStart"} {
+		if _, ok := values[key]; !ok {
+			return detail, fmt.Errorf("owned systemd user unit observation omits %s", key)
+		}
+	}
+	detail += fmt.Sprintf("; owned_service=%s load=%s active=%s/%s can_start=%s", values["Id"], values["LoadState"], values["ActiveState"], values["SubState"], values["CanStart"])
+	if len(values) != 5 || values["Id"] != ownedService {
+		return detail, errors.New("owned systemd user unit identity or property inventory differs")
+	}
+	switch values["LoadState"] {
+	case "loaded":
+		if values["CanStart"] != "yes" {
+			return detail, errors.New("owned systemd user unit cannot be started")
+		}
+	case "not-found":
+		// A fresh deployment has no installed unit yet. Never treat a
+		// masked, malformed or still-active unit as this absence case.
+		if values["ActiveState"] != "inactive" || values["SubState"] != "dead" || values["CanStart"] != "no" {
+			return detail, errors.New("absent owned systemd user unit has inconsistent state")
+		}
+	default:
+		return detail, fmt.Errorf("owned systemd user unit load state is %q", values["LoadState"])
+	}
+	return detail, nil
 }
 
 // The approved mode rechecks changing facts against only unverified spend;

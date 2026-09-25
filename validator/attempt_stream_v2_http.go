@@ -26,7 +26,9 @@ type HTTPAttemptStreamV2Reader struct {
 	client        *http.Client
 }
 
-const attemptStreamV2HTTPIOTimeout = 30 * time.Second
+// A slow immutable GET can recover without consuming a native failure. Only
+// network I/O spends this allowance; authenticated replay work is separate.
+const attemptStreamV2HttpReadIoTimeout = 300 * time.Second
 
 // Charge only network I/O to the transport budget. Replay authenticates and
 // synchronously indexes rows between Reads; that work is not a stalled body.
@@ -153,10 +155,10 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 	request.Header.Set("Accept", contentType)
 	request.Header.Set("Accept-Encoding", "identity")
 	started := time.Now()
-	stopDeadline := attemptStreamV2HTTPDeadline(cancel, attemptStreamV2HTTPIOTimeout)
+	stopDeadline := attemptStreamV2HTTPDeadline(cancel, attemptStreamV2HttpReadIoTimeout)
 	response, err := self.client.Do(request)
 	stopDeadline()
-	remainingIO := attemptStreamV2HTTPIOTimeout - time.Since(started)
+	remainingIO := attemptStreamV2HttpReadIoTimeout - time.Since(started)
 	if remainingIO <= 0 {
 		cancel(context.DeadlineExceeded)
 	}
@@ -184,13 +186,14 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 		return refuse(errors.New("attempt stream HTTP content length differs from its authenticated size"))
 	}
 	transferred = true
-	return &attemptStreamV2HTTPBody{ctx: requestCtx, cancel: cancel, remainingIO: remainingIO, body: response.Body, remaining: size, expected: expected, digest: sha256.New()}, nil
+	return &attemptStreamV2HTTPBody{ctx: requestCtx, parent: ctx, cancel: cancel, remainingIO: remainingIO, body: response.Body, remaining: size, expected: expected, digest: sha256.New()}, nil
 }
 
 // One caller owns Read/Close; methods are not concurrent. Byte/hash checks stay
 // streaming, and no synthetic EOF can hide a trailing byte or transport error.
 type attemptStreamV2HTTPBody struct {
 	ctx         context.Context
+	parent      context.Context
 	cancel      context.CancelCauseFunc
 	remainingIO time.Duration
 	body        io.ReadCloser
@@ -204,6 +207,16 @@ type attemptStreamV2HTTPBody struct {
 	emptyReads  int
 }
 
+// A parent can expose its deadline before propagation reaches this child.
+// Preserve that cause when the replay stops between buffered row reads.
+func (self *attemptStreamV2HTTPBody) interruption() error {
+	var parentErr error
+	if self.parent != nil {
+		parentErr = self.parent.Err()
+	}
+	return errors.Join(context.Cause(self.ctx), parentErr)
+}
+
 // Retains the first failure; bytes returned with an error are never authority.
 func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 	if self.closed {
@@ -212,7 +225,7 @@ func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 	if self.fault != nil {
 		return 0, self.fault
 	}
-	if err := context.Cause(self.ctx); err != nil {
+	if err := self.interruption(); err != nil {
 		self.fault = err
 		return 0, err
 	}
@@ -237,7 +250,10 @@ func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 	}
 	self.remaining -= uint64(count)
 	_, _ = self.digest.Write(value[:count])
-	if err := context.Cause(self.ctx); err != nil {
+	if err := self.interruption(); err != nil {
+		if readErr != nil {
+			readErr = &attemptStreamHttpReadError{cause: readErr}
+		}
 		self.fault = errors.Join(readErr, err)
 		return count, self.fault
 	}
@@ -252,7 +268,8 @@ func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 		return count, io.EOF
 	}
 	if readErr != nil {
-		self.fault = readErr
+		self.fault = &attemptStreamHttpReadError{cause: readErr}
+		return count, self.fault
 	} else if count == 0 {
 		self.emptyReads++
 		if self.emptyReads >= 100 {
@@ -275,8 +292,8 @@ func (self *attemptStreamV2HTTPBody) Close() error {
 	defer self.cancel(nil)
 	var incomplete error
 	if !self.verified {
-		incomplete = &attemptStreamHTTPIncompleteError{cause: errors.Join(self.fault, context.Cause(self.ctx))}
+		incomplete = &attemptStreamHTTPIncompleteError{cause: errors.Join(self.fault, self.interruption())}
 	}
-	self.closeErr = errors.Join(self.fault, incomplete, self.body.Close(), context.Cause(self.ctx))
+	self.closeErr = errors.Join(self.fault, incomplete, self.body.Close(), self.interruption())
 	return self.closeErr
 }

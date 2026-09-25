@@ -120,7 +120,7 @@ func TestValidatorEvidenceDepositAuditV2PublishesActualUnavailableResponse(t *te
 	if audit.ObservedAtBlock > audit.ArtifactDeadlineBlock {
 		want = DepositAuditUnavailable
 	}
-	if audit.Status != want || audit.Compliant || audit.HttpObservationHash == "" || fixture.payoutReads.Load() != 1 {
+	if audit.Status != want || audit.Compliant || audit.HttpObservationHash == "" || fixture.payoutReads.Load() != 1 || fixture.negativeRetryElapsed != releaseHttpGetRetryTimeout {
 		t.Fatalf("actual unavailable observation differs: %+v", audit)
 	}
 	if err := fixture.base.runtime.publishDepositAuditV2(t.Context(), fixture.artifact); err != nil {

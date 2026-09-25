@@ -21,7 +21,11 @@ func (self *provisionalNativeReadInterruption) Unwrap() error { return self.caus
 // Bare EOF, diagnostic text, malformed rows, close failures and cancellation do
 // not qualify. The caller revokes permission before opening the native intent.
 func classifyProvisionalNativeRead(enabled bool, nativeEpoch uint64, err error) error {
-	if !enabled || !RetryableEvidenceTransportError(err) {
+	if !enabled {
+		return err
+	}
+	retryable, transport := classifyReleasePreparationRetry(err)
+	if !retryable || !transport {
 		return err
 	}
 	return &provisionalNativeReadInterruption{nativeEpoch: nativeEpoch, cause: err}

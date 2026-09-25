@@ -60,7 +60,7 @@ func decodeFinalPriorCarrierMetadataV2(prefix, suffix []byte, value any) error {
 func verifyFinalPriorCarrierFilePayloadV2(limits campaignEvidenceLimits, runId, scope string, entry campaignEvidenceFileEntry, encoded []byte) error {
 	var payload campaignEvidenceFilePayload
 	var base64Source []byte
-	if !campaignMetadataSourcePathV2(entry.Path) {
+	if !campaignMetadataSourcePathV2(entry.Path) && !finalJournalCarrierRequiresBodyV2(entry.Path) {
 		dataStart := bytes.LastIndex(encoded, []byte(`,"data":"`))
 		if dataStart >= 0 && dataStart+len(`,"data":"`) <= len(encoded)-2 && bytes.HasSuffix(encoded, []byte(`"}`)) {
 			dataStart += len(`,"data":"`)

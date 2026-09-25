@@ -133,7 +133,7 @@ func TestReleaseClientKeyHistoryControlBudgetRefusesAndReusesOriginalCaptures(t 
 	options.MaxControlBytes = originalAllowance
 	refused, err := fixture.gather(t.Context(), options)
 	if err == nil || !reflect.DeepEqual(refused, releaseHeadResult{}) ||
-		!strings.Contains(err.Error(), "client-key batch returned Http 500") || bodyRefusals.Load()-beforeRefusals != 1 {
+		!strings.Contains(err.Error(), "client-key batch returned HTTP 500") || bodyRefusals.Load()-beforeRefusals != 1 {
 		t.Fatalf("original collection allowance did not fail at actual bounded response ownership: %v", err)
 	}
 	fixture.assertNoEMACommit(t)

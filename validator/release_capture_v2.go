@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"path/filepath"
 	"reflect"
@@ -33,6 +32,9 @@ type ReleaseEvidenceV2CaptureOptions struct {
 	MaximumDataBytes    uint64
 	MaximumControlBytes uint64
 	ThroughEpoch        uint64
+	// Diagnostic callers may reuse complete immutable chunks already retained
+	// from this exact origin in this invocation. Strict capture defaults off.
+	ReuseCapturedStreams bool
 }
 
 // Private names are relative to the validator state, except configured setup
@@ -209,7 +211,7 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 		if err != nil || !reflect.DeepEqual(policy, artifact.Policy) {
 			return nil, errors.Join(errors.New("compact capture policy document differs from configured authority"), err)
 		}
-		if uint64(len(measurement)) != intent.MeasurementArtifactSize || artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || artifact.Coordinator != cfg.Coordinator || artifact.SettlementVault != cfg.SettlementVault || artifact.ValidatorID != cfg.ValidatorID || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != intent.PolicyHash || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.SelfUID != intent.SelfUID || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || !reflect.DeepEqual(artifact.DepositAudits, intent.DepositAudits) {
+		if uint64(len(measurement)) != intent.MeasurementArtifactSize || artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || !releaseAddressIdentityMatches(artifact.Coordinator, cfg.Coordinator) || !releaseAddressIdentityMatches(artifact.SettlementVault, cfg.SettlementVault) || artifact.ValidatorID != cfg.ValidatorID || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != intent.PolicyHash || artifact.SubnetEpoch != intent.SubnetEpoch || artifact.SettlementEpoch != intent.SettlementEpoch || artifact.SelfUID != intent.SelfUID || artifact.NativeSnapshotBlock != intent.NativeSnapshotBlock || artifact.NativeSnapshotHash != intent.NativeSnapshotHash || artifact.EVMSnapshotBlock != intent.EVMSnapshotBlock || artifact.EVMSnapshotHash != intent.EVMSnapshotHash || !reflect.DeepEqual(artifact.DepositAudits, intent.DepositAudits) {
 			return nil, errors.New("compact capture measurement differs from its configured deployment or exact intent")
 		}
 		envelopeHash, err := parseReleaseContentHash(intent.MeasurementEnvelopeHash)
@@ -424,48 +426,25 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 			return nil, err
 		}
 	}
-	for _, cut := range cuts {
+	streamCapture := newReleaseCaptureStreamsV2(bounds.Cut, options, emit)
+	for index, cut := range cuts {
 		initial, found := initials[cut.Context.Identity.NoID]
 		if !found || cut.Context.Identity != initial.InitialCut.Identity || cut.Context.Activation != initial.InitialCut.Activation {
-			return nil, errors.New("compact capture cut changes the configured activation identity")
+			return nil, fmt.Errorf("compact capture cut %d operator %d changes the configured activation identity", index+1, cut.Context.Identity.NoID)
 		}
 		// Signature custody only. Cursor, clocks, priors, counts and projection
 		// are deliberately left to the independent complete offline replay.
 		if err := cut.VerifyHeader(cut.Context, bounds.Cut); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compact capture cut %d operator %d header: %w", index+1, cut.Context.Identity.NoID, err)
 		}
 		for _, origin := range options.Origins {
-			reader, err := NewHTTPAttemptStreamV2Reader(origin, bounds.Cut)
-			if err != nil {
-				return nil, err
-			}
 			for _, stream := range []struct {
 				kind      string
 				reference AttemptStreamV2Reference
 				limits    AttemptStreamV2Bounds
 			}{{kind: AttemptStreamV2Records, reference: cut.Records, limits: bounds.Cut.Records}, {kind: AttemptStreamV2Proofs, reference: cut.Proofs, limits: bounds.Cut.Proofs}} {
-				_, err := WalkAttemptStreamV2Descriptors(ctx, stream.kind, stream.reference, stream.limits, func(ctx context.Context, hash string, size uint64) ([]byte, error) {
-					encoded, err := reader.ReadMetadata(ctx, hash, size)
-					if err != nil {
-						return nil, err
-					}
-					if err := emit(ReleaseEvidenceV2CaptureSource{Kind: "metadata", Name: hash, Origin: origin}, encoded); err != nil {
-						return nil, err
-					}
-					return encoded, nil
-				}, func(chunk AttemptStreamV2Chunk) error {
-					body, err := reader.OpenData(ctx, stream.kind, chunk.ContentHash, chunk.DataBytes)
-					if err != nil {
-						return err
-					}
-					encoded, readErr := io.ReadAll(body)
-					if err := errors.Join(readErr, body.Close(), ctx.Err()); err != nil {
-						return err
-					}
-					return emit(ReleaseEvidenceV2CaptureSource{Kind: stream.kind, Name: chunk.ContentHash, Origin: origin}, encoded)
-				})
-				if err != nil {
-					return nil, err
+				if err := streamCapture.capture(ctx, origin, stream.kind, stream.reference, stream.limits); err != nil {
+					return nil, fmt.Errorf("compact capture cut %d/%d operator %d origin %s %s: %w", index+1, len(cuts), cut.Context.Identity.NoID, origin, stream.kind, err)
 				}
 			}
 		}

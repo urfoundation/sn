@@ -60,12 +60,12 @@ func TestAttemptStreamV2HTTPWriteExactTypesAndRefreshedSession(t *testing.T) {
 	}))
 	defer endpoint.Close()
 	writer := newAttemptStreamV2HTTPTestWriter(t, endpoint.URL, func() string { return credential.Load().(string) })
-	if writer.client.Timeout != attemptStreamV2HTTPIOTimeout {
+	if writer.client.Timeout != attemptStreamV2HttpWriteIoTimeout {
 		t.Fatal("typed upload lost its finite I/O allowance")
 	}
 	writer.client.Transport = attemptStreamV2HTTPTestTransport(func(request *http.Request) (*http.Response, error) {
 		deadline, bounded := request.Context().Deadline()
-		if remaining := time.Until(deadline); !bounded || remaining <= 0 || remaining > attemptStreamV2HTTPIOTimeout {
+		if remaining := time.Until(deadline); !bounded || remaining <= 0 || remaining > attemptStreamV2HttpWriteIoTimeout {
 			return nil, errors.New("actual upload transport has no finite I/O owner")
 		}
 		return http.DefaultTransport.RoundTrip(request)

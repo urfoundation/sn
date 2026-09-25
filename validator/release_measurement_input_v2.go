@@ -27,6 +27,7 @@ const releaseMeasurementInputV2Schema = "urnetwork-validator-release-measurement
 type releaseMeasurementInputV2Options struct {
 	Stats           releaseStatsV2Options
 	MaxJournalBytes uint64
+	cutAuthority    *releaseMeasurementInputV2CutAuthority
 }
 
 // This decode-only wire cannot recursively allocate a legacy cut/transition.
@@ -234,6 +235,11 @@ func (self *ReleaseSteerer) loadOrDetachReleaseMeasurementInputV2WithReadHooks(c
 		if err := validateReleaseMeasurementInputV2Context(self.cfg, noID, cut.Context); err != nil {
 			return ReleaseMeasurementInput{}, err
 		}
+		if options.cutAuthority != nil {
+			if err := options.cutAuthority.retain(encoded, *cut, options.Stats.Bounds); err != nil {
+				return ReleaseMeasurementInput{}, err
+			}
+		}
 		if err := owner.sync(); err != nil {
 			return ReleaseMeasurementInput{}, err
 		}
@@ -245,6 +251,9 @@ func (self *ReleaseSteerer) loadOrDetachReleaseMeasurementInputV2WithReadHooks(c
 	if !owner.initialMissing || !releaseMeasurementInputV2OnlyMissing(err) {
 		return ReleaseMeasurementInput{}, err
 	}
+	if options.cutAuthority != nil && options.cutAuthority.journalBytes != 0 {
+		return ReleaseMeasurementInput{}, errors.Join(errors.New("retained compact native journal disappeared"), err)
+	}
 	if err := owner.check(); err != nil {
 		return ReleaseMeasurementInput{}, err
 	}
@@ -253,6 +262,11 @@ func (self *ReleaseSteerer) loadOrDetachReleaseMeasurementInputV2WithReadHooks(c
 	_, _, err = measurement.Stats.detachReleaseStatsMeasurementV2WithJournalGuard(ctx, measurementStateDir(self.cfg, noID), boundary, options.Stats, func(stats ReleaseStatsMeasurement, cut AttemptCutV2) error {
 		if err := validateReleaseMeasurementInputV2Context(self.cfg, noID, cut.Context); err != nil {
 			return err
+		}
+		if options.cutAuthority != nil {
+			if err := cut.VerifyHeader(options.cutAuthority.expected, options.Stats.Bounds); err != nil {
+				return err
+			}
 		}
 		input.Stats, input.EgressGeneration, input.AttemptCutV2 = stats, cut.Context.EgressGeneration, &cut
 		journal := &releaseMeasurementInputJournal{Schema: releaseMeasurementInputV2Schema, DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: strings.ToLower(self.cfg.GenesisHash), Coordinator: self.cfg.Coordinator, ValidatorID: self.cfg.ValidatorID, Netuid: self.cfg.Netuid, SubnetEpoch: subnetEpoch, PolicyHash: strings.ToLower(self.cfg.PolicyHash), MeasurementInput: input}
@@ -263,7 +277,13 @@ func (self *ReleaseSteerer) loadOrDetachReleaseMeasurementInputV2WithReadHooks(c
 		if uint64(len(encoded)) > options.MaxJournalBytes {
 			return errors.New("compact input journal exceeds its byte bound")
 		}
-		return owner.write(encoded)
+		if err := owner.write(encoded); err != nil {
+			return err
+		}
+		if options.cutAuthority != nil {
+			return options.cutAuthority.retain(encoded, cut, options.Stats.Bounds)
+		}
+		return nil
 	}, guard)
 	if err != nil {
 		return ReleaseMeasurementInput{}, err

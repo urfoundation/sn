@@ -1,5 +1,19 @@
 # Mainnet prelaunch fixes
 
+## Acceptance-window attribution from R44
+
+R44 terminal diagnostics exposed two ways to draw a false conclusion from
+otherwise valid retained evidence. A payout check selected the latest signed
+artifact, which could belong to epoch 621 after the accepted [616,621)
+window; an older signed claim observation lacked additive discovery fields,
+which a diagnostic displayed as zero rather than unavailable. Before mainnet,
+bind every tier/cohort assertion to the exact accepted epoch, committed root
+and artifact hash. Treat absent legacy fields as unavailable, while preserving
+real queue and receipt failures as failures. Qualify with a later conflicting
+artifact, a missing historical field, an exact-window match and a changed
+root/hash. The testnet repair is SN `f673ca9a`; composed release qualification
+and deployment evidence are still required before this item is Done.
+
 Updated 2026-09-22. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
 Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)
@@ -1119,6 +1133,20 @@ line may be scanned only after the fault has been restored. The affected swarm
 process may remain healthy while one miner is intentionally disabled. Test both
 the continued run and strict terminal rejection of an unrelated error.
 
+**R44 evidence-detail follow-up.** Ten acceptance-scoped `exit-gap-timeout`
+findings (14 events) came from the old Connect receiver's bare timeout line.
+It did not retain the expected sequence, queued range or handoff state, so the
+later closed-hole and ready-rendezvous fixes cannot prove which historical
+timeouts they repair. Production gap incidents must include those bounded
+sequence and ownership fields, the exact retry/expiry deadline, and whether
+the hole was closed by an admitted packet or remains genuinely unresolved.
+Keep real missing-packet expiry and incomplete steering continuity visible at
+final acceptance. A normal websocket close and a compact artifact read timeout
+need bounded retry with the same evidence identity; cancellation from an
+intentional owner stop remains a distinct outcome. Test both repaired transient
+paths and a true unresolved gap, then verify the live log carries enough detail
+to attribute a recurrence without guessing from the error class alone.
+
 ### PH-16 — Deterministic qualification and reviewable evidence
 
 **Lesson.** Some prior failures were real production defects; others were
@@ -1651,6 +1679,41 @@ write bytes, checkpoint latency, remaining historical work and admitted control
 requests independently from process health. Production sizing must reserve the
 agreed 2x margin without relying on filesystem stalls to throttle useful work.
 
+**R44 follow-up (in progress, 2026-09-25).** The per-miner recent-first poll did
+not make the two relayers fair across miners. One shared, non-cancelable lock
+covered reconciliation, signing and finality; a miner recorded `submitting`
+before waiting for it. A hashed live census at finalized block 8,081,014
+found 744 miners still discovering epoch 614 while 256 had reached 617. All
+1,000 eventually reached 617, but epochs 615 and 616 remained almost entirely
+pending. Mainnet admission must assign one retained ticket per member, prioritize
+the global newest epoch with a bounded historical share, let waiting members
+continue discovery, and start the five-minute network budget only after
+admission. A timeout after durable `Prepared` must not let the next member sign
+the same nonce: seed a shared nonce floor from every validated member queue,
+advance it only after the signed intent is fsynced, and reconcile or rebroadcast
+the exact old raw transaction before treating its outcome as absent. Reject two
+swarm members pointing to the same physical queue directory. Test mixed
+discovery cursors, cancellation, stale pending nonces, restart, cross-member
+fairness and exact signed-outcome retention in normal and race modes. No R44
+runtime change or completed production qualification is claimed here.
+
+The R44 acceptance reader also mixed lifetime claim counts with its signed
+five-epoch window. A previous finalized claim could falsely satisfy current
+coverage, while a historical uncertain claim could falsely fail it. Keep raw
+lifetime history and scope acceptance and anomaly verdicts to the exact signed
+epochs, requiring an observed outcome for every configured miner in each epoch.
+Keep the whitepaper's claim TTL: `pending` and `retry` may remain after an epoch
+finalizes while their value stays in outstanding liability. The phase-level
+claim coverage and on-chain conservation checks still apply. Treat a current
+`submitting` send as uncertain at the acceptance cut, and reject actual
+unreconciled `uncertain` or `failed` outcomes. Do not close a signed uncertain
+incident merely because
+the local queue later says `finalized` or `no-claim`; first authenticate its
+canonical receipt, block hash and Claimed event, or retain the incident open.
+The completed window-only claim gate is SN `5615a382` and historical anomaly
+scoping is SN `ac2beccd`; receipt-authenticated closure remains separate
+qualification work.
+
 ### Supplemental repair allocation within lifetime caps
 
 The repair proposal later exposed a separate budget boundary: fleet-renewal
@@ -2061,6 +2124,36 @@ collect again after the exact signed result appears. Bind both inventories to
 the same run ID, plan, boundary and source hash. A diagnostic report never
 creates a pass marker or substitutes for the original signed result.
 
+R44's first terminal capture also compared EVM addresses by presentation text:
+a checksum-case validator configuration and a lowercase signed measurement
+named the same coordinator and vault, but the collector rejected them. Validate
+each complete address before comparing its 20-byte identity. Do not repair this
+by remarshal, relabeling signed bytes, permissive padding/truncation, or ignoring
+chain, genesis, policy and intent checks. Apply the same rule to historical
+client-key decisions and artifact observation requests. Regression tests must
+accept checksum/lowercase equivalents with original bytes unchanged and reject
+different deployments, malformed addresses and wrong chain domains.
+
+An external non-accepting terminal diagnostic must retain its admitted plan
+when reading provisional companion and relay evidence. That read authority
+does not reconcile the plan for strict acceptance or authorize any mutation.
+Creation, anchoring and activation transactions keep their original approved
+ancestor, ordered broadcast/finality/verification rows, exact signed transaction
+and hashed postcondition. Authenticate the immutable archive and current
+approved ancestry before selecting them; closed pre-broadcast attempts cannot
+replace or invalidate a later authenticated original transaction. Keep the
+ordinary collector strict and test both read scopes, changed command/config/RPC
+authority, competing finality and tampered archives, signatures and receipts.
+
+Keep independent diagnostic obligations separate. A missing lifecycle payout
+index must remain unavailable, but it must not prevent collection of ordinary
+signed acceptance-window payouts. Preserve the original observation and every
+exception, validate ordinary signatures, content hashes and epoch coverage,
+and report malformed lifecycle evidence as failed rather than merely absent.
+The strict combined collector must continue requiring both scopes. Test this
+with original signed bytes and an accepting-owner negative control; a useful
+partial diagnostic is never evidence that the full qualification passed.
+
 The production cadence scheduler and its receipt verifier must share one
 finalized policy-history reader. R42's coordinator already has three versions
 because an approved rate amendment added one before production; a fixed
@@ -2082,6 +2175,48 @@ historical lifecycle plan identity separate from the current plan authorizing
 new actions. This permits diagnosis to continue without laundering a failed
 release into a strict pass or overlapping old fault injection with production.
 
+The R45 renewal review exposed the same authority distinction in retained
+validator generation readers. Round seven appends a new fleet approval, but
+the activated generation and its owner-signed source-role overlay still name
+the original round-six approval. Requiring their source hash to equal the new
+active plan would reject an otherwise unchanged retained restart. Resolve the
+original approval only through its immutable archive and the current approved
+ancestry; authenticate the exact deployment, evidence custody, configuration,
+policy and owned RPC authority before reading the original generation bytes.
+Never substitute a hash onto different configuration semantics. New rollover
+or source-role mutations still require the exact current approval.
+
+Qualify this boundary with real signed round-six to round-seven renewal
+fixtures, unchanged manifest inventory and overlay bytes, repeated retained
+reads, and refusal of a fresh mutation under the historical approval. Missing
+or tampered archives, unrelated lineage, changed deployment custody and changes
+to configuration, policy or RPC authority must remain hard failures. Include
+launcher, manifest, observation and relay readers in the same migration test;
+a successful doctor before renewal does not exercise the descendant-plan seam.
+
+R44 exposed an impossible restoration predicate after its explicit testnet
+lifecycle bypass: the bypass correctly retained no terminal-effective mutation
+epoch, while a local companion filter required that epoch before removal.
+Separate operational cleanup from proof that a lifecycle transition occurred.
+A diagnostic successor may remove only the exact two authenticated local
+filters after the full signed interval and their minimum durations, retaining
+`RestoreConditionMet=false`, the original failed assertions, and
+`final_acceptance=false`. Mainnet acceptance must still prove the actual
+lifecycle transitions; diagnostic cleanup is not a substitute. Installed, paid,
+and effective mutation predicates must not infer success from an operational
+handoff stage reached through a bypass.
+
+Checkpoint the exact cleanup request before touching the filter, retain the
+removed target/role/identity census, and date completion from a subsequent
+complete observation. If removal outlives its active ledger entry, reconcile
+only through the retained plan/operator/rule-bound removal receipt and proof
+that the exact rule is absent. Ordinary restore must not acquire this special
+missing-ledger authority. A public evidence file written before its owner
+checkpoint is not authoritative: recovery reads the signed fault state and
+independently reconciles the physical outcome. Rehearse both interruption
+windows, foreign receipts, reappeared rules, and the failed-release to
+non-accepting production handoff without changing strict acceptance.
+
 R42 ended before terminal because a provisional heartbeat treated a known
 validator steering-continuity finding as a reason to stop the entire interval.
 Production should keep collecting through recognized provisional findings and
@@ -2102,6 +2237,18 @@ source signatures and blocks remain exact-pinned. Test a consumed-interface
 successor and a real metadata/API incompatibility separately. A precheck must
 not rewrite the original config or signed campaign evidence.
 
+R45 qualification exposed a second runtime-version trap in tests rather than
+the fleet code: four current-runtime fixtures still expected spec 461 while
+the production constants, lockfile and reviewed artifact already agreed on
+467. Mainnet's current-runtime tests must authenticate the independently
+reviewed source commit and metadata hashes for the selected launch artifact,
+then require production selection to match that evidence. Keep older versions
+as explicit historical decode/rejection cases; an old fixture must not silently
+become current authority. Run the full miner and on-chain suites normally and
+under race detection after changing the launch runtime pin. The testnet repair
+is SN `5a53b33c`, with the old-fixture tests causally reproducing all four
+failures.
+
 R43 startup stopped at a stale operator overlay resource list: the current
 pinned server reads `mmdb/ip-ipinfo.mmdb` and `arindb/arin.mmdb`, but the
 simulator demanded future `geolite2.mmdb` and `places.yml` files absent from
@@ -2111,3 +2258,35 @@ before topology stop when possible, and test both the supported legacy and
 future profiles without mixing their manifests. A missing resource must be
 reported precisely; it must not be fabricated or silently linked to a
 different database schema.
+
+R44's second terminal diagnostic could authenticate the signed start but its
+newer checkpoint reader rejected `start_time_ticks` inside retained fault
+process records. Historical signed evidence is a compatibility contract:
+retain known optional nested wire fields even when the producing runtime
+feature is no longer active. Decode them with bounded types, preserve original
+signed bytes and hashes, and reject unknown or malformed fields and generation
+rewrites. Test both legacy omission and a fully signed historical checkpoint
+through the current forensic and recovery readers. Recognizing an old process
+identity in evidence never grants authority to signal that process.
+
+R44's later read-only terminal capture exhausted a 15-minute deadline while
+reading a retained validator source: 62 cuts scheduled about 1.63 GB of chunk
+GETs across two origins, and a verified 4 MB chunk alone took 18.30 seconds.
+Production evidence readers should bound the whole job from measured bytes and
+throughput, expose per-cut progress, retain completed authenticated chunks,
+and reuse only exact immutable origin/kind/hash/size matches. Retry incomplete
+HTTP bodies within that finite budget and distinguish budget exhaustion from
+invalid signatures or conflicting content. Test slow, interrupted, duplicate
+and conflicting chunks without reducing final integrity checks or restarting
+unrelated runtime work.
+
+R45 source review found eleven previously qualified recovery fixes absent from
+the candidate main branch. A passing component test or isolated branch is not
+deployment evidence. Before mainnet launch, derive the release image from a
+reviewed dependency-ordered commit inventory, compare every changed source
+file to its qualified hash fence, and run the affected composed normal/race
+tests on that exact source. Include durable snapshot retry, transport error
+classification, original-child signaling proof, write-ahead fault intent,
+pending container restore and post-transition completion heads in the
+composed recovery rehearsal. A documentation-only main advance should not
+change the approved executable, but it must not conceal a missing code patch.

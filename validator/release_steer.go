@@ -1057,6 +1057,8 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 				var closedInput *provisionalClosedNativeInput
 				var rejected *provisionalNativeWeightRejection
 				var interrupted *provisionalNativeReadInterruption
+				var replayInterrupted *attemptReplayReadInterruption
+				retryablePreparation, interruptedPreparation := classifyReleasePreparationRetry(err)
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
 					retryableCut = false
@@ -1078,31 +1080,28 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					fmt.Printf("release steer: %v; retrying authenticated preparation on next poll\n", interrupted)
-				} else if releaseOnlyErrors(err, errAttemptCutPending) {
+				} else if errors.As(err, &replayInterrupted) && RetryableEvidenceTransportError(err) {
 					weightRejected = false
 					retryableCut = allowDeferral && pendingErr == nil
-					// Admitted trails drain under their existing contexts. Waiting
-					// neither spends nor resets the real native-failure budget. A
-					// provisional run can continue the retained cut in a fresh epoch.
-				} else if releaseOnlyErrors(err, errAttemptCutSnapshotStale) {
+					// Retained intent reads replay before the pre-intent handler.
+					// Retry the read without spending native failures; existing
+					// intent reconciliation and strict epoch continuity still apply.
+					fmt.Printf("release steer: %v; retrying authenticated compact replay on next poll\n", err)
+				} else if retryablePreparation && !interruptedPreparation {
 					weightRejected = false
 					retryableCut = allowDeferral && pendingErr == nil
-					// A cut keeps its reservation while the next submission reads
-					// a fresh canonical snapshot. Earlier signed operator inputs
-					// remain immutable and are reused by the retry.
-					fmt.Printf("release steer: %v; retrying on next poll\n", err)
-				} else if releaseOnlyErrors(err, errAttemptSettlementSnapshotStale) {
-					weightRejected = false
-					retryableCut = allowDeferral && pendingErr == nil
-					// A competing refresh already advanced the coherent settlement
-					// owner. Recapture it without weakening mixed-error handling.
-					fmt.Printf("release steer: %v; retrying on next poll\n", err)
-				} else if allowDeferral && transientReleaseSnapshotError(err) {
+					// Parallel operators may report different cut waits. Keep each
+					// reservation and the previous failure budget while trails drain
+					// or the next poll supplies the fresh canonical snapshot.
+					if !releaseOnlyErrors(err, errAttemptCutPending) {
+						fmt.Printf("release steer: %v; retrying on next poll\n", err)
+					}
+				} else if allowDeferral && (retryablePreparation || transientReleaseSnapshotError(err)) {
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					// An interrupted authenticated replica body retains its immutable
-					// cut and retry context. Replay it in-process; mixed integrity or
-					// lifecycle errors remain outside this narrow classifier.
+					// cut and retry context, including another operator's cut wait.
+					// Mixed integrity or lifecycle errors remain nonretryable.
 					fmt.Printf("release steer: %v; retrying authenticated collection on next poll\n", err)
 				} else {
 					weightRejected = false
@@ -1153,12 +1152,12 @@ func runReleaseSteeringOperation(ctx context.Context, timeout time.Duration, ope
 // A steering decision includes authenticated client-key capture. Its admitted
 // batch envelope is longer than the native-only observation window, so the
 // enclosing deadline must never cancel a valid batch before that envelope
-// expires. The additional native window covers the pinned reads before and
-// after the capture while keeping the whole retry finite.
+// expires. Separate compact transport and native windows cover retained replay
+// and pinned reads before/after capture while keeping the whole retry finite.
 func releaseSteeringOperationTimeout(cfg *ReleaseConfig) time.Duration {
 	native := releaseNativeEndpointTimeout(cfg)
 	batch := time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
-	return max(native, batch+native)
+	return batch + native + attemptStreamV2HttpReadIoTimeout
 }
 
 // Run supervises release steering until cancellation or a process-fatal state

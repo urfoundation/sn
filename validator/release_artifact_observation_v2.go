@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -66,7 +67,7 @@ func releaseArtifactHttpRequestV2(cfg *ReleaseConfig, hotkey [32]byte, decision 
 	if cfg == nil || decision == nil || reader == nil || reader.baseURL == nil || hotkey == ([32]byte{}) || noId == 0 {
 		return releaseArtifactHttpObservationV2{}, "", errors.New("artifact HTTP observation owner is incomplete")
 	}
-	if decision.DeploymentID != cfg.DeploymentID || decision.ChainID != cfg.ChainID || decision.GenesisHash != cfg.GenesisHash || decision.Coordinator != cfg.Coordinator || decision.SettlementVault != cfg.SettlementVault || decision.PolicyHash != cfg.PolicyHash || decision.Netuid != cfg.Netuid || decision.ValidatorID != cfg.ValidatorID || decision.SettlementEpoch < cfg.Policy.Deposit.UsageLagEpochs || sourceEpoch != decision.SettlementEpoch-cfg.Policy.Deposit.UsageLagEpochs {
+	if decision.DeploymentID != cfg.DeploymentID || decision.ChainID != cfg.ChainID || decision.GenesisHash != cfg.GenesisHash || !releaseAddressIdentityMatches(decision.Coordinator, cfg.Coordinator) || !releaseAddressIdentityMatches(decision.SettlementVault, cfg.SettlementVault) || decision.PolicyHash != cfg.PolicyHash || decision.Netuid != cfg.Netuid || decision.ValidatorID != cfg.ValidatorID || decision.SettlementEpoch < cfg.Policy.Deposit.UsageLagEpochs || sourceEpoch != decision.SettlementEpoch-cfg.Policy.Deposit.UsageLagEpochs {
 		return releaseArtifactHttpObservationV2{}, "", errors.New("artifact HTTP observation differs from the actual deployment/source epoch")
 	}
 	value := releaseArtifactHttpObservationV2{Schema: releaseArtifactHttpObservationSchemaV2, Decision: releaseMeasurementV2Decision(decision), ValidatorHotkey: releaseHex32(hotkey), NoId: noId, SourceEpoch: sourceEpoch, Origin: reader.baseURL.String(), Exchanges: []releaseArtifactHttpExchangeV2{}}
@@ -81,48 +82,76 @@ func releaseArtifactHttpRequestV2(cfg *ReleaseConfig, hotkey [32]byte, decision 
 	return value, filepath.Join(cfg.StateDir, "artifact-http-observations", hex.EncodeToString(hash[:])+".json"), nil
 }
 
-// The HTTP status and exact bounded body are retained even when the content
-// type or status makes the ordinary public reader reject them. Transport and
-// actual Body.Close failures are signed observations, never success overrides.
+// Transient gets retry before one final exchange is retained and signed. A
+// stored observation never enters this live path or changes its original fact.
 func readArtifactHttpExchangeV2(ctx context.Context, reader *HTTPArtifactReader, endpoint string, maximum int64, remaining uint64) (releaseArtifactHttpExchangeV2, error) {
-	value := releaseArtifactHttpExchangeV2{Url: endpoint, MaximumBytes: maximum, Body: []byte{}}
 	if ctx == nil || reader == nil || reader.client == nil || maximum <= 0 || remaining == 0 {
-		return value, errors.New("artifact HTTP byte owner is unavailable")
+		return releaseArtifactHttpExchangeV2{}, errors.New("artifact HTTP byte owner is unavailable")
 	}
+	var value releaseArtifactHttpExchangeV2
+	var lastCause, fatalErr error
+	err := retryReleaseHttpGet(ctx, func(attemptCtx context.Context) error {
+		value, lastCause, fatalErr = readArtifactHttpExchangeV2Attempt(attemptCtx, reader, endpoint, maximum, remaining)
+		return errors.Join(lastCause, fatalErr)
+	}, reader.retryHooks)
+	if ctx.Err() != nil {
+		return releaseArtifactHttpExchangeV2{}, errors.Join(err, ctx.Err())
+	}
+	if fatalErr != nil || value.Url == "" || !releaseOnlyErrors(err, lastCause, context.DeadlineExceeded) {
+		return value, errors.Join(err, fatalErr)
+	}
+	return value, nil
+}
+
+// Every attempt closes its bounded response. Typed retry causes are private
+// transport values; only the original status/body/error bytes enter the wire.
+func readArtifactHttpExchangeV2Attempt(ctx context.Context, reader *HTTPArtifactReader, endpoint string, maximum int64, remaining uint64) (releaseArtifactHttpExchangeV2, error, error) {
+	value := releaseArtifactHttpExchangeV2{Url: endpoint, MaximumBytes: maximum, Body: []byte{}}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return value, err
+		return value, nil, err
 	}
 	response, err := reader.client.Do(request)
 	if err != nil {
 		if len(err.Error()) > 4096 {
-			return value, errors.New("artifact HTTP transport error exceeds its finite observation bound")
+			return value, nil, errors.New("artifact HTTP transport error exceeds its finite observation bound")
 		}
 		value.TransportError = err.Error()
 		if response != nil && response.Body != nil {
 			if closeErr := response.Body.Close(); closeErr != nil {
 				value.CloseError = closeErr.Error()
+				err = errors.Join(err, closeErr)
 			}
 		}
-		return value, ctx.Err()
+		return value, errors.Join(err, ctx.Err()), nil
 	}
 	if response == nil || response.Body == nil {
-		return value, errors.New("artifact HTTP response has no real body")
+		return value, nil, errors.New("artifact HTTP response has no real body")
 	}
 	value.Status, value.ContentLength = response.StatusCode, response.ContentLength
 	value.ContentType = response.Header.Get("Content-Type")
 	limit := min(uint64(maximum)+1, remaining)
 	value.Body, err = io.ReadAll(io.LimitReader(response.Body, int64(limit)))
+	var readErr, closeErr, statusErr, framingErr error
 	if err != nil {
 		value.BodyError = err.Error()
+		readErr = &url.Error{Op: "Read", URL: endpoint, Err: err}
 	}
-	if closeErr := response.Body.Close(); closeErr != nil {
+	if closeErr = response.Body.Close(); closeErr != nil {
 		value.CloseError = closeErr.Error()
 	}
 	if len(value.ContentType) > 4096 || len(value.BodyError) > 4096 || len(value.CloseError) > 4096 || uint64(len(value.Body)) == remaining {
-		return value, errors.New("artifact HTTP observation exceeds its admitted raw byte/error allowance")
+		return value, nil, errors.New("artifact HTTP observation exceeds its admitted raw byte/error allowance")
 	}
-	return value, ctx.Err()
+	if response.StatusCode != http.StatusOK {
+		statusErr = &releaseHttpGetStatusError{endpoint: endpoint, status: response.StatusCode, retryAfter: attemptStreamHttpRetryAfter(response.Header)}
+	} else if strings.ToLower(strings.TrimSpace(strings.Split(value.ContentType, ";")[0])) != "application/json" || value.ContentLength > maximum || int64(len(value.Body)) > maximum {
+		framingErr = errors.New("artifact HTTP response has invalid bounded JSON framing")
+	}
+	if ctx.Err() != nil && value.TransportError == "" && value.BodyError == "" {
+		value.TransportError = ctx.Err().Error()
+	}
+	return value, errors.Join(readErr, closeErr, statusErr, framingErr, ctx.Err()), nil
 }
 
 func interpretArtifactHttpExchangeV2(value releaseArtifactHttpExchangeV2) ([]byte, error) {
