@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func TestScenarioOperatorReadsBoundParallelWorkAndKeepResponseOwners(t *testing.
 		}
 		code := http.StatusOK
 		if request.URL.Host == "operator-2" && request.URL.Path == "/verify/stats" {
-			code = http.StatusServiceUnavailable
+			code = http.StatusNotFound
 		}
 		return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(request.URL.Host + request.URL.RequestURI())), Header: http.Header{}}, nil
 	})}}
@@ -76,7 +77,7 @@ func TestScenarioOperatorReadsBoundParallelWorkAndKeepResponseOwners(t *testing.
 				t.Fatalf("response changed owner: got %q want %q", response.data, want)
 			}
 			failed := operator == 1 && surface == scenarioOperatorStats
-			if (response.err != nil) != failed || failed && response.status != http.StatusServiceUnavailable {
+			if (response.err != nil) != failed || failed && response.status != http.StatusNotFound {
 				t.Fatalf("response lost its original failure: %+v", response)
 			}
 		}
@@ -134,6 +135,11 @@ func TestScenarioOperatorReadsObserveFreshResponsesAcrossSnapshots(t *testing.T)
 }
 
 func TestScenarioOperatorReadsKeepTimeoutsVisibleInSuccessiveObservations(t *testing.T) {
+	synctest.Test(t, testScenarioOperatorReadsKeepTimeoutsVisible)
+}
+
+// Virtual time exhausts the complete read budget without scheduler timing.
+func testScenarioOperatorReadsKeepTimeoutsVisible(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	var fail atomic.Bool
 	key := base64.StdEncoding.EncodeToString(make([]byte, 32))

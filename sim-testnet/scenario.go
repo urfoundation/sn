@@ -83,6 +83,8 @@ type OperatorObservation struct {
 	APIURL                        string                                       `json:"api_url"`
 	Healthy                       bool                                         `json:"healthy"`
 	StatusCode                    int                                          `json:"status_code"`
+	SurfaceReadAttempts           uint64                                       `json:"surface_read_attempts,omitempty"`
+	SurfaceReadTransientFailures  uint64                                       `json:"surface_read_transient_failures,omitempty"`
 	StatsRows                     int                                          `json:"stats_rows"`
 	Assignments                   uint64                                       `json:"assignments"`
 	Confirmations                 uint64                                       `json:"confirmations"`
@@ -1498,6 +1500,10 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, contracts *ContractView, noID int, expectedSigner, base string, minerClients map[[16]byte]int, surfaces scenarioOperatorSurfaces) OperatorObservation {
 	base = strings.TrimSuffix(base, "/")
 	o := OperatorObservation{NoID: noID, APIURL: base}
+	for _, surface := range surfaces {
+		o.SurfaceReadAttempts += surface.attempts
+		o.SurfaceReadTransientFailures += surface.transientFailures
+	}
 	if contracts != nil {
 		for _, epoch := range contracts.Epochs {
 			for _, operator := range epoch.Operators {
