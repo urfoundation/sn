@@ -2280,3 +2280,61 @@ It records original log offsets and newline-inclusive hashes for the eight
 relevant lines, including the canceled canonical block hash. These are runtime
 log facts, not independent on-chain verification. The patch is qualified for a
 successor; R43's binaries, retained continuity finding and final gate are intact.
+
+### Bound authentication memory and measure the intended lifecycle
+
+Supervisor startup and retained-file census used whole-file reads solely to
+compute SHA-256. A race-enabled simulator executable was about 186 MB; repeating
+that allocation and hashing under concurrent qualification made two existing
+child-restart tests exhaust their ten-second timer before any child or supervisor
+state existed. A captured goroutine stack proved the delay was executable
+authentication, and the clean previous source reproduced it.
+
+Hash through a fixed buffer, preserve the exact digest and read errors, and
+observe owner cancellation between reads. The same helper should serve
+executable, evidence and runtime-config authentication. Do not replace content
+authentication with a path/mtime cache. Small-file scratch allocation can use the
+opened file's size, but that size must never truncate the read or certify cached
+content. The isolated fix `63bb83c3` uses at most 64 KiB of scratch and tests
+same-size/same-mtime changes, atomic replacement, deletion, cancellation,
+partial-read errors and hash/permission compatibility. Restoring a whole-file
+reader makes the bounded-reader regression fail deterministically.
+
+Streaming bounds memory; it does not make hashing free. Lifecycle tests must
+observe the real authenticated pre-start admission boundary before starting
+their unchanged child-recovery timer, and must surface an early supervisor exit
+directly. Keep admission bounded independently. The final hash/admission suite
+passes normal and three consecutive race executions. Production admission still
+authenticates every byte, and the test does not inject a trusted digest.
+
+### Publish original child generations before granting new fault authority
+
+Checking a PID's start time only when requesting a fault is too late: stale
+supervisor state may already name a reused PID. The child owner must publish the
+original kernel start ticks it captured at launch, alongside that PID. Clear
+both fields on exit, shutdown and failed launch. Before a new restart, pause or
+continue signal, validate the complete target cohort against that original
+proof, then recheck the captured kernel/image/argv identity at signaling.
+
+The optional `ProcessState.start_time_ticks` field preserves old JSON readback.
+Missing or stale ticks grant no new signaling authority; never backfill them
+from the current occupant of a numeric PID. Exact legacy restart intent can
+still be adopted without another signal and restored through read-only health
+reconciliation. Tests must cover a malformed later cohort member with zero
+earlier writes or signals, reused identity, legacy adoption, pause/continue, and
+real supervisor publication/clearing at every lifecycle transition.
+
+This requires a coordinated supervisor-and-runner rollout. Do not deploy the
+new fault driver alone against an old supervisor. After successor fleet startup,
+run `captureFaultProcessCommands` read-only for every scheduled process-fault
+cohort before arming the next interval. Each cohort must return complete original
+generation proof. R43 keeps its old wire evidence and independently recorded
+manual recovery exceptions; source qualification does not retrofit authority
+or change its final gate.
+
+The composed isolated implementation `2536898b` includes the qualified hash
+helper and passes normal/race producer, consumer, restart-intent and escalation
+tests. Removing the producer assignment emits zero original ticks; removing
+the consumer guards writes an intent and signals an unproven later cohort.
+Both causal regressions fail deterministically. The rollout review is retained
+at `/mnt/data/sn-testnet/qualification/r43-process-state-generation-20260925/REVIEW.md`.
