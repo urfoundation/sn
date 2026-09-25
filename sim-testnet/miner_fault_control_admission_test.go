@@ -191,7 +191,7 @@ func TestMinerControlAdmissionOuterDeadlineRetainsPartialFaultSchedule(t *testin
 		}
 		fixture.driver.minerControlPersist = nil
 		actual := ChainHead{Number: 108, Hash: "0x" + strings.Repeat("2", 64)}
-		fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) { return actual, nil }
+		fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) { return actual, nil }
 		head.Number = 105
 		if err := advanceFaults(t.Context(), head, specs, records, fixture.driver); err != nil {
 			t.Fatal(err)

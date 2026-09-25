@@ -208,7 +208,7 @@ func TestMinerControlPendingRoundContinuesSchedulerAndPreservesActualWindow(t *t
 	}
 	fixture.driver.minerControlClient.Transport = minerControlTestTransport(fixture.roundTrip)
 	completedHead := ChainHead{Number: 108, Hash: "0x" + strings.Repeat("2", 64)}
-	fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) { return completedHead, nil }
+	fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) { return completedHead, nil }
 	head.Number = 102
 	if err := advanceFaults(context.Background(), head, specs, records, fixture.driver); err != nil {
 		t.Fatal(err)
@@ -237,30 +237,34 @@ func TestMinerControlPendingRoundContinuesSchedulerAndPreservesActualWindow(t *t
 // Completion observation can retry independently of already-applied controls.
 func TestMinerControlHeadTimeoutRetainsReconciliationWithoutDuplicateMutation(t *testing.T) {
 	fixture := newMinerControlTestFixture(t, "miner-1")
-	fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) { return ChainHead{}, context.DeadlineExceeded }
+	fixture.driver.faultCompletionContext = expiredFaultCompletionTestContext
+	fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) { return ChainHead{}, context.DeadlineExceeded }
 	if _, err := fixture.driver.Apply(context.Background(), fixture.fault); !minerControlPending(err) {
 		t.Fatalf("completion head timeout=%v", err)
 	}
 	if progress := fixture.progress(t); progress.Phase != "applying" || progress.CompletedCount != 1 {
 		t.Fatalf("head timeout lost completed controls: %+v", progress)
 	}
-	fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) {
+	fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) {
 		return ChainHead{Number: 123, Hash: "0x" + strings.Repeat("a", 64)}, nil
 	}
+	fixture.driver.faultCompletionContext = nil
 	if _, err := fixture.driver.Apply(context.Background(), fixture.fault); err != nil {
 		t.Fatal(err)
 	}
 	fixture.requirePosts(t, "/control/miner-1/disable")
-	fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) { return ChainHead{}, context.DeadlineExceeded }
+	fixture.driver.faultCompletionContext = expiredFaultCompletionTestContext
+	fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) { return ChainHead{}, context.DeadlineExceeded }
 	if _, err := fixture.driver.Restore(context.Background(), fixture.fault); !minerControlPending(err) {
 		t.Fatalf("restore completion head timeout=%v", err)
 	}
 	if progress := fixture.progress(t); progress.Phase != "restoring" || progress.CompletedCount != 1 {
 		t.Fatalf("restore head timeout lost recovery: %+v", progress)
 	}
-	fixture.driver.minerControlHead = func(context.Context) (ChainHead, error) {
+	fixture.driver.faultCompletionHead = func(context.Context) (ChainHead, error) {
 		return ChainHead{Number: 124, Hash: "0x" + strings.Repeat("b", 64)}, nil
 	}
+	fixture.driver.faultCompletionContext = nil
 	if _, err := fixture.driver.Restore(context.Background(), fixture.fault); err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +277,12 @@ func TestMinerControlHeadTimeoutRetainsReconciliationWithoutDuplicateMutation(t 
 // Finalized completion must not substitute a different block at the same height.
 func TestMinerControlCompletionRejectsSameHeightSubstitution(t *testing.T) {
 	spec := scenarioFaultSpec{ID: "synthetic-cohort", Kind: "miner-control"}
-	driver := &liveScenarioFaultDriver{minerControlCompleted: minerControlCompletedTransition{faultId: spec.ID, action: "disable", head: ChainHead{Number: 123, Hash: "different"}}}
-	if _, err := minerFaultCompletedHead(driver, spec, "disable", ChainHead{Number: 123, Hash: "observed"}); err == nil {
+	hash, err := canonicalHashHex(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := &liveScenarioFaultDriver{faultCompleted: faultCompletedTransition{faultId: spec.ID, faultHash: hash, action: "disable", head: ChainHead{Number: 123, Hash: "different"}}}
+	if _, err := faultCompletedHead(driver, spec, "disable", ChainHead{Number: 123, Hash: "observed"}); err == nil {
 		t.Fatal("accepted a substituted finalized block")
 	}
 }
