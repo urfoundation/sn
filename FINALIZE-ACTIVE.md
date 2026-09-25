@@ -2398,3 +2398,32 @@ one final HTTP exchange is signed; once that observation is retained, later
 replay consumes its exact bytes and cannot replace a historical negative with
 another live request. No live R44 process, configuration or evidence is changed
 by these fixes.
+
+## R45 scoped systemd doctor qualification — 2026-09-25
+
+The external-copy doctor for clean SN `6ec90bf2` plus Connect `c98eb715`
+completed 66 checks; its only hard failure was `supervisor/systemd-user`.
+The user manager was degraded by ten historical release units while the exact
+owned fleet service was loaded, active/running, and startable. Original argv,
+failed-unit names, report and live-prefix checks remain under
+`/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/migration-review/external-doctor/`.
+No failed latch, live state, service or transaction was changed.
+
+The corrected doctor retains the complete failed-unit inventory and explicitly
+observes the exact deployment service's identity, load state and startability.
+An unrelated historical failure no longer rejects current launch capability.
+An unavailable manager, failed read, malformed or aliased unit observation,
+masked unit, or unstartable loaded service remains a hard failure. A startable
+owned failed service remains eligible for the existing recovery route; the
+separate live service ownership, terminal-state and child-generation readiness
+checks are unchanged. Adjacent review found no other global manager-health
+gate. The tests permit only the three exact read-only status queries.
+
+Focused and adjacent simulator tests passed normally in 15.136s and under
+race detection in 104.124s using the pinned integration module. Restoring the
+old doctor function made four intended scoped-unit tests fail; overlay evidence
+is `/mnt/data/sn-testnet/qualification/r45-doctor-pool-causal-20260925/doctor.json`.
+This qualifies the source fix. A newly stamped composed image and another
+external-copy doctor are still required; it does not establish final acceptance
+or authenticate the whole retained startup. R44 continues through its terminal
+capture with all strict findings preserved.

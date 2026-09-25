@@ -76,56 +76,6 @@ func TestReleaseRequiredToolsIncludeCapabilityInstallerAndNoninteractivePrivileg
 	}
 }
 
-// A prior owned launch may leave the manager degraded, but any unrelated
-// failure or non-running manager state remains a hard preflight failure.
-func TestSystemdUserManagerAcceptsOnlySoleOwnedFailedService(t *testing.T) {
-	owned := "urnetwork-sim-ur-subnet-testnet-v1.service"
-	for _, test := range []struct {
-		name       string
-		state      string
-		stateErr   error
-		failed     string
-		failedErr  error
-		wantDetail string
-		wantError  string
-		wantCalls  int
-	}{
-		{name: "running", state: "running\n", wantDetail: "running", wantCalls: 1},
-		{name: "owned degraded", state: "degraded\n", stateErr: errors.New("exit status 1"), failed: owned + " loaded failed failed prior launch\n", wantDetail: "degraded; sole_failed_unit=" + owned, wantCalls: 2},
-		{name: "foreign degraded", state: "degraded\n", stateErr: errors.New("exit status 1"), failed: "foreign.service loaded failed failed foreign\n", wantDetail: "degraded", wantError: "foreign.service", wantCalls: 2},
-		{name: "additional failure", state: "degraded\n", stateErr: errors.New("exit status 1"), failed: owned + " loaded failed failed prior launch\nforeign.timer loaded failed failed foreign\n", wantDetail: "degraded", wantError: "foreign.timer", wantCalls: 2},
-		{name: "unexplained degraded", state: "degraded\n", stateErr: errors.New("exit status 1"), wantDetail: "degraded", wantError: "failed units []", wantCalls: 2},
-		{name: "failed-unit query", state: "degraded\n", stateErr: errors.New("exit status 1"), failedErr: errors.New("manager unavailable"), wantDetail: "degraded", wantError: "manager unavailable", wantCalls: 2},
-		{name: "starting", state: "starting\n", stateErr: errors.New("exit status 1"), wantDetail: "starting", wantError: "exit status 1", wantCalls: 1},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			calls := 0
-			detail, err := inspectSystemdUserManager(func(args ...string) ([]byte, error) {
-				calls++
-				if calls == 1 {
-					if strings.Join(args, " ") != "--user is-system-running" {
-						t.Fatalf("manager query = %q", args)
-					}
-					return []byte(test.state), test.stateErr
-				}
-				if strings.Join(args, " ") != "--user list-units --state=failed --all --plain --no-legend --no-pager" {
-					t.Fatalf("failed-unit query = %q", args)
-				}
-				return []byte(test.failed), test.failedErr
-			}, owned)
-			if calls != test.wantCalls || detail != test.wantDetail {
-				t.Fatalf("calls=%d detail=%q error=%v", calls, detail, err)
-			}
-			if test.wantError == "" && err != nil {
-				t.Fatal(err)
-			}
-			if test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
-				t.Fatalf("error=%v, want %q", err, test.wantError)
-			}
-		})
-	}
-}
-
 func TestReleaseUDPBufferLimitsRequireBothQuicDirections(t *testing.T) {
 	readLimits := func(values map[string]string) (releaseUDPBufferLimits, error) {
 		return readReleaseUDPBufferLimits(func(path string) ([]byte, error) {
