@@ -19,8 +19,14 @@ observation prefix, the complete process-log report and 144,427,524 accepted
 log bytes. All queues still show last discovery epoch 617; epochs 618–620
 have no entries. Fifteen acceptance-scoped blocking process rows remain.
 These are independent findings beyond the named lifecycle companion-filter
-exception. The diagnostic is still collecting further checks; retain its final
-report separately when it exits. Keep the live owner running to its original
+exception. The separate diagnostic has now completed with immutable
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/report.json`
+(SHA-256 `c207225f44bb5962f231345770b9a8aa71c293917c596c7bda26c6efe8e7e384`).
+Of 37 checks, 14 pass, six fail, one is a finding, one is the named exception
+and 15 are unavailable without the owner result or other source evidence.
+The six failed groups and exact evidence are listed in `sim-testnet/FINAL-2.md`;
+two capture-reader mismatches are under separate root-cause review for R45.
+Keep the live owner running to its original
 result or bounded watchdog, then compare exact owner artifacts and rerun the
 post-owner diagnostic without rewriting this first terminal copy.
 

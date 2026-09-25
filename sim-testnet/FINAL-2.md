@@ -1,6 +1,6 @@
 # Sim-testnet finalization report 2
 
-**Provisional R44 terminal evidence, updated 2026-09-25 08:24 UTC — not a final
+**Provisional R44 terminal evidence, updated 2026-09-25 08:27 UTC — not a final
 result.** The signed recovery-44 release attempt completed its five 300-block
 epochs at block 8,081,674 and its owner recorded the required terminal
 observation at block 8,081,824. The original owner remains active; no owner
@@ -19,8 +19,16 @@ It retained 1,073 source files, including all 1,000 decodable claim queues,
 the authenticated observation prefix, the full process report and 144,427,524
 accepted process-log bytes. Its two copy findings are the absent original
 `result.json` and `complete.json`; it did not synthesize either file. The
-diagnostic is still running additional read-only checks, so its progress file
-is not a final diagnostic report.
+completed read-only [terminal diagnostic report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/report.json)
+has SHA-256
+`c207225f44bb5962f231345770b9a8aa71c293917c596c7bda26c6efe8e7e384`
+and 37 checks: 14 pass, six fail, one finding, one named exception and 15
+unavailable. The six failed groups are terminal scenario assertions,
+validator-2 signed-source capture, the original process-log report, acceptance
+fault timing, companion evidence capture and signed payout artifacts. The
+validator-1 local-intents check is a finding. Result-dependent checks remain
+unavailable because the original owner has not sealed its result. R44-LC-1
+does not convert any of those outcomes into a pass.
 
 **Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
 The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
@@ -50,7 +58,9 @@ epochs 618–620. Epoch 616 still has 359 `submitting` entries and epoch 617
 has 47. The retained process report contains 15 blocking acceptance-scoped
 rows: 10 `exit-gap-timeout` rows (14 events), two validator
 steering-attempt rows (24 events), two steering-continuity rows (three
-events), and one TLS handshake timeout. The earlier read-only
+events), and one TLS handshake timeout. The later final diagnostic process
+scan records 26 steering-attempt events across the same two rows; this is a
+later read cut, not a rewrite of the supplement. The earlier read-only
 [interim inventory](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/inventory.json)
 at 07:17:59 UTC records SHA-256
 `017fb1603eea127593b2a6e1f0f6115d86d1a9554640d9fd2a452cb219aafb9c`
@@ -60,7 +70,7 @@ process logs, and watcher progress. Its
 distinguishes the known Connect/transport repairs from historical gaps they
 cannot prove repaired, and identifies expired bindings, absent positive native
 weights, below-threshold rate readiness, and missing current-window claims.
-Preserve their raw rows and compare them with the eventual owner result. No skipped check is
+Preserve both raw cuts and compare them with the eventual owner result. No skipped check is
 reported as passed; the full campaign, production interval, accounting replay
 and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
 
