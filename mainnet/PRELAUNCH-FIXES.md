@@ -2371,6 +2371,34 @@ owner/nonce/plan refusal normally and under the race detector. A composed
 successor using the actual signed policy-v2 predecessor remains a separate
 qualification gate from isolated fixture tests.
 
+The terminal continuation must keep its original four source snapshots
+unchanged while separately recording each frozen suffix and the active
+generation's four signed ledger heads. A single active generation contributes
+future native work; an old audit arriving later still consumes its own slot.
+The common closed-epoch forecast spans the original activation through the
+fixed end once, with the cutoff selecting the actual signing owner. Replacing
+the original source array with the newest generation loses custody; appending
+two full future forecasts charges the same future interval twice.
+
+Strict runtime projection must rederive its exact bytes from the authenticated
+selected config and independently reviewed current release. It may change the
+reviewed runtime tuple and remove provisional permissions, while preserving
+policy, keys, source-role proof, namespaces and all limits. Store the new config
+beside the active coordinator namespace because history adoption binds that
+directory through the config path. Complete immutable inputs must precede
+selection; partial import stays inert and exact replay is idempotent. Attach
+both the active process config and its strict history request. Frozen history
+receipts remain witnesses and never become additional writers.
+
+Apply the same generation distinction to independent final reconstruction.
+Capturing the active runtime file is insufficient when offline reconstruction
+still assumes original activation keys. Retain original prepared/completed
+bytes and separately authenticate the active rollover plan, dual consents,
+handoff journal receipt and source-role owner signature. Bind the final strict
+history request to that active namespace and source approval. Qualify launch,
+capture and offline replay together before opening a strict acceptance window;
+none of these projections promotes provisional observations into acceptance.
+
 R45 startup also showed repeated full supervised replays after single
 30-second canonical UID and semantic read failures. Retry bounded typed reads
 at their original hash, retain the authenticated completed batch prefix, and
