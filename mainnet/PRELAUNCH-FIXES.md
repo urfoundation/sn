@@ -1,5 +1,19 @@
 # Mainnet prelaunch fixes
 
+## Acceptance-window attribution from R44
+
+R44 terminal diagnostics exposed two ways to draw a false conclusion from
+otherwise valid retained evidence. A payout check selected the latest signed
+artifact, which could belong to epoch 621 after the accepted [616,621)
+window; an older signed claim observation lacked additive discovery fields,
+which a diagnostic displayed as zero rather than unavailable. Before mainnet,
+bind every tier/cohort assertion to the exact accepted epoch, committed root
+and artifact hash. Treat absent legacy fields as unavailable, while preserving
+real queue and receipt failures as failures. Qualify with a later conflicting
+artifact, a missing historical field, an exact-window match and a changed
+root/hash. The testnet repair is SN `f673ca9a`; composed release qualification
+and deployment evidence are still required before this item is Done.
+
 Updated 2026-09-22. This is the canonical tracker for fixes to complete before
 mainnet launch. The initial workstream is automatic handling of compatible
 Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)

@@ -1,5 +1,20 @@
 # Testnet execution plan
 
+## R45 payout-window and fixture repairs integrated — 2026-09-25 11:04 UTC
+
+Main now includes payout-window commit `f673ca9a` and validator-fixture commit
+`6a407a1f` after the reviewed core successor stack. The payout reader binds
+cohort and tier checks to the signed accepted epochs and matching root/hash;
+it cannot substitute a later epoch's artifact. Legacy R44 diagnostics now
+report missing additive claim-observation fields as unavailable instead of
+inventing zero counts. The fixture repair updates stale policy/runtime
+expectations and tests the 300-second deposit read deadline without sleeping.
+Sol's focused and adjacent checks passed normally and under race detection on
+the isolated patches, and the full fixture-tree validator normal suite passed.
+Sol is checking their combined main source now; those results and the native
+published-cut recovery patch remain outstanding before a final R45 build.
+No R44 executable or live state was changed.
+
 ## R44 companion filter hard-restored — 2026-09-25 10:59 UTC
 
 The live fault record shows `fleet-lifecycle-companion-prune` restored at its
