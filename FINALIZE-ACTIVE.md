@@ -1,5 +1,36 @@
 # Testnet execution plan
 
+## Current continuation — 2026-09-25 05:26 UTC
+
+R44 remains owned by `urnetwork-sim-release-r44.service` (PID 2823030), with
+the fleet and the separate read-only terminal diagnostic watcher active. The
+signed attempt has no result or invalidation. Observation 50 reached finalized
+block 8,080,944 in epoch 618; the LAN node had finalized block 8,080,972.
+Thirty-three faults were restored, three active and six pending. The signed
+five-epoch window still requires terminal block 8,081,824. Preserve the live
+run through that block and collect its exact result and terminal inventory.
+Known process-log findings remain final-blocking but are being retained as
+provisional observations, not used to interrupt the interval.
+
+Epoch 617 finalized with zero funded settlement for both operators. The
+[accounting evidence](/mnt/data/sn-testnet/qualification/r44-native-weight-lineage-20260925/REVIEW.md)
+shows the later operator-2 stake arrived after its epoch-617 capture and
+remained in that operator's vault pool; conservation holds. A cross-epoch
+regression was pushed as commit `7e1782a6` after 48 Forge tests and Go model
+normal/race passed, with an emission-carry mutation failing the new test.
+
+The [R45 renewal proposal](/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/migration-review/RENEWAL-PROPOSAL.md)
+is ready for a fresh post-terminal plan. Its clean composed image is SN
+`d9ab57c9` plus Connect `c98eb715`, SHA-256
+`53b26bdc9e1778f105872dfb103dd8e5350c623ae9668719f4b40411ad295b4a`;
+an external-copy doctor passed all 66 checks. Round 7 must renew 808 expired
+candidate bindings before another acceptance boundary; its projected totals
+remain below the approved 512 TAO and 512 EVM limits. No renewal transaction
+or live R45 write has occurred. A separate claim-queue investigation found
+that a shared submission mutex can let hundreds of older claims delay current
+epoch discovery. The bounded admission and acceptance-window fixes are in
+progress; they must be qualified and included in a new image before R45.
+
 ## R44 live release interval — 2026-09-25 02:59 UTC
 
 R43 ended before its terminal block when a post-restart
