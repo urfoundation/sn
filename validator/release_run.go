@@ -157,6 +157,10 @@ func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText
 		retryable := status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
 		return retryable, retryable
 	}
+	if status, ok := err.(*releaseHttpGetStatusError); ok {
+		retryable := status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
+		return retryable, retryable
+	}
 	if publication, ok := err.(*attemptReplicaPublicationError); ok {
 		return classifyReleaseSnapshotRetryCauses(publication.causes, true, legacyText, transportOrigin)
 	}
