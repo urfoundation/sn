@@ -9,6 +9,10 @@ finalized block 8,084,084; measured epochs are 630–634, starting at block
 8,084,374, ending at 8,085,874, with terminal block 8,086,024. The exact
 signed envelope and baseline observation are in the R45 portable bundle.
 The owner remains the only writer. Do not restart it for the isolated fixes.
+The LAN RPC finalized the signed first measured block 8,084,374 (hash
+`0x00bb53a7d661754e4d66df69cab503eb7a905990f1a2d06d1816c4605493d5c6`,
+timestamp 16:45:36 UTC). The interval is underway on-chain; preserve the
+owner's later post-start observations before claiming measured behavior.
 Final acceptance remains open, including governance drill, relay horizon,
 publication capacity and the scoped R44 exception.
 The read-only full active-epoch object census has since measured 428 retained

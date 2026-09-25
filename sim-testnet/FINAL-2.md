@@ -140,6 +140,13 @@ It binds that exact baseline to five measured epochs **630–634**: start block
 This is the release acceptance boundary, not completed final validation.
 The earlier R44-LC-1 exception, R45 governance-drill gap and remaining strict
 checks retain their identities while the owner runs to terminal evidence.
+The signed first measured block **8,084,374** was later confirmed canonical
+and finalized by the LAN RPC. Its block hash is
+`0x00bb53a7d661754e4d66df69cab503eb7a905990f1a2d06d1816c4605493d5c6`
+and timestamp is 16:45:36 UTC. The owner remained active as the chain crossed
+it; its first post-start observation and terminal result are separate evidence.
+[Start-block LAN receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/release-start-block8084374-lan.json)
+(SHA-256 `65ae97503bbfa8279e5525d1850615683d260f78dc3052253c58e9a2937f9fe6`).
 
 The independent full-bucket listing completed at 15:56 UTC and measured the
 14:46:05–15:51:00 active-epoch window: **428 retained new objects and

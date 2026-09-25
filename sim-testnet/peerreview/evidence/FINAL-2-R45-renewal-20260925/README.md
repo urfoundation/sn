@@ -84,6 +84,10 @@ they do not establish successful finalization.
   15:52:25 UTC, binding that baseline to five measured epochs 630–634,
   start block 8,084,374 and terminal block 8,086,024. This is a start record,
   not a final result.
+- `release-start-block8084374-lan.json`: direct LAN-RPC finalized/canonical
+  block read for the signed first measured block, hash
+  `0x00bb53a7d661754e4d66df69cab503eb7a905990f1a2d06d1816c4605493d5c6`.
+  It proves the chain crossed the boundary, not that the owner passed it.
 - `blob-epoch628-census-summary.json`: read-only full-bucket listing summary
   after the first complete renewed-binding epoch. It counts 428 retained new
   objects and 244,049,506 bytes during 14:46:05–15:51:00. The full listing
