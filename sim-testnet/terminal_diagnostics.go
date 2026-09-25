@@ -375,6 +375,7 @@ func runTerminalDiagnostics(ctx context.Context, cfg *ResolvedConfig, stateDir s
 		return nil, validateScenarioCampaignStartMarkerBytes(reader, result, options.Name, roles.EVM["testnet-owner"].Address, startRaw)
 	})
 	definition, definitionErr := scenarioDefinitionFor(reader, options.Name)
+	collectTerminalDiagnosticEpochObservationFields(collector, terminal, prerequisite(terminalOk, "authenticated terminal observation unavailable"))
 	collector.check("terminal-scenario-assertions", prerequisite(terminalOk && definitionErr == nil, "terminal observation or scenario definition unavailable"), 5*time.Minute, func(context.Context) (any, error) {
 		started, err := time.Parse(time.RFC3339Nano, attempt.payload.AcceptanceBoundary.AcceptanceStartedAt)
 		if err != nil {
