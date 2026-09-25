@@ -34,7 +34,12 @@ steering-attempt findings (20 events), and two steering-continuity findings
 at 07:17:59 UTC records SHA-256
 `017fb1603eea127593b2a6e1f0f6115d86d1a9554640d9fd2a452cb219aafb9c`
 and hashes the signed start, all 1,000 claim queues, observations, faults,
-process logs, and watcher progress. Preserve their raw rows and report exact
+process logs, and watcher progress. Its
+[read-only assessment](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/ASSESSMENT.md)
+distinguishes the known Connect/transport repairs from historical gaps they
+cannot prove repaired, and identifies expired bindings, absent positive native
+weights, below-threshold rate readiness, and missing current-window claims.
+Preserve their raw rows and report exact
 terminal counts when the watcher and owner results exist. No skipped check is
 reported as passed; the full campaign, production interval, accounting replay
 and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
