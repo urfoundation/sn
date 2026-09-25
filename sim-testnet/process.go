@@ -52,15 +52,19 @@ type ProcessSpec struct {
 	H3ProbeCAFile                        string
 	RestartLimit                         int
 }
+
+// Optional original start ticks preserve legacy readback; only a state emitted
+// by the child owner with that proof can authorize a new process fault signal.
 type ProcessState struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Identity  string `json:"identity"`
-	PID       int    `json:"pid"`
-	StartedAt string `json:"started_at"`
-	Restarts  int    `json:"restarts"`
-	Healthy   bool   `json:"healthy"`
-	ExitError string `json:"exit_error,omitempty"`
+	ID             string `json:"id"`
+	Role           string `json:"role"`
+	Identity       string `json:"identity"`
+	PID            int    `json:"pid"`
+	StartTimeTicks uint64 `json:"start_time_ticks,omitempty"`
+	StartedAt      string `json:"started_at"`
+	Restarts       int    `json:"restarts"`
+	Healthy        bool   `json:"healthy"`
+	ExitError      string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
 	Schema                                    string                 `json:"schema"`
@@ -3322,6 +3326,8 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	start := func(r *running) error {
 		r.cmd = nil
 		r.identity = supervisedProcessIdentity{}
+		r.state.PID = 0
+		r.state.StartTimeTicks = 0
 		r.startedAt = time.Now()
 		cmd, exited, err := startSpecWithExit(childCtx, r.spec)
 		if err != nil {
@@ -3337,6 +3343,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 		r.identity = identity
 		r.generation++
 		r.state.PID = cmd.Process.Pid
+		r.state.StartTimeTicks = identity.StartTimeTicks
 		r.state.StartedAt = time.Now().UTC().Format(time.RFC3339)
 		r.state.ExitError = ""
 		generation := r.generation
@@ -3407,6 +3414,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 			stopSupervisorCommands(commands)
 			for _, current := range runs {
 				current.state.PID = 0
+				current.state.StartTimeTicks = 0
 				current.state.Healthy = false
 				current.state.ExitError = "supervisor stopped"
 			}
@@ -3420,6 +3428,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 			r.cmd = nil
 			r.identity = supervisedProcessIdentity{}
 			r.state.PID = 0
+			r.state.StartTimeTicks = 0
 			r.state.Healthy = false
 			if notice.err != nil {
 				r.state.ExitError = notice.err.Error()

@@ -740,7 +740,11 @@ func TestLiveFaultDriverStopsAndRecoversExactManifestProcess(t *testing.T) {
 	spec := ProcessSpec{ID: "miner-8", Role: "miner", Identity: "client"}
 	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash", Specs: []ProcessSpec{spec}}
 	manifestHash, _ := canonicalHashHex(manifest)
-	state := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), ManifestHash: manifestHash, Processes: []ProcessState{{ID: spec.ID, Role: spec.Role, Identity: spec.Identity, PID: cmd.Process.Pid, Healthy: true}}}
+	identity, err := observeStartedSupervisedProcessIdentity(t.Context(), cmd.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), ManifestHash: manifestHash, Processes: []ProcessState{{ID: spec.ID, Role: spec.Role, Identity: spec.Identity, PID: cmd.Process.Pid, StartTimeTicks: identity.StartTimeTicks, Healthy: true}}}
 	manifestBytes, _ := json.Marshal(manifest)
 	stateBytes, _ := json.Marshal(state)
 	if err := os.WriteFile(filepath.Join(dir, "supervisor.json"), manifestBytes, 0o600); err != nil {
