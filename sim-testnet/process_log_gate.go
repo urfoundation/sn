@@ -134,7 +134,7 @@ type processLogFaultScope struct {
 func activeProcessLogFaultScopes(records []ScenarioFaultRecord) []processLogFaultScope {
 	scopes := make([]processLogFaultScope, 0, len(records))
 	for _, record := range records {
-		if (record.Status != "active" || record.AppliedBlock == 0) && (record.Status != "pending" || record.ControlStartedBlock == 0 || record.Kind != "miner-control") {
+		if (record.Status != "active" || record.AppliedBlock == 0) && !scenarioFaultApplyPending(record) {
 			continue
 		}
 		targetSet := map[string]bool{}

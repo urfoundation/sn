@@ -361,6 +361,9 @@ func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *
 // Both current schedules and historical signed schedules enforce identical
 // state-transition evidence and reject failed or malformed fault state.
 func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record ScenarioFaultRecord) error {
+	if err := validateScenarioCampaignFaultApply(record); err != nil {
+		return err
+	}
 	if err := validateScenarioCampaignMinerControl(record); err != nil {
 		return err
 	}
@@ -376,7 +379,7 @@ func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record
 	}
 	switch record.Status {
 	case "pending":
-		controlPending := record.Kind == "miner-control" && record.ControlStartedBlock != 0
+		controlPending := record.Kind == "miner-control" && record.ControlStartedBlock != 0 || record.ApplyStartedBlock != 0
 		if record.AppliedBlock != 0 || record.AppliedBlockHash != "" || record.RestoredBlock != 0 || record.RestoredBlockHash != "" || len(record.RestoredProcesses) != 0 || !controlPending && (len(record.Processes) != 0 || record.Error != "") {
 			return fmt.Errorf("scenario campaign pending fault %q contains transition evidence", record.ID)
 		}
@@ -984,6 +987,9 @@ func validateScenarioFaultProgress(previous, next []ScenarioFaultRecord) error {
 		}
 		if after.ControlPendingRounds < before.ControlPendingRounds || before.ControlStartedBlock != 0 && (after.ControlStartedBlock != before.ControlStartedBlock || after.ControlStartedBlockHash != before.ControlStartedBlockHash) {
 			return fmt.Errorf("scenario campaign fault %q changed its pending control evidence", before.ID)
+		}
+		if after.ApplyPendingRounds < before.ApplyPendingRounds || before.ApplyStartedBlock != 0 && (after.ApplyStartedBlock != before.ApplyStartedBlock || after.ApplyStartedBlockHash != before.ApplyStartedBlockHash || !slices.Equal(after.Processes, before.Processes)) || before.AppliedBlock != 0 && after.ApplyPendingRounds != before.ApplyPendingRounds {
+			return fmt.Errorf("scenario campaign fault %q changed its pending apply evidence", before.ID)
 		}
 		if after.RestorePendingRounds < before.RestorePendingRounds || before.RestoreStartedBlock != 0 && (after.RestoreStartedBlock != before.RestoreStartedBlock || after.RestoreStartedBlockHash != before.RestoreStartedBlockHash) || before.Status == "restored" && after.RestorePendingRounds != before.RestorePendingRounds {
 			return fmt.Errorf("scenario campaign fault %q changed its pending restore evidence", before.ID)

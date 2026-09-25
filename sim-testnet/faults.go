@@ -76,6 +76,9 @@ type ScenarioFaultRecord struct {
 	ControlStartedBlock        uint64                 `json:"control_started_block,omitempty"`
 	ControlStartedBlockHash    string                 `json:"control_started_block_hash,omitempty"`
 	ControlPendingRounds       uint64                 `json:"control_pending_rounds,omitempty"`
+	ApplyStartedBlock          uint64                 `json:"apply_started_block,omitempty"`
+	ApplyStartedBlockHash      string                 `json:"apply_started_block_hash,omitempty"`
+	ApplyPendingRounds         uint64                 `json:"apply_pending_rounds,omitempty"`
 	RestoreStartedBlock        uint64                 `json:"restore_started_block,omitempty"`
 	RestoreStartedBlockHash    string                 `json:"restore_started_block_hash,omitempty"`
 	RestorePendingRounds       uint64                 `json:"restore_pending_rounds,omitempty"`
@@ -93,23 +96,25 @@ type scenarioContainerRuntime interface {
 }
 
 type liveScenarioFaultDriver struct {
-	stateDir                 string
-	cfg                      *ResolvedConfig
-	planHash                 string
-	coordinator              string
-	containers               scenarioContainerRuntime
-	minerControlURL          func(swarm int, target, action string) string
-	minerControlClient       *http.Client
-	minerControlWait         func(context.Context, time.Duration) error
-	minerControlParallel     int
-	minerControlRoundContext func(context.Context) (context.Context, context.CancelFunc)
-	minerControlPersist      func(string, []byte) error
-	minerControlRemove       func(string, activeFaultFile, int) error
-	minerControlHead         func(context.Context) (ChainHead, error)
-	minerControlCompleted    minerControlCompletedTransition
-	minerControlReconciled   map[string]map[string]minerControlGeneration
-	restartPersist           func(string, activeFaultFile, scenarioFaultSpec, []FaultProcessEvidence) error
-	restartSignal            func(supervisedCommand, syscall.Signal) bool
+	stateDir                   string
+	cfg                        *ResolvedConfig
+	planHash                   string
+	coordinator                string
+	containers                 scenarioContainerRuntime
+	minerControlURL            func(swarm int, target, action string) string
+	minerControlClient         *http.Client
+	minerControlWait           func(context.Context, time.Duration) error
+	minerControlParallel       int
+	minerControlRoundContext   func(context.Context) (context.Context, context.CancelFunc)
+	minerControlPersist        func(string, []byte) error
+	minerControlRemove         func(string, activeFaultFile, int) error
+	faultCompletionHead        func(context.Context) (ChainHead, error)
+	faultCompletionContext     func(context.Context) (context.Context, context.CancelFunc)
+	faultCompletionRetryPolicy *finalSemanticRPCRetryPolicy
+	faultCompleted             faultCompletedTransition
+	minerControlReconciled     map[string]map[string]minerControlGeneration
+	restartPersist             func(string, activeFaultFile, scenarioFaultSpec, []FaultProcessEvidence) error
+	restartSignal              func(supervisedCommand, syscall.Signal) bool
 }
 
 type dockerScenarioContainerRuntime struct{ docker dockerCLI }
@@ -558,10 +563,17 @@ func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spe
 	return result, nil
 }
 
-// A failed heartbeat may leave exact durable miner intent. Preserve that
+// A failed heartbeat may leave exact durable fault intent. Preserve that
 // transition as pending; only semantic failures may terminalize its schedule.
 func (self *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	self.faultCompleted = faultCompletedTransition{}
 	processes, err := self.apply(ctx, spec)
+	// A newly reconciled miner round already captured its completion. Exact
+	// adoption of an active round must acquire a fresh head without reissuing
+	// its controls, including after this driver has been reopened.
+	if err == nil && self.faultCompleted.faultId == "" {
+		err = self.captureFaultCompletion(ctx, spec, "disable")
+	}
 	return self.minerControlResult(spec, processes, err)
 }
 
@@ -671,6 +683,7 @@ func (d *liveScenarioFaultDriver) apply(ctx context.Context, spec scenarioFaultS
 // Restoration uses the same retained intent and transient classification as
 // activation, including a context expiring after partial successful teardown.
 func (self *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	self.faultCompleted = faultCompletedTransition{}
 	processes, err := self.restore(ctx, spec)
 	return self.minerControlResult(spec, processes, err)
 }
@@ -712,6 +725,11 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	}
 	if restoreErr != nil {
 		return processes, restoreErr
+	}
+	if spec.Kind != "miner-control" {
+		if err := d.captureFaultCompletion(ctx, spec, "enable"); err != nil {
+			return processes, err
+		}
 	}
 	if spec.Kind == "miner-control" {
 		active, err = readActiveFaultFile(d.activePath())
@@ -1229,7 +1247,7 @@ func armPreAcceptanceFaults(ctx context.Context, specs []scenarioFaultSpec, driv
 		if !spec.PreAcceptance {
 			continue
 		}
-		processes, err := waitMinerFaultTransition(ctx, func() ([]FaultProcessEvidence, error) { return driver.Apply(ctx, spec) })
+		processes, err := waitScenarioFaultApply(ctx, spec, func() ([]FaultProcessEvidence, error) { return driver.Apply(ctx, spec) })
 		if err != nil {
 			for index := len(applied) - 1; index >= 0; index-- {
 				_, _ = driver.Restore(context.Background(), applied[index])
@@ -1297,7 +1315,7 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			if blocked {
 				continue
 			}
-			if specs[i].ActivationCondition != "" {
+			if specs[i].ActivationCondition != "" && !record.ActivationConditionMet {
 				if activateReady == nil {
 					continue
 				}
@@ -1313,6 +1331,18 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Apply(ctx, specs[i])
 			if err != nil {
+				if faultCompletionPending(specs[i], "disable", err) {
+					if record.ApplyPendingRounds == ^uint64(0) {
+						record.Status, record.Error = "failed", "fault apply checkpoint round counter exhausted"
+						return errors.New(record.Error)
+					}
+					if record.ApplyStartedBlock == 0 {
+						record.ApplyStartedBlock, record.ApplyStartedBlockHash = head.Number, head.Hash
+					}
+					record.ApplyPendingRounds++
+					record.Processes, record.Error = processes, err.Error()
+					continue
+				}
 				if record.Kind == "miner-control" && minerControlPending(err) {
 					if record.ControlPendingRounds == ^uint64(0) {
 						record.Status, record.Error = "failed", "miner control pending round counter exhausted"
@@ -1328,7 +1358,7 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 				record.Status, record.Error = "failed", err.Error()
 				return err
 			}
-			completedHead, err := minerFaultCompletedHead(driver, specs[i], "disable", head)
+			completedHead, err := faultCompletedHead(driver, specs[i], "disable", head)
 			if err != nil {
 				record.Status, record.Error = "failed", err.Error()
 				return err
@@ -1345,7 +1375,7 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 				record.Status, record.Error = "failed", "fault minimum restoration block overflows"
 				return errors.New(record.Error)
 			}
-			shouldRestore := head.Number >= record.RestoreBlock && head.Number >= minimumRestore
+			shouldRestore := head.Number >= minimumRestore && (head.Number >= record.RestoreBlock || record.RestoreConditionMet)
 			if !shouldRestore && specs[i].RestoreCondition != "" && head.Number >= minimumRestore && restoreReady != nil {
 				conditionMet, err := restoreReady(specs[i])
 				if err != nil {
@@ -1362,7 +1392,7 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 			}
 			processes, err := driver.Restore(ctx, specs[i])
 			if err != nil {
-				if processRestartPending(specs[i], err) {
+				if processRestartPending(specs[i], err) || faultCompletionPending(specs[i], "enable", err) {
 					if record.RestorePendingRounds == ^uint64(0) {
 						record.Status, record.Error = "failed", "process restart restore round counter exhausted"
 						return errors.New(record.Error)
@@ -1386,7 +1416,7 @@ func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []sc
 				record.Status, record.Error = "failed", err.Error()
 				return err
 			}
-			completedHead, err := minerFaultCompletedHead(driver, specs[i], "enable", head)
+			completedHead, err := faultCompletedHead(driver, specs[i], "enable", head)
 			if err != nil {
 				record.Status, record.Error = "failed", err.Error()
 				return err

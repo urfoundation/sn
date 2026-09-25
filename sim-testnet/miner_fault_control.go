@@ -250,20 +250,8 @@ func (self *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec sce
 	if err := self.controlMinerRound(ctx, processes, action, progress, persist); err != nil {
 		return processes, err
 	}
-	if self.minerControlHead != nil {
-		headCtx, cancel := context.WithTimeout(ctx, minerControlRequestTimeout)
-		head, err := self.minerControlHead(headCtx)
-		cancel()
-		if err != nil {
-			if ctx.Err() == nil && minerControlTransientError(err) {
-				return processes, &minerControlPendingError{cause: err}
-			}
-			return processes, err
-		}
-		if head.Number == 0 || !validCanonicalHashHex(head.Hash) {
-			return processes, errors.New("miner control completion has an invalid finalized head")
-		}
-		self.minerControlCompleted = minerControlCompletedTransition{faultId: spec.ID, action: action, head: head}
+	if err := self.captureFaultCompletion(ctx, spec, action); err != nil {
+		return processes, err
 	}
 	if !enable {
 		progress.Phase = "active"
