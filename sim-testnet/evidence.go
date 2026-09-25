@@ -2223,12 +2223,11 @@ func evidenceFileHashes(root string, operators int) (map[string]string, error) {
 		if excluded[rel] || isFinalSemanticPostCapturePath(rel) {
 			return nil
 		}
-		b, err := os.ReadFile(path)
+		hash, err := fileSHA256(path)
 		if err != nil {
 			return err
 		}
-		h := sha256.Sum256(b)
-		result[rel] = "sha256:" + hex.EncodeToString(h[:])
+		result[rel] = hash
 		return nil
 	})
 	return result, err

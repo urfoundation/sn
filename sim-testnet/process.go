@@ -3254,7 +3254,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	if err != nil {
 		return err
 	}
-	hash, err := fileSHA256(executable)
+	hash, err := fileSHA256Context(ctx, executable)
 	if err != nil {
 		return err
 	}
@@ -3674,14 +3674,6 @@ func Tail(ctx context.Context, stateDir string, w io.Writer) error {
 			}
 		}
 	}
-}
-func fileSHA256(path string) (string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	h := sha256.Sum256(b)
-	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
 
 var _ = strconv.Itoa

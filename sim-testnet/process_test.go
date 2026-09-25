@@ -781,8 +781,10 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	admitted := make(chan struct{})
 	go func() {
 		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			close(admitted)
 			return nil
 		}, restartWait)
 	}()
@@ -800,11 +802,25 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 		}
 	})
 
+	// Authenticate the executable before measuring child recovery. A race
+	// binary can take longer to hash than the child lifecycle budget, and no
+	// child exists until this authenticated pre-start callback is reached.
+	select {
+	case <-admitted:
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before authenticated admission: %v", err)
+	case <-time.After(time.Minute):
+		t.Fatal("supervisor did not reach authenticated admission")
+	}
 	select {
 	case delay := <-restartDelays:
 		if delay != restartBackoff(1) {
 			t.Fatalf("first retry delay=%s", delay)
 		}
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before the first child restart: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("first child exit did not schedule a restart")
 	}
@@ -814,6 +830,9 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 		if cooldownDelay <= 0 || cooldownDelay > supervisorRestartBudgetRecoveryWindow || cooldownDelay < supervisorRestartBudgetRecoveryWindow-time.Second {
 			t.Fatalf("cooldown delay=%s", cooldownDelay)
 		}
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before the child cooldown: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("exhausted child did not schedule a cooldown")
 	}
@@ -912,19 +931,12 @@ exit 17
 			return ctx.Err()
 		}
 	}
-	nextRestartWait := func() restartWaitRequest {
-		select {
-		case request := <-restartWaitRequests:
-			return request
-		case <-time.After(10 * time.Second):
-			t.Fatal("supervisor did not request its next restart wait")
-			return restartWaitRequest{}
-		}
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	admitted := make(chan struct{})
 	go func() {
 		done <- superviseWithContractCleanupAndRestartWait(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			close(admitted)
 			return nil
 		}, restartWait)
 	}()
@@ -941,6 +953,28 @@ exit 17
 		}
 	})
 
+	// The child budget starts only after the real executable hash and
+	// manifest have passed admission, as in the recovery test above.
+	select {
+	case <-admitted:
+	case err := <-done:
+		finished = true
+		t.Fatalf("supervisor exited before authenticated admission: %v", err)
+	case <-time.After(time.Minute):
+		t.Fatal("supervisor did not reach authenticated admission")
+	}
+	nextRestartWait := func() restartWaitRequest {
+		select {
+		case request := <-restartWaitRequests:
+			return request
+		case err := <-done:
+			finished = true
+			t.Fatalf("supervisor exited before its next restart wait: %v", err)
+		case <-time.After(10 * time.Second):
+			t.Fatal("supervisor did not request its next restart wait")
+		}
+		return restartWaitRequest{}
+	}
 	first := nextRestartWait()
 	if first.delay != restartBackoff(1) {
 		t.Fatalf("first retry delay=%s", first.delay)
