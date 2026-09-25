@@ -1425,12 +1425,23 @@ func ensureManagedVolume(ctx context.Context, docker dockerCLI, name, specHash s
 // waitContainerReady polls an in-container dependency probe until its bounded
 // startup deadline or caller cancellation.
 func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedContainerSpec) error {
+	return waitContainerReadyWithProbe(ctx, spec, func(ctx context.Context) ([]byte, error) {
+		args := append([]string{"exec", spec.Name}, spec.ReadyProbe...)
+		return docker.commandContext(ctx, args...).CombinedOutput()
+	})
+}
+
+// Both initial startup and fault recovery use the same semantic readiness
+// probe. The injected command boundary permits deterministic timeout tests.
+func waitContainerReadyWithProbe(ctx context.Context, spec managedContainerSpec, probe func(context.Context) ([]byte, error)) error {
 	deadline := time.Now().Add(spec.ReadyTimeout)
 	var lastOutput string
 	var lastErr error
 	for time.Now().Before(deadline) {
-		args := append([]string{"exec", spec.Name}, spec.ReadyProbe...)
-		output, err := docker.commandContext(ctx, args...).CombinedOutput()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		output, err := probe(ctx)
 		lastOutput = strings.TrimSpace(string(output))
 		lastErr = err
 		if err == nil && (spec.ReadyExpected == "" || lastOutput == spec.ReadyExpected) {
