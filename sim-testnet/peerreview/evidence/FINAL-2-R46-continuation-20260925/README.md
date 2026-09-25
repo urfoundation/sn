@@ -36,3 +36,9 @@ end block 8,086,174 and terminal block 8,086,324. This is start evidence,
 not proof that every measured epoch or terminal check completed.
 `signed-window.receipt.json` records the source and copy hashes and the
 signed window fields for a compact independent comparison.
+
+`first-measured-observation.json` is the exact owner observation at finalized
+block 8,084,680, six blocks into the window. Its SHA-256 is
+`99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`.
+It reports 808 valid fleet bindings and policy rate readiness, but cannot
+establish complete epoch or terminal outcomes by itself.

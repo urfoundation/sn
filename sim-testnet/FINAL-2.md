@@ -14,10 +14,18 @@ preparation and signed a fresh R46 acceptance boundary at 17:47:11 UTC:
 baseline epoch **630** at finalized block **8,084,658**, five measured
 epochs **631–635**, start block **8,084,674**, end block **8,086,174**, and
 terminal block **8,086,324**. The LAN node finalized block 8,084,682 after
-the signed start. This proves the interval was started; measured observations
-and terminal acceptance are still separate requirements.
+the signed start. The owner completed its first measured observation at
+17:47:49 UTC on finalized block **8,084,680** (hash
+`0x914e4fd82d14e5f17dd19a4f3eb0455495f88cda1c01487caecef60e80087e4f`),
+six blocks after start. It found 808 valid fleet bindings and policy rate
+readiness. Its observation hash is
+`0x8adaccc861dba35a59e47303a9b5f9f15af51e24f23f1ebeac4699b438a81d81`.
+This proves measured observation began; complete epochs and terminal
+acceptance are still separate requirements.
 [Signed start envelope](peerreview/evidence/FINAL-2-R46-continuation-20260925/generation46-signed-start.evidence.json)
-(SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`).
+(SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`),
+[first measured observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-observation.json)
+(SHA-256 `99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
