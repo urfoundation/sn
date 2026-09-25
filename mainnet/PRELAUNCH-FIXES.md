@@ -2338,3 +2338,50 @@ tests. Removing the producer assignment emits zero original ticks; removing
 the consumer guards writes an intent and signals an unproven later cohort.
 Both causal regressions fail deterministically. The rollout review is retained
 at `/mnt/data/sn-testnet/qualification/r43-process-state-generation-20260925/REVIEW.md`.
+
+### Rejected stale contracts can arrive after replacement health
+
+R43 reached its signed release interval but exited before its terminal block
+after a new `restart-stale-contract` finding joined the earlier transport and
+steering findings. Miner swarms 5 and 6 emitted the exact primary, zero-stream
+network-contract rejection after their scheduled restart had recovered. The
+controller's separate continuation allowlist omitted that known classifier
+outcome. Rejection kept the contract boundary intact; stopping observation
+prevented the remaining fault and terminal checks from running.
+
+Replacement health does not prove every sender has discarded an old contract.
+Preserve late rejection diagnostics and their source bytes independently of
+the already-restored fault. Do not extend an old fault's attribution window or
+call unexplained events expected merely because a restart happened earlier.
+An authorized provisional interval may continue collecting after this known
+operational class while its final process-log gate remains failed. Public
+signature rejection, a nonzero stream, unknown errors, panic, malformed evidence
+and joined persistence failures must not borrow this continuation permission.
+
+The narrow successor change is `6d9c8d38`. Its regression uses a completed
+synthetic restart with distinct original/replacement PIDs before introducing
+the late log; it requires every remaining observation and terminal evaluation,
+then verifies strict final failure, no completion receipt and unchanged
+unexplained attribution. Adjacent tests exercise all three exact rejection
+messages and the public-signature/nonzero-stream boundaries. The underlying
+contract provenance is not independently proved by these log lines; the report
+must distinguish the observed rejection from its plausible stale-secret cause.
+The focused normal and race runs pass. Restoring the previous continuation
+function stops the same deterministic interval at block 4,900 before its terminal
+block 5,050, after five of seven required observations.
+
+The private incident bundle is
+`/mnt/data/sn-testnet/qualification/r43-late-contract-20260925/terminal-process-log-incident.json`,
+SHA-256 `3ecdeb68b5e543f8c6b7d687455366202e5fd3bb7c18b8a293a206ecbd5c468f`.
+It retains exact first/last line offsets and hashes, result/attempt file hashes,
+and the incomplete interval at block 8,079,788 versus terminal 8,080,924.
+R43 remains an interrupted run; the fix does not retroactively complete it.
+
+Before mainnet, replace the duplicate controller allowlist with a closed typed
+classifier policy. Every producer class must declare one runtime category;
+only known operational outcomes may defer during authorized provisional
+observation. Integrity, catastrophic and unclassified outcomes remain terminal.
+Derive policy from the compiled classifier catalog, never a persisted flag or
+substring in an error. Keep signed wire names and final severity unchanged,
+require catalog completeness, and test mixed operational batches through the
+full terminal path with old-policy causal failures.
