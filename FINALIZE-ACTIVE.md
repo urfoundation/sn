@@ -1,5 +1,19 @@
 # Testnet execution plan
 
+## R44 companion filter hard-restored — 2026-09-25 10:59 UTC
+
+The live fault record shows `fleet-lifecycle-companion-prune` restored at its
+scheduled block 8,082,634. The
+[read-only observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`.
+The bypassed mutation still supplies no terminal-effective epoch or
+`RestoreConditionMet` proof, so R44-LC-1 stays an exception and strict
+acceptance stays false. R44 owner PID 2823030 remains active, without
+`result.json` or `complete.json`; the fourth read-only collector and post-owner
+watcher remain active. Do not stop the owner merely because the filter restored.
+Collect its sealed result and the independent reports when available; keep
+all other failed checks visible.
+
 ## Qualified R45 recovery stack integrated — 2026-09-25 10:53 UTC
 
 The eleven missing successor fixes are now on main through `c745d8b1` in

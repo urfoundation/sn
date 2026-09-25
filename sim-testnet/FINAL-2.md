@@ -1,5 +1,16 @@
 # Sim-testnet finalization report 2
 
+**Companion hard restore observed 2026-09-25 after finalized block 8,082,634.**
+The owner fault record now shows `fleet-lifecycle-companion-prune` restored
+at its scheduled hard deadline, with no `RestoreConditionMet` proof. The
+read-only [hard-restore observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`
+and preserves the source file hash and LAN finalized head. This is the named
+R44-LC-1 exception, not a successful lifecycle assertion. The owner remains
+active without `result.json` or signed completion. The fourth independent
+read-only diagnostic continues collecting the remaining terminal evidence;
+other failed and unavailable checks remain separate.
+
 **Third read-only terminal diagnostic, completed 2026-09-25 10:00 UTC:**
 The clean Git-stamped successor authenticated the same signed R44 start,
 checkpoint, all 44 recovery generations, observation prefix and completed
