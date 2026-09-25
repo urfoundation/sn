@@ -29,6 +29,14 @@ fault timing, companion evidence capture and signed payout artifacts. The
 validator-1 local-intents check is a finding. Result-dependent checks remain
 unavailable because the original owner has not sealed its result. R44-LC-1
 does not convert any of those outcomes into a pass.
+The terminal assertion group lists 23 failed assertions, including invalid
+fleet binding evidence despite 808/808 bindings, no fresh applied native
+weight decision or vector for validator 1, an eligible/selected/rejected
+count of 0/0/0 where 202/200/2 was required, 423 `uncertain_or_failed`
+claim outcomes, and a duplicate or invalid operator-1 terminal status for
+epoch 620. The lifecycle-tail assertion is only one member of this group.
+These are the diagnostic's reported conditions, pending comparison with the
+owner's eventual sealed result.
 
 **Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
 The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
