@@ -255,16 +255,18 @@ type ValidatorObservation struct {
 }
 
 type ClaimObservation struct {
-	MinerID    int    `json:"miner_id"`
-	NoID       int    `json:"no_id"`
-	Discovered int    `json:"discovered"`
-	Finalized  int    `json:"finalized"`
-	NoClaim    int    `json:"no_claim"`
-	Pending    int    `json:"pending"`
-	Uncertain  int    `json:"uncertain"`
-	Failed     int    `json:"failed"`
-	LastTxHash string `json:"last_tx_hash,omitempty"`
-	Error      string `json:"error,omitempty"`
+	MinerID        int                     `json:"miner_id"`
+	NoID           int                     `json:"no_id"`
+	Discovered     int                     `json:"discovered"`
+	Finalized      int                     `json:"finalized"`
+	NoClaim        int                     `json:"no_claim"`
+	Pending        int                     `json:"pending"`
+	Uncertain      int                     `json:"uncertain"`
+	Failed         int                     `json:"failed"`
+	LastTxHash     string                  `json:"last_tx_hash,omitempty"`
+	Error          string                  `json:"error,omitempty"`
+	LastDiscovered int64                   `json:"last_discovered,omitempty"`
+	EpochOutcomes  []ClaimEpochObservation `json:"epoch_outcomes,omitempty"`
 }
 
 type NativeRewardObservation struct {
@@ -718,8 +720,14 @@ func (p *liveScenarioProbe) observeSnapshot(ctx context.Context) (*ScenarioObser
 		}
 		observation.Validators = append(observation.Validators, validator)
 	}
+	var claimEpochs []uint64
+	if status.Contracts != nil {
+		for _, epoch := range status.Contracts.Epochs {
+			claimEpochs = append(claimEpochs, epoch.Epoch)
+		}
+	}
 	for minerID := 1; minerID <= p.cfg.Config.Topology.Miners; minerID++ {
-		observation.Claims = append(observation.Claims, inspectClaimQueue(p.cfg, p.stateDir, minerID))
+		observation.Claims = append(observation.Claims, inspectClaimQueue(p.cfg, p.stateDir, minerID, claimEpochs...))
 	}
 	observation.ObservationHash = ""
 	observation.ObservationHash, err = canonicalHashHex(observation)
@@ -2088,7 +2096,7 @@ func inspectValidatorPathProofsCached(ctx context.Context, cfg *ResolvedConfig, 
 	return counts, nil
 }
 
-func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimObservation {
+func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int, observedEpochs ...uint64) ClaimObservation {
 	result := ClaimObservation{MinerID: minerID, NoID: operatorForMiner(cfg, minerID)}
 	b, err := os.ReadFile(filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", minerID), "claims", "claim-queue.json"))
 	if err != nil {
@@ -2096,8 +2104,10 @@ func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimO
 		return result
 	}
 	var queue struct {
-		Schema  string `json:"schema"`
-		Entries map[string]struct {
+		Schema         string `json:"schema"`
+		LastDiscovered int64  `json:"last_discovered"`
+		Entries        map[string]struct {
+			Epoch  int64  `json:"epoch"`
 			Status string `json:"status"`
 			TxHash string `json:"tx_hash"`
 		} `json:"entries"`
@@ -2107,7 +2117,14 @@ func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimO
 		return result
 	}
 	result.Discovered = len(queue.Entries)
-	for _, entry := range queue.Entries {
+	result.LastDiscovered = queue.LastDiscovered
+	latestTxEpoch := int64(-1)
+	for key, entry := range queue.Entries {
+		epoch, parseErr := strconv.ParseInt(key, 10, 64)
+		if parseErr != nil || epoch < 0 || strconv.FormatInt(epoch, 10) != key || entry.Epoch != epoch {
+			result.Error = "claim queue contains a noncanonical or mismatched epoch identity"
+			return result
+		}
 		switch entry.Status {
 		case "finalized":
 			result.Finalized++
@@ -2120,9 +2137,21 @@ func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimO
 		default:
 			result.Pending++
 		}
-		if entry.TxHash != "" {
+		if entry.TxHash != "" && entry.Epoch > latestTxEpoch {
+			latestTxEpoch = entry.Epoch
 			result.LastTxHash = entry.TxHash
 		}
+	}
+	for _, epoch := range observedEpochs {
+		outcome := ClaimEpochObservation{Epoch: epoch, Status: "undiscovered"}
+		if entry, ok := queue.Entries[strconv.FormatUint(epoch, 10)]; ok {
+			if entry.Epoch < 0 || uint64(entry.Epoch) != epoch {
+				result.Error = fmt.Sprintf("claim queue epoch %d key and entry identity differ", epoch)
+				return result
+			}
+			outcome.Status = entry.Status
+		}
+		result.EpochOutcomes = append(result.EpochOutcomes, outcome)
 	}
 	return result
 }
@@ -3204,9 +3233,13 @@ func releaseScenarioChecks() []scenarioCheck {
 			return compared > 0, fmt.Sprintf("unaffiliated_validator_comparisons=%d", compared)
 		}},
 		{ID: "claims_finalized_per_no", Check: func(e *scenarioEvaluation) (bool, string) {
+			claims, err := scenarioClaimsForAcceptance(e)
+			if err != nil {
+				return false, err.Error()
+			}
 			finalized := map[int]int{}
 			uncertain := 0
-			for _, claim := range e.Current.Claims {
+			for _, claim := range claims {
 				finalized[claim.NoID] += claim.Finalized
 				uncertain += claim.Uncertain + claim.Failed
 			}
@@ -3218,8 +3251,12 @@ func releaseScenarioChecks() []scenarioCheck {
 			return uncertain == 0, fmt.Sprintf("finalized_by_no=%v uncertain_or_failed=%d", finalized, uncertain)
 		}},
 		{ID: "tier_exclusive_claim_outcomes", Check: func(e *scenarioEvaluation) (bool, string) {
+			claims, err := scenarioClaimsForAcceptance(e)
+			if err != nil {
+				return false, err.Error()
+			}
 			candidateNoClaim, tailFinalized := 0, 0
-			for _, claim := range e.Current.Claims {
+			for _, claim := range claims {
 				if claim.Error != "" || claim.Uncertain != 0 || claim.Failed != 0 {
 					return false, fmt.Sprintf("miner=%d error=%s uncertain=%d failed=%d", claim.MinerID, claim.Error, claim.Uncertain, claim.Failed)
 				}
