@@ -1,5 +1,19 @@
 # Testnet execution plan
 
+## R45 retained-renewal reader race qualification complete — 2026-09-25 08:39 UTC
+
+The frozen round-7 historical authority fix in main `bbd33365` has passed
+focused normal and all three focused race cases: generation/inventory/launcher
+1,842.99 seconds, source-role retained approval 1,904.69 seconds, and negative
+history/custody 32.31 seconds. Affected adjacent normal/race tests also pass,
+and both old-reader causal overlays fail at the intended prior rejection.
+The combined race command hit its 60-minute package bound because its two
+positive fixtures alone take more than 60 minutes; independent bounded runs
+passed without race findings. The clean `2662f5f0` image and 66-check external
+doctor below are valid for this reader fix. New terminal-diagnostic findings
+have exposed separate capture-reader issues under qualification, so do not yet
+select that image for live R45 renewal or resume. R44 remains active.
+
 ## R44 signed terminal reached; external supplement retained — 2026-09-25 08:24 UTC
 
 R44 crossed the five-epoch release end at block 8,081,674 and recorded its
