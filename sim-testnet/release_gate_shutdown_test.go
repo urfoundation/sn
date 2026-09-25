@@ -10,6 +10,62 @@ import (
 	"testing"
 )
 
+// A method passed as a callback is an ownership edge only when the containing
+// operation's result is returned to its supervisor, including nested closures.
+func releaseFunctionReturnsCallback(function *ast.FuncDecl, callee, callback string) bool {
+	if function == nil || function.Body == nil {
+		return false
+	}
+	forwarded := false
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		statement, ok := node.(*ast.ReturnStmt)
+		if !ok || len(statement.Results) != 1 {
+			return true
+		}
+		call, ok := statement.Results[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name, ok := call.Fun.(*ast.Ident)
+		if !ok || name.Name != callee {
+			return true
+		}
+		for _, argument := range call.Args {
+			method, ok := argument.(*ast.SelectorExpr)
+			if ok && method.Sel.Name == callback {
+				forwarded = true
+			}
+		}
+		return true
+	})
+	return forwarded
+}
+
+// Renamed callbacks, ignored results and an unrelated call cannot satisfy the
+// returned callback edge after an operation gains a timeout wrapper.
+func TestReleaseShutdownCallbackOwnershipRequiresReturnedResult(t *testing.T) {
+	for _, testCase := range []struct {
+		body string
+		want bool
+	}{
+		{body: "return operation(ctx, owner.SubmitOnce)", want: true},
+		{body: "return loop(func() error { return operation(ctx, owner.SubmitOnce) })", want: true},
+		{body: "operation(ctx, owner.SubmitOnce); return nil"},
+		{body: "return operation(ctx, owner.Other)"},
+		{body: "return other(ctx, owner.SubmitOnce)"},
+		{body: "owner.SubmitOnce(ctx); return operation(ctx, owner.Other)"},
+	} {
+		parsed, err := parser.ParseFile(token.NewFileSet(), "callback.go", "package fixture\nfunc run() error { "+testCase.body+" }", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		function := parsed.Decls[0].(*ast.FuncDecl)
+		if got := releaseFunctionReturnsCallback(function, "operation", "SubmitOnce"); got != testCase.want {
+			t.Fatalf("callback ownership for %q: got=%t want=%t", testCase.body, got, testCase.want)
+		}
+	}
+}
+
 func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 	parsed, err := parser.ParseFile(token.NewFileSet(), "../validator/release_run.go", nil, 0)
 	if err != nil {
@@ -118,12 +174,15 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 		{path: "../validator/release_shutdown.go", function: "runReleaseOperatorWorkers", callee: "reportReleaseTrailEngineError"},
 		{path: "../validator/release_shutdown.go", function: "runReleaseOperatorWorkers", callee: "Wait"},
 		{path: "../validator/release_shutdown.go", function: "runReleaseOperatorWorkers", callee: "close"},
-		{path: "../validator/release_steer.go", function: "Run", callee: "runReleaseSteeringLoopWithDeferral"},
-		{path: "../validator/release_steer.go", function: "Run", callee: "SubmitOnce"},
+		{path: "../validator/release_steer.go", function: "Run", callee: "runReleaseSteeringLoopWithPermissions"},
+		{path: "../validator/release_steer.go", function: "Run", callee: "runReleaseSteeringOperation"},
+		{path: "../validator/release_steer.go", function: "runReleaseSteeringOperation", callee: "operation"},
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoop", callee: "runReleaseSteeringLoopWithDeferral"},
-		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithDeferral", callee: "runReleaseSteeringLoopWithWaitAndDeferral"},
+		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithDeferral", callee: "runReleaseSteeringLoopWithPermissions"},
+		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithPermissions", callee: "runReleaseSteeringLoopWithWaitAndPermissions"},
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithWait", callee: "runReleaseSteeringLoopWithWaitAndDeferral"},
-		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithWaitAndDeferral", callee: "releaseRuntimeError"},
+		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithWaitAndDeferral", callee: "runReleaseSteeringLoopWithWaitAndPermissions"},
+		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithWaitAndPermissions", callee: "releaseRuntimeError"},
 		{path: "../validator/release_steer.go", function: "SubmitOnce", callee: "recordReleasePendingError"},
 		{path: "../validator/release_steer.go", function: "reconcilePending", callee: "recordReleasePendingError"},
 		{path: "../validator/release_run.go", function: "runReleaseWithStartupV2", callee: "openReleaseEvidenceV2DiskState"},
@@ -141,5 +200,19 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 	}
 	if releaseClosureFunctionCalls(t, "../validator/release_shutdown_inner.go", "recordReleasePendingError")["update"] {
 		t.Fatal("uncertain pending error handler rewrites the restart authority")
+	}
+	steering, err := parser.ParseFile(token.NewFileSet(), "../validator/release_steer.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submissionReturned := false
+	for _, declaration := range steering.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Name.Name == "Run" {
+			submissionReturned = releaseFunctionReturnsCallback(function, "runReleaseSteeringOperation", "SubmitOnce")
+		}
+	}
+	if !submissionReturned {
+		t.Fatal("steering owner does not return its bounded SubmitOnce callback result")
 	}
 }

@@ -111,7 +111,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 
 const releaseAdversarialSelector = "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison|Runtime454)"
 
-const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|ReleaseRuntime459|ReleaseRuntime460|EVMCheckpoint)"
+const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|ReleaseRuntime459|ReleaseRuntime460|ReleaseRuntime461|ReleaseRuntime467|ReleaseCurrentRuntime|EVMCheckpoint)"
 
 const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
 
@@ -2680,7 +2680,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	script := string(raw)
 	group := releaseEvidenceV2GateGroup{
 		phase: "runtime", variable: "runtime455_tests", packages: []string{"./sim-testnet"},
-		sources:  map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"runtime_identity_458_test.go", "runtime_identity_459_test.go", "runtime_identity_460_test.go", "runtime_identity_461_test.go", "release_runtime458_source_test.go", "release_runtime459_source_test.go", "release_runtime460_source_test.go", "release_runtime461_source_test.go", "fleet_history_batch_test.go", "final_semantic_rpc_transport_test.go"})},
+		sources:  map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"runtime_identity_458_test.go", "runtime_identity_459_test.go", "runtime_identity_460_test.go", "runtime_identity_461_test.go", "release_runtime458_source_test.go", "release_runtime459_source_test.go", "release_runtime460_source_test.go", "release_runtime461_source_test.go", "release_runtime467_source_test.go", "fleet_history_batch_test.go", "final_semantic_rpc_transport_test.go"})},
 		commands: []string{`go test ./sim-testnet -run "$runtime455_tests" -count=1`, `go test -race ./sim-testnet -run "$runtime455_tests" -count=1`},
 	}
 	if err := verifyReleaseEvidenceV2GateGroup(script, group); err != nil {
@@ -2696,7 +2696,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, family := range []string{"Runtime461|", "Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|"} {
+	for _, family := range []string{"Runtime467|", "Runtime461|", "Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|", "|ReleaseSubstrateDialHonorsCanceledContext"} {
 		changedSelector := strings.Replace(selector, family, "", 1)
 		changed := strings.Replace(script, group.variable+"='"+selector+"'", group.variable+"='"+changedSelector+"'", 1)
 		if changed == script || verifyReleaseEvidenceV2GateGroup(changed, group) == nil {

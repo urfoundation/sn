@@ -61,7 +61,7 @@ func TestRuntime461SourceAttestationPreservesReviewed460Scope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"for current_spec in 455 458 459 460 461", "runtime-v461-source.sha256", "current_commit=\"7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b\"", "expected_current_files=94", "SUBTENSOR_RUNTIME461_SOURCE", "expected_metadata_files=27"} {
+	for _, required := range []string{"for current_spec in 455 458 459 460 461", "runtime-v461-source.sha256", "current_commit=\"7c9d45ebd423c7f6b0b477e11414fe2fe3a3794b\"", "expected_current_files=94", "SUBTENSOR_RUNTIME461_SOURCE", "expected_metadata_files=30"} {
 		if !strings.Contains(string(checker), required) {
 			t.Fatalf("runtime461 source checker omits %s", required)
 		}

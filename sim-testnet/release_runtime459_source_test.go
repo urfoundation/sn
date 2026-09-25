@@ -53,7 +53,7 @@ func TestRuntime459SourceAttestationPreservesScopeAndChangedNativeDependencies(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"for current_spec in 455 458 459", "runtime-v459-source.sha256", "current_commit=\"70378404b56c12a85bc8cd163aca2f32cf4d1b80\"", "expected_current_files=71", "SUBTENSOR_RUNTIME459_SOURCE", "expected_metadata_files=27"} {
+	for _, required := range []string{"for current_spec in 455 458 459", "runtime-v459-source.sha256", "current_commit=\"70378404b56c12a85bc8cd163aca2f32cf4d1b80\"", "expected_current_files=71", "SUBTENSOR_RUNTIME459_SOURCE", "expected_metadata_files=30"} {
 		if !strings.Contains(string(checker), required) {
 			t.Fatalf("runtime459 source checker omits %s", required)
 		}

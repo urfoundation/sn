@@ -195,16 +195,24 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 		{path: "scenario.go", function: "runScenarioCampaignAttemptWithTimeout", callee: "runScenarioWithEvidenceRelay"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "runScenarioWithProbe"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "waitClosures"},
-		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitThrough"},
+		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitPublicAudit"},
+		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitRange"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitAuditPass"},
-		{path: "scenario.go", function: "Snapshot", callee: "inspectValidatorPathProofsCached"},
+		{path: "scenario.go", function: "Snapshot", callee: "precompileContinuationSnapshot"},
+		{path: "scenario.go", function: "observeSnapshot", callee: "inspectValidators"},
+		{path: "scenario_validator_authority.go", function: "inspectValidators", callee: "inspectValidatorPathProofsCached"},
 		{path: "scenario.go", function: "inspectValidatorPathProofs", callee: "inspectValidatorPathProofsCached"},
-		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "loadFinalOperatorPathAuthority"},
+		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "loadScenarioPathAuthorityV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "readPolicyRolloverObservationV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "loadFinalOperatorPathAuthority"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "decodeFinalOperatorPathAuthority"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "LoadRawSeedFile"},
 		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "VerifyProofRecord"},
 		{path: "scenario.go", function: "runScenarioWithProbe", callee: "waitClosures"},
 		{path: "scenario.go", function: "runScenarioWithProbe", callee: "collect"},
 		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "collectFinalValidatorInputsWithPathAuthority"},
-		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "loadFinalOperatorPathAuthority"},
+		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "loadFinalOperatorPathAuthorityV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadFinalOperatorPathAuthorityV2", callee: "loadScenarioPathAuthorityV2"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputs", callee: "collectFinalValidatorInputsWithSeedObserver"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputsWithSeedObserver", callee: "loadFinalOperatorPathAuthority"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputsWithSeedObserver", callee: "collectFinalValidatorInputsWithPathAuthority"},
@@ -227,8 +235,12 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 		"waitClosures": "waitFinalValidatorSettlementClosures",
 		"collect":      "CollectFinalSemanticInputs",
 	}
+	snapshotReturned := false
 	for _, declaration := range parsed.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Name.Name == "Snapshot" {
+			snapshotReturned = releaseFunctionReturnsCallback(function, "precompileContinuationSnapshot", "observeSnapshot")
+		}
 		if !ok || function.Name.Name != "runScenarioWithProbe" || function.Body == nil {
 			continue
 		}
@@ -266,6 +278,9 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 	}
 	if len(defaults) != 0 {
 		t.Fatalf("live simulator omits actual nil-default custody dispatch: %v", defaults)
+	}
+	if !snapshotReturned {
+		t.Fatal("live simulator does not return its admitted snapshot callback result")
 	}
 }
 
