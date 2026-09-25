@@ -1,0 +1,9 @@
+{
+  "command": "resume",
+  "final_acceptance": false,
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "provisional": true,
+  "provisional_resume_record": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/provisional-resumes/invocation-1481419511/provenance.json",
+  "retained_runtime": true,
+  "setup_actions_dispatched": 0
+}

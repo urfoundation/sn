@@ -1,0 +1,36 @@
+{
+  "schema": "urnetwork-release-evidence-v1",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "chain_id": 945,
+  "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "netuid": 521,
+  "kind": "scenario-attempt",
+  "run_id": "20260925T134346.277250758Z-release-1.0",
+  "created_at": "2026-09-25T13:45:27.315570424Z",
+  "payload": {
+    "schema": "urnetwork-sim-scenario-attempt-v2",
+    "phase": "release-1.0",
+    "run_id": "20260925T134346.277250758Z-release-1.0",
+    "started_at": "2026-09-25T13:43:46.277250758Z",
+    "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+    "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+    "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+    "recovery": {
+      "schema": "urnetwork-sim-campaign-recovery-v1",
+      "generation": 45,
+      "prior_generation": 44,
+      "prior_attempt_path": "campaign-attempts/release-1.0.recovery.44.evidence.json",
+      "prior_run_id": "20260925T021136.926474885Z-release-1.0",
+      "prior_attempt_sha256": "sha256:adb43d12f5412e0bf36e653e27b138d56bb368f553c465c0aef8a208ce844b17",
+      "prior_campaign_start_sha256": "sha256:9c7269fd131d5d9b2b54d66a76be97f36e17d83d2105baf8949f6ee152a7d65c",
+      "prior_result_sha256": "sha256:b631ca4cd6f8fca591497770f2d066a6a568cc84fe388e08ca6e00f3ccf18c46",
+      "prior_observation_log_sha256": "sha256:245c3322a45519a73035e141db0548bfbe1a41322d5f543d3fdc66418c2be161",
+      "prior_observation_log_bytes": 122699952,
+      "prior_process_log_sha256": "sha256:db94376cd2b6c91d7804e9aaebd46f61babe45a00639084ea2832ea9ab2bf5c2",
+      "approved_plan_sha256": "sha256:8f50d953a71d853ae3adf5df3fdb59df4cd4c63f9f4d175b2329445b704c8b06"
+    }
+  },
+  "signer": "0x415b7508f93e9fef6989010dbd41db95f4563d95",
+  "content_hash": "sha256:14a2bc2a5569afb59cdcb83e6aa1cfb1780a33aa29373105c1e094ed58658f2a",
+  "signature": "0xc35f4d75bc728843688e05546e51ee15662032b875959740750f148baeda77cf46d16a2d10de7bd2937621a23ace696cf4ac84ea44ccc53186448fbd34eb2f2101"
+}

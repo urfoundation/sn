@@ -1,5 +1,23 @@
 # Sim-testnet finalization report 2
 
+**R45 continuation, 2026-09-25 13:50 UTC — preparation active, acceptance not yet started.**
+The round-7 renewal of 202 fleets for epochs 628–659 completed with
+`postcondition_verified` status on the unchanged plan
+`0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`.
+Its retained journal records all 1,212 new actions through intent, broadcast,
+inclusion, finalization, and postcondition verification. One EVM mirror
+transaction, `0xc424bf210d337f82b70c5e3fb0de42868288797b80a0380ab9324c58e578d044`,
+has a direct LAN-RPC receipt with status `0x1` at block 8,083,027.
+[Renewal result and journal](peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md)
+include the exact hashes and a portable RPC response. The retained resume
+then dispatched zero setup actions. The R45 controller authenticated all 44
+prior recovery generations and signed a new recovery-45 attempt at 13:45 UTC.
+That signed attempt is a preparation checkpoint, **not** an acceptance start or
+completion. The controller remains active; the renewed bindings become valid
+at epoch 628. Storage headroom must be remeasured under active bindings with a
+twofold projected-growth margin before the acceptance boundary. No R45
+acceptance result is claimed here.
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
@@ -54,7 +72,8 @@ for epochs 628–659. Two launch-environment doctor failures occurred before
 any round-7 transaction; the corrected user service adopted the same plan.
 Its first ten commitment transactions finalized and passed exact postcondition
 checks at block **8,083,024** (`0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`).
-The rest of the renewal and successor qualification remain pending.
+At that earlier read cut, the rest of the renewal and successor qualification
+were pending; the later renewal result is reported at the top of this file.
 
 **Fourth independent diagnostic completed 2026-09-25 11:08 UTC.** The
 clean Git-stamped `da7689f8` collector exited 0 after a read-only capture.

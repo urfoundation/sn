@@ -1,5 +1,19 @@
 # Testnet execution plan
 
+## R45 active continuation — 2026-09-25 13:50 UTC
+
+Round-7 fleet renewal completed with 202 fleets and 1,212 finalized,
+postcondition-verified actions. Its
+[portable result](sim-testnet/peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md)
+includes the journal summary and direct LAN-RPC sample receipt. Retained
+resume exited 0 with `setup_actions_dispatched=0`. The single owned
+`urnetwork-sim-release-r45.service` is active, authenticated all 44 prior
+recovery generations, and signed recovery-45. **Acceptance has not started**;
+do not launch a second writer or treat the signed attempt as completion.
+Before its acceptance boundary, remeasure `blob` storage growth with active
+epoch-628 bindings and require a twofold projected-growth margin. Preserve
+R44's failed owner verdict and scoped R44-LC-1 exception without widening it.
+
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
 R44's original owner exited at 11:50 UTC after sealing
@@ -49,8 +63,8 @@ journal action. The corrected owned user service
 `urnetwork-sim-r45-round7-renew-envfull.service` adopted the same plan and
 its first ten commitment transactions finalized at block 8,083,024, hash
 `0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`,
-with ten retained postcondition verifications. Continue monitoring that one
-writer and its later receipts; verify its exit before retained resume.
+with ten retained postcondition verifications at that read cut. The completed
+renewal and retained resume are recorded in the newer section above.
 Its hash-pinned launcher is
 `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/run-round7-apply-6100394b.sh`.
 
