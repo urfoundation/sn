@@ -6,10 +6,15 @@ source revision `ad5c05ec` with the unchanged approved plan, 2,048 funded
 slots, retained fleet supervisor, and LAN RPC `192.168.1.162:9944`.
 Its in-service preflight authenticated R45's sealed failure and signed
 invalidation, the retained journal and supervisor identities, pinned input
-hashes, and finalized LAN block 8,084,535. The narrow code change permits
+hashes, and finalized LAN block 8,084,535. The owner subsequently
+authenticated all 45 prior campaign generations and signed recovery
+generation 46 (run `20260925T172403.199659160Z-release-1.0`), binding
+the exact failed R45 result and invalidated envelope. This is a signed
+preparation checkpoint; its acceptance boundary is not yet set.
+The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
-new signed R46 interval or final acceptance is claimed at this cut.
+measured R46 interval or final acceptance is claimed at this cut.
 [Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
 The companion-filter dependency remains known exception **R44-LC-1** below,
 with its lifecycle assertion failed rather than waived as a pass.

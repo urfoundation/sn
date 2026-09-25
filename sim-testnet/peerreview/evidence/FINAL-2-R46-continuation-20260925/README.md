@@ -17,5 +17,9 @@ in-service check at 17:18:22 UTC. Its finalized LAN head was block 8,084,535.
 The qualified source change allows a narrow set of authenticated process-log
 findings to remain provisional while observations continue. It does not turn
 those findings or the lifecycle companion exception into acceptance passes.
-This bundle records launch, not a signed R46 interval or final result. Those
-must be added from later owner evidence.
+At 17:25:12 UTC the owner signed generation 46 with run ID
+`20260925T172403.199659160Z-release-1.0`, after authenticating all 45 prior
+generations. The copied signed envelope and its compact receipt bind the exact
+R45 sealed failure and invalidation. They show `preparation_complete=false`
+and no acceptance boundary. This bundle records launch and preparation, not a
+measured R46 interval or final result. Those must come from later owner evidence.

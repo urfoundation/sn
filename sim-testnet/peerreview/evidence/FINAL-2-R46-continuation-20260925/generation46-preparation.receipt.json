@@ -1,0 +1,28 @@
+{
+  "acceptance_boundary_present": false,
+  "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+  "content_hash": "sha256:a92c173902c8b2ef44d075f7ac1a27a30b50f906b85848fe10b07f18bc6e896b",
+  "observed_at": "2026-09-25T17:25:57.101300+00:00",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+  "preparation_complete": false,
+  "recovery": {
+    "approved_plan_sha256": "sha256:8f50d953a71d853ae3adf5df3fdb59df4cd4c63f9f4d175b2329445b704c8b06",
+    "generation": 46,
+    "prior_attempt_path": "campaign-attempts/release-1.0.recovery.45.evidence.json",
+    "prior_attempt_sha256": "sha256:1f5a459a7bd0d5e5c9c4534c51a68f7c6e17a516f2671ac1ffc45a7409a5201f",
+    "prior_campaign_start_sha256": "sha256:082d17a8781226c28514ce35b03c82d2597724c0e9b2adc2fca5b5cbfdbfcd7b",
+    "prior_generation": 45,
+    "prior_observation_log_bytes": 42510919,
+    "prior_observation_log_sha256": "sha256:00c395a19ee0ddb4ea2b3d1f99a98266b3fdf584f07ceada74a5141302afd2d3",
+    "prior_process_log_sha256": "sha256:baa2ccb972903143580e0fa3155413717d20de3c5e8e8cb6b2368a684222b014",
+    "prior_result_sha256": "sha256:3a3b78827adadac55cbb037208ddaa31e90587f2dc0a6ee1cd4f83cc9d74c6df",
+    "prior_run_id": "20260925T134346.277250758Z-release-1.0",
+    "schema": "urnetwork-sim-campaign-recovery-v1"
+  },
+  "retained_copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/generation46-preparation.evidence.json",
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-generation-preparation-receipt-v1",
+  "sha256": "d04748be05277525a98f182c1ef21bda4055a945f979771a4472ef4ae0eee1b9",
+  "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.46.evidence.json"
+}
