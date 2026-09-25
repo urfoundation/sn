@@ -39,6 +39,9 @@ type FaultProcessEvidence struct {
 	Role     string `json:"role"`
 	Identity string `json:"identity"`
 	PID      int    `json:"pid"`
+	// Retain the optional generation proof from historical fault producers.
+	// Decoding this evidence does not authorize signaling or escalation.
+	StartTimeTicks uint64 `json:"start_time_ticks,omitempty"`
 }
 
 type ScenarioFaultRecord struct {
