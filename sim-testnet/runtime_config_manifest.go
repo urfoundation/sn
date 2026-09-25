@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -244,12 +242,11 @@ func runtimeConfigFileDigest(path string) (string, os.FileMode, error) {
 	if !info.Mode().IsRegular() {
 		return "", 0, fmt.Errorf("runtime config %s is not a regular file", path)
 	}
-	wire, err := os.ReadFile(path)
+	digest, err := fileSHA256(path)
 	if err != nil {
 		return "", 0, err
 	}
-	digest := sha256.Sum256(wire)
-	return "sha256:" + hex.EncodeToString(digest[:]), info.Mode().Perm(), nil
+	return digest, info.Mode().Perm(), nil
 }
 
 // Hash the canonical manifest with its self-authenticating field cleared.
