@@ -46,6 +46,9 @@ func scenarioClaimsForAcceptance(e *scenarioEvaluation) ([]ClaimObservation, err
 		if claim.Error != "" {
 			return nil, fmt.Errorf("claim acceptance miner %d: %s", claim.MinerID, claim.Error)
 		}
+		if len(claim.EpochOutcomes) == 0 {
+			return nil, fmt.Errorf("claim acceptance miner %d scoped epoch evidence is unavailable in the retained observation; lifetime counters do not prove discovery or outcomes in [%d,%d)", claim.MinerID, e.Window.FirstEpoch, end)
+		}
 		if claim.LastDiscovered < 0 || uint64(claim.LastDiscovered) < end-1 || uint64(len(claim.EpochOutcomes)) < e.Window.EpochCount {
 			return nil, fmt.Errorf("claim acceptance miner %d has not discovered complete window [%d,%d): last=%d observed=%d", claim.MinerID, e.Window.FirstEpoch, end, claim.LastDiscovered, len(claim.EpochOutcomes))
 		}

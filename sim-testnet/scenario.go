@@ -100,6 +100,7 @@ type OperatorObservation struct {
 	MatchingArtifacts             int                                          `json:"matching_onchain_artifacts"`
 	ExpectedFinalizedArtifacts    int                                          `json:"expected_finalized_artifacts"`
 	ArtifactHashes                []string                                     `json:"artifact_hashes,omitempty"`
+	PayoutTierArtifacts           []OperatorPayoutTierArtifactObservation      `json:"payout_tier_artifacts,omitempty"`
 	LatestArtifactEpoch           uint64                                       `json:"latest_artifact_epoch,omitempty"`
 	LatestArtifactHash            string                                       `json:"latest_artifact_hash,omitempty"`
 	LatestPayoutRoot              string                                       `json:"latest_payout_root,omitempty"`
@@ -1642,6 +1643,7 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 			o.ArtifactHashes = append(o.ArtifactHashes, artifact.ContentHash)
 			if payoutArtifactMatchesChain(&artifact, contracts) {
 				o.MatchingArtifacts++
+				o.PayoutTierArtifacts = append(o.PayoutTierArtifacts, observeOperatorPayoutTierArtifact(p.cfg, noID, &artifact, minerClients, lifecycle))
 				if lifecycleEpochs[artifact.Epoch] {
 					if lifecycleArtifacts[artifact.Epoch] {
 						problems = append(problems, fmt.Sprintf("artifact epoch %d: duplicate lifecycle payout artifact", artifact.Epoch))
@@ -1659,6 +1661,7 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 			}
 		}
 	}
+	sort.Slice(o.PayoutTierArtifacts, func(i, j int) bool { return o.PayoutTierArtifacts[i].Epoch < o.PayoutTierArtifacts[j].Epoch })
 	sort.Slice(o.LifecyclePayoutArtifacts, func(i, j int) bool {
 		return o.LifecyclePayoutArtifacts[i].Epoch < o.LifecyclePayoutArtifacts[j].Epoch
 	})
@@ -3024,14 +3027,7 @@ func releaseScenarioChecks() []scenarioCheck {
 			}
 			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, "all validators independently accepted exact signed-usage deposits"
 		}},
-		{ID: "payout_artifacts_enforce_one_tier", Check: func(e *scenarioEvaluation) (bool, string) {
-			for _, operator := range e.Current.Operators {
-				if !operator.TierMembershipValid || operator.CandidateProviders == 0 || operator.CandidateHeadExcluded != operator.CandidateProviders || operator.CandidateLeaves != 0 || operator.PoolTailProviders == 0 || operator.PoolTailHeadExcluded != 0 || operator.PoolTailLeaves == 0 {
-					return false, fmt.Sprintf("no=%d epoch=%d candidates=%d excluded=%d leaves=%d tail=%d tail_excluded=%d tail_leaves=%d", operator.NoID, operator.LatestArtifactEpoch, operator.CandidateProviders, operator.CandidateHeadExcluded, operator.CandidateLeaves, operator.PoolTailProviders, operator.PoolTailHeadExcluded, operator.PoolTailLeaves)
-				}
-			}
-			return len(e.Current.Operators) == e.Cfg.Config.Topology.Operators, "every live fleet is excluded from pool artifacts and pool-tail providers retain leaves"
-		}},
+		{ID: "payout_artifacts_enforce_one_tier", Check: scenarioPayoutTiersForAcceptance},
 		{ID: "signed_weight_cap_enforced", Check: func(e *scenarioEvaluation) (bool, string) {
 			cap := e.Cfg.Policy.Steering.MaxWeightLimitU16
 			for _, validator := range e.Current.Validators {
