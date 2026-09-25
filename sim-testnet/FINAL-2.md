@@ -1,5 +1,37 @@
 # Sim-testnet finalization report 2
 
+**Provisional R44 exception register, 2026-09-25 07:14 UTC — not a final
+result.** The signed recovery-44 release attempt is still running in its fifth
+300-block epoch. Its complete interval ends at block 8,081,674 and requires a
+terminal observation at block 8,081,824. The last checked owner observation
+was block 8,081,490; no owner result or invalidation has been sealed. The
+signed attempt is
+[`release-1.0.recovery.44.evidence.json`](runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json).
+
+**Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
+The approved provisional lifecycle bypass leaves no terminal-effective
+mutation epoch. The companion validator-view filter's early restoration
+condition therefore cannot be proved. Keep that filter and the lifecycle
+assertion failed in strict acceptance; do not infer a mutation from a
+`release-handoff` stage. At owner observation 77, finalized block 8,081,388,
+the old binary incorrectly restored the *target* filter with
+`RestoreConditionMet=true` solely because it counted the bypass stage as
+provider-paid. That flag is preserved as a finding, not lifecycle conformance.
+The separate read-only terminal watcher will capture the full signed-window
+chain and process inventory at block 8,081,824. Its report is diagnostic until
+the owner seals a result. The qualified successor cleanup can restore the two
+local filters after a complete signed terminal observation while retaining
+`RestoreConditionMet=false`, the failed strict assertions, and
+`final_acceptance=false`; it has not been installed in R44.
+
+This exception does not cover other failures. Current-window claim discovery
+has stalled at epoch 617 for all 1,000 miners, leaving later accepted epochs
+without claim outcomes in the live queue. Fourteen acceptance-scoped process
+log findings remain under triage. Preserve their raw rows and report exact
+terminal counts when the watcher and owner results exist. No skipped check is
+reported as passed; the full campaign, production interval, accounting replay
+and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
+
 **Latest update, 2026-09-24 21:17 UTC:** Two R43 startup retries also stopped
 before a signed interval. The first failed executable Git attestation because
 its binary was built before the fix was committed. The second used committed
