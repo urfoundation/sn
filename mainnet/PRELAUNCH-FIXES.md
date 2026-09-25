@@ -2131,6 +2131,25 @@ historical lifecycle plan identity separate from the current plan authorizing
 new actions. This permits diagnosis to continue without laundering a failed
 release into a strict pass or overlapping old fault injection with production.
 
+The R45 renewal review exposed the same authority distinction in retained
+validator generation readers. Round seven appends a new fleet approval, but
+the activated generation and its owner-signed source-role overlay still name
+the original round-six approval. Requiring their source hash to equal the new
+active plan would reject an otherwise unchanged retained restart. Resolve the
+original approval only through its immutable archive and the current approved
+ancestry; authenticate the exact deployment, evidence custody, configuration,
+policy and owned RPC authority before reading the original generation bytes.
+Never substitute a hash onto different configuration semantics. New rollover
+or source-role mutations still require the exact current approval.
+
+Qualify this boundary with real signed round-six to round-seven renewal
+fixtures, unchanged manifest inventory and overlay bytes, repeated retained
+reads, and refusal of a fresh mutation under the historical approval. Missing
+or tampered archives, unrelated lineage, changed deployment custody and changes
+to configuration, policy or RPC authority must remain hard failures. Include
+launcher, manifest, observation and relay readers in the same migration test;
+a successful doctor before renewal does not exercise the descendant-plan seam.
+
 R44 exposed an impossible restoration predicate after its explicit testnet
 lifecycle bypass: the bypass correctly retained no terminal-effective mutation
 epoch, while a local companion filter required that epoch before removal.
