@@ -2217,3 +2217,28 @@ escalation, and unchanged fault evidence while replacement remains pending.
 Also cover legacy receipts, PID reuse, executable/argv changes, malformed later
 cohort members, owner cancellation, failed-signal retry, and successful
 replacement. Restore the old no-escalation behavior to prove the root test fails.
+
+### Process restart intent must precede every signal
+
+The adjacent restart Apply path previously signaled originals before writing
+the active-fault record. A failed write or interrupted cohort could therefore
+leave a terminated child with no durable restart intent, while a repeated Apply
+could signal again. Moving only the health retry does not close this crash
+window.
+
+Capture and validate the complete manifest-bound original cohort first, including
+each kernel start time. Persist that exact cohort before the first SIGTERM.
+After persistence, cancellation or signal refusal leaves an unfinished durable
+request. A later Apply adopts the original evidence without repeating initial
+signals; the supervisor can complete only those original generations after
+its bounded grace. Replacement health remains a separate readback requirement.
+Never infer a new signaling target from whichever PID currently occupies a role.
+
+The isolated successor `25ecefb6`, based on the escalation implementation,
+passes focused and adjacent normal/race tests. Restoring signal-before-write
+deterministically sends a signal after a refused intent write and exposes a
+missing active-fault record at the first signal. The full tests cover cancellation
+after commit, interruption between cohort members, refused syscalls, PID reuse,
+incomplete kernel ownership, malformed later members, exact adoption, supervised
+completion and independently healthy replacement. This is qualified source;
+it does not describe a deployment into the active R43 interval.
