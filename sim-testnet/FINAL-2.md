@@ -180,6 +180,20 @@ it does not establish terminal acceptance or post-restart validator steering.
 (SHA-256 `e8be91fb30a95620357e946940a3b427342f1cbc153d9e51e3f4de12dab43b0b`),
 [offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-closure.receipt.json)
 (SHA-256 `1b98ee7a1912f1e2c834df8130085782ba6c44773cefd37c586fdd0e57783a77`).
+The owner then crossed the fourth measured boundary. Its first epoch-635
+observation at finalized block **8,085,878** selects complete epoch-634
+usage sources of only **5,250,701** and **5,732,655 bytes** for operators
+1 and 2. Fleet bindings remain valid, but rate readiness is **false**:
+operator 1's source yields **105,582 TAO rao** at the zero-conviction tier,
+below the configured **200,000-rao** two-times-native threshold. This is an
+authenticated low-usage result, not a stale-source identity error. The
+rolling validator restarts overlap this period, but the exact traffic-loss
+cause is not established by this observation. R46 continues through its
+fifth measured epoch and terminal checks despite this strict shortfall.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch635-first-observation.json)
+(SHA-256 `adda8561024d55080fd8bdfbfa08550886b9e021c60e64fa5ff7a44a2ac0ff85`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-closure.receipt.json)
+(SHA-256 `5556ea9345629fb0f393fdefc629f4605c63b071105bb7f1e98728c6bdbe148d`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No

@@ -111,3 +111,9 @@ the owner's first epoch-634 observation, its exact JSONL offset and SHA-256,
 the complete epoch-633 usage sources and a matching LAN EVM block response.
 They show the third measured epoch boundary was owner-observed, but do not
 certify terminal acceptance.
+
+`epoch635-first-observation.json` and `epoch634-closure.receipt.json` bind
+the owner's first epoch-635 observation to its exact JSONL offset and a
+matching LAN EVM block response. Complete epoch-634 usage is low for both
+operators and fails the two-times-native rate threshold. The fifth measured
+epoch and terminal acceptance remain open.
