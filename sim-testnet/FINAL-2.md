@@ -88,10 +88,36 @@ while the R46 owner continues. [State triage](peerreview/evidence/FINAL-2-R46-co
 (SHA-256 `1bc3ac7a1c725958c8f429e094fb569464e6a4a202f09d867a35338fd723da8d`),
 [replica readback](peerreview/evidence/FINAL-2-R46-continuation-20260925/native1674-record-replica-readback.receipt.json)
 (SHA-256 `ef2f8b1f7c5802ec52caa1858f373f3283384c02abeb6e4ff4dffa075b263165`).
+The owner then crossed the first measured epoch boundary without stopping. Its
+first completed epoch-632 observation, taken at 18:51:03 UTC on finalized
+block **8,084,997**, reports 808 valid fleet bindings and a complete epoch-631
+usage source for both operators. The LAN `eth_getBlockByNumber` independently
+returned its exact EVM head hash. Policy rate readiness is **false** in this
+observation: operator 2 recorded **14,687,835 bytes**, equivalent to **177,208
+TAO rao** at the 10,000,000,000-rao tier, below the configured
+**200,000-rao** two-times-native threshold. The source marks this as a
+provisional low-usage shortfall, not final acceptance. The run continues to
+collect later epochs and terminal evidence; this row remains a strict final
+review finding. [Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-first-observation.json)
+(SHA-256 `7f1ea3f1ea13f035f125a5df029f92a9e6a6cc10d292df08ad21e36181077c2d`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch631-closure.receipt.json)
+(SHA-256 `b15298ebb333bcc3d8cba380bd9d650947e37c6b494e18498b147688fea320bd`).
+Three further R46-scoped process findings came from miner-swarm receivers:
+`exit-gap-timeout` on swarms 17, 1 and 9. The raw lines each show an
+unresolved sequence 0 after 60 seconds. A read-only comparison found
+validator 1's matching sender ACK-lifetime warnings on message numbers 57,
+21 and 17. The `queued=58/22/18` field means the earliest retained
+out-of-order sequence, not a count of queued packets. The exact cause of the
+missing sequence or ACK state is unresolved. The owner explicitly logged
+`observation_continues=true final_gate_unchanged=true` with these findings
+and remained active. They stay blocking in raw final evidence; provisional
+continuation does not convert them to passes.
+[Raw-line and continuation receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/exit-gap-three-1856.receipt-v2.json)
+(SHA-256 `c1d45234c8ea98037f15ac838c9b903e2767ead1d824343d93991fdbd1a4ef1a`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
-completed measured R46 interval or final acceptance is claimed at this cut.
+completed five-epoch R46 interval or final acceptance is claimed at this cut.
 [Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).

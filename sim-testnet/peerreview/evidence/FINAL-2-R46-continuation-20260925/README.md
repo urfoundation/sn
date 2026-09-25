@@ -67,3 +67,16 @@ must retain these findings.
 `native1674-triage.receipt.json` and the replica-readback receipt distinguish
 successful recovery of the exact public object from the missing native steering
 intent: the active validator-2 intent and EMA remain at native epoch 1661.
+
+`epoch632-first-observation.json` is the owner's first completed observation
+after crossing the measured epoch-631 boundary. The paired
+`epoch631-closure.receipt.json` binds its exact JSONL offset and SHA-256 and
+independently matches its EVM block hash through the LAN RPC. It records a
+provisional operator-2 rate shortfall for complete epoch 631 and does not
+establish final acceptance.
+
+`exit-gap-three-1856.receipt-v2.json` preserves the three exact swarm
+receiver lines, their authenticated gate offsets/hashes and scope, matching
+validator-1 sender ACK-lifetime warnings, and the owner's explicit
+continuation record. The mechanism is still under investigation; the raw
+blocking process findings remain in the live owner's terminal gate.

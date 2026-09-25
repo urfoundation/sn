@@ -1,0 +1,89 @@
+{
+  "chain_response": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "author": "0xe93d55eaa237cd23ac217d3a0aa9447ecd2d6864",
+      "baseFeePerGas": "0x2540be400",
+      "difficulty": "0x0",
+      "extraData": "0x",
+      "gasLimit": "0x47868c0",
+      "gasUsed": "0x10974",
+      "hash": "0x828e9cc57f37d60446b8f677f3616c70a4878689f3b2b0bc777824974d60301c",
+      "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000001000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000010000000000000000200000000000000000000000000000000000000000800000000000000000000000000000000000100000000000000000008000000200000000000000000000002002000000000000000000000000000000000000000000000000020040000000000000000000000000000000000000000000000000000000000000000",
+      "miner": "0xe93d55eaa237cd23ac217d3a0aa9447ecd2d6864",
+      "nonce": "0x0000000000000000",
+      "number": "0x7b5e05",
+      "parentHash": "0x87c297d745af6c7352a4e458eecf08d888fd8bd202683048f1b6bc2874f941de",
+      "receiptsRoot": "0x1f65581df5f12c76c3e6cf32b3659e416a6e7939720361a2b2674fe339f710ed",
+      "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+      "size": "0x36d",
+      "stateRoot": "0x8cf2779f2d86982ff84c6cdf3829cd66a56d80b737167437f2aeae763e20ba16",
+      "timestamp": "0x6ab6c264",
+      "totalDifficulty": "0x0",
+      "transactions": [
+        "0xbf84b409d489762aaec247dc0d8a3b27e71725e6ab704b7b05df35f05133dbb1",
+        "0x8b4fac5ffdec8774f2b1d8dfad5241b8d025f832edb2a82effba935ad38530e4"
+      ],
+      "transactionsRoot": "0x2f7245b3703855336db36f112e733c577498450dfdd314b16370c65e3317720d",
+      "uncles": []
+    }
+  },
+  "chain_rpc": "http://192.168.1.162:9944",
+  "epoch": 632,
+  "final_acceptance": false,
+  "fleet_binding_count": 808,
+  "fleet_bindings_valid": true,
+  "head": {
+    "hash": "0x828e9cc57f37d60446b8f677f3616c70a4878689f3b2b0bc777824974d60301c",
+    "number": 8084997
+  },
+  "length": 1197594,
+  "observed_at": "2026-09-25T18:51:03.394608115Z",
+  "offset": 16738611,
+  "policy_rate_readiness": {
+    "alpha_price_wei": "539777000000000",
+    "detail": "operator 2 complete epoch 631 bytes=14687835 gives 177208 tao rao at tier 10000000000; require twice native minimum 200000",
+    "head": {
+      "hash": "0x828e9cc57f37d60446b8f677f3616c70a4878689f3b2b0bc777824974d60301c",
+      "number": 8084997
+    },
+    "minimum_transfer_tao_rao": 100000,
+    "provisional_low_usage": {
+      "final_acceptance": false,
+      "provisional": true,
+      "scope": "complete-source-native-floor-margin",
+      "shortfalls": [
+        {
+          "epoch": 631,
+          "equivalent_tao_rao": "177208",
+          "min_conviction_rao": 10000000000,
+          "no_id": 2,
+          "required_tao_rao": "200000",
+          "total_usage_bytes": 14687835
+        }
+      ]
+    },
+    "ready": false,
+    "sources": [
+      {
+        "content_hash": "sha256:626f12baec70c7bd5f68e480ae6f63b30fd19792751f5c1cf8c292d3a9779c20",
+        "epoch": 631,
+        "no_id": 1,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 17040703
+      },
+      {
+        "content_hash": "sha256:46ab20e473b95d6f72f86eee4d226067010f337a7117b0beb678c042a7fdd481",
+        "epoch": 631,
+        "no_id": 2,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 14687835
+      }
+    ]
+  },
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-epoch631-closure-v1",
+  "sha256": "7f1ea3f1ea13f035f125a5df029f92a9e6a6cc10d292df08ad21e36181077c2d",
+  "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl"
+}
