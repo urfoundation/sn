@@ -26,6 +26,19 @@ acceptance are still separate requirements.
 (SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`),
 [first measured observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-observation.json)
 (SHA-256 `99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`).
+One later snapshot at finalized block **8,084,710** marked rate readiness
+false because both local operator stats and proofs GETs exceeded their
+30-second single-attempt deadline. The owner stayed active. Its next durable
+snapshot at block **8,084,740** marked rate readiness true again from a
+complete current-policy source epoch, with valid fleet bindings. This is an
+intermittent observation error, retained for final review rather than erased
+by the recovery. [Timeout](peerreview/evidence/FINAL-2-R46-continuation-20260925/local-get-timeout-observation.json)
+(SHA-256 `68482b1d4cb2ee51f01ae19b87430a1f1635b895e3a1f5912d20383cac2af93e`),
+[recovery](peerreview/evidence/FINAL-2-R46-continuation-20260925/local-get-recovered-observation.json)
+(SHA-256 `6009dcaf3a37e0865e8a373506faf089254100e5132d379985dcea81458d4150`).
+At 18:03 UTC, the live owner also logged
+`public_census_audit_passed=true`; this closes that deferred preparation
+audit while strict terminal acceptance remains open.
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
