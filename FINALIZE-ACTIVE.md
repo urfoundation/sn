@@ -1,5 +1,27 @@
 # Testnet execution plan
 
+## R44 continuation and R45 claim repair — 2026-09-25 06:17 UTC
+
+R44 remains live under its original release owner. Observation 65 reached
+finalized block 8,081,204 in epoch 619; 40 faults were restored and the two
+signed post-acceptance lifecycle view filters remained active. There was no
+sealed owner result or invalidation. Do not stop the owner on the basis of the
+separate terminal watcher or the expected lifecycle-tail failure; retain its
+complete diagnostic result. The successor-only bypass-aware cleanup is under
+qualification and has not changed the live process.
+
+The shared miner claim admission repair is now SN main `2aacdf22`. It admits
+recent and historical claim work fairly, seeds the shared nonce floor from
+authenticated signed queues before workers start, and reconciles signed
+receipts before trusting a local API status. Focused miner and on-chain tests
+passed normally and under race detection on composed main; three old-behavior
+causal overlays failed as intended. The four broader fleet runtime manifest
+fixture failures reproduce on the unchanged base and are being repaired
+separately. This code is not in R44's pinned executable. Current acceptance
+must continue to allow `pending` and `retry` through claim TTL while keeping
+outstanding liability conserved; `submitting`, unreconciled `uncertain` and
+`failed` outcomes remain blocking at the acceptance cut.
+
 ## R44 evidence tail and successor gates — 2026-09-25 05:58 UTC
 
 R44's release owner and read-only terminal watcher remain active. Observation
