@@ -108,7 +108,7 @@ func (self *liveScenarioFaultDriver) RecoveryTimeout() time.Duration {
 	}
 	budget := 30 * time.Second
 	for _, spec := range active.Faults {
-		if spec.Kind == "process-restart" {
+		if spec.Kind == "process-restart" || spec.Kind == "container-restart" {
 			// Replacement readiness has the same bounded startup allowance as
 			// one supervisor phase, without blocking the live heartbeat.
 			budget += supervisorStartupPhaseTimeout
