@@ -16,8 +16,10 @@ preflight, not a live R45 renewal or signed acceptance result.
 
 The bypass-aware lifecycle cleanup patch is SN `101ed51f`; its mainnet
 hardening note is `18b13aea`. Focused and affected adjacent normal/race tests
-and four old-behavior causal checks passed in the isolated source. Sol is
-confirming those exact files on composed main. R44 is still the active owner;
+and four old-behavior causal checks passed in the isolated source. The combined
+focused and affected adjacent selectors also passed on composed main normally
+(39.378 seconds) and under race detection (202.982 seconds), with all eight
+lifecycle files matching the qualified source fence. R44 is still the active owner;
 do not use this binary to alter its live state before its sealed result.
 
 ## R44 lifecycle predicate finding — 2026-09-25 06:52 UTC
