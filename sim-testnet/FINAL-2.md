@@ -74,6 +74,20 @@ binary and plan; it is a log observation rather than an acceptance signature.
 [Owner audit result](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-result.txt),
 [bound read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-readcut.json).
 
+**Renewed-binding activation head observed 2026-09-25 14:46 UTC.** The owned LAN
+RPC finalized exactly block **8,083,774**, hash
+`0x6f6284b275845a8234033f46d5fec486d05294dfbbbb5cf320a0105bf473dc25`.
+The read-only storage check at that head confirmed the 64 GiB hard quota,
+healthy MinIO disk state and 464,104,980,480 physical bytes available. The
+admin bucket-usage value was cached from 14:38 UTC; an independent current
+object listing is underway. A finalized activation block makes the renewed
+bindings eligible for observation, but does not itself prove the scenario's
+fleet-binding assertion or start its acceptance interval.
+[LAN head](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-lan.json),
+[quota](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-quota.json),
+[disk](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-storage.json),
+[cached usage](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-usage-cached.json).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

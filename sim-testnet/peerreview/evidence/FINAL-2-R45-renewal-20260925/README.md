@@ -55,6 +55,10 @@ release acceptance interval or a successful finalization.
   attempt, plan and binary. The pinned worker emits no standalone signed audit
   completion receipt, so this preserves the log observation without claiming
   an acceptance signature.
+- `binding-activation-lan.json` and `binding-activation-{quota,storage,usage-cached}.json`:
+  finalized LAN block 8,083,774 and contemporaneous read-only MinIO admin
+  state. Bucket usage is explicitly cached; activation does not itself prove
+  live fleet-binding validity or acceptance.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

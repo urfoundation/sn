@@ -36,6 +36,12 @@ The owned parallel public evidence census finished at 14:32 UTC and logged
 `public_census_audit_passed=true`, `pending_public_census=false`. Keep its
 result distinct from final acceptance and the remaining capacity, horizon,
 governance and active-binding storage gates.
+The LAN RPC finalized renewal activation block 8,083,774 at 14:46 UTC,
+hash `0x6f6284b275845a8234033f46d5fec486d05294dfbbbb5cf320a0105bf473dc25`.
+Fresh admin reads confirmed 64 GiB quota and 464,104,980,480 bytes of healthy
+disk availability; usage was cached. Await the owner's next observation for
+fleet-binding validity and the independent active object census before
+claiming the storage gate or acceptance boundary.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
