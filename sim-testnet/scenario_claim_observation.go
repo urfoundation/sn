@@ -21,6 +21,9 @@ func scenarioClaimsForAcceptance(e *scenarioEvaluation) ([]ClaimObservation, err
 		return nil, errors.New("claim acceptance observation is unavailable")
 	}
 	if e.Window == nil {
+		if e.Definition.Name == "release-1.0" || e.Definition.Name == "production-soak" {
+			return nil, errors.New("release claim acceptance requires its signed epoch window")
+		}
 		return e.Current.Claims, nil
 	}
 	if e.Cfg == nil || e.Cfg.Config == nil || e.Window.EpochCount == 0 {

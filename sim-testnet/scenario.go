@@ -2142,7 +2142,13 @@ func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int, observ
 			result.LastTxHash = entry.TxHash
 		}
 	}
-	for _, epoch := range observedEpochs {
+	observedEpochs = append([]uint64(nil), observedEpochs...)
+	sort.Slice(observedEpochs, func(i, j int) bool { return observedEpochs[i] < observedEpochs[j] })
+	for index, epoch := range observedEpochs {
+		if index > 0 && observedEpochs[index-1] == epoch {
+			result.Error = fmt.Sprintf("claim observation repeats contract epoch %d", epoch)
+			return result
+		}
 		outcome := ClaimEpochObservation{Epoch: epoch, Status: "undiscovered"}
 		if entry, ok := queue.Entries[strconv.FormatUint(epoch, 10)]; ok {
 			if entry.Epoch < 0 || uint64(entry.Epoch) != epoch {
