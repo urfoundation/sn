@@ -1,5 +1,22 @@
 # Testnet execution plan
 
+## R44 fourth read-only diagnostic launched — 2026-09-25 10:16 UTC
+
+Diagnostic-only capture resilience is integrated on main as `da7689f8` and
+passed focused/adjacent normal and race tests plus two causal controls. It
+raises the source-capture allowance to 60 minutes and reuses exact authenticated
+chunks within one invocation; the strict final collector is unchanged. The
+clean stamped binary has SHA-256
+`25978b8478c6c02b9b7f2edce06e5209b260b22687e63b4f2ce16b13188b8509`,
+revision `da7689f82fc80f791edb4d276406fe78671ef1e9`, and
+`vcs.modified=false`. The hash-pinned wrapper is
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/run-fourth-terminal-diagnostic-da7689f8.sh`
+(SHA-256 `1a0b030fc3c1725c1064fec39ee2f819f5346820a2dbad244af618efd2288e91`).
+`urnetwork-sim-r44-fourth-terminal-da7689f8.service` is active and will write
+to the new external `fourth-terminal-da7689f8` directory. Verify its eventual
+service result and `report.json` before interpreting any check outcome. It is
+read-only; the original R44 owner and its post-owner watcher remain active.
+
 ## R44 third read-only terminal diagnostic complete — 2026-09-25 10:00 UTC
 
 The Git-stamped `d56709aa` diagnostic finished successfully as a read-only
