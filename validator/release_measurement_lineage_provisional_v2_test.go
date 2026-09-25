@@ -90,7 +90,7 @@ func TestProvisionalMeasurementLineageV2AuthenticatesActualTerminalGap(t *testin
 		t.Fatal("actual gap fixture changed its native/settlement scope")
 	}
 	first := previous.operators[9].seal
-	cfg := ReleaseConfig{ChainID: 945, Policy: previous.artifact.Policy, ProvisionalDeferClosedNativeInput: true,
+	cfg := ReleaseConfig{ChainID: 945, Policy: previous.artifact.Policy, PolicyHash: previous.artifact.PolicyHash, ProvisionalDeferClosedNativeInput: true,
 		EvidenceV2: ReleaseEvidenceV2Config{Bounds: ReleaseEvidenceV2Bounds{
 			Cut: first.bounds, Replay: first.replay, MaxParticipants: 2, MaxTransitionBytes: 256 * 1024,
 			MaxClosureBytes: 1024 * 1024, MaxProviders: 16, MaxEgressHashes: 16, MaxFleetPrefixes: 64}}}
