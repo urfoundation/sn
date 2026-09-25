@@ -2535,11 +2535,26 @@ queued sequence numbers, age and the configured budget. Deterministic normal
 and race tests preserve ready delivery, duplicate cleanup, canceled ownership
 and the original genuine-gap deadline; the old source reproduces the failures.
 
-A follow-up must reconcile already-admitted handoff work before declaring its
-predecessor absent. That reconciliation needs a finite prefix captured once
-for the expired hole, ordinary packet validation and exact pool ownership.
-Later traffic and duplicate arrival timestamps must not refill that prefix or
-extend a real missing-packet deadline. Qualify this separately and pin the
-actual Connect revision in the successor build; a simulator-only rebuild does
-not adopt a Connect fix. Current-main ports and this follow-up require their
-own composed tests before deployment.
+The qualified follow-up `0210852d` reconciles already-admitted handoff work
+before declaring its predecessor absent. It captures one finite prefix for
+the expired hole, preserving ordinary packet validation and exact pool
+ownership. An empty channel gets one immediate rendezvous, with no added wait.
+Later traffic and duplicate timestamps cannot refill the prefix or extend a
+real missing-packet deadline. Normal and race tests cover admitted predecessors,
+refill attempts, cancellation, malformed packets, unbuffered producers and the
+exact virtual deadline; the old minimal Run reproduces the failures. Its
+current-main prerequisite is `0411cdfc`, independently tested after rebasing
+onto the actual main revision.
+
+The composed successor `c98eb715` retains the live `3b7eca94` contract-control,
+failed-rekey and optimistic-generation fixes together with current main's
+16 KiB handshake floor, cipher notifications, ACK retention and both gap fixes.
+The sole textual conflict was two independent helpers inserted at the same
+location; both were retained. Exact source provenance, the conflict resolution,
+eleven preserved function bodies and the original live regression tests are
+recorded with the candidate. The combined affected suite passes normally and
+with race detection; restoring current-main transport behavior reproduces
+three original recovery/generation defects. A build must pin this complete
+qualified Connect revision, not assume that a simulator-only rebuild or a
+fresh main checkout contains the same transport fixes. Deployment remains a
+separate controlled continuation after the active signed interval.
