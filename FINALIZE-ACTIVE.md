@@ -16,6 +16,12 @@ R44's failed owner verdict and scoped R44-LC-1 exception without widening it.
 Both resumed-configuration operator probes passed two exact content/history
 readbacks at 13:52 UTC, and the live 64 GiB quota was re-read. The admin usage
 snapshot was stale; this does not close the active-epoch storage gate.
+The controller logged a provisional, nonblocking protected-publication
+forecast shortfall at 13:54 UTC: per replica 32,768 versus 34,553 objects/hour
+and 8,388,608 versus 10,947,548 retry requests/hour. Byte capacity passes.
+The active limits were not changed; retain the advisory in terminal evidence
+and do not treat its waiver as acceptance. Do not mutate the pinned config
+under the current owner.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 

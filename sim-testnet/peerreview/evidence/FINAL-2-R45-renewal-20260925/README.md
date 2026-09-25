@@ -31,6 +31,9 @@ release acceptance interval or a successful finalization.
 - `blob-quota-readback.json`: fresh admin read of the 64 GiB hard quota. The
   separate data-usage response remained cached at 13:39 UTC and cannot serve
   as an active-binding growth measurement.
+- `publication-capacity-advisory.txt`: exact nonblocking provisional forecast
+  advisory from the active R45 service journal at 13:54 UTC. The run's pinned
+  publication limits remain unchanged; this is an open terminal risk.
 
 `SHA256SUMS` hashes the portable JSON files. The live candidate, binary, scripts,
 and service journals remain under

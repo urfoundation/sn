@@ -28,6 +28,17 @@ publication behavior only; the active-epoch storage gate remains open.
 [operator 2](peerreview/evidence/FINAL-2-R45-renewal-20260925/operator2-publication-preflight.json),
 [quota readback](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-quota-readback.json).
 
+At 13:54 UTC, the live controller logged a **nonblocking provisional forecast
+advisory** for all four validator publication replicas. The pinned older rate
+configuration sets 32,768 objects/hour and 8,388,608 retry requests/hour;
+the current source forecast requires 34,553 and 10,947,548 respectively.
+Byte capacity exceeds its forecast. The provisional waiver leaves runtime
+limits unchanged and `final_acceptance=false`; it is not evidence that the
+publication workload will fit. The current repository configuration has
+higher limits, but substituting it mid-attempt would change the pinned
+configuration. Keep R45 running and evaluate any capacity correction against
+its immutable continuation boundary. [Exact advisory](peerreview/evidence/FINAL-2-R45-renewal-20260925/publication-capacity-advisory.txt).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
