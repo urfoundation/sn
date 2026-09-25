@@ -1,5 +1,43 @@
 # Testnet execution plan
 
+## R44 live release interval — 2026-09-25 02:59 UTC
+
+R43 ended before its terminal block when a post-restart
+`restart-stale-contract` process-log finding was not eligible for provisional
+observation continuation. Its signed generation-43 attempt and failed result
+remain immutable in `sim-testnet/runs/ur-subnet-testnet-v1-attempt-4`. The
+minimal correction, commit `6d9c8d38`, passed normal, race and old-source
+causal tests; it continues the diagnostic interval while retaining the
+finding as unexplained and final-blocking. The composed successor is clean SN
+`8edc91ea` with Connect `3b7eca94` and server `4b2c4587`, executable SHA-256
+`0c1bd59d469ef9f985f2efd00595b34e3986e8dbb551abf6b7175997b368ad59`.
+Its pre-stop evidence copy and qualification are under
+`/mnt/data/sn-testnet/qualification/r44-retained-relaunch-20260925/`.
+
+The controlled fleet stop and retained resume succeeded with zero setup
+actions. The fleet supervisor is `urnetwork-sim-ur-subnet-testnet-v1.service`;
+the live release owner is `urnetwork-sim-release-r44.service`. The owner uses
+the approved plan
+`0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb`
+and owned LAN RPC `192.168.1.162:9944`. Its signed attempt is
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json`;
+the run is
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T021136.926474885Z-release-1.0/`.
+The signed boundary began at 02:30:04 UTC, covers five complete epochs
+616–620 from block 8,080,174 through 8,081,674, and requires terminal block
+8,081,824. This is a provisional run: `final_acceptance=false`; prior fleet
+binding and rate-readiness findings remain visible for later strict review.
+
+At this snapshot, R44 has no signed invalidation or result and no blocking
+acceptance-scoped process-log finding. The quality-cohort control and first
+PostgreSQL restart restored; the Redis-1 restart and four longer controls were
+active, with 35 faults pending. Keep the live owner and fleet running. Read
+their actual current service, signed attempt, observations, fault ledger and
+process-log scope before any intervention. A stale snapshot or transient RPC
+timeout is not evidence of a stopped run. The separate typed process-log
+catalog, fault chronology and journal replay fixes are isolated future-build
+work; they are not in the R44 executable.
+
 ## R43 recovery startup — 2026-09-24 21:02 UTC
 
 Two additional unsigned startup retries were attempted after the first local
