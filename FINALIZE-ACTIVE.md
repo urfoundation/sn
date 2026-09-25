@@ -1,5 +1,26 @@
 # Testnet execution plan
 
+## R44 independent terminal capture armed — 2026-09-25 07:42 UTC
+
+The owner remains active. The named `R44-LC-1` bypass exception is recorded in
+`sim-testnet/FINAL-2.md`; it does not convert the strict lifecycle assertion
+into a pass or waive any other finding. The read-only external review is
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/REVIEW.md`
+(SHA-256 `96527e79611ef920d0711781acbe69233dd98c1879d96dd39f1ad5d94a4a75bf`).
+Its qualified diagnostic image has SHA-256
+`2953bc1e135e5704e2b5f321ef4eed6336bf4a07c917276103390eb840f26ade`.
+
+`urnetwork-sim-r44-automatic-terminal-capture.service` is armed for the exact
+signed checkpoint at or after block 8,081,824. It performs the reviewed
+read-only diagnostic without the original-result wait, then starts a bounded
+external supplement after the diagnostic has begun. The supplement requires
+four authenticated terminal checks before copying the signed observation
+prefix, all 1,000 claim queues, the complete process-log report and accepted
+log ranges. These are unsigned, point-in-time review artifacts, not an owner
+seal. The pre-existing watcher and live owner are unchanged. Verify the
+service's actual result and artifact hashes after terminal; an armed service
+is not evidence of a completed capture.
+
 ## R45 renewal plan-history blocker — 2026-09-25 07:13 UTC
 
 Static successor review found that the retained activated policy-rollover and
