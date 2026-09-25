@@ -209,6 +209,11 @@ func cloneScenarioFaultRecords(records []ScenarioFaultRecord) []ScenarioFaultRec
 	cloned := make([]ScenarioFaultRecord, len(records))
 	for index := range records {
 		cloned[index] = records[index]
+		if records[index].LifecycleCleanup != nil {
+			proof := *records[index].LifecycleCleanup
+			proof.RemovedProcesses = append([]FaultProcessEvidence(nil), proof.RemovedProcesses...)
+			cloned[index].LifecycleCleanup = &proof
+		}
 		cloned[index].Targets = append([]string(nil), records[index].Targets...)
 		cloned[index].Impacts = append([]string(nil), records[index].Impacts...)
 		cloned[index].FleetIndices = append([]int(nil), records[index].FleetIndices...)
@@ -361,6 +366,9 @@ func validateScenarioAttemptFaultRecords(definition scenarioDefinition, window *
 // Both current schedules and historical signed schedules enforce identical
 // state-transition evidence and reject failed or malformed fault state.
 func validateScenarioCampaignFaultState(window *ScenarioAcceptanceWindow, record ScenarioFaultRecord) error {
+	if err := validateScenarioLifecycleCleanup(window, record); err != nil {
+		return err
+	}
 	if err := validateScenarioCampaignMinerControl(record); err != nil {
 		return err
 	}
@@ -970,6 +978,12 @@ func validateScenarioFaultProgress(previous, next []ScenarioFaultRecord) error {
 	}
 	for index := range previous {
 		before, after := previous[index], next[index]
+		if before.LifecycleCleanup == nil && after.LifecycleCleanup != nil && after.Status != "active" {
+			return errors.New("lifecycle cleanup completion appeared without its prior signed request")
+		}
+		if err := validateScenarioLifecycleCleanupProgress(before.LifecycleCleanup, after.LifecycleCleanup); err != nil {
+			return err
+		}
 		if !scenarioFaultRecordMatchesSchedule(after, before) || before.ArmedBlock != after.ArmedBlock || before.ArmedBlockHash != after.ArmedBlockHash || scenarioFaultStatusRank(after.Status) < scenarioFaultStatusRank(before.Status) {
 			return fmt.Errorf("scenario campaign fault %q moved backward or changed identity", before.ID)
 		}
