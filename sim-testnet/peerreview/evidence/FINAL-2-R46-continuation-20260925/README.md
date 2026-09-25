@@ -55,3 +55,8 @@ the signed acceptance window. This transient remains visible to final review.
 hashes in the owner's observation log.
 `public-census-passed.receipt.json` binds the 18:03 UTC owner's deferred
 public-census pass to its exact journal cursor, process and signed window.
+`process-findings-180814.gate.json` and its receipt preserve the raw
+validator-2 steering findings at the 18:08 cut. The receipt also documents
+correction of the auxiliary monitor's scope-field selector. The live owner
+continued under its provisional process-finding path; strict final review
+must retain these findings.

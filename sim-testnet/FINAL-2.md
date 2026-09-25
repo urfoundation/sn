@@ -56,6 +56,18 @@ audit while strict terminal acceptance remains open. The
 [bound owner-journal receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/public-census-passed.receipt.json)
 (SHA-256 `2af3a976a778093f1e711a01102fefa43b4d0bf1f61f2ac357fb0513148315d7`)
 retains the exact cursor and owner identity.
+At 18:08 UTC the owner retained two R46-scoped validator-2 steering classes
+as provisional process findings and explicitly continued observing. The raw
+lines show native epoch 1674 attempt 1 timed out waiting for headers from
+operator 2's local `/sn/attempt-artifact`; attempt 2 reported a compact-head
+EMA epoch jump; steering then advanced from incomplete 1674 to 1675. These
+are real strict-gate findings, not part of the companion-filter exception.
+The auxiliary read-only monitor initially selected the wrong scope field and
+underreported them; its corrected v2 summary and original raw owner gate are
+preserved in the [finding receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/process-findings-180814.receipt.json)
+(SHA-256 `f632ef67a4c21cbd423fd7684b1cbd82a71f9b2916636a353a3ecec94da66308`)
+and [gate copy](peerreview/evidence/FINAL-2-R46-continuation-20260925/process-findings-180814.gate.json)
+(SHA-256 `8db8ebba9a4e1d7dcc94af7725cad445a39f23e367256a14d0e0e75f29fa169a`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
