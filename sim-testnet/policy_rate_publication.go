@@ -4,7 +4,7 @@
 // readers independently authenticate the exact governed policy transition.
 package main
 
-import validatorcomponent "github.com/urfoundation/sn/validator"
+import validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 
 // Supply owned policy documents only from the approved amendment, never from
 // the discovered publication whose signature and subject are being checked.
