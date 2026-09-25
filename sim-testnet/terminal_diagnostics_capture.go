@@ -17,6 +17,10 @@ import (
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
+// A full retained tape can require gigabytes of bounded immutable reads. This
+// diagnostic allowance changes neither live-owner deadlines nor strict gates.
+const terminalDiagnosticValidatorCaptureTimeout = 60 * time.Minute
+
 // Actual local sources are sampled separately from original signed observations.
 // A new observation can diagnose stale selectors but cannot rewrite history.
 func collectTerminalDiagnosticSources(collector *terminalDiagnosticCollector, cfg *ResolvedConfig, stateDir, runDir string, attempt *scenarioCampaignAttempt, result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation, terminalOk bool) {
@@ -204,7 +208,7 @@ func collectTerminalDiagnosticValidator(collector *terminalDiagnosticCollector, 
 	if collector.report.Window != nil {
 		lastEpoch, _ = checkedAdd(collector.report.Window.FirstEpoch, collector.report.Window.EpochCount-1)
 	}
-	collector.check(fmt.Sprintf("validator-%d/signed-source-capture", id), prerequisite, 15*time.Minute, func(ctx context.Context) (any, error) {
+	collector.check(fmt.Sprintf("validator-%d/signed-source-capture", id), prerequisite, terminalDiagnosticValidatorCaptureTimeout, func(ctx context.Context) (any, error) {
 		bounds, err := campaignValidatorLimitsV2(release.EvidenceV2.Bounds, uint64(len(release.EvidenceV2.Operators)), cfg.Config.ValidatorEvidenceRelay.MaxSlots)
 		if err != nil {
 			return nil, err
@@ -241,7 +245,7 @@ func collectTerminalDiagnosticValidator(collector *terminalDiagnosticCollector, 
 		if err := enableProvisionalRuntimeCompatibility(native, cfg); err != nil {
 			return nil, err
 		}
-		captured, err = validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, MaximumBytes: bounds.dataBytes + bounds.controlBytes, MaximumObjects: bounds.maximumObjects, MaximumDataBytes: bounds.dataBytes, MaximumControlBytes: bounds.controlBytes, ThroughEpoch: lastEpoch}, retain)
+		captured, err = validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, MaximumBytes: bounds.dataBytes + bounds.controlBytes, MaximumObjects: bounds.maximumObjects, MaximumDataBytes: bounds.dataBytes, MaximumControlBytes: bounds.controlBytes, ThroughEpoch: lastEpoch, ReuseCapturedStreams: true}, retain)
 		if err != nil {
 			return sources, err
 		}
