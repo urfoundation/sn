@@ -1119,6 +1119,20 @@ line may be scanned only after the fault has been restored. The affected swarm
 process may remain healthy while one miner is intentionally disabled. Test both
 the continued run and strict terminal rejection of an unrelated error.
 
+**R44 evidence-detail follow-up.** Ten acceptance-scoped `exit-gap-timeout`
+findings (14 events) came from the old Connect receiver's bare timeout line.
+It did not retain the expected sequence, queued range or handoff state, so the
+later closed-hole and ready-rendezvous fixes cannot prove which historical
+timeouts they repair. Production gap incidents must include those bounded
+sequence and ownership fields, the exact retry/expiry deadline, and whether
+the hole was closed by an admitted packet or remains genuinely unresolved.
+Keep real missing-packet expiry and incomplete steering continuity visible at
+final acceptance. A normal websocket close and a compact artifact read timeout
+need bounded retry with the same evidence identity; cancellation from an
+intentional owner stop remains a distinct outcome. Test both repaired transient
+paths and a true unresolved gap, then verify the live log carries enough detail
+to attribute a recurrence without guessing from the error class alone.
+
 ### PH-16 — Deterministic qualification and reviewable evidence
 
 **Lesson.** Some prior failures were real production defects; others were
