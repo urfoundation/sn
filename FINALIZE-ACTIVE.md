@@ -95,6 +95,11 @@ The separate watcher waits only 16 minutes for the original result after
 block 8,081,824, so its first output is expected to be an early external
 inventory. Preserve it, then rerun the same qualified read-only diagnostics
 after the owner's signed result appears, into a new external output directory.
+The companion filter's hard restore at block 8,082,634 does not satisfy its
+`RestoreConditionMet` assertion. The old owner has no early-seal command and
+continues to wait on that failed assertion. Label terminal diagnostics at
+block 8,081,824 as external evidence with the owner result pending; retain
+the live owner until it seals its result or reaches its bounded watchdog.
 
 The tested signed-window claim checks are now SN main `5615a382`; historical
 claim anomalies are also scoped to the new window in `ac2beccd`, with actual
