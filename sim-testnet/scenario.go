@@ -4381,7 +4381,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	deferredProcessLogMessage := ""
 	scanRuntimeProcessLogs := func(observation *ScenarioObservation, scopes ...processLogFaultScope) error {
 		failure := scanScenarioProcessLogs(options.ProcessLogs, runDir, observation, false, scopes...)
-		if !scenarioProcessLogFailureDeferred(cfg, definition.Name, failure) {
+		if !scenarioProcessLogFailureDeferred(cfg, definition.Name, failure, options.ProcessLogs) {
 			return failure
 		}
 		if message := failure.Error(); message != deferredProcessLogMessage {

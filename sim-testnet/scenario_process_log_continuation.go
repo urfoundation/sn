@@ -20,7 +20,7 @@ func (self *processLogFindingsFailure) Error() string {
 
 // Defer only explicitly repairable classes during an authorized non-accepting
 // interval. No persisted flag, unknown class or joined I/O error grants this.
-func scenarioProcessLogFailureDeferred(cfg *ResolvedConfig, phase string, failure error) bool {
+func scenarioProcessLogFailureDeferred(cfg *ResolvedConfig, phase string, failure error, gates ...scenarioProcessLogGate) bool {
 	if failure == nil || !provisionalResumeEnabled(cfg) || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance || cfg.readOnlyAudit || phase != "release-1.0" && phase != "production-soak" {
 		return false
 	}
@@ -33,7 +33,17 @@ func scenarioProcessLogFailureDeferred(cfg *ResolvedConfig, phase string, failur
 			}
 			for _, finding := range failure.findings {
 				switch finding.Class {
-				case "release-steering-attempt-failure", "release-steering-continuity", "tls-handshake-timeout", "packet-read-timeout", "connection-close-timeout", "exit-gap-timeout":
+				case "release-steering-attempt-failure", "release-steering-continuity", "tls-handshake-timeout", "packet-read-timeout", "connection-close-timeout", "exit-gap-timeout", "restart-stale-contract":
+				case "warning":
+					if len(gates) != 1 {
+						return false
+					}
+					owner, ok := gates[0].(interface {
+						provisionalArtifactStreamCancellation(ProcessLogFinding) bool
+					})
+					if !ok || !owner.provisionalArtifactStreamCancellation(finding) {
+						return false
+					}
 				default:
 					return false
 				}
