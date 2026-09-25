@@ -94,3 +94,7 @@ epoch identity check. `epoch633-source-recovered-observation.json` and
 sources and restored rate readiness at block 8,085,300. The paired receipts
 include exact JSONL offsets, hashes and LAN block responses; neither row is
 a final-acceptance result.
+
+`head-boundary-restored.receipt.json` preserves the sampled, hash-bound fault
+file rows showing restoration of both signed head-boundary faults while the
+owner remained active. Other faults and final acceptance remain open.

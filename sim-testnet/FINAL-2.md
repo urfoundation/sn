@@ -145,6 +145,14 @@ final acceptance. [Boundary observation](peerreview/evidence/FINAL-2-R46-continu
 (SHA-256 `c0a47feb3472dbacaf45e982bf2c950ea3132ddd4f796c7db4d70c6a20ec5d5d`),
 [recovery receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-source-recovery.receipt.json)
 (SHA-256 `360d86eb1f8b6df2b1106eb4af771c2e01123426e5a00e43359a6fc9b8ba2d24`).
+During epoch 633 the scheduled `head-boundary` miner control was recorded
+restored at block **8,085,444**, and the paired
+`validator-local-head-boundary` view filter at block **8,085,449**. The
+owner remained active and kept observing after both. The read-only
+[restoration receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/head-boundary-restored.receipt.json)
+(SHA-256 `70137f9ca120522d416bbd1080b8deafb58604fafd4b11373681cb205c72f769`)
+binds both rows to the sampled fault-file hash; it does not claim the other
+scheduled faults or final interval are complete.
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
