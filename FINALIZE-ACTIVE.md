@@ -1,5 +1,32 @@
 # Testnet execution plan
 
+## R44 evidence tail and successor gates — 2026-09-25 05:58 UTC
+
+R44's release owner and read-only terminal watcher remain active. Observation
+59 reached block 8,081,111 in epoch 619; 39 faults were restored and three
+active, with none pending. Two active lifecycle validator-view filters are
+explicit `post_acceptance_evidence_tail` faults. The signed five-epoch terminal
+block remains 8,081,824, but the scenario owner also waits for the tail faults
+to restore. The inherited approved lifecycle bypass has stage `release-handoff`
+and `TerminalEffectiveEpoch=0`; the companion filter's early condition requires
+a nonzero terminal-effective epoch. It cannot meet that condition in R44 and
+has a hard restore bound at 8,082,634. The strict
+`fleet_lifecycle_fault_tail_bounded` assertion will therefore fail even if the
+body reaches its terminal block. Do not treat the separate watcher report at
+8,081,824 as a sealed owner result or stop a still progressing owner. A
+successor-only bypass-aware schedule and an evidence-preserving post-terminal
+restore option are being reviewed; no live fault or service has been changed.
+
+The tested signed-window claim checks are now SN main `5615a382`; historical
+claim anomalies are also scoped to the new window in `ac2beccd`, with actual
+in-window uncertain and failed claims still open. The R44 live queue census
+at finalized block 8,081,014 showed 256 miners at discovery epoch 617 and 744
+at 614; a later read-only census found all 1,000 had reached 617, but epochs
+615–617 still had a substantial submission backlog. A fair shared admission
+and durable nonce-floor successor patch is in development. These fixes are not
+in the R44 executable. Round-7 renewal, authenticated traffic warmup and a
+fresh signed release boundary remain required after the actual R44 result.
+
 ## Current continuation — 2026-09-25 05:26 UTC
 
 R44 remains owned by `urnetwork-sim-release-r44.service` (PID 2823030), with
