@@ -25,6 +25,12 @@ checks do not retroactively pass R44's failed `evidence_publication` assertion.
 [Quota receipt](peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-quota-expansion.json),
 [operator-1 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator1-publication-preflight.json),
 [operator-2 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator2-publication-preflight.json).
+The [post-repair object census](peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-growth.json)
+finds about 1.326 GB of R44 interval writes and a 0.300 GB peak complete hour.
+That measured rate leaves substantial room under 64 GiB, but it is a lower
+bound because the full bucket and expired bindings suppressed work. Recheck
+headroom against actual R45 growth with a twofold margin before the next
+release interval.
 
 **Known exception R44-LC-1 remains narrow.** The approved bypass omitted the
 terminal-effective lifecycle mutation required by the companion filter's

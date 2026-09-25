@@ -28,6 +28,12 @@ strongest evidenced shared-store cause, not a proven original response. The
 and [operator probes](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/README.md)
 are prospective repair evidence; R44 acceptance stays failed. Persist the
 64 GiB quota in configuration before any storage redeploy.
+The [object census](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-growth.json)
+measures about 1.326 GB created during R44 and a 0.300 GB peak complete
+hour, leaving about 34.225 GB beneath the new quota. Quota refusals and
+expired bindings censor this rate; remeasure after renewed bindings become
+active and require a twofold projected-growth margin before another full
+interval. Do not treat the historical rate as a healthy-run ceiling.
 
 The guarded fleet stop exited 0 after R44 ended, preserving on-chain state.
 Vault's reviewed alpha-ceiling edit was committed as `df003713` without

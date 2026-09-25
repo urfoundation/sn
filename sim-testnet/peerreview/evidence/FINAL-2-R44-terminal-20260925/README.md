@@ -41,3 +41,11 @@ Contemporaneous operator logs reported `Bucket quota exceeded` during R44's
 evidence-publication window. The handler hid the exact cause of its HTTP 400,
 so quota is the strongest evidenced shared-store cause, not a recovered
 historical response body.
+
+`blob-growth.json` is a read-only object census after the quota repair. It
+finds 1,325,601,010 bytes newly created or modified during the 9h45m R44
+interval, with a complete-hour peak of 300,128,950 bytes. Because quota
+rejections and expired bindings suppressed work, this is a lower-bound
+observation, not an upper bound for a healthy successor. The 64 GiB quota
+leaves about 34.225 GB at the census; remeasure actual successor growth before
+the next full interval and require a twofold projected-use margin.
