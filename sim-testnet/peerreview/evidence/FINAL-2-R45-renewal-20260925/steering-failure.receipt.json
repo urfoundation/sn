@@ -1,0 +1,2206 @@
+{
+  "schema": "urnetwork-r45-read-only-steering-failure-receipt-v1",
+  "captured_at": "2026-09-25T16:53:22.709912+00:00",
+  "read_only": true,
+  "state_root": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4",
+  "run_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0",
+  "source_revision": "6100394b",
+  "failure": {
+    "byte_offset": 39435090,
+    "line_number": 322021,
+    "raw_line": "release steer: subnet epoch 1673 attempt 1: compact head EMA epoch jumped",
+    "line_sha256": "0055428fc5b86970913d74a8075ae5d559e5a044d7aa5b6b177d5c63f689399b",
+    "line_with_newline_sha256": "d0de211bdc93b8d774d140327726a1431f93ac1d2f55900b0bdf88e945248532"
+  },
+  "earlier_same_cause": [
+    {
+      "byte_offset": 39297736,
+      "line_number": 320667,
+      "raw_line": "release steer: subnet epoch 1672 attempt 1: compact head EMA epoch jumped",
+      "line_sha256": "00d8b1bb28ca376c2265b241deb0486876b2a029eb6308feeebe4267519e2f5b",
+      "line_with_newline_sha256": "8f8a4d52c57f7ea8b35bf7e111143588e9d385198a7aa516f91b0c1ef45e2555"
+    },
+    {
+      "byte_offset": 39322438,
+      "line_number": 320930,
+      "raw_line": "release steer: subnet epoch 1672 attempt 2: compact head EMA epoch jumped",
+      "line_sha256": "b1eca65bffcc58666114b4216afa229d0afdeb904f9d662c3e46e6bb367238fc",
+      "line_with_newline_sha256": "a34efb1230eed9b6fdee5726104ca7804c70e60ce601dd92e002064d1cfaef99"
+    },
+    {
+      "byte_offset": 39342816,
+      "line_number": 321147,
+      "raw_line": "release steer: subnet epoch 1672 attempt 3: compact head EMA epoch jumped",
+      "line_sha256": "756c4a55339938db0d304270b2a6f93240f9e413d6e47c2c21383d9a41a73be4",
+      "line_with_newline_sha256": "d527fd793f03adb07338d7929d86cafd6a02e3c6260532f373481adf92bbb53c"
+    },
+    {
+      "byte_offset": 39364604,
+      "line_number": 321379,
+      "raw_line": "release steer: subnet epoch 1672 attempt 4: compact head EMA epoch jumped",
+      "line_sha256": "2364fc4555f99f14678b901852368c9b83f1e2d03e2aca9cfb09dbbf9e5566e2",
+      "line_with_newline_sha256": "23647a63ac940af939e13e61c79eea2ee9378847c2512e4b4ebffea126dadccc"
+    },
+    {
+      "byte_offset": 39387238,
+      "line_number": 321620,
+      "raw_line": "release steer: subnet epoch 1672 attempt 5: compact head EMA epoch jumped",
+      "line_sha256": "2a9c017e5ba924d7f9e3b56647593026928e65e166878669c259ad309023124a",
+      "line_with_newline_sha256": "203e8ce13098552519b99b5e1c3a99288479a4f0a65160af54ff1c566907b69a"
+    }
+  ],
+  "stdout_snapshot_size": 39454187,
+  "process_log_evidence": {
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/process-logs.json",
+    "sha256": "22d9a180a156efc59acec8aa76260220569703c403961f1bf6c3ae1090fd9730",
+    "updated_at": "2026-09-25T16:52:55.697087081Z",
+    "acceptance_boundary": {
+      "schema": "urnetwork-sim-process-log-acceptance-v1",
+      "bound_at": "2026-09-25T15:52:25.14430511Z",
+      "manifest_hash": "0x2bd5bbef8665fa4fee3a7ca085b3144f95504395ea348652f3552fc76a7bba9a",
+      "supervisor_pid": 3780072,
+      "supervisor_start_time_ticks": 21558815,
+      "cursors": [
+        {
+          "process_id": "claim-relayer-1",
+          "role": "claim-relayer",
+          "stream": "stderr",
+          "path": "processes/claim-relayer-1.stderr.log",
+          "device": 64512,
+          "inode": 39095211,
+          "initial_offset": 24088,
+          "offset": 24088,
+          "digest_offset": 24088,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "claim-relayer-1",
+          "role": "claim-relayer",
+          "stream": "stdout",
+          "path": "processes/claim-relayer-1.stdout.log",
+          "device": 64512,
+          "inode": 39095210,
+          "initial_offset": 1401824,
+          "offset": 1498625,
+          "digest_offset": 1498625,
+          "scanned_bytes": 96801,
+          "scanned_lines": 1367,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "878351964da614f9d429aa19c3cf8025ce0daaf7af9bb3f8a565c8a9be5cc553",
+          "acceptance_prefix_sha256": "sha256:3e46ff11c7de67e7d1b1206e557a39828cb504965384db4ff6fa6510eefe5039"
+        },
+        {
+          "process_id": "claim-relayer-2",
+          "role": "claim-relayer",
+          "stream": "stderr",
+          "path": "processes/claim-relayer-2.stderr.log",
+          "device": 64512,
+          "inode": 39095213,
+          "initial_offset": 24088,
+          "offset": 24088,
+          "digest_offset": 24088,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "claim-relayer-2",
+          "role": "claim-relayer",
+          "stream": "stdout",
+          "path": "processes/claim-relayer-2.stdout.log",
+          "device": 64512,
+          "inode": 39095212,
+          "initial_offset": 1445716,
+          "offset": 1540146,
+          "digest_offset": 1540146,
+          "scanned_bytes": 94430,
+          "scanned_lines": 1332,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "c293a5ead72ad0b7278597e55fb38d63b1eccfa585a68f140e416c5f1fc49c9e",
+          "acceptance_prefix_sha256": "sha256:3461def2e0bd4843480c8e6d3ddc6f91a0ca39abb936a3db06011db4a344e0c2"
+        },
+        {
+          "process_id": "miner-swarm-1",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-1.stderr.log",
+          "device": 64512,
+          "inode": 39095171,
+          "initial_offset": 89987340,
+          "offset": 90122032,
+          "digest_offset": 90122032,
+          "scanned_bytes": 134692,
+          "scanned_lines": 733,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "4587c8ec3c532ec7bbb45b23cbae59672e13fef731ab746815ceaab124228e27",
+          "acceptance_prefix_sha256": "sha256:9fe98e15abf47f90b43d7639c5e7dfde2a50d1149603dcd5fefd0abbc2960dc2"
+        },
+        {
+          "process_id": "miner-swarm-1",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-1.stdout.log",
+          "device": 64512,
+          "inode": 39095170,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-10",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-10.stderr.log",
+          "device": 64512,
+          "inode": 39095189,
+          "initial_offset": 92225755,
+          "offset": 92376748,
+          "digest_offset": 92376748,
+          "scanned_bytes": 150993,
+          "scanned_lines": 855,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "5fde6e24ca76c9877fbb8737c2950d4d7d200b92ea6d20aefccb17bd83723e34",
+          "acceptance_prefix_sha256": "sha256:f122819098edcf19eb2d8d44405ae5b784250c2c270cf81ebc67d0a80cf798b8"
+        },
+        {
+          "process_id": "miner-swarm-10",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-10.stdout.log",
+          "device": 64512,
+          "inode": 39095188,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-11",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-11.stderr.log",
+          "device": 64512,
+          "inode": 39095191,
+          "initial_offset": 91966895,
+          "offset": 92119867,
+          "digest_offset": 92119867,
+          "scanned_bytes": 152972,
+          "scanned_lines": 889,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "b83022d969d8c4c61e477a1ec41313a4dda4e15131c74f1aabf878204d8535e3",
+          "acceptance_prefix_sha256": "sha256:00382e408213502bb84999e3793573df5f0615ea4600fc179c7e3caa58b2c833"
+        },
+        {
+          "process_id": "miner-swarm-11",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-11.stdout.log",
+          "device": 64512,
+          "inode": 39095190,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-12",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-12.stderr.log",
+          "device": 64512,
+          "inode": 39095193,
+          "initial_offset": 91942822,
+          "offset": 92095227,
+          "digest_offset": 92095227,
+          "scanned_bytes": 152405,
+          "scanned_lines": 898,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "1a014af6490247e16c47cf9e9e331e48ddeca743f14fcabd3ec6540cca8a170c",
+          "acceptance_prefix_sha256": "sha256:e4a13106ce1a8561766f0367b39e4d45eec57ac6a99ebcc5fa0384448c8d89d7"
+        },
+        {
+          "process_id": "miner-swarm-12",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-12.stdout.log",
+          "device": 64512,
+          "inode": 39095192,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-13",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-13.stderr.log",
+          "device": 64512,
+          "inode": 39095195,
+          "initial_offset": 92044635,
+          "offset": 92185420,
+          "digest_offset": 92185420,
+          "scanned_bytes": 140785,
+          "scanned_lines": 772,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "22f3bc4e9027761d9db235dea8a511a1948dc8d70cd44d21a989d1db7bc22a16",
+          "acceptance_prefix_sha256": "sha256:1f9ece98b2da84d02cea3e940c07019f4c30b1a39a246c5c78e1782b0b18bcec"
+        },
+        {
+          "process_id": "miner-swarm-13",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-13.stdout.log",
+          "device": 64512,
+          "inode": 39095194,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-14",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-14.stderr.log",
+          "device": 64512,
+          "inode": 39095197,
+          "initial_offset": 91518452,
+          "offset": 91658497,
+          "digest_offset": 91658497,
+          "scanned_bytes": 140045,
+          "scanned_lines": 773,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "39b68a4898f1ee80c2abea5cc0550413071b20e730e1989e1a5cbbef79224cfc",
+          "acceptance_prefix_sha256": "sha256:07fd8f3a2b7ee9dee1c4402a0de0c869a5859d0a34d21379a492951ed97553ed"
+        },
+        {
+          "process_id": "miner-swarm-14",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-14.stdout.log",
+          "device": 64512,
+          "inode": 39095196,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-15",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-15.stderr.log",
+          "device": 64512,
+          "inode": 39095199,
+          "initial_offset": 91494446,
+          "offset": 91634574,
+          "digest_offset": 91634574,
+          "scanned_bytes": 140128,
+          "scanned_lines": 777,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "c440fd3658d16fd5409e9c843e96731940a665f57be4183f0c180fd3b146a5b3",
+          "acceptance_prefix_sha256": "sha256:250aa6b5b6189ddb77da4e38bf9ab2e906f9cbca536bd7e92d890173ef76c923"
+        },
+        {
+          "process_id": "miner-swarm-15",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-15.stdout.log",
+          "device": 64512,
+          "inode": 39095198,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-16",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-16.stderr.log",
+          "device": 64512,
+          "inode": 39095201,
+          "initial_offset": 91410977,
+          "offset": 91530519,
+          "digest_offset": 91530519,
+          "scanned_bytes": 119542,
+          "scanned_lines": 633,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "320059aec776817ad87a972c075f9fdff777f0e20a14ea66ebf23d557ed46234",
+          "acceptance_prefix_sha256": "sha256:c28deb9630f2af3019740781ec76456c3e2da0de044ab6860c23250bc7c07cfd"
+        },
+        {
+          "process_id": "miner-swarm-16",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-16.stdout.log",
+          "device": 64512,
+          "inode": 39095200,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-17",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-17.stderr.log",
+          "device": 64512,
+          "inode": 39095203,
+          "initial_offset": 91922524,
+          "offset": 92053523,
+          "digest_offset": 92053523,
+          "scanned_bytes": 130999,
+          "scanned_lines": 715,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "f2c7f4b9e5f5411b848cba477a357743e9d6981c872bb4f3b2752f565b71c114",
+          "acceptance_prefix_sha256": "sha256:940ea3dcc358081a7fbb58a3996096cee67e7f63182dbe0cebfa05e06ffe5da7"
+        },
+        {
+          "process_id": "miner-swarm-17",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-17.stdout.log",
+          "device": 64512,
+          "inode": 39095202,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-18",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-18.stderr.log",
+          "device": 64512,
+          "inode": 39095205,
+          "initial_offset": 92983753,
+          "offset": 93111328,
+          "digest_offset": 93111328,
+          "scanned_bytes": 127575,
+          "scanned_lines": 690,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "6f4180bd73a0f13c2c9e863fafc3c24334cf480db0d0007bb037e7b966a2e942",
+          "acceptance_prefix_sha256": "sha256:45cddaab487b6c1654bf1e928e39896742dc5d89fd319a78160d66c1efdcf7df"
+        },
+        {
+          "process_id": "miner-swarm-18",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-18.stdout.log",
+          "device": 64512,
+          "inode": 39095204,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-19",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-19.stderr.log",
+          "device": 64512,
+          "inode": 39095207,
+          "initial_offset": 92729192,
+          "offset": 92871275,
+          "digest_offset": 92871275,
+          "scanned_bytes": 142083,
+          "scanned_lines": 808,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "85d8f9aba1a823671bc9e321f6d5b380fffee6721950ff767e76f9f6a30a6745",
+          "acceptance_prefix_sha256": "sha256:4961df52411024c8705416a3acbbe3df129e6e787c83c7d2d095d19d1b078127"
+        },
+        {
+          "process_id": "miner-swarm-19",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-19.stdout.log",
+          "device": 64512,
+          "inode": 39095206,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-2",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-2.stderr.log",
+          "device": 64512,
+          "inode": 39095173,
+          "initial_offset": 91963953,
+          "offset": 92095410,
+          "digest_offset": 92095410,
+          "scanned_bytes": 131457,
+          "scanned_lines": 732,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "44aa0afb5febd1d14b2689d73f103e9339c7e434d13fe85b9a1625eb262e7fba",
+          "acceptance_prefix_sha256": "sha256:13dca00108f0d0bbddd1771f67471940596680e77281c5cd0a605cde5f2941cc"
+        },
+        {
+          "process_id": "miner-swarm-2",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-2.stdout.log",
+          "device": 64512,
+          "inode": 39095172,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-20",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-20.stderr.log",
+          "device": 64512,
+          "inode": 39095209,
+          "initial_offset": 92610640,
+          "offset": 92747826,
+          "digest_offset": 92747826,
+          "scanned_bytes": 137186,
+          "scanned_lines": 747,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "bc6c52fa9c772123a87600a025969f3b0ee7ad63f6031bb4f5cd34faee0d0367",
+          "acceptance_prefix_sha256": "sha256:b574e2ea08554547c821e5ac0840dce9a24fc8147b9ab391c31383c4ed5069b1"
+        },
+        {
+          "process_id": "miner-swarm-20",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-20.stdout.log",
+          "device": 64512,
+          "inode": 39095208,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-3",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-3.stderr.log",
+          "device": 64512,
+          "inode": 39095175,
+          "initial_offset": 92198768,
+          "offset": 92327767,
+          "digest_offset": 92327767,
+          "scanned_bytes": 128999,
+          "scanned_lines": 700,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "995bb90657cac17dcf6ead3b27c321f7c621ef81ceb316577cc7eb3e65f0bdf0",
+          "acceptance_prefix_sha256": "sha256:22e86fded44588f0dcca93bcb38772c0bff717b11f5653440a0aa84cc85b77a5"
+        },
+        {
+          "process_id": "miner-swarm-3",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-3.stdout.log",
+          "device": 64512,
+          "inode": 39095174,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-4",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-4.stderr.log",
+          "device": 64512,
+          "inode": 39095177,
+          "initial_offset": 92639765,
+          "offset": 92767327,
+          "digest_offset": 92767327,
+          "scanned_bytes": 127562,
+          "scanned_lines": 691,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "a6123b1b0d2e4fa618df9c85dcb2470fbcb69bf514ba064adea8fd4936d63e86",
+          "acceptance_prefix_sha256": "sha256:0b23cd265a820d2daf43578b393817146c4f774d2380e97b6265723bb8c6a017"
+        },
+        {
+          "process_id": "miner-swarm-4",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-4.stdout.log",
+          "device": 64512,
+          "inode": 39095176,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-5",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-5.stderr.log",
+          "device": 64512,
+          "inode": 39095179,
+          "initial_offset": 92693319,
+          "offset": 92813207,
+          "digest_offset": 92813207,
+          "scanned_bytes": 119888,
+          "scanned_lines": 647,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "dd7462c664e7fe8d05b59f12f0953bf3e4416894d343befbd538e45fa14ae99a",
+          "acceptance_prefix_sha256": "sha256:b24b7e26f6372d0cdbea2cbfcee73d2d094cce1321ffde679fe571510df85cf7"
+        },
+        {
+          "process_id": "miner-swarm-5",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-5.stdout.log",
+          "device": 64512,
+          "inode": 39095178,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-6",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-6.stderr.log",
+          "device": 64512,
+          "inode": 39095181,
+          "initial_offset": 92904866,
+          "offset": 93034846,
+          "digest_offset": 93034846,
+          "scanned_bytes": 129980,
+          "scanned_lines": 711,
+          "chunk_count": 2,
+          "scanned_chunk_chain_sha256": "0b6e1e9ba91a0f5d632af58bd094253b0e24b2c6d1c916b2d487c1437219f313",
+          "acceptance_prefix_sha256": "sha256:0924a88e34c722475c4fe626176ef367ad6b42412962878b7dd5d671500ade7b"
+        },
+        {
+          "process_id": "miner-swarm-6",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-6.stdout.log",
+          "device": 64512,
+          "inode": 39095180,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-7",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-7.stderr.log",
+          "device": 64512,
+          "inode": 39095183,
+          "initial_offset": 95415237,
+          "offset": 95574305,
+          "digest_offset": 95574305,
+          "scanned_bytes": 159068,
+          "scanned_lines": 915,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "1c1e3f449b0a5dda0d444f2cdfdccbe73e2bbbd9ea2ea89007790441fd98864f",
+          "acceptance_prefix_sha256": "sha256:58bde1a0698e661e022776951faf29b625e56cc6b2fb3bbf2d82671378157abf"
+        },
+        {
+          "process_id": "miner-swarm-7",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-7.stdout.log",
+          "device": 64512,
+          "inode": 39095182,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-8",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-8.stderr.log",
+          "device": 64512,
+          "inode": 39095185,
+          "initial_offset": 92682052,
+          "offset": 92837713,
+          "digest_offset": 92837713,
+          "scanned_bytes": 155661,
+          "scanned_lines": 906,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "d1abd070d62c77ca707b56184963fb990a01b6200f33ff39cf267bf814b0e462",
+          "acceptance_prefix_sha256": "sha256:f12cb075b1c489347f27148a5b671042e12f4154238fbfa0f9b63b05eb5a2ab9"
+        },
+        {
+          "process_id": "miner-swarm-8",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-8.stdout.log",
+          "device": 64512,
+          "inode": 39095184,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "miner-swarm-9",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "path": "processes/miner-swarm-9.stderr.log",
+          "device": 64512,
+          "inode": 39095187,
+          "initial_offset": 92479355,
+          "offset": 92625900,
+          "digest_offset": 92625900,
+          "scanned_bytes": 146545,
+          "scanned_lines": 829,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "11433460a0e0dd30339f7e36194b12d6893cd8a4095fca32776561f81cd29b7e",
+          "acceptance_prefix_sha256": "sha256:9eea627ba1b09d7a9221bc6bcb18858d3bffa245bd5135f0e3d5321780203a66"
+        },
+        {
+          "process_id": "miner-swarm-9",
+          "role": "miner-swarm",
+          "stream": "stdout",
+          "path": "processes/miner-swarm-9.stdout.log",
+          "device": 64512,
+          "inode": 39095186,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-1-api",
+          "role": "operator-api",
+          "stream": "stderr",
+          "path": "processes/operator-1-api.stderr.log",
+          "device": 64512,
+          "inode": 39086207,
+          "initial_offset": 1524053810,
+          "offset": 1538573361,
+          "digest_offset": 1538573361,
+          "scanned_bytes": 14519551,
+          "scanned_lines": 95044,
+          "chunk_count": 222,
+          "scanned_chunk_chain_sha256": "2d5ff49078947f59cb80e19fa7e8794f5b8be8cf64281e6a13044bcd9c09f1da",
+          "acceptance_prefix_sha256": "sha256:e4d1a50d4d6a27eff4578a2df7b920aaee87508d94cf6d46baf626d03ba3bb72"
+        },
+        {
+          "process_id": "operator-1-api",
+          "role": "operator-api",
+          "stream": "stdout",
+          "path": "processes/operator-1-api.stdout.log",
+          "device": 64512,
+          "inode": 39086206,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-1-connect",
+          "role": "operator-connect",
+          "stream": "stderr",
+          "path": "processes/operator-1-connect.stderr.log",
+          "device": 64512,
+          "inode": 39095163,
+          "initial_offset": 527621429,
+          "offset": 529218820,
+          "digest_offset": 529218820,
+          "scanned_bytes": 1597391,
+          "scanned_lines": 6444,
+          "chunk_count": 25,
+          "scanned_chunk_chain_sha256": "9b51b403a791289f76fe62ad3ec70487c386d8ba998d0439721542f9370ef2bb",
+          "acceptance_prefix_sha256": "sha256:f0f20ff641d8d85d6fde9e813a1ed5fbb706357a51f2c48f46341ce617ae83f0"
+        },
+        {
+          "process_id": "operator-1-connect",
+          "role": "operator-connect",
+          "stream": "stdout",
+          "path": "processes/operator-1-connect.stdout.log",
+          "device": 64512,
+          "inode": 39095162,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-1-taskworker",
+          "role": "operator-taskworker",
+          "stream": "stderr",
+          "path": "processes/operator-1-taskworker.stderr.log",
+          "device": 64512,
+          "inode": 39095165,
+          "initial_offset": 151624231,
+          "offset": 153550720,
+          "digest_offset": 153550720,
+          "scanned_bytes": 1926489,
+          "scanned_lines": 10663,
+          "chunk_count": 30,
+          "scanned_chunk_chain_sha256": "4e58c4f83ca3b36cae51bc7e70db89d57cb0ec72d4c09755ee4fb87e13e407f5",
+          "acceptance_prefix_sha256": "sha256:487e40defb7b9bfee12c6be94aa996a57cff468b300ae8bc1ba4da1e60769156"
+        },
+        {
+          "process_id": "operator-1-taskworker",
+          "role": "operator-taskworker",
+          "stream": "stdout",
+          "path": "processes/operator-1-taskworker.stdout.log",
+          "device": 64512,
+          "inode": 39095164,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-2-api",
+          "role": "operator-api",
+          "stream": "stderr",
+          "path": "processes/operator-2-api.stderr.log",
+          "device": 64512,
+          "inode": 39086209,
+          "initial_offset": 1215324279,
+          "offset": 1228414117,
+          "digest_offset": 1228414117,
+          "scanned_bytes": 13089838,
+          "scanned_lines": 85695,
+          "chunk_count": 200,
+          "scanned_chunk_chain_sha256": "d2d65325b031f784417a638e6f112daf41e16549bc4350395bc64b7f58433cd2",
+          "acceptance_prefix_sha256": "sha256:5f644661d17ae26679743a5535cf8cf775e9c56a9f6abdbbf9c4f0e65595852b"
+        },
+        {
+          "process_id": "operator-2-api",
+          "role": "operator-api",
+          "stream": "stdout",
+          "path": "processes/operator-2-api.stdout.log",
+          "device": 64512,
+          "inode": 39086208,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-2-connect",
+          "role": "operator-connect",
+          "stream": "stderr",
+          "path": "processes/operator-2-connect.stderr.log",
+          "device": 64512,
+          "inode": 39095167,
+          "initial_offset": 479702291,
+          "offset": 481227166,
+          "digest_offset": 481227166,
+          "scanned_bytes": 1524875,
+          "scanned_lines": 6256,
+          "chunk_count": 24,
+          "scanned_chunk_chain_sha256": "85db853d1106744cc2587ed7fcbb6bbea489cdd484da5defba9d11063a33835a",
+          "acceptance_prefix_sha256": "sha256:2a310065f627b461347a0d703e25422aa81daa39c51d482a3f4f72b04fc9cc0f"
+        },
+        {
+          "process_id": "operator-2-connect",
+          "role": "operator-connect",
+          "stream": "stdout",
+          "path": "processes/operator-2-connect.stdout.log",
+          "device": 64512,
+          "inode": 39095166,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "operator-2-taskworker",
+          "role": "operator-taskworker",
+          "stream": "stderr",
+          "path": "processes/operator-2-taskworker.stderr.log",
+          "device": 64512,
+          "inode": 39095169,
+          "initial_offset": 151852919,
+          "offset": 153792615,
+          "digest_offset": 153792615,
+          "scanned_bytes": 1939696,
+          "scanned_lines": 10708,
+          "chunk_count": 30,
+          "scanned_chunk_chain_sha256": "9463fe8facf702595aa0489f401221e37cd9284922aa0df462b507a37a03ee59",
+          "acceptance_prefix_sha256": "sha256:d91052cb225c274b8c6a0dbca9c7641fa16265c2ee9b7eec0c04b67d8803ef5a"
+        },
+        {
+          "process_id": "operator-2-taskworker",
+          "role": "operator-taskworker",
+          "stream": "stdout",
+          "path": "processes/operator-2-taskworker.stdout.log",
+          "device": 64512,
+          "inode": 39095168,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-evm-egress",
+          "role": "dependency-rpc-proxy",
+          "stream": "stderr",
+          "path": "processes/subtensor-evm-egress.stderr.log",
+          "device": 64512,
+          "inode": 39096682,
+          "initial_offset": 37362,
+          "offset": 37362,
+          "digest_offset": 37362,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-evm-egress",
+          "role": "dependency-rpc-proxy",
+          "stream": "stdout",
+          "path": "processes/subtensor-evm-egress.stdout.log",
+          "device": 64512,
+          "inode": 39090209,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-rpc-proxy",
+          "role": "dependency-rpc-proxy",
+          "stream": "stderr",
+          "path": "processes/subtensor-rpc-proxy.stderr.log",
+          "device": 64512,
+          "inode": 39086203,
+          "initial_offset": 51253,
+          "offset": 51253,
+          "digest_offset": 51253,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-rpc-proxy",
+          "role": "dependency-rpc-proxy",
+          "stream": "stdout",
+          "path": "processes/subtensor-rpc-proxy.stdout.log",
+          "device": 64512,
+          "inode": 39086202,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-substrate-rpc-proxy",
+          "role": "dependency-rpc-proxy",
+          "stream": "stderr",
+          "path": "processes/subtensor-substrate-rpc-proxy.stderr.log",
+          "device": 64512,
+          "inode": 39086205,
+          "initial_offset": 50561,
+          "offset": 50561,
+          "digest_offset": 50561,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "subtensor-substrate-rpc-proxy",
+          "role": "dependency-rpc-proxy",
+          "stream": "stdout",
+          "path": "processes/subtensor-substrate-rpc-proxy.stdout.log",
+          "device": 64512,
+          "inode": 39086204,
+          "initial_offset": 0,
+          "offset": 0,
+          "digest_offset": 0,
+          "scanned_bytes": 0,
+          "scanned_lines": 0,
+          "chunk_count": 0,
+          "scanned_chunk_chain_sha256": "fc9af79fc0477cc3759f87e3bc14e9fa0997b60ac9b04d111643827b42abcf0f",
+          "acceptance_prefix_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "process_id": "validator-1",
+          "role": "validator",
+          "stream": "stderr",
+          "path": "processes/validator-1.stderr.log",
+          "device": 64512,
+          "inode": 39095215,
+          "initial_offset": 308665311,
+          "offset": 308985191,
+          "digest_offset": 308985191,
+          "scanned_bytes": 319880,
+          "scanned_lines": 1533,
+          "chunk_count": 5,
+          "scanned_chunk_chain_sha256": "b2680350349ad3d6971794627155960091e2fc296400ce33c9cf2591a545cfad",
+          "acceptance_prefix_sha256": "sha256:279bcc9995f02a6311bbd3a8221d6ef3f760de20ab55fbdd4656126f71035c26"
+        },
+        {
+          "process_id": "validator-1",
+          "role": "validator",
+          "stream": "stdout",
+          "path": "processes/validator-1.stdout.log",
+          "device": 64512,
+          "inode": 39095214,
+          "initial_offset": 29524196,
+          "offset": 29541413,
+          "digest_offset": 29541413,
+          "scanned_bytes": 17217,
+          "scanned_lines": 180,
+          "chunk_count": 1,
+          "scanned_chunk_chain_sha256": "27cf10dcd5c14855db1e92fee70584c3fa625e9729d554cb317c51807d0be7dc",
+          "acceptance_prefix_sha256": "sha256:96e37f99efea06d1c6c014c943f1a460ecfb3b17ccd703bbdc9a6fd28f70b191"
+        },
+        {
+          "process_id": "validator-2",
+          "role": "validator",
+          "stream": "stderr",
+          "path": "processes/validator-2.stderr.log",
+          "device": 64512,
+          "inode": 39095217,
+          "initial_offset": 248095766,
+          "offset": 249978726,
+          "digest_offset": 249978726,
+          "scanned_bytes": 1882960,
+          "scanned_lines": 7170,
+          "chunk_count": 29,
+          "scanned_chunk_chain_sha256": "4528cd1023b51ec6a7762cd38df3605fb5f2a9c91de6184e6d3b2738c240b983",
+          "acceptance_prefix_sha256": "sha256:a2f7953e1104d7026c511de616c23a7ab403e88c58cfe5a5d533a00d2fa07538"
+        },
+        {
+          "process_id": "validator-2",
+          "role": "validator",
+          "stream": "stdout",
+          "path": "processes/validator-2.stdout.log",
+          "device": 64512,
+          "inode": 39095216,
+          "initial_offset": 39232496,
+          "offset": 39387406,
+          "digest_offset": 39387406,
+          "scanned_bytes": 154910,
+          "scanned_lines": 1505,
+          "chunk_count": 3,
+          "scanned_chunk_chain_sha256": "5a150325b9e0b5c52a320fb054906a1ab44a7c55bb511f79a002c020b049f4fe",
+          "acceptance_prefix_sha256": "sha256:e5398f46bba9b8afa86196ba11ee5489ad7e7138e9e6fffc4dd8739d341a7e6e"
+        }
+      ],
+      "retained_findings_hash": "0x2c6dde383f356ef3d59449c0e174ef8190d85598d8b573424390a3eae3176499",
+      "content_hash": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+    },
+    "findings": [
+      {
+        "process_id": "validator-2",
+        "role": "validator",
+        "stream": "stdout",
+        "class": "release-steering-attempt-failure",
+        "summary": "release steering reported a failed native epoch attempt",
+        "blocking": true,
+        "disposition": "unexplained",
+        "count": 5,
+        "first_offset": 39297736,
+        "last_offset": 39387238,
+        "first_line_sha256": "00d8b1bb28ca376c2265b241deb0486876b2a029eb6308feeebe4267519e2f5b",
+        "last_line_sha256": "2a9c017e5ba924d7f9e3b56647593026928e65e166878669c259ad309023124a",
+        "first_observed_at": "2026-09-25T15:30:04.567912287Z",
+        "last_observed_at": "2026-09-25T15:43:33.266667605Z"
+      },
+      {
+        "process_id": "validator-2",
+        "role": "validator",
+        "stream": "stdout",
+        "class": "release-steering-attempt-failure",
+        "summary": "release steering reported a failed native epoch attempt",
+        "blocking": true,
+        "disposition": "unexplained",
+        "count": 3,
+        "first_offset": 39435090,
+        "last_offset": 39453811,
+        "first_line_sha256": "0055428fc5b86970913d74a8075ae5d559e5a044d7aa5b6b177d5c63f689399b",
+        "last_line_sha256": "eb0dcd40c9ef13dfa6687b9c72848e731d933733c8ab3386cf048223a7d66301",
+        "first_observed_at": "2026-09-25T16:47:32.046991556Z",
+        "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+        "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+      }
+    ]
+  },
+  "owner_notices": [
+    {
+      "realtime_timestamp_us": "1790354852258286",
+      "message": "sim-testnet: provisional runtime process finding retained; observation_continues=true final_gate_unchanged=true; process log gate found 1 release-blocking class(es); first=validator-2/stdout/release-steering-attempt-failure count=1"
+    }
+  ],
+  "latest_owner_observation": {
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/observations.jsonl",
+    "line_sha256": "b1a5de59e782de41089ec1f042cc5e83414ba8d5741f7a1bd954d25474cacab5",
+    "observed_at": "2026-09-25T16:42:57.915774812Z",
+    "observation_hash": "0xaf629a16e2158b4deaba1ae9291b665e73a56183c2f4e041e9e1182a1353bc5c",
+    "chain_head": {
+      "number": 8084357,
+      "hash": "0x5f0757123088007f328ef81074df569a043fc6187e8b899a9f96b7366e289784"
+    },
+    "policy_rate_detail": "operator 1 complete epoch 628 bytes=4251058 gives 85481 tao rao at tier 0; require twice native minimum 200000"
+  },
+  "subsequent_health": {
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+    "sha256": "bb175645551cc0502dd92801c3dbfb32bc3dd8d794eb7a09e0a9fb680293e60b",
+    "validators": [
+      {
+        "id": "validator-1",
+        "pid": 3826369,
+        "start_time_ticks": 21732054,
+        "started_at": "2026-09-25T14:04:17Z",
+        "restarts": 6,
+        "healthy": true
+      },
+      {
+        "id": "validator-2",
+        "pid": 4077636,
+        "start_time_ticks": 22740848,
+        "started_at": "2026-09-25T16:52:25Z",
+        "restarts": 8,
+        "healthy": true
+      }
+    ],
+    "latest_completed_trails": [
+      {
+        "byte_offset": 39453529,
+        "line_number": 322190,
+        "raw_line": "[trail 3] completed trail 01a0d97b-6f98-820f-84b3-a732d5e1eae4 depth 8 (epoch 630, 207 total)",
+        "line_sha256": "bfa8a67ab2b666e3c653ee9d3c9a29dcaeab8bf325c640f70b6d1fc5da57e3fe"
+      },
+      {
+        "byte_offset": 39453623,
+        "line_number": 322191,
+        "raw_line": "[trail 0] completed trail 01a0d97b-70ca-8b00-e57d-f3b3619e6a7d depth 8 (epoch 630, 112 total)",
+        "line_sha256": "ba963d0d4b5e1c228dd57a37b9063c88cce4e7f743d04a904885aa52eead8d2d"
+      },
+      {
+        "byte_offset": 39453717,
+        "line_number": 322192,
+        "raw_line": "[trail 1] completed trail 01a0d97b-7757-e739-5b64-e69c5ad01e5b depth 8 (epoch 630, 208 total)",
+        "line_sha256": "ff6dac86e4e7e44f8dbd8d451b5be2b6a9b51f6be30aa9f47e480d61b1ca4ae2"
+      }
+    ]
+  },
+  "native_history": {
+    "intent_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json",
+    "intent_sha256": "2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce",
+    "current": {
+      "subnet_epoch": 1661,
+      "settlement_epoch": 614,
+      "measurement_artifact_hash": "sha256:1e2621885217271ee30bb56de1731cadde3b47afb3e02bf524b22592949f588f",
+      "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d",
+      "status": "applied",
+      "updated_at": "2026-09-25T03:26:48.7518971Z",
+      "finalized_block": 8079823
+    },
+    "history_count": 0,
+    "ema_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/head-ema.json",
+    "ema_sha256": "df9d03914619ee03181a186d917e014f29a3f7f18868e2f5389817f016331bc7",
+    "last_subnet_epoch": 1661,
+    "updated_at": "2026-09-25T01:35:23.740092357Z"
+  },
+  "selected_config": {
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/policy-rollover/source-role/generation-00000000000000000001/validator-2/validator.yml",
+    "sha256": "693a0357f2b13e1aac2f323ca14ed25d29226296595215336c09cfe991bbe64f",
+    "provisional_permissions": [
+      "provisional_runtime_compatibility: urnetwork-subtensor-consumed-interface-v1"
+    ]
+  },
+  "interpretation": "The same retained EMA at native epoch 1661 rejects later preparation at 1673. Continuing trails and supervisor health do not demonstrate native steering success. The scoped finding remains release-blocking; provisional observation can continue. No live state or owner was modified.",
+  "correlation_receipt_at": "2026-09-25T16:56:04.163757+00:00",
+  "acceptance_scoped_adjacent_findings": {
+    "process_log_sha256": "baa2ccb972903143580e0fa3155413717d20de3c5e8e8cb6b2368a684222b014",
+    "updated_at": "2026-09-25T16:54:27.991389Z",
+    "items": [
+      {
+        "finding": {
+          "process_id": "miner-swarm-17",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "class": "restart-stale-contract",
+          "summary": "restarted receiver rejected a contract signed with its prior in-memory secret",
+          "blocking": true,
+          "disposition": "unexplained",
+          "count": 3,
+          "first_offset": 92216570,
+          "last_offset": 92217013,
+          "first_line_sha256": "f8a5aee44bd2ff5762a6747ad4631c70e73190efdc29dd765666980e5f4c229e",
+          "last_line_sha256": "a238b73fff7e54a1dc2b522f1c31986fe979b73ad202fd23e9792c3257320693",
+          "first_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+        },
+        "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+        "line_witnesses": [
+          {
+            "byte_offset": 92216570,
+            "raw_line": "E0925 16:51:37.690835 3787845 transfer.go:15599] [r]01a050c6-b37d-41dc-b1e5-2411d2109008<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)",
+            "line_sha256": "f8a5aee44bd2ff5762a6747ad4631c70e73190efdc29dd765666980e5f4c229e"
+          },
+          {
+            "byte_offset": 92217013,
+            "raw_line": "E0925 16:51:37.690976 3787845 transfer.go:14781] [r]01a050c6-b37d-41dc-b1e5-2411d2109008<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit could not receive ack = Contract verification failed.",
+            "line_sha256": "a238b73fff7e54a1dc2b522f1c31986fe979b73ad202fd23e9792c3257320693"
+          }
+        ]
+      },
+      {
+        "finding": {
+          "process_id": "miner-swarm-19",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "class": "restart-stale-contract",
+          "summary": "restarted receiver rejected a contract signed with its prior in-memory secret",
+          "blocking": true,
+          "disposition": "unexplained",
+          "count": 3,
+          "first_offset": 93049383,
+          "last_offset": 93049826,
+          "first_line_sha256": "64f672c0a20f2d52a9a3f9a3084bcfddabeae3fde2461cdb311136d6b098266b",
+          "last_line_sha256": "69272842c65b01d8e924402bf3579f152f1583c8158a3d81da12c6f9bb26669c",
+          "first_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+        },
+        "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-19.stderr.log",
+        "line_witnesses": [
+          {
+            "byte_offset": 93049383,
+            "raw_line": "E0925 16:51:41.786904 3788689 transfer.go:15599] [r]01a050c6-be9d-579b-867d-c332e2bedc3d<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)",
+            "line_sha256": "64f672c0a20f2d52a9a3f9a3084bcfddabeae3fde2461cdb311136d6b098266b"
+          },
+          {
+            "byte_offset": 93049826,
+            "raw_line": "E0925 16:51:41.787065 3788689 transfer.go:14781] [r]01a050c6-be9d-579b-867d-c332e2bedc3d<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit could not receive ack = Contract verification failed.",
+            "line_sha256": "69272842c65b01d8e924402bf3579f152f1583c8158a3d81da12c6f9bb26669c"
+          }
+        ]
+      },
+      {
+        "finding": {
+          "process_id": "miner-swarm-20",
+          "role": "miner-swarm",
+          "stream": "stderr",
+          "class": "restart-stale-contract",
+          "summary": "restarted receiver rejected a contract signed with its prior in-memory secret",
+          "blocking": true,
+          "disposition": "unexplained",
+          "count": 3,
+          "first_offset": 92923615,
+          "last_offset": 92924058,
+          "first_line_sha256": "33fe9f927c81934508c8f2e788346f0570e3782101b8b4cd921bcf5d5ec4ee67",
+          "last_line_sha256": "550b3ad7fa2c017ecb3cbcd29bbdb5c05e00b0309fe5be8673efedabf90b1cc7",
+          "first_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+        },
+        "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-20.stderr.log",
+        "line_witnesses": [
+          {
+            "byte_offset": 92923615,
+            "raw_line": "E0925 16:51:52.722224 3788690 transfer.go:15599] [r]01a050c6-c0da-c1d1-a263-bf684b06bdf5<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit contract verification failed (Network)",
+            "line_sha256": "33fe9f927c81934508c8f2e788346f0570e3782101b8b4cd921bcf5d5ec4ee67"
+          },
+          {
+            "byte_offset": 92924058,
+            "raw_line": "E0925 16:51:52.722327 3788690 transfer.go:14781] [r]01a050c6-c0da-c1d1-a263-bf684b06bdf5<-01a0d96f-dba6-15c4-a458-30b0aa836e1f s(00000000-0000-0000-0000-000000000000) exit could not receive ack = Contract verification failed.",
+            "line_sha256": "550b3ad7fa2c017ecb3cbcd29bbdb5c05e00b0309fe5be8673efedabf90b1cc7"
+          }
+        ]
+      },
+      {
+        "finding": {
+          "process_id": "operator-1-api",
+          "role": "operator-api",
+          "stream": "stderr",
+          "class": "warning",
+          "summary": "process emitted an unclassified warning log",
+          "blocking": true,
+          "disposition": "unexplained",
+          "count": 1,
+          "first_offset": 1542213361,
+          "last_offset": 1542213361,
+          "first_line_sha256": "0fc54ea4608db4bd8eec99c9792980f91c877aefc3fc9062822e2026241267d4",
+          "last_line_sha256": "0fc54ea4608db4bd8eec99c9792980f91c877aefc3fc9062822e2026241267d4",
+          "first_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+        },
+        "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "line_witnesses": [
+          {
+            "byte_offset": 1542213361,
+            "raw_line": "W0925 16:52:23.975919 3780233 sn_attempt_artifact_handlers.go:49] [sn-attempt] artifact stream failed: kind=records hash=0x5363d5547b7024cbd21340b5a770b809cd12d021865cd51c827f53049b52e5af bytes=299000 elapsed=536.846377ms context=context canceled error=\"write tcp 127.0.0.1:18081->127.0.0.1:58672: write: broken pipe\\ncontext canceled\"",
+            "line_sha256": "0fc54ea4608db4bd8eec99c9792980f91c877aefc3fc9062822e2026241267d4"
+          }
+        ]
+      },
+      {
+        "finding": {
+          "process_id": "validator-2",
+          "role": "validator",
+          "stream": "stdout",
+          "class": "release-steering-attempt-failure",
+          "summary": "release steering reported a failed native epoch attempt",
+          "blocking": true,
+          "disposition": "unexplained",
+          "count": 3,
+          "first_offset": 39435090,
+          "last_offset": 39453811,
+          "first_line_sha256": "0055428fc5b86970913d74a8075ae5d559e5a044d7aa5b6b177d5c63f689399b",
+          "last_line_sha256": "eb0dcd40c9ef13dfa6687b9c72848e731d933733c8ab3386cf048223a7d66301",
+          "first_observed_at": "2026-09-25T16:47:32.046991556Z",
+          "last_observed_at": "2026-09-25T16:52:55.108775047Z",
+          "acceptance_scope_sha256": "0x50df19a3ab5b9e6e0feba4e2861016b70029502606e8f11340e805e5dcc5a420"
+        },
+        "source_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stdout.log",
+        "line_witnesses": [
+          {
+            "byte_offset": 39435090,
+            "raw_line": "release steer: subnet epoch 1673 attempt 1: compact head EMA epoch jumped",
+            "line_sha256": "0055428fc5b86970913d74a8075ae5d559e5a044d7aa5b6b177d5c63f689399b"
+          },
+          {
+            "byte_offset": 39453811,
+            "raw_line": "release steer: subnet epoch 1673 attempt 3: V2 intent 0: compact measurement envelope artifact: compact terminal closure: compact settlement no_id 1 replay: context canceled",
+            "line_sha256": "eb0dcd40c9ef13dfa6687b9c72848e731d933733c8ab3386cf048223a7d66301"
+          }
+        ]
+      }
+    ]
+  },
+  "all_native_1673_diagnostics": [
+    {
+      "byte_offset": 37429107,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37429321,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37429817,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37431159,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37432877,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37433937,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37434903,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37436657,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37436993,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37438587,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37440193,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37441709,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37443411,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37444927,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37446629,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37448331,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37449847,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37451550,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37699903,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37815133,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37815440,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37815933,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37817635,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37819337,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37820853,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37822462,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37824071,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 37825774,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 39435090,
+      "raw_line": "release steer: subnet epoch 1673 attempt 1: compact head EMA epoch jumped",
+      "line_sha256": "0055428fc5b86970913d74a8075ae5d559e5a044d7aa5b6b177d5c63f689399b"
+    },
+    {
+      "byte_offset": 39452458,
+      "raw_line": "release steer: subnet epoch 1673 attempt 2: release V2 native operator 1: compact input journal differs from the active decision",
+      "line_sha256": "5a15a838ed3a52a3e53105fb006930597669f996d635ce0dcf92f8c1fc0c906b"
+    },
+    {
+      "byte_offset": 39452587,
+      "raw_line": "release V2 native operator 2: compact input journal differs from the active decision",
+      "line_sha256": "ac7c7343426d87b70f9cbe41187d449c3941afbea40ae28235753e4cd6f88e43"
+    },
+    {
+      "byte_offset": 39453811,
+      "raw_line": "release steer: subnet epoch 1673 attempt 3: V2 intent 0: compact measurement envelope artifact: compact terminal closure: compact settlement no_id 1 replay: context canceled",
+      "line_sha256": "eb0dcd40c9ef13dfa6687b9c72848e731d933733c8ab3386cf048223a7d66301"
+    }
+  ],
+  "fault_context": {
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/faults.json",
+    "sha256": "e0ea0fc9fe754121873a6158f7627b1aceacb0eff15804e293cc1f4765f28d88",
+    "nonpending": [
+      {
+        "id": "quality-cohort",
+        "kind": "miner-control",
+        "trigger_block": 8084379,
+        "restore_block": 8084399,
+        "applied_block": 8084381,
+        "applied_block_hash": "0xa0ab50529406d8c499f8db7aa1fd8c715155a96eb45ad19b9101ef7a2cebe622",
+        "restored_block": 8084402,
+        "restored_block_hash": "0xfddc7c52ea04732d8032efe690f539097fe99195566ab451c3b985e2342ed67b",
+        "restored_processes": [
+          {
+            "id": "miner-1000",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-810",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-812",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-814",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-816",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-818",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-820",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-822",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-824",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-826",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-828",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-830",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-832",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-834",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-836",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-838",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-840",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-842",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-844",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-846",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-848",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-850",
+            "role": "miner",
+            "identity": "miners:801-850",
+            "pid": 3787845
+          },
+          {
+            "id": "miner-852",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-854",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-856",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-858",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-860",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-862",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-864",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-866",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-868",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-870",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-872",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-874",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-876",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-878",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-880",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-882",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-884",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-886",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-888",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-890",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-892",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-894",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-896",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-898",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-900",
+            "role": "miner",
+            "identity": "miners:851-900",
+            "pid": 3787846
+          },
+          {
+            "id": "miner-902",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-904",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-906",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-908",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-910",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-912",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-914",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-916",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-918",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-920",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-922",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-924",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-926",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-928",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-930",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-932",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-934",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-936",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-938",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-940",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-942",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-944",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-946",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-948",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-950",
+            "role": "miner",
+            "identity": "miners:901-950",
+            "pid": 3788689
+          },
+          {
+            "id": "miner-952",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-954",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-956",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-958",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-960",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-962",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-964",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-966",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-968",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-970",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-972",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-974",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-976",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-978",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-980",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-982",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-984",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-986",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-988",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-990",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-992",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-994",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-996",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          },
+          {
+            "id": "miner-998",
+            "role": "miner",
+            "identity": "miners:951-1000",
+            "pid": 3788690
+          }
+        ],
+        "status": "restored"
+      },
+      {
+        "id": "fleet-lifecycle-target-prune",
+        "kind": "validator-view-filter",
+        "fleet_indices": [
+          5
+        ],
+        "pre_acceptance": true,
+        "post_acceptance_evidence_tail": true,
+        "armed_block": 8084084,
+        "armed_block_hash": "0x4dd36830439333f08de447765a0429ae91e35df7e5845de993429001ae2ed8a3",
+        "restore_condition": "fleet-lifecycle-provider-paid",
+        "minimum_duration_blocks": 1199,
+        "trigger_block": 8084375,
+        "restore_block": 8086834,
+        "applied_block": 8084375,
+        "applied_block_hash": "0x47627c7ffb29ea2e5854f494b8548d196c380067c7a9d0edc478acb9a6a4ef7e",
+        "status": "active"
+      },
+      {
+        "id": "fleet-lifecycle-companion-prune",
+        "kind": "validator-view-filter",
+        "fleet_indices": [
+          6
+        ],
+        "pre_acceptance": true,
+        "post_acceptance_evidence_tail": true,
+        "armed_block": 8084084,
+        "armed_block_hash": "0x4dd36830439333f08de447765a0429ae91e35df7e5845de993429001ae2ed8a3",
+        "restore_condition": "fleet-lifecycle-terminal-effective",
+        "minimum_duration_blocks": 1499,
+        "trigger_block": 8084375,
+        "restore_block": 8086834,
+        "applied_block": 8084375,
+        "applied_block_hash": "0x47627c7ffb29ea2e5854f494b8548d196c380067c7a9d0edc478acb9a6a4ef7e",
+        "status": "active"
+      }
+    ]
+  },
+  "correlation_assessment": [
+    "Native EMA gap is persistent and independent of the later network diagnostics: current intent and EMA remain at1661 while preparation requests1673. The active rollover child has no retained provisional gap handoff; a reviewed strict history adoption supplies an explicit first-epoch bridge.",
+    "The three miner receiver rows use the old validator2 client and occur16:51:37\u201316:51:52 during/after quality-cohort miner control. Their class name does not independently prove a process restart; the quality fault uses miner-control, whereas this classifier requires process-restart for attribution. Treat that causal association as an inference, not proof.",
+    "Operator1 artifact warning16:52:23 reports a canceled request and broken pipe. The final native attempt also reports context canceled; validator2 was supervised into a new PID at16:52:25. This timing supports cancellation during teardown, not artifact integrity failure.",
+    "Current6100394b provisional whitelist includes steering failure/continuity but excludes unexplained restart-stale-contract and generic warning. A runtime heartbeat transition scan or completed observation scan returns the aggregate gate error and leaves the scenario loop for cleanup. No live classifier reload/attach path exists, and editing retained evidence cannot grant continuation."
+  ]
+}

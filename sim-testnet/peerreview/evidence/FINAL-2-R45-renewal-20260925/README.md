@@ -2,7 +2,8 @@
 
 These files are a portable snapshot from 2026-09-25. They support the renewal,
 preparation and signed release-boundary claims in `sim-testnet/FINAL-2.md`;
-they do not establish successful finalization.
+they do not establish successful finalization. R45 later sealed a failed
+result, so the signed start is historical rather than live acceptance.
 
 - `round7-apply-result.json`: exact successful renewal result for plan
   `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`,
@@ -96,6 +97,16 @@ they do not establish successful finalization.
   with SHA-256 `f746220a9b5b0e1e48d329d382f89b292069dbfe99784026695cc6aaffcf4f95`.
   This retained-object census cannot count overwritten, deleted or refused
   writes and does not independently close request-rate acceptance.
+- `owner-result.json`, `owner-analysis.json`, `owner-faults.json`, and
+  `owner-process-logs.json`: exact R45 terminal files after the owner exited 1.
+  The result has five failed assertions of six and ends with only an epoch-629
+  observation. Two view filters remain active in the fault record.
+- `recovery-45-invalidated.evidence.json`: updated signed attempt, retaining
+  its start boundary but recording `execution-exited-before-completion`.
+- `steering-failure.receipt.json`: read-only correlation of validator-2's
+  exact native-epoch attempt line, byte offset and process-log findings with
+  subsequent validator activity. It does not classify the failed attempt as a
+  pass or repair the owner's process-log gate.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

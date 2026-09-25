@@ -1,5 +1,35 @@
 # Sim-testnet finalization report 2
 
+**R45 sealed owner result, 2026-09-25 16:56 UTC — failed before a measured observation.**
+The live owner crossed the signed start block on-chain, but its last completed
+observation was still epoch 629 at finalized block **8,084,357**, before the
+first measured block 8,084,374. A process-log heartbeat gate then interrupted
+the scenario. Its [sealed result](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-result.json)
+(SHA-256 `3a3b78827adadac55cbb037208ddaa31e90587f2dc0a6ee1cd4f83cc9d74c6df`)
+reports **five failed assertions of six**, `result=fail`, `provisional=true`,
+and `final_acceptance=false`. The failures are incomplete acceptance interval,
+114 open anomalies, process-log completion/publication, and scenario context.
+The process-log gate counted five release-blocking finding rows, beginning
+with miner-swarm-17's `restart-stale-contract`; validator 2 also reported
+`compact head EMA epoch jumped` on native epoch 1673. The owner continued
+until this gate; the supervisor was still active at the result read cut.
+[Process-log snapshot](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-process-logs.json),
+[steering receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/steering-failure.receipt.json).
+
+The signed recovery-45 envelope was updated with
+`acceptance_invalidated_at=2026-09-25T16:55:38.185272726Z` and reason
+`execution-exited-before-completion`. The earlier signed boundary remains
+historical evidence, **not** authority to count this attempt as accepted.
+[Invalidated envelope](peerreview/evidence/FINAL-2-R45-renewal-20260925/recovery-45-invalidated.evidence.json)
+(SHA-256 `1f5a459a7bd0d5e5c9c4534c51a68f7c6e17a516f2671ac1ffc45a7409a5201f`).
+At the seal, 39 scheduled faults were pending, two validator-view filters
+remained active, and `quality-cohort` was restored. Preserve their exact
+[fault record](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-faults.json)
+for owned recovery; no fault is deemed restored merely because the owner
+exited. Both operator scenario bundles were published according to the sealed
+result, unlike R44's failed publication. This is prospective publication
+repair evidence, not R45 acceptance.
+
 **R45 continuation, 2026-09-25 15:52 UTC — release boundary signed; measured interval pending.**
 The round-7 renewal of 202 fleets for epochs 628–659 completed with
 `postcondition_verified` status on the unchanged plan

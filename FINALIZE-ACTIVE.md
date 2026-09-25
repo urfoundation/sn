@@ -1,5 +1,25 @@
 # Testnet execution plan
 
+## R45 sealed failure and retained recovery — 2026-09-25 16:56 UTC
+
+The owner exited 1 after sealing `runs/20260925T134346.277250758Z-release-1.0/result.json`:
+five of six assertions failed, `final_acceptance=false`. The last completed
+owner observation was epoch 629 at finalized block 8,084,357, before the
+signed first measured block 8,084,374. The chain crossed that block, but the
+owner did **not** produce a measured epoch-630 observation. The actual stop
+was `heartbeat process log gate`, with five release-blocking finding rows;
+validator-2's native attempt also reported `compact head EMA epoch jumped`.
+The signed recovery-45 envelope invalidated acceptance at 16:55:38 UTC with
+`execution-exited-before-completion`. Preserve the signed start as history,
+not accepted progress. Two validator-view filters remain active in the exact
+fault ledger, quality-cohort was restored, and the supervisor is still active.
+Do not manually edit fault or process evidence or stop that supervisor.
+Both operator scenario bundles were published according to the sealed result.
+The exact result, fault ledger, process-log snapshot, invalidated envelope
+and steering receipt are in the R45 portable bundle. Isolated provisional
+continuation and strict replay fixes are under qualification; the next owner
+must authenticate and continue retained actions without repeating setup.
+
 ## R45 release boundary signed — 2026-09-25 15:52 UTC
 
 The live R45 owner has signed `campaign-start.evidence.json` at 15:52:25 UTC
