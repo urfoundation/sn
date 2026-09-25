@@ -51,5 +51,7 @@ Substrate hash at that height is a different value, as expected.
 the former at block 8,084,710 has a local stats/proofs GET deadline failure;
 the latter at block 8,084,740 restores policy rate readiness without changing
 the signed acceptance window. This transient remains visible to final review.
+`operator-read-recovery.receipt.json` binds both rows to exact offsets and
+hashes in the owner's observation log.
 `public-census-passed.receipt.json` binds the 18:03 UTC owner's deferred
 public-census pass to its exact journal cursor, process and signed window.

@@ -42,6 +42,9 @@ by the recovery. [Timeout](peerreview/evidence/FINAL-2-R46-continuation-20260925
 (SHA-256 `68482b1d4cb2ee51f01ae19b87430a1f1635b895e3a1f5912d20383cac2af93e`),
 [recovery](peerreview/evidence/FINAL-2-R46-continuation-20260925/local-get-recovered-observation.json)
 (SHA-256 `6009dcaf3a37e0865e8a373506faf089254100e5132d379985dcea81458d4150`).
+The [observation-pair receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/operator-read-recovery.receipt.json)
+(SHA-256 `3589c3c75fe4b421ed0d0d74185dba77dfc8a965b6ea39305f0c07f9755535f2`)
+retains their exact JSONL offsets and hashes.
 At 18:03 UTC, the live owner also logged
 `public_census_audit_passed=true`; this closes that deferred preparation
 audit while strict terminal acceptance remains open. The

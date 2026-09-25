@@ -1,0 +1,111 @@
+{
+  "captured_at": "2026-09-25T18:07:10.322669+00:00",
+  "final_acceptance": false,
+  "interpretation": "An actual subsequent owner observation recovered the transient local GET failures. Earlier observation bytes are preserved; this does not remove final assertions or failures.",
+  "rows": [
+    {
+      "head": {
+        "hash": "0x83f946caf8cf5ab47e9378128e14d3646ab51f5c26f88db773ae949631c11bf4",
+        "number": 8084710
+      },
+      "observation_hash": "0x3fea9d4f992a599c45d4c9f22599ba87730ea095e3c6b67aecea400b6f03a815",
+      "observed_at": "2026-09-25T17:53:42.822111949Z",
+      "operators": [
+        {
+          "assignments": 0,
+          "confirmations": 0,
+          "error": "stats: Get \"http://127.0.0.1:18081/verify/stats?limit=100000\": context deadline exceeded; proofs: Get \"http://127.0.0.1:18081/verify/proofs?limit=10000\": context deadline exceeded",
+          "healthy": true,
+          "no_id": 1,
+          "proof_rows": 0,
+          "stats_rows": 0,
+          "status_code": 200
+        },
+        {
+          "assignments": 463318,
+          "confirmations": 460265,
+          "healthy": true,
+          "no_id": 2,
+          "proof_rows": 10000,
+          "stats_rows": 100000,
+          "status_code": 200
+        }
+      ],
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/operator-timeout-observation.json",
+      "policy_rate_readiness": {
+        "alpha_price_wei": "",
+        "detail": "rate readiness operator observation: stats: Get \"http://127.0.0.1:18081/verify/stats?limit=100000\": context deadline exceeded; proofs: Get \"http://127.0.0.1:18081/verify/proofs?limit=10000\": context deadline exceeded",
+        "head": {
+          "hash": "0x83f946caf8cf5ab47e9378128e14d3646ab51f5c26f88db773ae949631c11bf4",
+          "number": 8084710
+        },
+        "minimum_transfer_tao_rao": 100000,
+        "ready": false,
+        "sources": null
+      },
+      "sha256": "68482b1d4cb2ee51f01ae19b87430a1f1635b895e3a1f5912d20383cac2af93e",
+      "source_length": 1190957,
+      "source_offset": 3581293
+    },
+    {
+      "head": {
+        "hash": "0x78b6e7c8600f1029a063c2d7eff95127feec011220b0acb6f6b850ffa02cefa2",
+        "number": 8084740
+      },
+      "observation_hash": "0xcd5bc89e965e934b71d27fa1f338b83f112dfd102e5331d625f20aef10128541",
+      "observed_at": "2026-09-25T17:59:34.299928192Z",
+      "operators": [
+        {
+          "assignments": 449103,
+          "confirmations": 446001,
+          "healthy": true,
+          "no_id": 1,
+          "proof_rows": 10000,
+          "stats_rows": 100000,
+          "status_code": 200
+        },
+        {
+          "assignments": 463318,
+          "confirmations": 460265,
+          "healthy": true,
+          "no_id": 2,
+          "proof_rows": 10000,
+          "stats_rows": 100000,
+          "status_code": 200
+        }
+      ],
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/operator-recovered-observation.json",
+      "policy_rate_readiness": {
+        "alpha_price_wei": "539777000000000",
+        "detail": "complete current-policy source epoch clears twice the native minimum at every rate tier",
+        "head": {
+          "hash": "0x78b6e7c8600f1029a063c2d7eff95127feec011220b0acb6f6b850ffa02cefa2",
+          "number": 8084740
+        },
+        "minimum_transfer_tao_rao": 100000,
+        "ready": true,
+        "sources": [
+          {
+            "content_hash": "sha256:55f806fee541e01a68522074c013a0da6cd646f078c794de19e6e57516b89b8f",
+            "epoch": 630,
+            "no_id": 1,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "total_usage_bytes": 26927997
+          },
+          {
+            "content_hash": "sha256:96530b52516b52c08de7dc26abb26e7fba5d6801e57c47ea903535046af0b073",
+            "epoch": 630,
+            "no_id": 2,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "total_usage_bytes": 26527413
+          }
+        ]
+      },
+      "sha256": "6009dcaf3a37e0865e8a373506faf089254100e5132d379985dcea81458d4150",
+      "source_length": 1202031,
+      "source_offset": 4772250
+    }
+  ],
+  "schema": "urnetwork-r46-local-operator-read-recovery-v1",
+  "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl"
+}
