@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/gorilla/websocket"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 
@@ -142,6 +143,14 @@ func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText
 		return actualTransient || siblingCancellation, actualTransient
 	}
 	switch cause := err.(type) {
+	case *websocket.CloseError:
+		switch cause.Code {
+		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure,
+			websocket.CloseInternalServerErr, websocket.CloseServiceRestart, websocket.CloseTryAgainLater:
+			return true, true
+		default:
+			return false, false
+		}
 	case *url.Error:
 		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
 	case *net.OpError:
