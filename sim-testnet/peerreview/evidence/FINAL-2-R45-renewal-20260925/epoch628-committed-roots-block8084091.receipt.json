@@ -1,0 +1,107 @@
+{
+  "schema": "urnetwork-read-only-root-commitment-receipt-v1",
+  "recorded_at": "2026-09-25T15:49:47.536617+00:00",
+  "endpoint": "http://192.168.1.162:9944",
+  "read_only": true,
+  "source_revision": "6100394b04fc3386b03870b8bdcc9a6abb5614a7",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "head_request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "eth_getBlockByNumber",
+    "params": [
+      "0x7b5a7b",
+      false
+    ]
+  },
+  "head_response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "author": "0xe79351677f953f8c1f98b92fecd12185a41a5448",
+      "baseFeePerGas": "0x2540be400",
+      "difficulty": "0x0",
+      "extraData": "0x",
+      "gasLimit": "0x47868c0",
+      "gasUsed": "0x6d880",
+      "hash": "0x6ef51817fec33c0da382dda2afe11352f693722225c47adb83147a9d43d02520",
+      "logsBloom": "0x00000000000000000000200040000100000000000000000000000000000000000000000080000100000000000000040000001008000000000000000000000000000000000000000000000008000000000000000400000000000000000000000000000000020000000000002000000800000000000000000000000010000000000000000000000000010000008000000000000000000000001000000000004000000200000000000000000000000000002000000008000000200000008000000000002002000000000000000000000000000000000000000000000000000020008000000000000000000000000000000000000000000000000000000000000000",
+      "miner": "0xe79351677f953f8c1f98b92fecd12185a41a5448",
+      "nonce": "0x0000000000000000",
+      "number": "0x7b5a7b",
+      "parentHash": "0x9ac38bc6d59781e3be9de00734f0c6a05255d8aa0a1cfb592180257f7264ae9e",
+      "receiptsRoot": "0x7a332fd8a8f046d6b4604fe5bc70bd4556ece6898b8e5002e85f0bbf9877ca6f",
+      "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+      "size": "0x3ff",
+      "stateRoot": "0x81ef90447613afd902ce7f963e6ba5583b4f4e998c9f9e5775da0071b5ce59a6",
+      "timestamp": "0x6ab697ec",
+      "totalDifficulty": "0x0",
+      "transactions": [
+        "0xd68658850dce3cad2dac082811e6ecaf9c1f3ee33810fdf87263e904df9109a6",
+        "0x4b9e14deeff4402c3684ab622744073d56c023480be1238fea81bfdfa7afaa92",
+        "0xff1a277a52a09567a57374a08ddc0c108327aeaf680839277d22287263446d37"
+      ],
+      "transactionsRoot": "0x6764ad142826aded6632bc36d5bc9e8fc2fe7319854d2b4939eb1d69318a8ce0",
+      "uncles": []
+    }
+  },
+  "calls": [
+    {
+      "no_id": 1,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+            "data": "0x548f3b8600000000000000000000000000000000000000000000000000000000000002740000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "blockHash": "0x6ef51817fec33c0da382dda2afe11352f693722225c47adb83147a9d43d02520",
+            "requireCanonical": true
+          }
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": "0x6ae61a1d5e9a46d73c93e223ef0e2e0a75a7613372611e4cbfc1c05be0c9833c1539142a6e8f34da149a01a062d2e470e51ab2b3b1a9973491bb04c318cb4ce8000000000000000000000000d6f9165c4cc35ce380ea1eff3c518407173af60a00000000000000000000000000000000000000000000000000000000007b5a70"
+      },
+      "decoded": {
+        "payout_root": "0x6ae61a1d5e9a46d73c93e223ef0e2e0a75a7613372611e4cbfc1c05be0c9833c",
+        "artifact_hash": "0x1539142a6e8f34da149a01a062d2e470e51ab2b3b1a9973491bb04c318cb4ce8",
+        "commit_block": 8084080
+      }
+    },
+    {
+      "no_id": 2,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+            "data": "0x548f3b8600000000000000000000000000000000000000000000000000000000000002740000000000000000000000000000000000000000000000000000000000000002"
+          },
+          {
+            "blockHash": "0x6ef51817fec33c0da382dda2afe11352f693722225c47adb83147a9d43d02520",
+            "requireCanonical": true
+          }
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": "0x56b1c483d18945c2f0b34c24fa4ee2cd90ef2540795f85432c1efa0560d188cce36125f914ca125b4a5a65983c7b4809d4f6fbe149d1450577ed27e63b309ce70000000000000000000000005c278cf6693ce582adea0241034d810d8933b3eb00000000000000000000000000000000000000000000000000000000007b5a70"
+      },
+      "decoded": {
+        "payout_root": "0x56b1c483d18945c2f0b34c24fa4ee2cd90ef2540795f85432c1efa0560d188cc",
+        "artifact_hash": "0xe36125f914ca125b4a5a65983c7b4809d4f6fbe149d1450577ed27e63b309ce7",
+        "commit_block": 8084080
+      }
+    }
+  ],
+  "interpretation": "Both epoch-628 commitments are nonzero at the exact canonical block; owner rate readiness and acceptance are separate."
+}

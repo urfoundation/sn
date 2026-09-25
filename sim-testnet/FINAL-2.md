@@ -117,6 +117,14 @@ successor fix is prepared and the next complete epoch is observed.
 [Canonical root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch627-zero-root-block8083834.receipt.json)
 (SHA-256 `a0286b25b729d3f71e251e2053abd48bbafe6fcb0a89ec1dd05f7896b5def0af`).
 
+Epoch 628 crossed its boundary at block 8,084,074. A separate exact
+canonical LAN-RPC read at finalized block **8,084,091** found nonzero payout
+roots and artifact hashes for both operators, committed at block **8,084,080**.
+This establishes on-chain commitments for the new epoch; the owner's signed
+artifact match, policy-rate threshold and acceptance boundary are still
+separate checks. [Epoch-628 root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch628-committed-roots-block8084091.receipt.json)
+(SHA-256 `360b693569649fb3f36107f68f8cd721f1f0f46eff09dbda787d20625f7696b5`).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

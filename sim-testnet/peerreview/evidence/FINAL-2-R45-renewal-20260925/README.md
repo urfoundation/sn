@@ -73,6 +73,10 @@ release acceptance interval or a successful finalization.
   Both operator root commitments for epoch 627 are zero. This explains the
   provisional rate-deferral compatibility finding; it does not prove an
   acceptance start or amend R44's scoped exception.
+- `epoch628-committed-roots-block8084091.receipt.json`: exact canonical
+  LAN-RPC calls at finalized block 8,084,091. Both operator epoch-628 payout
+  roots and artifact hashes are nonzero, committed at block 8,084,080. This
+  does not independently establish the owner's rate threshold or acceptance.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

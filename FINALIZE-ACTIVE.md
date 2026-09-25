@@ -60,6 +60,11 @@ rate-source epoch. This is a pre-acceptance compatibility finding. Preserve
 the active owner and its checkpoints; observe epoch 628 and prepare the
 isolated fix without changing the pinned binary or treating R44-LC-1 as a
 waiver for this separate issue. The receipt is in the R45 portable bundle.
+Epoch 628 has now closed. Exact canonical LAN-RPC reads at finalized block
+8,084,091 show both operator roots and artifact hashes nonzero, committed at
+8,084,080. This may permit the current owner to clear rate readiness, but no
+owner postboundary match or acceptance boundary has yet been authenticated.
+Retain the live writer and read its next observation before claiming release.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
