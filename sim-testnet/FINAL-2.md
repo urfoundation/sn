@@ -45,6 +45,11 @@ by the recovery. [Timeout](peerreview/evidence/FINAL-2-R46-continuation-20260925
 The [observation-pair receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/operator-read-recovery.receipt.json)
 (SHA-256 `3589c3c75fe4b421ed0d0d74185dba77dfc8a965b6ea39305f0c07f9755535f2`)
 retains their exact JSONL offsets and hashes.
+The strict anomaly checker walks retained observations, so recovery does not
+remove that timeout row. Its `operator-error` is expected to remain an open
+final anomaly unless the terminal checker establishes an applicable expected
+fault; no such fault target is present in this row. This is a prospective
+strict-gate finding, not a reason to stop the continuing partial run.
 At 18:03 UTC, the live owner also logged
 `public_census_audit_passed=true`; this closes that deferred preparation
 audit while strict terminal acceptance remains open. The
