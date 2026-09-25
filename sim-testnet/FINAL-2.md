@@ -1,5 +1,33 @@
 # Sim-testnet finalization report 2
 
+**Third read-only terminal diagnostic, completed 2026-09-25 10:00 UTC:**
+The clean Git-stamped successor authenticated the same signed R44 start,
+checkpoint, all 44 recovery generations, observation prefix and completed
+five-epoch terminal without changing the live owner. Its separate
+[report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/report.json)
+has SHA-256 `38d7b721aaebc291918053635dd6ba9f014dc42c20c7b7654e457984c6185838`
+and 38 checks: **16 pass, four fail, one named exception, one finding and 16
+unavailable**. Both operators' current signed artifacts and both validators'
+path/config checks pass. The [companion evidence bundle](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/final-inputs/bundles/validator-evidence-companion.json)
+is retained with content SHA-256
+`0faed897bd8de3d7dcb90f7fac827d52e3c48447580072af9949ad47b48ea3f4`;
+the companion capture and ordinary signed payout-artifact checks both pass.
+This improves the first diagnostic's reader-limited outcomes, but it does not
+qualify the bypassed lifecycle mutation or erase the companion filter's failed
+restoration timing. The lifecycle payout index remains unavailable.
+
+The four failed groups are the terminal scenario assertions, validator-2
+signed-source capture, the original process-log report and acceptance fault
+timing. Validator-2's capture authenticated native/path/config inputs but
+exhausted its 15-minute budget while reading retained stream data; it reported
+an incomplete HTTP body and deadline errors, so native application and relay
+readback remain unavailable. Validator 1's compact input journal is absent in
+its retained generation, leaving its capture and dependent checks unavailable.
+The owner has not sealed `result.json` or signed completion; strict acceptance,
+result-dependent semantic checks and full finalization remain unavailable.
+These outcomes are distinct from exception R44-LC-1 below. The diagnostic is
+`read_only=true` and `final_acceptance=false`.
+
 **Second read-only diagnostic, 2026-09-25 09:13 UTC:** A composed successor
 replayed the same retained R44 terminal checkpoint without changing the owner.
 Its [separate report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/second-terminal-5c2ee88c/report.json)

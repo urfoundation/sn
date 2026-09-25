@@ -1,5 +1,56 @@
 # Testnet execution plan
 
+## R44 third read-only terminal diagnostic complete — 2026-09-25 10:00 UTC
+
+The Git-stamped `d56709aa` diagnostic finished successfully as a read-only
+collector; its 38-check [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/third-terminal-d56709aa-stamped/report.json)
+has SHA-256 `38d7b721aaebc291918053635dd6ba9f014dc42c20c7b7654e457984c6185838`.
+Sixteen checks pass, four fail, one is the recorded lifecycle exception, one
+is a finding, and 16 are unavailable. Companion evidence capture and ordinary
+signed payout artifacts pass. Strict lifecycle payout evidence remains
+unavailable, and the active companion filter still fails strict timing.
+Validator-2 signed-source capture exhausted its 15-minute stream-read budget;
+validator 1 lacks its retained compact input journal. The terminal scenario
+assertions and process-log report still fail independently. The original owner
+remains active without `result.json`; no strict final acceptance is claimed.
+
+The validator-2 capture work was quantified separately in
+`/mnt/data/sn-testnet/qualification/r45-capture-stream-progress-20260925/read-only-census.json`:
+62 cuts, 106 nonempty stream references, 94 distinct references, and about
+1.63 GB of scheduled chunk GETs across two origins. All 102 native reads
+completed before stream capture began. A known 4,187,969-byte chunk returned
+HTTP 200 with its expected hash and size but took 18.30 seconds. A bounded,
+diagnostic-only capture budget and verified-chunk reuse are being qualified;
+they do not change the live owner or strict collector.
+
+## R44 third terminal diagnostic authenticating retained evidence — 2026-09-25 09:47 UTC
+
+The historical fault-process wire fix is on main as `d56709aa`. It restores
+the optional `start_time_ticks` field in signed fault process records without
+relaxing unknown-field rejection or giving forensic reads process-signaling
+authority. Four focused and affected adjacent roots pass normally and under
+race detection; the old reader reproduces the exact signed-checkpoint error.
+A real-copy probe verified both original signed envelopes, their hashes and
+36 retained tick proofs without changing the bytes.
+
+The clean-clone diagnostic image is
+`/mnt/data/sn-testnet/qualification/r45-fault-process-wire-20260925/build/sim-testnet-r45-d56709aa-clone-connectc98eb715`,
+SHA-256 `171cb6e3b50e3110303a458a78b2930a9a76e193aeaf8a07d5889a1d32704a8d`.
+Go build metadata reports revision `d56709aae03d3de2383d37615baedb4b86dfa391`
+and `vcs.modified=false`; the external [binary manifest](/mnt/data/sn-testnet/qualification/r45-fault-process-wire-20260925/build/binary-manifest-d56709aa.json)
+has SHA-256 `e8c344f789f7d31a57409c95d691511029ebc2b5787edf4b0cd35e812ae706b9`.
+An earlier worktree-built image lacked a Git stamp and was refused by
+attestation before creating a diagnostic output; it is not the selected image.
+
+`urnetwork-sim-r44-third-terminal-d56709aa-stamped.service` is conducting a
+read-only replay into a new external directory. It has authenticated the signed
+start/checkpoint, all 44 retained recovery generations, the observation prefix,
+the complete five-epoch terminal, both operators' current signed artifacts,
+and both validator path/config checks. Strict terminal assertions still fail,
+validator 1 lacks the retained compact input journal, and validator 2 capture
+is in progress. This is not a final result. The R44 owner and its post-owner
+diagnostic watcher remain active and unchanged.
+
 ## R44 second terminal diagnostic exposed retained attempt reader gap — 2026-09-25 09:13 UTC
 
 The read-only diagnostic using composed successor `5c2ee88c` ran against the
