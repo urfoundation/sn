@@ -105,3 +105,9 @@ paired gate, fault and supervisor copies retain exact raw identities.
 `swarm-health-2047.receipt.json` reports all 1,000 providers running, and
 `proof-progress-2047.receipt.json` records proof growth before the restart.
 These do not establish post-restart validator-1 steering or final acceptance.
+
+`epoch634-first-observation.json` and `epoch633-closure.receipt.json` bind
+the owner's first epoch-634 observation, its exact JSONL offset and SHA-256,
+the complete epoch-633 usage sources and a matching LAN EVM block response.
+They show the third measured epoch boundary was owner-observed, but do not
+certify terminal acceptance.

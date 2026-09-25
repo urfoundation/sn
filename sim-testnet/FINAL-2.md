@@ -169,6 +169,17 @@ restart had begun. [Bound restart receipt](peerreview/evidence/FINAL-2-R46-conti
 (SHA-256 `e872f264cd605908e5abe40df861ba9b3533c878b4e42e196125142548288521`),
 [proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-2047.receipt.json)
 (SHA-256 `3bc0227b5f26129309826f5d3e6f4839f895d9476df19ced46e6410c91e5519e`).
+The owner subsequently crossed the third measured epoch boundary. Its first
+epoch-634 observation, at finalized block **8,085,598**, selected complete
+epoch-633 usage sources of **21,465,073** and **17,885,137 bytes** for
+operators 1 and 2. It reports rate readiness true and 808 valid fleet
+bindings. An independent LAN `eth_getBlockByNumber` read matched the exact
+EVM head hash. This establishes that the owner observed the epoch-633 close;
+it does not establish terminal acceptance or post-restart validator steering.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-first-observation.json)
+(SHA-256 `e8be91fb30a95620357e946940a3b427342f1cbc153d9e51e3f4de12dab43b0b`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-closure.receipt.json)
+(SHA-256 `1b98ee7a1912f1e2c834df8130085782ba6c44773cefd37c586fdd0e57783a77`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
