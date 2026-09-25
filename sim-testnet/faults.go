@@ -39,6 +39,9 @@ type FaultProcessEvidence struct {
 	Role     string `json:"role"`
 	Identity string `json:"identity"`
 	PID      int    `json:"pid"`
+	// A numeric pid alone cannot authorize escalation after a delayed exit.
+	// Older evidence remains readable but grants no forced-restart authority.
+	StartTimeTicks uint64 `json:"start_time_ticks,omitempty"`
 }
 
 type ScenarioFaultRecord struct {
@@ -444,6 +447,10 @@ func (d *liveScenarioFaultDriver) signal(spec scenarioFaultSpec, signal syscall.
 		if groupErr != nil || group != state.PID {
 			return nil, fmt.Errorf("fault target %q pid %d is not its expected process-group leader", id, state.PID)
 		}
+		startTimeTicks, err := processStartTimeTicks(state.PID)
+		if err != nil || startTimeTicks == 0 {
+			return nil, stateMismatchError(err, "record fault target %q kernel generation", id)
+		}
 		if err := syscall.Kill(-state.PID, signal); err != nil {
 			if signal == syscall.SIGSTOP {
 				for _, prior := range result {
@@ -452,7 +459,7 @@ func (d *liveScenarioFaultDriver) signal(spec scenarioFaultSpec, signal syscall.
 			}
 			return nil, fmt.Errorf("signal fault target %q: %w", id, err)
 		}
-		result = append(result, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID})
+		result = append(result, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID, StartTimeTicks: startTimeTicks})
 	}
 	return result, nil
 }
