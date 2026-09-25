@@ -26,11 +26,11 @@ func TestScenarioOperatorReadRetryFreshAttemptAndLongResponse(t *testing.T) {
 		client := &http.Client{Timeout: 30 * time.Second, Transport: scenarioOperatorTestTransport(func(request *http.Request) (*http.Response, error) {
 			calls++
 			if request.Method != http.MethodGet || request.URL.String() != "http://operator.example/verify/stats?limit=100000" {
-				t.Fatal("retry changed its read identity")
+				return nil, errors.New("retry changed its read identity")
 			}
 			deadline, ok := request.Context().Deadline()
 			if !ok || time.Until(deadline) != 60*time.Second || request.Context().Err() != nil {
-				t.Fatalf("attempt lacks a fresh full minute: deadline=%s err=%v", time.Until(deadline), request.Context().Err())
+				return nil, fmt.Errorf("attempt lacks a fresh full minute: deadline=%s err=%v", time.Until(deadline), request.Context().Err())
 			}
 			if calls == 1 {
 				first = request.Context()
@@ -38,7 +38,7 @@ func TestScenarioOperatorReadRetryFreshAttemptAndLongResponse(t *testing.T) {
 				return nil, first.Err()
 			}
 			if calls != 2 || first.Err() == nil || request.Context() == first {
-				t.Fatal("retry reused an expired attempt or repeated success")
+				return nil, errors.New("retry reused an expired attempt or repeated success")
 			}
 			select {
 			case <-time.After(45 * time.Second):
@@ -65,7 +65,7 @@ func TestScenarioOperatorReadRetryExhaustsOneOperationBudget(t *testing.T) {
 			calls++
 			deadline, ok := request.Context().Deadline()
 			if !ok || time.Until(deadline) > 60*time.Second || time.Until(deadline) <= 0 {
-				t.Fatal("attempt escaped the remaining operation budget")
+				return nil, errors.New("attempt escaped the remaining operation budget")
 			}
 			<-request.Context().Done()
 			return nil, request.Context().Err()
