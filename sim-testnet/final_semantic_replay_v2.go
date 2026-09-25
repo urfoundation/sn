@@ -195,6 +195,9 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 		if index > 0 && finalCaptureSourceV2Key(source.Source) <= finalCaptureSourceV2Key(manifest.Capture.Sources[index-1].Source) || source.Artifact.Kind != "validator-evidence-v2-source" {
 			return nil, errors.New("final V2 source census is not complete and canonical")
 		}
+		if err := validateFinalJournalCaptureSourceV2(source); err != nil {
+			return nil, err
+		}
 		census[source.Source] = source.Artifact
 	}
 	readNamed := func(kind, name string, limit uint64) ([]byte, error) {
@@ -267,7 +270,11 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 		if !found {
 			return nil, errors.New("final V2 source escaped its closed census")
 		}
-		return loadFinalV2Source(ctx, load, locator, max(maximumCampaignEvidenceRawFileBytes, release.EvidenceV2.Bounds.IntentFileLimit()))
+		maximum := max(maximumCampaignEvidenceRawFileBytes, release.EvidenceV2.Bounds.IntentFileLimit())
+		if finalJournalCapturePathV2(locator.URI) {
+			maximum = maximumFinalJournalBytes
+		}
+		return loadFinalV2Source(ctx, load, locator, maximum)
 	}, ScratchRoot: owner.root, MaximumBytes: limits.dataBytes + limits.controlBytes, MaximumObjects: limits.maximumObjects, Adoption: adoption})
 	if err != nil {
 		return nil, err
