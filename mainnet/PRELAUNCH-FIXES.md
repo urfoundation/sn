@@ -2244,3 +2244,13 @@ before topology stop when possible, and test both the supported legacy and
 future profiles without mixing their manifests. A missing resource must be
 reported precisely; it must not be fabricated or silently linked to a
 different database schema.
+
+R44's second terminal diagnostic could authenticate the signed start but its
+newer checkpoint reader rejected `start_time_ticks` inside retained fault
+process records. Historical signed evidence is a compatibility contract:
+retain known optional nested wire fields even when the producing runtime
+feature is no longer active. Decode them with bounded types, preserve original
+signed bytes and hashes, and reject unknown or malformed fields and generation
+rewrites. Test both legacy omission and a fully signed historical checkpoint
+through the current forensic and recovery readers. Recognizing an old process
+identity in evidence never grants authority to signal that process.
