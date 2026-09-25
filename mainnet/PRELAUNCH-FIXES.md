@@ -2432,3 +2432,28 @@ already measures minimum dwell from the actual apply block; its regression
 preserves that behavior rather than confusing a planned restore block with a
 completed duration. This branch is not deployed into R44; composition must
 preserve both container readiness and completion-read pending conditions.
+
+### Reuse journal semantics without skipping byte verification
+
+R44's 44-generation recovery cache retained its authenticated prefix correctly;
+the next generation took about 15 seconds after the cold 43-generation pass.
+Repeated journal checks still decoded and validated the entire current 40 MB
+history at each proof boundary. Large `rchar` counts mostly reflected cached
+filesystem reads and CPU work, not equivalent physical disk traffic.
+
+The isolated correction `b6f29ced` keeps bounded action-validation witnesses
+inside one explicitly provisional invocation. Each use rehashes the retained
+prefix and fixed current snapshot, validates only appended records, and gives
+historical visitors complete records limited to their exact signed cut. Changed
+invocation or chain authority starts a fresh proof; strict final audit still
+replays the full history. Failed suffixes cannot mutate the previous checkpoint,
+so repairing an unverified tail does not discard validated progress. Witness
+storage has its own 32 MiB ceiling without imposing that cap on journal size.
+
+Normal and race tests cover large histories, tamper, truncation, source
+replacement, concurrent append, repaired tails, terminal action history and
+concurrent readers. Removing reuse repeats eight semantic checks instead of two
+in the deterministic work test. Removing the visitor-byte comparison accepts a
+temporary rewritten record restored before the final hash; that causal test
+demonstrates why a final checksum alone is insufficient. This optimization is
+not deployed into the active R44 process.
