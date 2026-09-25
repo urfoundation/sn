@@ -42,6 +42,10 @@ Fresh admin reads confirmed 64 GiB quota and 464,104,980,480 bytes of healthy
 disk availability; usage was cached. Await the owner's next observation for
 fleet-binding validity and the independent active object census before
 claiming the storage gate or acceptance boundary.
+The independent 14:50 UTC full object listing counted 162,366 objects and
+34,505,454,565 bytes, with only 5,872 bytes in the first activation minutes.
+Keep the active full-epoch growth gate open; this short baseline is not a
+healthy-run projection.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 

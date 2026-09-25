@@ -87,6 +87,13 @@ fleet-binding assertion or start its acceptance interval.
 [quota](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-quota.json),
 [disk](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-storage.json),
 [cached usage](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-usage-cached.json).
+The independent full object listing finished at 14:50 UTC: **162,366 objects,
+34,505,454,565 bytes**, with listing SHA-256
+`2805ad102d5d5f9c85159785841ca054934eb7a8cb0fc263fcc384042bccaeb5`.
+Only four objects totaling 5,872 bytes were created during the first
+14:46:05–14:50:00 activation minutes. This is a fresh baseline, not a complete
+healthy source epoch or a twofold growth-margin proof.
+[Census summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-activation-census-summary.json).
 
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final

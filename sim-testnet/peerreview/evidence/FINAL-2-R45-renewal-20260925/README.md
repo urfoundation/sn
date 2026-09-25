@@ -59,6 +59,11 @@ release acceptance interval or a successful finalization.
   finalized LAN block 8,083,774 and contemporaneous read-only MinIO admin
   state. Bucket usage is explicitly cached; activation does not itself prove
   live fleet-binding validity or acceptance.
+- `blob-activation-census-summary.json`: 14:50 UTC full bucket inventory. The
+  underlying read-only 38+ MB listing is retained at
+  `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/storage-census-active-start-20260925T1450/blob-object-census.jsonl`
+  with SHA-256 `2805ad102d5d5f9c85159785841ca054934eb7a8cb0fc263fcc384042bccaeb5`.
+  Its first four activation minutes do not prove a complete active-epoch rate.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under
