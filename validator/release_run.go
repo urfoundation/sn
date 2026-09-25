@@ -435,8 +435,11 @@ func releasePriorSettlementBoundary(ctx context.Context, chain *ChainClient, sna
 		return AttemptBoundary{}, errors.New("cannot resolve the prior settlement boundary")
 	}
 	startBlock, err := chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
-	if err != nil || startBlock == 0 {
+	if err != nil {
 		return AttemptBoundary{}, fmt.Errorf("current settlement start block: %w", err)
+	}
+	if startBlock == 0 {
+		return AttemptBoundary{}, errors.New("current settlement start block is zero")
 	}
 	block := startBlock - 1
 	hash, err := chain.BlockHashContext(ctx, block)
@@ -444,7 +447,10 @@ func releasePriorSettlementBoundary(ctx context.Context, chain *ChainClient, sna
 		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal block: %w", err)
 	}
 	epoch, err := chainViewAtHashContext(ctx, chain, block, hash, chain.coordinator.PackCurrentEpoch(), chain.coordinator.UnpackCurrentEpoch)
-	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64()+1 != snapshot.Epoch.Uint64() {
+	if err != nil {
+		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal epoch: %w", err)
+	}
+	if epoch == nil || !epoch.IsUint64() || epoch.Uint64() != snapshot.Epoch.Uint64()-1 {
 		return AttemptBoundary{}, errors.New("prior settlement terminal block has the wrong epoch")
 	}
 	return AttemptBoundary{SettlementEpoch: epoch.Uint64(), EVMBlock: block, EVMBlockHash: attemptHex32(hash)}, nil
