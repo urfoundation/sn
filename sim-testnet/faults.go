@@ -111,6 +111,8 @@ type liveScenarioFaultDriver struct {
 	minerControlHead         func(context.Context) (ChainHead, error)
 	minerControlCompleted    minerControlCompletedTransition
 	minerControlReconciled   map[string]map[string]minerControlGeneration
+	restartPersist           func(string, activeFaultFile, scenarioFaultSpec, []FaultProcessEvidence) error
+	restartSignal            func(supervisedCommand, syscall.Signal) bool
 }
 
 type dockerScenarioContainerRuntime struct{ docker dockerCLI }
@@ -653,11 +655,10 @@ func (d *liveScenarioFaultDriver) apply(ctx context.Context, spec scenarioFaultS
 		}
 		return processes, nil
 	}
-	signal := syscall.SIGSTOP
 	if spec.Kind == "process-restart" {
-		signal = syscall.SIGTERM
+		return d.requestProcessRestart(ctx, active, spec)
 	}
-	processes, err := d.signal(spec, signal)
+	processes, err := d.signal(spec, syscall.SIGSTOP)
 	if err != nil {
 		return nil, err
 	}
