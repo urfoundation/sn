@@ -193,6 +193,9 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			if source.Kind == "private" && source.Name == "steering-intents.json" {
 				maximum = max(maximum, min(release.EvidenceV2.Bounds.MaxControlBytes, release.EvidenceV2.Bounds.MaxHistoryBytes))
 			}
+			if source.Kind == "relay-journal" && source.Name == "journal.jsonl" && source.Origin == "" {
+				maximum = maximumFinalJournalBytes
+			}
 			if len(raw) == 0 || uint64(len(raw)) > maximum {
 				return errors.New("compact source exceeds its raw or exact intent-control owner")
 			}
@@ -211,8 +214,10 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 				if uint64(len(raw)) > remainingSourceBytes {
 					return errors.New("compact unique source bytes exceed configured campaign archive limits")
 				}
-				name := fmt.Sprintf("final-inputs/validators/v2/%s.bin", strings.TrimPrefix(hash, "sha256:"))
-				var err error
+				name, err := finalValidatorSourcePathV2(source.Kind, source.Name, source.Origin, hash)
+				if err != nil {
+					return err
+				}
 				locator, err = persistFinalCollectedArtifactForConfigV2(cfg, runRoot, "validator-evidence-v2-source", name, raw)
 				if err != nil {
 					return err
@@ -405,6 +410,9 @@ func verifyFinalCollectedValidatorEvidenceV2(cfg *ResolvedConfig, value *FinalSe
 		}
 		if source.Source.Origin != "" && source.Source.Origin != v2.Origins[0] && source.Source.Origin != v2.Origins[1] {
 			return errors.New("compact captured origin is not configured")
+		}
+		if err := validateFinalJournalCaptureSourceV2(source); err != nil {
+			return err
 		}
 		if err := verifyFinalArtifact("compact raw source", source.Artifact, "validator-evidence-v2-source"); err != nil {
 			return err

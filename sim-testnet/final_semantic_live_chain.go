@@ -531,7 +531,7 @@ func captureFinalHistoricalCoordinatorBaselines(ctx context.Context, cfg *Resolv
 		}
 		plans[plan.PlanHash] = plan
 	}
-	journalBytes, err := os.ReadFile(filepath.Join(stateRoot, "journal.jsonl"))
+	journalBytes, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return nil, err
 	}
