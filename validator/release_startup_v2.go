@@ -39,6 +39,7 @@ func startReleaseEvidenceV2DiskStateOwned(ctx context.Context, cfg *ReleaseConfi
 	if ctx == nil {
 		return errors.New("evidence semantic startup context is absent")
 	}
+	ctx = withReleaseStartupRpcReads(ctx)
 	if retained != nil {
 		*retained = nil
 		defer func() {

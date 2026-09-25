@@ -689,6 +689,30 @@ func dialPinnedNative(ctx context.Context, cfg *ReleaseConfig) (*crv4.Chain, err
 
 func typesHash(value [32]byte) [32]byte { return value }
 
+// Discovery retries the same canonical snapshot. A failed observation never
+// claims that an otherwise authenticated hotkey is absent from the metagraph.
+func loadReleaseStartupValidatorUid(ctx context.Context, chain *ChainClient, snapshot *ReleaseSnapshot, netuid uint16, hotkey [32]byte, inputs []releaseEvidenceV2ActivationInput, retained bool) (uint16, error) {
+	if ctx == nil || chain == nil || snapshot == nil {
+		return 0, errors.New("release validator Uid startup owner is incomplete")
+	}
+	readCtx := withReleaseStartupRpcReads(ctx)
+	var uid uint16
+	var found bool
+	var err error
+	if retained {
+		uid, found, err = findProvisionalValidatorUIDAtHashContext(readCtx, chain, snapshot, netuid, hotkey, inputs)
+	} else {
+		uid, found, err = chain.FindUidByHotkeyAtHashContext(readCtx, snapshot.BlockNumber, snapshot.BlockHash, netuid, hotkey)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read release validator UID at finalized EVM block %d (0x%x): %w", snapshot.BlockNumber, snapshot.BlockHash, err)
+	}
+	if !found {
+		return 0, fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d (0x%x)", snapshot.BlockNumber, snapshot.BlockHash)
+	}
+	return uid, nil
+}
+
 // RunRelease starts the production validator modules under a caller-owned
 // lifecycle. CLIs and integration harnesses share this exact entry point.
 func RunRelease(ctx context.Context, configPath string) (returnErr error) {
@@ -754,26 +778,20 @@ func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSet
 	settlementEpoch.Store(snapshot.Epoch.Uint64())
 	var activationInputs []releaseEvidenceV2ActivationInput
 	if retainedSetup != nil {
-		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), retainedSetup)
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(withReleaseStartupRpcReads(ctx), cfg, chain, native, hotkey.PublicKey(), retainedSetup)
 		if err != nil {
 			return fmt.Errorf("reserved upload activation startup: %w", err)
 		}
 	}
-	var validatorUID uint16
-	var found bool
-	if retainedSetup != nil {
-		validatorUID, found, err = findProvisionalValidatorUIDAtHashContext(ctx, chain, snapshot, cfg.Netuid, hotkey.PublicKey(), activationInputs)
-	} else {
-		validatorUID, found, err = chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
-	}
-	if err != nil || !found {
-		return fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d: %w", snapshot.BlockNumber, err)
+	validatorUID, err := loadReleaseStartupValidatorUid(ctx, chain, snapshot, cfg.Netuid, hotkey.PublicKey(), activationInputs, retainedSetup != nil)
+	if err != nil {
+		return err
 	}
 	if _, err := authenticateReleaseValidatorStakeContext(ctx, native, cfg, hotkey.PublicKey(), validatorUID); err != nil {
 		return err
 	}
 	if retainedSetup == nil {
-		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), nil)
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(withReleaseStartupRpcReads(ctx), cfg, chain, native, hotkey.PublicKey(), nil)
 		if err != nil {
 			return fmt.Errorf("reserved upload activation startup: %w", err)
 		}

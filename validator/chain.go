@@ -204,10 +204,11 @@ func (self *ChainClient) FinalizedBlockContext(ctx context.Context) (uint64, [32
 	if self == nil || self.client == nil {
 		return 0, [32]byte{}, errors.New("finalized EVM head client is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
-	defer cancel()
 	var header *chainRPCBlock
-	err := self.client.Client().CallContext(ctx, &header, "eth_getBlockByNumber", "finalized", false)
+	err := retryReleaseStartupRpcRead(ctx, func(callCtx context.Context) error {
+		header = nil
+		return self.client.Client().CallContext(callCtx, &header, "eth_getBlockByNumber", "finalized", false)
+	})
 	if err != nil {
 		return 0, [32]byte{}, fmt.Errorf("finalized EVM head: %w", err)
 	}
@@ -286,11 +287,11 @@ func (self *ChainClient) validateBlockIdentityContext(ctx context.Context, block
 		}
 		return nil
 	}
-	callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 	var header *chainRPCBlock
-	err := self.client.Client().CallContext(callCtx, &header, "eth_getBlockByHash", common.Hash(blockHash), false)
-	err = errors.Join(err, callCtx.Err())
-	cancel()
+	err := retryReleaseStartupRpcRead(ctx, func(callCtx context.Context) error {
+		header = nil
+		return self.client.Client().CallContext(callCtx, &header, "eth_getBlockByHash", common.Hash(blockHash), false)
+	})
 	if err != nil {
 		return fmt.Errorf("EVM block %d hash 0x%x header: %w", block, blockHash, err)
 	}
@@ -353,13 +354,13 @@ func (self *ChainClient) ethCallAtHashContext(ctx context.Context, to common.Add
 		return nil, err
 	}
 	var output hexutil.Bytes
-	callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
-	err = self.client.Client().CallContext(callCtx, &output, "eth_call", map[string]any{
-		"to":    to,
-		"input": hexutil.Bytes(calldata),
-	}, selector)
-	err = errors.Join(err, callCtx.Err())
-	cancel()
+	err = retryReleaseStartupRpcRead(ctx, func(callCtx context.Context) error {
+		output = nil
+		return self.client.Client().CallContext(callCtx, &output, "eth_call", map[string]any{
+			"to":    to,
+			"input": hexutil.Bytes(calldata),
+		}, selector)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("eth_call at canonical block %d (0x%x): %w", block, blockHash, err)
 	}
@@ -411,41 +412,54 @@ func (self *ChainClient) batchCallsAtHashContext(ctx context.Context, block uint
 		return nil, err
 	}
 	outputs := make([][]byte, len(calls))
-	for start := 0; start < len(calls); start += chainMaximumBatchCalls {
-		end := min(start+chainMaximumBatchCalls, len(calls))
-		raw := make([]hexutil.Bytes, end-start)
-		batch := make([]rpc.BatchElem, end-start)
-		for index := start; index < end; index++ {
-			call := calls[index]
-			if call.address == (common.Address{}) || len(call.calldata) == 0 {
-				return nil, fmt.Errorf("exact-block EVM batch element %d is incomplete", index)
+	width := chainMaximumBatchCalls
+	startup, _ := ctx.Value(releaseStartupRpcReadKey{}).(releaseStartupRpcReadHooks)
+	for start := 0; start < len(calls); {
+		var end int
+		var raw []hexutil.Bytes
+		err := retryReleaseStartupRpcRead(ctx, func(callCtx context.Context) error {
+			end = min(start+width, len(calls))
+			raw = make([]hexutil.Bytes, end-start)
+			batch := make([]rpc.BatchElem, end-start)
+			for index := start; index < end; index++ {
+				call := calls[index]
+				if call.address == (common.Address{}) || len(call.calldata) == 0 {
+					return fmt.Errorf("exact-block EVM batch element %d is incomplete", index)
+				}
+				batch[index-start] = rpc.BatchElem{
+					Method: "eth_call",
+					Args: []any{
+						map[string]any{"to": call.address, "input": hexutil.Bytes(call.calldata)},
+						selector,
+					},
+					Result: &raw[index-start],
+				}
 			}
-			batch[index-start] = rpc.BatchElem{
-				Method: "eth_call",
-				Args: []any{
-					map[string]any{"to": call.address, "input": hexutil.Bytes(call.calldata)},
-					selector,
-				},
-				Result: &raw[index-start],
+			failures := []error{self.client.Client().BatchCallContext(callCtx, batch), callCtx.Err()}
+			for index := range batch {
+				if batch[index].Error != nil {
+					failures = append(failures, fmt.Errorf("exact-block EVM batch element %d: %w", start+index, batch[index].Error))
+				}
 			}
-		}
-		callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
-		err := self.client.Client().BatchCallContext(callCtx, batch)
-		err = errors.Join(err, callCtx.Err())
-		cancel()
+			err := errors.Join(failures...)
+			if startup.enabled && callCtx.Err() != context.Canceled && RetryableEvidenceTransportError(err) {
+				// Retain all completed batches and the original hash. Reducing
+				// only the interrupted suffix avoids repeating an oversized call.
+				width = max(1, (end-start+1)/2)
+			}
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("eth_call batch at canonical block %d (0x%x): %w", block, blockHash, err)
 		}
-		for index := range batch {
+		for index := range raw {
 			absolute := start + index
-			if batch[index].Error != nil {
-				return nil, fmt.Errorf("exact-block EVM batch element %d: %w", absolute, batch[index].Error)
-			}
 			if len(raw[index]) == 0 {
 				return nil, fmt.Errorf("exact-block EVM batch element %d is empty", absolute)
 			}
 			outputs[absolute] = append([]byte(nil), raw[index]...)
 		}
+		start = end
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -872,10 +886,11 @@ func (self *ChainClient) BlockHashContext(ctx context.Context, number uint64) ([
 	if self == nil || self.client == nil {
 		return [32]byte{}, errors.New("block hash client or number is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
-	defer cancel()
 	var header *chainRPCBlock
-	err := self.client.Client().CallContext(ctx, &header, "eth_getBlockByNumber", hexutil.EncodeUint64(number), false)
+	err := retryReleaseStartupRpcRead(ctx, func(callCtx context.Context) error {
+		header = nil
+		return self.client.Client().CallContext(callCtx, &header, "eth_getBlockByNumber", hexutil.EncodeUint64(number), false)
+	})
 	if err != nil {
 		return [32]byte{}, err
 	}
