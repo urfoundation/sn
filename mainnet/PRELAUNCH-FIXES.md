@@ -907,13 +907,25 @@ boundary; require at least twice the fresh projected run growth, plus physical
 headroom for other buckets. Keep the publication probe and its complete HTTP
 response independent of scenario acceptance.
 
-**Remaining closure.** Preserve typed capacity/storage failures through the
-publication API and bounded caller diagnostics without exposing credentials or
-turning invalid signatures into retryable errors. Deterministically test quota
-exhaustion before either write and between content/history writes, exact retry
-after capacity is restored, unchanged conflicting bytes, and malformed or
-unauthorized evidence. A quota increase and passing probes do not complete
-mainnet qualification or repair the historical failed run.
+**Qualified isolated fixes.** Server `74600da0` retains exact typed MinIO and
+configured local quota failures as a safe HTTP 507 response. Its adjacent
+`db52e7c3` also recognizes local `ENOSPC` and `EDQUOT`, including filesystem
+wrappers. Joined integrity, authorization or cancellation failures retain their
+original rejection; backend paths and credentials are not exposed. SN
+`008e4e4d` retains bounded, escaped public response detail without retrying a
+Post or weakening signed receipt validation. Deterministic tests exhaust quota
+before either write and between content/history writes, retry the exact signed
+bytes after capacity is restored, and retain malformed/unauthorized/conflicting
+input refusal. Focused and adjacent normal/race checks pass; restoring the old
+error paths reproduces the opaque rejection. The local errno follow-up has its
+own normal/race and old-classifier controls.
+
+**Remaining closure.** Promote the exact reviewed source and persistent quota
+configuration with source admission, then perform fresh active-binding capacity
+measurement and publication checks before the boundary. The encrypted quota
+branch is staged separately so current renewal and retained source identity
+remain intact. A quota increase and passing probes do not complete mainnet
+qualification or repair the historical failed run.
 
 ### PH-10 — Epoch boundaries, leases and partial renewal
 
