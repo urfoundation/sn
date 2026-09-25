@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"slices"
 	"syscall"
 )
 
@@ -22,29 +20,9 @@ func (self *liveScenarioFaultDriver) requestProcessRestart(ctx context.Context, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	states, specs, err := self.processSnapshot()
+	commands, processes, err := self.captureFaultProcessCommands(ctx, spec)
 	if err != nil {
 		return nil, err
-	}
-	targets := slices.Clone(spec.Targets)
-	slices.Sort(targets)
-	commands := make([]supervisedCommand, 0, len(targets))
-	processes := make([]FaultProcessEvidence, 0, len(targets))
-	for _, id := range targets {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		state, stateOk := states[id]
-		processSpec, specOk := specs[id]
-		if !stateOk || !specOk || state.PID <= 1 || processSpec.RestartLimit < 1 || processSpec.Role == "" || processSpec.Identity == "" || state.Role != processSpec.Role || state.Identity != processSpec.Identity {
-			return nil, fmt.Errorf("restart target %s is not an exact restartable manifest process", id)
-		}
-		identity, err := observeSupervisedProcessIdentity(state.PID)
-		if err != nil || identity.ProcessGroupID != state.PID || identity.StartTimeTicks == 0 || identity.ExecutableFile.Inode == 0 || identity.CommandLineHash == "" {
-			return nil, stateMismatchError(err, "record restart target %s kernel ownership", id)
-		}
-		commands = append(commands, supervisedCommand{spec: processSpec, cmd: &exec.Cmd{Process: &os.Process{Pid: state.PID}}, identity: identity})
-		processes = append(processes, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID, StartTimeTicks: identity.StartTimeTicks})
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

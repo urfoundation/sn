@@ -50,7 +50,7 @@ func newProcessRestartIntentFixture(t *testing.T, count int) *processRestartInte
 		fixture.exits = append(fixture.exits, exited)
 		fixture.manifest.Specs = append(fixture.manifest.Specs, spec)
 		fixture.fault.Targets = append(fixture.fault.Targets, id)
-		fixture.state.Processes = append(fixture.state.Processes, ProcessState{ID: id, Role: spec.Role, Identity: spec.Identity, PID: command.identity.PID, Healthy: true})
+		fixture.state.Processes = append(fixture.state.Processes, ProcessState{ID: id, Role: spec.Role, Identity: spec.Identity, PID: command.identity.PID, StartTimeTicks: command.identity.StartTimeTicks, Healthy: true})
 	}
 	fixture.write(t)
 	return fixture
@@ -197,6 +197,7 @@ func TestProcessRestartWriteAheadCanceledDispatchResumesThroughReplacement(t *te
 	}
 	replacement, _ := startRestartIntentTestProcess(t, fixture.commands[0].spec)
 	fixture.state.Processes[0].PID = replacement.identity.PID
+	fixture.state.Processes[0].StartTimeTicks = replacement.identity.StartTimeTicks
 	fixture.state.Processes[0].Restarts++
 	fixture.state.Processes[0].Healthy = true
 	fixture.write(t)

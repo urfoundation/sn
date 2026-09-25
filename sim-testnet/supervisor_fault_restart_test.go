@@ -90,7 +90,7 @@ func TestSupervisorFaultRestartEscalatesExactHungChild(t *testing.T) {
 	if err := writePublicJSON(filepath.Join(dir, "supervisor.json"), manifest); err != nil {
 		t.Fatal(err)
 	}
-	state := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", ManifestHash: manifestHash, Processes: []ProcessState{{ID: spec.ID, Role: spec.Role, Identity: spec.Identity, PID: cmd.Process.Pid}}}
+	state := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", ManifestHash: manifestHash, Processes: []ProcessState{{ID: spec.ID, Role: spec.Role, Identity: spec.Identity, PID: cmd.Process.Pid, StartTimeTicks: identity.StartTimeTicks}}}
 	if err := writePublicJSON(filepath.Join(dir, "supervisor.state.json"), state); err != nil {
 		t.Fatal(err)
 	}

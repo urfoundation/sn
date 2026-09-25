@@ -667,9 +667,19 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 		t.Fatalf("unexpected restart state: %+v", state)
 	}
 	childPID := state.Processes[0].PID
+	childStartTimeTicks, err := processStartTimeTicks(childPID)
+	if err != nil || state.Processes[0].StartTimeTicks == 0 || state.Processes[0].StartTimeTicks != childStartTimeTicks {
+		cancel()
+		<-done
+		t.Fatalf("supervisor published a PID without its original kernel generation: %+v, actual=%d, %v", state.Processes[0], childStartTimeTicks, err)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	stopped, err := readSupervisorRestartTestState(filepath.Join(dir, "supervisor.state.json"))
+	if err != nil || len(stopped.Processes) != 1 || stopped.Processes[0].PID != 0 || stopped.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("stopped supervisor retained live kernel authority: %+v, %v", stopped, err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && syscall.Kill(childPID, syscall.Signal(0)) == nil {
@@ -839,10 +849,17 @@ func TestSupervisorRecoversStoppedChildAfterBurstCooldown(t *testing.T) {
 	stopped := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
 		return process.PID == 0 && process.Restarts == 1 && process.ExitError != ""
 	})
+	if stopped.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("exited child retained its generation: %+v", stopped.Processes[0])
+	}
 	release()
 	recovered := waitSupervisorRestartTestState(t, statePath, func(process ProcessState) bool {
 		return process.PID > 1 && process.Restarts == 2 && process.ExitError == ""
 	})
+	startTimeTicks, err := processStartTimeTicks(recovered.Processes[0].PID)
+	if err != nil || recovered.Processes[0].StartTimeTicks == 0 || recovered.Processes[0].StartTimeTicks != startTimeTicks {
+		t.Fatalf("replacement state lost original kernel generation: %+v, actual=%d, %v", recovered.Processes[0], startTimeTicks, err)
+	}
 	if stopped.SupervisorPID != recovered.SupervisorPID || stopped.SupervisorStartTimeTicks != recovered.SupervisorStartTimeTicks {
 		t.Fatalf("cooldown replaced supervisor generation: before=%d/%d after=%d/%d", stopped.SupervisorPID, stopped.SupervisorStartTimeTicks, recovered.SupervisorPID, recovered.SupervisorStartTimeTicks)
 	}
@@ -1002,6 +1019,9 @@ exit 17
 	})
 	if failed.SupervisorPID != os.Getpid() {
 		t.Fatalf("failed launch replaced supervisor pid: %+v", failed)
+	}
+	if failed.Processes[0].StartTimeTicks != 0 {
+		t.Fatalf("failed launch retained previous kernel authority: %+v", failed.Processes[0])
 	}
 	select {
 	case request := <-restartWaitRequests:
