@@ -103,7 +103,7 @@ func captureFinalValidatorRelayV2(ctx context.Context, cfg *ResolvedConfig, stat
 	if err != nil {
 		return err
 	}
-	journal, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateRoot, "journal.jsonl"), maximumCampaignEvidenceRawFileBytes)
+	journal, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	if err != nil || plan.ValidatorEvidence == nil || terminal == nil || terminal.Status == nil || terminal.Status.Contracts == nil {
 		return nil, errors.Join(errors.New("compact companion capture authority is incomplete"), err)
 	}
-	journal, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(stateRoot, "journal.jsonl"), maximumCampaignEvidenceRawFileBytes)
+	journal, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +244,11 @@ func captureFinalCompanionInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	defer client.Close()
 	var files []FinalCollectedFileBundleEntry
 	add := func(name string, raw []byte) error {
-		if len(raw) == 0 || len(raw) > finalCollectedBundleMaximumRawBytes {
+		maximum := uint64(finalCollectedBundleMaximumRawBytes)
+		if name == "journal.jsonl" {
+			maximum = maximumFinalJournalBytes
+		}
+		if len(raw) == 0 || uint64(len(raw)) > maximum {
 			return errors.New("compact companion source exceeds the unchanged bundle bound")
 		}
 		files = append(files, FinalCollectedFileBundleEntry{Path: name, ContentHash: bytesSHA256(raw), SizeBytes: uint64(len(raw)), Data: raw})

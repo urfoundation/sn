@@ -9,8 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -65,7 +63,7 @@ func finalCaptureReleaseContractCensusFromStateContext(ctx context.Context, stat
 		}
 		plans[key] = plan
 	}
-	journalBytes, err := os.ReadFile(filepath.Join(stateRoot, "journal.jsonl"))
+	journalBytes, err := readFinalJournalSourceContext(ctx, stateRoot)
 	if err != nil {
 		return finalReleaseContractCaptureCensus{}, err
 	}

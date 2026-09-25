@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -217,7 +216,11 @@ func collectTerminalDiagnosticValidator(collector *terminalDiagnosticCollector, 
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			locator, err := persistFinalCollectedArtifactForConfigV2(cfg, collector.output, "diagnostic-validator-source", fmt.Sprintf("final-inputs/validators/v2/%s.bin", strings.TrimPrefix(bytesSHA256(raw), "sha256:")), raw)
+			name, err := finalValidatorSourcePathV2(source.Kind, source.Name, source.Origin, bytesSHA256(raw))
+			if err != nil {
+				return err
+			}
+			locator, err := persistFinalCollectedArtifactForConfigV2(cfg, collector.output, "diagnostic-validator-source", name, raw)
 			if err != nil {
 				return err
 			}

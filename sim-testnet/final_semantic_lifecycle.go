@@ -9,6 +9,7 @@ package main
 // graph.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -303,16 +304,17 @@ func finalFleetLifecycleJournalTransaction(entries []JournalEntry, planHash stri
 	return JournalEntry{}, fmt.Errorf("fleet lifecycle journal lacks transaction for %s", action.ID)
 }
 
+// Decode one bounded record at a time while preserving original raw hashes,
+// sequence checks and complete cross-entry action history for strict replay.
 func decodeFinalSemanticJournalBytes(data []byte) ([]JournalEntry, error) {
-	lines := bytes.Split(bytes.TrimSpace(data), []byte{'\n'})
-	if len(lines) == 0 || len(lines) == 1 && len(lines[0]) == 0 {
-		return nil, errors.New("captured setup journal is empty")
-	}
-	entries := make([]JournalEntry, 0, len(lines))
-	previous := ""
-	for index, line := range lines {
+	scan := bufio.NewScanner(bytes.NewReader(bytes.TrimSpace(data)))
+	scan.Buffer(make([]byte, 64*1024), maximumJournalRecordBytes)
+	var entries []JournalEntry
+	journal := &Journal{validationKVs: map[journalActionKey][]JournalEntry{}}
+	for scan.Scan() {
+		index := len(entries)
 		var entry JournalEntry
-		if err := decodeStrictJSONBytes(line, &entry); err != nil {
+		if err := decodeStrictJSONBytes(scan.Bytes(), &entry); err != nil {
 			return nil, fmt.Errorf("decode captured journal line %d: %w", index+1, err)
 		}
 		want := entry.EntryHash
@@ -321,15 +323,22 @@ func decodeFinalSemanticJournalBytes(data []byte) ([]JournalEntry, error) {
 		if err != nil {
 			return nil, err
 		}
-		if want == "" || want != got || entry.PreviousHash != previous || entry.Sequence != uint64(index+1) {
+		if want == "" || want != got || entry.PreviousHash != journal.lastHash || entry.Sequence != uint64(index+1) {
 			return nil, fmt.Errorf("captured journal line %d failed hash-chain validation", index+1)
 		}
-		if err := (&Journal{}).validateEntry(entry); err != nil {
+		if err := journal.validateEntry(entry); err != nil {
 			return nil, fmt.Errorf("captured journal line %d: %w", index+1, err)
 		}
 		entry.EntryHash = want
 		entries = append(entries, entry)
-		previous = want
+		journal.lastHash = want
+		journal.rememberValidationWitness(entry)
+	}
+	if err := scan.Err(); err != nil {
+		return nil, fmt.Errorf("decode captured journal record: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("captured setup journal is empty")
 	}
 	return entries, nil
 }
