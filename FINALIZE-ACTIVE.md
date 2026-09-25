@@ -1,5 +1,27 @@
 # Testnet execution plan
 
+## R45 clean successor built; race gate pending — 2026-09-25 07:57 UTC
+
+The retained policy generation and source-role readers now resolve their
+original approval through its immutable archived ancestor when round-7 fleet
+renewal appends a descendant plan. SN code/tests `bbd33365` and mainnet lesson
+`c2171654` are on main; two separate old-reader overlays reproduced the exact
+round-7 rejection. Focused normal and affected adjacent normal/race tests pass.
+The focused three-test signed-renewal race run remains active; do not adopt the
+image for live renewal until it exits successfully.
+
+The new clean image is
+`/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/sim-testnet-r45-2662f5f0-connectc98eb715`,
+SHA-256 `a79072fa7a03db3452cec4c5bef942fb2424e05b5dbd79ed6cfbfa219006e2ef`.
+Its [external binary manifest](/mnt/data/sn-testnet/qualification/r45-compose-ready-20260925/build/binary-manifest-2662f5f0.json)
+records SN `2662f5f0`, Connect `c98eb715`, a clean VCS stamp and the pinned
+module inputs. An external-copy doctor passed 66 checks in 67.225 seconds,
+`ready=true`, no hard failures, no new live provenance and unchanged live
+plan/journal prefix. The same three provisional soft findings remain: shared
+physical RPC, owned-node-only verification and deferred source qualification.
+This is read-only successor preflight, not a round-7 plan, transaction or
+signed acceptance result. R44 remains the active owner.
+
 ## R44 independent terminal capture armed — 2026-09-25 07:42 UTC
 
 The owner remains active. The named `R44-LC-1` bypass exception is recorded in
