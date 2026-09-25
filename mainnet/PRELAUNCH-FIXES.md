@@ -2290,3 +2290,45 @@ classification, original-child signaling proof, write-ahead fault intent,
 pending container restore and post-transition completion heads in the
 composed recovery rehearsal. A documentation-only main advance should not
 change the approved executable, but it must not conceal a missing code patch.
+
+R46 exposed a remaining one-shot reader behind the general GET retry policy:
+operator `/status`, `/verify/keys`, `/verify/stats` and `/verify/proofs` each
+still had a 30-second request and client timeout. During scheduled PostgreSQL
+outages, the resulting partial observation survived even though the next
+snapshot recovered. The isolated repair is `ee792d5c` plus test-only
+`79d1eab8`: one 300-second owner per surface, fresh 60-second attempts, bounded
+backoff and the existing four-worker limit. Preserve completed surfaces within
+one snapshot and fetch fresh data for the next; retain attempt counters and
+never borrow previous verification counters. Shared clients, parent deadlines,
+body limits, redirects, parsing, signatures and mixed-error refusal remain
+strict. This permission covers only the enumerated reads, not artifact POSTs
+or native submissions. Mainnet qualification must exercise
+`TestScenarioOperatorReadRetryFreshAttemptAndLongResponse`,
+`TestScenarioOperatorReadRetryExhaustsOneOperationBudget`,
+`TestScenarioOperatorReadRetryRetainsCompletedSurfaceOwners`,
+`TestScenarioOperatorReadRetryRejectsCloseFailureAndLateSuccess` and
+`TestScenarioOperatorReadRetryPreservesMalformedProjection`, alongside the
+existing cancellation, four-worker, payout-authority and anomaly-history
+checks. Normal/race and three old-behavior causal controls passed for the
+isolated source; the progressing R46 binary was unchanged. A recovered later
+snapshot never erases an already retained strict anomaly. Attribute a fault
+using its exact observation scope; an outage that begins while a long snapshot
+is being collected needs explicit interval evidence, not retrospective editing.
+
+R46 also recorded a native-input replica POST timeout followed by an EMA epoch
+gap. Later public reads found the exact records object on both replicas and
+both operator inputs had been retained, while the applied native intent and
+EMA remained at the old epoch. Object publication, acknowledged publication
+and finalized native steering are separate completion facts. Before mainnet,
+rehearse response loss after the exact immutable object is stored: its owning
+publication lifecycle must reconcile both destinations through bounded
+kind/hash/length-authenticated public reads and, if needed, retry only those
+same bytes under the original API session and validator publication authority.
+Keep unknown outcomes pending; do not extend generic GET retry permission to
+arbitrary writes or invent an acknowledgement. The existing
+`TestReleaseSettlementRefreshRetriesJoinedReplicaTimeout` exercises outer
+replica recovery; add lost-acknowledgement, foreign-object, mixed integrity,
+cancellation and crash/reentry cases at the real HTTP publication owner before
+claiming this additional gate complete. None of these retries may advance an
+EMA, overwrite an intent or forgive a missing native epoch. The retained native
+gap remains a strict final failure requiring its own authenticated successor.
