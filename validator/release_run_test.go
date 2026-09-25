@@ -263,20 +263,21 @@ func TestReleaseNativeEndpointTimeoutReservesMetadataHeadroom(t *testing.T) {
 
 func TestReleaseSteeringOperationTimeoutPreservesAdmittedClientKeyBatch(t *testing.T) {
 	batch := time.Duration(protocol.ClientKeyObservationBatchOperationSeconds) * time.Second
+	read := attemptStreamV2HttpReadIoTimeout
 	for _, test := range []struct {
 		name string
 		cfg  *ReleaseConfig
 		want time.Duration
 	}{
-		{name: "nil config", want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second},
-		{name: "ordinary polling", cfg: &ReleaseConfig{PollSeconds: 15}, want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second},
-		{name: "slow polling", cfg: &ReleaseConfig{PollSeconds: 60}, want: batch + 4*time.Minute},
+		{name: "nil config", want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second + read},
+		{name: "ordinary polling", cfg: &ReleaseConfig{PollSeconds: 15}, want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second + read},
+		{name: "slow polling", cfg: &ReleaseConfig{PollSeconds: 60}, want: batch + 4*time.Minute + read},
 	} {
 		if got := releaseSteeringOperationTimeout(test.cfg); got != test.want {
 			t.Errorf("%s: steering operation timeout=%s, want %s", test.name, got, test.want)
 		}
-		if test.want <= batch {
-			t.Errorf("%s: steering timeout %s does not outlive batch %s", test.name, test.want, batch)
+		if test.want < batch+read+time.Minute {
+			t.Errorf("%s: steering timeout %s truncates batch %s, read %s or native work", test.name, test.want, batch, read)
 		}
 	}
 }

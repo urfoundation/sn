@@ -146,6 +146,8 @@ func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText
 		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
 	case *net.OpError:
 		return classifyReleaseSnapshotRetryMode(cause.Err, siblingCancellation, legacyText, true)
+	case *attemptStreamHttpReadError:
+		return classifyReleaseSnapshotRetryMode(cause.cause, siblingCancellation, legacyText, true)
 	}
 	if _, observationStatus := err.(*clientKeyObservationHttpStatusError); observationStatus {
 		retryable := retryableClientKeyObservationHttpError(err)
