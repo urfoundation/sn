@@ -67,7 +67,12 @@ At 14:32 UTC the same live owner completed its parallel read-only evidence
 relay public census and logged `public_census_audit_passed=true` with
 `pending_public_census=false`. This closes that deferred preparation check; it
 does not close the other provisional findings or establish final acceptance.
-[Owner audit result](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-result.txt).
+The pinned worker retains its successful audit result in memory for the final
+join and emits no standalone signed completion receipt. An external read-only
+capture binds the exact systemd journal cursor, owner PID, signed attempt,
+binary and plan; it is a log observation rather than an acceptance signature.
+[Owner audit result](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-result.txt),
+[bound read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-readcut.json).
 
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final

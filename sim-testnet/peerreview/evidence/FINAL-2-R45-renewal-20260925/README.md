@@ -50,6 +50,11 @@ release acceptance interval or a successful finalization.
 - `public-census-audit-result.txt`: the active owner's 14:32 UTC completion
   log for its parallel read-only public evidence relay census. This is a
   preparation check; final acceptance remains false.
+- `public-census-audit-readcut.json` and `public-census-audit.journal.jsonl`:
+  exact systemd journal cursor/PID and read-only binding to the signed R45
+  attempt, plan and binary. The pinned worker emits no standalone signed audit
+  completion receipt, so this preserves the log observation without claiming
+  an acceptance signature.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under
