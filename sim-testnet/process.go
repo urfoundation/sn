@@ -3384,6 +3384,7 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	faultRestartRecovery := &supervisorFaultRestartRecovery{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -3447,6 +3448,20 @@ func superviseWithContractCleanupAndRestartWait(ctx context.Context, stateDir, s
 				return err
 			}
 		case <-ticker.C:
+			commands := make([]supervisedCommand, 0, len(runs))
+			for _, spec := range sf.Specs {
+				current := runs[spec.ID]
+				commands = append(commands, supervisedCommand{spec: current.spec, cmd: current.cmd, identity: current.identity})
+			}
+			escalations, faultErr := faultRestartRecovery.reconcile(ctx, time.Now(), stateDir, commands, func(command supervisedCommand, signal syscall.Signal) bool {
+				return signalSupervisedCommandWithObserver(command, signal, observeSupervisedProcessIdentity, syscall.Kill)
+			})
+			if faultErr != nil && ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "sim-testnet: retained process restart observation: %v; supervisor continues\n", faultErr)
+			}
+			for _, escalation := range escalations {
+				fmt.Fprintf(os.Stderr, "sim-testnet: retained process restart %s escalated original %s pid=%d start=%d after %s graceful shutdown; replacement readiness remains pending\n", escalation.faultId, escalation.processId, escalation.identity.PID, escalation.identity.StartTimeTicks, supervisorFaultRestartGrace)
+			}
 			for _, r := range runs {
 				r.state.Healthy = r.state.PID > 1 && healthOK(r.spec.HealthURL)
 			}
