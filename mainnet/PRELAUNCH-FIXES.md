@@ -1651,6 +1651,36 @@ write bytes, checkpoint latency, remaining historical work and admitted control
 requests independently from process health. Production sizing must reserve the
 agreed 2x margin without relying on filesystem stalls to throttle useful work.
 
+**R44 follow-up (in progress, 2026-09-25).** The per-miner recent-first poll did
+not make the two relayers fair across miners. One shared, non-cancelable lock
+covered reconciliation, signing and finality; a miner recorded `submitting`
+before waiting for it. A hashed live census at finalized block 8,081,014
+found 744 miners still discovering epoch 614 while 256 had reached 617. All
+1,000 eventually reached 617, but epochs 615 and 616 remained almost entirely
+pending. Mainnet admission must assign one retained ticket per member, prioritize
+the global newest epoch with a bounded historical share, let waiting members
+continue discovery, and start the five-minute network budget only after
+admission. A timeout after durable `Prepared` must not let the next member sign
+the same nonce: seed a shared nonce floor from every validated member queue,
+advance it only after the signed intent is fsynced, and reconcile or rebroadcast
+the exact old raw transaction before treating its outcome as absent. Reject two
+swarm members pointing to the same physical queue directory. Test mixed
+discovery cursors, cancellation, stale pending nonces, restart, cross-member
+fairness and exact signed-outcome retention in normal and race modes. No R44
+runtime change or completed production qualification is claimed here.
+
+The R44 acceptance reader also mixed lifetime claim counts with its signed
+five-epoch window. A previous finalized claim could falsely satisfy current
+coverage, while a historical uncertain claim could falsely fail it. Keep raw
+lifetime history and scope acceptance and anomaly verdicts to the exact signed
+epochs, requiring an observed outcome for every configured miner in each epoch.
+Treat pending and submitting as work in progress, but reject unresolved current
+outcomes at terminal. Do not close a signed uncertain incident merely because
+the local queue later says `finalized` or `no-claim`; first authenticate its
+canonical receipt, block hash and Claimed event, or retain the incident open.
+The completed window-only claim gate is SN `5615a382`; anomaly scoping and
+receipt-authenticated closure remain separate qualification work.
+
 ### Supplemental repair allocation within lifetime caps
 
 The repair proposal later exposed a separate budget boundary: fleet-renewal
