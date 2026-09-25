@@ -322,31 +322,29 @@ func TestGovernancePauseRejectsChangedRecoveryAuthority(t *testing.T) {
 	f := newGovernancePauseTest(t)
 	original := f.interrupt(t)
 	for _, fault := range []string{"plan", "guardian", "nonce", "action", "transaction", "baseline"} {
-		t.Run(fault, func(t *testing.T) {
-			changed := original
-			intent := *original.PauseIntent
-			changed.PauseIntent = &intent
-			switch fault {
-			case "plan":
-				changed.PlanHash = common.Hash{0xd1}.Hex()
-			case "guardian":
-				intent.Signer = common.Address{0xd2}.Hex()
-			case "nonce":
-				intent.Nonce++
-			case "action":
-				intent.IntentHash = common.Hash{0xd3}.Hex()
-			case "transaction":
-				intent.TransactionHash = common.Hash{0xd4}.Hex()
-			case "baseline":
-				changed.Before.ReservePrincipalRao = "999"
-			}
-			if err := f.executor.writeGovernanceEvidence(&changed); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.executor.governancePause(t.Context(), f.action); err == nil {
-				t.Fatal("changed recovery authority was admitted")
-			}
-		})
+		changed := original
+		intent := *original.PauseIntent
+		changed.PauseIntent = &intent
+		switch fault {
+		case "plan":
+			changed.PlanHash = common.Hash{0xd1}.Hex()
+		case "guardian":
+			intent.Signer = common.Address{0xd2}.Hex()
+		case "nonce":
+			intent.Nonce++
+		case "action":
+			intent.IntentHash = common.Hash{0xd3}.Hex()
+		case "transaction":
+			intent.TransactionHash = common.Hash{0xd4}.Hex()
+		case "baseline":
+			changed.Before.ReservePrincipalRao = "999"
+		}
+		if err := f.executor.writeGovernanceEvidence(&changed); err != nil {
+			t.Fatalf("%s: %v", fault, err)
+		}
+		if err := f.executor.governancePause(t.Context(), f.action); err == nil {
+			t.Fatalf("%s: changed recovery authority was admitted", fault)
+		}
 	}
 	if err := f.executor.writeGovernanceEvidence(&original); err != nil {
 		t.Fatal(err)
@@ -367,40 +365,38 @@ func TestGovernancePauseRejectsForeignSignedTransaction(t *testing.T) {
 	f := newGovernancePauseTest(t)
 	original := f.interrupt(t)
 	for _, fault := range []string{"guardian", "nonce", "target", "data", "value", "fee"} {
-		t.Run(fault, func(t *testing.T) {
-			key := f.executor.guardian.key
-			target := f.executor.payloads.Manifest.CoordinatorProxy
-			data := bytes.Clone(f.transaction.Data())
-			nonce, fee, value := original.PauseIntent.Nonce, big.NewInt(10), new(big.Int)
-			switch fault {
-			case "guardian":
-				key = f.executor.owner.key
-			case "nonce":
-				nonce++
-			case "target":
-				target[0] ^= 1
-			case "data":
-				data[len(data)-1] ^= 1
-			case "value":
-				value.SetUint64(1)
-			case "fee":
-				fee.SetUint64(101)
-			}
-			signed, err := types.SignTx(types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(945), Nonce: nonce, GasTipCap: big.NewInt(2), GasFeeCap: fee, Gas: 55000, To: &target, Value: value, Data: data}), types.LatestSignerForChainID(big.NewInt(945)), key)
-			if err != nil {
-				t.Fatal(err)
-			}
-			intent := *original.PauseIntent
-			intent.TransactionHash = signed.Hash().Hex()
-			if fault != "nonce" {
-				intent.Nonce = nonce
-			}
-			executor := *f.executor
-			executor.journal = &Journal{entries: []JournalEntry{{DeploymentID: executor.cfg.Config.Deployment.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: f.action.ID, IntentHash: f.action.IntentHash, Stage: StageBroadcast, TransactionHash: intent.TransactionHash, Signer: intent.Signer, Nonce: strconv.FormatUint(intent.Nonce, 10)}}}
-			if err := executor.validateGovernancePauseTransaction(f.action, &intent, signed, f.transaction.Data()); err == nil {
-				t.Fatal("foreign signed transaction acquired pause authority")
-			}
-		})
+		key := f.executor.guardian.key
+		target := f.executor.payloads.Manifest.CoordinatorProxy
+		data := bytes.Clone(f.transaction.Data())
+		nonce, fee, value := original.PauseIntent.Nonce, big.NewInt(10), new(big.Int)
+		switch fault {
+		case "guardian":
+			key = f.executor.owner.key
+		case "nonce":
+			nonce++
+		case "target":
+			target[0] ^= 1
+		case "data":
+			data[len(data)-1] ^= 1
+		case "value":
+			value.SetUint64(1)
+		case "fee":
+			fee.SetUint64(101)
+		}
+		signed, err := types.SignTx(types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(945), Nonce: nonce, GasTipCap: big.NewInt(2), GasFeeCap: fee, Gas: 55000, To: &target, Value: value, Data: data}), types.LatestSignerForChainID(big.NewInt(945)), key)
+		if err != nil {
+			t.Fatalf("%s: %v", fault, err)
+		}
+		intent := *original.PauseIntent
+		intent.TransactionHash = signed.Hash().Hex()
+		if fault != "nonce" {
+			intent.Nonce = nonce
+		}
+		executor := *f.executor
+		executor.journal = &Journal{entries: []JournalEntry{{DeploymentID: executor.cfg.Config.Deployment.DeploymentID, PlanHash: executor.plan.PlanHash, ActionID: f.action.ID, IntentHash: f.action.IntentHash, Stage: StageBroadcast, TransactionHash: intent.TransactionHash, Signer: intent.Signer, Nonce: strconv.FormatUint(intent.Nonce, 10)}}}
+		if err := executor.validateGovernancePauseTransaction(f.action, &intent, signed, f.transaction.Data()); err == nil {
+			t.Fatalf("%s: foreign signed transaction acquired pause authority", fault)
+		}
 	}
 }
 
