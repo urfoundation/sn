@@ -289,8 +289,9 @@ paths:
         forwarding a production admission. A response with `staging: true`
         is fee-free but otherwise enters the same FIFO evaluator. Its score or
         full evaluation error remains embargoed until that staging epoch
-        closes, drains, and automatically finalizes with an eligible significant
-        winner or no winner, without honesty review; execution status and a
+        closes, drains, and automatically finalizes with the highest-ranked
+        placeable winner passing every gate, or no winner. Optional manual
+        approval happens after finalization; execution status and a
         reviewed message-free terminal failure code remain visible. An
         explicitly superseded staging epoch, or
         one interrupted by production epoch one, exposes only a non-retriable
