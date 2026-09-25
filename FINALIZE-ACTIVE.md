@@ -2334,3 +2334,67 @@ then replayed retained epochs without a durable `through` marker. The checkpoint
 must validate only append-only suffixes during provisional recovery and must be
 ignored for strict final acceptance. None of these source changes alters the
 retained supervisor or rewrites R20/R24 evidence.
+
+
+## Future recovered-read accounting — R44/R45 review
+
+R44's first interval epoch cannot meet strict acceptance. Both validators
+reported `release steering advanced from incomplete epoch 1662 to 1663` at the
+first interval boundary (settlement epoch 616). The exact stderr source offsets
+are 300896970 for validator-1 and 243603097 for validator-2 in
+`sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/`. R44 continues through
+terminal capture by user direction; the continuity failures remain blocking.
+The preserved offset-bounded error blocks and individually indexed stdout
+events are recorded in
+`/mnt/data/sn-testnet/evidence/r44-compact-replay-retry-20260925/boundary-manifest.json`.
+
+These continuity failures are distinct from a read interruption that later
+recovers. Validator-1 retained a finalized-scheduler WebSocket close before 27
+no-submission weight rejections for one positive weight under limit 32768.
+Validator-2 retained compact settlement/operator replay deadlines, a runtime
+version read deadline, a finalized-scheduler WebSocket close, a refused artifact
+Get, and later replica Post/native-operator deadlines. Longer read and steering
+budgets do not by themselves establish that all native epoch work can finish.
+R45 needs the independent scheduler and infeasible-weight dispositions reviewed
+and a complete mature-history replay/native-completion qualification under the
+fault schedule, while preserving immutable evidence and strict continuity.
+
+R44 keeps its recorded process-log findings, v12 terminal policy, raw line
+hashes, counters, and signed acceptance boundary unchanged. A later generic
+progress event does not discharge a `release-steering-attempt-failure`.
+Current findings aggregate by process/stream/class and acceptance scope; they
+do not identify each failed read by native epoch and immutable artifact. The
+existing successful steering return also carries no independently verifiable
+recovery identity. Consequently this repair does not add a recovered-read
+disposition or relax terminal acceptance.
+
+For future runs, a transport-only read failure may become nonblocking only
+under a separately versioned recovery protocol with all of these properties:
+
+- Retain every original event, count, source offset/hash, process identity and
+  acceptance scope. Native-write, continuity, integrity, custody and independent
+  close failures remain terminal-blocking, including mixed error trees.
+- Emit a typed read-interruption identity covering the native epoch, exact
+  immutable artifact/cut, operator and replay purpose. Preserve the distinction
+  between a canceled service, an expired read attempt and a permanent refusal.
+- Bind recovery to complete authenticated replay of those same inputs, after
+  all dependent projections and closes succeed. Where the interval requires a
+  native result, additionally verify the exact finalized/applied intent and
+  receipt; a log string or progress in another epoch is insufficient.
+- Reconcile every occurrence individually. One successful read must not clear
+  another operator, artifact, epoch, process, restart, pending native write or
+  later interruption. Unresolved or exhausted retries remain blocking.
+- Version the classifier for new runs while preserving earlier findings and
+  signed acceptance-scope hashes. Do not reinterpret an old signed boundary or
+  drop raw errors to obtain a clean report.
+- Add deterministic tests for complete recovery plus wrong-process, wrong-epoch,
+  wrong-artifact, partial-census, mixed-close, canceled-parent, restart, missing
+  native finality and unrelated-success counterexamples. Race qualification
+  must exercise the real event/replay/terminal-accounting integration.
+
+The compact replay repair and ordinary artifact/server-key Get retries are
+future-build work in isolated worktrees. Public artifact retries happen before
+one final HTTP exchange is signed; once that observation is retained, later
+replay consumes its exact bytes and cannot replace a historical negative with
+another live request. No live R44 process, configuration or evidence is changed
+by these fixes.

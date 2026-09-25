@@ -17,7 +17,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/urfoundation/sn/payoutartifact"
 )
@@ -47,6 +46,7 @@ type HTTPArtifactReader struct {
 	deploymentID string
 	netuid       uint16
 	client       *http.Client
+	retryHooks   releaseHttpGetRetryHooks
 }
 
 // NewHTTPArtifactReader pins the deployment identity and disables redirects so
@@ -65,7 +65,7 @@ func NewHTTPArtifactReader(apiURL, deploymentID string, netuid uint16) (*HTTPArt
 	return &HTTPArtifactReader{
 		baseURL: baseURL, deploymentID: deploymentID, netuid: netuid,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: releaseHttpGetAttemptTimeout,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -83,17 +83,40 @@ func (self *HTTPArtifactReader) get(ctx context.Context, endpoint string, maximu
 	if self.observedGet != nil {
 		return self.observedGet(ctx, endpoint, maximumBytes)
 	}
+	var value []byte
+	err := retryReleaseHttpGet(ctx, func(attemptCtx context.Context) error {
+		var err error
+		value, err = self.getAttempt(attemptCtx, endpoint, maximumBytes)
+		return err
+	}, self.retryHooks)
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+// A failed response owns no artifact bytes. Actual read/close errors remain
+// structured transport causes; framing and byte-limit failures stay permanent.
+func (self *HTTPArtifactReader) getAttempt(ctx context.Context, endpoint string, maximumBytes int64) (value []byte, resultErr error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 	response, err := self.client.Do(request)
 	if err != nil {
+		if response != nil && response.Body != nil {
+			err = errors.Join(err, response.Body.Close())
+		}
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		resultErr = errors.Join(resultErr, response.Body.Close(), ctx.Err())
+		if resultErr != nil {
+			value = nil
+		}
+	}()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s returned HTTP %d", endpoint, response.StatusCode)
+		return nil, &releaseHttpGetStatusError{endpoint: endpoint, status: response.StatusCode, retryAfter: attemptStreamHttpRetryAfter(response.Header)}
 	}
 	if mediaType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])); mediaType != "application/json" {
 		return nil, fmt.Errorf("%s returned content type %q", endpoint, mediaType)
@@ -101,9 +124,9 @@ func (self *HTTPArtifactReader) get(ctx context.Context, endpoint string, maximu
 	if response.ContentLength > maximumBytes {
 		return nil, fmt.Errorf("%s exceeds %d bytes", endpoint, maximumBytes)
 	}
-	value, err := io.ReadAll(io.LimitReader(response.Body, maximumBytes+1))
+	value, err = io.ReadAll(io.LimitReader(response.Body, maximumBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, &url.Error{Op: "Read", URL: endpoint, Err: err}
 	}
 	if int64(len(value)) > maximumBytes {
 		return nil, fmt.Errorf("%s exceeds %d bytes", endpoint, maximumBytes)
