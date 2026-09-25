@@ -1674,12 +1674,17 @@ five-epoch window. A previous finalized claim could falsely satisfy current
 coverage, while a historical uncertain claim could falsely fail it. Keep raw
 lifetime history and scope acceptance and anomaly verdicts to the exact signed
 epochs, requiring an observed outcome for every configured miner in each epoch.
-Treat pending and submitting as work in progress, but reject unresolved current
-outcomes at terminal. Do not close a signed uncertain incident merely because
+Keep the whitepaper's claim TTL: `pending` and `retry` may remain after an epoch
+finalizes while their value stays in outstanding liability. The phase-level
+claim coverage and on-chain conservation checks still apply. Treat a current
+`submitting` send as uncertain at the acceptance cut, and reject actual
+unreconciled `uncertain` or `failed` outcomes. Do not close a signed uncertain
+incident merely because
 the local queue later says `finalized` or `no-claim`; first authenticate its
 canonical receipt, block hash and Claimed event, or retain the incident open.
-The completed window-only claim gate is SN `5615a382`; anomaly scoping and
-receipt-authenticated closure remain separate qualification work.
+The completed window-only claim gate is SN `5615a382` and historical anomaly
+scoping is SN `ac2beccd`; receipt-authenticated closure remains separate
+qualification work.
 
 ### Supplemental repair allocation within lifetime caps
 
