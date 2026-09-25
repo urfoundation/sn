@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.9.23
+  version: 2026.9.25
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -20,11 +20,12 @@ info:
     epoch publishes its poll results after admission closes and all accepted
     work drains. It automatically names the highest-ranked placeable candidate
     passing every gate, without a significance or takeover-margin requirement;
-    an empty or wholly unplaceable round has no winner. Staging has no honesty
-    review or source promotion, and
-    even its winner has honesty_review=not_reviewed. A named staging winner
-    is not an honesty or safety approval and never changes evaluated source
-    or the significance threshold. Historical finalized results are preserved.
+    an empty or wholly unplaceable round has no winner. Newly created staging
+    rounds freeze a zero takeover margin; historical rounds retain their
+    original value. Staging never promotes source. Its named winner initially
+    has honesty_review=not_reviewed and may become approved only after an
+    explicit append-only manual review of that exact finalized winner.
+    Historical finalized rankings are preserved.
     Every epoch measures one nine-run control before the first submitted build,
     freezes its exact baseline.json bytes and SHA-256, and reuses that control
     for every candidate in the epoch. Candidate ranking uses absolute raw
@@ -112,8 +113,9 @@ paths:
         include_staging=true to also return finalized staging epochs through
         the same reconciliation shape. Staging epochs are explicitly marked
         and automatically name the highest-ranked placeable winner passing every gate,
-        or publish winner_job_id as null if none qualifies. Even a staging
-        winner has honesty_review=not_reviewed and is never promoted. Entries are
+        or publish winner_job_id as null if none qualifies. A staging winner
+        remains not_reviewed until explicitly approved by a manual operator
+        review; staging never promotes source. Entries are
         deterministically ordered by absolute raw score ascending, submission
         time, and job id for shared-control epochs. Historical per-job-control
         epochs retain normalized score descending before those tie breakers;
@@ -178,8 +180,9 @@ paths:
         validation, immutable artifact retention, cache identity, the real
         evaluator FIFO, embargo, and result publication without charging a fee
         or promoting source. After close and drain, staging automatically names
-        its highest-ranked eligible significant winner, or no winner, without
-        honesty review. Every job uses the authenticated
+        its highest-ranked placeable winner passing every gate, or no winner.
+        Explicit retrospective staging approval is available for the named
+        winner. Every job uses the authenticated
         append-only one-control-per-epoch baseline path used by production,
         while the separately promoted production host-readiness rebaseline
         identity is not required. A prior staging epoch must be
@@ -217,8 +220,8 @@ paths:
         Atomically stops accepting submissions for the current open staging
         epoch without canceling accepted jobs. The evaluator continues in FIFO
         order until every accepted job is terminal, then automatically names
-        the highest-ranked eligible significant winner (or no winner), finalizes,
-        and reveals the staging epoch without honesty review or promotion.
+        the highest-ranked placeable winner passing every gate (or no winner),
+        finalizes, and reveals the staging epoch without source promotion.
         This can precede scheduled reveal_at; the committed schedule is unchanged.
         Repeating the operation while grading or after
         finalization is idempotent.
@@ -474,6 +477,7 @@ components:
           $ref: "#/components/schemas/CompetitionPatchPolicy"
         evaluation_policy:
           $ref: "#/components/schemas/CompetitionEvaluationPolicy"
+          description: Frozen policy of the active production round, otherwise the current staging round, when one exists; defaults to configured production policy before any round. New staging rounds report takeover_margin 0.
         season_policy:
           $ref: "#/components/schemas/CompetitionSeasonPolicy"
         active_round:
@@ -616,8 +620,9 @@ components:
           description: Odd run count used once for the epoch control and independently for each candidate; production freezes this at nine.
         takeover_margin:
           type: number
-          exclusiveMinimum: 0
+          minimum: 0
           maximum: 0.5
+          description: Zero for staging rounds created under the no-margin policy; production rounds retain their strictly positive frozen margin. Historical staging rounds keep their original value.
         queue_limit:
           type: integer
           const: 0
@@ -837,9 +842,9 @@ components:
           type: string
           enum: [approved, rejected, not_reviewed]
           description: >-
-            Final production operator honesty-review disposition. Staging is
-            always not_reviewed, including a named winner, and never promotes
-            source; a staging winner is not an honesty or safety approval.
+            Final production operator honesty-review disposition. A staging
+            winner starts not_reviewed and can become approved only after an
+            explicit append-only manual review; staging never promotes source.
             Rejected significant candidates remain visible after the epoch embargo lifts but cannot
             be selected or promoted as the winner.
         score:
