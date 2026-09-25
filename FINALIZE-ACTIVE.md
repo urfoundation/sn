@@ -29,6 +29,12 @@ two capture-reader mismatches are under separate root-cause review for R45.
 Keep the live owner running to its original
 result or bounded watchdog, then compare exact owner artifacts and rerun the
 post-owner diagnostic without rewriting this first terminal copy.
+`urnetwork-sim-r44-post-owner-diagnostic.service` is armed for the original
+owner becoming inactive with `result.json` present. It verifies the same
+qualified image SHA-256, runs the reviewed read-only post-owner command into a
+new external directory, and cannot start while the owner remains active. Its
+existence does not imply an owner result; verify its exit and report after the
+watchdog.
 
 ## R45 clean successor built; race gate pending — 2026-09-25 07:57 UTC
 
