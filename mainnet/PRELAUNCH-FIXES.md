@@ -2366,6 +2366,16 @@ unexplained attribution. Adjacent tests exercise all three exact rejection
 messages and the public-signature/nonzero-stream boundaries. The underlying
 contract provenance is not independently proved by these log lines; the report
 must distinguish the observed rejection from its plausible stale-secret cause.
+The source explains why replacement health alone is insufficient:
+`connect/transfer_contract_manager.go` retains provider contract secrets only
+in memory and expects old sender sequences to time out and flush their pending
+contracts after a restart. `miner/swarm.go` restores provider identity and TLS
+material through a URL-only SDK network space, without loading provider
+contract secrets. Before mainnet, test that sender recovery obtains a fresh
+contract after this intentional secret rotation, including queued retransmits
+and interrupted handshakes. If durable secret retention is adopted, bind it to
+the exact provider identity and store it before enabling traffic; malformed
+or foreign material must never silently become a replacement secret.
 The focused normal and race runs pass. Restoring the previous continuation
 function stops the same deterministic interval at block 4,900 before its terminal
 block 5,050, after five of seven required observations.
