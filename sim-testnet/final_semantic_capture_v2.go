@@ -246,6 +246,9 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 		if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "simulator-authority"}, authorityBytes); err != nil {
 			return nil, err
 		}
+		if err := captureFinalActiveGenerationSourcesV2(ctx, cfg, stateRoot, validatorId, retain); err != nil {
+			return nil, err
+		}
 		if len(adoptionBytes) != 0 {
 			if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "strict-history-adoption"}, adoptionBytes); err != nil {
 				return nil, err

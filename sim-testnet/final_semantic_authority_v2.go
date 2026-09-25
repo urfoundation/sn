@@ -27,14 +27,15 @@ const finalValidatorAuthorityV2Schema = "urnetwork-sim-validator-source-authorit
 // material and must never be serialized. Prepared/completed remain byte arrays
 // so nested JSON indentation cannot replace their original signed-file pins.
 type finalValidatorAuthorityV2 struct {
-	Schema          string                   `json:"schema"`
-	StateRoot       string                   `json:"original_state_root"`
-	Config          *HarnessConfig           `json:"config"`
-	Public          *PublicManifest          `json:"public_manifest"`
-	Hyperparameters *Hyperparameters         `json:"hyperparameters"`
-	Resolved        resolvedPlanPublicInputs `json:"resolved_public_inputs"`
-	Prepared        []byte                   `json:"prepared_bytes"`
-	Completed       []byte                   `json:"completed_bytes"`
+	Schema           string                               `json:"schema"`
+	StateRoot        string                               `json:"original_state_root"`
+	Config           *HarnessConfig                       `json:"config"`
+	Public           *PublicManifest                      `json:"public_manifest"`
+	Hyperparameters  *Hyperparameters                     `json:"hyperparameters"`
+	Resolved         resolvedPlanPublicInputs             `json:"resolved_public_inputs"`
+	Prepared         []byte                               `json:"prepared_bytes"`
+	Completed        []byte                               `json:"completed_bytes"`
+	ActiveGeneration *finalValidatorGenerationAuthorityV2 `json:"active_generation,omitempty"`
 }
 
 func captureFinalValidatorAuthorityV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string) ([]byte, error) {
@@ -62,13 +63,28 @@ func captureFinalValidatorAuthorityV2(ctx context.Context, cfg *ResolvedConfig, 
 	if completed.PreparedHash != fmt.Sprintf("0x%x", sha256.Sum256(preparedBytes)) || prepared.PlanHash != completed.PlanHash {
 		return nil, errors.New("final V2 setup byte lineage differs")
 	}
-	return json.Marshal(finalValidatorAuthorityV2{Schema: finalValidatorAuthorityV2Schema, StateRoot: stateRoot, Config: cfg.Config, Public: cfg.Public, Hyperparameters: cfg.Hyperparameters, Resolved: resolvedPlanInputs(cfg), Prepared: preparedBytes, Completed: completedBytes})
+	authority := finalValidatorAuthorityV2{Schema: finalValidatorAuthorityV2Schema, StateRoot: stateRoot, Config: cfg.Config, Public: cfg.Public, Hyperparameters: cfg.Hyperparameters, Resolved: resolvedPlanInputs(cfg), Prepared: preparedBytes, Completed: completedBytes}
+	_, handoffErr := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(policyRolloverRoot(stateRoot), "handoff.json"), limit)
+	if !validatorpkg.ReleaseEvidenceV2SetupFileInitiallyMissing(handoffErr) {
+		if handoffErr != nil {
+			return nil, handoffErr
+		}
+		current, err := loadFinalCapturePlanV2(cfg, stateRoot)
+		if err != nil {
+			return nil, err
+		}
+		authority.ActiveGeneration, err = captureFinalValidatorGenerationAuthorityV2(ctx, cfg, stateRoot, current)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(authority)
 }
 
 // Reconstruct the actual renderer from approved public inputs. File refs,
 // origins, bounds, policy and initial EMA authority are derived separately
 // from the candidate runtime config; that config supplies no expected values.
-func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanticEvidence, current, source *SetupPlan, sourceBytes, runtimeBytes, manifestBytes, publicBytes, identityBytes, policyBytes, releaseBytes []byte, validatorID uint64) (*validatorpkg.ReleaseConfig, *finalValidatorAuthorityV2, error) {
+func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanticEvidence, current, source *SetupPlan, sourceBytes, runtimeBytes, manifestBytes, publicBytes, identityBytes, policyBytes, releaseBytes []byte, validatorID uint64, active ...finalValidatorGenerationReplayV2) (*validatorpkg.ReleaseConfig, *finalValidatorAuthorityV2, error) {
 	if ctx == nil || evidence == nil || current == nil || source == nil || validatorID == 0 || validatorID > uint64(evidence.ExpectedValidators) {
 		return nil, nil, errors.New("final V2 source authority is incomplete")
 	}
@@ -87,7 +103,11 @@ func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanti
 		return nil, nil, errors.New("final V2 authority shape differs")
 	}
 	configHash, err := releaseConfigHash(authority.Config, authority.Public, authority.Hyperparameters)
-	if err != nil || configHash != evidence.ConfigHash || current.PlanHash != evidence.PlanHash || current.ConfigHash != configHash || source.ConfigHash != configHash || current.PolicyHash != evidence.PolicyHash || source.PolicyHash != evidence.PolicyHash || current.DeploymentID != evidence.DeploymentID || source.DeploymentID != evidence.DeploymentID || !current.allowedPlanHashes()[source.PlanHash] || current.ChainID != evidence.ChainID || source.ChainID != evidence.ChainID || current.Netuid != evidence.Netuid || source.Netuid != evidence.Netuid {
+	hasActive := current.EvidenceRelayContinuation != nil && current.EvidenceRelayContinuation.ActiveGeneration != nil
+	if hasActive != (authority.ActiveGeneration != nil) || hasActive && len(active) != 1 || !hasActive && len(active) != 0 {
+		return nil, nil, errors.New("final V2 active generation branch is absent or unexpected")
+	}
+	if err != nil || configHash != evidence.ConfigHash || current.PlanHash != evidence.PlanHash || current.ConfigHash != configHash || !hasActive && (source.ConfigHash != configHash || source.PolicyHash != evidence.PolicyHash) || hasActive && (!validCanonicalHashHex(source.ConfigHash) || source.PolicyHash != current.PolicyHash && !policyRateAmendmentAllowsAncestor(current, source)) || current.PolicyHash != evidence.PolicyHash || current.DeploymentID != evidence.DeploymentID || source.DeploymentID != evidence.DeploymentID || !current.allowedPlanHashes()[source.PlanHash] || current.ChainID != evidence.ChainID || source.ChainID != evidence.ChainID || current.Netuid != evidence.Netuid || source.Netuid != evidence.Netuid {
 		return nil, nil, errors.Join(errors.New("final V2 public template or source plan differs from approval"), err)
 	}
 	if authority.Config.Deployment.DeploymentID != evidence.DeploymentID || authority.Public.Chain.ChainID != evidence.ChainID || !strings.EqualFold(authority.Public.Chain.GenesisHash, evidence.GenesisHash) || authority.Config.Topology.Validators != evidence.ExpectedValidators || authority.Config.Topology.Operators != evidence.ExpectedOperators || !authority.Config.ProvisionValidatorEvidenceV2 {
@@ -188,13 +208,34 @@ func finalValidatorConfigAuthorityV2(ctx context.Context, evidence *FinalSemanti
 			authority.Hyperparameters.OwnerControlled[key] = parsed
 		}
 	}
-	values, inputs, err := runtimeEvidenceFixedPublicInputsV2(resolved, source, authority.StateRoot, &prepared, &completed, keys)
+	originalConfig := resolved
+	if hasActive {
+		originalConfig = historicalPlanConfig(resolved, source, current)
+		originalPolicyHash, err := originalConfig.Policy.HashHex()
+		if err != nil || originalPolicyHash != source.PolicyHash {
+			return nil, nil, errors.Join(errors.New("final original activation policy is unavailable"), err)
+		}
+	}
+	values, inputs, err := runtimeEvidenceFixedPublicInputsV2(originalConfig, source, authority.StateRoot, &prepared, &completed, keys)
 	if err != nil {
 		return nil, nil, err
 	}
 	values, err = applyEvidenceRelaySourceBounds(values, current.EvidenceRelayContinuation)
 	if err != nil {
 		return nil, nil, err
+	}
+	if hasActive {
+		if err := verifyFinalFrozenGenerationV2(resolved, source, &authority, values, inputs); err != nil {
+			return nil, nil, err
+		}
+		runtime, err := verifyFinalValidatorGenerationV2(ctx, resolved, current, source, &authority, &prepared, runtimeBytes, validatorID, active[0])
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := verifyFinalGenerationInventoryV2(resolved, &authority, manifestBytes); err != nil {
+			return nil, nil, err
+		}
+		return runtime, &authority, ctx.Err()
 	}
 	copied := *resolved.Config
 	copied.ValidatorEvidenceV2 = values

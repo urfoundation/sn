@@ -2858,7 +2858,11 @@ func (a *finalSemanticArchive) buildValidators(source *FinalSemanticEvidence, id
 		if collected.ValidatorID != uint64(index+1) {
 			return errors.New("validator source public identity census is not canonical")
 		}
-		if err := authority.verify(collected.ValidatorID, collected.PathVPK, collected.OperatorPaths); err != nil {
+		selected := authority
+		if owner := a.validatorReplayV2[collected.ValidatorID]; owner != nil && owner.paths != nil {
+			selected = owner.paths
+		}
+		if err := selected.verify(collected.ValidatorID, collected.PathVPK, collected.OperatorPaths); err != nil {
 			return err
 		}
 	}

@@ -32,6 +32,7 @@ type finalValidatorReplayManifestV2 struct {
 	ValidatorID      uint64                            `json:"validator_id"`
 	Capture          FinalCollectedValidatorEvidenceV2 `json:"capture"`
 	SourcePlan       FinalArtifactLocator              `json:"original_source_plan"`
+	ActiveSourcePlan *FinalArtifactLocator             `json:"active_source_plan,omitempty"`
 	RuntimeInventory FinalArtifactLocator              `json:"runtime_inventory"`
 	PublicDeployment FinalArtifactLocator              `json:"public_deployment"`
 	PublicIdentities FinalArtifactLocator              `json:"public_identities"`
@@ -41,6 +42,7 @@ type finalValidatorReplayOwnerV2 struct {
 	ctx           context.Context
 	archive       *validatorpkg.ReleaseEvidenceV2Archive
 	config        *validatorpkg.ReleaseConfig
+	paths         *finalOperatorPathAuthority
 	manifest      finalValidatorReplayManifestV2
 	observations  []validatorpkg.ReleaseEvidenceV2DecisionObservation
 	intents       []validatorpkg.SteeringIntent
@@ -215,7 +217,32 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err != nil {
 		return nil, err
 	}
-	release, authority, err := finalValidatorConfigAuthorityV2(ctx, evidence, current, source, authorityBytes, runtimeBytes, controls["inventory"], controls["deployment"], controls["identities"], controls["policy"], controls["release"], entry.ValidatorID)
+	var active []finalValidatorGenerationReplayV2
+	if current.EvidenceRelayContinuation != nil && current.EvidenceRelayContinuation.ActiveGeneration != nil {
+		if manifest.ActiveSourcePlan == nil {
+			return nil, errors.New("final active generation source plan is missing")
+		}
+		raw, err := loadFinalV2Source(ctx, load, *manifest.ActiveSourcePlan, maximumSetupPlanFileBytes)
+		if err != nil {
+			return nil, err
+		}
+		activeSource, err := decodeFinalHistoricalPlanBytes(raw)
+		if err != nil {
+			return nil, err
+		}
+		journal, err := readNamed("relay-journal", "journal.jsonl", maximumFinalJournalBytes)
+		if err != nil {
+			return nil, err
+		}
+		entries, err := decodeFinalSemanticJournalBytes(journal)
+		if err != nil {
+			return nil, err
+		}
+		active = append(active, finalValidatorGenerationReplayV2{source: activeSource, entries: entries, read: func(name string, maximum uint64) ([]byte, error) { return readNamed("setup", name, maximum) }})
+	} else if manifest.ActiveSourcePlan != nil {
+		return nil, errors.New("final original generation has an unexpected source branch")
+	}
+	release, authority, err := finalValidatorConfigAuthorityV2(ctx, evidence, current, source, authorityBytes, runtimeBytes, controls["inventory"], controls["deployment"], controls["identities"], controls["policy"], controls["release"], entry.ValidatorID, active...)
 	if err != nil {
 		return nil, err
 	}
@@ -233,10 +260,10 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 		if err := verifyFinalHistoryAdoptionV2(current, authority.StateRoot, release, runtimeBytes, adoption); err != nil {
 			return nil, err
 		}
-		if adoption.SourcePlanHash != source.PlanHash {
-			return nil, errors.New("final V2 adoption selects another original activation source")
-		}
 		release.StateDir = adoption.CoordinatorStateDir
+	}
+	if err := finalValidatorAdoptionSourceV2(source, active, adoption); err != nil {
+		return nil, err
 	}
 	hotkey, err := decodeHex32("final V2 original validator hotkey", manifest.Capture.Hotkey)
 	if err != nil {
@@ -246,6 +273,11 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err != nil {
 		return nil, err
 	}
+	paths, err = finalGenerationPathAuthorityV2(paths, authority)
+	if err != nil {
+		return nil, err
+	}
+	owner.paths = paths
 	if manifest.Capture.Hotkey != paths.identities.Substrate[validatorHotkeyLabel(int(entry.ValidatorID))].PublicKey {
 		return nil, errors.New("final V2 hotkey differs from original public custody")
 	}
@@ -423,6 +455,24 @@ func (a *finalSemanticArchive) buildValidatorReplayV2(evidence *FinalSemanticEvi
 			return err
 		}
 		manifest := finalValidatorReplayManifestV2{Schema: finalValidatorReplayV2Schema, DeploymentID: evidence.DeploymentID, PlanHash: evidence.PlanHash, ValidatorID: collected.ValidatorID, Capture: *collected.EvidenceV2, SourcePlan: sourcePlan, RuntimeInventory: shared["launch-foundation/runtime-config-manifest.json"], PublicDeployment: shared["launch-foundation/public.json"], PublicIdentities: shared["public/identities.json"]}
+		if authority.ActiveGeneration != nil {
+			var handoff policyRolloverHandoffV2
+			if err := decodeStrictJSONBytes(authority.ActiveGeneration.Handoff, &handoff); err != nil {
+				return err
+			}
+			if !validCanonicalHashHex(handoff.SourcePlanHash) {
+				return errors.New("final active generation source hash is invalid")
+			}
+			raw, _, err := a.file("plan-history/" + stringsTrim0x(handoff.SourcePlanHash) + ".json")
+			if err != nil {
+				return err
+			}
+			locator, err := a.derivedBytes("validator-activation-source-plan-v2", "validator-activation-plan-"+stringsTrim0x(handoff.SourcePlanHash)+".json", raw)
+			if err != nil {
+				return err
+			}
+			manifest.ActiveSourcePlan = &locator
+		}
 		locator, err := a.derived("validator-replay-v2", fmt.Sprintf("validator-%d-replay-v2.json", collected.ValidatorID), manifest)
 		if err != nil {
 			return err
@@ -511,4 +561,23 @@ func verifyFinalMeasurementLineageWithReplayV2(owner *finalValidatorReplayOwnerV
 		return err
 	}
 	return owner.ctx.Err()
+}
+
+// Approval/custody validation precedes this routing check. An active request
+// belongs to its separately verified source plan, never the initial activation.
+func finalValidatorAdoptionSourceV2(original *SetupPlan, active []finalValidatorGenerationReplayV2, adoption *validatorpkg.ReleaseHistoryAdoptionV2) error {
+	if original == nil || len(active) > 1 {
+		return errors.New("final history source owner is invalid")
+	}
+	expected := original.PlanHash
+	if len(active) == 1 {
+		if active[0].source == nil || adoption == nil {
+			return errors.New("final active generation lacks its exact strict history adoption")
+		}
+		expected = active[0].source.PlanHash
+	}
+	if adoption != nil && adoption.SourcePlanHash != expected {
+		return errors.New("final V2 adoption selects another original activation source")
+	}
+	return nil
 }

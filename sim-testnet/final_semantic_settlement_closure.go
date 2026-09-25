@@ -349,10 +349,14 @@ func verifyFinalCollectedSettlementAuthorityWithReader(ctx context.Context, cfg 
 			if validator.ValidatorID != uint64(index+1) {
 				return errors.New("compact collected validator census is not canonical")
 			}
-			if err := authority.verify(validator.ValidatorID, validator.PathVPK, validator.OperatorPaths); err != nil {
+			selected, err := finalCapturedGenerationPathAuthorityV2(ctx, validator, authority, read)
+			if err != nil {
 				return err
 			}
-			if err := verifyFinalCapturedValidatorBytesV2WithReader(ctx, cfg, value, validator, authority, loaded, read); err != nil {
+			if err := selected.verify(validator.ValidatorID, validator.PathVPK, validator.OperatorPaths); err != nil {
+				return err
+			}
+			if err := verifyFinalCapturedValidatorBytesV2WithReader(ctx, cfg, value, validator, selected, loaded, read); err != nil {
 				return err
 			}
 		}

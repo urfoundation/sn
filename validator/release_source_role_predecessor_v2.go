@@ -7,6 +7,7 @@ package validator
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,6 +109,34 @@ func DecodeReleaseSourceRolePredecessorV2(ctx context.Context, cfg *ReleaseConfi
 // Decode the finite canonical descriptor and its independently pinned signed
 // references. The predecessor policy may differ; custody identity may not.
 func decodeReleaseSourceRolePredecessorV2(ctx context.Context, cfg *ReleaseConfig, encoded []byte) (*ReleaseSourceRolePredecessorV2, *ReleaseMeasurementArtifact, *ReleaseMeasurementEnvelope, error) {
+	return decodeReleaseSourceRolePredecessorWithReadV2(ctx, cfg, encoded, ReadReleaseEvidenceV2File)
+}
+
+// Detached replay authenticates the same descriptor and signed payloads using
+// only its closed archive. This does not create a native finality witness.
+func DecodeReleaseSourceRolePredecessorArchiveV2(ctx context.Context, cfg *ReleaseConfig, encoded []byte, read func(context.Context, ReleaseEvidenceV2File, uint64) ([]byte, error)) (*ReleaseSourceRolePredecessorV2, error) {
+	if read == nil {
+		return nil, errors.New("source role archive reader is absent")
+	}
+	checked := func(ctx context.Context, ref ReleaseEvidenceV2File, maximum uint64) ([]byte, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if ref.Bytes == 0 || ref.Bytes > maximum {
+			return nil, errors.New("source role archive reference exceeds its bound")
+		}
+		raw, err := read(ctx, ref, maximum)
+		if err != nil || uint64(len(raw)) != ref.Bytes || attemptHex32(sha256.Sum256(raw)) != ref.SHA256 {
+			return nil, errors.Join(errors.New("source role archive bytes differ from their exact reference"), err)
+		}
+		return raw, ctx.Err()
+	}
+	proof, _, _, err := decodeReleaseSourceRolePredecessorWithReadV2(ctx, cfg, encoded, checked)
+	return proof, err
+}
+
+// The file and archive callers share all domain, lifecycle and signature checks.
+func decodeReleaseSourceRolePredecessorWithReadV2(ctx context.Context, cfg *ReleaseConfig, encoded []byte, read func(context.Context, ReleaseEvidenceV2File, uint64) ([]byte, error)) (*ReleaseSourceRolePredecessorV2, *ReleaseMeasurementArtifact, *ReleaseMeasurementEnvelope, error) {
 	if ctx == nil || cfg == nil || len(encoded) == 0 || len(encoded) > ReleaseSourceRolePredecessorV2MaximumBytes {
 		return nil, nil, nil, errors.New("source role predecessor descriptor exceeds its bound")
 	}
@@ -138,7 +167,7 @@ func decodeReleaseSourceRolePredecessorV2(ctx context.Context, cfg *ReleaseConfi
 	if proof.Measurement.Bytes != intent.MeasurementArtifactSize || proof.Measurement.SHA256 != "0x"+strings.TrimPrefix(intent.MeasurementArtifactHash, "sha256:") || proof.Envelope.Bytes != intent.MeasurementEnvelopeSize || proof.Envelope.SHA256 != "0x"+strings.TrimPrefix(intent.MeasurementEnvelopeHash, "sha256:") {
 		return nil, nil, nil, errors.New("source role predecessor references differ from the retained intent")
 	}
-	measurement, err := ReadReleaseEvidenceV2File(ctx, proof.Measurement, cfg.EvidenceV2.Bounds.MaxArtifactBytes)
+	measurement, err := read(ctx, proof.Measurement, cfg.EvidenceV2.Bounds.MaxArtifactBytes)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -146,7 +175,7 @@ func decodeReleaseSourceRolePredecessorV2(ctx context.Context, cfg *ReleaseConfi
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	envelopeBytes, err := ReadReleaseEvidenceV2File(ctx, proof.Envelope, min(cfg.EvidenceV2.Bounds.MaxControlBytes, ReleaseMeasurementEnvelopeV2MaximumBytes))
+	envelopeBytes, err := read(ctx, proof.Envelope, min(cfg.EvidenceV2.Bounds.MaxControlBytes, ReleaseMeasurementEnvelopeV2MaximumBytes))
 	if err != nil {
 		return nil, nil, nil, err
 	}
