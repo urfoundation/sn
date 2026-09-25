@@ -64,6 +64,10 @@ release acceptance interval or a successful finalization.
   `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/storage-census-active-start-20260925T1450/blob-object-census.jsonl`
   with SHA-256 `2805ad102d5d5f9c85159785841ca054934eb7a8cb0fc263fcc384042bccaeb5`.
   Its first four activation minutes do not prove a complete active-epoch rate.
+- `first-postactivation-observation.json`: exact owner observation line 11,
+  observed at 14:50:01 UTC on finalized block 8,083,792. It reports healthy
+  supervisor, all 808 bindings valid, and zero usage for complete epoch 627;
+  it does not bind an acceptance interval.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

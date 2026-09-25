@@ -94,6 +94,16 @@ Only four objects totaling 5,872 bytes were created during the first
 14:46:05–14:50:00 activation minutes. This is a fresh baseline, not a complete
 healthy source epoch or a twofold growth-margin proof.
 [Census summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-activation-census-summary.json).
+The first owner observation pinned after activation was taken at 14:50:01 UTC,
+finalized block **8,083,792**. It reports a healthy supervisor and **808/808
+fleet bindings valid**; the raw observation hash is
+`0xd1784a3c947a994d7a29bcaaf9362fd339df8f2374e03b1b078bed769ac250d4`.
+Its rate proof is still not ready: complete epoch 627 has zero usage for
+operator 1 and yields zero tao-rao against the 200,000-rao twice-native
+threshold. The typed provisional low-usage deferral is absent at this cut.
+This observation proves the renewed binding check, not acceptance start.
+[Exact observation](peerreview/evidence/FINAL-2-R45-renewal-20260925/first-postactivation-observation.json)
+(raw SHA-256 `1181150cc6096d64c6f365a7f71fbfae948c247f880effe4f6ee5c19672156d3`).
 
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final

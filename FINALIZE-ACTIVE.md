@@ -46,6 +46,12 @@ The independent 14:50 UTC full object listing counted 162,366 objects and
 34,505,454,565 bytes, with only 5,872 bytes in the first activation minutes.
 Keep the active full-epoch growth gate open; this short baseline is not a
 healthy-run projection.
+The first post-activation observation at finalized block 8,083,792 reports
+supervisor healthy and 808/808 fleet bindings valid. Policy-rate readiness is
+still false on complete epoch 627 (operator 1 zero bytes/zero tao-rao versus
+200,000-rao twice-native threshold), with no provisional low-usage deferral.
+Do not count this as a signed acceptance boundary. The exact observation is in
+the R45 portable evidence bundle.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
