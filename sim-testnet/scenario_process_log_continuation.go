@@ -34,6 +34,11 @@ func scenarioProcessLogFailureDeferred(cfg *ResolvedConfig, phase string, failur
 			for _, finding := range failure.findings {
 				switch finding.Class {
 				case "release-steering-attempt-failure", "release-steering-continuity", "tls-handshake-timeout", "packet-read-timeout", "connection-close-timeout", "exit-gap-timeout":
+				case "restart-stale-contract":
+					// The exact primary network-contract rejection can arrive
+					// after replacement health and fault restoration. Retain it
+					// as unexplained/final-blocking while the diagnostic interval
+					// continues; no contract or fault attribution is accepted here.
 				default:
 					return false
 				}
