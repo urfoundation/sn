@@ -879,6 +879,42 @@ Recover the last authenticated checkpoint without losing a signed attempt or
 marking incomplete publication complete. Release/test entry points propagate
 selected scratch/cache paths to children and remain usable in isolated CI.
 
+**R44 artifact bucket quota — In progress.** R44's operator workers could not
+publish epoch 624 artifacts because the shared bucket exceeded its 32 GiB hard
+quota. The scenario publisher reported only HTTP 400: the API collapsed the
+typed storage error into a generic rejection, and the caller discarded the
+response detail. HTTP health and successful reads did not prove write capacity.
+Read-only admission must compare authenticated bucket usage, its quota and
+physical disk headroom; retain enough space for both immutable content/history
+objects, operator replicas, the complete release and production interval, and
+retained evidence. A provisional deployment-publication waiver must not skip
+this independent storage check.
+
+The reviewed testnet repair increased only the bucket hard quota to 64 GiB,
+with about 435 GiB free on the healthy data disk. Two isolated operator HTTP
+probes each published the same 1.60 MB preflight envelope twice and verified
+exact content/history readback. They used a separate nonaccepting namespace;
+the failed R44 result remains unchanged. No object deletion, retention change,
+service restart or acceptance waiver was involved. Persist the quota in its
+deployment configuration so a later infrastructure apply cannot restore 32 GiB.
+
+The retained object census measured 1.326 GB of new R44 objects over 9h45m,
+including both operator replicas, with a peak hour of 300.129 MB. A 12-hour
+release/production forecast at twice that peak is 7.203 GB against 34.225 GB
+remaining quota. This is an empirical margin, not a guarantee: R44 had expired
+bindings. Remeasure after renewed bindings activate and before signing the next
+boundary; require at least twice the fresh projected run growth, plus physical
+headroom for other buckets. Keep the publication probe and its complete HTTP
+response independent of scenario acceptance.
+
+**Remaining closure.** Preserve typed capacity/storage failures through the
+publication API and bounded caller diagnostics without exposing credentials or
+turning invalid signatures into retryable errors. Deterministically test quota
+exhaustion before either write and between content/history writes, exact retry
+after capacity is restored, unchanged conflicting bytes, and malformed or
+unauthorized evidence. A quota increase and passing probes do not complete
+mainnet qualification or repair the historical failed run.
+
 ### PH-10 — Epoch boundaries, leases and partial renewal
 
 **Lesson.** Expiring preparation windows repeatedly triggered renewal; forecast
