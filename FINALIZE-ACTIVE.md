@@ -1,5 +1,20 @@
 # Testnet execution plan
 
+## Qualified R45 recovery stack integrated — 2026-09-25 10:53 UTC
+
+The eleven missing successor fixes are now on main through `c745d8b1` in
+their reviewed dependency order. Sol independently passed focused and affected
+adjacent simulator/validator selectors normally and under race detection on the
+clean isolated `54079077` source. The 43-file
+[source fence](/mnt/data/sn-testnet/qualification/r45-core-successor-20260925/source.sha256)
+matches main byte-for-byte; the [review](/mnt/data/sn-testnet/qualification/r45-core-successor-20260925/REVIEW.md)
+records each original patch, causal failure, conflict resolution and rollout
+boundary. This integration changes no active R44 executable or live state.
+The final R45 image still needs the separately qualified payout-window patch,
+the native published-cut retry repair, validator fixture qualification and a
+fresh post-R44 doctor/renewal plan. Do not infer live readiness from this source
+integration alone.
+
 ## R45 composition audit found missing qualified recovery stack — 2026-09-25 10:38 UTC
 
 Source comparison against current main `55454c52` found eight qualified
