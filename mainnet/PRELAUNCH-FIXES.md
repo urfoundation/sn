@@ -2265,3 +2265,14 @@ HTTP bodies within that finite budget and distinguish budget exhaustion from
 invalid signatures or conflicting content. Test slow, interrupted, duplicate
 and conflicting chunks without reducing final integrity checks or restarting
 unrelated runtime work.
+
+R45 source review found eleven previously qualified recovery fixes absent from
+the candidate main branch. A passing component test or isolated branch is not
+deployment evidence. Before mainnet launch, derive the release image from a
+reviewed dependency-ordered commit inventory, compare every changed source
+file to its qualified hash fence, and run the affected composed normal/race
+tests on that exact source. Include durable snapshot retry, transport error
+classification, original-child signaling proof, write-ahead fault intent,
+pending container restore and post-transition completion heads in the
+composed recovery rehearsal. A documentation-only main advance should not
+change the approved executable, but it must not conceal a missing code patch.
