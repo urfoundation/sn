@@ -97,6 +97,10 @@ func projectScenarioNativeSourcesV2(source *validatorpkg.ReleaseNativeSourceObse
 		if intent.ApplicationBlock == 0 || lifecycle.RevealNativeEpoch == 0 || lifecycle.ApplicationNativeEpoch < lifecycle.RevealNativeEpoch || len(intent.UIDs) != len(intent.Values) || len(intent.UIDs) != len(intent.Scores) {
 			return ValidatorObservation{}, errors.New("V2 scenario has an incomplete applied native observation")
 		}
+		weights, err := scenarioAppliedIntentWeights(&intent)
+		if err != nil {
+			return ValidatorObservation{}, err
+		}
 		result.AppliedIntents++
 		decision := HeadDecisionObservation{VectorHash: intent.VectorHash, ExtrinsicHash: intent.ExtrinsicHash, SettlementEpoch: intent.SettlementEpoch,
 			NativeSnapshot: ChainHead{Number: intent.NativeSnapshotBlock, Hash: strings.ToLower(intent.NativeSnapshotHash)}, EVMSnapshot: ChainHead{Number: intent.EVMSnapshotBlock, Hash: strings.ToLower(intent.EVMSnapshotHash)},
@@ -104,14 +108,11 @@ func projectScenarioNativeSourcesV2(source *validatorpkg.ReleaseNativeSourceObse
 			CommitNativeEpoch: lifecycle.CommitNativeEpoch, RevealNativeEpoch: lifecycle.RevealNativeEpoch, ApplicationNativeEpoch: lifecycle.ApplicationNativeEpoch, MeasurementArtifactHash: intent.MeasurementArtifactHash,
 			MaskedUIDs: append([]uint16(nil), intent.MaskedUIDs...), EligibleHeadUIDs: append([]uint16(nil), intent.EligibleHeadUIDs...), EligibleHeadScores: append([]validatorpkg.RationalJSON(nil), intent.EligibleHeadScores...),
 			SelectedHeadUIDs: append([]uint16(nil), intent.SelectedHeadUIDs...), RejectedHeadUIDs: append([]uint16(nil), intent.RejectedHeadUIDs...), StaleHeadBindings: len(intent.StaleHeadBindings)}
-		var err error
 		decision.CandidateFleetUIDs, decision.CandidateFleetHotkeys, err = headDecisionCandidateIdentities(reference.Artifact, intent.EligibleHeadUIDs)
 		if err != nil {
 			return ValidatorObservation{}, err
 		}
-		for index, uid := range intent.UIDs {
-			decision.AppliedWeights = append(decision.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: intent.Scores[index].Numerator, Denominator: intent.Scores[index].Denominator, Value: intent.Values[index]})
-		}
+		decision.AppliedWeights = weights
 		result.HeadDecisions = append(result.HeadDecisions, decision)
 		latest = &all[len(all)-1]
 		values, err := json.Marshal(intent.Values)

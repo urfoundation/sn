@@ -20,11 +20,14 @@ import (
 // This fixture begins at the existing authenticated local observer boundary.
 // No chain receipt or fully replayed measurement is asserted by the fixture.
 func provisionalIntentProjectionTest(t *testing.T) (*ResolvedConfig, ValidatorObservation, string, validatorpkg.SteeringIntent, *validatorpkg.ReleaseMeasurementArtifact) {
+	return provisionalIntentProjectionSourceTest(t, scenarioNativeSourceV2TestFixture())
+}
+
+func provisionalIntentProjectionSourceTest(t *testing.T, source *validatorpkg.ReleaseNativeSourceObservationV2) (*ResolvedConfig, ValidatorObservation, string, validatorpkg.SteeringIntent, *validatorpkg.ReleaseMeasurementArtifact) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
 	cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true}}
 	cfg.Config.Topology.HeadSlots = 1
-	source := scenarioNativeSourceV2TestFixture()
 	intent, artifact := source.References[0].Intent, source.References[0].Artifact
 	intent.Schema, intent.Netuid, intent.PolicyHash = validatorpkg.SteeringIntentSchema, cfg.Netuid, cfg.PolicyHash
 	intent.MaskedUIDs = []uint16{intent.SelfUID}

@@ -159,9 +159,11 @@ type HeadDecisionObservation struct {
 }
 
 func headDecisionCandidateIdentities(artifact *validatorpkg.ReleaseMeasurementArtifact, eligible []uint16) ([]uint16, []string, error) {
-	if artifact == nil || len(eligible) == 0 || len(uint16Set(eligible)) != len(eligible) {
+	if artifact == nil || len(uint16Set(eligible)) != len(eligible) {
 		return nil, nil, errors.New("validator measurement has no exact eligible candidate set")
 	}
+	// A verified pool-only vector has no head identities. Required head
+	// coverage belongs to the final gate, independently of native progress.
 	eligibleSet := uint16Set(eligible)
 	hotkeyByUID := make(map[uint16]string, len(eligible))
 	for _, binding := range artifact.Bindings {
@@ -187,6 +189,37 @@ func headDecisionCandidateIdentities(artifact *validatorpkg.ReleaseMeasurementAr
 		}
 	}
 	return uids, hotkeys, nil
+}
+
+// Source authentication precedes projection. An empty head is valid, but an
+// empty, malformed or entirely zero applied vector is never native progress.
+func scenarioAppliedIntentWeights(intent *validatorpkg.SteeringIntent) ([]IntentWeightObservation, error) {
+	if intent == nil || len(intent.UIDs) == 0 || len(intent.UIDs) != len(intent.Scores) || len(intent.UIDs) != len(intent.Values) {
+		return nil, errors.New("applied native vector is empty or has unequal uid/score/value counts")
+	}
+	weights := make([]IntentWeightObservation, 0, len(intent.UIDs))
+	seen := make(map[uint16]bool, len(intent.UIDs))
+	positive := false
+	for index, uid := range intent.UIDs {
+		score := intent.Scores[index]
+		numerator, numeratorOK := new(big.Int).SetString(score.Numerator, 10)
+		denominator, denominatorOK := new(big.Int).SetString(score.Denominator, 10)
+		if seen[uid] || !numeratorOK || !denominatorOK || numerator.Sign() < 0 || denominator.Sign() <= 0 || numerator.String() != score.Numerator || denominator.String() != score.Denominator {
+			return nil, fmt.Errorf("applied native vector UID %d is duplicated or has an invalid score", uid)
+		}
+		if intent.Values[index] > 0 {
+			if numerator.Sign() == 0 {
+				return nil, fmt.Errorf("applied native vector UID %d has positive weight with zero score", uid)
+			}
+			positive = true
+		}
+		seen[uid] = true
+		weights = append(weights, IntentWeightObservation{UID: uid, Numerator: score.Numerator, Denominator: score.Denominator, Value: intent.Values[index]})
+	}
+	if !positive {
+		return nil, errors.New("applied native vector has no positive weight")
+	}
+	return weights, nil
 }
 
 type ValidatorObservation struct {
@@ -1919,15 +1952,14 @@ func projectValidatorIntent(all []validatorpkg.SteeringIntent, validatorID, head
 			if measurementErr != nil {
 				decision.Error = "authenticated measurement candidate identity: " + measurementErr.Error()
 			}
-			if len(item.UIDs) != len(item.Scores) || len(item.UIDs) != len(item.Values) {
-				decision.Error = strings.TrimSpace(decision.Error + " " + fmt.Sprintf("uids/scores/values=%d/%d/%d", len(item.UIDs), len(item.Scores), len(item.Values)))
+			weights, weightErr := scenarioAppliedIntentWeights(item)
+			if weightErr != nil {
+				decision.Error = strings.TrimSpace(decision.Error + " " + weightErr.Error())
 			} else {
-				for weightIndex, uid := range item.UIDs {
-					decision.AppliedWeights = append(decision.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: item.Scores[weightIndex].Numerator, Denominator: item.Scores[weightIndex].Denominator, Value: item.Values[weightIndex]})
-				}
+				decision.AppliedWeights = weights
 			}
 			result.HeadDecisions = append(result.HeadDecisions, decision)
-			if latestApplied == nil || item.SubnetEpoch > latestApplied.SubnetEpoch {
+			if weightErr == nil && (latestApplied == nil || item.SubnetEpoch > latestApplied.SubnetEpoch) {
 				latestApplied = item
 			}
 			if len(item.Values) != 0 {
