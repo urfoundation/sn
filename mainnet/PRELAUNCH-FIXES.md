@@ -2242,3 +2242,41 @@ after commit, interruption between cohort members, refused syscalls, PID reuse,
 incomplete kernel ownership, malformed later members, exact adoption, supervised
 completion and independently healthy replacement. This is qualified source;
 it does not describe a deployment into the active R43 interval.
+
+### Terminal reads must distinguish unavailable values from invalid values
+
+At R43 validator 1's 00:07 UTC restart on September 25, the error bundle included
+`release V2 terminal geometry differs`, followed by a canceled `eth_call` at
+canonical block 8,079,376. The second read of the epoch boundary returned an
+error; it did not return a conflicting block number. The earlier joined-cut
+continuity failure can explain cancellation of the publication sibling, so the
+geometry message is not evidence of an independent chain invariant violation
+or proof that this read triggered the restart.
+
+Keep transport outcome and value validation as separate branches. Return the
+original typed RPC error, retaining its pinned block/hash and unwrap chain,
+before inspecting its zero-value result. Only successful reads can prove wrong
+geometry, wrong epoch or a conflicting hash. A timeout under a live owner may
+retry through that owner's existing bounded recovery; owner cancellation must
+stop work without manufacturing an integrity failure. Unknown cancellation or
+a timeout joined with a real integrity failure must not acquire blanket retry
+authority. Keep the same distinction in startup, scheduler, historical boundary,
+finalized snapshot and teardown readers.
+
+The same audit found that the prior-settlement boundary reader discarded its
+terminal-epoch RPC error and returned `wrong epoch`. Two numeric validation
+branches also formatted a nil error through `%w`. The isolated fix `01891658`
+corrects all three reader paths while retaining canonical selectors and hard
+checks on successfully returned invalid values. Seven deterministic tests
+exercise actual serialized RPC transport, retry past ten interrupted reads,
+owner cancellation without a second submission, mixed permanent causes, exact
+historical recovery, and invalid successful geometry/epoch responses. Focused
+and adjacent normal/race tests pass; restoring old source fails five root tests.
+
+The private incident bundle is
+`/mnt/data/sn-testnet/qualification/r43-geometry-read-errors-20260925/validator1-terminal-excerpt.json`,
+SHA-256 `7ff3c024d8b02750d3183dcb312acdece1eccbca5519241ad0478cc8b8d220ef`.
+It records original log offsets and newline-inclusive hashes for the eight
+relevant lines, including the canceled canonical block hash. These are runtime
+log facts, not independent on-chain verification. The patch is qualified for a
+successor; R43's binaries, retained continuity finding and final gate are intact.
