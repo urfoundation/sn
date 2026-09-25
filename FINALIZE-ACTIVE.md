@@ -1,5 +1,18 @@
 # Testnet execution plan
 
+## R45 renewal plan-history blocker — 2026-09-25 07:13 UTC
+
+Static successor review found that the retained activated policy-rollover and
+source-role readers compare their original `SourcePlanHash` with the current
+plan hash. Round-7 fleet renewal necessarily appends a descendant plan, so
+the clean `18b13aea` image's 66-check doctor does not prove it can restart
+after renewal. Do not use that image for a live round-7 apply or retained
+resume. Astra is fixing read-only historical source selection from the exact
+approved plan archive, with a deterministic descendant-plan test; new rollover
+or overlay mutations must still require current-plan approval. Rebuild and
+requalify a composed successor after this fix before the post-R44 handoff.
+R44 remains active and is not changed by this finding.
+
 ## R45 composed successor qualified externally — 2026-09-25 07:01 UTC
 
 The clean successor binary is
