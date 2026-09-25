@@ -84,6 +84,14 @@ they do not establish successful finalization.
   15:52:25 UTC, binding that baseline to five measured epochs 630–634,
   start block 8,084,374 and terminal block 8,086,024. This is a start record,
   not a final result.
+- `blob-epoch628-census-summary.json`: read-only full-bucket listing summary
+  after the first complete renewed-binding epoch. It counts 428 retained new
+  objects and 244,049,506 bytes during 14:46:05–15:51:00. The full listing
+  remains at
+  `/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/storage-census-full-epoch628-20260925T1552/blob-object-census.jsonl`
+  with SHA-256 `f746220a9b5b0e1e48d329d382f89b292069dbfe99784026695cc6aaffcf4f95`.
+  This retained-object census cannot count overwritten, deleted or refused
+  writes and does not independently close request-rate acceptance.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

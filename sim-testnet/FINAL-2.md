@@ -141,6 +141,19 @@ This is the release acceptance boundary, not completed final validation.
 The earlier R44-LC-1 exception, R45 governance-drill gap and remaining strict
 checks retain their identities while the owner runs to terminal evidence.
 
+The independent full-bucket listing completed at 15:56 UTC and measured the
+14:46:05–15:51:00 active-epoch window: **428 retained new objects and
+244,049,506 bytes**. The full bucket then held 34,749,960,292 bytes under a
+68,719,476,736-byte quota, leaving **33,969,516,444 bytes**. The measured
+rate is about 225.6 MB/hour; doubling it across the five-hour measured release
+window projects **2.256 GB**, about fifteen times below that headroom. This
+supports the twofold byte-capacity margin for the observed workload. Object
+listing is a lower bound if writes were overwritten, deleted or rejected; it
+does not itself prove the pinned API request-rate forecast or final publication.
+[Census summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-epoch628-census-summary.json)
+(SHA-256 `81ef30d35f78234df3403c77d863d9114a38100139b6aca8aeede87b39b30191`;
+full listing SHA-256 `f746220a9b5b0e1e48d329d382f89b292069dbfe99784026695cc6aaffcf4f95`).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

@@ -10,7 +10,15 @@ finalized block 8,084,084; measured epochs are 630–634, starting at block
 signed envelope and baseline observation are in the R45 portable bundle.
 The owner remains the only writer. Do not restart it for the isolated fixes.
 Final acceptance remains open, including governance drill, relay horizon,
-publication capacity, storage growth and the scoped R44 exception.
+publication capacity and the scoped R44 exception.
+The read-only full active-epoch object census has since measured 428 retained
+objects and 244,049,506 bytes during 14:46:05–15:51:00. Bucket headroom was
+33,969,516,444 bytes; a doubled five-hour projection at the measured rate is
+2,255,656,538 bytes, giving about fifteen times that doubled margin. This
+supports the observed-workload byte gate, subject to the listing's lower-bound
+limit for overwritten, deleted or rejected writes. The pinned API request-rate
+advisory remains a separate unclosed strict check. Portable summary is in the
+R45 bundle; raw listing stays on `/mnt/data`.
 
 ## R45 preparation record — 2026-09-25 13:50 UTC
 
