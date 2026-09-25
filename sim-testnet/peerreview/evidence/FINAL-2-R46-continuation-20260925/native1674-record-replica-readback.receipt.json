@@ -1,0 +1,38 @@
+{
+  "captured_at": "2026-09-25T18:16:37.947280+00:00",
+  "content_hash": "0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769",
+  "interpretation": "Current readback can establish exact object presence. It cannot retroactively supply the timed-out POST acknowledgement or prove the native1674 intent was finalized.",
+  "kind": "records",
+  "read_only": true,
+  "replicas": [
+    {
+      "bytes": 249748,
+      "content_length": null,
+      "content_type": "application/x-ndjson",
+      "elapsed_seconds": 0.576427,
+      "endpoint": "http://127.0.0.1:18081/sn/attempt-artifact?hash=0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769&kind=records",
+      "etag": "\"0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769\"",
+      "exact_object_hash": true,
+      "method": "GET",
+      "operator": 1,
+      "sha256": "73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769",
+      "started_at": "2026-09-25T18:16:36.878865+00:00",
+      "status": 200
+    },
+    {
+      "bytes": 249748,
+      "content_length": null,
+      "content_type": "application/x-ndjson",
+      "elapsed_seconds": 0.491914,
+      "endpoint": "http://127.0.0.1:18082/sn/attempt-artifact?hash=0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769&kind=records",
+      "etag": "\"0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769\"",
+      "exact_object_hash": true,
+      "method": "GET",
+      "operator": 2,
+      "sha256": "73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769",
+      "started_at": "2026-09-25T18:16:37.455347+00:00",
+      "status": 200
+    }
+  ],
+  "schema": "urnetwork-r46-native1674-replica-readback-v1"
+}

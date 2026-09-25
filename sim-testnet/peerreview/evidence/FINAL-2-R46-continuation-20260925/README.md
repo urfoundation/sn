@@ -64,3 +64,6 @@ validator-2 steering findings at the 18:08 cut. The receipt also documents
 correction of the auxiliary monitor's scope-field selector. The live owner
 continued under its provisional process-finding path; strict final review
 must retain these findings.
+`native1674-triage.receipt.json` and the replica-readback receipt distinguish
+successful recovery of the exact public object from the missing native steering
+intent: the active validator-2 intent and EMA remain at native epoch 1661.

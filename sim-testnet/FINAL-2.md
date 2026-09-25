@@ -78,6 +78,16 @@ preserved in the [finding receipt](peerreview/evidence/FINAL-2-R46-continuation-
 (SHA-256 `f632ef67a4c21cbd423fd7684b1cbd82a71f9b2916636a353a3ecec94da66308`)
 and [gate copy](peerreview/evidence/FINAL-2-R46-continuation-20260925/process-findings-180814.gate.json)
 (SHA-256 `8db8ebba9a4e1d7dcc94af7725cad445a39f23e367256a14d0e0e75f29fa169a`).
+Read-only reconciliation found the exact 249,748-byte records object on both
+publication replicas; the timed-out POST did not leave it missing. Both
+native-1674 operator inputs were retained, but validator 2's active steering
+intent and EMA are still at native epoch **1661**, with no later intent history.
+Thus object recovery does not establish native-1674 steering, and the
+continuity failure remains real. This is a strict finding for final review,
+while the R46 owner continues. [State triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/native1674-triage.receipt.json)
+(SHA-256 `1bc3ac7a1c725958c8f429e094fb569464e6a4a202f09d867a35338fd723da8d`),
+[replica readback](peerreview/evidence/FINAL-2-R46-continuation-20260925/native1674-record-replica-readback.receipt.json)
+(SHA-256 `ef2f8b1f7c5802ec52caa1858f373f3283384c02abeb6e4ff4dffa075b263165`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No

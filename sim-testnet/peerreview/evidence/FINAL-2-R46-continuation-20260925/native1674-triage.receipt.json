@@ -1,0 +1,70 @@
+{
+  "assessment": "Both public replicas currently hold the exact249748-byte records object and both native1674 operator inputs were durably retained before the epoch-continuity failure. Native1674 has no steering intent in this active store: the applied intent and head EMA remain at1661. The upload timeout is not proof of missing object and its recovery is not proof of finalized native steering. The subsequent EMA refusal preserves the earlier real native gap.",
+  "captured_at": "2026-09-25T18:17:49.137094+00:00",
+  "final_acceptance": false,
+  "future_hardening": "The typed immutable-object publication owner should reconcile an ambiguous POST by public exact-kind/hash/length readback on the same two destinations, then retry only owned transient publication if needed with original bytes, credential/VPK authority and finite budget. Keep native intent and EMA continuity strict; do not extend generic GET retry permission to arbitrary POSTs.",
+  "live_changes": false,
+  "replica_readback_receipt": "native1674-record-replica-readback.receipt.json",
+  "replica_readback_sha256": "ef2f8b1f7c5802ec52caa1858f373f3283384c02abeb6e4ff4dffa075b263165",
+  "schema": "urnetwork-r46-native1674-triage-v1",
+  "state": [
+    {
+      "bytes": 231,
+      "copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-state/head-ema.json",
+      "last_subnet_epoch": 1661,
+      "modified_at": "2026-09-25T01:35:23.759527+00:00",
+      "sha256": "df9d03914619ee03181a186d917e014f29a3f7f18868e2f5389817f016331bc7",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/head-ema.json"
+    },
+    {
+      "bytes": 8007,
+      "copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-state/steering-intents.json",
+      "current": {
+        "finalized_block": 8079823,
+        "native_snapshot_block": 8079802,
+        "settlement_epoch": 614,
+        "status": "applied",
+        "subnet_epoch": 1661,
+        "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+      },
+      "history_count": 0,
+      "modified_at": "2026-09-25T03:27:48.243473+00:00",
+      "sha256": "2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json"
+    },
+    {
+      "bytes": 128281,
+      "copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-state/subnet-00000000000000001674-no-00000000000000000001-v2.json",
+      "input": {
+        "cut_evm_snapshot_block": 8084766,
+        "cut_evm_snapshot_hash": "0xaf6499ec1d3a676f6f53b604821355422cc3528fd287f506a8c166b805cc3af3",
+        "cut_native_block": 8084766,
+        "cut_native_block_hash": "0x65a7b0ceef62e3561c5c70c4a02a85568c1fe33ac108251abfbd665ebe443a40",
+        "egress_generation": 41,
+        "no_id": 1,
+        "settlement_epoch": 631
+      },
+      "modified_at": "2026-09-25T18:07:52.291574+00:00",
+      "sha256": "62dcb7fc70eddee70f97116472594c556505b49c95376b8c1acc23149a679fea",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/measurements/inputs/subnet-00000000000000001674-no-00000000000000000001-v2.json",
+      "subnet_epoch": 1674
+    },
+    {
+      "bytes": 143403,
+      "copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-state/subnet-00000000000000001674-no-00000000000000000002-v2.json",
+      "input": {
+        "cut_evm_snapshot_block": 8084766,
+        "cut_evm_snapshot_hash": "0xaf6499ec1d3a676f6f53b604821355422cc3528fd287f506a8c166b805cc3af3",
+        "cut_native_block": 8084766,
+        "cut_native_block_hash": "0x65a7b0ceef62e3561c5c70c4a02a85568c1fe33ac108251abfbd665ebe443a40",
+        "egress_generation": 41,
+        "no_id": 2,
+        "settlement_epoch": 631
+      },
+      "modified_at": "2026-09-25T18:08:02.822148+00:00",
+      "sha256": "01df1a72520d14a645416a1dbf7e4cd2780bf170f353c8cfcc7bd8059e57e9e8",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/measurements/inputs/subnet-00000000000000001674-no-00000000000000000002-v2.json",
+      "subnet_epoch": 1674
+    }
+  ]
+}
