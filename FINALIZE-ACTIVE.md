@@ -1,5 +1,21 @@
 # Testnet execution plan
 
+## R45 capture contract-address fix qualified — 2026-09-25 08:50 UTC
+
+The R44 terminal diagnostic's validator-2 signed-source capture failure was
+caused by comparing checksum-cased config EVM addresses with lowercase
+measurement addresses as raw strings. The production fix `26038272`
+compares validated 20-byte addresses in capture, client-key request admission
+and artifact observation; signed measurement bytes remain unchanged. Focused
+normal/race (0.319/1.814 seconds) and affected adjacent normal/race
+(76.580/119.246 seconds) pass. An old-production overlay reproduces both
+positive-case failures. A pre-existing stale `Http 500` test assertion was
+corrected separately in `d17fa421` and passes in both adjacent modes. All
+seven committed file bytes match the independently qualified isolated source.
+This code is not in R44's pinned executable or the older `2662f5f0` successor
+image. A further companion read-only authority fix and a newly stamped clean
+image are required before R45 adoption or a fresh diagnostic replay.
+
 ## R45 retained-renewal reader race qualification complete — 2026-09-25 08:39 UTC
 
 The frozen round-7 historical authority fix in main `bbd33365` has passed
