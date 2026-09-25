@@ -53,6 +53,10 @@ the latter at block 8,084,740 restores policy rate readiness without changing
 the signed acceptance window. This transient remains visible to final review.
 `operator-read-recovery.receipt.json` binds both rows to exact offsets and
 hashes in the owner's observation log.
+`second-local-get-timeout-observation.json` records a later operator-2 GET
+timeout at block 8,084,769 with `operator-2-api` among expected fault targets.
+`operator-latency-triage.receipt.json` documents the overlapping scheduled
+dependency faults and resource checks without assigning unproved causation.
 `public-census-passed.receipt.json` binds the 18:03 UTC owner's deferred
 public-census pass to its exact journal cursor, process and signed window.
 `process-findings-180814.gate.json` and its receipt preserve the raw

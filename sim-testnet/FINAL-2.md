@@ -50,6 +50,16 @@ remove that timeout row. Its `operator-error` is expected to remain an open
 final anomaly unless the terminal checker establishes an applicable expected
 fault; no such fault target is present in this row. This is a prospective
 strict-gate finding, not a reason to stop the continuing partial run.
+A second 30-second local GET timeout occurred for operator 2 in an observation
+at block **8,084,769**. That row does include `operator-2-api` among expected
+fault targets. A read-only latency review correlated the endpoint failures
+with scheduled PostgreSQL restarts and found healthy API processes and low
+single-digit successful route times outside faults; it does not prove the
+exact request's cause. The second row and its fault context remain available
+to the terminal checker. [Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/second-local-get-timeout-observation.json)
+(SHA-256 `942f450a894b2f48a7dee768ba66bafc2e02c1dda4d947146d13d200c5c24618`),
+[latency triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/operator-latency-triage.receipt.json)
+(SHA-256 `6d4522af1f38460bf5ac0b69836776b2baacda2600d5caa37609aecb5458367d`).
 At 18:03 UTC, the live owner also logged
 `public_census_audit_passed=true`; this closes that deferred preparation
 audit while strict terminal acceptance remains open. The
