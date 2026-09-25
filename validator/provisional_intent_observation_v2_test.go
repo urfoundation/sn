@@ -34,15 +34,19 @@ func TestProvisionalIntentObservationAcceptsOnlyAuthenticatedPlanLineage(t *test
 	}
 }
 
-func TestProvisionalActivationObservationLoadsOnlyReviewedRetainedRuntime(t *testing.T) {
+func TestProvisionalActivationObservationKeepsExplicitReviewedCompatibility(t *testing.T) {
 	cfg := validReleaseConfig(t)
 	cfg.RuntimeSpec = 461
 	cfg.RuntimeCodeHash = "0x15cf19d2f4f8e2a8a6f46cb735db8f9f03ba3775866188fa93799ad3a040da2e"
 	cfg.RuntimeMetadataHash = "0x98b2cfd0d6633488dfe5b3b70b869d5753aa3c42396533013df131e4e0e5ca68"
+	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil {
+		t.Fatal("retained runtime gained current authority without its explicit profile")
+	}
 	cfg.ProvisionalRuntimeCompatibility = "urnetwork-subtensor-consumed-interface-v1"
 	path := writeReleaseConfig(t, cfg)
-	if _, err := LoadReleaseConfig(path); err == nil {
-		t.Fatal("current producer loader admitted retained runtime")
+	current, err := LoadReleaseConfig(path)
+	if err != nil || current.RuntimeSpec != cfg.RuntimeSpec || current.RuntimeCodeHash != cfg.RuntimeCodeHash || current.RuntimeMetadataHash != cfg.RuntimeMetadataHash {
+		t.Fatalf("explicit reviewed compatibility changed its configured anchor: %+v %v", current, err)
 	}
 	loaded, err := LoadProvisionalActivationObservationConfig(path)
 	if err != nil || loaded.RuntimeSpec != 461 || loaded.ProvisionalRuntimeCompatibility == "" {
@@ -51,5 +55,11 @@ func TestProvisionalActivationObservationLoadsOnlyReviewedRetainedRuntime(t *tes
 	cfg.RuntimeCodeHash = "0x" + strings.Repeat("aa", 32)
 	if _, err := LoadProvisionalActivationObservationConfig(writeReleaseConfig(t, cfg)); err == nil {
 		t.Fatal("unreviewed retained runtime was admitted")
+	}
+	// A live config still requires the exact explicit consumed-interface
+	// profile; actual chain authentication is a separate connection boundary.
+	cfg.ProvisionalRuntimeCompatibility = "unreviewed-profile"
+	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil {
+		t.Fatal("unreviewed provisional profile was admitted")
 	}
 }
