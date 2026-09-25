@@ -63,6 +63,12 @@ drill rather than infer it from native dividend activity.
 [Owner log](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-startup-advisory.txt),
 [read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-readcut.json).
 
+At 14:32 UTC the same live owner completed its parallel read-only evidence
+relay public census and logged `public_census_audit_passed=true` with
+`pending_public_census=false`. This closes that deferred preparation check; it
+does not close the other provisional findings or establish final acceptance.
+[Owner audit result](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-result.txt).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

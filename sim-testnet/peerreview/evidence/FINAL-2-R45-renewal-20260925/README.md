@@ -47,6 +47,9 @@ release acceptance interval or a successful finalization.
   showing the provisional startup skip and a later read-only observation that
   the expected public drill record was absent. This is a current acceptance
   gap, not an exception that makes the assertion pass.
+- `public-census-audit-result.txt`: the active owner's 14:32 UTC completion
+  log for its parallel read-only public evidence relay census. This is a
+  preparation check; final acceptance remains false.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

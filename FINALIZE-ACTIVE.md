@@ -32,6 +32,10 @@ At 14:08 UTC the owner verified precompile preparation but logged
 absent at the later read cut. This is an open strict acceptance failure, not a
 reason to interrupt the current release owner before it yields terminal
 evidence.
+The owned parallel public evidence census finished at 14:32 UTC and logged
+`public_census_audit_passed=true`, `pending_public_census=false`. Keep its
+result distinct from final acceptance and the remaining capacity, horizon,
+governance and active-binding storage gates.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
