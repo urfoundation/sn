@@ -2395,3 +2395,11 @@ Derive policy from the compiled classifier catalog, never a persisted flag or
 substring in an error. Keep signed wire names and final severity unchanged,
 require catalog completeness, and test mixed operational batches through the
 full terminal path with old-policy causal failures.
+
+The isolated catalog implementation is `11299f57`. Its internal class enum
+requires an explicit runtime category for every producer, including classes
+omitted from the old controller list. Normal and race tests pass; restoring
+only the old controller policy stops the same mixed availability batch at
+block 4,900 before terminal 5,050. Signed wire identifiers, final severity,
+fault attribution and evidence hashes retain their previous meaning. This
+qualification does not deploy the catalog into the already-running R44 image.
