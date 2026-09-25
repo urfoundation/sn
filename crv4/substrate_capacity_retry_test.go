@@ -170,7 +170,7 @@ func TestSubstrateReadCapacityKeepsRetryAndWriteBounds(t *testing.T) {
 		name, method, message string
 		calls                 int
 	}{
-		{"exhaustion", "state_getStorage", substrateHistoricalCapacityMessage, 4},
+		{"exhaustion", "state_getStorage", substrateHistoricalCapacityMessage, 5},
 		{"near_match", "state_getStorage", substrateHistoricalCapacityMessage + ": invalid proof", 1},
 		{"permanent_history", "state_getStorage", "Historical state unavailable", 1},
 		{"malformed", "state_getStorage", "malformed", 1},
@@ -181,12 +181,21 @@ func TestSubstrateReadCapacityKeepsRetryAndWriteBounds(t *testing.T) {
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			f := newSubstrateCapacityFixture(t, func(int) string { return fixture.message })
+			var budget *substrateReadTestBudget
+			if fixture.name == "exhaustion" {
+				var hooks substrateRpcReadRetryHooks
+				budget, hooks = newSubstrateReadTestBudget(t, 0)
+				f.client.readRetry = hooks
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 230*time.Second)
 			defer cancel()
 			var result string
 			err := f.client.CallContext(ctx, &result, fixture.method, "0x0102", types.Hash{48}.Hex())
-			if err == nil || errors.Is(err, context.DeadlineExceeded) {
+			if err == nil || (budget == nil && errors.Is(err, context.DeadlineExceeded)) {
 				t.Fatalf("capacity boundary returned %v", err)
+			}
+			if budget != nil && (!errors.Is(err, context.DeadlineExceeded) || budget.elapsed != 300*time.Second) {
+				t.Fatalf("capacity exhaustion lost its full budget: elapsed=%s err=%v", budget.elapsed, err)
 			}
 			if requests := f.snapshot(); len(requests) != fixture.calls {
 				t.Fatalf("capacity attempts=%d want=%d error=%v", len(requests), fixture.calls, err)
@@ -251,47 +260,52 @@ func TestSubstrateReadCapacitySharesWaitAcrossClientsAndCloses(t *testing.T) {
 	}
 }
 
-func TestSubstrateReadCapacityAndDisconnectShareReplayBound(t *testing.T) {
+func TestSubstrateReadCapacityAndDisconnectShareReadBudget(t *testing.T) {
 	t.Parallel()
 	f := newSubstrateCapacityFixture(t, func(count int) string {
+		if count == 7 {
+			return ""
+		}
 		if count%2 == 1 {
 			return "reset"
 		}
 		return substrateHistoricalCapacityMessage
 	})
+	budget, hooks := newSubstrateReadTestBudget(t, 15*time.Second)
+	f.client.readRetry = hooks
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	var result string
 	err := f.client.CallContext(ctx, &result, "state_getStorage", "0x0102", types.Hash{50}.Hex())
-	var rpcError gsrpcgeth.Error
-	if !errors.As(err, &rpcError) || rpcError.Error() != substrateHistoricalCapacityMessage {
-		t.Fatalf("mixed capacity/disconnect exhaustion error=%v", err)
+	if err != nil || result != "0x2a00" || budget.elapsed != 225*time.Second {
+		t.Fatalf("capacity/disconnect recovery lost its single budget: elapsed=%s result=%s err=%v", budget.elapsed, result, err)
 	}
-	if requests := f.snapshot(); len(requests) != 4 {
-		t.Fatalf("mixed capacity/disconnect attempts=%d want4", len(requests))
+	if requests := f.snapshot(); len(requests) != 7 {
+		t.Fatalf("mixed capacity/disconnect attempts=%d want7", len(requests))
 	}
 }
 
-func TestSubstrateReadCapacityDoesNotReplenishNetworkBudget(t *testing.T) {
+func TestSubstrateReadCapacityDoesNotReplenishOperationBudget(t *testing.T) {
 	t.Parallel()
+	budget, hooks := newSubstrateReadTestBudget(t, 0)
 	f := newSubstrateCapacityFixture(t, func(count int) string {
 		if count == 1 {
-			time.Sleep(15 * time.Second)
+			_ = budget.advance(15 * time.Second)
 			return substrateHistoricalCapacityMessage
 		}
+		_ = budget.advance(225 * time.Second)
 		return "stall"
 	})
+	f.client.readRetry = hooks
 	ctx, cancel := context.WithTimeout(context.Background(), 110*time.Second)
 	defer cancel()
-	started := time.Now()
 	var result string
 	err := f.client.CallContext(ctx, &result, "state_getStorage", "0x0102", types.Hash{51}.Hex())
 	if !errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
 		t.Fatalf("network budget error=%v caller=%v", err, ctx.Err())
 	}
-	elapsed := time.Since(started)
-	if elapsed < 89*time.Second || elapsed > 100*time.Second {
-		t.Fatalf("capacity wait reset/consumed cumulative30s network budget: elapsed=%s", elapsed)
+	if budget.elapsed != 300*time.Second || budget.attempts != 2 {
+		t.Fatalf("capacity wait replenished its operation budget: elapsed=%s attempts=%d", budget.elapsed, budget.attempts)
 	}
 	if requests := f.snapshot(); len(requests) != 2 {
 		t.Fatalf("network-budget attempts=%d want2", len(requests))

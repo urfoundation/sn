@@ -93,6 +93,7 @@ type contextSubstrateClient struct {
 	*gsrpcgeth.Client
 	url           string
 	readLifecycle substrateRPCReadLifecycle
+	readRetry     substrateRpcReadRetryHooks
 }
 
 // URL identifies the endpoint without exposing transport internals.

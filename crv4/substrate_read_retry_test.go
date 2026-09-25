@@ -54,6 +54,9 @@ func newSubstrateReconnectFixture(t *testing.T, action func(int, int, chainConte
 			count := len(f.requests)
 			f.mu.Unlock()
 			switch action(number, count, request) {
+			case "normal_close":
+				_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+				return
 			case "drop":
 				if tcp, ok := conn.UnderlyingConn().(*net.TCPConn); ok {
 					_ = tcp.SetLinger(0)
@@ -197,9 +200,17 @@ func TestSubstrateReadReconnectKeepsRetryAndWriteBounds(t *testing.T) {
 		{"submit", "author_submitExtrinsic", "drop", 1, false},
 		{"watch_call", "author_submitAndWatchExtrinsic", "drop", 1, false},
 		{"watch_subscription", "author_submitAndWatchExtrinsic", "drop", 1, true},
+		{"normal_close_submit", "author_submitExtrinsic", "normal_close", 1, false},
+		{"normal_close_watch", "author_submitAndWatchExtrinsic", "normal_close", 1, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newSubstrateReconnectFixture(t, func(_ int, _ int, _ chainContextRPCRequest) string { return test.action })
+			var budget *substrateReadTestBudget
+			if test.name == "exhaustion" {
+				var hooks substrateRpcReadRetryHooks
+				budget, hooks = newSubstrateReadTestBudget(t, 75*time.Second)
+				f.client.readRetry = hooks
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			var result string
@@ -211,6 +222,9 @@ func TestSubstrateReadReconnectKeepsRetryAndWriteBounds(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("failed request was accepted")
+			}
+			if budget != nil && (!errors.Is(err, context.DeadlineExceeded) || budget.elapsed != 300*time.Second) {
+				t.Fatalf("disconnect retry abandoned its full time budget: elapsed=%s err=%v", budget.elapsed, err)
 			}
 			requests, _ := f.snapshot()
 			if len(requests) != test.attempts {

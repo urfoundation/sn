@@ -25,6 +25,9 @@ func (err *provisionalNativeWeightRejection) Unwrap() error { return err.cause }
 // A fresh provisional generation may have no eligible weights before its
 // first native intent. It can retry this typed pre-intent rejection without
 // manufacturing a submission or admitting gaps after an intent exists.
+// An infeasible cap applies to the observed vector only: new authenticated
+// funding/eligibility may add a positive recipient within the same epoch, so
+// this disposition must not freeze or skip all later observations in it.
 func provisionalNativeWeightRejectionEnabled(cfg *ReleaseConfig, history *releaseEvidenceV2StartupHistory, current *SteeringIntent) bool {
 	if history == nil {
 		return false
