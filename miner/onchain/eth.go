@@ -117,14 +117,15 @@ func estimateGas(ctx context.Context, client interface {
 
 // txRequest is a prepared contract call for runTx.
 type txRequest struct {
-	contract  common.Address
-	from      common.Address
-	key       *ecdsa.PrivateKey
-	calldata  []byte
-	gasLimit  uint64 // 0 = estimate + 20% headroom
-	dryRun    bool
-	prepared  func(common.Hash, []byte) error
-	broadcast func(common.Hash) error
+	contract   common.Address
+	from       common.Address
+	key        *ecdsa.PrivateKey
+	calldata   []byte
+	nonceFloor uint64
+	gasLimit   uint64 // 0 = estimate + 20% headroom
+	dryRun     bool
+	prepared   func(common.Hash, []byte) error
+	broadcast  func(common.Hash) error
 }
 
 // runTx runs the submit lifecycle shared by submit/bind-head/unbind-head: an
@@ -170,6 +171,9 @@ func runTx(
 	if err != nil {
 		return nil, fmt.Errorf("pending nonce: %w", err)
 	}
+	// Another endpoint may not yet see our previous durable signed intent.
+	// Never reuse that nonce merely because its send acknowledgment timed out.
+	nonce = max(nonce, req.nonceFloor)
 	gasPrice, err := client.SuggestGasPrice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("gas price: %w", err)

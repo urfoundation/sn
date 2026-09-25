@@ -132,6 +132,7 @@ func (self *ClaimSwarm) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 func loadClaimSwarmMembers(config *ClaimSwarmConfig) (map[string]*ClaimDaemonConfig, time.Duration, error) {
 	loaded := make(map[string]*ClaimDaemonConfig, len(config.Members))
+	stateOwnerKVs := map[string]string{}
 	var keyFile string
 	var rpc []string
 	minimumPoll := time.Duration(0)
@@ -143,6 +144,14 @@ func loadClaimSwarmMembers(config *ClaimSwarmConfig) (map[string]*ClaimDaemonCon
 		if claimConfig.JWTFile == "" {
 			return nil, 0, fmt.Errorf("claim member %s must bind an explicit jwt_file", member.ID)
 		}
+		stateDir, err := canonicalClaimStateDirectory(claimConfig.StateDir)
+		if err != nil {
+			return nil, 0, fmt.Errorf("claim member %s state directory: %w", member.ID, err)
+		}
+		if prior := stateOwnerKVs[stateDir]; prior != "" {
+			return nil, 0, fmt.Errorf("claim members %s and %s share one queue state directory", prior, member.ID)
+		}
+		stateOwnerKVs[stateDir] = member.ID
 		if keyFile == "" {
 			keyFile = claimConfig.KeyFile
 			rpc = append([]string(nil), claimConfig.RPC...)
@@ -162,9 +171,17 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("claim swarm context is nil")
 	}
-	_, pollPeriod, err := loadClaimSwarmMembers(self.config)
+	loaded, pollPeriod, err := loadClaimSwarmMembers(self.config)
 	if err != nil {
 		return err
+	}
+	admission := &claimAdmission{}
+	// Seed the complete nonce domain before even the first member can sign.
+	// External signers using this key require a separate shared nonce owner.
+	for _, cfg := range loaded {
+		if err := admission.seedMember(cfg); err != nil {
+			return fmt.Errorf("seed relayer nonce custody: %w", err)
+		}
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -185,16 +202,19 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 	members := append([]ClaimSwarmMember(nil), self.config.Members...)
 	sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
 	terminalErrors := make(chan error, 1)
-	var chainStateLock sync.Mutex
+	var membersDone sync.WaitGroup
+	defer func() { cancel(); membersDone.Wait() }()
 	for index, member := range members {
 		delay := time.Duration(index) * pollPeriod / time.Duration(len(members))
+		membersDone.Add(1)
 		go func(member ClaimSwarmMember, initialDelay time.Duration) {
+			defer membersDone.Done()
 			onReady := func() {
 				self.stateLock.Lock()
 				self.running[member.ID] = true
 				self.stateLock.Unlock()
 			}
-			if runErr := runClaimDaemonWithLock(runCtx, member.ConfigPath, &chainStateLock, initialDelay, onReady); runErr != nil {
+			if runErr := runClaimDaemonWithAdmission(runCtx, member.ConfigPath, admission, initialDelay, onReady); runErr != nil {
 				self.stateLock.Lock()
 				delete(self.running, member.ID)
 				self.failures[member.ID] = runErr.Error()
