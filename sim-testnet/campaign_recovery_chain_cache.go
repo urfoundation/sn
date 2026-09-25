@@ -235,7 +235,7 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 	defer cache.stateLock.Unlock()
 	var prefix []scenarioCampaignRecoveryRecord
 	var retainedWitnesses []fleetCensusFileWitness
-	if cache.contextHash == contextHash && len(cache.projections) != 0 && len(cache.projections) <= len(files) && scenarioCampaignRecoveryProofJournal(stateDir, cache.journalPrefix) {
+	if cache.contextHash == contextHash && len(cache.projections) != 0 && len(cache.projections) <= len(files) && scenarioCampaignRecoveryProofJournal(cfg, stateDir, cache.journalPrefix) {
 		matches := true
 		for index, projection := range cache.projections {
 			matches = matches && projection.file == files[index]
@@ -266,7 +266,7 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 	selectedRun := scenarioCampaignRecoverySelectedRun(stateDir, files)
 	before, safeBefore := scenarioCampaignRecoveryChainWitnesses(cfg, stateDir, selectedRun)
 	prefixBefore := scenarioCampaignRecoveryPrefixWitnesses(before, files[len(files)-1])
-	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshot(stateDir, nil, nil)
+	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshotMemo(cfg, stateDir, nil, nil)
 	// Do not bind a newly changed source snapshot to an older prefix simply
 	// because the change landed between the lookup and the full inventory.
 	if len(prefix) != 0 && !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) {
@@ -277,7 +277,7 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 		return nil, err
 	}
 	contextAfter, contextErr := scenarioCampaignRecoveryChainContext(cfg, stateDir, roles, planHash)
-	if len(prefix) != 0 && (contextErr != nil || contextHash != contextAfter || !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) || !scenarioCampaignRecoveryProofJournal(stateDir, cache.journalPrefix)) {
+	if len(prefix) != 0 && (contextErr != nil || contextHash != contextAfter || !scenarioCampaignRecoveryChainWitnessesMatch(stateDir, retainedWitnesses) || !scenarioCampaignRecoveryProofJournal(cfg, stateDir, cache.journalPrefix)) {
 		return nil, errors.New("recovery chain source or context changed during authenticated prefix reuse")
 	}
 	if len(records) != len(files) || records[len(records)-1].attempt.payload.RunID != selectedRun {
@@ -286,7 +286,7 @@ func readScenarioCampaignRecoveryChainMemo(cfg *ResolvedConfig, stateDir string,
 	after, safeAfter := scenarioCampaignRecoveryChainWitnesses(cfg, stateDir, selectedRun)
 	prefixAfter := scenarioCampaignRecoveryPrefixWitnesses(after, files[len(files)-1])
 	contextAfter, contextErr = scenarioCampaignRecoveryChainContext(cfg, stateDir, roles, planHash)
-	if safeBefore && safeAfter && contextErr == nil && contextHash == contextAfter && journalErr == nil && scenarioCampaignRecoveryProofJournal(stateDir, journalBefore) && reflect.DeepEqual(prefixBefore, prefixAfter) {
+	if safeBefore && safeAfter && contextErr == nil && contextHash == contextAfter && journalErr == nil && scenarioCampaignRecoveryProofJournal(cfg, stateDir, journalBefore) && reflect.DeepEqual(prefixBefore, prefixAfter) {
 		projections, err := scenarioCampaignRecoveryProject(records)
 		if err == nil {
 			cache.contextHash, cache.prefixWitnesses, cache.journalPrefix, cache.projections = contextHash, prefixAfter, journalBefore, projections

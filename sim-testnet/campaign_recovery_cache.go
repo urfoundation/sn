@@ -102,12 +102,12 @@ func scenarioCampaignRecoveryProofWitnesses(attempt *scenarioCampaignAttempt) ([
 }
 
 // Read the exact bounded journal through the same safe source reader. Every
-// hit revalidates its current hash chain, including newly appended records.
-func scenarioCampaignRecoveryProofJournal(stateDir string, prefix scenarioCampaignJournalCut) bool {
+// hit proves unchanged bytes and validates newly appended records.
+func scenarioCampaignRecoveryProofJournal(cfg *ResolvedConfig, stateDir string, prefix scenarioCampaignJournalCut) bool {
 	if prefix.Bytes == 0 {
 		return true
 	}
-	_, _, err := readScenarioCampaignJournalSnapshot(stateDir, &prefix, nil)
+	_, _, err := readScenarioCampaignJournalSnapshotMemo(cfg, stateDir, &prefix, nil)
 	return err == nil
 }
 
@@ -165,14 +165,14 @@ func scenarioCampaignRecoveryAncestors(attempt *scenarioCampaignAttempt, validat
 	defer cache.stateLock.Unlock()
 	contextHash, contextErr := scenarioCampaignRecoveryProofContext(attempt)
 	before, safeBefore := scenarioCampaignRecoveryProofWitnesses(attempt)
-	if contextErr == nil && safeBefore && cache.contextHash == contextHash && cache.ancestorsKVs != nil && reflect.DeepEqual(before, cache.witnesses) && scenarioCampaignRecoveryProofJournal(attempt.stateDir, cache.journalPrefix) {
+	if contextErr == nil && safeBefore && cache.contextHash == contextHash && cache.ancestorsKVs != nil && reflect.DeepEqual(before, cache.witnesses) && scenarioCampaignRecoveryProofJournal(attempt.cfg, attempt.stateDir, cache.journalPrefix) {
 		after, safeAfter := scenarioCampaignRecoveryProofWitnesses(attempt)
 		if safeAfter && reflect.DeepEqual(before, after) {
 			return maps.Clone(cache.ancestorsKVs), nil
 		}
 	}
 	cache.ancestorsKVs = nil
-	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshot(attempt.stateDir, nil, nil)
+	_, journalBefore, journalErr := readScenarioCampaignJournalSnapshotMemo(attempt.cfg, attempt.stateDir, nil, nil)
 	if err := validate(attempt); err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func scenarioCampaignRecoveryAncestors(attempt *scenarioCampaignAttempt, validat
 	stable := contextErr == nil && contextAfterErr == nil && contextHash == contextAfter && safeBefore && safeAfter && reflect.DeepEqual(before, after)
 	var journalPrefix scenarioCampaignJournalCut
 	if usesJournal {
-		_, journalAfter, afterErr := readScenarioCampaignJournalSnapshot(attempt.stateDir, &journalBefore, nil)
+		_, journalAfter, afterErr := readScenarioCampaignJournalSnapshotMemo(attempt.cfg, attempt.stateDir, &journalBefore, nil)
 		stable = stable && journalErr == nil && afterErr == nil && journalBefore.Bytes != 0 && journalBefore == journalAfter
 		journalPrefix = journalAfter
 	}
