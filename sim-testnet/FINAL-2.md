@@ -391,16 +391,20 @@ epoch 620. The lifecycle-tail assertion is only one member of this group.
 These are the diagnostic's reported conditions, pending comparison with the
 owner's eventual sealed result.
 
-**Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
+**Additional known exception R44-LC-1 — companion filter depends on the bypassed lifecycle mutation.**
 The external [exception record](peerreview/evidence/FINAL-2-R44-terminal-20260925/known-exception.json)
 uses identifier `R44-COMPANION-LIFECYCLE-FILTER` for this same exception;
 its SHA-256 is
 `b28e5bbef7d9faa4399ceb7e0a794e08e73548b35f4bb84142fd66d9daa7dcde`.
-The approved provisional lifecycle bypass leaves no terminal-effective
-mutation epoch. The companion validator-view filter's early restoration
-condition therefore cannot be proved. Keep that filter and the lifecycle
+The previously approved omission of the older lifecycle step is one noted
+exception. Its dependent companion-filter restoration is this additional
+known exception: the bypass leaves no terminal-effective mutation epoch, so
+the companion validator-view filter's early restoration condition cannot be
+proved. Keep that filter and the lifecycle
 assertion failed in strict acceptance; do not infer a mutation from a
-`release-handoff` stage. At owner observation 77, finalized block 8,081,388,
+`release-handoff` stage. These two report-level exceptions remain one
+dependency finding in the diagnostic count; neither is a passing check.
+At owner observation 77, finalized block 8,081,388,
 the old binary incorrectly restored the *target* filter with
 `RestoreConditionMet=true` solely because it counted the bypass stage as
 provider-paid. That flag is preserved as a finding, not lifecycle conformance.
