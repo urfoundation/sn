@@ -2389,6 +2389,8 @@ contract rejected a zero root; the latest committed payout therefore remained
 at epoch 623. Waiting for the commit window could never make those identities
 match. A provisional empty-source deferral must retain the exact signed source,
 reviewed artifact signer, deployment, current policy and complete epoch geometry;
+bind that signer to the authenticated retained roles outside observation bytes,
+so a jointly substituted foreign signature and source cannot replace authority;
 read its two canonical boundaries and recheck the observation head before
 admission. Require no conflicting chain root or artifact hash. Empty sources
 grant no native-margin, payout, deposit, accepted-epoch or final-acceptance

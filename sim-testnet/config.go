@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
+	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/nacl/secretbox"
 	"gopkg.in/yaml.v3"
@@ -357,6 +358,9 @@ type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
 	// Derived only from a validated approved rate amendment, never from YAML.
 	previousPolicy *protocol.Policy
+	// Invocation-only artifact authority comes from authenticated retained roles,
+	// never from a serialized observation. Construct once, then share read-only.
+	policyRateArtifactSignerAddresses map[uint64]common.Address
 	// Read-only plan proofs are shared only by nested runtime render readers.
 	// Exact source bytes and operational authority are reobserved on every use.
 	runtimePlanReads *runtimePlanReadScope

@@ -5261,6 +5261,10 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 	if err != nil {
 		return err
 	}
+	cfg, err = configWithPolicyRateArtifactSigners(cfg, roles)
+	if err != nil {
+		return err
+	}
 	if name == "release-1.0" || name == "production-soak" {
 		if executor == nil || executor.plan == nil || !validCanonicalHashHex(executor.plan.PlanHash) {
 			return errors.New("release campaign attempt requires the approved setup plan")

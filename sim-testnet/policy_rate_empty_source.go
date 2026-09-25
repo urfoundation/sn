@@ -12,12 +12,36 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// The signer comes from the reviewed public identity census. CanonicalHead is
-// filled only after numbered RPC reads authenticate both signed boundaries.
+// The census signer must also match the retained role authority held outside
+// this evidence. CanonicalHead requires numbered reads of both signed boundaries.
 type PolicyRateEmptySourceEvidence struct {
 	Artifact       payoutArtifact `json:"artifact"`
 	ExpectedSigner string         `json:"expected_signer"`
 	CanonicalHead  ChainHead      `json:"canonical_head"`
+}
+
+// Freeze signer authority from the role store already authenticated against the
+// deployment's deterministic identities. Observation bytes cannot replace it.
+func configWithPolicyRateArtifactSigners(cfg *ResolvedConfig, roles *RoleSecrets) (*ResolvedConfig, error) {
+	if cfg == nil || cfg.Config == nil {
+		return nil, errors.New("empty rate source signer binding lacks configuration")
+	}
+	if cfg.previousPolicy == nil || !provisionalResumeEnabled(cfg) || cfg.readOnlyAudit {
+		return cfg, nil
+	}
+	if roles == nil || roles.Schema != "urnetwork-sim-role-secrets-v1" || roles.DeploymentID != cfg.Config.Deployment.DeploymentID || cfg.Config.Topology.Operators < 1 {
+		return nil, errors.New("empty rate source signer binding lacks exact retained roles")
+	}
+	resolved := *cfg
+	resolved.policyRateArtifactSignerAddresses = make(map[uint64]common.Address, cfg.Config.Topology.Operators)
+	for noId := 1; noId <= cfg.Config.Topology.Operators; noId++ {
+		address, err := roles.EVMAddress(fmt.Sprintf("operator-%d-artifact", noId))
+		if err != nil || address == (common.Address{}) {
+			return nil, errors.Join(fmt.Errorf("empty rate source operator %d lacks retained artifact identity", noId), err)
+		}
+		resolved.policyRateArtifactSignerAddresses[uint64(noId)] = address
+	}
+	return &resolved, nil
 }
 
 // Only the genuinely empty source gets an alternate proof: nonempty usage,
@@ -27,7 +51,8 @@ func emptyPolicyRateSourceArtifact(cfg *ResolvedConfig, contracts *ContractView,
 		return false
 	}
 	a := &evidence.Artifact
-	if !common.IsHexAddress(evidence.ExpectedSigner) || common.HexToAddress(evidence.ExpectedSigner) == (common.Address{}) || !strings.EqualFold(a.Signer.Hex(), evidence.ExpectedSigner) || verifyPayoutArtifact(a) != nil {
+	retainedSigner := cfg.policyRateArtifactSignerAddresses[source.NoId]
+	if retainedSigner == (common.Address{}) || a.Signer != retainedSigner || !common.IsHexAddress(evidence.ExpectedSigner) || common.HexToAddress(evidence.ExpectedSigner) != retainedSigner || verifyPayoutArtifact(a) != nil {
 		return false
 	}
 	if a.DeploymentID != cfg.Config.Deployment.DeploymentID || a.ChainID != cfg.ChainID || a.Netuid != cfg.Netuid || !strings.EqualFold(a.GenesisHash, cfg.Public.Chain.GenesisHash) || a.Coordinator != contracts.Deployment.CoordinatorProxy || a.SettlementVault != contracts.Deployment.SettlementVault || a.PolicyHash != cfg.PolicyHash || a.ReliabilityAMin != cfg.Policy.Verify.ReliabilityAMin {

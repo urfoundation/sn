@@ -52,6 +52,20 @@ func newPolicyRateEmptySourceTest(t *testing.T, nonempty, foreignSigner bool) (*
 	cfg := policyRateProvisionalTestConfig(t)
 	cfg.Config.Topology.Miners, cfg.Config.Topology.Operators = 4, 2
 	cfg.Config.Topology.HeadFleets, cfg.Config.Topology.ChallengerFleets, cfg.Config.Topology.ClientsPerHeadFleet = 2, 0, 1
+	roles := &RoleSecrets{Schema: "urnetwork-sim-role-secrets-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, EVM: map[string]EVMRoleSecret{}}
+	for noId := 1; noId <= cfg.Config.Topology.Operators; noId++ {
+		key, err := crypto.ToECDSA(bytes.Repeat([]byte{byte(60 + noId)}, 32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		label := fmt.Sprintf("operator-%d-artifact", noId)
+		roles.EVM[label] = EVMRoleSecret{Label: label, Address: crypto.PubkeyToAddress(key.PublicKey).Hex()}
+	}
+	var err error
+	cfg, err = configWithPolicyRateArtifactSigners(cfg, roles)
+	if err != nil {
+		t.Fatal(err)
+	}
 	clients := lifecyclePayoutTestClients(cfg)
 	current := testScenarioObservation(cfg, 12)
 	contracts := current.Status.Contracts
@@ -229,7 +243,7 @@ func TestPolicyRateEmptySourceRejectsTamperedEvidence(t *testing.T) {
 	}
 	completePolicyRateReadiness(cfg, observation.Status.Contracts, observation.Operators, observation.PolicyRateReadiness, big.NewInt(500_000_000_000_000))
 	raw, _ := json.Marshal(observation)
-	for _, fault := range []string{"source hash", "signer", "signature", "boundary", "head", "operator", "policy", "usage", "commit", "missing"} {
+	for _, fault := range []string{"source hash", "signer", "foreign signed source", "signature", "boundary", "head", "operator", "policy", "usage", "commit", "missing"} {
 		var changed ScenarioObservation
 		if err := json.Unmarshal(raw, &changed); err != nil {
 			t.Fatal(err)
@@ -240,6 +254,26 @@ func TestPolicyRateEmptySourceRejectsTamperedEvidence(t *testing.T) {
 			changed.PolicyRateReadiness.Sources[1].ContentHash = "sha256:" + strings.Repeat("55", 32)
 		case "signer":
 			evidence.ExpectedSigner = common.Address{0x77}.Hex()
+		case "foreign signed source":
+			foreignKey, err := crypto.ToECDSA(bytes.Repeat([]byte{0x44}, 32))
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalHash := evidence.Artifact.ContentHash
+			if err := payoutartifact.Sign(&evidence.Artifact, foreignKey); err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyPayoutArtifact(&evidence.Artifact); err != nil {
+				t.Fatal("foreign substitution must remain a valid signed empty artifact", err)
+			}
+			evidence.ExpectedSigner = evidence.Artifact.Signer.Hex()
+			changed.Operators[1].RateSource.ContentHash = evidence.Artifact.ContentHash
+			changed.PolicyRateReadiness.Sources[1].ContentHash = evidence.Artifact.ContentHash
+			for i, hash := range changed.Operators[1].ArtifactHashes {
+				if hash == originalHash {
+					changed.Operators[1].ArtifactHashes[i] = evidence.Artifact.ContentHash
+				}
+			}
 		case "signature":
 			evidence.Artifact.Signature = "0x" + strings.Repeat("11", 65)
 		case "boundary":
@@ -260,6 +294,42 @@ func TestPolicyRateEmptySourceRejectsTamperedEvidence(t *testing.T) {
 		if validateScenarioPolicyRateAdmission(cfg, &changed) == nil {
 			t.Fatalf("%s changed the source authority", fault)
 		}
+	}
+}
+
+// The retained role store supplies detached invocation authority. Replaying an
+// otherwise valid observation without that authority cannot grant a deferral.
+func TestPolicyRateEmptySourceRetainsIndependentRoleAuthority(t *testing.T) {
+	cfg, observation, reader := newPolicyRateEmptySourceTest(t, false, false)
+	if err := authenticateEmptyPolicyRateSources(t.Context(), cfg, observation.Status.Contracts, observation.Operators, reader); err != nil {
+		t.Fatal(err)
+	}
+	completePolicyRateReadiness(cfg, observation.Status.Contracts, observation.Operators, observation.PolicyRateReadiness, big.NewInt(500_000_000_000_000))
+	unbound := *cfg
+	unbound.policyRateArtifactSignerAddresses = nil
+	if validateScenarioPolicyRateAdmission(&unbound, observation) == nil {
+		t.Fatal("observation supplied its own signer authority")
+	}
+	roles := &RoleSecrets{Schema: "urnetwork-sim-role-secrets-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, EVM: map[string]EVMRoleSecret{}}
+	for noId, address := range cfg.policyRateArtifactSignerAddresses {
+		label := fmt.Sprintf("operator-%d-artifact", noId)
+		roles.EVM[label] = EVMRoleSecret{Label: label, Address: address.Hex()}
+	}
+	bound, err := configWithPolicyRateArtifactSigners(&unbound, roles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(roles.EVM, "operator-1-artifact")
+	if len(unbound.policyRateArtifactSignerAddresses) != 0 || validateScenarioPolicyRateAdmission(bound, observation) != nil {
+		t.Fatal("role binding mutated the caller or retained a mutable role-store alias")
+	}
+	if _, err := configWithPolicyRateArtifactSigners(&unbound, roles); err == nil {
+		t.Fatal("incomplete retained roles supplied source authority")
+	}
+	roles.EVM["operator-1-artifact"] = EVMRoleSecret{Label: "operator-1-artifact", Address: cfg.policyRateArtifactSignerAddresses[1].Hex()}
+	roles.DeploymentID = "foreign-deployment.example"
+	if _, err := configWithPolicyRateArtifactSigners(&unbound, roles); err == nil {
+		t.Fatal("foreign retained roles supplied source authority")
 	}
 }
 
