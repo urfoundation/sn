@@ -52,6 +52,14 @@ still false on complete epoch 627 (operator 1 zero bytes/zero tao-rao versus
 200,000-rao twice-native threshold), with no provisional low-usage deferral.
 Do not count this as a signed acceptance boundary. The exact observation is in
 the R45 portable evidence bundle.
+At finalized block 8,083,834, canonical LAN-RPC calls proved that both epoch
+627 root commitments are zero after their block-8,083,824 commit deadline.
+The workers correctly produced no roots for the zero-leaf epoch, while the
+current provisional rate deferral requires a payout root from that same
+rate-source epoch. This is a pre-acceptance compatibility finding. Preserve
+the active owner and its checkpoints; observe epoch 628 and prepare the
+isolated fix without changing the pinned binary or treating R44-LC-1 as a
+waiver for this separate issue. The receipt is in the R45 portable bundle.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 

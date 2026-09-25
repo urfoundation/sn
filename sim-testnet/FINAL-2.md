@@ -105,6 +105,18 @@ This observation proves the renewed binding check, not acceptance start.
 [Exact observation](peerreview/evidence/FINAL-2-R45-renewal-20260925/first-postactivation-observation.json)
 (raw SHA-256 `1181150cc6096d64c6f365a7f71fbfae948c247f880effe4f6ee5c19672156d3`).
 
+At finalized block **8,083,834**, after epoch 627's root-commit deadline
+8,083,824, exact canonical LAN-RPC reads returned zero root commitments for
+both operators. The workers closed that zero-leaf epoch without roots, as the
+contract requires; the current readiness check expects the latest payout root
+to match the latest signed rate-source epoch. That producer/consumer mismatch
+prevents the provisional low-usage deferral for epoch 627. It is an R45
+pre-acceptance finding, **not** an additional R44 exception or evidence that
+R45 has started acceptance. The owner remains active while a qualified
+successor fix is prepared and the next complete epoch is observed.
+[Canonical root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch627-zero-root-block8083834.receipt.json)
+(SHA-256 `a0286b25b729d3f71e251e2053abd48bbafe6fcb0a89ec1dd05f7896b5def0af`).
+
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final
 [result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)

@@ -68,6 +68,11 @@ release acceptance interval or a successful finalization.
   observed at 14:50:01 UTC on finalized block 8,083,792. It reports healthy
   supervisor, all 808 bindings valid, and zero usage for complete epoch 627;
   it does not bind an acceptance interval.
+- `epoch627-zero-root-block8083834.receipt.json`: read-only, exact canonical
+  LAN-RPC calls at finalized block 8,083,834, after the normal root deadline.
+  Both operator root commitments for epoch 627 are zero. This explains the
+  provisional rate-deferral compatibility finding; it does not prove an
+  acceptance start or amend R44's scoped exception.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under
