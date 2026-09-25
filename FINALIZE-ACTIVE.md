@@ -1,5 +1,42 @@
 # Testnet execution plan
 
+## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
+
+R44's original owner exited at 11:50 UTC after sealing
+[its final result](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
+(SHA-256 `b631ca4cd6f8fca591497770f2d066a6a568cc84fe388e08ca6e00f3ccf18c46`):
+85 of 182 assertions failed, `result=fail`, `final_acceptance=false`,
+finalized head 8,082,861. The five release epochs did finish; no signed
+completion or `complete.json` exists. R44-LC-1 records only the bypassed
+lifecycle mutation and companion filter's failed early-restore condition;
+the hard restore at block 8,082,634 and all other failures remain visible.
+The post-owner read-only terminal diagnostic completed with 37 checks:
+14 pass, 14 fail, one named exception and eight unavailable. Its
+[report](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/post-owner-diagnostic.json)
+has SHA-256 `80b56cd76704b126ac486a431883b98054f3e6a3289693bd6015e551149b1ddf`.
+It was still running after the fleet stop and successor-plan archive, so late
+source-health and receipt failures are post-stop availability findings. The
+sealed R44 result remains the authority for original-owner acceptance.
+
+The guarded fleet stop exited 0 after R44 ended, preserving on-chain state.
+Vault's reviewed alpha-ceiling edit was committed as `df003713` without
+changing the retained plan. Clean SN `6100394b` plus Connect `c98eb715`
+built binary SHA-256 `195c12551e72010d868d2e6b3689aa7b17ba58e44eeb7169b37c5986b1bc7491`;
+its external-copy doctor has 66 checks, zero hard failures and `ready=true`.
+The round-7 plan `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`
+contains 202 renewal fleets, 808 signed bindings and 1,212 new actions for
+epochs 628–659, no revocations, and remains within the approved 512 TAO /
+512 EVM / 47,000 alpha ceilings. The first two exact-plan apply services
+failed doctor on incomplete systemd/PATH environments before any round-7
+journal action. The corrected owned user service
+`urnetwork-sim-r45-round7-renew-envfull.service` adopted the same plan and
+its first ten commitment transactions finalized at block 8,083,024, hash
+`0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`,
+with ten retained postcondition verifications. Continue monitoring that one
+writer and its later receipts; verify its exit before retained resume.
+Its hash-pinned launcher is
+`/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/run-round7-apply-6100394b.sh`.
+
 ## R44 fourth terminal diagnostic complete — 2026-09-25 11:09 UTC
 
 The read-only `da7689f8` service exited successfully. Its

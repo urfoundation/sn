@@ -1,5 +1,42 @@
 # Sim-testnet finalization report 2
 
+**R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
+The original owner exited after publishing its final
+[result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
+(SHA-256 `b631ca4cd6f8fca591497770f2d066a6a568cc84fe388e08ca6e00f3ccf18c46`).
+It reports **85 failed assertions of 182**, `result=fail`,
+`provisional=true`, and `final_acceptance=false` at finalized block
+**8,082,861** (`0xac30508c90362291e2326eb14b174a1ecc1586223766ef28e8b774e93d885fc9`).
+The five release epochs reached their terminal observation, but this did not
+complete the testnet qualification. The signed attempt records exit before
+completion; no `complete.json` exists. The owner additionally failed evidence
+publication (operator 1 HTTP 400) and process-log publication. The remaining
+assertion failures retain their original identities and messages.
+
+**Known exception R44-LC-1 remains narrow.** The approved bypass omitted the
+terminal-effective lifecycle mutation required by the companion filter's
+early-restore condition. The filter was hard-restored at finalized block
+**8,082,634**, but `RestoreConditionMet=false`; the owner's
+`fleet_lifecycle_fault_tail_bounded` assertion is therefore failed. This is a
+documented exception to conformance, not a pass or a waiver of any other
+failed assertion. The post-owner read-only diagnostic completed its external
+capture after the official fleet stop: its
+[report](peerreview/evidence/FINAL-2-R44-terminal-20260925/post-owner-diagnostic.json)
+(SHA-256 `80b56cd76704b126ac486a431883b98054f3e6a3289693bd6015e551149b1ddf`)
+has 37 checks: **14 pass, 14 fail, one named exception and eight unavailable**,
+with `final_acceptance=false`. It cannot turn the original result into
+acceptance. Some later source-health and receipt checks encountered the
+stopped fleet or successor-plan archive; they are post-stop availability
+findings, not new original-owner assertions. The
+[scope assessment](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/POST-OWNER-ASSESSMENT.md)
+keeps those observations distinct from the sealed R44 result. R45 planning produced
+candidate `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`
+for epochs 628–659. Two launch-environment doctor failures occurred before
+any round-7 transaction; the corrected user service adopted the same plan.
+Its first ten commitment transactions finalized and passed exact postcondition
+checks at block **8,083,024** (`0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`).
+The rest of the renewal and successor qualification remain pending.
+
 **Fourth independent diagnostic completed 2026-09-25 11:08 UTC.** The
 clean Git-stamped `da7689f8` collector exited 0 after a read-only capture.
 Its [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
@@ -12,20 +49,20 @@ absent. Validator 1's compact input journal remains unavailable. Companion
 capture and ordinary signed payout artifacts pass. Terminal assertions,
 the original process-log report and fault timing fail independently. The
 diagnostic evaluated those assertions at its 10:19 UTC read cut, before the
-companion's later hard restore; it has not reclassified that failure. The
-R44 owner has not sealed `result.json`, so result-dependent checks and strict
-acceptance remain unavailable.
+companion's later hard restore; it has not reclassified that failure. At this
+diagnostic's read cut, the owner had not sealed `result.json`, so
+result-dependent checks were unavailable then. The later sealed failure is
+reported above.
 
 **Companion hard restore observed 2026-09-25 after finalized block 8,082,634.**
 The owner fault record now shows `fleet-lifecycle-companion-prune` restored
 at its scheduled hard deadline, with no `RestoreConditionMet` proof. The
-read-only [hard-restore observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+read-only [hard-restore observation](peerreview/evidence/FINAL-2-R44-terminal-20260925/hard-restore-observation.json)
 has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`
 and preserves the source file hash and LAN finalized head. This is the named
-R44-LC-1 exception, not a successful lifecycle assertion. The owner remains
-active without `result.json` or signed completion. The fourth independent
-read-only diagnostic continues collecting the remaining terminal evidence;
-other failed and unavailable checks remain separate.
+R44-LC-1 exception, not a successful lifecycle assertion. At this observation
+cut, the owner was still active without `result.json` or signed completion;
+the later sealed result and post-owner diagnostic are reported above.
 
 **Third read-only terminal diagnostic, completed 2026-09-25 10:00 UTC:**
 The clean Git-stamped successor authenticated the same signed R44 start,
@@ -104,7 +141,7 @@ These are the diagnostic's reported conditions, pending comparison with the
 owner's eventual sealed result.
 
 **Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
-The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
+The external [exception record](peerreview/evidence/FINAL-2-R44-terminal-20260925/known-exception.json)
 uses identifier `R44-COMPANION-LIFECYCLE-FILTER` for this same exception;
 its SHA-256 is
 `b28e5bbef7d9faa4399ceb7e0a794e08e73548b35f4bb84142fd66d9daa7dcde`.

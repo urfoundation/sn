@@ -1,0 +1,189 @@
+{
+  "schema": "r44-known-lifecycle-exception-review-v1",
+  "exception_id": "R44-COMPANION-LIFECYCLE-FILTER",
+  "recorded_at": "2026-09-25T07:30:52.813547+00:00",
+  "authorization": "User authorized recording this companion lifecycle filter as a known exception; parent delegated read-only evidence retention.",
+  "read_only": true,
+  "unsigned_review": true,
+  "final_acceptance": false,
+  "owner_signed_completion": false,
+  "run_id": "20260925T021136.926474885Z-release-1.0",
+  "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+  "disposition": "Recorded known exception; no live fault state, signed result, assertion, or process-log disposition changed.",
+  "scope": "fleet-lifecycle-companion-prune remains active under inherited provisional bypass with terminal_effective_epoch=0, so its lifecycle terminal-effective restoration predicate cannot prove completion.",
+  "related_unwaived_finding": "fleet-lifecycle-target-prune restored at8081388 because old predicate inferred provider-paid from release-handoff despite bypass; this is not payment or prune/re-register proof.",
+  "excluded_from_exception": "All claim states/errors/signed nonce liabilities, steering continuity and attempt failures, process-log findings, accounting, timing, coverage and every other terminal assertion remain independently reportable.",
+  "terminal_block": 8081824,
+  "restore_deadline_block": 8082634,
+  "checkpoint": {
+    "last_observation_finalized_head": {
+      "number": 8081572,
+      "hash": "0x85bee66a558c605621cbc1f09e511ccc36cc9d3ee84c2ea7cca0fefd8bcd1e86"
+    },
+    "last_observation_hash": "0xd1b98f42054595e4633a4d7991562eeaf810f686b23132780a46afff4178e7d1",
+    "observation_log_bytes": 62776527,
+    "observation_log_content_hash": "sha256:a5c2c00576dd34de2cf72d1ef274072a57e88aecb12974d99d6154af2feed4c4"
+  },
+  "raw_lifecycle_faults": [
+    {
+      "id": "fleet-lifecycle-target-prune",
+      "kind": "validator-view-filter",
+      "targets": [
+        "operator-1-all-validators-fleet-lifecycle-view"
+      ],
+      "impacts": [
+        "validator-1",
+        "validator-2"
+      ],
+      "fleet_indices": [
+        5
+      ],
+      "pre_acceptance": true,
+      "post_acceptance_evidence_tail": true,
+      "armed_block": 8080076,
+      "armed_block_hash": "0xf8ded422f1e85c985305fa45842e20f155248a10fb6b40264fb7eac2d46b5e3b",
+      "restore_condition": "fleet-lifecycle-provider-paid",
+      "minimum_duration_blocks": 1199,
+      "trigger_block": 8080175,
+      "restore_block": 8082634,
+      "applied_block": 8080175,
+      "applied_block_hash": "0x66750f82072aa8f5ccc690882842efad18015ae4389c51b91c8ae73f36e8df1d",
+      "restored_block": 8081388,
+      "restored_block_hash": "0xf08c600ef3ca4894455d54cca04f284dae2adf615b670906e78284b7041f9a4f",
+      "restore_condition_met": true,
+      "restore_condition_block": 8081388,
+      "processes": [
+        {
+          "id": "operator-1-all-validators-fleet-lifecycle-view",
+          "role": "operator-api-validator-view",
+          "identity": "no:1",
+          "pid": 2808207
+        }
+      ],
+      "restored_processes": [
+        {
+          "id": "operator-1-all-validators-fleet-lifecycle-view",
+          "role": "operator-api-validator-view",
+          "identity": "no:1",
+          "pid": 2943333
+        }
+      ],
+      "status": "restored"
+    },
+    {
+      "id": "fleet-lifecycle-companion-prune",
+      "kind": "validator-view-filter",
+      "targets": [
+        "operator-2-all-validators-fleet-lifecycle-view"
+      ],
+      "impacts": [
+        "validator-1",
+        "validator-2"
+      ],
+      "fleet_indices": [
+        6
+      ],
+      "pre_acceptance": true,
+      "post_acceptance_evidence_tail": true,
+      "armed_block": 8080076,
+      "armed_block_hash": "0xf8ded422f1e85c985305fa45842e20f155248a10fb6b40264fb7eac2d46b5e3b",
+      "restore_condition": "fleet-lifecycle-terminal-effective",
+      "minimum_duration_blocks": 1499,
+      "trigger_block": 8080175,
+      "restore_block": 8082634,
+      "applied_block": 8080175,
+      "applied_block_hash": "0x66750f82072aa8f5ccc690882842efad18015ae4389c51b91c8ae73f36e8df1d",
+      "processes": [
+        {
+          "id": "operator-2-all-validators-fleet-lifecycle-view",
+          "role": "operator-api-validator-view",
+          "identity": "no:2",
+          "pid": 2808302
+        }
+      ],
+      "status": "active"
+    }
+  ],
+  "originals": [
+    {
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json",
+      "copy": "/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/review-point-originals/checkpoint.json",
+      "sha256": "495741cea8a050af352bd88ccf7aeb0b0cb34916ec87df69b7a3590ac74a834b",
+      "bytes": 137784
+    },
+    {
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T021136.926474885Z-release-1.0/faults.json",
+      "copy": "/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/review-point-originals/faults.json",
+      "sha256": "6ef66cab7128c84a4e2af52849841015461b54caaf1df0eac666660e5db21e9e",
+      "bytes": 114388
+    },
+    {
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T021136.926474885Z-release-1.0/process-logs.json",
+      "copy": "/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/review-point-originals/process_logs.json",
+      "sha256": "ebd2418169484c6525981b2bd9b296913a4662cc08d948ba2f48d10988dff20d",
+      "bytes": 116959
+    }
+  ],
+  "process_log_classifier": "urnetwork-sim-process-log-classifier-v12",
+  "all_process_finding_rows": 53,
+  "acceptance_process_finding_rows": 40,
+  "acceptance_process_class_counts": [
+    {
+      "class": "commit-deadline-warning",
+      "blocking": false,
+      "count": 10
+    },
+    {
+      "class": "connection-canceled",
+      "blocking": false,
+      "count": 1
+    },
+    {
+      "class": "contract-create",
+      "blocking": false,
+      "count": 2
+    },
+    {
+      "class": "exit-gap-timeout",
+      "blocking": true,
+      "count": 14
+    },
+    {
+      "class": "h3-tls-internal",
+      "blocking": false,
+      "count": 1
+    },
+    {
+      "class": "release-steering-attempt-failure",
+      "blocking": true,
+      "count": 22
+    },
+    {
+      "class": "release-steering-continuity",
+      "blocking": true,
+      "count": 3
+    },
+    {
+      "class": "restart-stale-contract",
+      "blocking": false,
+      "count": 501
+    },
+    {
+      "class": "seed-unavailable",
+      "blocking": false,
+      "count": 50
+    },
+    {
+      "class": "tls-handshake-timeout",
+      "blocking": false,
+      "count": 137
+    },
+    {
+      "class": "tls-handshake-timeout",
+      "blocking": true,
+      "count": 1
+    }
+  ],
+  "future_terminal_supplement": "first-terminal-supplement/manifest.json",
+  "interpretation": "This sidecar names the authorized exception only. It neither erases a failure nor substitutes for an original result or signed owner checkpoint."
+}
