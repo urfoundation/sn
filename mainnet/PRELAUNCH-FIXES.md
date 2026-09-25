@@ -2457,3 +2457,43 @@ in the deterministic work test. Removing the visitor-byte comparison accepts a
 temporary rewritten record restored before the final hash; that causal test
 demonstrates why a final checksum alone is insufficient. This optimization is
 not deployed into the active R44 process.
+
+### Give terminal journals a distinct bounded source owner
+
+R44 accumulated a 40,333,610-byte journal before terminal collection. The
+ordinary proof reader capped one file at 32 MiB and the bundle writer capped
+one source at 24 MiB. Splitting a bundle's file list could not split this one
+source, so an otherwise complete run could discover the mismatch only during
+final capture. Size acceptance must be checked against retained history before
+a long run, including raw reads, encoded carriers, embedded lineage, public
+replay and the approved aggregate archive grant.
+
+The qualified correction is capacity commit `fdada818` plus reader/producers
+`206d8958`. It keeps the existing singleton journal bytes, hashes and schemas
+under a dedicated 128 MiB ceiling; ordinary proofs retain their old caps. The
+new content-addressed journal path is bound to the exact relay-journal source
+identity. Bundle and lineage readers verify the full journal before granting
+the larger capacity; signed carrier fast paths cannot hide oversized unrelated
+proofs inside that allowance.
+
+Source reads own one finite descriptor range, use 64 KiB chunks and an
+independent confirmation hash, and reject tampering, truncation, replacement,
+unsafe paths and incomplete record tails. Concurrent appends belong to a later
+snapshot. Strict final decoding also keeps cross-entry action witnesses rather
+than validating each record with a fresh empty Journal. A valid per-record
+hash alone cannot authorize a changed deployment, intent or transaction, or a
+new action after its terminal verification.
+
+Focused and adjacent tests pass normally and with race detection. Four
+old-behavior causal checks reproduce the reader, URI, bundle and action-history
+defects. A read-only probe authenticates all 53,761 original R44 journal records
+with SHA-256 `dbb248fcf2c2e2e6538132ef12ea781554caae14cc61f548382e3fba315063c8`;
+the existing selected raw, envelope, bundle and aggregate grants admit those
+bytes without a configuration allowance increase.
+
+Keep a separate post-terminal diagnostic entry point that reads the original
+signed run and writes only an external evidence directory. It must attempt
+independent finalization checks even when acceptance already has findings,
+preserve the original result, and never grant acceptance or restart the active
+interval. R44's independent diagnostic reader uses the qualified build while
+the original running image remains unchanged.
