@@ -28,8 +28,8 @@ Execute the real campaign and production cadence, retaining each completed
 phase. Mark deferred checks and `final_acceptance=false` explicitly: finishing
 the provisional workload does not itself establish full release acceptance.
 
-Terra (`gpt-5.6-terra`, reasoning effort `medium`) executes tests and reruns.
-Sol (`gpt-5.6-sol`, reasoning effort `max`) diagnoses and fixes failures
+Sol (`gpt-6-sol`, reasoning effort `medium`) executes tests and reruns.
+Astra (`gpt-6-astra`, reasoning effort `max`) diagnoses and fixes failures
 and flakiness. The [harness execution policy](sim-testnet/README.md#agent-execution-policy)
 defines the handoff. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) tracks current
 work. Reports are numbered: [sim-testnet/FINAL.md](sim-testnet/FINAL.md) is

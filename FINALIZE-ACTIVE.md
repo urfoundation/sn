@@ -205,9 +205,9 @@ Current work:
 1. The retained campaign, signer-authority and gate corrections are composed
    and published; their focused qualification and required failure confirmations
    are complete. Preserve the existing deployment, wallets, approvals and journals.
-2. Use Terra (`gpt-5.6-terra`, reasoning effort `medium`) for all tests and gate
-   execution. Use Sol (`gpt-5.6-sol`, reasoning effort `max`) to diagnose and
-   fix failures and flakiness, then return corrected source to Terra for reruns.
+2. Use Sol (`gpt-6-sol`, reasoning effort `medium`) for all tests and gate
+   execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
+   fix failures and flakiness, then return corrected source to Sol for reruns.
 3. Complete producer and aggregate coverage using valid retained phase results
    plus failed, missing or patch-affected checks. Collect independent failures
    in a batch; preserve completed phases when a gate is interrupted.
