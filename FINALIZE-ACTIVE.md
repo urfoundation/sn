@@ -1,5 +1,19 @@
 # Testnet execution plan
 
+## R44 lifecycle predicate finding — 2026-09-25 06:52 UTC
+
+R44 observation 77 reached finalized block 8,081,388. The owner is still
+active and has no sealed result. Its old predicate restored
+`fleet-lifecycle-target-prune` at that block with
+`RestoreConditionMet=true`; the same observation's lifecycle evidence has
+`stage=release-handoff`, `ProvisionalBypass=true`, and no terminal-effective
+epoch. This condition was satisfied by the bypass stage, not by proof of a
+provider payout. The companion filter remains active, so 41 of 42 faults are
+restored. Preserve the false condition flag as an R44 evidence finding; do not
+promote it into lifecycle conformance. The R45 successor patch makes
+installed, paid and effective mutation predicates false under this bypass and
+tests the old behavior causally. Do not stop the live owner.
+
 ## R44 continuation and R45 claim repair — 2026-09-25 06:17 UTC
 
 R44 remains live under its original release owner. Observation 65 reached
