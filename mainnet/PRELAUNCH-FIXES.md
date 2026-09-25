@@ -2254,3 +2254,14 @@ signed bytes and hashes, and reject unknown or malformed fields and generation
 rewrites. Test both legacy omission and a fully signed historical checkpoint
 through the current forensic and recovery readers. Recognizing an old process
 identity in evidence never grants authority to signal that process.
+
+R44's later read-only terminal capture exhausted a 15-minute deadline while
+reading a retained validator source: 62 cuts scheduled about 1.63 GB of chunk
+GETs across two origins, and a verified 4 MB chunk alone took 18.30 seconds.
+Production evidence readers should bound the whole job from measured bytes and
+throughput, expose per-cut progress, retain completed authenticated chunks,
+and reuse only exact immutable origin/kind/hash/size matches. Retry incomplete
+HTTP bodies within that finite budget and distinguish budget exhaustion from
+invalid signatures or conflicting content. Test slow, interrupted, duplicate
+and conflicting chunks without reducing final integrity checks or restarting
+unrelated runtime work.
