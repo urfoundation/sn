@@ -482,6 +482,9 @@ func verifyFinalCollectedFileBundle(bundle *FinalCollectedFileBundle) error {
 		if entry.SizeBytes > finalPlanBundleSourceBytes(bundle.Name, entry.Path) {
 			return fmt.Errorf("collected file %s exceeds its typed source capacity", entry.Path)
 		}
+		if err := validateFinalJournalBundleEntry(bundle.Name, entry); err != nil {
+			return err
+		}
 	}
 	encodedBytes, err := finalCollectedBundleOverhead(bundle.Name)
 	if err != nil {

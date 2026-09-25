@@ -31,7 +31,7 @@ func finalPlanHashFile(name, prefix string) bool {
 
 // Larger carriers use only the producer's exact class or numbered chunk form.
 func finalPlanBundleClass(name string) string {
-	for _, class := range []string{"launch-foundation", "plan-history"} {
+	for _, class := range []string{"launch-foundation", "plan-history", "validator-evidence-companion"} {
 		if name == class {
 			return class
 		}
@@ -54,6 +54,9 @@ func finalPlanBundleClass(name string) string {
 // Raw plan capacity belongs only to these exact source slots inside a bundle.
 func finalPlanBundleSourceBytes(name, source string) uint64 {
 	class := finalPlanBundleClass(name)
+	if source == "journal.jsonl" && (class == "launch-foundation" || class == "validator-evidence-companion") {
+		return maximumFinalJournalBytes
+	}
 	if class == "launch-foundation" && source == "plan.json" || class == "plan-history" && finalPlanHashFile(source, "") {
 		return maximumSetupPlanFileBytes
 	}
@@ -63,8 +66,11 @@ func finalPlanBundleSourceBytes(name, source string) uint64 {
 // A plan carrier has room for one full encoded approval plus finite metadata.
 // Packing may combine smaller entries but still enforces each source's owner.
 func finalPlanBundleBytes(name string) uint64 {
+	if finalPlanBundleClass(name) == "validator-evidence-companion" {
+		return maximumFinalJournalBundleBytes
+	}
 	if finalPlanBundleClass(name) != "" {
-		return maximumFinalPlanBundleBytes
+		return max(maximumFinalPlanBundleBytes, maximumFinalJournalBundleBytes)
 	}
 	return maximumCampaignEvidenceRawFileBytes
 }
@@ -72,6 +78,9 @@ func finalPlanBundleBytes(name string) uint64 {
 // Zero means the ordinary proof owner applies. Prefixes alone never grant a
 // larger file; every producer path is either exact or has canonical fields.
 func finalPlanArtifactBytes(name string) uint64 {
+	if finalJournalArtifactPath(name) {
+		return maximumFinalJournalBytes
+	}
 	switch name {
 	case "final-derived/setup-plan.json":
 		return maximumSetupPlanFileBytes
@@ -96,7 +105,7 @@ func finalPlanArtifactBytes(name string) uint64 {
 	if strings.HasPrefix(name, bundlePrefix) && strings.HasSuffix(name, ".json") {
 		bundle := strings.TrimSuffix(strings.TrimPrefix(name, bundlePrefix), ".json")
 		if finalPlanBundleClass(bundle) != "" {
-			return maximumFinalPlanBundleBytes
+			return finalPlanBundleBytes(bundle)
 		}
 	}
 	return 0
@@ -141,6 +150,9 @@ func (self campaignEvidenceLimits) finalPlanRetentionBytes(derived bool) uint64 
 // File names select capacity; the actual larger body must have that producer's
 // schema and bounded source census. Semantic acceptance remains independent.
 func validateFinalPlanArtifactBytes(limits campaignEvidenceLimits, name string, raw []byte) error {
+	if finalJournalCapturePathV2(name) || name == finalHistoricalJournalPath && len(raw) > maximumCampaignEvidenceRawFileBytes {
+		return validateFinalJournalArtifactBytes(name, raw)
+	}
 	maximum := finalPlanArtifactBytes(name)
 	if maximum == 0 || len(raw) <= maximumCampaignEvidenceRawFileBytes && !finalPriorPlanCarrierPath(name) {
 		return nil
@@ -208,6 +220,14 @@ func validateFinalPlanArtifactBytes(limits campaignEvidenceLimits, name string, 
 		maximum := uint64(maximumCampaignEvidenceRawFileBytes)
 		if source.Path == "launch-foundation/plan.json" || finalPlanHashFile(source.Path, "plan-history/") {
 			maximum = maximumSetupPlanFileBytes
+		}
+		if source.Path == "launch-foundation/journal.jsonl" {
+			maximum = maximumFinalJournalBytes
+			if source.SizeBytes > maximumCampaignEvidenceRawFileBytes {
+				if err := validateFinalJournalArtifactBytes(finalHistoricalJournalPath, source.Data); err != nil {
+					return err
+				}
+			}
 		}
 		if source.SizeBytes > maximum {
 			return errors.New("plan lineage source exceeds its independent file capacity")

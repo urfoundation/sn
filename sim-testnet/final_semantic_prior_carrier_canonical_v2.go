@@ -14,7 +14,7 @@ import (
 // from the carrier. A plain base64 value has no Json whitespace/escaping work.
 // The returned borrowed span lives only through this synchronous verifier.
 func canonicalFinalPriorFilePayloadV2(limits campaignEvidenceLimits, runId, scope string, entry campaignEvidenceFileEntry, encoded []byte) ([]byte, error) {
-	if campaignMetadataSourcePathV2(entry.Path) {
+	if campaignMetadataSourcePathV2(entry.Path) || finalJournalCarrierRequiresBodyV2(entry.Path) {
 		// These hash-addressed controls additionally require the original
 		// decoded source schema, so retain their existing admission.
 		return nil, nil
