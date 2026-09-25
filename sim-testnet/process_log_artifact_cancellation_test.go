@@ -21,7 +21,7 @@ func TestProcessLogArtifactCancellationRequiresExactHandlerRecord(t *testing.T) 
 	t.Parallel()
 	line := artifactCancellationTestLine()
 	classification, matched := classifyProcessLogLine([]byte(line))
-	if !matched || classification.class != "artifact-request-canceled" || classification.nonblockingDisposition != "request-canceled" {
+	if !matched || classification.class != processLogClassArtifactCanceled || classification.nonblockingDisposition != "request-canceled" {
 		t.Fatalf("owned request cancellation rejected: %+v", classification)
 	}
 	for _, mutation := range []struct{ from, to string }{
@@ -43,7 +43,7 @@ func TestProcessLogArtifactCancellationRequiresExactHandlerRecord(t *testing.T) 
 		}
 	}
 	classification, _ = classifyProcessLogLine([]byte(line + " panic: integrity failed"))
-	if classification.class != "panic" || classification.nonblockingDisposition != "" {
+	if classification.class != processLogClassPanic || classification.nonblockingDisposition != "" {
 		t.Fatal("cancellation concealed a panic")
 	}
 }

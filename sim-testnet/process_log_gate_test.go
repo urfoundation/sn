@@ -74,7 +74,7 @@ func TestProcessLogClassifierFailsClosedWithoutRejectingExpectedNoise(t *testing
 			}
 			continue
 		}
-		if !matched || classification.class != test.wantClass {
+		if !matched || classification.class.definition().name != test.wantClass {
 			t.Fatalf("%s: classification=(%+v,%t), want %q", test.name, classification, matched, test.wantClass)
 		}
 		if classification.nonblockingDisposition != test.wantDisposition || classification.faultAttributable != test.wantFaultAttributable {

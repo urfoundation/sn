@@ -219,7 +219,7 @@ type processLogGate struct {
 }
 
 type processLogClassification struct {
-	class                  string
+	class                  processLogClass
 	summary                string
 	faultAttributable      bool
 	requiredFaultKind      string
@@ -240,62 +240,62 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 	// benign allow rules, even if a future message happens to mention both.
 	switch {
 	case strings.Contains(lower, "panic:"):
-		return processLogClassification{class: "panic", summary: "process reported a panic"}, true
+		return processLogClassification{class: processLogClassPanic, summary: "process reported a panic"}, true
 	case structuredLogSeverity(lower, "panic"):
-		return processLogClassification{class: "panic", summary: "process emitted a structured panic log"}, true
+		return processLogClassification{class: processLogClassPanic, summary: "process emitted a structured panic log"}, true
 	case strings.Contains(lower, "fatal error:"):
-		return processLogClassification{class: "fatal", summary: "process reported a fatal runtime error"}, true
+		return processLogClassification{class: processLogClassFatal, summary: "process reported a fatal runtime error"}, true
 	case structuredLogSeverity(lower, "fatal"):
-		return processLogClassification{class: "fatal", summary: "process emitted an unclassified fatal log"}, true
+		return processLogClassification{class: processLogClassFatal, summary: "process emitted an unclassified fatal log"}, true
 	case processLogReleaseSteeringAttempt(lower):
-		return processLogClassification{class: "release-steering-attempt-failure", summary: "release steering reported a failed native epoch attempt"}, true
+		return processLogClassification{class: processLogClassSteeringAttempt, summary: "release steering reported a failed native epoch attempt"}, true
 	case processLogReleaseSteeringContinuityFailure(lower):
-		return processLogClassification{class: "release-steering-continuity", summary: "release steering advanced past an incomplete native epoch"}, true
+		return processLogClassification{class: processLogClassSteeringContinuity, summary: "release steering advanced past an incomplete native epoch"}, true
 	case processLogEarlyCommitDeadlineAlert(text):
 		// This alert says the commit is still unconfirmed while there is time
 		// to retry. Finalized root and deadline checks make the actual outcome
 		// authoritative; retain the warning without calling it a failure.
-		return processLogClassification{class: "commit-deadline-warning", summary: "root commit was unconfirmed before its deadline", nonblockingDisposition: "pending-commit-retry"}, true
+		return processLogClassification{class: processLogClassCommitDeadline, summary: "root commit was unconfirmed before its deadline", nonblockingDisposition: "pending-commit-retry"}, true
 	case strings.Contains(lower, "failed to sufficiently increase receive buffer size") || strings.Contains(lower, "failed to increase receive buffer size"):
-		return processLogClassification{class: "quic-receive-buffer", summary: "QUIC receive-buffer configuration is ineffective"}, true
+		return processLogClassification{class: processLogClassReceiveBuffer, summary: "QUIC receive-buffer configuration is ineffective"}, true
 	case strings.Contains(lower, "tls handshake timeout"):
-		return processLogClassification{class: "tls-handshake-timeout", summary: "TLS handshake timed out", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassTlsTimeout, summary: "TLS handshake timed out", faultAttributable: true}, true
 	case strings.Contains(lower, "h3 connect err") && strings.Contains(lower, "tls: internal error"):
-		classification := processLogClassification{class: "h3-tls-internal", summary: "HTTP/3 connection failed with a TLS internal error"}
+		classification := processLogClassification{class: processLogClassH3Internal, summary: "HTTP/3 connection failed with a TLS internal error"}
 		if !processLogExplicitWarningOrError(text, lower) {
 			classification.nonblockingDisposition = "resilient-fallback"
 		}
 		return classification, true
 	case strings.Contains(lower, "read packet timeout"):
-		classification := processLogClassification{class: "packet-read-timeout", summary: "packet read timed out", faultAttributable: true}
+		classification := processLogClassification{class: processLogClassPacketTimeout, summary: "packet read timed out", faultAttributable: true}
 		if !processLogExplicitWarningOrError(text, lower) {
 			classification.nonblockingDisposition = "resilient-fallback"
 		}
 		return classification, true
 	case strings.Contains(lower, "close timeout") || strings.Contains(lower, "timed out waiting for connections to close"):
-		return processLogClassification{class: "connection-close-timeout", summary: "connection close timed out", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassCloseTimeout, summary: "connection close timed out", faultAttributable: true}, true
 	case strings.Contains(lower, "exit gap timeout"):
-		return processLogClassification{class: "exit-gap-timeout", summary: "worker exit-gap recovery timed out", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassExitGap, summary: "worker exit-gap recovery timed out", faultAttributable: true}, true
 	case strings.Contains(lower, "exit could not create contract"):
-		return processLogClassification{class: "contract-create", summary: "worker exited because it could not create a contract", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassContractCreate, summary: "worker exited because it could not create a contract", faultAttributable: true}, true
 	case processLogRestartContractVerification(text, lower):
 		return processLogClassification{
-			class: "restart-stale-contract", summary: "restarted receiver rejected a contract signed with its prior in-memory secret",
+			class: processLogClassRestartContract, summary: "restarted receiver rejected a contract signed with its prior in-memory secret",
 			faultAttributable: true, requiredFaultKind: "process-restart",
 		}, true
 	case strings.Contains(lower, "[api-token]failed to refresh jwt: timeout."):
-		return processLogClassification{class: "api-token-refresh-timeout", summary: "API token refresh timed out", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassTokenTimeout, summary: "API token refresh timed out", faultAttributable: true}, true
 	case processLogFaultSeedUnavailable(lower):
-		return processLogClassification{class: "seed-unavailable", summary: "worker could not find a seed provider", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassSeedUnavailable, summary: "worker could not find a seed provider", faultAttributable: true}, true
 	case strings.Contains(lower, "no seed providers"):
-		return processLogClassification{class: "seed-unavailable", summary: "worker could not find a seed provider"}, true
+		return processLogClassification{class: processLogClassSeedUnavailable, summary: "worker could not find a seed provider"}, true
 	case strings.Contains(lower, "invalid byte sequence for encoding") && strings.Contains(lower, "0x00"):
-		return processLogClassification{class: "postgres-null-byte", summary: "PostgreSQL rejected a transaction intent containing a NUL byte"}, true
+		return processLogClassification{class: processLogClassPostgresNull, summary: "PostgreSQL rejected a transaction intent containing a NUL byte"}, true
 	case strings.Contains(lower, "completehandshake failed: context canceled"):
-		return processLogClassification{class: "connection-canceled", summary: "connection handshake was canceled", faultAttributable: true}, true
+		return processLogClassification{class: processLogClassConnectionCanceled, summary: "connection handshake was canceled", faultAttributable: true}, true
 	}
 	if processLogArtifactRequestCancellation(text) {
-		return processLogClassification{class: "artifact-request-canceled", summary: "immutable artifact reader canceled its request", nonblockingDisposition: "request-canceled"}, true
+		return processLogClassification{class: processLogClassArtifactCanceled, summary: "immutable artifact reader canceled its request", nonblockingDisposition: "request-canceled"}, true
 	}
 
 	// These exact classes are expected protocol/lifecycle noise and have their
@@ -307,22 +307,22 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 	}
 
 	if klogSeverity(text, 'F') {
-		return processLogClassification{class: "fatal", summary: "process emitted an unclassified fatal log"}, true
+		return processLogClassification{class: processLogClassFatal, summary: "process emitted an unclassified fatal log"}, true
 	}
 	if klogSeverity(text, 'E') || structuredLogSeverity(lower, "error") {
-		return processLogClassification{class: "error", summary: "process emitted an unclassified error log", faultAttributable: processLogConnectionLoss(lower)}, true
+		return processLogClassification{class: processLogClassError, summary: "process emitted an unclassified error log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	if klogSeverity(text, 'W') || structuredLogSeverity(lower, "warning") || structuredLogSeverity(lower, "warn") {
-		return processLogClassification{class: "warning", summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
+		return processLogClassification{class: processLogClassWarning, summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	if strings.HasPrefix(lower, "fatal ") || strings.HasPrefix(lower, "fatal:") {
-		return processLogClassification{class: "fatal", summary: "process emitted an unclassified fatal log"}, true
+		return processLogClassification{class: processLogClassFatal, summary: "process emitted an unclassified fatal log"}, true
 	}
 	if strings.HasPrefix(lower, "error ") || strings.HasPrefix(lower, "error:") {
-		return processLogClassification{class: "error", summary: "process emitted an unclassified error log", faultAttributable: processLogConnectionLoss(lower)}, true
+		return processLogClassification{class: processLogClassError, summary: "process emitted an unclassified error log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	if strings.HasPrefix(lower, "warning ") || strings.HasPrefix(lower, "warning:") || strings.HasPrefix(lower, "warn ") || strings.HasPrefix(lower, "warn:") {
-		return processLogClassification{class: "warning", summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
+		return processLogClassification{class: processLogClassWarning, summary: "process emitted an unclassified warning log", faultAttributable: processLogConnectionLoss(lower)}, true
 	}
 	return processLogClassification{}, false
 }
@@ -1124,14 +1124,14 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 	path := filepath.Join(self.stateDir, cursor.Path)
 	lstat, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log is missing"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log is missing"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("inspect process %s %s log: %w", cursor.ProcessID, cursor.Stream, err)
 	}
 	if !lstat.Mode().IsRegular() {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log is not a regular file"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log is not a regular file"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	file, err := os.Open(path)
@@ -1152,23 +1152,23 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		return err
 	}
 	if device != lstatDevice || inode != lstatInode {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log changed while it was opened"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log changed while it was opened"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	if cursor.Device == 0 && cursor.Inode == 0 {
 		cursor.Device, cursor.Inode = device, inode
 	} else if cursor.Device != device || cursor.Inode != inode {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log inode changed after the launch boundary"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log inode changed after the launch boundary"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	if self.state.AcceptanceBoundary != nil && (final || !(self.acceptancePrefixesVerified || self.state.ProvisionalPrefixVerified)) {
 		if err := self.verifyAcceptancePrefixWithLock(file, cursor); err != nil {
-			self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log acceptance prefix changed"}, cursor.Offset, "", observedAt)
+			self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log acceptance prefix changed"}, cursor.Offset, "", observedAt)
 			return nil
 		}
 	}
 	if info.Size() < cursor.Offset {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log was truncated after the launch boundary"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log was truncated after the launch boundary"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	delta := info.Size() - cursor.Offset
@@ -1179,7 +1179,7 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		return nil
 	}
 	if delta > processLogMaximumScanBytes {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-overrun", summary: "process log growth exceeded the bounded scanner capacity"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogOverrun, summary: "process log growth exceeded the bounded scanner capacity"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	data, err := self.readRangeWithLock(file, cursor.Offset, delta)
@@ -1187,7 +1187,7 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		return fmt.Errorf("read process %s %s log: %w", cursor.ProcessID, cursor.Stream, err)
 	}
 	if int64(len(data)) != delta {
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log changed while it was read"}, cursor.Offset, "", observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log changed while it was read"}, cursor.Offset, "", observedAt)
 		return nil
 	}
 	completed, classifiable := len(data), len(data)
@@ -1205,11 +1205,11 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		} else {
 			classifiable = 0
 		}
-		self.recordFindingWithLock(cursor, processLogClassification{class: "log-integrity", summary: "process log has an unterminated final line"}, cursor.Offset+int64(classifiable), hashProcessLogLine(data[classifiable:]), observedAt)
+		self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogIntegrity, summary: "process log has an unterminated final line"}, cursor.Offset+int64(classifiable), hashProcessLogLine(data[classifiable:]), observedAt)
 	}
 	if completed == 0 {
 		if len(data) > processLogMaximumLineBytes {
-			self.recordFindingWithLock(cursor, processLogClassification{class: "log-overrun", summary: "process log contains an overlong unterminated line"}, cursor.Offset, hashProcessLogLine(data), observedAt)
+			self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogOverrun, summary: "process log contains an overlong unterminated line"}, cursor.Offset, hashProcessLogLine(data), observedAt)
 		}
 		return nil
 	}
@@ -1223,7 +1223,7 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 		}
 		line := completeLines[:newline]
 		if len(line) > processLogMaximumLineBytes {
-			self.recordFindingWithLock(cursor, processLogClassification{class: "log-overrun", summary: "process log contains an overlong line"}, lineOffset, hashProcessLogLine(line), observedAt)
+			self.recordFindingWithLock(cursor, processLogClassification{class: processLogClassLogOverrun, summary: "process log contains an overlong line"}, lineOffset, hashProcessLogLine(line), observedAt)
 		} else if len(line) != 0 {
 			classification, matched := classifyProcessLogLine(line)
 			if cursor.ArtifactCancellationContinuation {
@@ -1231,11 +1231,11 @@ func (self *processLogGate) scanCursorWithLock(cursor *processLogCursor, final b
 				if text != "context canceled" && text != "EOF" {
 					cursor.ArtifactCancellationContinuation = false
 					if !matched && !processLogStructuredRecord(text) {
-						classification, matched = processLogClassification{class: "artifact-stream-failure", summary: "artifact stream reported an additional failure after request cancellation"}, true
+						classification, matched = processLogClassification{class: processLogClassArtifactFailure, summary: "artifact stream reported an additional failure after request cancellation"}, true
 					}
 				}
 			}
-			if classification.class == "artifact-request-canceled" {
+			if classification.class == processLogClassArtifactCanceled {
 				cursor.ArtifactCancellationContinuation = true
 			}
 			if matched {
@@ -1342,7 +1342,7 @@ func (self *processLogGate) recordFindingWithLock(cursor *processLogCursor, clas
 	}
 	for index := range self.state.Findings {
 		finding := &self.state.Findings[index]
-		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || !finding.Blocking || finding.Disposition != "unexplained" || finding.AcceptanceScope != acceptanceScope {
+		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class.definition().name || finding.Summary != classification.summary || !finding.Blocking || finding.Disposition != "unexplained" || finding.AcceptanceScope != acceptanceScope {
 			continue
 		}
 		if finding.LastOffset == offset && finding.LastLineSHA256 == lineHash {
@@ -1356,7 +1356,7 @@ func (self *processLogGate) recordFindingWithLock(cursor *processLogCursor, clas
 	}
 	self.state.Findings = append(self.state.Findings, ProcessLogFinding{
 		ProcessID: cursor.ProcessID, Role: cursor.Role, Stream: cursor.Stream,
-		Class: classification.class, Summary: classification.summary, Blocking: true, Disposition: "unexplained", Count: 1,
+		Class: classification.class.definition().name, Summary: classification.summary, Blocking: true, Disposition: "unexplained", Count: 1,
 		FirstOffset: offset, LastOffset: offset, FirstLineSHA256: lineHash, LastLineSHA256: lineHash,
 		FirstObservedAt: observedAt, LastObservedAt: observedAt, AcceptanceScope: acceptanceScope,
 	})
@@ -1405,7 +1405,7 @@ func (self *processLogGate) recordClassifiedLineWithLock(cursor *processLogCurso
 	}
 	for index := range self.state.Findings {
 		finding := &self.state.Findings[index]
-		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class || finding.Summary != classification.summary || finding.Blocking != blocking || finding.Disposition != disposition || strings.Join(finding.FaultIDs, "\x00") != faultKey || finding.AcceptanceScope != acceptanceScope {
+		if finding.ProcessID != cursor.ProcessID || finding.Stream != cursor.Stream || finding.Class != classification.class.definition().name || finding.Summary != classification.summary || finding.Blocking != blocking || finding.Disposition != disposition || strings.Join(finding.FaultIDs, "\x00") != faultKey || finding.AcceptanceScope != acceptanceScope {
 			continue
 		}
 		if finding.LastOffset == offset && finding.LastLineSHA256 == lineHash {
@@ -1419,7 +1419,7 @@ func (self *processLogGate) recordClassifiedLineWithLock(cursor *processLogCurso
 	}
 	self.state.Findings = append(self.state.Findings, ProcessLogFinding{
 		ProcessID: cursor.ProcessID, Role: cursor.Role, Stream: cursor.Stream,
-		Class: classification.class, Summary: classification.summary, Blocking: blocking, Disposition: disposition,
+		Class: classification.class.definition().name, Summary: classification.summary, Blocking: blocking, Disposition: disposition,
 		FaultIDs: append([]string(nil), faultIDs...), FaultKinds: append([]string(nil), faultKinds...), Count: 1,
 		FirstOffset: offset, LastOffset: offset, FirstLineSHA256: lineHash, LastLineSHA256: lineHash,
 		FirstObservedAt: observedAt, LastObservedAt: observedAt, AcceptanceScope: acceptanceScope,

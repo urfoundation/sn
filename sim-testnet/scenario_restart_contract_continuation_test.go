@@ -93,7 +93,7 @@ func TestScenarioIntervalRestartContractDeferralKeepsIntegrityBoundary(t *testin
 		if !ok {
 			t.Fatalf("verification line lost classification: %s", line)
 		}
-		return processLogFindingsError([]ProcessLogFinding{{ProcessID: "synthetic-miner", Blocking: true, Class: classification.class, Count: 1}})
+		return processLogFindingsError([]ProcessLogFinding{{ProcessID: "synthetic-miner", Blocking: true, Class: classification.class.definition().name, Count: 1}})
 	}
 	known := classified(primary)
 	if !scenarioProcessLogFailureDeferred(cfg, "release-1.0", known) || !scenarioProcessLogFailureDeferred(cfg, "production-soak", known) {
