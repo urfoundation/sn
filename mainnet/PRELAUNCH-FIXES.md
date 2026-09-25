@@ -2497,3 +2497,49 @@ independent finalization checks even when acceptance already has findings,
 preserve the original result, and never grant acceptance or restart the active
 interval. R44's independent diagnostic reader uses the qualified build while
 the original running image remains unchanged.
+
+### Authenticate archived action history before selecting receipts
+
+The terminal archive had an adjacent reader which parsed journal records as
+JSON but did not authenticate their sequence, hash chain or cross-entry action
+history. Calling that reader from a receipt or postcondition lookup could trust
+a substituted transaction even though the capture path itself had a strict
+validator. Every archive consumer must use the same authenticated journal
+reader before selecting a finalized action, native receipt or exact V4
+postcondition object.
+
+The isolated correction `3a2bb815` replaces that alternate decoder with the
+shared strict journal decoder and handles absent archive sources explicitly.
+Normal and race tests pass. Restoring the old reader accepts each of three
+causal corruptions: a substituted transaction, a correctly rehashed conflicting
+action history, and a tampered journal paired with an otherwise valid V4
+postcondition. This fixes receipt selection; it does not rewrite old evidence
+or confer acceptance on a diagnostic report.
+
+### Distinguish a missing packet from delayed local receive work
+
+R44 recorded post-boundary receive-gap findings for miner swarms 1, 2 and 7,
+all naming the same validator-1 peer. The original log line lacks the expected
+and queued sequence numbers, so it cannot by itself establish whether each
+incident was network loss, local scheduling delay or canceled teardown. Keep
+those original findings in the final report; temporal proximity to a rolling
+restart is insufficient to waive them.
+
+The worker inspected a queued item's age before deciding whether its
+predecessor was still missing. An already-deliverable old head or obsolete
+duplicate could therefore terminate the sequence as a gap. It also inspected
+old queue state before checking an already-canceled owner. Qualified Connect
+commit `3cc6ef2a` checks cancellation first and applies the unchanged deadline
+only to a still-missing predecessor. Future gap logs include expected and
+queued sequence numbers, age and the configured budget. Deterministic normal
+and race tests preserve ready delivery, duplicate cleanup, canceled ownership
+and the original genuine-gap deadline; the old source reproduces the failures.
+
+A follow-up must reconcile already-admitted handoff work before declaring its
+predecessor absent. That reconciliation needs a finite prefix captured once
+for the expired hole, ordinary packet validation and exact pool ownership.
+Later traffic and duplicate arrival timestamps must not refill that prefix or
+extend a real missing-packet deadline. Qualify this separately and pin the
+actual Connect revision in the successor build; a simulator-only rebuild does
+not adopt a Connect fix. Current-main ports and this follow-up require their
+own composed tests before deployment.
