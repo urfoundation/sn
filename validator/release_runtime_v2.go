@@ -240,8 +240,11 @@ func (self *releaseRuntimeV2) window(ctx context.Context, snapshot *ReleaseSnaps
 		return zero, AttemptBoundary{}, err
 	}
 	end, err := self.chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, new(big.Int).SetUint64(epoch+1))
-	if err != nil || start == 0 || end <= start || end > snapshot.BlockNumber {
-		return zero, AttemptBoundary{}, errors.Join(errors.New("release V2 terminal geometry differs"), err)
+	if err != nil {
+		return zero, AttemptBoundary{}, err
+	}
+	if start == 0 || end <= start || end > snapshot.BlockNumber {
+		return zero, AttemptBoundary{}, errors.New("release V2 terminal geometry differs")
 	}
 	hash, err := self.chain.BlockHashContext(ctx, end-1)
 	if err != nil {
