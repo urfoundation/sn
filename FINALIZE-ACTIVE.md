@@ -1,5 +1,29 @@
 # Testnet execution plan
 
+## R44 signed terminal reached; external supplement retained — 2026-09-25 08:24 UTC
+
+R44 crossed the five-epoch release end at block 8,081,674 and recorded its
+signed terminal observation at block 8,081,824. The original owner remains
+active without a sealed result. The qualified separate diagnostic has passed
+the signed start, latest checkpoint, all 44 retained lineage generations,
+observation prefix and complete-epoch terminal checks. Terminal scenario
+assertions fail; absent original result and completion remain unavailable.
+This is a read-only diagnostic, not a substituted owner seal.
+
+The independent supplement completed successfully with explicit absent-result
+findings. Its immutable
+`/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-supplement/manifest.json`
+has SHA-256 `7a5f9209d9a4e42cc0d28c05bc90f7866f4459b57f40c54a232b24f27e0ebce4`.
+It retained 1,073 files including all 1,000 claim queues, the authenticated
+observation prefix, the complete process-log report and 144,427,524 accepted
+log bytes. All queues still show last discovery epoch 617; epochs 618–620
+have no entries. Fifteen acceptance-scoped blocking process rows remain.
+These are independent findings beyond the named lifecycle companion-filter
+exception. The diagnostic is still collecting further checks; retain its final
+report separately when it exits. Keep the live owner running to its original
+result or bounded watchdog, then compare exact owner artifacts and rerun the
+post-owner diagnostic without rewriting this first terminal copy.
+
 ## R45 clean successor built; race gate pending — 2026-09-25 07:57 UTC
 
 The retained policy generation and source-role readers now resolve their

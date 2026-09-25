@@ -1,12 +1,26 @@
 # Sim-testnet finalization report 2
 
-**Provisional R44 exception register, updated 2026-09-25 07:51 UTC — not a final
-result.** The signed recovery-44 release attempt has crossed the end of its
-five 300-block epochs at block 8,081,674. Its latest checked owner observation
-was block 8,081,684 in epoch 621. It still requires a terminal observation at
-block 8,081,824; no owner result or invalidation has been sealed. The
+**Provisional R44 terminal evidence, updated 2026-09-25 08:24 UTC — not a final
+result.** The signed recovery-44 release attempt completed its five 300-block
+epochs at block 8,081,674 and its owner recorded the required terminal
+observation at block 8,081,824. The original owner remains active; no owner
+result or invalidation has been sealed. The
 signed attempt is
 [`release-1.0.recovery.44.evidence.json`](runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json).
+
+The independent [terminal diagnostic progress](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-206d8958/progress.json)
+has passed the signed start, latest checkpoint, complete 44-generation
+lineage, signed observation prefix and complete-epoch terminal checks. Its
+terminal assertions fail, and the owner result and signed completion are
+unavailable. The separate [terminal supplement](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/first-terminal-supplement/manifest.json)
+is an unsigned external copy, SHA-256
+`7a5f9209d9a4e42cc0d28c05bc90f7866f4459b57f40c54a232b24f27e0ebce4`.
+It retained 1,073 source files, including all 1,000 decodable claim queues,
+the authenticated observation prefix, the full process report and 144,427,524
+accepted process-log bytes. Its two copy findings are the absent original
+`result.json` and `complete.json`; it did not synthesize either file. The
+diagnostic is still running additional read-only checks, so its progress file
+is not a final diagnostic report.
 
 **Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
 The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
@@ -21,23 +35,22 @@ assertion failed in strict acceptance; do not infer a mutation from a
 the old binary incorrectly restored the *target* filter with
 `RestoreConditionMet=true` solely because it counted the bypass stage as
 provider-paid. That flag is preserved as a finding, not lifecycle conformance.
-The separate read-only terminal watcher will capture the full signed-window
-chain and process inventory at block 8,081,824. Its report is diagnostic until
-the owner seals a result. The qualified successor cleanup can restore the two
+The separate read-only diagnostic authenticated the signed terminal window;
+its report remains diagnostic until the owner seals a result. The qualified
+successor cleanup can restore the two
 local filters after a complete signed terminal observation while retaining
 `RestoreConditionMet=false`, the failed strict assertions, and
 `final_acceptance=false`; it has not been installed in R44.
 An [independent terminal capture review](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/REVIEW.md)
-and a read-only user service are prepared to retain the authenticated
-terminal prefix, all claim queues, and accepted process-log ranges when the
-owner first reaches the terminal block. They do not write a result for R44.
+documents the exact read-only commands and evidence limits.
 
-This exception does not cover other failures. Current-window claim discovery
-has stalled at epoch 617 for all 1,000 miners, leaving later accepted epochs
-without claim outcomes in the live queue. Fourteen acceptance-scoped process
-log findings remain: 10 `exit-gap-timeout` findings (14 events), two validator
-steering-attempt findings (20 events), and two steering-continuity findings
-(three events). The read-only
+This exception does not cover other failures. At the terminal supplement cut,
+all 1,000 miners had `last_discovered=617`; no queue entry exists for accepted
+epochs 618–620. Epoch 616 still has 359 `submitting` entries and epoch 617
+has 47. The retained process report contains 15 blocking acceptance-scoped
+rows: 10 `exit-gap-timeout` rows (14 events), two validator
+steering-attempt rows (24 events), two steering-continuity rows (three
+events), and one TLS handshake timeout. The earlier read-only
 [interim inventory](/mnt/data/sn-testnet/qualification/r44-live-triage-20260925/inventory.json)
 at 07:17:59 UTC records SHA-256
 `017fb1603eea127593b2a6e1f0f6115d86d1a9554640d9fd2a452cb219aafb9c`
@@ -47,8 +60,7 @@ process logs, and watcher progress. Its
 distinguishes the known Connect/transport repairs from historical gaps they
 cannot prove repaired, and identifies expired bindings, absent positive native
 weights, below-threshold rate readiness, and missing current-window claims.
-Preserve their raw rows and report exact
-terminal counts when the watcher and owner results exist. No skipped check is
+Preserve their raw rows and compare them with the eventual owner result. No skipped check is
 reported as passed; the full campaign, production interval, accounting replay
 and go/no-go decision remain open. See [the active execution record](../FINALIZE-ACTIVE.md).
 
