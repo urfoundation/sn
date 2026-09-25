@@ -67,7 +67,7 @@ func releaseArtifactHttpRequestV2(cfg *ReleaseConfig, hotkey [32]byte, decision 
 	if cfg == nil || decision == nil || reader == nil || reader.baseURL == nil || hotkey == ([32]byte{}) || noId == 0 {
 		return releaseArtifactHttpObservationV2{}, "", errors.New("artifact HTTP observation owner is incomplete")
 	}
-	if decision.DeploymentID != cfg.DeploymentID || decision.ChainID != cfg.ChainID || decision.GenesisHash != cfg.GenesisHash || decision.Coordinator != cfg.Coordinator || decision.SettlementVault != cfg.SettlementVault || decision.PolicyHash != cfg.PolicyHash || decision.Netuid != cfg.Netuid || decision.ValidatorID != cfg.ValidatorID || decision.SettlementEpoch < cfg.Policy.Deposit.UsageLagEpochs || sourceEpoch != decision.SettlementEpoch-cfg.Policy.Deposit.UsageLagEpochs {
+	if decision.DeploymentID != cfg.DeploymentID || decision.ChainID != cfg.ChainID || decision.GenesisHash != cfg.GenesisHash || !releaseAddressIdentityMatches(decision.Coordinator, cfg.Coordinator) || !releaseAddressIdentityMatches(decision.SettlementVault, cfg.SettlementVault) || decision.PolicyHash != cfg.PolicyHash || decision.Netuid != cfg.Netuid || decision.ValidatorID != cfg.ValidatorID || decision.SettlementEpoch < cfg.Policy.Deposit.UsageLagEpochs || sourceEpoch != decision.SettlementEpoch-cfg.Policy.Deposit.UsageLagEpochs {
 		return releaseArtifactHttpObservationV2{}, "", errors.New("artifact HTTP observation differs from the actual deployment/source epoch")
 	}
 	value := releaseArtifactHttpObservationV2{Schema: releaseArtifactHttpObservationSchemaV2, Decision: releaseMeasurementV2Decision(decision), ValidatorHotkey: releaseHex32(hotkey), NoId: noId, SourceEpoch: sourceEpoch, Origin: reader.baseURL.String(), Exchanges: []releaseArtifactHttpExchangeV2{}}

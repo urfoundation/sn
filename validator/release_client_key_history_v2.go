@@ -56,7 +56,7 @@ func releaseClientKeyDecisionV2(cfg *ReleaseConfig, noID uint64, hotkey [32]byte
 	}
 	domain = protocol.ClientKeyHistoryDomain{ChainID: cfg.ChainID, GenesisHash: genesis, Netuid: cfg.Netuid, Coordinator: common.HexToAddress(cfg.Coordinator), SettlementVault: common.HexToAddress(cfg.SettlementVault), DeploymentIDHash: sha256.Sum256([]byte(cfg.DeploymentID)), PolicyHash: policy, NoID: noID}
 	request = protocol.ClientKeyObservationRequest{ClientID: [16]byte(clientID), ValidatorHotkey: hotkey, NativeBlock: artifact.NativeSnapshotBlock, NativeHash: nativeHash, NativeEpoch: artifact.SubnetEpoch, DecisionBoundary: protocol.ClientKeyEffectiveBoundary{Epoch: artifact.SettlementEpoch, Block: artifact.EVMSnapshotBlock, Hash: evmHash}}
-	if artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || artifact.Coordinator != cfg.Coordinator || artifact.SettlementVault != cfg.SettlementVault || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != cfg.PolicyHash || artifact.ValidatorID != cfg.ValidatorID {
+	if artifact.DeploymentID != cfg.DeploymentID || artifact.ChainID != cfg.ChainID || artifact.GenesisHash != cfg.GenesisHash || !releaseAddressIdentityMatches(artifact.Coordinator, cfg.Coordinator) || !releaseAddressIdentityMatches(artifact.SettlementVault, cfg.SettlementVault) || artifact.Netuid != cfg.Netuid || artifact.PolicyHash != cfg.PolicyHash || artifact.ValidatorID != cfg.ValidatorID {
 		return protocol.ClientKeyHistoryDomain{}, protocol.ClientKeyObservationRequest{}, errors.New("client-key capture differs from the admitted validator deployment")
 	}
 	return domain, request, domain.Validate()
