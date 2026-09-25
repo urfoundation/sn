@@ -1,5 +1,21 @@
 # Testnet execution plan
 
+## R45 composition audit found missing qualified recovery stack — 2026-09-25 10:38 UTC
+
+Source comparison against current main `55454c52` found eight qualified
+successor commits present in isolated history but absent from main:
+`247c86d0`, `313fd977`, `38397969`, `f10fd309`, `2b78af30`,
+`cc6fe1ba`, `9488bfb0`, and `b5211301`. They cover durable snapshot retries,
+status transport errors, local validator authority, joined preparation,
+exact process identity/termination, pre-termination fault intent, pending
+container restore, and terminal RPC error attribution. The existing clean
+`da7689f8` diagnostic image does not include this stack and must not be used
+as the final R45 mutation runner merely because read-only diagnostics pass.
+Astra is composing the dependency-ordered fixes from current main in an
+isolated tree, reconciling overlaps such as the already integrated fault-process
+wire field, and Sol will run affected normal/race and causal tests. The active
+R44 owner and fourth read-only diagnostic remain unchanged.
+
 ## R44 fourth read-only diagnostic launched — 2026-09-25 10:16 UTC
 
 Diagnostic-only capture resilience is integrated on main as `da7689f8` and
