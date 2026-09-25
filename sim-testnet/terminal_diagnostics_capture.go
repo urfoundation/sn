@@ -95,10 +95,11 @@ func collectTerminalDiagnosticSources(collector *terminalDiagnosticCollector, cf
 	collector.check("companion-evidence-capture", available(terminalOk, "terminal observation unavailable"), 10*time.Minute, func(ctx context.Context) (any, error) {
 		return captureFinalCompanionInputsV2(ctx, cfg, stateDir, collector.output, terminal)
 	})
-	collector.check("signed-payout-artifacts", available(terminalOk && authorityOk, "terminal observation or path authority unavailable"), 10*time.Minute, func(ctx context.Context) (any, error) {
-		payouts, lifecycle, err := collectFinalPayoutArtifacts(ctx, cfg, collector.output, terminal, collector.report.Window, authority.identities)
-		return map[string]any{"acceptance": payouts, "lifecycle": lifecycle}, err
-	})
+	var payoutIdentities *finalPublicIdentities
+	if authorityOk {
+		payoutIdentities = authority.identities
+	}
+	collectTerminalDiagnosticPayouts(collector, cfg, terminal, payoutIdentities, available(terminalOk && authorityOk, "terminal observation or path authority unavailable"), collectFinalPayoutArtifacts)
 	collector.check("compact-validator-final-capture", available(terminalOk && authorityOk && result != nil, "terminal result or path authority unavailable"), 15*time.Minute, func(ctx context.Context) (any, error) {
 		started, err := time.Parse(time.RFC3339Nano, result.StartedAt)
 		if err != nil {
