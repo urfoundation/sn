@@ -46,7 +46,11 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 	if err != nil {
 		return nil, err
 	}
-	p, err := readPolicyRolloverPlanV2(ctx, cfg, base, stateDir, policyRolloverPlanPathV2(stateDir, h.Generation, h.CutoffEpoch))
+	source, err := retainedPolicyRolloverSourceV2(ctx, cfg, stateDir, base, h.SourcePlanHash)
+	if err != nil {
+		return nil, err
+	}
+	p, err := readPolicyRolloverPlanV2(ctx, cfg, source, stateDir, policyRolloverPlanPathV2(stateDir, h.Generation, h.CutoffEpoch))
 	if err != nil {
 		return nil, err
 	}

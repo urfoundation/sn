@@ -21,9 +21,9 @@ import (
 // These tests exercise deployment approval, immutable references, one-field
 // config projection, and publication ordering. Validator tests separately
 // authenticate genuine signed envelopes, atomic extrinsics, and native slots.
-func newPolicyRolloverSourceRoleTestV2(t *testing.T) (*policyRolloverGenerationTestV2, *policyRolloverHandoffV2, policyRolloverSourceRoleIOV2) {
+func newPolicyRolloverSourceRoleTestV2(t *testing.T, configure ...func(*policyRolloverGenerationTestV2)) (*policyRolloverGenerationTestV2, *policyRolloverHandoffV2, policyRolloverSourceRoleIOV2) {
 	t.Helper()
-	g, p, h, j := newPolicyRolloverHandoffTestV2(t)
+	g, p, h, j := newPolicyRolloverHandoffTestV2(t, configure...)
 	activatePolicyRolloverHandoffTestV2(t, g, p, h, j)
 	f := g.fixture
 	h, err := readBasePolicyRolloverHandoffV2(t.Context(), f.cfg, f.stateDir, f.plan)

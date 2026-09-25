@@ -284,7 +284,11 @@ func readPolicyRolloverSourceRoleOverlayWithV2(ctx context.Context, cfg *Resolve
 	if !reflect.DeepEqual(reviewed, p) {
 		return nil, errors.New("source role signed handoff differs from the reviewed immutable plan")
 	}
-	if err := validatePolicyRolloverSourceRoleV2(ctx, cfg, stateDir, base, h, &p, io); err != nil {
+	source, err := retainedPolicyRolloverSourceV2(ctx, cfg, stateDir, base, p.SourcePlanHash)
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePolicyRolloverSourceRoleV2(ctx, cfg, stateDir, source, h, &p, io); err != nil {
 		return nil, err
 	}
 	selected := *h
