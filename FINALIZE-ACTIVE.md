@@ -13,6 +13,8 @@ The signed recovery-45 envelope invalidated acceptance at 16:55:38 UTC with
 `execution-exited-before-completion`. Preserve the signed start as history,
 not accepted progress. Two validator-view filters remain active in the exact
 fault ledger, quality-cohort was restored, and the supervisor is still active.
+A subsequent read-only filesystem check found no live active-fault or operator
+view-filter files; this does not rewrite the historical terminal fault state.
 Do not manually edit fault or process evidence or stop that supervisor.
 Both operator scenario bundles were published according to the sealed result.
 The exact result, fault ledger, process-log snapshot, invalidated envelope

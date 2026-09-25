@@ -107,6 +107,9 @@ result, so the signed start is historical rather than live acceptance.
   exact native-epoch attempt line, byte offset and process-log findings with
   subsequent validator activity. It does not classify the failed attempt as a
   pass or repair the owner's process-log gate.
+- `postfailure-filter-cleanup.receipt.json`: later read-only filesystem and
+  user-service check. It found no current active-fault file or two operator
+  view-filter files while preserving the sealed historical fault ledger.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

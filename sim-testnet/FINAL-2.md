@@ -26,7 +26,13 @@ At the seal, 39 scheduled faults were pending, two validator-view filters
 remained active, and `quality-cohort` was restored. Preserve their exact
 [fault record](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-faults.json)
 for owned recovery; no fault is deemed restored merely because the owner
-exited. Both operator scenario bundles were published according to the sealed
+exited. A later read-only
+[cleanup receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/postfailure-filter-cleanup.receipt.json)
+(SHA-256 `3e07876cf7dbfadb2575e98eee6656dade3216731226ca5e1328b3dabd470be3`)
+found no live active-fault file, operator view-filter files or filter receipts,
+while the original fault record still shows their terminal-time status. This
+documents live cleanup without rewriting R45's failed assertions. Both
+operator scenario bundles were published according to the sealed
 result, unlike R44's failed publication. This is prospective publication
 repair evidence, not R45 acceptance.
 
