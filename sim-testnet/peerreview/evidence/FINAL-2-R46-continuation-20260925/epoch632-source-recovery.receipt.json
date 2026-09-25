@@ -1,0 +1,74 @@
+{
+  "chain_response": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "author": "0x0661d1e2a979c579e79a01d4f0ee374db2c94b52",
+      "baseFeePerGas": "0x2540be400",
+      "difficulty": "0x0",
+      "extraData": "0x",
+      "gasLimit": "0x47868c0",
+      "gasUsed": "0x2a270",
+      "hash": "0xe4cca99d3dd0fcf1f16ffdd2c0c98c070dac1466626c6f8866d5181a4e231e1d",
+      "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000008000000000000000000000000000000000020000000000000000000800000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000002000000000000000000000000000000000000000020000000000020008000000000000000000000000800000000000000000000000000000000000000",
+      "miner": "0x0661d1e2a979c579e79a01d4f0ee374db2c94b52",
+      "nonce": "0x0000000000000000",
+      "number": "0x7b5f34",
+      "parentHash": "0x739d2ee12da92ee8c26be050ca74d13593169a9676510631a5ed92544686b66b",
+      "receiptsRoot": "0xcc9269687afec808890db9c4a24963582211f8e2229c539b0251d5a8b8734c9f",
+      "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+      "size": "0x34d",
+      "stateRoot": "0x19c9f2e1a87c2ec8f39127edf608feb31c88af0f5fc314fca0d429edc770e097",
+      "timestamp": "0x6ab6d098",
+      "totalDifficulty": "0x0",
+      "transactions": [
+        "0xa7218ca0f20329c9da1c80746eece98e7c394d2be8f7b75d155a77117afb6d5e",
+        "0x65e55395ce2b971c4161d2000f1fa93a451218e4dbe445dd82ea1bcb1cd3ea5a"
+      ],
+      "transactionsRoot": "0x9d92e289a901f1b85280de25196615069d600e0afe018b5b8291e98075827993",
+      "uncles": []
+    }
+  },
+  "chain_rpc": "http://192.168.1.162:9944",
+  "epoch": 633,
+  "final_acceptance": false,
+  "fleet_binding_count": 808,
+  "fleet_bindings_valid": true,
+  "head": {
+    "hash": "0xe4cca99d3dd0fcf1f16ffdd2c0c98c070dac1466626c6f8866d5181a4e231e1d",
+    "number": 8085300
+  },
+  "length": 1213180,
+  "observed_at": "2026-09-25T19:51:38.466508834Z",
+  "offset": 29994997,
+  "policy_rate_readiness": {
+    "alpha_price_wei": "539777000000000",
+    "detail": "complete current-policy source epoch clears twice the native minimum at every rate tier",
+    "head": {
+      "hash": "0xe4cca99d3dd0fcf1f16ffdd2c0c98c070dac1466626c6f8866d5181a4e231e1d",
+      "number": 8085300
+    },
+    "minimum_transfer_tao_rao": 100000,
+    "ready": true,
+    "sources": [
+      {
+        "content_hash": "sha256:956798e83d8d283a3db1232a78425801b2c1492a59089c7b9503f887ff0f76fd",
+        "epoch": 632,
+        "no_id": 1,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 20824859
+      },
+      {
+        "content_hash": "sha256:1d4de6619f94b76edd4fb844f03871cf8365b0168b11221fc80c1a12cb4e0b60",
+        "epoch": 632,
+        "no_id": 2,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 23593398
+      }
+    ]
+  },
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-epoch632-source-recovery-v1",
+  "sha256": "c0a47feb3472dbacaf45e982bf2c950ea3132ddd4f796c7db4d70c6a20ec5d5d",
+  "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl"
+}

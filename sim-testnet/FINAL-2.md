@@ -128,6 +128,23 @@ active; no live repair or waiver was applied.
 (SHA-256 `fa7abecea4d61206d7f88c1e23553ae7c01e4b19ed76e87197be0672acd32fd6`),
 [proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-1907.receipt.json)
 (SHA-256 `866584729cdce559badb5e0771ca84eda9d4d5372d7e8fa1142fd893914a2699`).
+R46 also crossed the second measured boundary. The owner's first epoch-633
+observation is pinned to finalized block **8,085,274**. It had valid fleet
+bindings but rate readiness false because its source still identified epoch
+631; the rate check requires the immediately preceding complete epoch 632.
+The next completed owner observation, at block **8,085,300**, selected
+complete epoch-632 sources for both operators: **20,824,859** and
+**23,593,398 bytes**. It reports rate readiness **true** and valid fleet
+bindings. Independent LAN EVM reads matched both observation head hashes.
+The boundary lag is preserved; the later recovery does not erase it or grant
+final acceptance. [Boundary observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-boundary-observation.json)
+(SHA-256 `44abbf91cb060bc54cfd0644a970c3288c25d61bdf577a232482a0c9c2953233`),
+[boundary receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-boundary.receipt.json)
+(SHA-256 `9606fe03882b7529a950c1d3430896a311c770b135c5432ac8ac418f8ccd6005`),
+[recovered observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-source-recovered-observation.json)
+(SHA-256 `c0a47feb3472dbacaf45e982bf2c950ea3132ddd4f796c7db4d70c6a20ec5d5d`),
+[recovery receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-source-recovery.receipt.json)
+(SHA-256 `360d86eb1f8b6df2b1106eb4af771c2e01123426e5a00e43359a6fc9b8ba2d24`).
 The narrow code change permits
 authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No

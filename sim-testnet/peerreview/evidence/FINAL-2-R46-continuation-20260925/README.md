@@ -85,3 +85,12 @@ The later `exit-gap-spread-1908.receipt-v2.json` joins its exact raw gate copy,
 show that the recurring failures had spread to six swarms while useful
 validator-1 traffic and provider health continued. These read-only receipts
 support continuing the partial run; they do not certify acceptance.
+
+`epoch633-boundary-observation.json` and `epoch632-boundary.receipt.json`
+pin the owner's first epoch-633 observation to LAN EVM block 8,085,274. Its
+rate source still identified epoch 631 and therefore failed the last-complete
+epoch identity check. `epoch633-source-recovered-observation.json` and
+`epoch632-source-recovery.receipt.json` pin the later complete epoch-632
+sources and restored rate readiness at block 8,085,300. The paired receipts
+include exact JSONL offsets, hashes and LAN block responses; neither row is
+a final-acceptance result.
