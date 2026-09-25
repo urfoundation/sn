@@ -2403,3 +2403,32 @@ only the old controller policy stops the same mixed availability batch at
 block 4,900 before terminal 5,050. Signed wire identifiers, final severity,
 fault attribution and evidence hashes retain their previous meaning. This
 qualification does not deploy the catalog into the already-running R44 image.
+
+### Record fault completion after the effect becomes observable
+
+R43 rolling restart 7 retained `restored_block=8,079,622`, while the independent
+identity-checked signal receipt pinned finalized block 8,079,626 and the healthy
+replacement started afterward. The controller had passed a pre-action head
+through a readiness wait and recorded that old observation as completion. The
+old signed record must remain unchanged and its timestamp limitation must be
+stated in the report; it is not proof of physical recovery at the earlier block.
+
+Every process, container, miner-control and validator-view transition must read
+a fresh finalized head after its effect is confirmed. Preserve conditional
+trigger evidence separately. The completion read needs a bounded 300-second
+transient retry owner, followed by durable pending reconciliation on a later
+heartbeat if that owner expires. An RPC timeout after an irreversible signal
+must not repeat the signal, discard the pending intent, or mark the transition
+failed solely because readback is unavailable. Exact original process identity,
+fault specification and action remain required throughout pending adoption.
+
+The isolated correction `8c4f7878` passes focused and adjacent normal/race tests.
+Restoring the old kind restriction reproduces stale process-restore and
+container-apply heads; removing the pending census guard admits rewritten PID,
+start ticks, role or identity. Tests also cover canceled read owners, completed
+miner-control adoption, conditional view cuts, same-height hash conflicts,
+legacy wire bytes and recovery without another signal. Delayed activation
+already measures minimum dwell from the actual apply block; its regression
+preserves that behavior rather than confusing a planned restore block with a
+completed duration. This branch is not deployed into R44; composition must
+preserve both container readiness and completion-read pending conditions.
