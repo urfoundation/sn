@@ -1,14 +1,18 @@
 # Sim-testnet finalization report 2
 
-**Provisional R44 exception register, 2026-09-25 07:14 UTC — not a final
+**Provisional R44 exception register, updated 2026-09-25 07:42 UTC — not a final
 result.** The signed recovery-44 release attempt is still running in its fifth
 300-block epoch. Its complete interval ends at block 8,081,674 and requires a
 terminal observation at block 8,081,824. The last checked owner observation
-was block 8,081,490; no owner result or invalidation has been sealed. The
+was block 8,081,637; no owner result or invalidation has been sealed. The
 signed attempt is
 [`release-1.0.recovery.44.evidence.json`](runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json).
 
 **Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
+The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
+uses identifier `R44-COMPANION-LIFECYCLE-FILTER` for this same exception;
+its SHA-256 is
+`b28e5bbef7d9faa4399ceb7e0a794e08e73548b35f4bb84142fd66d9daa7dcde`.
 The approved provisional lifecycle bypass leaves no terminal-effective
 mutation epoch. The companion validator-view filter's early restoration
 condition therefore cannot be proved. Keep that filter and the lifecycle
@@ -23,6 +27,10 @@ the owner seals a result. The qualified successor cleanup can restore the two
 local filters after a complete signed terminal observation while retaining
 `RestoreConditionMet=false`, the failed strict assertions, and
 `final_acceptance=false`; it has not been installed in R44.
+An [independent terminal capture review](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/REVIEW.md)
+and a read-only user service are prepared to retain the authenticated
+terminal prefix, all claim queues, and accepted process-log ranges when the
+owner first reaches the terminal block. They do not write a result for R44.
 
 This exception does not cover other failures. Current-window claim discovery
 has stalled at epoch 617 for all 1,000 miners, leaving later accepted epochs
