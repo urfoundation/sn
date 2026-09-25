@@ -16,6 +16,14 @@ authenticated provisional process-log findings to be retained while the
 owner continues observing; the strict terminal gate still sees them. No
 measured R46 interval or final acceptance is claimed at this cut.
 [Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
+The first durable R46 observation was taken at 17:30:57 UTC on finalized
+block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
+It found **808/808 fleet bindings valid** and current-policy rate readiness
+true: complete epoch 629 carried 21,410,245 and 20,543,745 bytes for the two
+operators, clearing twice the native minimum at every tier. This is a fresh
+readiness observation, not a signed acceptance start.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-observation.json)
+(SHA-256 `fd20218e9bd65fdde89613e8e198562e4c881a25141c4555344886e23e717073`).
 The companion-filter dependency remains known exception **R44-LC-1** below,
 with its lifecycle assertion failed rather than waived as a pass.
 

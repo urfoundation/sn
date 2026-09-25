@@ -23,3 +23,8 @@ generations. The copied signed envelope and its compact receipt bind the exact
 R45 sealed failure and invalidation. They show `preparation_complete=false`
 and no acceptance boundary. This bundle records launch and preparation, not a
 measured R46 interval or final result. Those must come from later owner evidence.
+
+`first-observation.json` is the owner's first durable observation after the
+signed preparation checkpoint. At finalized block 8,084,596 it proves 808
+valid fleet bindings and current-policy rate readiness from complete epoch
+629. It is not itself a signed acceptance boundary.
