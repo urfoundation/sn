@@ -143,6 +143,30 @@ func loadFinalV2Source(ctx context.Context, load FinalArtifactLoader, locator Fi
 	return raw, ctx.Err()
 }
 
+// Initial replay and final rehash share the same independently owned capacity.
+// Only the exact journal source and content-addressed path get its larger bound.
+func loadFinalCapturedSourceV2(ctx context.Context, load FinalArtifactLoader, source FinalCollectedValidatorSourceV2, intentLimit uint64) ([]byte, error) {
+	if err := validateFinalJournalCaptureSourceV2(source); err != nil {
+		return nil, err
+	}
+	maximum := max(maximumCampaignEvidenceRawFileBytes, intentLimit)
+	if finalJournalCapturePathV2(source.Artifact.URI) {
+		maximum = maximumFinalJournalBytes
+	}
+	return loadFinalV2Source(ctx, load, source.Artifact, maximum)
+}
+
+// Re-read each original object before successful replay can return. Earlier
+// reads or artifact cache hits never replace this exact content-address check.
+func rehashFinalCapturedSourcesV2(ctx context.Context, load FinalArtifactLoader, sources []FinalCollectedValidatorSourceV2, intentLimit uint64) error {
+	for _, source := range sources {
+		if _, err := loadFinalCapturedSourceV2(ctx, load, source, intentLimit); err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
 func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvidence, entry FinalValidatorReplayV2, load FinalArtifactLoader) (result *finalValidatorReplayOwnerV2, resultErr error) {
 	if ctx == nil || evidence == nil || entry.ValidatorID == 0 || entry.ValidatorID > uint64(evidence.ExpectedValidators) || entry.Manifest.Kind != "validator-replay-v2" {
 		return nil, errors.New("final V2 replay owner is incomplete")
@@ -302,11 +326,7 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 		if !found {
 			return nil, errors.New("final V2 source escaped its closed census")
 		}
-		maximum := max(maximumCampaignEvidenceRawFileBytes, release.EvidenceV2.Bounds.IntentFileLimit())
-		if finalJournalCapturePathV2(locator.URI) {
-			maximum = maximumFinalJournalBytes
-		}
-		return loadFinalV2Source(ctx, load, locator, maximum)
+		return loadFinalCapturedSourceV2(ctx, load, FinalCollectedValidatorSourceV2{Source: source, Artifact: locator}, release.EvidenceV2.Bounds.IntentFileLimit())
 	}, ScratchRoot: owner.root, MaximumBytes: limits.dataBytes + limits.controlBytes, MaximumObjects: limits.maximumObjects, Adoption: adoption})
 	if err != nil {
 		return nil, err
@@ -392,10 +412,8 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	// Retained source classes also contain relay/native request bytes that
 	// replay does not use as a verdict. Hash every original object before any
 	// successful artifact cache hit; stream one object at a time.
-	for _, source := range manifest.Capture.Sources {
-		if _, err := loadFinalV2Source(ctx, load, source.Artifact, max(maximumCampaignEvidenceRawFileBytes, release.EvidenceV2.Bounds.IntentFileLimit())); err != nil {
-			return nil, err
-		}
+	if err := rehashFinalCapturedSourcesV2(ctx, load, manifest.Capture.Sources, release.EvidenceV2.Bounds.IntentFileLimit()); err != nil {
+		return nil, err
 	}
 	return owner, nil
 }
