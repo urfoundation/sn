@@ -1,6 +1,6 @@
 # Sim-testnet finalization report 2
 
-**R45 continuation, 2026-09-25 13:50 UTC — preparation active, acceptance not yet started.**
+**R45 continuation, 2026-09-25 15:52 UTC — release boundary signed; measured interval pending.**
 The round-7 renewal of 202 fleets for epochs 628–659 completed with
 `postcondition_verified` status on the unchanged plan
 `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`.
@@ -12,11 +12,9 @@ has a direct LAN-RPC receipt with status `0x1` at block 8,083,027.
 include the exact hashes and a portable RPC response. The retained resume
 then dispatched zero setup actions. The R45 controller authenticated all 44
 prior recovery generations and signed a new recovery-45 attempt at 13:45 UTC.
-That signed attempt is a preparation checkpoint, **not** an acceptance start or
-completion. The controller remains active; the renewed bindings become valid
-at epoch 628. Storage headroom must be remeasured under active bindings with a
-twofold projected-growth margin before the acceptance boundary. No R45
-acceptance result is claimed here.
+That first signed attempt was a preparation checkpoint. The controller remains
+active, and the renewed bindings became valid at epoch 628. A full active-epoch
+storage census is in progress; no R45 final acceptance result is claimed here.
 
 At 13:52 UTC, separate nonaccepting publication probes using each operator's
 resumed runtime configuration and the pinned HTTP handler each passed two
@@ -124,6 +122,24 @@ This establishes on-chain commitments for the new epoch; the owner's signed
 artifact match, policy-rate threshold and acceptance boundary are still
 separate checks. [Epoch-628 root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch628-committed-roots-block8084091.receipt.json)
 (SHA-256 `360b693569649fb3f36107f68f8cd721f1f0f46eff09dbda787d20625f7696b5`).
+
+The owner's first post-boundary observation at 15:48:31 UTC, finalized block
+**8,084,084**, matched both signed epoch-628 artifact hashes to those chain
+commitments. Operator usage was 4,251,058 and 4,168,806 bytes, yielding
+85,481 and 83,827 tao-rao at tier 0, each below the 200,000-rao twice-native
+margin. The owner recorded the designed **provisional low-usage deferral**,
+not strict rate readiness. [Exact baseline observation](peerreview/evidence/FINAL-2-R45-renewal-20260925/acceptance-baseline-observation.json)
+(raw SHA-256 `a45f5ccf9e26e1e34c85ec5427f711d3c3fa6f12f2e5e5f0707a501c590f2612`).
+
+At **15:52:25 UTC**, the owner wrote its signed
+[campaign-start envelope](peerreview/evidence/FINAL-2-R45-renewal-20260925/campaign-start.evidence.json)
+(raw SHA-256 `082d17a8781226c28514ce35b03c82d2597724c0e9b2adc2fca5b5cbfdbfcd7b`,
+content hash `sha256:84d3d58d3e8a16cdb9e0f24b0ceb3d4032a1b578d1c515bb493456c97cd35b4f`).
+It binds that exact baseline to five measured epochs **630–634**: start block
+**8,084,374**, end block **8,085,874**, and terminal block **8,086,024**.
+This is the release acceptance boundary, not completed final validation.
+The earlier R44-LC-1 exception, R45 governance-drill gap and remaining strict
+checks retain their identities while the owner runs to terminal evidence.
 
 **R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
 The original owner exited after publishing its final

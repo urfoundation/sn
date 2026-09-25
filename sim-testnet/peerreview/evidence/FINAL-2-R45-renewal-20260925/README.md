@@ -1,8 +1,8 @@
 # R45 round-7 renewal and retained continuation
 
-These files are a portable snapshot from 2026-09-25. They support the renewal
-and preparation claims in `sim-testnet/FINAL-2.md`; they do not establish a
-release acceptance interval or a successful finalization.
+These files are a portable snapshot from 2026-09-25. They support the renewal,
+preparation and signed release-boundary claims in `sim-testnet/FINAL-2.md`;
+they do not establish successful finalization.
 
 - `round7-apply-result.json`: exact successful renewal result for plan
   `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`,
@@ -77,6 +77,13 @@ release acceptance interval or a successful finalization.
   LAN-RPC calls at finalized block 8,084,091. Both operator epoch-628 payout
   roots and artifact hashes are nonzero, committed at block 8,084,080. This
   does not independently establish the owner's rate threshold or acceptance.
+- `acceptance-baseline-observation.json`: exact owner observation line 24 at
+  finalized block 8,084,084, matching both epoch-628 artifact hashes to the
+  commitments and recording a provisional low-usage deferral.
+- `campaign-start.evidence.json`: owner-signed release-boundary envelope at
+  15:52:25 UTC, binding that baseline to five measured epochs 630–634,
+  start block 8,084,374 and terminal block 8,086,024. This is a start record,
+  not a final result.
 
 `SHA256SUMS` hashes the portable JSON and text files. The live candidate, binary, scripts,
 and service journals remain under

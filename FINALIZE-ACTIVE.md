@@ -1,6 +1,18 @@
 # Testnet execution plan
 
-## R45 active continuation — 2026-09-25 13:50 UTC
+## R45 release boundary signed — 2026-09-25 15:52 UTC
+
+The live R45 owner has signed `campaign-start.evidence.json` at 15:52:25 UTC
+after matching both epoch-628 artifacts to nonzero on-chain roots and recording
+the bounded provisional low-usage deferral. Its acceptance baseline is
+finalized block 8,084,084; measured epochs are 630–634, starting at block
+8,084,374, ending at 8,085,874, with terminal block 8,086,024. The exact
+signed envelope and baseline observation are in the R45 portable bundle.
+The owner remains the only writer. Do not restart it for the isolated fixes.
+Final acceptance remains open, including governance drill, relay horizon,
+publication capacity, storage growth and the scoped R44 exception.
+
+## R45 preparation record — 2026-09-25 13:50 UTC
 
 Round-7 fleet renewal completed with 202 fleets and 1,212 finalized,
 postcondition-verified actions. Its
@@ -8,7 +20,8 @@ postcondition-verified actions. Its
 includes the journal summary and direct LAN-RPC sample receipt. Retained
 resume exited 0 with `setup_actions_dispatched=0`. The single owned
 `urnetwork-sim-release-r45.service` is active, authenticated all 44 prior
-recovery generations, and signed recovery-45. **Acceptance has not started**;
+recovery generations, and signed recovery-45. At this earlier cut acceptance
+had not started;
 do not launch a second writer or treat the signed attempt as completion.
 Before its acceptance boundary, remeasure `blob` storage growth with active
 epoch-628 bindings and require a twofold projected-growth margin. Preserve
@@ -62,9 +75,8 @@ isolated fix without changing the pinned binary or treating R44-LC-1 as a
 waiver for this separate issue. The receipt is in the R45 portable bundle.
 Epoch 628 has now closed. Exact canonical LAN-RPC reads at finalized block
 8,084,091 show both operator roots and artifact hashes nonzero, committed at
-8,084,080. This may permit the current owner to clear rate readiness, but no
-owner postboundary match or acceptance boundary has yet been authenticated.
-Retain the live writer and read its next observation before claiming release.
+8,084,080. At this read cut the owner postboundary match and acceptance
+boundary were still pending; both are documented at the top of this file.
 
 ## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
 
