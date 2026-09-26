@@ -1,0 +1,213 @@
+package main
+
+// Offline verification binds captured bytes to the sealed producer receipt
+// before using the production timeline builder and artifact verifier.
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+)
+
+// Parameters identify the verification source separately from capture source.
+type retainedOfflineChronologyParameters struct {
+	Schema                     string `json:"schema"`
+	VerificationSourceRevision string `json:"verification_source_revision"`
+	CaptureQualificationSha256 string `json:"capture_qualification_sha256"`
+	CaptureManifestSha256      string `json:"capture_manifest_sha256"`
+	CaptureParametersSha256    string `json:"capture_parameters_sha256"`
+	DiagnosticReportSha256     string `json:"diagnostic_report_sha256"`
+}
+
+// The producer's hash index binds the exact local copies consumed here.
+type retainedOfflineCaptureQualification struct {
+	Schema          string                            `json:"schema"`
+	Status          string                            `json:"status"`
+	Scope           string                            `json:"scope"`
+	SourceRevision  string                            `json:"source_revision"`
+	ManifestSha256  string                            `json:"manifest_sha256"`
+	ParameterSha256 string                            `json:"parameters_sha256"`
+	ReportSha256    string                            `json:"diagnostic_report_sha256"`
+	Artifacts       []retainedEvmChronologyReplayFile `json:"artifacts"`
+}
+
+// These are the complete fields emitted by the capture helper.
+type retainedOfflineChronologyCapture struct {
+	Schema               string                              `json:"schema"`
+	SourceRevision       string                              `json:"source_revision"`
+	ManifestSha256       string                              `json:"manifest_sha256"`
+	ParametersSha256     string                              `json:"parameters_sha256"`
+	ChainId              uint64                              `json:"chain_id"`
+	CampaignStartHead    ChainHead                           `json:"campaign_start_head"`
+	TerminalEvmHead      ChainHead                           `json:"terminal_evm_head"`
+	FromBlock            uint64                              `json:"from_block"`
+	ThroughHead          ChainHead                           `json:"through_head"`
+	Proxies              []string                            `json:"proxies"`
+	UpgradeTopic         string                              `json:"upgrade_topic"`
+	Logs                 []finalCanonicalEVMLog              `json:"logs"`
+	CoordinatorBaselines []FinalCollectedCoordinatorBaseline `json:"coordinator_baselines"`
+}
+
+// Any unexpected network attempt is counted and rejected before transport.
+type retainedOfflineRejectTransport struct {
+	attempts atomic.Int64
+}
+
+// No request can reach a network endpoint during offline replay.
+func (self *retainedOfflineRejectTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	self.attempts.Add(1)
+	return nil, errors.New("offline chronology forbids every network request")
+}
+
+// Successful capture is independent of the old source's later timeline refusal.
+func retainedVerifyCapturedEvmChronology(t *testing.T, root string, manifestData []byte, captureSourceRevision, reportHash string, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, files map[string][]byte, sources finalHistoricalJournalSources, result *ScenarioResult, census finalReleaseContractCaptureCensus, receipt map[string]any) (resultErr error) {
+	parameterData, err := os.ReadFile(filepath.Join(root, "offline-replay-parameters.json"))
+	if err != nil {
+		return err
+	}
+	var parameters retainedOfflineChronologyParameters
+	if err := decodeStrictJSONBytes(parameterData, &parameters); err != nil {
+		return err
+	}
+	if parameters.Schema != "urnetwork-retained-offline-chronology-parameters-v1" || len(parameters.VerificationSourceRevision) != 40 || parameters.CaptureManifestSha256 != bytesSHA256(manifestData) || parameters.DiagnosticReportSha256 != reportHash {
+		return errors.New("offline chronology source or immutable input parameters differ")
+	}
+	receipt["verification_source_revision"], receipt["parameters_sha256"] = parameters.VerificationSourceRevision, bytesSHA256(parameterData)
+	qualificationData, err := os.ReadFile(filepath.Join(root, "capture-qualification.json"))
+	if err != nil || bytesSHA256(qualificationData) != parameters.CaptureQualificationSha256 {
+		return errors.Join(errors.New("offline capture qualification hash differs"), err)
+	}
+	var qualification retainedOfflineCaptureQualification
+	if err := json.Unmarshal(qualificationData, &qualification); err != nil {
+		return err
+	}
+	if qualification.Schema != "urnetwork-retained-evm-chronology-qualification-v1" || qualification.Scope != "historical-coordinator-chronology-only" || qualification.SourceRevision != captureSourceRevision || qualification.ManifestSha256 != parameters.CaptureManifestSha256 || qualification.ParameterSha256 != parameters.CaptureParametersSha256 || qualification.ReportSha256 != reportHash {
+		return errors.New("offline capture qualification identity differs")
+	}
+	artifacts := make(map[string]retainedEvmChronologyReplayFile)
+	for _, artifact := range qualification.Artifacts {
+		if _, exists := artifacts[artifact.Path]; exists {
+			return errors.New("offline capture qualification repeats an artifact")
+		}
+		artifacts[artifact.Path] = artifact
+	}
+	read := func(name string) ([]byte, error) {
+		original := "retained-v3-evm-chronology/" + name
+		artifact, ok := artifacts[original]
+		if !ok {
+			return nil, fmt.Errorf("offline capture qualification omitted %s", name)
+		}
+		path := filepath.Join(root, name)
+		if err := rejectFinalArtifactSymlinkComponents(root, path); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || uint64(len(data)) != artifact.Bytes || bytesSHA256(data) != artifact.Sha256 {
+			return nil, errors.Join(fmt.Errorf("offline copied capture artifact changed: %s", name), err)
+		}
+		return data, nil
+	}
+	producerReceiptData, err := read("evm-chronology-receipt.json")
+	if err != nil {
+		return err
+	}
+	var producerReceipt struct {
+		SourceRevision  string `json:"source_revision"`
+		CaptureHash     string `json:"evm_capture_sha256"`
+		TranscriptHash  string `json:"rpc_transcript_sha256"`
+		ManifestHash    string `json:"manifest_sha256"`
+		ParameterHash   string `json:"parameters_sha256"`
+		Scope           string `json:"scope"`
+		FinalAcceptance bool   `json:"final_acceptance"`
+		FullNativePass  bool   `json:"full_canonical_native_pass"`
+	}
+	if err := json.Unmarshal(producerReceiptData, &producerReceipt); err != nil {
+		return err
+	}
+	if producerReceipt.SourceRevision != captureSourceRevision || producerReceipt.Scope != qualification.Scope || producerReceipt.FinalAcceptance || producerReceipt.FullNativePass || producerReceipt.ManifestHash != parameters.CaptureManifestSha256 || producerReceipt.ParameterHash != parameters.CaptureParametersSha256 {
+		return errors.New("offline producer receipt identity differs")
+	}
+	transcriptData, err := read("evm-rpc-transcript.jsonl")
+	if err != nil || bytesSHA256(transcriptData) != producerReceipt.TranscriptHash {
+		return errors.Join(errors.New("offline complete Rpc transcript hash differs"), err)
+	}
+	captureParameters, err := read("capture-parameters.json")
+	if err != nil || bytesSHA256(captureParameters) != parameters.CaptureParametersSha256 {
+		return errors.Join(errors.New("offline original capture parameters differ"), err)
+	}
+	captureData, err := read("evm-chronology-capture.json")
+	if err != nil || bytesSHA256(captureData) != producerReceipt.CaptureHash {
+		return errors.Join(errors.New("offline complete capture hash differs"), err)
+	}
+	var capture retainedOfflineChronologyCapture
+	if err := decodeStrictJSONBytes(captureData, &capture); err != nil {
+		return err
+	}
+	if capture.Schema != "urnetwork-retained-evm-chronology-capture-v1" || capture.SourceRevision != captureSourceRevision || capture.ManifestSha256 != parameters.CaptureManifestSha256 || capture.ParametersSha256 != parameters.CaptureParametersSha256 || capture.ChainId != current.ChainID || capture.CampaignStartHead != result.CampaignStartHead || capture.TerminalEvmHead != result.EndHead || capture.FromBlock != census.fromBlock || capture.ThroughHead.Number+1 != result.CampaignStartHead.Number || requireFinalHex32("offline chronology upper head", capture.ThroughHead.Hash) != nil {
+		return errors.New("offline capture scope differs from authenticated campaign")
+	}
+	proxies := make(map[string]bool)
+	for _, plan := range plans {
+		if plan.Deployment.CoordinatorProxy != (common.Address{}) {
+			proxies[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] = true
+		}
+	}
+	names := make([]string, 0, len(proxies))
+	for name := range proxies {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	topic := strings.ToLower(crypto.Keccak256Hash([]byte("Upgraded(address)")).Hex())
+	if !finalJSONEqual(names, capture.Proxies) || capture.UpgradeTopic != topic {
+		return errors.New("offline capture proxy or topic scope differs")
+	}
+	logs, err := finalCanonicalizeLogs(capture.Logs)
+	if err != nil || len(logs) == 0 || !finalJSONEqual(logs, capture.Logs) {
+		return errors.Join(errors.New("offline capture logs are not complete canonical records"), err)
+	}
+	logsByTransaction := make(map[string][]finalCanonicalEVMLog)
+	for _, log := range logs {
+		_, upgraded, err := finalHistoricalCoordinatorUpgradedLog(log)
+		if err != nil || !upgraded || !proxies[log.Address] || log.BlockNumber < capture.FromBlock || log.BlockNumber > capture.ThroughHead.Number {
+			return errors.Join(errors.New("offline upgrade log exceeds authenticated capture scope"), err)
+		}
+		logsByTransaction[log.TransactionHash] = append(logsByTransaction[log.TransactionHash], log)
+	}
+	if err := verifyFinalCollectedCoordinatorBaselines(capture.CoordinatorBaselines, logs); err != nil {
+		return err
+	}
+	evidence := &FinalSemanticEvidence{DeploymentID: current.DeploymentID, PlanHash: current.PlanHash, ChainID: current.ChainID, Netuid: current.Netuid, EVMCampaignStartHead: result.CampaignStartHead}
+	timeline, err := finalHistoricalCoordinatorBuildTimelineWithSources(evidence, current, plans, entries, logsByTransaction, capture.CoordinatorBaselines, sources)
+	if err != nil {
+		return err
+	}
+	evidence.HistoricalCoordinatorTimeline = timeline.evidence()
+	artifact, err := finalHistoricalCoordinatorTimelineArtifactFromSource(timeline, capture.CoordinatorBaselines, logsByTransaction)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(artifact)
+	if err != nil {
+		return err
+	}
+	if err := verifyFinalHistoricalCoordinatorTimelineArtifactWithSources(evidence, current, plans, entries, data, sources); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(root, "replayed-timeline.json"), data, 0o600); err != nil {
+		return err
+	}
+	receipt["capture_qualification_sha256"], receipt["capture_sha256"], receipt["rpc_transcript_sha256"] = parameters.CaptureQualificationSha256, bytesSHA256(captureData), bytesSHA256(transcriptData)
+	receipt["upgrade_event_count"], receipt["baseline_count"] = len(logs), len(capture.CoordinatorBaselines)
+	receipt["timeline_sha256"], receipt["timelines"] = bytesSHA256(data), evidence.HistoricalCoordinatorTimeline
+	t.Logf("verified %d captured upgrades and %d baselines with zero network reads", len(logs), len(capture.CoordinatorBaselines))
+	return nil
+}

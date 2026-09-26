@@ -1,0 +1,15 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:03:23.251971 1089476 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:03:23.252175 1089476 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:03:23.252311 1089476 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:03:23.252365 1089476 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedEvmProxyCensusIncludesPredeploymentPlan
+    retained_evm_proxy_census_test.go:97: predeployment plan changed exact deployed coverage: result={names:[] zeroPlanCount:0 coordinatorActionCount:0 finalizedCoordinatorCount:0} err=scratch Evm chronology has an unapproved zero proxy
+--- FAIL: TestRetainedEvmProxyCensusIncludesPredeploymentPlan (0.00s)
+=== RUN   TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction
+--- PASS: TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction (0.00s)
+=== RUN   TestRetainedEvmProxyCensusRejectsUncoveredActivation
+--- PASS: TestRetainedEvmProxyCensusRejectsUncoveredActivation (0.00s)
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.082s
+FAIL

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+    "-race",
+    "./sim-testnet",
+    "-run",
+    "^Test(PolicyRollover|EvidencePolicyRollover|EvidenceRelayGeneration)",
+    "-count=1",
+    "-timeout=15m"
+  ],
+  "exit_code": 1,
+  "elapsed_seconds": 762.85,
+  "finished_at": "2026-09-26T09:37:59.523327+00:00"
+}

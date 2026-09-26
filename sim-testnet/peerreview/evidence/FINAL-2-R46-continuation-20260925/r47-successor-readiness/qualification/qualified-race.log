@@ -1,0 +1,29 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:43:12.408596 1156391 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:43:12.409348 1156391 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:43:12.409809 1156391 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:43:12.410031 1156391 env.go:78] [env]settings = map[]
+=== RUN   TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration
+--- PASS: TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration (0.16s)
+=== RUN   TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay
+--- PASS: TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay (21.92s)
+=== RUN   TestPolicyRolloverSuccessorFixedPathCollision
+--- PASS: TestPolicyRolloverSuccessorFixedPathCollision (15.74s)
+=== RUN   TestPolicyRolloverSuccessorStagingDoesNotSelect
+--- PASS: TestPolicyRolloverSuccessorStagingDoesNotSelect (12.60s)
+=== RUN   TestPolicyRolloverSuccessorRejectsChangedApproval
+--- PASS: TestPolicyRolloverSuccessorRejectsChangedApproval (11.29s)
+=== RUN   TestPolicyRolloverSuccessorRequiresStoppedTopology
+--- PASS: TestPolicyRolloverSuccessorRequiresStoppedTopology (11.46s)
+=== RUN   TestPolicyRolloverSuccessorRejectsDuplicateSelector
+--- PASS: TestPolicyRolloverSuccessorRejectsDuplicateSelector (12.25s)
+=== RUN   TestPolicyRolloverSuccessorRejectsTornPostcondition
+--- PASS: TestPolicyRolloverSuccessorRejectsTornPostcondition (13.75s)
+=== RUN   TestPolicyRolloverSuccessorRejectsTornJournalSelector
+--- PASS: TestPolicyRolloverSuccessorRejectsTornJournalSelector (10.49s)
+=== RUN   TestPolicyRolloverSuccessorRejectsChangedNativeCustody
+--- PASS: TestPolicyRolloverSuccessorRejectsChangedNativeCustody (13.49s)
+=== RUN   TestPolicyRolloverSuccessorPreservesOriginalActivationCrashRecovery
+--- PASS: TestPolicyRolloverSuccessorPreservesOriginalActivationCrashRecovery (8.54s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	133.232s

@@ -1,0 +1,59 @@
+{
+  "schema": "urnetwork-retained-evm-chronology-preparation-v2",
+  "prepared_at": "2026-09-26T09:07:47.367028+00:00",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "source_worktree": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926",
+  "staging_argv": [
+    "python3",
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/stage_retained_census.py",
+    "--diagnostic",
+    "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926",
+    "--output",
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology",
+    "--source-revision",
+    "92c14e3f8bdd2419734d831da00cc0483f1bc993"
+  ],
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "source_files": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_chronology_capture_test.go",
+      "bytes": 15939,
+      "sha256": "sha256:625875b8e0eb0659e27940d2b95032c871ab5004c06568269751406a303504f0"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_proxy_census_test.go",
+      "bytes": 6189,
+      "sha256": "sha256:1968154a92f11989d2b3dac2d32642e43803dc38ed80973a6e5695b1f27f9d65"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-evm-92c14e3f.overlay.json",
+      "bytes": 1038,
+      "sha256": "sha256:ac9b5e4f35f5aae73df6f12a51c3d20689ca35bb87a4c6c92b5ceb8c7d55b25b"
+    }
+  ],
+  "scope": "historical-coordinator-chronology-only",
+  "prior_attempt_qualification": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-1-qualification.json",
+    "sha256": "sha256:0c7124eaebfe08f28107adb1e9179b5d5f2187a8e73e42bba825ca5488629a66"
+  },
+  "proxy_scope_proof": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-zero-proxy-plan-proof.json",
+    "sha256": "sha256:c9b81411c315301c0f538b5d65a7e795314e757bfae100bd81aa01ef659bb842"
+  },
+  "native_reads": 0,
+  "validator_recaptures": 0,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "expected_remaining_source_precondition": "Qualified source92c14e3f still rejects legacy zero-proxy predecessors in timeline after EVM capture is written; fixed-source replay will consume retained capture offline."
+}

@@ -1,0 +1,115 @@
+package main
+
+// Scratch proxy selection is narrower than timeline acceptance: predeployment
+// plans add no query address, while every coordinator action must be covered.
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+)
+
+// Counts retain the coverage boundary alongside the exact query addresses.
+type retainedEvmProxyCensus struct {
+	names                     []string
+	zeroPlanCount             int
+	coordinatorActionCount    int
+	finalizedCoordinatorCount int
+}
+
+// All plans and dynamic actions have already passed signed source admission.
+func retainedEvmChronologyProxies(plans map[string]*SetupPlan, actions map[evidenceRelayRequestKey]Action, entries []JournalEntry) (retainedEvmProxyCensus, error) {
+	result := retainedEvmProxyCensus{}
+	proxySet := make(map[string]bool)
+	for hash, plan := range plans {
+		if plan == nil || plan.PlanHash != hash {
+			return result, errors.New("scratch Evm proxy plan identity differs")
+		}
+		if plan.Deployment.CoordinatorProxy == (common.Address{}) {
+			return result, errors.New("scratch Evm chronology has an unapproved zero proxy")
+		}
+		proxySet[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] = true
+	}
+	checkAction := func(plan *SetupPlan, action Action) error {
+		if !strings.Contains(action.ID, "coordinator") {
+			return nil
+		}
+		if plan == nil || plan.Deployment.CoordinatorProxy == (common.Address{}) || !proxySet[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] {
+			return fmt.Errorf("scratch Evm coordinator action %s has no covered proxy", action.ID)
+		}
+		if action.ID == "evm.coordinator-upgrade-activate" || action.ID == "repair.coordinator-rounding.activate" {
+			if !common.IsHexAddress(action.Target) || !strings.EqualFold(action.Target, plan.Deployment.CoordinatorProxy.Hex()) {
+				return fmt.Errorf("scratch Evm coordinator action %s targets an uncovered proxy", action.ID)
+			}
+		}
+		result.coordinatorActionCount++
+		return nil
+	}
+	for _, plan := range plans {
+		for _, action := range plan.Actions {
+			if err := checkAction(plan, action); err != nil {
+				return result, err
+			}
+		}
+	}
+	for key, action := range actions {
+		if err := checkAction(plans[key.planHash], action); err != nil {
+			return result, err
+		}
+	}
+	for _, entry := range entries {
+		if entry.Stage != StageFinalized || !strings.Contains(entry.ActionID, "coordinator") {
+			continue
+		}
+		plan := plans[entry.PlanHash]
+		if plan == nil {
+			continue
+		}
+		action, err := finalJournalActionWithRelay(plan, entry, actions)
+		if err != nil {
+			return result, err
+		}
+		if err := checkAction(plan, action); err != nil {
+			return result, err
+		}
+		result.finalizedCoordinatorCount++
+	}
+	for proxy := range proxySet {
+		result.names = append(result.names, proxy)
+	}
+	sort.Strings(result.names)
+	if len(result.names) == 0 {
+		return result, errors.New("scratch Evm proxy census has no deployed coordinator")
+	}
+	return result, nil
+}
+
+// An approved plan created before deployment must not add a zero query target.
+func TestRetainedEvmProxyCensusIncludesPredeploymentPlan(t *testing.T) {
+	predeployment := &SetupPlan{PlanHash: "synthetic-predeployment", Actions: []Action{{ID: "native.bootstrap", Kind: "native-transaction"}}}
+	proxy := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	deployed := &SetupPlan{PlanHash: "synthetic-deployed", Deployment: ContractDeployment{CoordinatorProxy: proxy}, Actions: []Action{{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction", Target: proxy.Hex()}}}
+	result, err := retainedEvmChronologyProxies(map[string]*SetupPlan{predeployment.PlanHash: predeployment, deployed.PlanHash: deployed}, nil, nil)
+	if err != nil || len(result.names) != 1 || result.names[0] != strings.ToLower(proxy.Hex()) || result.zeroPlanCount != 1 || result.coordinatorActionCount != 1 {
+		t.Fatalf("predeployment plan changed exact deployed coverage: result=%+v err=%v", result, err)
+	}
+}
+
+// A missing deployment must never hide an approved coordinator action.
+func TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction(t *testing.T) {
+	plan := &SetupPlan{PlanHash: "synthetic-incomplete", Actions: []Action{{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction"}}}
+	if _, err := retainedEvmChronologyProxies(map[string]*SetupPlan{plan.PlanHash: plan}, nil, nil); err == nil {
+		t.Fatal("zero coordinator action lost query coverage")
+	}
+}
+
+// A signed activation must target the exact covered deployment proxy.
+func TestRetainedEvmProxyCensusRejectsUncoveredActivation(t *testing.T) {
+	plan := &SetupPlan{PlanHash: "synthetic-wrong-target", Deployment: ContractDeployment{CoordinatorProxy: common.HexToAddress("0x1000000000000000000000000000000000000001")}, Actions: []Action{{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction", Target: "0x2000000000000000000000000000000000000002"}}}
+	if _, err := retainedEvmChronologyProxies(map[string]*SetupPlan{plan.PlanHash: plan}, nil, nil); err == nil {
+		t.Fatal("activation targeted an uncovered proxy")
+	}
+}

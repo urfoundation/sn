@@ -1,0 +1,322 @@
+{
+  "actions_not_performed": [
+    "no CLI mutation/doctor",
+    "no transaction",
+    "no service restart/stop",
+    "no live-state edit",
+    "no rollover planning/publication/activation",
+    "no test rerun"
+  ],
+  "actions_performed": [
+    "read source and retained evidence",
+    "read selected local runtime metadata",
+    "systemctl --user show",
+    "go version -m on running validator executable",
+    "one prior LAN finalized-head/header read",
+    "write this external review receipt"
+  ],
+  "active_rollover": {
+    "activated": true,
+    "cutoff_epoch": 604,
+    "first_full_epoch": 605,
+    "generation": 1,
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/policy-rollover/handoff.json",
+    "plan_hash": "0x5a5dd2760b720ffce852d67ac37171d1b13d0d16a9b84047acbd226655b2fafc",
+    "schema": "urnetwork-sim-policy-rollover-handoff-v2",
+    "sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+    "source_plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb"
+  },
+  "captured_at": "2026-09-26T09:09:13.517970+00:00",
+  "failure_groups": {
+    "adversary-shared-actor-or-missing-prerequisite": {
+      "assertion_ids": [
+        "adversary_artifact-integrity-pressure_resilience",
+        "adversary_consensus-cabal-emulation_samples",
+        "adversary_operator-api-pressure_resilience",
+        "adversary_rpc-consistency-pressure_resilience",
+        "adversary_vector_affiliation-mask-evasion",
+        "adversary_vector_artifact-withhold-tamper-equivocate",
+        "adversary_vector_balance-transfer-coldkey-swap-caller",
+        "adversary_vector_beta-escrow-stake-transfer-injection",
+        "adversary_vector_commitment-field-parser-type-confusion",
+        "adversary_vector_concentrated-liquidity-subnet-freeze",
+        "adversary_vector_consensus-minority-cabal-self-weight",
+        "adversary_vector_consensus-reveal-following",
+        "adversary_vector_consensus-rival-knifing",
+        "adversary_vector_consensus-stale-weight-copy",
+        "adversary_vector_consensus-threshold-stake-churn",
+        "adversary_vector_contract-reentrancy-partial-funding-reorder",
+        "adversary_vector_dependency-restart-state-loss",
+        "adversary_vector_deposit-tier-boundary-cross-no-replay",
+        "adversary_vector_drand-randomness-signature-binding",
+        "adversary_vector_drand-round-jump-timelock-denial",
+        "adversary_vector_empty-body-hash-integrity-bypass",
+        "adversary_vector_hotkey-swap-reputation-reset",
+        "adversary_vector_late-keeper-carry-claim-ttl-double-claim",
+        "adversary_vector_liquid-alpha-bond-copy-participation-churn",
+        "adversary_vector_malicious-upgrade-pause-role-compromise",
+        "adversary_vector_mev-shield-finality-era-expiry",
+        "adversary_vector_missing-signature-validator-impersonation",
+        "adversary_vector_nested-proxy-filter-intersection",
+        "adversary_vector_operator-api-resource-pressure",
+        "adversary_vector_payout-root-omission-duplication-wallet-change",
+        "adversary_vector_plaintext-unauthenticated-miner-transport-mitm",
+        "adversary_vector_provider-collusion-short-circuit",
+        "adversary_vector_proxy-scope-alias-bypass",
+        "adversary_vector_proxy-staking-mev-slippage",
+        "adversary_vector_queued-registration-reservation-rate-price",
+        "adversary_vector_registration-burn-price-race",
+        "adversary_vector_registration-lock-floor-price-manipulation",
+        "adversary_vector_root-basket-hidden-reward-on-unstake",
+        "adversary_vector_root-staking-index-state-bloat",
+        "adversary_vector_rounding-gas-unbounded-loop-accounting",
+        "adversary_vector_rpc-lag-equivocation-history-gap",
+        "adversary_vector_runtime-composite-atomicity-rollback",
+        "adversary_vector_runtime-issuance-reserve-migration-conservation",
+        "adversary_vector_runtime-precompile-metadata-drift",
+        "adversary_vector_runtime-resource-metering-panic-resistance",
+        "adversary_vector_runtime-signed-precompile-foreign-frame",
+        "adversary_vector_selective-service-teach-to-test",
+        "adversary_vector_settlement-runtime-transfer-floor-credit",
+        "adversary_vector_shared-prefix-sybil-rebind",
+        "adversary_vector_subnet-eviction-moving-price-pressure",
+        "adversary_vector_subnet-reserve-drain-flow-accounting",
+        "adversary_vector_uid-churn-pruning-reregistration",
+        "adversary_vector_validator-dropout-disagreement",
+        "adversary_vector_verify-poison-distinguishability",
+        "adversary_vector_verify-replay-concurrent-extend",
+        "adversary_vector_verify-vpk-rotation-rate-bypass",
+        "adversary_vector_weights-fee-free-block-fill",
+        "adversary_vector_weights-withhold-late-invalid-reveal",
+        "adversary_verify-replay-poison_resilience"
+      ],
+      "count": 59
+    },
+    "aggregate-open-findings": {
+      "assertion_ids": [
+        "anomaly_ledger_clean"
+      ],
+      "count": 1
+    },
+    "epoch634-incomplete-payout-source": {
+      "assertion_ids": [
+        "payout_artifacts_enforce_one_tier"
+      ],
+      "count": 1
+    },
+    "fault-measurement-cohort-separation": {
+      "assertion_ids": [
+        "quality_cohorts_differ"
+      ],
+      "count": 1
+    },
+    "inherited-lifecycle-exception": {
+      "assertion_ids": [
+        "fault_fleet-lifecycle-companion-prune",
+        "fault_fleet-lifecycle-target-prune",
+        "fleet_lifecycle_fault_tail_bounded"
+      ],
+      "count": 3
+    },
+    "one-uncertain-miner-claim": {
+      "assertion_ids": [
+        "claims_finalized_per_no",
+        "tier_exclusive_claim_outcomes"
+      ],
+      "count": 2
+    },
+    "retained-runtime-process-findings": {
+      "assertion_ids": [
+        "process_log_completion",
+        "process_log_publication"
+      ],
+      "count": 2
+    },
+    "terminal-cancellation-publication": {
+      "assertion_ids": [
+        "evidence_publication",
+        "scenario_context"
+      ],
+      "count": 2
+    },
+    "unexecuted-governance-drill": {
+      "assertion_ids": [
+        "governance_adversarial_drill_complete"
+      ],
+      "count": 1
+    },
+    "validator-native-decisions-missing": {
+      "assertion_ids": [
+        "head_decision_history_valid",
+        "head_promotion_demotion_transition",
+        "head_selected_paid_rejected_zero_weight",
+        "head_slot_boundary_enforced",
+        "native_head_pool_and_validator_rewards",
+        "native_head_weight_observed",
+        "signed_weight_cap_enforced",
+        "two_fleet_shared_prefix_split",
+        "validator_deposit_audits_compliant",
+        "validator_local_top200_disagreement",
+        "validator_local_v2_receipts_finalized_and_applied",
+        "validator_pool_scores_are_non_global",
+        "validator_self_uids_masked",
+        "validator_vectors_independently_applied"
+      ],
+      "count": 14
+    }
+  },
+  "final_acceptance": false,
+  "fleet_last_renewal": {
+    "round": 7,
+    "valid_from_epoch": 628,
+    "valid_to_epoch": 659
+  },
+  "hard_source_blocker": {
+    "call": "policy_rollover_command_v2.go:428 -> runtime_evidence_provision_v2.go:92 -> validator/release_provision_file_v2.go:15",
+    "reason": "fixed handoff.json already contains generation1; writer refuses different bytes; stopping alone cannot replace it",
+    "scope": "fresh generation2 activation, not provisional observation",
+    "verified_by": "source review and existence/hash of generation1, no attempted mutation"
+  },
+  "independent_rpc": false,
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "prior_lan_read": {
+    "captured_at": "2026-09-26T08:55:40.257140+00:00",
+    "finalized_block": 8089222,
+    "methods": [
+      "chain_getFinalizedHead",
+      "chain_getHeader"
+    ],
+    "native_hash": "0xbeef8463d47065fd84fe1175ee78bb06488c76ace9062574c3a5f341db69e9e2",
+    "not_a_launch_window": true,
+    "not_an_evm_hash": true
+  },
+  "r46": {
+    "acceptance_window": {
+      "baseline_epoch": 630,
+      "baseline_finalized_head": {
+        "hash": "0x87e62543188a389570e1dc3717dfc553b505939de459d376850bdba6bfa7972a",
+        "number": 8084658
+      },
+      "baseline_observation_hash": "0xf2dc5c316e819564ade9727523b8a080bbdb7d8271f1086517bb91e635b6fb9f",
+      "end_block": 8086174,
+      "epoch_blocks": 300,
+      "epoch_count": 5,
+      "finalize_offset_blocks": 150,
+      "first_epoch": 631,
+      "policy_effective_block": 8073574,
+      "policy_effective_epoch": 594,
+      "schema": "urnetwork-sim-acceptance-window-v1",
+      "start_block": 8084674,
+      "terminal_block": 8086324
+    },
+    "assertion_count": 182,
+    "completed_at": "2026-09-26T00:08:52.734792125Z",
+    "failed_assertion_count": 86,
+    "final_acceptance": false,
+    "result": "fail",
+    "run_id": "20260925T172403.199659160Z-release-1.0"
+  },
+  "relay": {
+    "end_block": 8070107,
+    "end_native_epoch": 1634,
+    "end_settlement_epoch": 582,
+    "historical_liability_wei": 19950000000000000000,
+    "new_slots": 1250,
+    "required_work_blocks": 7570,
+    "schema": "urnetwork-sim-evidence-relay-continuation-v6"
+  },
+  "retained_evidence": {
+    "failure-clusters.receipt.json": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-integration-20260926/sim-testnet/peerreview/evidence/FINAL-2-R46-continuation-20260925/failure-clusters.receipt.json",
+      "sha256": "sha256:bb861d78cbbb5449c9f2b439e6ecfea231620ae6ad33d2ff5112cfd5b5a5f0bc"
+    },
+    "generation46-signed-exit.evidence.json": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-integration-20260926/sim-testnet/peerreview/evidence/FINAL-2-R46-continuation-20260925/generation46-signed-exit.evidence.json",
+      "sha256": "sha256:5b4e635ae2fcabdb78eb9e9a3bb2766e570b180a1599ddf7f5231a39f91fa4a6"
+    },
+    "owner-result.json": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-integration-20260926/sim-testnet/peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-result.json",
+      "sha256": "sha256:e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9"
+    },
+    "r46-restart-payout-fix-review.md": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-integration-20260926/sim-testnet/peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-restart-payout-fix-review.md",
+      "sha256": "sha256:569b4ff0c0bc55766c0326bbc07bd326ca473858094330da4410cec82107a4ed"
+    },
+    "r46-terminal-diagnostic-v3.report.json": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-integration-20260926/sim-testnet/peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-v3.report.json",
+      "sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb"
+    }
+  },
+  "retained_plan": {
+    "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+    "limits": {
+      "alpha_rao": 47000000000000,
+      "evm_gas_wei": 512000000000000000000,
+      "registrations": 262,
+      "subnet_creations": 0,
+      "tao_rao": 512000000000
+    },
+    "maximum_spend": {
+      "alpha_rao": 46498306443274,
+      "evm_gas_wei": 370590700000000000000,
+      "registrations": 259,
+      "subnet_creations": 0,
+      "tao_rao": 404091441000
+    },
+    "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+    "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd"
+  },
+  "review_source_commit": "cf0a86befbefa76597c0f6dd2dc4641400b29275",
+  "schema": "r47-launch-readiness-read-only-v1",
+  "services": "MainPID=0\nResult=exit-code\nExecMainStatus=1\nId=urnetwork-sim-release-r46.service\nActiveState=failed\nSubState=failed\n\nMainPID=3780072\nResult=success\nExecMainStatus=0\nId=urnetwork-sim-ur-subnet-testnet-v1.service\nActiveState=active\nSubState=running\n",
+  "state_root": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4",
+  "supervisor": {
+    "all_reported_healthy": true,
+    "manifest_hash": "0x2bd5bbef8665fa4fee3a7ca085b3144f95504395ea348652f3552fc76a7bba9a",
+    "process_count": 33,
+    "sha256": "sha256:4a3d467ad5ec30a9d6f0041d44a1cd244f9aa0390da850ea5d68a0fd15ceb27a",
+    "supervisor_pid": 3780072,
+    "supervisor_start_time_ticks": 21558815,
+    "updated_at": "2026-09-26T09:09:11.027632092Z",
+    "validators": [
+      {
+        "healthy": true,
+        "id": "validator-1",
+        "intent_exists": false,
+        "intent_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json",
+        "pid": 562260,
+        "restarts": 9,
+        "start_time_ticks": 25931173,
+        "started_at": "2026-09-26T01:44:08Z",
+        "vcs_build_lines": [
+          "build\tvcs.revision=6100394b04fc3386b03870b8bdcc9a6abb5614a7",
+          "build\tvcs.time=2026-09-25T11:14:52Z",
+          "build\tvcs.modified=false"
+        ]
+      },
+      {
+        "current": {
+          "finalized_block": 8079823,
+          "settlement_epoch": 614,
+          "status": "applied",
+          "subnet_epoch": 1661
+        },
+        "healthy": true,
+        "history_count": 0,
+        "id": "validator-2",
+        "intent_exists": true,
+        "intent_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json",
+        "intent_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce",
+        "pid": 1040177,
+        "restarts": 24,
+        "start_time_ticks": 28396575,
+        "started_at": "2026-09-26T08:35:02Z",
+        "vcs_build_lines": [
+          "build\tvcs.revision=6100394b04fc3386b03870b8bdcc9a6abb5614a7",
+          "build\tvcs.time=2026-09-25T11:14:52Z",
+          "build\tvcs.modified=false"
+        ]
+      }
+    ]
+  }
+}

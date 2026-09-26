@@ -1,0 +1,10 @@
+[
+  "python3",
+  "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/stage_retained_census.py",
+  "--diagnostic",
+  "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926",
+  "--output",
+  "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology",
+  "--source-revision",
+  "92c14e3f8bdd2419734d831da00cc0483f1bc993"
+]

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+    "./sim-testnet",
+    "-run",
+    "^TestPolicyRolloverSuccessorFixedPathCollision$",
+    "-count=1",
+    "-timeout=5m"
+  ],
+  "exit_code": 1,
+  "at": "2026-09-26T09:14:20.821119+00:00"
+}

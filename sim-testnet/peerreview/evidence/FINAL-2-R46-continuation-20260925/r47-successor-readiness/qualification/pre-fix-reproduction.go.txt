@@ -1,0 +1,29 @@
+//go:build linux || darwin
+
+package main
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+// The existing activation writer collides with the retained first generation.
+func TestPolicyRolloverSuccessorFixedPathCollision(t *testing.T) {
+	g, _, first, journal := newPolicyRolloverHandoffTestV2(t)
+	_ = journal
+	limit, err := runtimeEvidenceProvisionLimit(g.fixture.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(policyRolloverRoot(g.fixture.stateDir), "handoff.json")
+	if _, err := writeRuntimeEvidenceSetupV2(t.Context(), path, first, limit); err != nil {
+		t.Fatal(err)
+	}
+	next := *first
+	next.Generation++
+	next.CutoffEpoch++
+	next.FirstFullEpoch++
+	if _, err := writeRuntimeEvidenceSetupV2(t.Context(), path, &next, limit); err != nil {
+		t.Fatalf("second approved generation cannot publish after the first: %v", err)
+	}
+}

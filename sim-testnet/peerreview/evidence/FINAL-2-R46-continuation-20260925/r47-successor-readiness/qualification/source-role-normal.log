@@ -1,0 +1,15 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:44:42.693503 1158758 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:44:42.693770 1158758 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:44:42.693934 1158758 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:44:42.693990 1158758 env.go:78] [env]settings = map[]
+=== RUN   TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration
+--- PASS: TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration (9.06s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	9.151s
+=== RUN   TestReleaseSourceRolePredecessorV2EmptyGenerationContinuesExactRole
+--- PASS: TestReleaseSourceRolePredecessorV2EmptyGenerationContinuesExactRole (0.85s)
+=== RUN   TestReleaseSourceRolePredecessorV2RolloutChecksCurrentSlot
+--- PASS: TestReleaseSourceRolePredecessorV2RolloutChecksCurrentSlot (1.66s)
+PASS
+ok  	github.com/urfoundation/sn/validator	2.526s

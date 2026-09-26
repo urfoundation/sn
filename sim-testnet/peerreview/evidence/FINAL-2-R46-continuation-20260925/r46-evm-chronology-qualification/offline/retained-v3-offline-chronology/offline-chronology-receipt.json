@@ -1,0 +1,415 @@
+{
+  "baseline_count": 2,
+  "capture_qualification_sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca",
+  "capture_sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd",
+  "captured_source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "completed_at": "2026-09-26T09:42:49.805378897Z",
+  "diagnostic_report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "input_artifacts": [
+    {
+      "file": {
+        "path": "objects/ecf02e18c0da79315c7e73148db9cbaf3cf0a976d138718aed7cae420c4eb604.bin",
+        "sha256": "sha256:ecf02e18c0da79315c7e73148db9cbaf3cf0a976d138718aed7cae420c4eb604",
+        "bytes": 455048
+      },
+      "locator": {
+        "kind": "scenario-result-candidate",
+        "uri": "final-inputs/scenario-result.json",
+        "content_sha256": "sha256:ecf02e18c0da79315c7e73148db9cbaf3cf0a976d138718aed7cae420c4eb604",
+        "size_bytes": 455048
+      }
+    },
+    {
+      "file": {
+        "path": "objects/b6100b7ddc1075049184604586287be135ac419fad5d39bb28786d6b410299fe.bin",
+        "sha256": "sha256:b6100b7ddc1075049184604586287be135ac419fad5d39bb28786d6b410299fe",
+        "bytes": 1220415
+      },
+      "locator": {
+        "kind": "scenario-terminal-observation",
+        "uri": "final-inputs/terminal-observation.json",
+        "content_sha256": "sha256:b6100b7ddc1075049184604586287be135ac419fad5d39bb28786d6b410299fe",
+        "size_bytes": 1220415
+      }
+    },
+    {
+      "file": {
+        "path": "objects/456f9ab681e97db093241455a87fa0f8fc6b1bdc24d5b5b0eafdf722d1af54ba.bin",
+        "sha256": "sha256:456f9ab681e97db093241455a87fa0f8fc6b1bdc24d5b5b0eafdf722d1af54ba",
+        "bytes": 140658051
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/launch-foundation.json",
+        "content_sha256": "sha256:456f9ab681e97db093241455a87fa0f8fc6b1bdc24d5b5b0eafdf722d1af54ba",
+        "size_bytes": 140658051
+      }
+    },
+    {
+      "file": {
+        "path": "objects/5cee6ed3aa329499756443d6c9e5c325e741068e30e91d48c562bcc3c2becea8.bin",
+        "sha256": "sha256:5cee6ed3aa329499756443d6c9e5c325e741068e30e91d48c562bcc3c2becea8",
+        "bytes": 168181094
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-001-of-007.json",
+        "content_sha256": "sha256:5cee6ed3aa329499756443d6c9e5c325e741068e30e91d48c562bcc3c2becea8",
+        "size_bytes": 168181094
+      }
+    },
+    {
+      "file": {
+        "path": "objects/bc10c51f175857bfaee34a7723ba6ff5f7d37fcb7ee3a4c0ac838f981305a0e9.bin",
+        "sha256": "sha256:bc10c51f175857bfaee34a7723ba6ff5f7d37fcb7ee3a4c0ac838f981305a0e9",
+        "bytes": 179909999
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-002-of-007.json",
+        "content_sha256": "sha256:bc10c51f175857bfaee34a7723ba6ff5f7d37fcb7ee3a4c0ac838f981305a0e9",
+        "size_bytes": 179909999
+      }
+    },
+    {
+      "file": {
+        "path": "objects/55d6476d9d223e215f9f77984261886405aea899e41ad7c19894d53159899984.bin",
+        "sha256": "sha256:55d6476d9d223e215f9f77984261886405aea899e41ad7c19894d53159899984",
+        "bytes": 178983650
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-003-of-007.json",
+        "content_sha256": "sha256:55d6476d9d223e215f9f77984261886405aea899e41ad7c19894d53159899984",
+        "size_bytes": 178983650
+      }
+    },
+    {
+      "file": {
+        "path": "objects/b011a76245b3d47ade1103ea7399824af9ec1cb432aef90d1726b6462c378d32.bin",
+        "sha256": "sha256:b011a76245b3d47ade1103ea7399824af9ec1cb432aef90d1726b6462c378d32",
+        "bytes": 179228135
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-004-of-007.json",
+        "content_sha256": "sha256:b011a76245b3d47ade1103ea7399824af9ec1cb432aef90d1726b6462c378d32",
+        "size_bytes": 179228135
+      }
+    },
+    {
+      "file": {
+        "path": "objects/e8104845801a66f184cf4bc22af1420abe98a8e90ccae803413b3998288ca262.bin",
+        "sha256": "sha256:e8104845801a66f184cf4bc22af1420abe98a8e90ccae803413b3998288ca262",
+        "bytes": 168834684
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-005-of-007.json",
+        "content_sha256": "sha256:e8104845801a66f184cf4bc22af1420abe98a8e90ccae803413b3998288ca262",
+        "size_bytes": 168834684
+      }
+    },
+    {
+      "file": {
+        "path": "objects/4885d84b6cba97b5fe02279cc58a8a7c1c9952ed5dbaba2ed5346180cfd0f6d5.bin",
+        "sha256": "sha256:4885d84b6cba97b5fe02279cc58a8a7c1c9952ed5dbaba2ed5346180cfd0f6d5",
+        "bytes": 179512482
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-006-of-007.json",
+        "content_sha256": "sha256:4885d84b6cba97b5fe02279cc58a8a7c1c9952ed5dbaba2ed5346180cfd0f6d5",
+        "size_bytes": 179512482
+      }
+    },
+    {
+      "file": {
+        "path": "objects/1798933d21b9226897ee873e63df8a26478c0c7f61f1c3d12ca3d258b9d6263b.bin",
+        "sha256": "sha256:1798933d21b9226897ee873e63df8a26478c0c7f61f1c3d12ca3d258b9d6263b",
+        "bytes": 117614648
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/plan-history-007-of-007.json",
+        "content_sha256": "sha256:1798933d21b9226897ee873e63df8a26478c0c7f61f1c3d12ca3d258b9d6263b",
+        "size_bytes": 117614648
+      }
+    },
+    {
+      "file": {
+        "path": "objects/f45f57f0fa8e59a6a68c6fb64934308eab96287327bdf9d29e29cae7e912b727.bin",
+        "sha256": "sha256:f45f57f0fa8e59a6a68c6fb64934308eab96287327bdf9d29e29cae7e912b727",
+        "bytes": 25203964
+      },
+      "locator": {
+        "kind": "closed-input-bundle",
+        "uri": "final-inputs/bundles/public.json",
+        "content_sha256": "sha256:f45f57f0fa8e59a6a68c6fb64934308eab96287327bdf9d29e29cae7e912b727",
+        "size_bytes": 25203964
+      }
+    }
+  ],
+  "journal_entry_count": 59979,
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "network_attempts": 0,
+  "parameters_sha256": "sha256:cea69eed26831eb1cbe82d08a374e9152b1f8ac25659ca52318fe462ae3eeddd",
+  "plan_count": 125,
+  "read_only": true,
+  "relay_request_count": 1371,
+  "result_evidence_hash": "0xbd7972698cdfde31ae210e199d92bfe4ec6d44f2c15ed6c7e6dc9c1a3cdcd5d8",
+  "rpc_reads": 0,
+  "rpc_transcript_sha256": "sha256:136800ef55a703cee56d7cbee00f1ab5369fb6349c1ce35fa571db68671ad894",
+  "schema": "urnetwork-retained-offline-chronology-replay-v1",
+  "scope": "historical-coordinator-chronology-only",
+  "started_at": "2026-09-26T09:33:53.119137161Z",
+  "status": "pass",
+  "timeline_sha256": "sha256:2c814318bfda7ce498719b03dcfb227186ea9c7261006078f18aa5b63069e43a",
+  "timelines": [
+    {
+      "proxy": "0x07ec4a5b849b0496478343fa316186a5918119f6",
+      "baseline": {
+        "number": 7889308,
+        "hash": "0x00213dfeb6db564a13b9bcbb5c104028b1579a090cadf0f06eee2f19e5fb5ae8"
+      },
+      "proxy_runtime_hash": "0x8b9a6be720b7bedae5f47f9505113a1340490930d4b7ea79966382ac12a4a9e2",
+      "initialization": {
+        "plan_hash": "0x6dbb27ba98d5295e30d8256137b45903927f85556b1d1abe0747b1d239512b25",
+        "action_id": "evm.coordinator-proxy",
+        "intent_hash": "0x0d6baf6f6a4893cec614920715217a40c381f19f1d5181f13d2106797f4c6b3b",
+        "transaction_hash": "0x44cbe3388df2b9bfc0276a02aea83d7bab5e8b6837b17297819faf6514aea023",
+        "transaction_index": 0,
+        "log_index": 0,
+        "block": {
+          "number": 7889308,
+          "hash": "0x00213dfeb6db564a13b9bcbb5c104028b1579a090cadf0f06eee2f19e5fb5ae8"
+        },
+        "execution": {
+          "implementation": "",
+          "runtime_hash": ""
+        },
+        "post": {
+          "implementation": "0xc6c92646b365ebb709b1523c289d4bbed3013a31",
+          "runtime_hash": "0xf5c6a7621783c58164508a0147c9c209f078c172da73b838129f17421f207f12"
+        }
+      },
+      "upgrades": [
+        {
+          "plan_hash": "0xc8112121859e2aaaf65983c77ecb00a97dc38b0b2d32b3123e559dcf2cef2699",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x0bde3e7dc34ab33a33f04289fcd43e761d1f2ccdce23615d9e4ec808dcfb1622",
+          "transaction_hash": "0x40e0ddb40fdd4fd8f4d8f084321153079ab16725dd63a57a6b641bfc447266de",
+          "transaction_index": 1,
+          "log_index": 1,
+          "block": {
+            "number": 7893827,
+            "hash": "0xc4fc9cadc8323ec4cc8271464726fc19374c0e1b0c035102468f8b79a61d5996"
+          },
+          "execution": {
+            "implementation": "0xc6c92646b365ebb709b1523c289d4bbed3013a31",
+            "runtime_hash": "0xf5c6a7621783c58164508a0147c9c209f078c172da73b838129f17421f207f12"
+          },
+          "post": {
+            "implementation": "0x5307d998901e39f02d1ca9e50beffd565efba6ba",
+            "runtime_hash": "0xa6f22e90af1d421b48bb008bff565cca96a22d095425838a980593525c989d1d"
+          }
+        }
+      ]
+    },
+    {
+      "proxy": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "baseline": {
+        "number": 7895374,
+        "hash": "0xd783aaaf6ed3354f9e3c3dcfafff5cda9a32c1d2c58566969fe73908c504a025"
+      },
+      "proxy_runtime_hash": "0x8b9a6be720b7bedae5f47f9505113a1340490930d4b7ea79966382ac12a4a9e2",
+      "initialization": {
+        "plan_hash": "0xa475378523bb49618765603ed88020c8c5c0035f18a8f41c7fd9f6c2965ec10b",
+        "action_id": "evm.coordinator-proxy",
+        "intent_hash": "0x142e681ca6f905fea325ee9a75ae6ae4607b6e875741b4bb6e8bb82718658a2f",
+        "transaction_hash": "0xc1dacef0189d9e6bd7311c11d7153f8460ffc3b8f14d2ad76edb91df60ff171f",
+        "transaction_index": 0,
+        "log_index": 0,
+        "block": {
+          "number": 7895374,
+          "hash": "0xd783aaaf6ed3354f9e3c3dcfafff5cda9a32c1d2c58566969fe73908c504a025"
+        },
+        "execution": {
+          "implementation": "",
+          "runtime_hash": ""
+        },
+        "post": {
+          "implementation": "0x8c033865c1cd387a0fa5a8f3369908a20c5a54e4",
+          "runtime_hash": "0xf83c224f7a5279c0a234e0f5c25bf61032b263243b3a0da636c1f07f3aef54b6"
+        }
+      },
+      "upgrades": [
+        {
+          "plan_hash": "0xa475378523bb49618765603ed88020c8c5c0035f18a8f41c7fd9f6c2965ec10b",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x8aa71242a12026592045f40814a4f5cdbf1c571bc2a9d01815f6d6d6a822e1c2",
+          "transaction_hash": "0xd42321426f3452b12f77a5fdc776c83cb0fed3d313d730c5740f377ba54dc1dd",
+          "transaction_index": 1,
+          "log_index": 1,
+          "block": {
+            "number": 7895405,
+            "hash": "0x014207bc88880fda7311420c71bf80236f38867df347dd26662c4b5304ed63fc"
+          },
+          "execution": {
+            "implementation": "0x8c033865c1cd387a0fa5a8f3369908a20c5a54e4",
+            "runtime_hash": "0xf83c224f7a5279c0a234e0f5c25bf61032b263243b3a0da636c1f07f3aef54b6"
+          },
+          "post": {
+            "implementation": "0xc886e65437e8bcb917982f9a7147c2b5d54beac0",
+            "runtime_hash": "0x57f6b60c72d2bfad146f9b586cb7ef8e27fa9e4e1bb15e4bbf5c35a71fd54c50"
+          }
+        },
+        {
+          "plan_hash": "0x116fb74881424b2312ca759baeee9d94cfd508bf93d3fdd3ad130b648d0eed30",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x0776634cc653c463b5cbb40c938e0692e1cd721b8635ed26c26863bf9d8606c4",
+          "transaction_hash": "0xa90398fdaeeeb1976bb7606aaa7b0122ec3f19046534f7628e914d97f4017bf5",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7896147,
+            "hash": "0xd5e486bcef9e2805d2723bd71777b2e02fd57f958949fcef6c5da569cca82425"
+          },
+          "execution": {
+            "implementation": "0xc886e65437e8bcb917982f9a7147c2b5d54beac0",
+            "runtime_hash": "0x57f6b60c72d2bfad146f9b586cb7ef8e27fa9e4e1bb15e4bbf5c35a71fd54c50"
+          },
+          "post": {
+            "implementation": "0xe4f0fc39e38728bae9b58875c2777431b18295ba",
+            "runtime_hash": "0x55286610e7c973b0fe245eeb51f4fb9ee7ddacb4d4c7fa597afa57e7c7e7f999"
+          }
+        },
+        {
+          "plan_hash": "0xa1092ea7ec15b44188732b71dacf4fec19aacdae571e773a3f360da611fe4d9e",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x0f7e6e23724e679a8691ae57c5c7707d06bf5e47b039836b11390cc485497967",
+          "transaction_hash": "0xd64aff213dc2dd486812415585c4e42d2c37740893cb60325ac947b902591493",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7896337,
+            "hash": "0x7cad64c232a45eb2a94b048d8d4119e1570d1cfeadfdb9c28fcabc291c875b95"
+          },
+          "execution": {
+            "implementation": "0xe4f0fc39e38728bae9b58875c2777431b18295ba",
+            "runtime_hash": "0x55286610e7c973b0fe245eeb51f4fb9ee7ddacb4d4c7fa597afa57e7c7e7f999"
+          },
+          "post": {
+            "implementation": "0x2bb05ddccb23431546de8bd2d3165b5480a0eff7",
+            "runtime_hash": "0x2f8606ff4f11e2c6546f775e601453c41df14c0d20a5390a2049ccdfb2b1e463"
+          }
+        },
+        {
+          "plan_hash": "0xb64c96dd387f14697dc8eacdf38c5608222910f8842931c249d50472ab0aa4a1",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x64d2f6d0357ac599326a0992be8c0c7ae16e492054c09e9eb1806b4334fb02d5",
+          "transaction_hash": "0xbc1cf789678c4e2cf8d225e81a9f9ca749e4451bb48f92f52a076af82b9bf827",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7896781,
+            "hash": "0xed57036983a35f74cecd7270c27daa5c94c579ee30fccb866fbd732c5caf92d1"
+          },
+          "execution": {
+            "implementation": "0x2bb05ddccb23431546de8bd2d3165b5480a0eff7",
+            "runtime_hash": "0x2f8606ff4f11e2c6546f775e601453c41df14c0d20a5390a2049ccdfb2b1e463"
+          },
+          "post": {
+            "implementation": "0xded32b4b8f43b1e42cebc7c50e6cf38607244bc0",
+            "runtime_hash": "0xb35f8a83d0dc28a26e62cfc0b461efafe540bb6e05510698ae7447f270b8635e"
+          }
+        },
+        {
+          "plan_hash": "0x1c17a49286fe638223398900b98db27ac9c798b282e11c8c3f00294396b9d4c2",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0x3ec3ab4c0bd05a35feb2ad734d7907a9347950b65c2aa898953a8b3dc5dc2668",
+          "transaction_hash": "0x8b571ef79db17f83b5d64b4be12b611376e6bd8fe73b78ca78af04e75c22feca",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7897149,
+            "hash": "0xaa82e0673e40abe01592111560835024342c7ade63ff9d591a31b58ce7eac847"
+          },
+          "execution": {
+            "implementation": "0xded32b4b8f43b1e42cebc7c50e6cf38607244bc0",
+            "runtime_hash": "0xb35f8a83d0dc28a26e62cfc0b461efafe540bb6e05510698ae7447f270b8635e"
+          },
+          "post": {
+            "implementation": "0x3722bb80c2cbcef0ea2fb72e3ff32f672ba77415",
+            "runtime_hash": "0x99aef4dc06312fec2497093d9498b33b2bf22afadebb6be3844a0295777d417c"
+          }
+        },
+        {
+          "plan_hash": "0x9be00c4516aaf0e5067b9ca8a6405ee9ae1d3a330fbbd9efb8d72c70a4b4b453",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0xcdea9ecc7cb0101dca69574051cfde9020008304c0db3200fa9a1a87e36c1196",
+          "transaction_hash": "0xe8b7ac67e8a02dc7cefbab3e3cc213301e40808ca8ab17522f8ee69e7c060e4f",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7899079,
+            "hash": "0x088759a83aa83a61b25ef8ba9d58aa7ab6286fdcb6dfb465e17fa6a2f49e0c02"
+          },
+          "execution": {
+            "implementation": "0x3722bb80c2cbcef0ea2fb72e3ff32f672ba77415",
+            "runtime_hash": "0x99aef4dc06312fec2497093d9498b33b2bf22afadebb6be3844a0295777d417c"
+          },
+          "post": {
+            "implementation": "0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef",
+            "runtime_hash": "0x4f97f8c8763faaaa5d1b94cad173d542c6572e83141a9ba7ee3c30917d40856b"
+          }
+        },
+        {
+          "plan_hash": "0x2d82d20cedf9436fb93a5caffed1c5455c563a85f0b84f4ee005c9fc3f813b91",
+          "action_id": "evm.coordinator-upgrade-activate",
+          "intent_hash": "0xc50091154f3542bd1fd7f26a9294abba51059cf3bed74eeacb300676e4b476e4",
+          "transaction_hash": "0x3a8d29a7a73829c68ca40bc1680eda9329ad07092013f86396f93ebbce8c15a7",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7973227,
+            "hash": "0x63d83dc33d0fa4ffe1fbd2b640b9607f7ddbeee8586c00dc15e7c043c10ac387"
+          },
+          "execution": {
+            "implementation": "0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef",
+            "runtime_hash": "0x4f97f8c8763faaaa5d1b94cad173d542c6572e83141a9ba7ee3c30917d40856b"
+          },
+          "post": {
+            "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+            "runtime_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+          }
+        },
+        {
+          "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+          "action_id": "repair.coordinator-rounding.activate",
+          "intent_hash": "0x53ed3ed053673110c56ec0fc185362f49a9deb28fa1cd6bdffbd2af021ed24c1",
+          "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+          "transaction_index": 0,
+          "log_index": 0,
+          "block": {
+            "number": 7986580,
+            "hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9"
+          },
+          "execution": {
+            "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+            "runtime_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+          },
+          "post": {
+            "implementation": "0x40e5abde2bc4ba84d966842cbab98c0c88894aaf",
+            "runtime_hash": "0xc8837dcf6ebb607277f140677c73ad91f3359ef25bfda17e578ad52e2d4f5179"
+          }
+        }
+      ]
+    }
+  ],
+  "upgrade_event_count": 11,
+  "validator_recaptures": 0,
+  "verification_source_revision": "d1b8b6e02b3e15658330a506bf09f5ffcc221391"
+}

@@ -1,0 +1,119 @@
+package main
+
+// Scratch proxy selection is narrower than timeline acceptance: predeployment
+// plans add no query address, while every coordinator action must be covered.
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+)
+
+// Counts retain the coverage boundary alongside the exact query addresses.
+type retainedEvmProxyCensus struct {
+	names                     []string
+	zeroPlanCount             int
+	coordinatorActionCount    int
+	finalizedCoordinatorCount int
+}
+
+// All plans and dynamic actions have already passed signed source admission.
+func retainedEvmChronologyProxies(plans map[string]*SetupPlan, actions map[evidenceRelayRequestKey]Action, entries []JournalEntry) (retainedEvmProxyCensus, error) {
+	result := retainedEvmProxyCensus{}
+	proxySet := make(map[string]bool)
+	for hash, plan := range plans {
+		if plan == nil || plan.PlanHash != hash {
+			return result, errors.New("scratch Evm proxy plan identity differs")
+		}
+		if plan.Deployment.CoordinatorProxy == (common.Address{}) {
+			result.zeroPlanCount++
+			continue
+		}
+		proxySet[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] = true
+	}
+	checkAction := func(plan *SetupPlan, action Action) error {
+		if action.ID != "evm.coordinator-proxy" && action.ID != "evm.coordinator-upgrade-activate" && action.ID != "repair.coordinator-rounding.activate" {
+			return nil
+		}
+		if plan == nil || plan.Deployment.CoordinatorProxy == (common.Address{}) || !proxySet[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] {
+			return fmt.Errorf("scratch Evm coordinator action %s has no covered proxy", action.ID)
+		}
+		if action.ID == "evm.coordinator-upgrade-activate" || action.ID == "repair.coordinator-rounding.activate" {
+			if !common.IsHexAddress(action.Target) || !strings.EqualFold(action.Target, plan.Deployment.CoordinatorProxy.Hex()) {
+				return fmt.Errorf("scratch Evm coordinator action %s targets an uncovered proxy", action.ID)
+			}
+		}
+		result.finalizedCoordinatorCount++
+		return nil
+	}
+	for _, plan := range plans {
+		for _, action := range plan.Actions {
+			if strings.Contains(action.ID, "coordinator") {
+				result.coordinatorActionCount++
+			}
+		}
+	}
+	for _, entry := range entries {
+		if entry.Stage != StageFinalized || !strings.Contains(entry.ActionID, "coordinator") {
+			continue
+		}
+		plan := plans[entry.PlanHash]
+		if plan == nil {
+			continue
+		}
+		action, err := finalJournalActionWithRelay(plan, entry, actions)
+		if err != nil {
+			return result, err
+		}
+		if err := checkAction(plan, action); err != nil {
+			return result, err
+		}
+	}
+	for proxy := range proxySet {
+		result.names = append(result.names, proxy)
+	}
+	sort.Strings(result.names)
+	if len(result.names) == 0 {
+		return result, errors.New("scratch Evm proxy census has no deployed coordinator")
+	}
+	return result, nil
+}
+
+// An approved plan created before deployment must not add a zero query target.
+func TestRetainedEvmProxyCensusIncludesPredeploymentPlan(t *testing.T) {
+	predeployment := &SetupPlan{PlanHash: "synthetic-predeployment", DeploymentID: "synthetic-deployment", Actions: []Action{
+		{ID: "evm.coordinator-implementation", Kind: "evm-transaction", Target: "coordinator-implementation", IntentHash: "synthetic-implementation-intent"},
+		{ID: "evm.coordinator-proxy", Kind: "evm-transaction", Target: "coordinator-proxy", IntentHash: "synthetic-proxy-intent"},
+	}}
+	proxy := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	deployed := &SetupPlan{PlanHash: "synthetic-deployed", DeploymentID: "synthetic-deployment", Deployment: ContractDeployment{CoordinatorProxy: proxy}, Actions: []Action{{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction", Target: proxy.Hex(), IntentHash: "synthetic-upgrade-intent"}}}
+	entries := []JournalEntry{
+		{PlanHash: predeployment.PlanHash, DeploymentID: predeployment.DeploymentID, ActionID: predeployment.Actions[0].ID, IntentHash: predeployment.Actions[0].IntentHash, Stage: StageFinalized},
+		{PlanHash: deployed.PlanHash, DeploymentID: deployed.DeploymentID, ActionID: deployed.Actions[0].ID, IntentHash: deployed.Actions[0].IntentHash, Stage: StageFinalized},
+	}
+	result, err := retainedEvmChronologyProxies(map[string]*SetupPlan{predeployment.PlanHash: predeployment, deployed.PlanHash: deployed}, nil, entries)
+	if err != nil || len(result.names) != 1 || result.names[0] != strings.ToLower(proxy.Hex()) || result.zeroPlanCount != 1 || result.coordinatorActionCount != 3 || result.finalizedCoordinatorCount != 1 {
+		t.Fatalf("predeployment plan changed exact deployed coverage: result=%+v err=%v", result, err)
+	}
+}
+
+// A missing deployment must never hide a finalized coordinator transition.
+func TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction(t *testing.T) {
+	plan := &SetupPlan{PlanHash: "synthetic-incomplete", DeploymentID: "synthetic-deployment", Actions: []Action{{ID: "evm.coordinator-proxy", Kind: "evm-transaction", Target: "coordinator-proxy", IntentHash: "synthetic-proxy-intent"}}}
+	entry := JournalEntry{PlanHash: plan.PlanHash, DeploymentID: plan.DeploymentID, ActionID: plan.Actions[0].ID, IntentHash: plan.Actions[0].IntentHash, Stage: StageFinalized}
+	if _, err := retainedEvmChronologyProxies(map[string]*SetupPlan{plan.PlanHash: plan}, nil, []JournalEntry{entry}); err == nil {
+		t.Fatal("zero coordinator action lost query coverage")
+	}
+}
+
+// A signed activation must target the exact covered deployment proxy.
+func TestRetainedEvmProxyCensusRejectsUncoveredActivation(t *testing.T) {
+	plan := &SetupPlan{PlanHash: "synthetic-wrong-target", Deployment: ContractDeployment{CoordinatorProxy: common.HexToAddress("0x1000000000000000000000000000000000000001")}, Actions: []Action{{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction", Target: "0x2000000000000000000000000000000000000002"}}}
+	entry := JournalEntry{PlanHash: plan.PlanHash, DeploymentID: plan.DeploymentID, ActionID: plan.Actions[0].ID, IntentHash: plan.Actions[0].IntentHash, Stage: StageFinalized}
+	if _, err := retainedEvmChronologyProxies(map[string]*SetupPlan{plan.PlanHash: plan}, nil, []JournalEntry{entry}); err == nil {
+		t.Fatal("activation targeted an uncovered proxy")
+	}
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "urnetwork-retained-evm-chronology-parameters-v1",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "diagnostic_report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+  "offline_qualification_sha256": "sha256:2e4289a2fb936db8868fa29273780b7f30808140af00595cfe66a6350924ca1a",
+  "authority": "192.168.1.162:9944",
+  "from_block": 7888670,
+  "through_block": 8084595,
+  "campaign_start_head": {
+    "number": 8084596,
+    "hash": "0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192"
+  },
+  "terminal_evm_head": {
+    "number": 8086545,
+    "hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a"
+  },
+  "maximum_log_queries": 196,
+  "maximum_requests": 512
+}

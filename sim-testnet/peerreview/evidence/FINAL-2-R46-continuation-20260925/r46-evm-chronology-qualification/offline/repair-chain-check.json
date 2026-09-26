@@ -1,0 +1,24 @@
+{
+  "schema": "urnetwork-retained-repair-timeline-check-v1",
+  "verification_source_revision": "d1b8b6e02b3e15658330a506bf09f5ffcc221391",
+  "timeline_sha256": "sha256:2c814318bfda7ce498719b03dcfb227186ea9c7261006078f18aa5b63069e43a",
+  "field_comparison_sha256": "sha256:f0f355e165096ca210aa9184d08a3329b0699ba6529abff375bd25d51447d9c6",
+  "repair_action_id": "repair.coordinator-rounding.activate",
+  "prior_activation_block": {
+    "number": 7973227,
+    "hash": "0x63d83dc33d0fa4ffe1fbd2b640b9607f7ddbeee8586c00dc15e7c043c10ac387"
+  },
+  "repair_activation_block": {
+    "number": 7986580,
+    "hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9"
+  },
+  "signed_retained_runtime": {
+    "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+    "runtime_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+  },
+  "repair_execution_equals_prior_post": true,
+  "repair_execution_equals_signed_retained_upgrade": true,
+  "original_planning_baseline_equals_retained_upgrade": false,
+  "scope": "Derived check of the already source-verified timeline; no new authority or RPC",
+  "rpc_reads": 0
+}

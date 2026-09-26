@@ -1,0 +1,22 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:26:29.926017 1130266 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:26:29.926397 1130266 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:26:29.926545 1130266 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:26:29.926600 1130266 env.go:78] [env]settings = map[]
+--- FAIL: TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration (0.01s)
+    evidence_relay_policy_rollover_test.go:246: read validator evidence policyAt(10) at finalized block 1210: eth_call at canonical block 1210 (0xa200000000000000000000000000000000000000000000000000000000000000): wrong complete state calldata or target
+--- FAIL: TestPolicyRolloverSuccessorFixedPathCollision (6.51s)
+    policy_rollover_successor_v2_test.go:144: second generation activation: seed must contain exactly 32 raw bytes
+--- FAIL: TestPolicyRolloverSuccessorStagingDoesNotSelect (7.74s)
+    policy_rollover_successor_v2_test.go:201: seed must contain exactly 32 raw bytes
+--- FAIL: TestPolicyRolloverSuccessorRejectsDuplicateSelector (5.51s)
+    policy_rollover_successor_v2_test.go:255: seed must contain exactly 32 raw bytes
+--- FAIL: TestPolicyRolloverSuccessorRejectsTornPostcondition (6.99s)
+    policy_rollover_successor_v2_test.go:270: seed must contain exactly 32 raw bytes
+--- FAIL: TestPolicyRolloverSuccessorRejectsTornJournalSelector (5.61s)
+    policy_rollover_successor_v2_test.go:288: seed must contain exactly 32 raw bytes
+--- FAIL: TestPolicyRolloverSuccessorRejectsChangedNativeCustody (5.85s)
+    policy_rollover_successor_v2_test.go:313: seed must contain exactly 32 raw bytes
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	676.577s
+FAIL

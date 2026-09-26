@@ -1,0 +1,29 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:41:13.724929 1153647 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:41:13.725211 1153647 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:41:13.725390 1153647 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:41:13.725428 1153647 env.go:78] [env]settings = map[]
+=== RUN   TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration
+--- PASS: TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration (0.03s)
+=== RUN   TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay
+--- PASS: TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay (5.56s)
+=== RUN   TestPolicyRolloverSuccessorFixedPathCollision
+--- PASS: TestPolicyRolloverSuccessorFixedPathCollision (6.76s)
+=== RUN   TestPolicyRolloverSuccessorStagingDoesNotSelect
+--- PASS: TestPolicyRolloverSuccessorStagingDoesNotSelect (6.56s)
+=== RUN   TestPolicyRolloverSuccessorRejectsChangedApproval
+--- PASS: TestPolicyRolloverSuccessorRejectsChangedApproval (6.40s)
+=== RUN   TestPolicyRolloverSuccessorRequiresStoppedTopology
+--- PASS: TestPolicyRolloverSuccessorRequiresStoppedTopology (5.42s)
+=== RUN   TestPolicyRolloverSuccessorRejectsDuplicateSelector
+--- PASS: TestPolicyRolloverSuccessorRejectsDuplicateSelector (5.59s)
+=== RUN   TestPolicyRolloverSuccessorRejectsTornPostcondition
+--- PASS: TestPolicyRolloverSuccessorRejectsTornPostcondition (5.59s)
+=== RUN   TestPolicyRolloverSuccessorRejectsTornJournalSelector
+--- PASS: TestPolicyRolloverSuccessorRejectsTornJournalSelector (5.60s)
+=== RUN   TestPolicyRolloverSuccessorRejectsChangedNativeCustody
+--- PASS: TestPolicyRolloverSuccessorRejectsChangedNativeCustody (5.73s)
+=== RUN   TestPolicyRolloverSuccessorPreservesOriginalActivationCrashRecovery
+--- PASS: TestPolicyRolloverSuccessorPreservesOriginalActivationCrashRecovery (3.43s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	56.780s

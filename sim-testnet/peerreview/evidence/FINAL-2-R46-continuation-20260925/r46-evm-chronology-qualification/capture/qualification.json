@@ -1,0 +1,239 @@
+{
+  "schema": "urnetwork-retained-evm-chronology-qualification-v1",
+  "sealed_at": "2026-09-26T09:25:58.610754+00:00",
+  "status": "fail",
+  "scope": "historical-coordinator-chronology-only",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "source_tree": "a39dc6a8774991c62b323e93fce4c193c5b07dba",
+  "source_worktree_clean": true,
+  "binary_sha256": "sha256:ecf0f3d590256d133d189241e484f78009d85cdaca1a21131e04554599d0cffc",
+  "binary_bytes": 175427000,
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "diagnostic_report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+  "run_exit": 1,
+  "started_at": "2026-09-26T09:07:49.036373982Z",
+  "completed_at": "2026-09-26T09:24:45.760032397Z",
+  "rpc_authority": "192.168.1.162:9944",
+  "rpc_reads": 236,
+  "rpc_method_counts": {
+    "eth_chainId": 1,
+    "eth_getBlockByNumber": 22,
+    "eth_getCode": 4,
+    "eth_getLogs": 196,
+    "eth_getStorageAt": 2,
+    "eth_getTransactionReceipt": 11
+  },
+  "transport_errors": [],
+  "rpc_errors": [],
+  "successful_unique_log_queries": 196,
+  "from_block": 7888670,
+  "through_block": 8084595,
+  "source_normal_and_race_qualification": "passed",
+  "native_rpc_methods": 0,
+  "validator_recaptures": 0,
+  "wallets_opened": 0,
+  "chain_writes": 0,
+  "read_only": true,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "original_v3_report_changed": false,
+  "original_R46_result_changed": false,
+  "capture_complete": true,
+  "timeline_complete": false,
+  "prior_attempt": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-1-qualification.json",
+    "sha256": "sha256:0c7124eaebfe08f28107adb1e9179b5d5f2187a8e73e42bba825ca5488629a66"
+  },
+  "zero_proxy_scope_proof": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-zero-proxy-plan-proof.json",
+    "sha256": "sha256:c9b81411c315301c0f538b5d65a7e795314e757bfae100bd81aa01ef659bb842"
+  },
+  "artifacts": [
+    {
+      "path": "evm-helper-preparation.json",
+      "bytes": 3211,
+      "sha256": "sha256:7226a17f1a37c2918945f791ea873145a5dcbfc837ffa9203696f14b59232aa6"
+    },
+    {
+      "path": "retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "retained_evm_chronology_capture_test.go",
+      "bytes": 15939,
+      "sha256": "sha256:625875b8e0eb0659e27940d2b95032c871ab5004c06568269751406a303504f0"
+    },
+    {
+      "path": "retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "retained-evm-92c14e3f.overlay.json",
+      "bytes": 1038,
+      "sha256": "sha256:ac9b5e4f35f5aae73df6f12a51c3d20689ca35bb87a4c6c92b5ceb8c7d55b25b"
+    },
+    {
+      "path": "evm-stage.log",
+      "bytes": 365,
+      "sha256": "sha256:0cb90bd29631856304a50e2f3bd9b1b1e847687275942dbb93ef84da3e11df81"
+    },
+    {
+      "path": "evm-stage.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-compile.log",
+      "bytes": 0,
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "evm-compile.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-compile.json",
+      "bytes": 665,
+      "sha256": "sha256:97a39c4873698ad4b735303d643e89267c68129776659e24a5530c3065321afe"
+    },
+    {
+      "path": "evm-binary-build-info.txt",
+      "bytes": 16681,
+      "sha256": "sha256:59b036f92878d4f9eaea3269221c0cd92856ab8d5130a8a0a96109557d2e78d6"
+    },
+    {
+      "path": "evm-guard-normal.log",
+      "bytes": 1106,
+      "sha256": "sha256:df69e9882b9f2dcbcc479de83d72f0d74696d88fc56fb40d4eb3340dcc68977a"
+    },
+    {
+      "path": "evm-guard-normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-guard-normal.json",
+      "bytes": 316,
+      "sha256": "sha256:b032caf93b5d331630882a2c5ca1b8f3f99c887a12d078bc015d55a6cd23779c"
+    },
+    {
+      "path": "evm-run-start.json",
+      "bytes": 1479,
+      "sha256": "sha256:4d38d8c8c286dbbb6744ec07f8088ea26dc879a6cb09d7b229bcffade7cfb77c"
+    },
+    {
+      "path": "evm-run.log",
+      "bytes": 1533,
+      "sha256": "sha256:b76d7f28bb331f8619e80d659aeedecd4fc231f8c5f73c78c552d64966c3b87a"
+    },
+    {
+      "path": "evm-run.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "evm-run.json",
+      "bytes": 1551,
+      "sha256": "sha256:56648c1ac588f53e8b4485a5507c0c23afdc832f93c1910a979647b2ce8fb444"
+    },
+    {
+      "path": "census-source-custody.json",
+      "bytes": 2663,
+      "sha256": "sha256:3f0479f8c7b275432f5094e842ba9db228cd74f23e974e5813aa5b3de82eec10"
+    },
+    {
+      "path": "census-source-qualification-followup.json",
+      "bytes": 1569,
+      "sha256": "sha256:2a749010fdcc869a99ea7d87229ede6f1ceb809c50adc752fad54dfc68f7cac3"
+    },
+    {
+      "path": "seal_retained_evm.py",
+      "bytes": 8613,
+      "sha256": "sha256:07403ed291ac5f1f20281022bd9e41c449db731267d53173aa4865c7e1a0abd5"
+    },
+    {
+      "path": "retained_evm_proxy_census_test.go",
+      "bytes": 6189,
+      "sha256": "sha256:1968154a92f11989d2b3dac2d32642e43803dc38ed80973a6e5695b1f27f9d65"
+    },
+    {
+      "path": "proxy-control-red.log",
+      "bytes": 1119,
+      "sha256": "sha256:3daf0169f092f4d27daf6cd74ed54a40636ed622f59f7ffe7f9fd0c82465c094"
+    },
+    {
+      "path": "proxy-control-red.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "proxy-control-red.json",
+      "bytes": 460,
+      "sha256": "sha256:a133ee0e0a55fe656359ae5b2cc7d3ed9a5951208bfe037945e04a2a8d2bf15b"
+    },
+    {
+      "path": "proxy-control-red-source.go.txt",
+      "bytes": 5028,
+      "sha256": "sha256:8712d591af9d933017c88232f74fbd68a1f5a69abfa40786d0b8875ab2c98bf7"
+    },
+    {
+      "path": "proxy-control-red-custody.json",
+      "bytes": 214,
+      "sha256": "sha256:ae527122eb157bd3bec01e578e95ee1cfdc7838c341e692bada23780f7799408"
+    },
+    {
+      "path": "retained-v3-evm-chronology/manifest.json",
+      "bytes": 5998,
+      "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9"
+    },
+    {
+      "path": "retained-v3-evm-chronology/capture-parameters.json",
+      "bytes": 858,
+      "sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8"
+    },
+    {
+      "path": "retained-v3-evm-chronology/offline-census-qualification.json",
+      "bytes": 3727,
+      "sha256": "sha256:2e4289a2fb936db8868fa29273780b7f30808140af00595cfe66a6350924ca1a"
+    },
+    {
+      "path": "retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "bytes": 7810,
+      "sha256": "sha256:cc75941dee87958a013bd4cf808f522cdd116f8fbe7376c5bc4f0e4683986312"
+    },
+    {
+      "path": "retained-v3-evm-chronology/evm-rpc-transcript.jsonl",
+      "bytes": 261170,
+      "sha256": "sha256:136800ef55a703cee56d7cbee00f1ab5369fb6349c1ce35fa571db68671ad894"
+    },
+    {
+      "path": "retained-v3-evm-chronology/evm-chronology-capture.json",
+      "bytes": 7998,
+      "sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd"
+    }
+  ],
+  "error": "historical coordinator timeline has an unapproved plan",
+  "plan_count": 125,
+  "journal_entry_count": 59979,
+  "relay_request_count": 1371,
+  "proxy_count": 2,
+  "upgrade_event_count": 11,
+  "baseline_count": 2,
+  "capture_upper_head": {
+    "number": 8084595,
+    "hash": "0x9b14fc4a8c1401f9f54044529b1dbb701b6f5ef2fa840083998c431998e96b6c"
+  },
+  "node_finalized_head": {
+    "number": 8089326,
+    "hash": "0x81f5d705919c27cbab64d5da999189a164c3049f4ca2b045c6154c602f19c699"
+  },
+  "zero_proxy_plan_count": 4,
+  "planned_coordinator_action_count": 780,
+  "covered_finalized_transition_count": 11,
+  "evm_capture_sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd",
+  "rpc_transcript_sha256": "sha256:136800ef55a703cee56d7cbee00f1ab5369fb6349c1ce35fa571db68671ad894"
+}

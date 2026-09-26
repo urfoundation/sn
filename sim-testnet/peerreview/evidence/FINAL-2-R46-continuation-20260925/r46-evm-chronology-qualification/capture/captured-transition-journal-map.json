@@ -1,0 +1,110 @@
+{
+  "schema": "urnetwork-retained-captured-transition-journal-map-v1",
+  "qualification_sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca",
+  "capture_sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd",
+  "copied_journal_sha256": "sha256:113cae2dcedd32fe8f40148e5a6d355753b20899539bb10570d585a2614009fa",
+  "event_count": 11,
+  "matched_finalizations": [
+    {
+      "sequence": 674,
+      "plan_hash": "0x6dbb27ba98d5295e30d8256137b45903927f85556b1d1abe0747b1d239512b25",
+      "action_id": "evm.coordinator-proxy",
+      "intent_hash": "0x0d6baf6f6a4893cec614920715217a40c381f19f1d5181f13d2106797f4c6b3b",
+      "transaction_hash": "0x44cbe3388df2b9bfc0276a02aea83d7bab5e8b6837b17297819faf6514aea023",
+      "block_number": 7889308,
+      "block_hash": "0x00213dfeb6db564a13b9bcbb5c104028b1579a090cadf0f06eee2f19e5fb5ae8"
+    },
+    {
+      "sequence": 3883,
+      "plan_hash": "0xc8112121859e2aaaf65983c77ecb00a97dc38b0b2d32b3123e559dcf2cef2699",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x0bde3e7dc34ab33a33f04289fcd43e761d1f2ccdce23615d9e4ec808dcfb1622",
+      "transaction_hash": "0x40e0ddb40fdd4fd8f4d8f084321153079ab16725dd63a57a6b641bfc447266de",
+      "block_number": 7893827,
+      "block_hash": "0xc4fc9cadc8323ec4cc8271464726fc19374c0e1b0c035102468f8b79a61d5996"
+    },
+    {
+      "sequence": 3949,
+      "plan_hash": "0xa475378523bb49618765603ed88020c8c5c0035f18a8f41c7fd9f6c2965ec10b",
+      "action_id": "evm.coordinator-proxy",
+      "intent_hash": "0x142e681ca6f905fea325ee9a75ae6ae4607b6e875741b4bb6e8bb82718658a2f",
+      "transaction_hash": "0xc1dacef0189d9e6bd7311c11d7153f8460ffc3b8f14d2ad76edb91df60ff171f",
+      "block_number": 7895374,
+      "block_hash": "0xd783aaaf6ed3354f9e3c3dcfafff5cda9a32c1d2c58566969fe73908c504a025"
+    },
+    {
+      "sequence": 3979,
+      "plan_hash": "0xa475378523bb49618765603ed88020c8c5c0035f18a8f41c7fd9f6c2965ec10b",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x8aa71242a12026592045f40814a4f5cdbf1c571bc2a9d01815f6d6d6a822e1c2",
+      "transaction_hash": "0xd42321426f3452b12f77a5fdc776c83cb0fed3d313d730c5740f377ba54dc1dd",
+      "block_number": 7895405,
+      "block_hash": "0x014207bc88880fda7311420c71bf80236f38867df347dd26662c4b5304ed63fc"
+    },
+    {
+      "sequence": 4030,
+      "plan_hash": "0x116fb74881424b2312ca759baeee9d94cfd508bf93d3fdd3ad130b648d0eed30",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x0776634cc653c463b5cbb40c938e0692e1cd721b8635ed26c26863bf9d8606c4",
+      "transaction_hash": "0xa90398fdaeeeb1976bb7606aaa7b0122ec3f19046534f7628e914d97f4017bf5",
+      "block_number": 7896147,
+      "block_hash": "0xd5e486bcef9e2805d2723bd71777b2e02fd57f958949fcef6c5da569cca82425"
+    },
+    {
+      "sequence": 4089,
+      "plan_hash": "0xa1092ea7ec15b44188732b71dacf4fec19aacdae571e773a3f360da611fe4d9e",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x0f7e6e23724e679a8691ae57c5c7707d06bf5e47b039836b11390cc485497967",
+      "transaction_hash": "0xd64aff213dc2dd486812415585c4e42d2c37740893cb60325ac947b902591493",
+      "block_number": 7896337,
+      "block_hash": "0x7cad64c232a45eb2a94b048d8d4119e1570d1cfeadfdb9c28fcabc291c875b95"
+    },
+    {
+      "sequence": 4106,
+      "plan_hash": "0xb64c96dd387f14697dc8eacdf38c5608222910f8842931c249d50472ab0aa4a1",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x64d2f6d0357ac599326a0992be8c0c7ae16e492054c09e9eb1806b4334fb02d5",
+      "transaction_hash": "0xbc1cf789678c4e2cf8d225e81a9f9ca749e4451bb48f92f52a076af82b9bf827",
+      "block_number": 7896781,
+      "block_hash": "0xed57036983a35f74cecd7270c27daa5c94c579ee30fccb866fbd732c5caf92d1"
+    },
+    {
+      "sequence": 4132,
+      "plan_hash": "0x1c17a49286fe638223398900b98db27ac9c798b282e11c8c3f00294396b9d4c2",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0x3ec3ab4c0bd05a35feb2ad734d7907a9347950b65c2aa898953a8b3dc5dc2668",
+      "transaction_hash": "0x8b571ef79db17f83b5d64b4be12b611376e6bd8fe73b78ca78af04e75c22feca",
+      "block_number": 7897149,
+      "block_hash": "0xaa82e0673e40abe01592111560835024342c7ade63ff9d591a31b58ce7eac847"
+    },
+    {
+      "sequence": 4986,
+      "plan_hash": "0x9be00c4516aaf0e5067b9ca8a6405ee9ae1d3a330fbbd9efb8d72c70a4b4b453",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0xcdea9ecc7cb0101dca69574051cfde9020008304c0db3200fa9a1a87e36c1196",
+      "transaction_hash": "0xe8b7ac67e8a02dc7cefbab3e3cc213301e40808ca8ab17522f8ee69e7c060e4f",
+      "block_number": 7899079,
+      "block_hash": "0x088759a83aa83a61b25ef8ba9d58aa7ab6286fdcb6dfb465e17fa6a2f49e0c02"
+    },
+    {
+      "sequence": 10079,
+      "plan_hash": "0x2d82d20cedf9436fb93a5caffed1c5455c563a85f0b84f4ee005c9fc3f813b91",
+      "action_id": "evm.coordinator-upgrade-activate",
+      "intent_hash": "0xc50091154f3542bd1fd7f26a9294abba51059cf3bed74eeacb300676e4b476e4",
+      "transaction_hash": "0x3a8d29a7a73829c68ca40bc1680eda9329ad07092013f86396f93ebbce8c15a7",
+      "block_number": 7973227,
+      "block_hash": "0x63d83dc33d0fa4ffe1fbd2b640b9607f7ddbeee8586c00dc15e7c043c10ac387"
+    },
+    {
+      "sequence": 10258,
+      "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+      "action_id": "repair.coordinator-rounding.activate",
+      "intent_hash": "0x53ed3ed053673110c56ec0fc185362f49a9deb28fa1cd6bdffbd2af021ed24c1",
+      "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+      "block_number": 7986580,
+      "block_hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9"
+    }
+  ],
+  "scope": "read-only compact cross-check; production timeline acceptance remains pending qualified replay",
+  "rpc_reads": 0
+}

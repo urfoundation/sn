@@ -1,0 +1,36 @@
+{
+  "schema": "urnetwork-retained-census-source-qualification-followup-v1",
+  "recorded_at": "2026-09-26T08:44:45.823652+00:00",
+  "qualified_source_revision": "670e4272244c00293b4591b4838dacd3a5107ee8",
+  "integrated_source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "normal_exit": 0,
+  "race_exit": 0,
+  "census_receipt_preserved_pending_at_start": true,
+  "qualification_files": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-precompile-census-evidence-20260926/qualification.json",
+      "bytes": 1581,
+      "sha256": "sha256:8d84b6e209332f24f2e98edad181a3a30722aab42c0e0d07cba51e74b4c1b714"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-precompile-census-evidence-20260926/focused.normal.log",
+      "bytes": 52,
+      "sha256": "sha256:7ca88f085be1a66984766dd11704df46c9fff02ceef3c6baca0a2fd7c67f96a1"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-precompile-census-evidence-20260926/focused.normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-precompile-census-evidence-20260926/focused.race.log",
+      "bytes": 19479,
+      "sha256": "sha256:d807aedb674804d24669de488a55debe7e0f462dd634bbc2ae9de3cafcd33ac9"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-precompile-census-evidence-20260926/focused.race.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    }
+  ]
+}

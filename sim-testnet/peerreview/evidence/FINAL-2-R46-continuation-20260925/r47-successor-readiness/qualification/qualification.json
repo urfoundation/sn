@@ -1,0 +1,157 @@
+{
+  "schema": "r47-successor-handoff-qualification-v1",
+  "created_at": "2026-09-26T09:48:55.676594+00:00",
+  "commit": "73305340fee0e5114989fcb548c0414ee1650d69",
+  "parent_commit": "1b4751be15a79a5dc905b854f2a5dcc337767792",
+  "branch": "codex/r47-successor-handoff-20260926",
+  "worktree": "/mnt/data/sn-testnet/qualification/r47-successor-handoff-20260926",
+  "clean_worktree": true,
+  "pre_fix_red": {
+    "log": "pre-fix-red.log",
+    "command_receipt": "pre-fix-red.json",
+    "exact_test_source": "pre-fix-reproduction.go.txt",
+    "exit_code": 1,
+    "error": "compact input journal already names different immutable bytes",
+    "source_base": "1b4751be15a79a5dc905b854f2a5dcc337767792"
+  },
+  "qualified_results": {
+    "qualified-normal": {
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "-run",
+        "^Test(PolicyRolloverSuccessor|EvidencePolicyRolloverSuccessor|PolicyRolloverRuntimeInputsRetain)",
+        "-count=1",
+        "-timeout=10m",
+        "-v",
+        "-failfast"
+      ],
+      "umask": "0077",
+      "exit_code": 0,
+      "elapsed_seconds": 127.623,
+      "started_at": "2026-09-26T09:40:02.999757+00:00",
+      "finished_at": "2026-09-26T09:42:10.622428+00:00"
+    },
+    "qualified-race": {
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "-race",
+        "./sim-testnet",
+        "-run",
+        "^Test(PolicyRolloverSuccessor|EvidencePolicyRolloverSuccessor|PolicyRolloverRuntimeInputsRetain)",
+        "-count=1",
+        "-timeout=10m",
+        "-v",
+        "-failfast"
+      ],
+      "umask": "0077",
+      "exit_code": 0,
+      "elapsed_seconds": 321.341,
+      "started_at": "2026-09-26T09:40:04.146038+00:00",
+      "finished_at": "2026-09-26T09:45:25.486989+00:00"
+    },
+    "source-role-normal": {
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "./validator",
+        "-run",
+        "^Test(PolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|ReleaseSourceRolePredecessorV2(EmptyGenerationContinuesExactRole|RolloutChecksCurrentSlot))$",
+        "-count=1",
+        "-timeout=10m",
+        "-v",
+        "-failfast"
+      ],
+      "umask": "0077",
+      "exit_code": 0,
+      "elapsed_seconds": 78.726,
+      "started_at": "2026-09-26T09:43:33.291141+00:00",
+      "finished_at": "2026-09-26T09:44:52.016866+00:00"
+    },
+    "source-role-race": {
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "-race",
+        "./sim-testnet",
+        "./validator",
+        "-run",
+        "^Test(PolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|ReleaseSourceRolePredecessorV2(EmptyGenerationContinuesExactRole|RolloutChecksCurrentSlot))$",
+        "-count=1",
+        "-timeout=10m",
+        "-v",
+        "-failfast"
+      ],
+      "umask": "0077",
+      "exit_code": 0,
+      "elapsed_seconds": 204.906,
+      "started_at": "2026-09-26T09:43:33.443810+00:00",
+      "finished_at": "2026-09-26T09:46:58.349799+00:00"
+    }
+  },
+  "test_coverage": {
+    "core_tests": 11,
+    "additional_simulator_source_role_tests": 1,
+    "additional_validator_native_slot_tests": 2,
+    "total_unique_tests": 14,
+    "production_source_matches_core_runs": true,
+    "final_source_matches_source_role_runs": true
+  },
+  "source_hashes": {
+    "sim-testnet/evidence_relay_campaign.go": "sha256:ee58a17c94bb373ec8a2e34b1d34e1400ce7024b85b71efdf5b32f43074c7359",
+    "sim-testnet/evidence_relay_horizon.go": "sha256:3ea5610a34f5bd42e94ae6e38dcc25801d0a3b2ffc3c713a9b473348f4522fa7",
+    "sim-testnet/evidence_relay_policy_gap.go": "sha256:035e38fd2dd88991b66cea6a5221b961e5fc22569974a4c56922b3bb969ae08e",
+    "sim-testnet/evidence_relay_policy_handoff.go": "sha256:3b7680f45291d19de9b21cd52673229d742dfac57979d97db66a4cf7d436c07d",
+    "sim-testnet/evidence_relay_policy_rollover.go": "sha256:1e77bd9fcc8a43a76eee3f98024a86994b5b2d9f00a0667bfae2c66cd02e47b2",
+    "sim-testnet/evidence_relay_policy_rollover_test.go": "sha256:f0a5ae598a99e2255f89df609f1c4aae3b11a0959a0c37b593779b787ca44497",
+    "sim-testnet/policy_rollover_command_v2.go": "sha256:1fa4d4759cba13c0fa7c91b202e83e8e5d7ffd53efac544969e3e0177ecd5c32",
+    "sim-testnet/policy_rollover_handoff_v2.go": "sha256:96a8fc03165ac062d369c3bed21ce8bf1e45105573019540408fb48fb7d28ab0",
+    "sim-testnet/policy_rollover_observation_v2.go": "sha256:2989ad06748893c2589aecb31e684841b6b25c44d6f5513e7b7035b6f910862c",
+    "sim-testnet/policy_rollover_plan_v2.go": "sha256:1113e53e52561d0949f812e6a19105eebfe11e38d0f4c017ab17f22329e73f39",
+    "sim-testnet/policy_rollover_runtime_inputs_v2.go": "sha256:e5d36407b5cee1532c6e4f1cf8b8ab8368d0314867f1729689bc0aa1ade4b49d",
+    "sim-testnet/policy_rollover_source_role_v2_test.go": "sha256:a26922bab9f64cbd2d93868e5acb5f8a4e1f7a52e06a3db67a2c50834353eeab",
+    "sim-testnet/policy_rollover_successor_v2.go": "sha256:254be8b40b2bd09b1ebfc8744d11fed9cc8155f9b29c6b16f2e555504aa66578",
+    "sim-testnet/policy_rollover_successor_v2_test.go": "sha256:8b5cdcee7b2891215b4e92abe640c16ee0bfe3c80ea32a10f10617e3f1abb7c4"
+  },
+  "pinned_modfile": {
+    "path": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+    "sha256": "sha256:c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010"
+  },
+  "superseded_results": {
+    "normal": "exit 1, 676.577s package time, on intermediate source: missing policyAt(10) mock and new native reader raw-only format bug; all failures preserved",
+    "race": "exit 1 after SIGINT to owned local test child 1135627 at 518.259s; same mock failure before interrupt; stop identity receipt preserved",
+    "final-normal_and_final-race": "intermediate 11-test runs failed same loader/mock defects before correction; hashes and logs retained",
+    "initial_six_successor_tests": "successor-first.log PASS 35.632s before adjacent native/inventory controls were added"
+  },
+  "source_review": {
+    "planning": "reads exact active generation config/state/activation census and binds previous_handoff path/hash/size",
+    "selection": "immutable versioned postcondition followed by fsynced StageVerified journal receipt; original handoff.json retained; staged-only bytes cannot select",
+    "custody": "original manifest remains exactly 31 generation input files; later immutable inputs and native/client seeds independently authenticated",
+    "reader_wiring": [
+      "retained process handoff",
+      "worker config arguments",
+      "reserved upload activation contexts",
+      "scenario path authority and proof census",
+      "native intent observation",
+      "terminal evidence capture",
+      "relay source discovery and historical cache refusal",
+      "horizon source admission and latest-cutoff acceptance boundary",
+      "generation-specific native source-role overlay"
+    ],
+    "no_remaining_original_config_selector_blocker_found": true,
+    "native_role_condition": "V1 absent predecessor requires empty current native slot; V2 requires exact gen1 finalized/applied signed native predecessor before gen2 retained resume"
+  },
+  "commands_addendum": "/mnt/data/sn-testnet/qualification/r47-launch-readiness-20260926/commands-successor.md",
+  "live_actions_performed": [],
+  "transactions": 0,
+  "service_changes": 0,
+  "pushed": false,
+  "final_acceptance": false
+}

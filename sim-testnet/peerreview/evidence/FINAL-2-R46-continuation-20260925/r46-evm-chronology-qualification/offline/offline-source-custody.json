@@ -1,0 +1,39 @@
+{
+  "schema": "urnetwork-retained-offline-chronology-source-v1",
+  "prepared_at": "2026-09-26T09:29:59.614727+00:00",
+  "source_revision": "d1b8b6e02b3e15658330a506bf09f5ffcc221391",
+  "source_tree": "1bc4689d42413f097294f9b0bf8e893b5c0c5c43",
+  "source_worktree": "/mnt/data/sn-testnet/qualification/r46-offline-chronology-d1b8b6e0-20260926",
+  "worktree_clean": true,
+  "qualified_source_revision": "1ee38f72e4acd776937eaf8f2fe6d4e66bef1e3a",
+  "sim_testnet_source_identical_to_qualification": true,
+  "production_qualification_sha256": "sha256:279c7a4fb10b13403dbdfe7e2e096b206224a40d110ed804f44a2ae64c25ac29",
+  "go_version": "go version go1.26.6 linux/amd64",
+  "modfile": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "modfile_sha256": "sha256:c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "modfile_sum_sha256": "sha256:177b50d84935a29c36b1771816478bf3c97ac28c99bcb22be4922ad9ba1106a3",
+  "source_files": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained_offline_chronology_replay_test.go",
+      "bytes": 12038,
+      "sha256": "sha256:0d1fe08f962e3a96975411fbae611c1ad90d47af58d59c87709da2826efb7fa2"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained_offline_chronology_verify_test.go",
+      "bytes": 11587,
+      "sha256": "sha256:9102d34e37f00489a7636ed78da84d14f01995e1ea876aef23100c8473c5f664"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-d1b8b6e0.overlay.json",
+      "bytes": 592,
+      "sha256": "sha256:9f88b819c59b82d6d945c35f84a95dcd27358ec006ba66ace5f147c878e14e9e"
+    }
+  ],
+  "parameters_sha256": "sha256:cea69eed26831eb1cbe82d08a374e9152b1f8ac25659ca52318fe462ae3eeddd",
+  "capture_qualification_sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca",
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "network_transport": "deny every HTTP request for full selected test",
+  "scope": "historical-coordinator-chronology-only",
+  "final_acceptance": false,
+  "full_canonical_native_pass": false
+}

@@ -1,0 +1,18 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:07:49.017754 1096619 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:07:49.017960 1096619 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:07:49.018051 1096619 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:07:49.018098 1096619 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedEvmChronology
+    retained_evm_chronology_replay_test.go:268: authenticated 125 plans, 59979 journal entries and 1371 relay requests; begin bounded Evm chronology
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 32/196; 9 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 64/196; 9 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 96/196; 10 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 128/196; 11 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 160/196; 11 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 192/196; 11 events
+    retained_evm_chronology_capture_test.go:219: captured upgrade query 196/196; 11 events
+    retained_evm_chronology_capture_test.go:271: verified 11 upgrade events and receipts; read exact initializer state from copied plan lineage
+    retained_evm_chronology_replay_test.go:283: historical coordinator timeline has an unapproved plan
+--- FAIL: TestRetainedEvmChronology (1016.72s)
+FAIL

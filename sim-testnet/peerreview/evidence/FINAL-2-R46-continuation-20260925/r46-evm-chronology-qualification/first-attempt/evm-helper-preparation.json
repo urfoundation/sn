@@ -1,0 +1,45 @@
+{
+  "schema": "urnetwork-retained-evm-chronology-preparation-v1",
+  "prepared_at": "2026-09-26T08:43:19.608643+00:00",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "source_worktree": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926",
+  "staging_argv": [
+    "python3",
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/stage_retained_census.py",
+    "--diagnostic",
+    "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926",
+    "--output",
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-evm-chronology",
+    "--source-revision",
+    "92c14e3f8bdd2419734d831da00cc0483f1bc993"
+  ],
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "source_files": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_chronology_capture_test.go",
+      "bytes": 15788,
+      "sha256": "sha256:9d1ec1532081f990c8ca1d2e7cb7e0d2a40c0c134d253fa6cd6a3f82ba5edb19"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-evm-92c14e3f.overlay.json",
+      "bytes": 746,
+      "sha256": "sha256:95136e90a5ea519d09c0bc6094ac3dda64e503f70a64218bbc6d5dd374651550"
+    }
+  ],
+  "scope": "historical-coordinator-chronology-only",
+  "native_reads": 0,
+  "validator_recaptures": 0,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false
+}

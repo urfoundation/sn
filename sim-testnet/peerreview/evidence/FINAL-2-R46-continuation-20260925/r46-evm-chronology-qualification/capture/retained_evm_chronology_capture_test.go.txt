@@ -1,0 +1,317 @@
+package main
+
+// This scratch capture joins the previously authenticated census to a complete
+// pre-campaign Upgraded-event scan and exact initialization state. Its output is
+// coordinator chronology only; no native or final acceptance is inferred.
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math/big"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+)
+
+// These runtime parameters contain the exact retained pins, never fixture
+// identities. The approved plan remains the endpoint and chain authority.
+type retainedEvmChronologyParameters struct {
+	Schema                   string    `json:"schema"`
+	SourceRevision           string    `json:"source_revision"`
+	ManifestSha256           string    `json:"manifest_sha256"`
+	DiagnosticReportSha256   string    `json:"diagnostic_report_sha256"`
+	OfflineQualificationHash string    `json:"offline_qualification_sha256"`
+	Authority                string    `json:"authority"`
+	FromBlock                uint64    `json:"from_block"`
+	ThroughBlock             uint64    `json:"through_block"`
+	CampaignStartHead        ChainHead `json:"campaign_start_head"`
+	TerminalEvmHead          ChainHead `json:"terminal_evm_head"`
+	MaximumLogQueries        int       `json:"maximum_log_queries"`
+	MaximumRequests          int       `json:"maximum_requests"`
+}
+
+// Hash-pinned local inputs are checked before installing the read-only Rpc
+// guard. Every response is durable before projection or timeline verification.
+func retainedCaptureEvmChronology(t *testing.T, root string, manifestData []byte, sourceRevision, reportHash string, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, files map[string][]byte, sources finalHistoricalJournalSources, result *ScenarioResult, census finalReleaseContractCaptureCensus, receipt map[string]any) (resultErr error) {
+	parameterData, err := os.ReadFile(filepath.Join(root, "capture-parameters.json"))
+	if err != nil {
+		return err
+	}
+	var parameters retainedEvmChronologyParameters
+	if err := decodeStrictJSONBytes(parameterData, &parameters); err != nil {
+		return err
+	}
+	if parameters.Schema != "urnetwork-retained-evm-chronology-parameters-v1" || parameters.SourceRevision != sourceRevision || parameters.ManifestSha256 != bytesSHA256(manifestData) || parameters.DiagnosticReportSha256 != reportHash || parameters.Authority == "" || parameters.Authority != current.OwnedRPCAuthority || validateOwnedRPCAuthority(parameters.Authority) != nil || parameters.FromBlock != census.fromBlock || parameters.CampaignStartHead != result.CampaignStartHead || parameters.TerminalEvmHead != result.EndHead || parameters.CampaignStartHead.Number < 2 || parameters.ThroughBlock != parameters.CampaignStartHead.Number-1 || parameters.MaximumLogQueries < 1 || parameters.MaximumRequests < parameters.MaximumLogQueries || parameters.MaximumRequests > 4096 {
+		return errors.New("scratch Evm parameters differ from their authenticated source scope")
+	}
+	priorData, err := os.ReadFile(filepath.Join(root, "offline-census-qualification.json"))
+	if err != nil || bytesSHA256(priorData) != parameters.OfflineQualificationHash {
+		return errors.Join(errors.New("scratch Evm capture lost its exact offline census receipt"), err)
+	}
+	var prior struct {
+		Status          string `json:"status"`
+		Scope           string `json:"scope"`
+		SourceRevision  string `json:"source_revision"`
+		ManifestHash    string `json:"manifest_sha256"`
+		ReportHash      string `json:"diagnostic_report_sha256"`
+		FromBlock       uint64 `json:"from_block"`
+		FinalAcceptance bool   `json:"final_acceptance"`
+		FullNativePass  bool   `json:"full_canonical_native_pass"`
+	}
+	if err := json.Unmarshal(priorData, &prior); err != nil || prior.Status != "pass" || prior.Scope != "offline-historical-release-contract-census-only" || prior.SourceRevision != sourceRevision || prior.ManifestHash != parameters.ManifestSha256 || prior.ReportHash != reportHash || prior.FromBlock != census.fromBlock || prior.FinalAcceptance || prior.FullNativePass {
+		return errors.Join(errors.New("scratch Evm prior census receipt differs"), err)
+	}
+	receipt["parameters_sha256"], receipt["offline_census_qualification_sha256"] = bytesSHA256(parameterData), bytesSHA256(priorData)
+	receipt["rpc_authority"], receipt["diagnostic_request_bound"] = parameters.Authority, parameters.MaximumRequests
+	ranges, err := finalEVMLogQueryRanges(census.fromBlock, parameters.ThroughBlock)
+	if err != nil {
+		return err
+	}
+	actions, err := finalHistoricalJournalActions(current, plans, entries, sources)
+	if err != nil {
+		return err
+	}
+	proxyCensus, err := retainedEvmChronologyProxies(plans, actions, entries)
+	if err != nil {
+		return err
+	}
+	proxyNames := proxyCensus.names
+	proxySet := make(map[string]bool)
+	for _, name := range proxyNames {
+		proxySet[name] = true
+	}
+	receipt["zero_proxy_plan_count"] = proxyCensus.zeroPlanCount
+	receipt["planned_coordinator_action_count"] = proxyCensus.coordinatorActionCount
+	receipt["covered_finalized_transition_count"] = proxyCensus.finalizedCoordinatorCount
+	addresses := make([]common.Address, len(proxyNames))
+	for index, name := range proxyNames {
+		addresses[index] = common.HexToAddress(name)
+	}
+	queryCount := len(ranges) * ((len(addresses) + 31) / 32)
+	if len(addresses) == 0 || queryCount != parameters.MaximumLogQueries {
+		return errors.New("scratch Evm upgrade query census differs from its exact bound")
+	}
+	receipt["upgrade_query_count"], receipt["proxy_count"] = queryCount, len(addresses)
+	stateRoot := filepath.Join(root, "copied-chronology-state")
+	if err := os.Mkdir(stateRoot, 0o700); err != nil {
+		return err
+	}
+	if err := os.Mkdir(filepath.Join(stateRoot, "plans"), 0o700); err != nil {
+		return err
+	}
+	for name, data := range files {
+		var destination string
+		switch {
+		case name == "launch-foundation/plan.json":
+			destination = "plan.json"
+		case name == "launch-foundation/journal.jsonl":
+			destination = "journal.jsonl"
+		case strings.HasPrefix(name, "plan-history/"):
+			destination = "plans/" + strings.TrimPrefix(name, "plan-history/")
+		default:
+			continue
+		}
+		path := filepath.Join(stateRoot, filepath.FromSlash(destination))
+		if !pathWithinRoot(stateRoot, path) {
+			return errors.New("scratch Evm copied state path escapes its root")
+		}
+		if err := os.WriteFile(path, data, 0o400); err != nil {
+			return err
+		}
+	}
+	transcriptPath := filepath.Join(root, "evm-rpc-transcript.jsonl")
+	transcript, err := os.OpenFile(transcriptPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	previousTransport := http.DefaultTransport
+	guard := &retainedEvmRpcGuard{authority: parameters.Authority, maximumRequests: parameters.MaximumRequests, transport: previousTransport, transcript: transcript, methodCounts: make(map[string]int)}
+	http.DefaultTransport = guard
+	defer func() {
+		http.DefaultTransport = previousTransport
+		resultErr = errors.Join(resultErr, transcript.Sync(), transcript.Close())
+		receipt["rpc_reads"], receipt["rpc_method_counts"] = guard.requests, guard.methodCounts
+		data, readErr := os.ReadFile(transcriptPath)
+		if readErr == nil {
+			receipt["rpc_transcript_sha256"], receipt["rpc_transcript_bytes"] = bytesSHA256(data), len(data)
+		}
+		resultErr = errors.Join(resultErr, readErr)
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	cfg := &ResolvedConfig{ChainID: current.ChainID, Netuid: current.Netuid, OperationalRPCMode: rpcModeOwnedNode, OperationalEVM: "http://" + parameters.Authority, OperationalSubstrate: "ws://" + parameters.Authority, ownedRPCAuthority: parameters.Authority}
+	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	chainId, err := client.ChainID(ctx)
+	if err != nil || chainId == nil || !chainId.IsUint64() || chainId.Uint64() != current.ChainID {
+		return errors.Join(errors.New("scratch Evm chain identity differs"), err)
+	}
+	readBlock := func(tag string) (ChainHead, string, error) {
+		var raw json.RawMessage
+		if err := client.Client().CallContext(ctx, &raw, "eth_getBlockByNumber", tag, false); err != nil {
+			return ChainHead{}, "", err
+		}
+		head, err := finalEVMBlock(raw)
+		if err != nil {
+			return ChainHead{}, "", err
+		}
+		var value struct {
+			ParentHash string `json:"parentHash"`
+		}
+		if err := json.Unmarshal(raw, &value); err != nil || requireFinalHex32("scratch Evm parent", strings.ToLower(value.ParentHash)) != nil {
+			return ChainHead{}, "", errors.Join(errors.New("scratch Evm block has no canonical parent"), err)
+		}
+		return head, strings.ToLower(value.ParentHash), nil
+	}
+	finalized, _, err := readBlock("finalized")
+	if err != nil || finalized.Number < result.EndHead.Number {
+		return errors.Join(errors.New("scratch Evm finalized head does not cover the retained campaign"), err)
+	}
+	terminal, _, err := readBlock(hexutil.EncodeUint64(result.EndHead.Number))
+	if err != nil || terminal != result.EndHead {
+		return errors.Join(errors.New("scratch Evm terminal block differs from the original result"), err)
+	}
+	start, parentHash, err := readBlock(hexutil.EncodeUint64(result.CampaignStartHead.Number))
+	if err != nil || start != result.CampaignStartHead {
+		return errors.Join(errors.New("scratch Evm campaign start differs from the original result"), err)
+	}
+	upper, _, err := readBlock(hexutil.EncodeUint64(parameters.ThroughBlock))
+	if err != nil || upper.Number != parameters.ThroughBlock || upper.Hash != parentHash {
+		return errors.Join(errors.New("scratch Evm capture upper bound is not the exact campaign parent"), err)
+	}
+	receipt["node_finalized_head"], receipt["capture_upper_head"] = finalized, upper
+	topic := crypto.Keccak256Hash([]byte("Upgraded(address)"))
+	var captured []finalCanonicalEVMLog
+	completedQueries := 0
+	for _, blockRange := range ranges {
+		for first := 0; first < len(addresses); first += 32 {
+			last := min(first+32, len(addresses))
+			values, err := client.FilterLogs(ctx, ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(blockRange.From), ToBlock: new(big.Int).SetUint64(blockRange.To), Addresses: addresses[first:last], Topics: [][]common.Hash{{topic}}})
+			if err != nil {
+				return fmt.Errorf("scratch Evm upgrade log interval [%d,%d]: %w", blockRange.From, blockRange.To, err)
+			}
+			for _, value := range values {
+				log, err := finalCanonicalLogFromGeth(value)
+				if err != nil {
+					return err
+				}
+				_, upgraded, err := finalHistoricalCoordinatorUpgradedLog(log)
+				if err != nil || !upgraded || !proxySet[log.Address] || log.BlockNumber < blockRange.From || log.BlockNumber > blockRange.To {
+					return errors.Join(errors.New("scratch Evm query returned an out-of-scope upgrade"), err)
+				}
+				captured = append(captured, log)
+			}
+			completedQueries++
+			if completedQueries%32 == 0 || completedQueries == queryCount {
+				t.Logf("captured upgrade query %d/%d; %d events", completedQueries, queryCount, len(captured))
+			}
+		}
+	}
+	logs, err := finalCanonicalizeLogs(captured)
+	if err != nil || len(logs) == 0 {
+		return errors.Join(errors.New("scratch Evm chronology has no canonical upgrade events"), err)
+	}
+	logsByTransaction := make(map[string][]finalCanonicalEVMLog)
+	for _, log := range logs {
+		logsByTransaction[log.TransactionHash] = append(logsByTransaction[log.TransactionHash], log)
+	}
+	transactionHashes := make([]string, 0, len(logsByTransaction))
+	for hash := range logsByTransaction {
+		transactionHashes = append(transactionHashes, hash)
+	}
+	sort.Strings(transactionHashes)
+	for _, hash := range transactionHashes {
+		group := logsByTransaction[hash]
+		head, _, err := readBlock(hexutil.EncodeUint64(group[0].BlockNumber))
+		if err != nil || head.Hash != group[0].BlockHash || head.Number != group[0].BlockNumber {
+			return errors.Join(errors.New("scratch Evm upgrade block is not canonical"), err)
+		}
+		transactionReceipt, err := client.TransactionReceipt(ctx, common.HexToHash(hash))
+		if err != nil || transactionReceipt == nil || transactionReceipt.Status != 1 || transactionReceipt.BlockNumber == nil || transactionReceipt.BlockNumber.Uint64() != head.Number || strings.ToLower(transactionReceipt.BlockHash.Hex()) != head.Hash || strings.ToLower(transactionReceipt.TxHash.Hex()) != hash || uint64(transactionReceipt.TransactionIndex) != group[0].TransactionIndex {
+			return errors.Join(errors.New("scratch Evm upgrade receipt differs from its canonical log coordinates"), err)
+		}
+		var receiptLogs []finalCanonicalEVMLog
+		for _, value := range transactionReceipt.Logs {
+			if value == nil {
+				return errors.New("scratch Evm receipt contains a nil log")
+			}
+			log, err := finalCanonicalLogFromGeth(*value)
+			if err != nil {
+				return err
+			}
+			if !proxySet[log.Address] {
+				continue
+			}
+			_, upgraded, err := finalHistoricalCoordinatorUpgradedLog(log)
+			if err != nil {
+				return err
+			}
+			if upgraded {
+				receiptLogs = append(receiptLogs, log)
+			}
+		}
+		receiptLogs, err = finalCanonicalizeLogs(receiptLogs)
+		if err != nil || !finalJSONEqual(receiptLogs, group) {
+			return errors.Join(errors.New("scratch Evm receipt and complete upgrade query disagree"), err)
+		}
+	}
+	t.Logf("verified %d upgrade events and receipts; read exact initializer state from copied plan lineage", len(logs))
+	baselines, err := captureFinalHistoricalCoordinatorBaselines(ctx, cfg, stateRoot, current, result.CampaignStartHead, logs)
+	if err != nil {
+		return err
+	}
+	if err := verifyFinalCollectedCoordinatorBaselines(baselines, logs); err != nil {
+		return err
+	}
+	for _, expected := range []ChainHead{result.EndHead, result.CampaignStartHead, upper} {
+		actual, _, err := readBlock(hexutil.EncodeUint64(expected.Number))
+		if err != nil || actual != expected {
+			return errors.Join(errors.New("scratch Evm pinned block changed during capture"), err)
+		}
+	}
+	capture := map[string]any{"schema": "urnetwork-retained-evm-chronology-capture-v1", "source_revision": sourceRevision, "manifest_sha256": parameters.ManifestSha256, "parameters_sha256": bytesSHA256(parameterData), "chain_id": current.ChainID, "campaign_start_head": result.CampaignStartHead, "terminal_evm_head": result.EndHead, "from_block": census.fromBlock, "through_head": upper, "proxies": proxyNames, "upgrade_topic": strings.ToLower(topic.Hex()), "logs": logs, "coordinator_baselines": baselines}
+	captureData, err := json.MarshalIndent(capture, "", "  ")
+	if err != nil {
+		return err
+	}
+	captureData = append(captureData, '\n')
+	if err := os.WriteFile(filepath.Join(root, "evm-chronology-capture.json"), captureData, 0o600); err != nil {
+		return err
+	}
+	receipt["evm_capture_sha256"], receipt["upgrade_event_count"], receipt["baseline_count"] = bytesSHA256(captureData), len(logs), len(baselines)
+	evidence := &FinalSemanticEvidence{DeploymentID: current.DeploymentID, PlanHash: current.PlanHash, ChainID: current.ChainID, Netuid: current.Netuid, EVMCampaignStartHead: result.CampaignStartHead}
+	timeline, err := finalHistoricalCoordinatorBuildTimelineWithSources(evidence, current, plans, entries, logsByTransaction, baselines, sources)
+	if err != nil {
+		return err
+	}
+	evidence.HistoricalCoordinatorTimeline = timeline.evidence()
+	artifact, err := finalHistoricalCoordinatorTimelineArtifactFromSource(timeline, baselines, logsByTransaction)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(artifact)
+	if err != nil {
+		return err
+	}
+	if err := verifyFinalHistoricalCoordinatorTimelineArtifactWithSources(evidence, current, plans, entries, data, sources); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(root, "replayed-timeline.json"), data, 0o600); err != nil {
+		return err
+	}
+	receipt["timeline_sha256"], receipt["timelines"] = bytesSHA256(data), evidence.HistoricalCoordinatorTimeline
+	return nil
+}

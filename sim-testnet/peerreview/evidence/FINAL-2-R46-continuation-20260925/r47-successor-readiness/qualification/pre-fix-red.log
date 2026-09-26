@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:14:16.215996 1107260 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:14:16.216328 1107260 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:14:16.216453 1107260 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:14:16.216496 1107260 env.go:78] [env]settings = map[]
+--- FAIL: TestPolicyRolloverSuccessorFixedPathCollision (4.33s)
+    policy_rollover_successor_v2_test.go:27: second approved generation cannot publish after the first: compact input journal already names different immutable bytes
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	4.424s
+FAIL

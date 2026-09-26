@@ -1,0 +1,215 @@
+package main
+
+// This scratch transport owns a durable transcript and permits only explicit
+// read methods at one authenticated Lan authority. Timeout retries retain every
+// attempt; an execution bound never becomes a semantic acceptance result.
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// Each response is synced before the caller may consume it.
+type retainedEvmRpcExchange struct {
+	Sequence    int             `json:"sequence"`
+	Attempt     int             `json:"attempt"`
+	Method      string          `json:"method"`
+	StartedAt   string          `json:"started_at"`
+	CompletedAt string          `json:"completed_at"`
+	Request     json.RawMessage `json:"request"`
+	Response    json.RawMessage `json:"response,omitempty"`
+	StatusCode  int             `json:"http_status,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
+// One selected test owns this temporary process transport. The lock protects
+// receipt order and counts even if the Rpc client dispatches concurrently.
+type retainedEvmRpcGuard struct {
+	authority       string
+	maximumRequests int
+	transport       http.RoundTripper
+	transcript      *os.File
+	stateLock       sync.Mutex
+	requests        int
+	methodCounts    map[string]int
+}
+
+// The allowlist excludes every submission, signing, wallet and native method.
+func (self *retainedEvmRpcGuard) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.Method != http.MethodPost || request.URL.Scheme != "http" || request.URL.Host != self.authority || request.URL.User != nil || request.URL.RawQuery != "" || request.URL.Path != "" && request.URL.Path != "/" {
+		return nil, errors.New("scratch Evm request left its exact Lan authority")
+	}
+	raw, err := io.ReadAll(io.LimitReader(request.Body, 1024*1024+1))
+	if err != nil || len(raw) > 1024*1024 {
+		return nil, errors.Join(errors.New("scratch Evm request exceeds its bounded envelope"), err)
+	}
+	request.Body.Close()
+	var envelope struct {
+		Method string `json:"method"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	switch envelope.Method {
+	case "eth_chainId", "eth_getBlockByNumber", "eth_getLogs", "eth_getTransactionReceipt", "eth_getStorageAt", "eth_getCode":
+	default:
+		return nil, fmt.Errorf("scratch Evm method %q is not an authorized read", envelope.Method)
+	}
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := request.Context().Err(); err != nil {
+			return nil, err
+		}
+		self.stateLock.Lock()
+		if self.requests >= self.maximumRequests {
+			self.stateLock.Unlock()
+			return nil, errors.New("scratch Evm diagnostic request bound reached; preserve transcript before widening scope")
+		}
+		self.requests++
+		sequence := self.requests
+		self.methodCounts[envelope.Method]++
+		self.stateLock.Unlock()
+		exchange := retainedEvmRpcExchange{Sequence: sequence, Attempt: attempt, Method: envelope.Method, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Request: append(json.RawMessage(nil), raw...)}
+		attemptContext, cancel := context.WithTimeout(request.Context(), 45*time.Second)
+		owned := request.Clone(attemptContext)
+		owned.Body = io.NopCloser(bytes.NewReader(raw))
+		response, requestErr := self.transport.RoundTrip(owned)
+		var responseData []byte
+		if response != nil {
+			exchange.StatusCode = response.StatusCode
+			responseData, err = io.ReadAll(io.LimitReader(response.Body, 16*1024*1024+1))
+			response.Body.Close()
+			requestErr = errors.Join(requestErr, err)
+			if len(responseData) > 16*1024*1024 {
+				requestErr = errors.Join(requestErr, errors.New("scratch Evm response exceeds diagnostic byte bound"))
+			}
+			if json.Valid(responseData) {
+				exchange.Response = append(json.RawMessage(nil), responseData...)
+			} else if len(responseData) != 0 {
+				encoded, _ := json.Marshal(string(responseData))
+				exchange.Response = encoded
+			}
+		}
+		cancel()
+		exchange.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		if requestErr != nil {
+			exchange.Error = requestErr.Error()
+		}
+		encoded, encodeErr := json.Marshal(exchange)
+		self.stateLock.Lock()
+		if encodeErr == nil {
+			_, encodeErr = self.transcript.Write(append(encoded, '\n'))
+		}
+		if encodeErr == nil {
+			encodeErr = self.transcript.Sync()
+		}
+		self.stateLock.Unlock()
+		if encodeErr != nil {
+			return nil, errors.Join(requestErr, encodeErr)
+		}
+		var timeout net.Error
+		retry := errors.As(requestErr, &timeout) && timeout.Timeout() || errors.Is(requestErr, context.DeadlineExceeded) || response != nil && (response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusGatewayTimeout)
+		if retry && attempt < 3 && request.Context().Err() == nil {
+			select {
+			case <-request.Context().Done():
+				return nil, request.Context().Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+			continue
+		}
+		if requestErr != nil {
+			return nil, requestErr
+		}
+		if response == nil {
+			return nil, errors.New("scratch Evm transport returned no response")
+		}
+		response.Body = io.NopCloser(bytes.NewReader(responseData))
+		return response, nil
+	}
+	return nil, errors.New("scratch Evm timeout attempts exhausted")
+}
+
+// A fake transport makes guard behavior deterministic without opening a socket.
+type retainedEvmTestTransport func(*http.Request) (*http.Response, error)
+
+// Dispatches only to the explicit synthetic test closure.
+func (self retainedEvmTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return self(request)
+}
+
+// The first synthetic attempt reports an unambiguous transport timeout.
+type retainedEvmTestTimeout struct{}
+
+// Implements the transport timeout contract without scheduler timing.
+func (retainedEvmTestTimeout) Error() string { return "synthetic transport timeout" }
+
+// Classifies the explicit synthetic state as a timeout.
+func (retainedEvmTestTimeout) Timeout() bool { return true }
+
+// Preserves the legacy network error interface.
+func (retainedEvmTestTimeout) Temporary() bool { return true }
+
+// Rejected methods and authorities cannot invoke the underlying transport.
+func TestRetainedEvmRpcGuardRejectsWriteAndForeignAuthority(t *testing.T) {
+	calls := 0
+	guard := &retainedEvmRpcGuard{authority: "192.0.2.10:9944", maximumRequests: 10, methodCounts: make(map[string]int), transport: retainedEvmTestTransport(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("synthetic forbidden transport invocation")
+	})}
+	for _, test := range []struct{ address, method string }{
+		{address: "http://192.0.2.10:9944", method: "eth_sendRawTransaction"},
+		{address: "http://192.0.2.11:9944", method: "eth_chainId"},
+	} {
+		body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":%q,"params":[]}`, test.method)
+		request := httptest.NewRequest(http.MethodPost, test.address, strings.NewReader(body))
+		if _, err := guard.RoundTrip(request); err == nil {
+			t.Fatalf("guard admitted %s at %s", test.method, test.address)
+		}
+	}
+	if calls != 0 || guard.requests != 0 {
+		t.Fatalf("guard invoked transport %d times for rejected inputs", calls)
+	}
+}
+
+// The first receipt is durable before the bounded retry is dispatched.
+func TestRetainedEvmRpcGuardRetriesTimeoutWithDurableReceipts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rpc.jsonl")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	calls := 0
+	guard := &retainedEvmRpcGuard{authority: "192.0.2.10:9944", maximumRequests: 3, transcript: file, methodCounts: make(map[string]int), transport: retainedEvmTestTransport(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return nil, retainedEvmTestTimeout{}
+		}
+		prior, err := os.ReadFile(path)
+		if err != nil || !bytes.Contains(prior, []byte("synthetic transport timeout")) {
+			t.Errorf("retry preceded its durable timeout receipt: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"jsonrpc":"2.0","id":1,"result":"0x3b1"}`))}, nil
+	})}
+	request := httptest.NewRequest(http.MethodPost, "http://192.0.2.10:9944", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}`))
+	response, err := guard.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	data, err := os.ReadFile(path)
+	if err != nil || calls != 2 || guard.requests != 2 || guard.methodCounts["eth_chainId"] != 2 || bytes.Count(data, []byte{'\n'}) != 2 {
+		t.Fatalf("timeout retry lost its exact attempts or receipts: calls=%d reads=%d err=%v", calls, guard.requests, err)
+	}
+}

@@ -1,0 +1,677 @@
+{
+  "schema": "urnetwork-retained-r46-chronology-portable-evidence-v1",
+  "created_at": "2026-09-26T09:49:09.820491+00:00",
+  "status": "pass",
+  "scope": "historical-coordinator-chronology-only",
+  "verification_source_revision": "d1b8b6e02b3e15658330a506bf09f5ffcc221391",
+  "verification_binary_sha256": "sha256:539a2bc2c697975748fdc657334d588fa7d9c93842076a3ad22521967644c861",
+  "offline_qualification_sha256": "sha256:d6ac972538988dc24b0762aeb67fa79d9e1923d94f20eebc99115b7a839238c5",
+  "capture_qualification_sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca",
+  "source_input_manifest": {
+    "portable_path": "offline/retained-v3-offline-chronology/manifest.json",
+    "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+    "external_root": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology",
+    "artifact_count": 11,
+    "artifact_bytes": 1339802170,
+    "report_bytes": 2689936,
+    "omitted_object_copies": true,
+    "omitted_raw_diagnostic_report": true
+  },
+  "external_test_binaries": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-evm-92c14e3f.test",
+      "bytes": 175410568,
+      "sha256": "sha256:af22ed73eed67ce1d7ab0453f9324d1b658a0905bfbaaf7c154f65571b5dab0a",
+      "omitted_from_portable_bundle": true
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-evm-92c14e3f.test",
+      "bytes": 175427000,
+      "sha256": "sha256:ecf0f3d590256d133d189241e484f78009d85cdaca1a21131e04554599d0cffc",
+      "omitted_from_portable_bundle": true
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-d1b8b6e0.test",
+      "bytes": 175445376,
+      "sha256": "sha256:539a2bc2c697975748fdc657334d588fa7d9c93842076a3ad22521967644c861",
+      "omitted_from_portable_bundle": true
+    }
+  ],
+  "rpc_reads_during_offline_replay": 0,
+  "network_attempts_during_offline_replay": 0,
+  "captured_read_exchanges": 236,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2505,
+      "sha256": "sha256:d54f71678241056ea0abc0afd77693c7dbf8e0ec6efae7ebc96ce9e278f75e8c",
+      "source_path": null
+    },
+    {
+      "path": "capture/EVM-CAPTURE-REVIEW.md",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/EVM-CAPTURE-REVIEW.md",
+      "bytes": 2973,
+      "sha256": "sha256:e2862647eadff3031f64398a707eaf95e82d404f5ba2374025ec5325c8e0f1f2"
+    },
+    {
+      "path": "capture/captured-transition-journal-map.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/captured-transition-journal-map.json",
+      "bytes": 5902,
+      "sha256": "sha256:c62e64773b6d5bd1e0c54249ea980ca945303c5aa91e81451fea64d5f2ea100a"
+    },
+    {
+      "path": "capture/census-source-custody.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/census-source-custody.json",
+      "bytes": 2663,
+      "sha256": "sha256:3f0479f8c7b275432f5094e842ba9db228cd74f23e974e5813aa5b3de82eec10"
+    },
+    {
+      "path": "capture/census-source-qualification-followup.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/census-source-qualification-followup.json",
+      "bytes": 1569,
+      "sha256": "sha256:2a749010fdcc869a99ea7d87229ede6f1ceb809c50adc752fad54dfc68f7cac3"
+    },
+    {
+      "path": "capture/evm-binary-build-info.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-binary-build-info.txt",
+      "bytes": 16681,
+      "sha256": "sha256:59b036f92878d4f9eaea3269221c0cd92856ab8d5130a8a0a96109557d2e78d6"
+    },
+    {
+      "path": "capture/evm-compile.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-compile.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "capture/evm-compile.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-compile.json",
+      "bytes": 665,
+      "sha256": "sha256:97a39c4873698ad4b735303d643e89267c68129776659e24a5530c3065321afe"
+    },
+    {
+      "path": "capture/evm-compile.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-compile.log",
+      "bytes": 0,
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "capture/evm-guard-normal.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-guard-normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "capture/evm-guard-normal.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-guard-normal.json",
+      "bytes": 316,
+      "sha256": "sha256:b032caf93b5d331630882a2c5ca1b8f3f99c887a12d078bc015d55a6cd23779c"
+    },
+    {
+      "path": "capture/evm-guard-normal.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-guard-normal.log",
+      "bytes": 1106,
+      "sha256": "sha256:df69e9882b9f2dcbcc479de83d72f0d74696d88fc56fb40d4eb3340dcc68977a"
+    },
+    {
+      "path": "capture/evm-helper-preparation.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-helper-preparation.json",
+      "bytes": 3211,
+      "sha256": "sha256:7226a17f1a37c2918945f791ea873145a5dcbfc837ffa9203696f14b59232aa6"
+    },
+    {
+      "path": "capture/evm-run-start.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-run-start.json",
+      "bytes": 1479,
+      "sha256": "sha256:4d38d8c8c286dbbb6744ec07f8088ea26dc879a6cb09d7b229bcffade7cfb77c"
+    },
+    {
+      "path": "capture/evm-run.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-run.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "capture/evm-run.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-run.json",
+      "bytes": 1551,
+      "sha256": "sha256:56648c1ac588f53e8b4485a5507c0c23afdc832f93c1910a979647b2ce8fb444"
+    },
+    {
+      "path": "capture/evm-run.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-run.log",
+      "bytes": 1533,
+      "sha256": "sha256:b76d7f28bb331f8619e80d659aeedecd4fc231f8c5f73c78c552d64966c3b87a"
+    },
+    {
+      "path": "capture/evm-stage.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-stage.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "capture/evm-stage.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-stage.log",
+      "bytes": 365,
+      "sha256": "sha256:0cb90bd29631856304a50e2f3bd9b1b1e847687275942dbb93ef84da3e11df81"
+    },
+    {
+      "path": "capture/proxy-control-red-custody.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/proxy-control-red-custody.json",
+      "bytes": 214,
+      "sha256": "sha256:ae527122eb157bd3bec01e578e95ee1cfdc7838c341e692bada23780f7799408"
+    },
+    {
+      "path": "capture/proxy-control-red-source.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/proxy-control-red-source.go.txt",
+      "bytes": 5028,
+      "sha256": "sha256:8712d591af9d933017c88232f74fbd68a1f5a69abfa40786d0b8875ab2c98bf7"
+    },
+    {
+      "path": "capture/proxy-control-red.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/proxy-control-red.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "capture/proxy-control-red.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/proxy-control-red.json",
+      "bytes": 460,
+      "sha256": "sha256:a133ee0e0a55fe656359ae5b2cc7d3ed9a5951208bfe037945e04a2a8d2bf15b"
+    },
+    {
+      "path": "capture/proxy-control-red.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/proxy-control-red.log",
+      "bytes": 1119,
+      "sha256": "sha256:3daf0169f092f4d27daf6cd74ed54a40636ed622f59f7ffe7f9fd0c82465c094"
+    },
+    {
+      "path": "capture/qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/evm-chronology-qualification.json",
+      "bytes": 8589,
+      "sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca"
+    },
+    {
+      "path": "capture/retained-evm-92c14e3f.overlay.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-evm-92c14e3f.overlay.json",
+      "bytes": 1038,
+      "sha256": "sha256:ac9b5e4f35f5aae73df6f12a51c3d20689ca35bb87a4c6c92b5ceb8c7d55b25b"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/capture-parameters.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/capture-parameters.json",
+      "bytes": 858,
+      "sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/evm-chronology-capture.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/evm-chronology-capture.json",
+      "bytes": 7998,
+      "sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "bytes": 7810,
+      "sha256": "sha256:cc75941dee87958a013bd4cf808f522cdd116f8fbe7376c5bc4f0e4683986312"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/evm-rpc-transcript.jsonl",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/evm-rpc-transcript.jsonl",
+      "bytes": 261170,
+      "sha256": "sha256:136800ef55a703cee56d7cbee00f1ab5369fb6349c1ce35fa571db68671ad894"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/manifest.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/manifest.json",
+      "bytes": 5998,
+      "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9"
+    },
+    {
+      "path": "capture/retained-v3-evm-chronology/offline-census-qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/offline-census-qualification.json",
+      "bytes": 3727,
+      "sha256": "sha256:2e4289a2fb936db8868fa29273780b7f30808140af00595cfe66a6350924ca1a"
+    },
+    {
+      "path": "capture/retained_evm_chronology_capture_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_chronology_capture_test.go",
+      "bytes": 15939,
+      "sha256": "sha256:625875b8e0eb0659e27940d2b95032c871ab5004c06568269751406a303504f0"
+    },
+    {
+      "path": "capture/retained_evm_chronology_replay_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "capture/retained_evm_proxy_census_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_proxy_census_test.go",
+      "bytes": 6189,
+      "sha256": "sha256:1968154a92f11989d2b3dac2d32642e43803dc38ed80973a6e5695b1f27f9d65"
+    },
+    {
+      "path": "capture/retained_evm_rpc_guard_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "capture/seal_retained_evm.py",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/seal_retained_evm.py",
+      "bytes": 8613,
+      "sha256": "sha256:07403ed291ac5f1f20281022bd9e41c449db731267d53173aa4865c7e1a0abd5"
+    },
+    {
+      "path": "comparison/retained-field-comparison.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-field-comparison.json",
+      "bytes": 4681,
+      "sha256": "sha256:f0f355e165096ca210aa9184d08a3329b0699ba6529abff375bd25d51447d9c6"
+    },
+    {
+      "path": "comparison/retained-zero-proxy-plan-summary.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-zero-proxy-plan-summary.json",
+      "bytes": 945,
+      "sha256": "sha256:03d215506077446783f54987960c4ffe8ef912822c84bf4a5171acd761405463"
+    },
+    {
+      "path": "first-attempt/evm-binary-build-info.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-binary-build-info.txt",
+      "bytes": 16667,
+      "sha256": "sha256:bd39a398943b14e79c24db2ca1bbf6b30e3e52bd5f152323548d38c1a02bb933"
+    },
+    {
+      "path": "first-attempt/evm-compile.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-compile.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "first-attempt/evm-compile.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-compile.json",
+      "bytes": 779,
+      "sha256": "sha256:5b2f378f221bdd666cc61e78ee86d6376b9a0b168dd8b041717dea1357dee938"
+    },
+    {
+      "path": "first-attempt/evm-compile.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-compile.log",
+      "bytes": 0,
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "first-attempt/evm-guard-normal.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-guard-normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "first-attempt/evm-guard-normal.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-guard-normal.json",
+      "bytes": 592,
+      "sha256": "sha256:66294c2d13932685323cdac98a0fb68ee726712b895c50fd202cc80511e3394e"
+    },
+    {
+      "path": "first-attempt/evm-guard-normal.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-guard-normal.log",
+      "bytes": 702,
+      "sha256": "sha256:4bcd7627b472cbf3759ec614fb9e4ca201b145cfec4bc29a57cfa735adc61e38"
+    },
+    {
+      "path": "first-attempt/evm-helper-preparation.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-helper-preparation.json",
+      "bytes": 2163,
+      "sha256": "sha256:0fcee0843053b82a824c4aff0d118911d4a93a3a5246f4133aca3cebd20c7e5b"
+    },
+    {
+      "path": "first-attempt/evm-run-start.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-run-start.json",
+      "bytes": 1435,
+      "sha256": "sha256:22c914acc93e996e95a77544a68d7819a449d8a2e702baa97211534d267aa352"
+    },
+    {
+      "path": "first-attempt/evm-run.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-run.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "first-attempt/evm-run.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-run.json",
+      "bytes": 1507,
+      "sha256": "sha256:15a500cba2b42ffbc2dfa23a128a41963b0c9d407d2ab647197b53ac093df767"
+    },
+    {
+      "path": "first-attempt/evm-run.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-run.log",
+      "bytes": 753,
+      "sha256": "sha256:897cfe323ba7d11cf6b3c205d21aa1ab4e5a052cccf9c87680a8cbb123aa302d"
+    },
+    {
+      "path": "first-attempt/evm-stage.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-stage.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "first-attempt/evm-stage.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-stage.log",
+      "bytes": 351,
+      "sha256": "sha256:0b1f543fed37020844d0ed1c94ee9002c8f37d38b9725529f4e66adf94174ca3"
+    },
+    {
+      "path": "first-attempt/qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-1-qualification.json",
+      "bytes": 4078,
+      "sha256": "sha256:0c7124eaebfe08f28107adb1e9179b5d5f2187a8e73e42bba825ca5488629a66"
+    },
+    {
+      "path": "first-attempt/retained-evm-92c14e3f.overlay.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-evm-92c14e3f.overlay.json",
+      "bytes": 746,
+      "sha256": "sha256:95136e90a5ea519d09c0bc6094ac3dda64e503f70a64218bbc6d5dd374651550"
+    },
+    {
+      "path": "first-attempt/retained-v3-evm-chronology/capture-parameters.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-evm-chronology/capture-parameters.json",
+      "bytes": 858,
+      "sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8"
+    },
+    {
+      "path": "first-attempt/retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "bytes": 6887,
+      "sha256": "sha256:9bdfef8ad027649c21b31707c3bf679fc4599dea88d845efa55e2cc44e4f7237"
+    },
+    {
+      "path": "first-attempt/retained-v3-evm-chronology/manifest.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-evm-chronology/manifest.json",
+      "bytes": 5998,
+      "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9"
+    },
+    {
+      "path": "first-attempt/retained_evm_chronology_capture_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_chronology_capture_test.go",
+      "bytes": 15788,
+      "sha256": "sha256:9d1ec1532081f990c8ca1d2e7cb7e0d2a40c0c134d253fa6cd6a3f82ba5edb19"
+    },
+    {
+      "path": "first-attempt/retained_evm_chronology_replay_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "first-attempt/retained_evm_rpc_guard_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "offline/REVIEW.md",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/REVIEW.md",
+      "bytes": 2584,
+      "sha256": "sha256:114f5488e91a28a23a8f865b25578b6e74e88ed5a732200ca37470df74850080"
+    },
+    {
+      "path": "offline/offline-binary-build-info.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-binary-build-info.txt",
+      "bytes": 16688,
+      "sha256": "sha256:ab449b033a8b1b56e6f19dca20fd7cd2bc142a8d7c4a0e0e11533bc2358769ca"
+    },
+    {
+      "path": "offline/offline-compile.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-compile.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "offline/offline-compile.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-compile.json",
+      "bytes": 891,
+      "sha256": "sha256:20fbdc157966ef1d03795eb4372000bbd1fe124fb79662af369eb7271f86a1cb"
+    },
+    {
+      "path": "offline/offline-compile.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-compile.log",
+      "bytes": 0,
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "offline/offline-d1b8b6e0.overlay.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-d1b8b6e0.overlay.json",
+      "bytes": 592,
+      "sha256": "sha256:9f88b819c59b82d6d945c35f84a95dcd27358ec006ba66ace5f147c878e14e9e"
+    },
+    {
+      "path": "offline/offline-run-start.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-run-start.json",
+      "bytes": 1758,
+      "sha256": "sha256:25fb7101f45fd3ecc19f1b24dc0dd9b5c44fb1083516369ae3716a7130e557f2"
+    },
+    {
+      "path": "offline/offline-run.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-run.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "offline/offline-run.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-run.json",
+      "bytes": 1830,
+      "sha256": "sha256:855c9af308bcfd19cfaee703bb9491bce4cea0723ae6d74408a0110989e95a59"
+    },
+    {
+      "path": "offline/offline-run.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-run.log",
+      "bytes": 805,
+      "sha256": "sha256:c42f2b6f5c84e89cebff220f0b90db445e74f42e5151e98347d42fd0eca07f80"
+    },
+    {
+      "path": "offline/offline-seal.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-seal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "offline/offline-seal.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-seal.log",
+      "bytes": 296,
+      "sha256": "sha256:57203508bb135238354f402da0ec243a227d2afaae1661e9d0bfb775a1eee012"
+    },
+    {
+      "path": "offline/offline-source-custody.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-source-custody.json",
+      "bytes": 2318,
+      "sha256": "sha256:7a50b86079eadfa44dfb6421fb69567818381a081af99ccbda172313e93d56fa"
+    },
+    {
+      "path": "offline/offline-stage.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-stage.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "offline/offline-stage.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-stage.log",
+      "bytes": 381,
+      "sha256": "sha256:3e70a8ef3ed942b3d129dff6e044dff0ad81d5a917827319a9cce921b100a212"
+    },
+    {
+      "path": "offline/offline-staging-argv.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-staging-argv.json",
+      "bytes": 477,
+      "sha256": "sha256:14ea6d6f1578c7df6e61209df9ffe91a353de91ad3d12f7c5be6d7eef8749119"
+    },
+    {
+      "path": "offline/production-qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/production-qualification.json",
+      "bytes": 3390,
+      "sha256": "sha256:279c7a4fb10b13403dbdfe7e2e096b206224a40d110ed804f44a2ae64c25ac29"
+    },
+    {
+      "path": "offline/qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/offline-chronology-qualification.json",
+      "bytes": 6578,
+      "sha256": "sha256:d6ac972538988dc24b0762aeb67fa79d9e1923d94f20eebc99115b7a839238c5"
+    },
+    {
+      "path": "offline/repair-chain-check.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/repair-chain-check.json",
+      "bytes": 1153,
+      "sha256": "sha256:2768497daa4c70974834d6e795c9638bbd45e45a443e3ff216efc7759e3b30ee"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/capture-parameters.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/capture-parameters.json",
+      "bytes": 858,
+      "sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/capture-qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/capture-qualification.json",
+      "bytes": 8589,
+      "sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/evm-chronology-capture.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/evm-chronology-capture.json",
+      "bytes": 7998,
+      "sha256": "sha256:cae745c3c0f29aa81fac8d61232052d7d2fcbe7843c0f28e6b01568020328dcd"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/evm-chronology-receipt.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/evm-chronology-receipt.json",
+      "bytes": 7810,
+      "sha256": "sha256:cc75941dee87958a013bd4cf808f522cdd116f8fbe7376c5bc4f0e4683986312"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/evm-rpc-transcript.jsonl",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/evm-rpc-transcript.jsonl",
+      "bytes": 261170,
+      "sha256": "sha256:136800ef55a703cee56d7cbee00f1ab5369fb6349c1ce35fa571db68671ad894"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/manifest.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/manifest.json",
+      "bytes": 5998,
+      "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/offline-chronology-receipt.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/offline-chronology-receipt.json",
+      "bytes": 18600,
+      "sha256": "sha256:53ab643d45f4f1a4d5aea68bcb02c125df55769b8553c5b87ffca1b60f8d25bb"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/offline-replay-parameters.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/offline-replay-parameters.json",
+      "bytes": 572,
+      "sha256": "sha256:cea69eed26831eb1cbe82d08a374e9152b1f8ac25659ca52318fe462ae3eeddd"
+    },
+    {
+      "path": "offline/retained-v3-offline-chronology/replayed-timeline.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained-v3-offline-chronology/replayed-timeline.json",
+      "bytes": 14475,
+      "sha256": "sha256:2c814318bfda7ce498719b03dcfb227186ea9c7261006078f18aa5b63069e43a"
+    },
+    {
+      "path": "offline/retained_offline_chronology_replay_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained_offline_chronology_replay_test.go",
+      "bytes": 12038,
+      "sha256": "sha256:0d1fe08f962e3a96975411fbae611c1ad90d47af58d59c87709da2826efb7fa2"
+    },
+    {
+      "path": "offline/retained_offline_chronology_verify_test.go.txt",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/retained_offline_chronology_verify_test.go",
+      "bytes": 11587,
+      "sha256": "sha256:9102d34e37f00489a7636ed78da84d14f01995e1ea876aef23100c8473c5f664"
+    },
+    {
+      "path": "offline/seal_offline_chronology.py",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/offline-chronology-replay/seal_offline_chronology.py",
+      "bytes": 7078,
+      "sha256": "sha256:03bf5fce2b04563bd68a858817bf41b3c9890ddc88818e5cfcefef59d5ef1e55"
+    },
+    {
+      "path": "production/focused.normal.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/focused.normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "production/focused.normal.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/focused.normal.log",
+      "bytes": 23580,
+      "sha256": "sha256:cedd08ce33462d4c1c94a2256f8fab825efdad7870ce36c3cad2bc42e177562e"
+    },
+    {
+      "path": "production/focused.race.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/focused.race.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "production/focused.race.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/focused.race.log",
+      "bytes": 23587,
+      "sha256": "sha256:76a45eec3bb587a39f45e226dbad8550284b9de2f5e73da47f8bcbb7ba773402"
+    },
+    {
+      "path": "production/qualification.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/qualification.json",
+      "bytes": 3390,
+      "sha256": "sha256:279c7a4fb10b13403dbdfe7e2e096b206224a40d110ed804f44a2ae64c25ac29"
+    },
+    {
+      "path": "production/retained-census-receipt.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/retained-census-receipt.json",
+      "bytes": 7069,
+      "sha256": "sha256:76e9e53e2348ab9a8e1036e881b2d976972adae575ff1f54fefa766c96940d1c"
+    },
+    {
+      "path": "production/retained-census.exit",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/retained-census.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "production/retained-census.log",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/retained-census.log",
+      "bytes": 569,
+      "sha256": "sha256:fc3d18448278842d1f57109589f6342cd38a5ae3b1e829e6b7ea42f438f387b9"
+    },
+    {
+      "path": "production/retained-replayed-census.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/retained-replayed-census.json",
+      "bytes": 1741,
+      "sha256": "sha256:c62fa579d94234b0bf7a8e8cb7569af611337c031770328461c3122b24cb489f"
+    },
+    {
+      "path": "production/retained-zero-proxy-summary.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/retained-zero-proxy-summary.json",
+      "bytes": 9511,
+      "sha256": "sha256:7a9820fb32123096a3a7422997c9f734f8c5381e0ca306db971fadde7d86177d"
+    },
+    {
+      "path": "production/review.md",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/review.md",
+      "bytes": 5692,
+      "sha256": "sha256:0e74380fede4dc004e7e37603071104ded72f5bab66d3717cf06f375d844896a"
+    },
+    {
+      "path": "production/selected-tests.json",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-evidence-20260926/selected-tests.json",
+      "bytes": 5037,
+      "sha256": "sha256:48d5d83e3856ac9598e3473bb42600293fa60fced2bb62426b65bb6da4298236"
+    },
+    {
+      "path": "scripts/stage_retained_census.py",
+      "source_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/stage_retained_census.py",
+      "bytes": 4291,
+      "sha256": "sha256:961b72e1b4cee04ced8a7782a584afd431419ed0c5e25f3257dc62df5e39d8c3"
+    }
+  ]
+}

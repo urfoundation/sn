@@ -1,0 +1,56 @@
+{
+  "schema": "urnetwork-retained-census-source-custody-v1",
+  "recorded_at": "2026-09-26T08:18:27.326420+00:00",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "source_tree": "a39dc6a8774991c62b323e93fce4c193c5b07dba",
+  "source_worktree": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926",
+  "source_worktree_clean": true,
+  "go_version": "go version go1.26.6 linux/amd64",
+  "files": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926/sim-testnet/final_semantic_precompile_actions.go",
+      "bytes": 10381,
+      "sha256": "sha256:30740822c94a8490c452be39fdd06b424d32a912ac207f2101531ddc30db143c"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926/sim-testnet/final_semantic_repair_actions.go",
+      "bytes": 3151,
+      "sha256": "sha256:177756119c708e070e26caf81e6164f323633c119d294e8b185d0f99dc5fdab0"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926/sim-testnet/final_semantic_historical_capture.go",
+      "bytes": 15787,
+      "sha256": "sha256:a88b14090617d3a1eabbc623fc8afa103921362fba0481071684ae873f3d810f"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926/sim-testnet/final_semantic_chronology_timeline.go",
+      "bytes": 39217,
+      "sha256": "sha256:1729c72e5b0aeb223d49c5b9dce2127a8b88014c62d8a2d1caff2ad92831d5b0"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_census_replay_test.go",
+      "bytes": 12415,
+      "sha256": "sha256:e48931a1cfbbedfb91c5ae045c2efa7f46e23621d767ef30bb2034e5e13dcffe"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/stage_retained_census.py",
+      "bytes": 4291,
+      "sha256": "sha256:961b72e1b4cee04ced8a7782a584afd431419ed0c5e25f3257dc62df5e39d8c3"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-census-92c14e3f.overlay.json",
+      "bytes": 252,
+      "sha256": "sha256:1d09f32b605ee998f828fda7087fb8f65c18d6779afb0ec990e37c27d696e851"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+      "bytes": 11102,
+      "sha256": "sha256:c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.sum",
+      "bytes": 63091,
+      "sha256": "sha256:177b50d84935a29c36b1771816478bf3c97ac28c99bcb22be4922ad9ba1106a3"
+    }
+  ]
+}

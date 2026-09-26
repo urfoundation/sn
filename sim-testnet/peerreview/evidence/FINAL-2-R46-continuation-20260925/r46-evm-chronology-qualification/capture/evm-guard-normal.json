@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-evm-92c14e3f.test",
+    "-test.run",
+    "^TestRetainedEvm(RpcGuard|ProxyCensus)",
+    "-test.v",
+    "-test.timeout=2m"
+  ],
+  "exit_code": 0,
+  "completed_at": "2026-09-26T09:07:47.274843+00:00"
+}

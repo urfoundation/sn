@@ -532,13 +532,27 @@ The exact sealed R46 replay passed with **125 plans, 59,979 journal entries,
 1,371 relay requests, two deployed proxies and ten emitters**. Its census
 bytes match the prior qualified result exactly. This is a scoped historical
 admission result, not a reversal of R46's sealed failure or a full semantic
-acceptance result. A separate bounded LAN EVM chronology captured historical
-events and initializer state under the old source and reproduced the old
-timeline refusal; its fixed-source offline replay is pending.
+acceptance result. A separate bounded LAN EVM chronology captured **11
+`Upgraded` events** and two initializer baselines from block **7,888,670**
+through **8,084,595**, using **236 read-only RPC exchanges** and no transport
+errors. Every event matched an exact successful transaction receipt and
+canonical block; the 11 transactions correspond to two proxy
+initializations, eight ordinary activations and one signed rounding repair.
+The old source reproduced its zero-proxy timeline refusal after sealing that
+capture. An offline replay against the corrected source then authenticated
+the same 125 plans and 59,979 journal entries, rebuilt both proxy timelines,
+and passed the production timeline builder and artifact verifier using the
+sealed capture with **zero network reads**. This closes the bounded EVM
+chronology check only. The original v3 diagnostic and R46 owner verdict stay
+failed, and a complete canonical/native check and final acceptance remain
+unproven.
 [Source review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/review.md),
 [normal/race qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/qualification.json),
 [retained replay receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/retained-census-receipt.json),
-[evidence manifest](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/SHA256SUMS).
+[evidence manifest](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/SHA256SUMS),
+[bounded LAN capture](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-evm-chronology-qualification/capture/qualification.json),
+[offline replay](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-evm-chronology-qualification/offline/qualification.json),
+[portable evidence manifest](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-evm-chronology-qualification/SHA256SUMS).
 The v3 validator-2 relay readback is unavailable for a separate, genuine
 historical gap: of **66** signed publication members, all **64** closed-census
 slots for epochs 604–635 lack the original relay request, result and journal
@@ -570,6 +584,23 @@ receipts, real mask coverage, or a passing original campaign. The original
 [Source-selection review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-fix-review.md),
 [sealed qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-qualification/qualification.json),
 [retained source census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-qualification/retained-observation-census.json).
+
+The R47 preparation review found a launch blocker independent of the R46
+terminal verdict: generation 1's activated `handoff.json` is immutable, and
+the old code would write a generation-2 handoff to the same path. An exact
+pre-fix test reproduced the collision. The corrected path preserves the
+original file and sealed runtime inventory, records each successor in a
+versioned postcondition, and selects it only after its verified journal
+receipt. Fresh validator configs, API contexts and relay cutoff readers then
+select the authenticated generation while older namespaces remain available.
+The **11 launch-critical tests passed normally and under race detection**;
+separate generation-2 source-role/native-slot controls also passed in both
+modes. This is source qualification, not a live generation-2 activation or
+fresh native history. R46's missing V1 history and stale V2 application are
+unchanged. Before a new release interval, the exact successor plan must be
+reviewed and staged, the retained supervisor officially stopped for handoff
+selection, and the authenticated native source-role continuation applied
+before resume. [Successor readiness and commands](peerreview/evidence/FINAL-2-R46-continuation-20260925/r47-successor-readiness/commands-successor.md).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

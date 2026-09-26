@@ -2491,7 +2491,13 @@ zero-proxy plan must still fail at every height. Use one authenticated proxy
 census for the timeline, receipt selector, release-contract census and
 baseline capture; keep the original 125-plan replay and exact census bytes as
 a regression. The focused normal/race tests and sealed census replay pass,
-while bounded EVM chronology and final artifacts still need their own proof.
+and a bounded 196-interval LAN EVM capture found 11 authenticated upgrade
+events with two initializer baselines. Its old-source timeline failed at the
+known zero-proxy admission; the corrected source then passed offline timeline
+building and artifact verification on the same sealed capture with HTTP
+disabled. Preserve this source-and-capture replay as the mainnet regression,
+but do not present it as proof of the still-incomplete canonical/native or
+full acceptance checks.
 
 The R46 replay also exposed an operational attestation trap: Go did not stamp
 VCS build information when the diagnostic executable was built from a linked
@@ -2547,6 +2553,22 @@ watermarks monotonic. Test missing predecessor, independently missing
 successor, foreign owner, cutoff replay and strict historical missing-file
 refusal. This prevents future blockage but does not reconstruct missing R46
 custody or satisfy its original acceptance gate.
+The next-run review found that the activated generation-1 handoff occupied a
+fixed immutable `handoff.json`; a generation-2 activation previously tried
+to replace it and failed before selection. Mainnet must keep the original
+handoff and its sealed 31-file runtime inventory unchanged, publish each
+successor as a separate immutable postcondition, and select it only through
+a verified append-only journal receipt. Bind the new handoff to the exact
+prior bytes, advancing cutoff, four consents and native custody. Relay,
+worker, API and observation readers must agree on the selected generation
+while retaining older namespaces at their signed cutoffs. Test duplicate,
+torn, foreign and missing selectors, a crash between file and receipt,
+hex/raw native hotkey seeds and raw-only client keys. For an already occupied
+native slot, complete the authenticated generation-specific source-role
+continuation before resuming workers; an absent local intent cannot excuse
+an occupied chain slot. The focused successor and source-role normal/race
+tests pass, but live generation-2 activation and fresh native history remain
+unproven.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.

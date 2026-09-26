@@ -1,0 +1,22 @@
+{
+  "schema": "urnetwork-retained-zero-proxy-plan-summary-v1",
+  "proof_sha256": "sha256:c9b81411c315301c0f538b5d65a7e795314e757bfae100bd81aa01ef659bb842",
+  "plan_count": 125,
+  "zero_plan_count": 4,
+  "nonzero_proxy_count": 2,
+  "zero_plan_static_coordinator_actions": 16,
+  "zero_plan_proxy_transition_finalizations": [],
+  "zero_plan_finalized_coordinator_actions": [
+    {
+      "sequence": 647,
+      "plan_hash": "0xf8c4aae726d757f68994898e0185b5c080f4c1db651837db652ce80579d76244",
+      "action_id": "evm.coordinator-implementation",
+      "kind": null,
+      "stage": "finalized",
+      "intent_hash": "0xbc1fd4dd729761c6f5be63cfadc19574e8f9db4dd754efbbd7c09be757d2693e",
+      "block_number": 7888670,
+      "transaction_hash": "0x677c18d3363213d0bd1897cf899dca5b3e7be8067dfb94489b87e6764fe9e4ce"
+    }
+  ],
+  "limits": "Compact extraction from hash-verified retained bundles; no change to full source plans or journal and no RPC."
+}

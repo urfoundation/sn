@@ -1,0 +1,32 @@
+{
+  "schema": "urnetwork-retained-evm-chronology-execution-v2",
+  "attempt": 2,
+  "argv": [
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-evm-92c14e3f.test",
+    "-test.run",
+    "^TestRetainedEvmChronology$",
+    "-test.v",
+    "-test.timeout=45m"
+  ],
+  "cwd": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926",
+  "environment": {
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp",
+    "RETAINED_EVM_CHRONOLOGY_MANIFEST": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/evm-attempt-2/retained-v3-evm-chronology/manifest.json"
+  },
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "binary_sha256": "sha256:ecf0f3d590256d133d189241e484f78009d85cdaca1a21131e04554599d0cffc",
+  "binary_bytes": 175427000,
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "helper_preparation_sha256": "sha256:7226a17f1a37c2918945f791ea873145a5dcbfc837ffa9203696f14b59232aa6",
+  "started_at": "2026-09-26T09:07:48.952473+00:00",
+  "source_normal_and_race_qualification": "passed",
+  "scope": "historical-coordinator-chronology-only",
+  "native_rpc_methods": 0,
+  "validator_recaptures": 0,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "exit_code": 1,
+  "completed_at": "2026-09-26T09:24:46.526378+00:00"
+}

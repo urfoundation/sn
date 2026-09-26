@@ -1,0 +1,220 @@
+{
+  "schema": "urnetwork-predeployment-timeline-retained-proof-v1",
+  "source_proof_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-zero-proxy-plan-proof.json",
+  "source_proof_sha256": "c9b81411c315301c0f538b5d65a7e795314e757bfae100bd81aa01ef659bb842",
+  "source_manifest_path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-evm-chronology/manifest.json",
+  "source_manifest_sha256": "0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "production_base_revision": "1b4751be15a79a5dc905b854f2a5dcc337767792",
+  "authenticated_plan_count": 125,
+  "authenticated_journal_entry_count": 59979,
+  "deployed_proxy_count": 2,
+  "zero_proxy_plans": [
+    {
+      "plan_hash": "0x3e185d04085070d8b5a510ca8bbbfe412af9089030ec386dbd5a5fe1903b7578",
+      "schema": "urnetwork-sim-plan-v2",
+      "generated_at": "2026-08-29T09:25:27Z",
+      "source_file_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/3e185d04085070d8b5a510ca8bbbfe412af9089030ec386dbd5a5fe1903b7578.json",
+      "source_file_sha256": "sha256:00998e4ac0a6ab2a408dc94e987f39348d57da21bc7c9d0ac78f67713120d713",
+      "source_file_bytes": 1224373,
+      "deployment": {},
+      "coordinator_upgrade": null,
+      "coordinator_upgrade_baseline": null,
+      "has_coordinator_repair_carry": false,
+      "action_count": 1984,
+      "planned_coordinator_actions": [
+        {
+          "id": "evm.coordinator-implementation",
+          "kind": "evm-transaction",
+          "target": "coordinator-implementation",
+          "intent_hash": "0x7fc1453ac1c7774eb3b9e89148fbfae8a86458a4b42a21432f3e0cd70df8c707"
+        },
+        {
+          "id": "evm.coordinator-proxy",
+          "kind": "evm-transaction",
+          "target": "coordinator-proxy",
+          "intent_hash": "0x5a954f53c1d537e8056a6b38528e35304ebea502897da2e85f790ea7955b62be"
+        },
+        {
+          "id": "evm.vault-fix-coordinator",
+          "kind": "evm-transaction",
+          "target": "vault-fix-coordinator",
+          "intent_hash": "0xa456d73a79ff81070ad6152f9421dea563d9cba7d005ebf95fb0602798834b84"
+        },
+        {
+          "id": "governance.restore-coordinator",
+          "kind": "evm-transaction",
+          "target": "coordinator",
+          "intent_hash": "0x111f2d93a114dbdd2018aa73a7c7e26515f98562dba97f2e517ad8f238d06f06"
+        }
+      ],
+      "journal_entry_count": 0,
+      "finalized_count": 0,
+      "finalized_kind_counts": {},
+      "finalized_evm_entries": [],
+      "finalized_transition_count": 0
+    },
+    {
+      "plan_hash": "0x6c38dec8760ff0515861f21aecad751318714ce6b146bf8e06112011ce713565",
+      "schema": "urnetwork-sim-plan-v1",
+      "generated_at": "2026-08-29T08:00:08Z",
+      "source_file_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/6c38dec8760ff0515861f21aecad751318714ce6b146bf8e06112011ce713565.json",
+      "source_file_sha256": "sha256:09f37de99a32e4d2c63fa7412c333fdc86f70668de93da279a9f1d02e437cd0a",
+      "source_file_bytes": 1149065,
+      "deployment": {},
+      "coordinator_upgrade": null,
+      "coordinator_upgrade_baseline": null,
+      "has_coordinator_repair_carry": false,
+      "action_count": 1982,
+      "planned_coordinator_actions": [
+        {
+          "id": "evm.coordinator-implementation",
+          "kind": "evm-transaction",
+          "target": "coordinator-implementation",
+          "intent_hash": "0x7fc1453ac1c7774eb3b9e89148fbfae8a86458a4b42a21432f3e0cd70df8c707"
+        },
+        {
+          "id": "evm.coordinator-proxy",
+          "kind": "evm-transaction",
+          "target": "coordinator-proxy",
+          "intent_hash": "0x5a954f53c1d537e8056a6b38528e35304ebea502897da2e85f790ea7955b62be"
+        },
+        {
+          "id": "evm.vault-fix-coordinator",
+          "kind": "evm-transaction",
+          "target": "vault-fix-coordinator",
+          "intent_hash": "0xa456d73a79ff81070ad6152f9421dea563d9cba7d005ebf95fb0602798834b84"
+        },
+        {
+          "id": "governance.restore-coordinator",
+          "kind": "evm-transaction",
+          "target": "coordinator",
+          "intent_hash": "0x111f2d93a114dbdd2018aa73a7c7e26515f98562dba97f2e517ad8f238d06f06"
+        }
+      ],
+      "journal_entry_count": 112,
+      "finalized_count": 16,
+      "finalized_kind_counts": {
+        "substrate-extrinsic": 16
+      },
+      "finalized_evm_entries": [],
+      "finalized_transition_count": 0
+    },
+    {
+      "plan_hash": "0xd5f67a4c0bb5957285f67809cca1634256a8ea27be00286056c6c84ae7f42b5e",
+      "schema": "urnetwork-sim-plan-v2",
+      "generated_at": "2026-08-29T09:31:48Z",
+      "source_file_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/d5f67a4c0bb5957285f67809cca1634256a8ea27be00286056c6c84ae7f42b5e.json",
+      "source_file_sha256": "sha256:b76a5627a7b5fd057227de5d7ae03e34c7f9b326c79f6272cac6ba37ea38a3d1",
+      "source_file_bytes": 1224447,
+      "deployment": {},
+      "coordinator_upgrade": null,
+      "coordinator_upgrade_baseline": null,
+      "has_coordinator_repair_carry": false,
+      "action_count": 1984,
+      "planned_coordinator_actions": [
+        {
+          "id": "evm.coordinator-implementation",
+          "kind": "evm-transaction",
+          "target": "coordinator-implementation",
+          "intent_hash": "0x7fc1453ac1c7774eb3b9e89148fbfae8a86458a4b42a21432f3e0cd70df8c707"
+        },
+        {
+          "id": "evm.coordinator-proxy",
+          "kind": "evm-transaction",
+          "target": "coordinator-proxy",
+          "intent_hash": "0x5a954f53c1d537e8056a6b38528e35304ebea502897da2e85f790ea7955b62be"
+        },
+        {
+          "id": "evm.vault-fix-coordinator",
+          "kind": "evm-transaction",
+          "target": "vault-fix-coordinator",
+          "intent_hash": "0xa456d73a79ff81070ad6152f9421dea563d9cba7d005ebf95fb0602798834b84"
+        },
+        {
+          "id": "governance.restore-coordinator",
+          "kind": "evm-transaction",
+          "target": "coordinator",
+          "intent_hash": "0x111f2d93a114dbdd2018aa73a7c7e26515f98562dba97f2e517ad8f238d06f06"
+        }
+      ],
+      "journal_entry_count": 464,
+      "finalized_count": 92,
+      "finalized_kind_counts": {
+        "substrate-extrinsic": 92
+      },
+      "finalized_evm_entries": [],
+      "finalized_transition_count": 0
+    },
+    {
+      "plan_hash": "0xf8c4aae726d757f68994898e0185b5c080f4c1db651837db652ce80579d76244",
+      "schema": "urnetwork-sim-plan-v3",
+      "generated_at": "2026-08-29T11:13:59Z",
+      "source_file_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/f8c4aae726d757f68994898e0185b5c080f4c1db651837db652ce80579d76244.json",
+      "source_file_sha256": "sha256:848a7ad27ba6d4db65523821fc9ea7fe37d4d5761325ded17e09252047338c9f",
+      "source_file_bytes": 1350881,
+      "deployment": {
+        "schema": "",
+        "deployment_id": "",
+        "initial_nonce": 0,
+        "reserve_sink": "0x0000000000000000000000000000000000000000",
+        "settlement_vault": "0x0000000000000000000000000000000000000000",
+        "coordinator_implementation": "0x0000000000000000000000000000000000000000",
+        "coordinator_proxy": "0x0000000000000000000000000000000000000000",
+        "governance_drill_implementation": "0x0000000000000000000000000000000000000000",
+        "precompile_probe": "0x0000000000000000000000000000000000000000"
+      },
+      "coordinator_upgrade": null,
+      "coordinator_upgrade_baseline": null,
+      "has_coordinator_repair_carry": false,
+      "action_count": 1984,
+      "planned_coordinator_actions": [
+        {
+          "id": "evm.coordinator-implementation",
+          "kind": "evm-transaction",
+          "target": "coordinator-implementation",
+          "intent_hash": "0xbc1fd4dd729761c6f5be63cfadc19574e8f9db4dd754efbbd7c09be757d2693e"
+        },
+        {
+          "id": "evm.coordinator-proxy",
+          "kind": "evm-transaction",
+          "target": "coordinator-proxy",
+          "intent_hash": "0x7fb23dd169a7ae04a1d869c726dfa5dc5c9791136908d2a40a359fc822ac0d10"
+        },
+        {
+          "id": "evm.vault-fix-coordinator",
+          "kind": "evm-transaction",
+          "target": "vault-fix-coordinator",
+          "intent_hash": "0x147ac66a1f5328347772c4d2255205d66053bd5f701f90e116a9d43da7e409b3"
+        },
+        {
+          "id": "governance.restore-coordinator",
+          "kind": "evm-transaction",
+          "target": "coordinator",
+          "intent_hash": "0x6bc021064cdd4357b8ee716308b29d4c16b2ba0363e6b9b81a68834ca8c4c234"
+        }
+      ],
+      "journal_entry_count": 74,
+      "finalized_count": 12,
+      "finalized_kind_counts": {
+        "substrate-extrinsic": 11,
+        "evm-transaction": 1
+      },
+      "finalized_evm_entries": [
+        {
+          "sequence": 647,
+          "plan_hash": "0xf8c4aae726d757f68994898e0185b5c080f4c1db651837db652ce80579d76244",
+          "action_id": "evm.coordinator-implementation",
+          "kind": "evm-transaction",
+          "stage": "finalized",
+          "intent_hash": "0xbc1fd4dd729761c6f5be63cfadc19574e8f9db4dd754efbbd7c09be757d2693e",
+          "block_number": 7888670,
+          "transaction_hash": "0x677c18d3363213d0bd1897cf899dca5b3e7be8067dfb94489b87e6764fe9e4ce"
+        }
+      ],
+      "finalized_transition_count": 0
+    }
+  ],
+  "rpc_reads": 0,
+  "live_state_writes": 0
+}

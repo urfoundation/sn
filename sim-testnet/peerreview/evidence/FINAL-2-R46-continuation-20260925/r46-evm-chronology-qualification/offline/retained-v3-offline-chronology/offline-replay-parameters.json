@@ -1,0 +1,8 @@
+{
+  "schema": "urnetwork-retained-offline-chronology-parameters-v1",
+  "verification_source_revision": "d1b8b6e02b3e15658330a506bf09f5ffcc221391",
+  "capture_qualification_sha256": "sha256:70091e1fa7389c2d44382b5bdae8c6b27dc58577340df3215cb4de55e178adca",
+  "capture_manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "capture_parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "diagnostic_report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb"
+}

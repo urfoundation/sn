@@ -1,0 +1,122 @@
+{
+  "schema": "urnetwork-retained-evm-attempt-qualification-v1",
+  "status": "failed-helper-precondition",
+  "attempt": 1,
+  "sealed_at": "2026-09-26T09:00:05.949064+00:00",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "error": "scratch Evm chronology has an unapproved zero proxy",
+  "test_seconds": 502.01,
+  "rpc_reads": 0,
+  "native_rpc_methods": 0,
+  "validator_recaptures": 0,
+  "final_acceptance": false,
+  "full_canonical_native_pass": false,
+  "binary_sha256": "sha256:af22ed73eed67ce1d7ab0453f9324d1b658a0905bfbaaf7c154f65571b5dab0a",
+  "artifacts": [
+    {
+      "path": "evm-helper-preparation.json",
+      "bytes": 2163,
+      "sha256": "sha256:0fcee0843053b82a824c4aff0d118911d4a93a3a5246f4133aca3cebd20c7e5b"
+    },
+    {
+      "path": "retained_evm_chronology_replay_test.go",
+      "bytes": 11610,
+      "sha256": "sha256:8e5baa1734c6369cf20039e6e33279824055bed9b3e5301f08ac95f2b33ba586"
+    },
+    {
+      "path": "retained_evm_chronology_capture_test.go",
+      "bytes": 15788,
+      "sha256": "sha256:9d1ec1532081f990c8ca1d2e7cb7e0d2a40c0c134d253fa6cd6a3f82ba5edb19"
+    },
+    {
+      "path": "retained_evm_rpc_guard_test.go",
+      "bytes": 8658,
+      "sha256": "sha256:11f02995f035e4c46d4bfc58d7707dee8d48aaa7b4993ad95cfa09973a5569d9"
+    },
+    {
+      "path": "retained-evm-92c14e3f.overlay.json",
+      "bytes": 746,
+      "sha256": "sha256:95136e90a5ea519d09c0bc6094ac3dda64e503f70a64218bbc6d5dd374651550"
+    },
+    {
+      "path": "evm-stage.log",
+      "bytes": 351,
+      "sha256": "sha256:0b1f543fed37020844d0ed1c94ee9002c8f37d38b9725529f4e66adf94174ca3"
+    },
+    {
+      "path": "evm-stage.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-compile.log",
+      "bytes": 0,
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "evm-compile.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-compile.json",
+      "bytes": 779,
+      "sha256": "sha256:5b2f378f221bdd666cc61e78ee86d6376b9a0b168dd8b041717dea1357dee938"
+    },
+    {
+      "path": "evm-binary-build-info.txt",
+      "bytes": 16667,
+      "sha256": "sha256:bd39a398943b14e79c24db2ca1bbf6b30e3e52bd5f152323548d38c1a02bb933"
+    },
+    {
+      "path": "evm-guard-normal.log",
+      "bytes": 702,
+      "sha256": "sha256:4bcd7627b472cbf3759ec614fb9e4ca201b145cfec4bc29a57cfa735adc61e38"
+    },
+    {
+      "path": "evm-guard-normal.exit",
+      "bytes": 2,
+      "sha256": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "evm-guard-normal.json",
+      "bytes": 592,
+      "sha256": "sha256:66294c2d13932685323cdac98a0fb68ee726712b895c50fd202cc80511e3394e"
+    },
+    {
+      "path": "evm-run-start.json",
+      "bytes": 1435,
+      "sha256": "sha256:22c914acc93e996e95a77544a68d7819a449d8a2e702baa97211534d267aa352"
+    },
+    {
+      "path": "evm-run.log",
+      "bytes": 753,
+      "sha256": "sha256:897cfe323ba7d11cf6b3c205d21aa1ab4e5a052cccf9c87680a8cbb123aa302d"
+    },
+    {
+      "path": "evm-run.exit",
+      "bytes": 2,
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "evm-run.json",
+      "bytes": 1507,
+      "sha256": "sha256:15a500cba2b42ffbc2dfa23a128a41963b0c9d407d2ab647197b53ac093df767"
+    },
+    {
+      "path": "retained-v3-evm-chronology/evm-chronology-receipt.json",
+      "bytes": 6887,
+      "sha256": "sha256:9bdfef8ad027649c21b31707c3bf679fc4599dea88d845efa55e2cc44e4f7237"
+    },
+    {
+      "path": "retained-v3-evm-chronology/manifest.json",
+      "bytes": 5998,
+      "sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9"
+    },
+    {
+      "path": "retained-v3-evm-chronology/capture-parameters.json",
+      "bytes": 858,
+      "sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8"
+    }
+  ]
+}

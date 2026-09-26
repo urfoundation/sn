@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:33:53.105115 1142911 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:33:53.105449 1142911 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:33:53.105584 1142911 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:33:53.105633 1142911 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedOfflineChronology
+    retained_offline_chronology_replay_test.go:273: authenticated 125 plans, 59979 journal entries and 1371 relay requests; begin offline captured chronology verification
+    retained_offline_chronology_verify_test.go:211: verified 11 captured upgrades and 2 baselines with zero network reads
+--- PASS: TestRetainedOfflineChronology (536.69s)
+PASS

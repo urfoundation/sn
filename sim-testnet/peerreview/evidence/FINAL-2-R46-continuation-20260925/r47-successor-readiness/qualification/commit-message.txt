@@ -1,0 +1,10 @@
+sim-testnet: authenticate append-only evidence generation successors
+
+Bind each same-policy fresh generation to its exact immutable predecessor and
+select versioned postconditions through durable activation journal receipts.
+Preserve original custody and retained manifest inventory, require stopped
+topology, and route workers, observations and relays by the approved cutoff.
+
+Qualify fixed-path pre-fix red, 11 focused normal/race tests, and successor
+source-role plus native-slot controls normal/race with the pinned R45 graph.
+No live state, services, transactions or sibling modules changed.

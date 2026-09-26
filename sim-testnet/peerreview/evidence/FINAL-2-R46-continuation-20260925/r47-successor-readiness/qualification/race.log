@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:29:21.430533 1135627 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:29:21.431453 1135627 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:29:21.432117 1135627 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:29:21.432433 1135627 env.go:78] [env]settings = map[]
+--- FAIL: TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration (0.12s)
+    evidence_relay_policy_rollover_test.go:246: read validator evidence policyAt(10) at finalized block 1210: eth_call at canonical block 1210 (0xa200000000000000000000000000000000000000000000000000000000000000): wrong complete state calldata or target
+signal: interrupt
+FAIL	github.com/urfoundation/sn/sim-testnet	518.259s
+FAIL

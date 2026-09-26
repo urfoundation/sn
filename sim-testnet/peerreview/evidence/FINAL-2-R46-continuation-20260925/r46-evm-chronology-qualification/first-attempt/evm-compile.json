@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-c",
+    "-p",
+    "2",
+    "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+    "-overlay=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-evm-92c14e3f.overlay.json",
+    "-o",
+    "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-evm-92c14e3f.test",
+    "./sim-testnet"
+  ],
+  "cwd": "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926",
+  "environment": {
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp"
+  },
+  "started_at": "2026-09-26T08:44:03.107426+00:00",
+  "exit_code": 0,
+  "completed_at": "2026-09-26T08:45:59.432786+00:00"
+}

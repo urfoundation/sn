@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:47:33.202103 1061071 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:47:33.202341 1061071 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:47:33.202486 1061071 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:47:33.202525 1061071 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedEvmChronology
+    retained_evm_chronology_replay_test.go:268: authenticated 125 plans, 59979 journal entries and 1371 relay requests; begin bounded Evm chronology
+    retained_evm_chronology_replay_test.go:283: scratch Evm chronology has an unapproved zero proxy
+--- FAIL: TestRetainedEvmChronology (502.01s)
+FAIL

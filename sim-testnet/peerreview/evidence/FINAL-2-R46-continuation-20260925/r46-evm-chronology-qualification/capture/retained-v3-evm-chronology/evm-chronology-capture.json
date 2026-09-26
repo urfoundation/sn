@@ -1,0 +1,192 @@
+{
+  "campaign_start_head": {
+    "number": 8084596,
+    "hash": "0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192"
+  },
+  "chain_id": 945,
+  "coordinator_baselines": [
+    {
+      "proxy": "0x07ec4a5b849b0496478343fa316186a5918119f6",
+      "head": {
+        "number": 7889308,
+        "hash": "0x00213dfeb6db564a13b9bcbb5c104028b1579a090cadf0f06eee2f19e5fb5ae8"
+      },
+      "implementation": "0xc6c92646b365ebb709b1523c289d4bbed3013a31",
+      "implementation_runtime_hash": "0xf5c6a7621783c58164508a0147c9c209f078c172da73b838129f17421f207f12",
+      "proxy_runtime_hash": "0x8b9a6be720b7bedae5f47f9505113a1340490930d4b7ea79966382ac12a4a9e2"
+    },
+    {
+      "proxy": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "head": {
+        "number": 7895374,
+        "hash": "0xd783aaaf6ed3354f9e3c3dcfafff5cda9a32c1d2c58566969fe73908c504a025"
+      },
+      "implementation": "0x8c033865c1cd387a0fa5a8f3369908a20c5a54e4",
+      "implementation_runtime_hash": "0xf83c224f7a5279c0a234e0f5c25bf61032b263243b3a0da636c1f07f3aef54b6",
+      "proxy_runtime_hash": "0x8b9a6be720b7bedae5f47f9505113a1340490930d4b7ea79966382ac12a4a9e2"
+    }
+  ],
+  "from_block": 7888670,
+  "logs": [
+    {
+      "address": "0x07ec4a5b849b0496478343fa316186a5918119f6",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x000000000000000000000000c6c92646b365ebb709b1523c289d4bbed3013a31"
+      ],
+      "data": "0x",
+      "block_number": 7889308,
+      "block_hash": "0x00213dfeb6db564a13b9bcbb5c104028b1579a090cadf0f06eee2f19e5fb5ae8",
+      "transaction_hash": "0x44cbe3388df2b9bfc0276a02aea83d7bab5e8b6837b17297819faf6514aea023",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x07ec4a5b849b0496478343fa316186a5918119f6",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x0000000000000000000000005307d998901e39f02d1ca9e50beffd565efba6ba"
+      ],
+      "data": "0x",
+      "block_number": 7893827,
+      "block_hash": "0xc4fc9cadc8323ec4cc8271464726fc19374c0e1b0c035102468f8b79a61d5996",
+      "transaction_hash": "0x40e0ddb40fdd4fd8f4d8f084321153079ab16725dd63a57a6b641bfc447266de",
+      "transaction_index": 1,
+      "log_index": 1
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x0000000000000000000000008c033865c1cd387a0fa5a8f3369908a20c5a54e4"
+      ],
+      "data": "0x",
+      "block_number": 7895374,
+      "block_hash": "0xd783aaaf6ed3354f9e3c3dcfafff5cda9a32c1d2c58566969fe73908c504a025",
+      "transaction_hash": "0xc1dacef0189d9e6bd7311c11d7153f8460ffc3b8f14d2ad76edb91df60ff171f",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x000000000000000000000000c886e65437e8bcb917982f9a7147c2b5d54beac0"
+      ],
+      "data": "0x",
+      "block_number": 7895405,
+      "block_hash": "0x014207bc88880fda7311420c71bf80236f38867df347dd26662c4b5304ed63fc",
+      "transaction_hash": "0xd42321426f3452b12f77a5fdc776c83cb0fed3d313d730c5740f377ba54dc1dd",
+      "transaction_index": 1,
+      "log_index": 1
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x000000000000000000000000e4f0fc39e38728bae9b58875c2777431b18295ba"
+      ],
+      "data": "0x",
+      "block_number": 7896147,
+      "block_hash": "0xd5e486bcef9e2805d2723bd71777b2e02fd57f958949fcef6c5da569cca82425",
+      "transaction_hash": "0xa90398fdaeeeb1976bb7606aaa7b0122ec3f19046534f7628e914d97f4017bf5",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x0000000000000000000000002bb05ddccb23431546de8bd2d3165b5480a0eff7"
+      ],
+      "data": "0x",
+      "block_number": 7896337,
+      "block_hash": "0x7cad64c232a45eb2a94b048d8d4119e1570d1cfeadfdb9c28fcabc291c875b95",
+      "transaction_hash": "0xd64aff213dc2dd486812415585c4e42d2c37740893cb60325ac947b902591493",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x000000000000000000000000ded32b4b8f43b1e42cebc7c50e6cf38607244bc0"
+      ],
+      "data": "0x",
+      "block_number": 7896781,
+      "block_hash": "0xed57036983a35f74cecd7270c27daa5c94c579ee30fccb866fbd732c5caf92d1",
+      "transaction_hash": "0xbc1cf789678c4e2cf8d225e81a9f9ca749e4451bb48f92f52a076af82b9bf827",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x0000000000000000000000003722bb80c2cbcef0ea2fb72e3ff32f672ba77415"
+      ],
+      "data": "0x",
+      "block_number": 7897149,
+      "block_hash": "0xaa82e0673e40abe01592111560835024342c7ade63ff9d591a31b58ce7eac847",
+      "transaction_hash": "0x8b571ef79db17f83b5d64b4be12b611376e6bd8fe73b78ca78af04e75c22feca",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x000000000000000000000000e732c2e6dbced5dcc44d1a5524a8af1343c1e2ef"
+      ],
+      "data": "0x",
+      "block_number": 7899079,
+      "block_hash": "0x088759a83aa83a61b25ef8ba9d58aa7ab6286fdcb6dfb465e17fa6a2f49e0c02",
+      "transaction_hash": "0xe8b7ac67e8a02dc7cefbab3e3cc213301e40808ca8ab17522f8ee69e7c060e4f",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x0000000000000000000000007a169b125f01183957f7d34d17cfcfd9178b6796"
+      ],
+      "data": "0x",
+      "block_number": 7973227,
+      "block_hash": "0x63d83dc33d0fa4ffe1fbd2b640b9607f7ddbeee8586c00dc15e7c043c10ac387",
+      "transaction_hash": "0x3a8d29a7a73829c68ca40bc1680eda9329ad07092013f86396f93ebbce8c15a7",
+      "transaction_index": 0,
+      "log_index": 0
+    },
+    {
+      "address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "topics": [
+        "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+        "0x00000000000000000000000040e5abde2bc4ba84d966842cbab98c0c88894aaf"
+      ],
+      "data": "0x",
+      "block_number": 7986580,
+      "block_hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9",
+      "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+      "transaction_index": 0,
+      "log_index": 0
+    }
+  ],
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "parameters_sha256": "sha256:52f23e7a1330aad4194f2ef848bceae7c0b4543cc07222e18df13f6ea1476df8",
+  "proxies": [
+    "0x07ec4a5b849b0496478343fa316186a5918119f6",
+    "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8"
+  ],
+  "schema": "urnetwork-retained-evm-chronology-capture-v1",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "terminal_evm_head": {
+    "number": 8086545,
+    "hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a"
+  },
+  "through_head": {
+    "number": 8084595,
+    "hash": "0x9b14fc4a8c1401f9f54044529b1dbb701b6f5ef2fa840083998c431998e96b6c"
+  },
+  "upgrade_topic": "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b"
+}

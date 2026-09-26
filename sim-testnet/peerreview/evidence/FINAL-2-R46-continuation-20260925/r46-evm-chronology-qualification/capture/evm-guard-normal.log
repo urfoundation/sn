@@ -1,0 +1,16 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:07:46.238120 1096503 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:07:46.238417 1096503 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:07:46.238553 1096503 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:07:46.238651 1096503 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedEvmProxyCensusIncludesPredeploymentPlan
+--- PASS: TestRetainedEvmProxyCensusIncludesPredeploymentPlan (0.00s)
+=== RUN   TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction
+--- PASS: TestRetainedEvmProxyCensusRejectsZeroCoordinatorAction (0.00s)
+=== RUN   TestRetainedEvmProxyCensusRejectsUncoveredActivation
+--- PASS: TestRetainedEvmProxyCensusRejectsUncoveredActivation (0.00s)
+=== RUN   TestRetainedEvmRpcGuardRejectsWriteAndForeignAuthority
+--- PASS: TestRetainedEvmRpcGuardRejectsWriteAndForeignAuthority (0.00s)
+=== RUN   TestRetainedEvmRpcGuardRetriesTimeoutWithDurableReceipts
+--- PASS: TestRetainedEvmRpcGuardRetriesTimeoutWithDurableReceipts (1.01s)
+PASS

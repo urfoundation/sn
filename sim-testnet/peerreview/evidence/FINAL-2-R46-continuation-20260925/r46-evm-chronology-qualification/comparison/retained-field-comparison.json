@@ -1,0 +1,92 @@
+{
+  "schema": "urnetwork-r46-corrective-timeline-baseline-review-v1",
+  "observed_at": "2026-09-26T07:16:48.122869+00:00",
+  "read_only": true,
+  "rpc_reads": 0,
+  "source_revision": "6adc7be2e4abdd5c17426dbdf9b8ca66536bdba7",
+  "scope": "Exact local field comparison; signatures and full plan hashes are not revalidated by this receipt. Original result and running diagnostic are unchanged.",
+  "files": [
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/provisional-coordinator-repair/request.json",
+      "size_bytes": 5250,
+      "sha256": "8fd288dfb29ac8ac8c5b93ec1d5c05a94418bf6ac90ae963fca7c8939d388ab9"
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/provisional-coordinator-repair/result.json",
+      "size_bytes": 2756,
+      "sha256": "7f9ea3efc5c51c4f5d765fe7008d534339c79f9a45496b81b1468ac9ca0dcbb5"
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c.json",
+      "size_bytes": 1916340,
+      "sha256": "dd3fe6542820d5d04b683a1a2620359aac9d21108bc67f29dd0d1e609e4f0d5b"
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e.json",
+      "size_bytes": 45943856,
+      "sha256": "8f50d953a71d853ae3adf5df3fdb59df4cd4c63f9f4d175b2329445b704c8b06"
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plans/2d82d20cedf9436fb93a5caffed1c5455c563a85f0b84f4ee005c9fc3f813b91.json",
+      "size_bytes": 1914733,
+      "sha256": "f4a6e1b9f333b5168b23057f7c987af5afbf9e7dbef1000697bbee7a94ac4132"
+    },
+    {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/journal.jsonl",
+      "size_bytes": 45012332,
+      "sha256": "113cae2dcedd32fe8f40148e5a6d355753b20899539bb10570d585a2614009fa"
+    }
+  ],
+  "source_plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+  "current_plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "source_baseline": {
+    "schema": "urnetwork-coordinator-upgrade-baseline-v4",
+    "active_implementation": "0xe732C2E6dBCed5dcc44D1A5524a8Af1343c1e2Ef",
+    "active_implementation_runtime_hash": "0x4f97f8c8763faaaa5d1b94cad173d542c6572e83141a9ba7ee3c30917d40856b"
+  },
+  "source_upgrade": {
+    "schema": "urnetwork-coordinator-upgrade-v2",
+    "deployment_id": "ur-subnet-testnet-v1",
+    "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+    "deployer_nonce": 30,
+    "runtime_code_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+  },
+  "signed_retained_upgrade": {
+    "schema": "urnetwork-coordinator-upgrade-v2",
+    "deployment_id": "ur-subnet-testnet-v1",
+    "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+    "deployer_nonce": 30,
+    "runtime_code_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+  },
+  "prior_activation": {
+    "plan_hash": "0x2d82d20cedf9436fb93a5caffed1c5455c563a85f0b84f4ee005c9fc3f813b91",
+    "action_id": "evm.coordinator-upgrade-activate",
+    "intent_hash": "0xc50091154f3542bd1fd7f26a9294abba51059cf3bed74eeacb300676e4b476e4",
+    "transaction_hash": "0x3a8d29a7a73829c68ca40bc1680eda9329ad07092013f86396f93ebbce8c15a7",
+    "block_number": 7973227,
+    "block_hash": "0x63d83dc33d0fa4ffe1fbd2b640b9607f7ddbeee8586c00dc15e7c043c10ac387"
+  },
+  "prior_upgrade": {
+    "schema": "urnetwork-coordinator-upgrade-v2",
+    "deployment_id": "ur-subnet-testnet-v1",
+    "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+    "deployer_nonce": 30,
+    "runtime_code_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+  },
+  "repair_activation": {
+    "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+    "action_id": "repair.coordinator-rounding.activate",
+    "intent_hash": "0x53ed3ed053673110c56ec0fc185362f49a9deb28fa1cd6bdffbd2af021ed24c1",
+    "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+    "block_number": 7986580,
+    "block_hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9"
+  },
+  "checks": {
+    "current_carry_request_equals_original": true,
+    "current_carry_result_equals_original": true,
+    "source_upgrade_equals_signed_retained": true,
+    "prior_upgrade_equals_signed_retained": true,
+    "baseline_implementation_equals_signed_retained": false,
+    "baseline_runtime_equals_signed_retained": false
+  }
+}

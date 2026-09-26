@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:46:48.127692 1058781 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:46:48.127858 1058781 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:46:48.128039 1058781 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:46:48.128094 1058781 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedEvmRpcGuardRejectsWriteAndForeignAuthority
+--- PASS: TestRetainedEvmRpcGuardRejectsWriteAndForeignAuthority (0.00s)
+=== RUN   TestRetainedEvmRpcGuardRetriesTimeoutWithDurableReceipts
+--- PASS: TestRetainedEvmRpcGuardRetriesTimeoutWithDurableReceipts (1.01s)
+PASS
