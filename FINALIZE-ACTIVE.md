@@ -34,6 +34,18 @@ claim. Candidate 60-second RPC retry and truthful timeout diagnostics are
 pushed on `codex/r46-integration-20260926` through `867a13d7`; they are not
 in the signed live executable.
 
+At 14:18 UTC, the owner remained active with no signed invalidation. Its
+observations at 14:12:18 and 14:16:41 UTC reached finalized blocks 8,090,803
+and 8,090,826 in epoch 651, including the owned-RPC-path fault window.
+The two PostgreSQL, two Redis and owned-RPC-path fault windows have all been
+marked restored by the signed fault controller. During Redis-2's outage,
+both validators logged HTTP 500 on immutable attempt uploads with a local
+Redis connection refusal, followed by timeout/cancellation attempts. Their
+post-restore native steering recovery and eventual epoch settlement remain
+unverified. The process-log gate retains those failures provisionally while
+the owner continues. The integration branch's ordinary Go test partition is
+still running at low priority; its result is not yet a pass claim.
+
 ## R45 sealed failure and retained recovery — 2026-09-25 16:56 UTC
 
 The owner exited 1 after sealing `runs/20260925T134346.277250758Z-release-1.0/result.json`:
