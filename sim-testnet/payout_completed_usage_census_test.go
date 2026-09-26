@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 // The server emits the completed-work census, so a configured miner without

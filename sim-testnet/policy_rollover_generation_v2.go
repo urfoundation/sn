@@ -17,9 +17,9 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/clientauth"
-	validatorcomponent "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	"github.com/urfoundation/sn/v2026/clientauth"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 	"gopkg.in/yaml.v3"
 )
 

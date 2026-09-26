@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 const terminalDiagnosticSchema = "urnetwork-sim-terminal-diagnostics-v1"
