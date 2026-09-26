@@ -35,6 +35,10 @@ type ReleaseEvidenceV2CaptureOptions struct {
 	// Diagnostic callers may reuse complete immutable chunks already retained
 	// from this exact origin in this invocation. Strict capture defaults off.
 	ReuseCapturedStreams bool
+	// Diagnostic capture may own two independent origin readers and finite
+	// immutable read retries. Neither option is enabled by strict callers.
+	ParallelStreamOrigins bool
+	RetryStreamReads      bool
 }
 
 // Private names are relative to the validator state, except configured setup
@@ -426,7 +430,6 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 			return nil, err
 		}
 	}
-	streamCapture := newReleaseCaptureStreamsV2(bounds.Cut, options, emit)
 	for index, cut := range cuts {
 		initial, found := initials[cut.Context.Identity.NoID]
 		if !found || cut.Context.Identity != initial.InitialCut.Identity || cut.Context.Activation != initial.InitialCut.Activation {
@@ -437,17 +440,9 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 		if err := cut.VerifyHeader(cut.Context, bounds.Cut); err != nil {
 			return nil, fmt.Errorf("compact capture cut %d operator %d header: %w", index+1, cut.Context.Identity.NoID, err)
 		}
-		for _, origin := range options.Origins {
-			for _, stream := range []struct {
-				kind      string
-				reference AttemptStreamV2Reference
-				limits    AttemptStreamV2Bounds
-			}{{kind: AttemptStreamV2Records, reference: cut.Records, limits: bounds.Cut.Records}, {kind: AttemptStreamV2Proofs, reference: cut.Proofs, limits: bounds.Cut.Proofs}} {
-				if err := streamCapture.capture(ctx, origin, stream.kind, stream.reference, stream.limits); err != nil {
-					return nil, fmt.Errorf("compact capture cut %d/%d operator %d origin %s %s: %w", index+1, len(cuts), cut.Context.Identity.NoID, origin, stream.kind, err)
-				}
-			}
-		}
+	}
+	if err := captureReleaseStreamOriginsV2(ctx, bounds.Cut, options, cuts, emit, releaseCaptureStreamHooksV2{}); err != nil {
+		return nil, err
 	}
 	block, hash, err := chain.FinalizedBlockContext(ctx)
 	if err != nil {

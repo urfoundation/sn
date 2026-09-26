@@ -245,7 +245,7 @@ func collectTerminalDiagnosticValidator(collector *terminalDiagnosticCollector, 
 		if err := enableProvisionalRuntimeCompatibility(native, cfg); err != nil {
 			return nil, err
 		}
-		captured, err = validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, MaximumBytes: bounds.dataBytes + bounds.controlBytes, MaximumObjects: bounds.maximumObjects, MaximumDataBytes: bounds.dataBytes, MaximumControlBytes: bounds.controlBytes, ThroughEpoch: lastEpoch, ReuseCapturedStreams: true}, retain)
+		captured, err = validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: [2]string{cfg.OperatorAPIOrigins[0], cfg.OperatorAPIOrigins[1]}, MaximumBytes: bounds.dataBytes + bounds.controlBytes, MaximumObjects: bounds.maximumObjects, MaximumDataBytes: bounds.dataBytes, MaximumControlBytes: bounds.controlBytes, ThroughEpoch: lastEpoch, ReuseCapturedStreams: true, ParallelStreamOrigins: true, RetryStreamReads: true}, retain)
 		if err != nil {
 			return sources, err
 		}

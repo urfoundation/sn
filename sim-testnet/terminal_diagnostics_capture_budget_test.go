@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -39,4 +40,22 @@ func TestTerminalDiagnosticCaptureBudgetAllowsCompleteTapeWithinOwner(t *testing
 	if collector.report.Checks[3].Status != "unavailable" {
 		t.Fatal("owner cancellation was waived")
 	}
+}
+
+// A timed-out source remains failed even if its reader returns partial evidence
+// with nil; later independent checks retain the live parent and still execute.
+func TestTerminalDiagnosticCaptureTimeoutKeepsLaterChecks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		collector := &terminalDiagnosticCollector{ctx: t.Context(), report: &terminalDiagnosticReport{ReadOnly: true}}
+		passed := collector.check("validator-1/signed-source-capture", "", terminalDiagnosticValidatorCaptureTimeout, func(ctx context.Context) (any, error) {
+			<-ctx.Done()
+			return "retained authenticated prefix", nil
+		})
+		continued := collector.check("independent-terminal-check", "", time.Minute, func(ctx context.Context) (any, error) {
+			return "independent terminal evidence", ctx.Err()
+		})
+		if passed || !continued || len(collector.report.Checks) != 2 || collector.report.Checks[0].Status != "fail" || collector.report.Checks[0].Evidence != "retained authenticated prefix" || collector.report.Checks[1].Status != "pass" || collector.report.FinalAcceptance {
+			t.Fatalf("capture timeout changed later evidence or acquired acceptance: %+v", collector.report.Checks)
+		}
+	})
 }

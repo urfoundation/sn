@@ -87,6 +87,7 @@ func (self *terminalDiagnosticCollector) check(id, prerequisite string, timeout 
 			return run(ctx)
 		}()
 		check.Evidence = evidence
+		err = errors.Join(err, ctx.Err())
 		cancel()
 		check.Status = "pass"
 		if err != nil {
