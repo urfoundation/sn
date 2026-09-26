@@ -2797,8 +2797,15 @@ acceptance still fails for an unexcused warning. A sealed early exit remains
 a partial failure and must never be presented as terminal coverage.
 
 R47 also showed real low epoch-652 completed usage rather than a missing
-escrow sweep. The immutable provider-usage snapshots match the published
-artifact totals, and most closures were expired or unconfirmed. Mainnet
-readiness should verify enough confirmed closed usage for the governed tier
-and native movement margin under restart/fault load, not infer throughput
-from process health alone.
+escrow sweep. The immutable provider-usage snapshots match all six epoch
+650–652 artifact totals; epoch 652 had only 2,343/2,251 completed credited
+contracts and 12,838/13,164 expired-unconfirmed contracts. The all-tier
+source requirement was 16,576,936 bytes per operator at that pinned price,
+which must be recomputed for each new source. Mainnet readiness should verify
+enough confirmed closed usage for the governed tier and native movement margin
+under restart/fault load, not infer throughput from process health alone.
+A 32 MiB/operator completed-source target is an operating recommendation,
+not an acceptance threshold. Current walker concurrency four is a generated
+configuration value. Any increase needs a reviewed, authenticated config and
+measured workload test; the 30-second seed gate with actual two-second pacing
+limits it to 15 without changing the signed policy.

@@ -66,13 +66,30 @@ The owner reported epoch-651 complete usage of **19,396,509** and
 **18,756,754 bytes** and rate readiness. Its first complete epoch-652 source
 reported only **5,737,506** and **5,299,429 bytes** and rate readiness false;
 the former produced 115,371 TAO rao against the configured 200,000-rao
-two-times-native threshold. These are owner artifact/observation claims,
-not independently measured network traffic. Other retained strict findings
+two-times-native threshold. Read-only comparison reproduced all six epoch
+650–652 artifact totals from immutable provider-usage snapshots at contract
+close. Completed credited contracts fell from 8,602/8,285 in epoch 650 to
+2,343/2,251 in epoch 652; 12,838/13,164 epoch-652 contracts were
+`expired_unconfirmed` with zero credited bytes. At the pinned price, the
+unchanged all-tier margin requires **16,576,936** complete-source bytes per
+operator. Later closures added only 1,211,287/1,309,553 bytes from contracts
+created in 652, with no older open cohort crossing the boundary; they cannot
+repair that immutable source. The [exact SQL, aggregate responses, artifact
+comparisons and fault/proof context](peerreview/evidence/FINAL-3-R47-rate-triage-20260926/README.md)
+support an actual completed-work shortfall, not an accounting mismatch. They
+do not independently measure network traffic or prove that every missing
+byte was caused by a particular signed fault. Other retained strict findings
 include a native-1691 steering gap after a dependency outage, valid adversary
 probes selecting excluded miners, an unplanned source-egress `EXTEND` 400,
 and artifact GET exhaustion. The [sealed adversary, fault and process records](peerreview/evidence/FINAL-3-R47-terminal-20260926/README.md)
 preserve their scope. Candidate fixes developed after R47 began cannot be
 credited to its signed executable or used to erase those failures.
+
+The post-R47 heartbeat correction has a
+[deterministic red/green and race receipt](peerreview/evidence/FINAL-3-R47-artifact-transport-continuation-20260926/README.md).
+The pre-fix test reproduced early exit at block 3,200 instead of the synthetic
+5,050 terminal; the fixed test reached terminal and still failed strict
+process-log acceptance. This qualifies the candidate behavior, not R47.
 
 This report is a **partial diagnostic**, not acceptance under the whitepaper.
 The prior independent peer review found that the coordinator's actual cadence
