@@ -357,6 +357,18 @@ establish exclusive causality for the empty census. The original missed root
 remains a strict historical failure.
 [Taskworker, source and chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-empty-payout-census.receipt.json)
 (SHA-256 `0e32519ae98e26f137b73cb851624f89d9670c2a3c9a6ed157bd5096aebffe7e`).
+The post-R46 restart correction now requires a replacement validator to
+produce fresh, fully signed proof trails for every approved operator before
+the scheduler treats the restart as restored. An isolated **32-test normal
+and race suite** passed; old PID-only and final-hop-only controls failed as
+expected. A separate server test exercises zero confirmations, zero leaves,
+then a newly confirmed exposure producing one leaf, while Solidity tests
+cover zero-root refusal and operator-scoped `RootMissed` carry. These are
+future-run fixes and controls, not retroactive evidence of R46 acceptance.
+[Fix and test review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-restart-payout-fix-review.md)
+(SHA-256 `569b4ff0c0bc55766c0326bbc07bd326ca473858094330da4410cec82107a4ed`),
+[exact native steering rows](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-native-steering-rows.receipt.json)
+(SHA-256 `195a9ce4e4c15a979cb3dfd4773f7d8d3cf3547919a557fde6aa45dfe02e2858`).
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
 It found **808/808 fleet bindings valid** and current-policy rate readiness

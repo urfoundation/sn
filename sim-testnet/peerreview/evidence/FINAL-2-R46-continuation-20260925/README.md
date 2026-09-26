@@ -182,3 +182,8 @@ zero-leaf operator-2 close, operator-1's four-leaf close and root confirmation,
 the server's deliberate no-leaf submission skip, the proof blackout and the
 historical LAN `RootMissed` evidence. It supports an empty payout census,
 without proving the exclusive upstream provider eligibility cause.
+
+`r46-restart-payout-fix-review.md` gives source fences, deterministic normal
+and race tests, and pre-fix controls for the replacement validator proof
+readiness and expected zero-leaf payout behavior. `r46-native-steering-rows.receipt.json`
+pins the first and last retained native steering failures to the sealed gate.
