@@ -115,15 +115,7 @@ func collectTerminalDiagnosticSources(collector *terminalDiagnosticCollector, cf
 		}
 		return collectFinalValidatorInputsV2(ctx, cfg, stateDir, collector.output, terminal, result.Name, collector.report.Window, started, completed, authority)
 	})
-	var matrix *AdversarialMatrix
-	matrixOk := collector.check("adversarial-matrix", available(result != nil, "original result unavailable"), time.Minute, func(context.Context) (any, error) {
-		artifact, value, err := captureFinalSemanticAdversarialMatrix(cfg, collector.output, result)
-		matrix = value
-		return artifact, err
-	})
-	collector.check("adversarial-campaign", available(matrixOk, "authenticated adversarial matrix unavailable"), time.Minute, func(context.Context) (any, error) {
-		return captureFinalSemanticAdversaries(collector.output, result, matrix)
-	})
+	collectTerminalDiagnosticAdversaries(collector, cfg, runDir, result)
 	collector.check("closed-foundation-receipts-and-topology", available(result != nil && terminalOk, "terminal result or observation unavailable"), 10*time.Minute, func(ctx context.Context) (any, error) {
 		bundles, resultRef, terminalRef, historyRef, err := captureFinalSemanticClosedInputsWithPriorConfigV2(ctx, cfg, stateDir, collector.output, result, terminal, history, cfg.Config.Topology.Miners, cfg.Config.Topology.MinerSwarmProcesses, cfg.Config.Topology.Operators, nil)
 		return map[string]any{"bundles": bundles, "result": resultRef, "terminal": terminalRef, "history": historyRef}, err

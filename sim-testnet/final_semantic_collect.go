@@ -1861,24 +1861,34 @@ func captureFinalSemanticAdversarialMatrix(cfg *ResolvedConfig, runRoot string, 
 // campaign, but retaining its standalone artifact gives FINAL.md a direct,
 // content-addressed review link.
 func captureFinalSemanticAdversaries(runRoot string, result *ScenarioResult, matrix *AdversarialMatrix) (FinalArtifactLocator, error) {
+	raw, err := readFinalSemanticAdversaries(runRoot, result, matrix)
+	if err != nil {
+		return FinalArtifactLocator{}, err
+	}
+	if _, err := summarizeFinalAdversarialCampaign(result.Adversaries, matrix); err != nil {
+		return FinalArtifactLocator{}, fmt.Errorf("verify adversaries.json: %w", err)
+	}
+	return persistFinalCollectedArtifact(runRoot, "scenario-adversaries", "final-inputs/adversaries.json", raw)
+}
+
+// Source authentication is separate from qualification. Diagnostics retain an
+// exact failed original without granting it a passing campaign summary.
+func readFinalSemanticAdversaries(runRoot string, result *ScenarioResult, matrix *AdversarialMatrix) ([]byte, error) {
 	if result == nil || result.Adversaries == nil || result.AdversarialMatrix == "" || matrix == nil {
-		return FinalArtifactLocator{}, errors.New("final semantic adversarial campaign is absent")
+		return nil, errors.New("final semantic adversarial campaign is absent")
 	}
 	entry, err := finalCollectedFileEntry(runRoot, "adversaries.json")
 	if err != nil {
-		return FinalArtifactLocator{}, fmt.Errorf("capture adversaries.json: %w", err)
+		return nil, fmt.Errorf("capture adversaries.json: %w", err)
 	}
 	var campaign AdversaryCampaignEvidence
 	if err := decodeStrictJSONBytes(entry.Data, &campaign); err != nil {
-		return FinalArtifactLocator{}, fmt.Errorf("decode adversaries.json: %w", err)
+		return nil, fmt.Errorf("decode adversaries.json: %w", err)
 	}
-	if !finalJSONEqual(campaign, *result.Adversaries) || !strings.EqualFold(campaign.MatrixHash, result.AdversarialMatrix) {
-		return FinalArtifactLocator{}, errors.New("adversaries.json differs from the signed scenario result")
+	if !finalJSONEqual(campaign, *result.Adversaries) || !strings.EqualFold(campaign.MatrixHash, result.AdversarialMatrix) || !strings.EqualFold(campaign.MatrixHash, matrix.Hash) {
+		return nil, errors.New("adversaries.json differs from the signed scenario result or authenticated matrix")
 	}
-	if _, err := summarizeFinalAdversarialCampaign(&campaign, matrix); err != nil {
-		return FinalArtifactLocator{}, fmt.Errorf("verify adversaries.json: %w", err)
-	}
-	return persistFinalCollectedArtifact(runRoot, "scenario-adversaries", "final-inputs/adversaries.json", entry.Data)
+	return entry.Data, nil
 }
 
 func verifyFinalSemanticCollectedInputs(cfg *ResolvedConfig, value *FinalSemanticCollectedInputs) error {
