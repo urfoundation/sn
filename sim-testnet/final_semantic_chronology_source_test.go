@@ -701,7 +701,7 @@ func TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActio
 		DeploymentID:         "deployment",
 		EVMCampaignStartHead: ChainHead{Number: 100, Hash: finalTestHex(0x64)},
 	}
-	current := &SetupPlan{PlanHash: currentHash, DeploymentID: evidence.DeploymentID, ChainID: testnetChainID, Netuid: 521}
+	current := &SetupPlan{PlanHash: currentHash, DeploymentID: evidence.DeploymentID, ChainID: testnetChainID, Netuid: 521, Deployment: ContractDeployment{CoordinatorProxy: proxy}}
 	plans := map[string]*SetupPlan{currentHash: current}
 	entries := make([]JournalEntry, 0, 12)
 	for index := 0; index < 11; index++ {

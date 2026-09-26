@@ -138,12 +138,9 @@ func finalHistoricalCoordinatorBuildTimelineWithSources(evidence *FinalSemanticE
 		return nil, err
 	}
 	allowed := current.allowedPlanHashes()
-	proxies := make(map[string]bool, len(plans))
-	for hash, plan := range plans {
-		if plan == nil || !allowed[hash] || !strings.EqualFold(hash, plan.PlanHash) || plan.Deployment.CoordinatorProxy == (common.Address{}) {
-			return nil, errors.New("historical coordinator timeline has an unapproved plan")
-		}
-		proxies[strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())] = true
+	proxies, err := finalHistoricalCoordinatorProxyCensus(current, plans, entries)
+	if err != nil {
+		return nil, err
 	}
 	transitions := make(map[string][]finalHistoricalCoordinatorTransition, len(proxies))
 	byTransaction := make(map[string]finalHistoricalCoordinatorTransition)
@@ -166,12 +163,11 @@ func finalHistoricalCoordinatorBuildTimelineWithSources(evidence *FinalSemanticE
 			continue
 		}
 		initial := action.ID == "evm.coordinator-proxy"
-		activation := action.ID == "evm.coordinator-upgrade-activate" || action.ID == "repair.coordinator-rounding.activate"
-		if !initial && !activation {
+		if !finalHistoricalCoordinatorTransitionAction(action.ID) {
 			continue
 		}
 		proxy := strings.ToLower(plan.Deployment.CoordinatorProxy.Hex())
-		if activation && (!common.IsHexAddress(action.Target) || !strings.EqualFold(action.Target, proxy)) {
+		if !initial && (!common.IsHexAddress(action.Target) || !strings.EqualFold(action.Target, proxy)) {
 			return nil, errors.New("historical coordinator upgrade action targets another proxy")
 		}
 		if _, duplicate := byTransaction[entry.TransactionHash]; duplicate {

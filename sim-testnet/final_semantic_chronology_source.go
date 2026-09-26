@@ -227,6 +227,9 @@ func finalHistoricalCoordinatorJournalActionsWithSources(evidence *FinalSemantic
 	if err != nil {
 		return nil, err
 	}
+	if _, err := finalHistoricalCoordinatorProxyCensus(current, plans, entries); err != nil {
+		return nil, err
+	}
 	allowed := current.allowedPlanHashes()
 	result := make(map[string]finalHistoricalCoordinatorJournalAction)
 	for index := range entries {

@@ -539,6 +539,9 @@ func captureFinalHistoricalCoordinatorBaselines(ctx context.Context, cfg *Resolv
 	if err != nil {
 		return nil, err
 	}
+	if _, err := finalHistoricalCoordinatorProxyCensus(current, plans, entries); err != nil {
+		return nil, err
+	}
 	logsByTransaction := make(map[string][]finalCanonicalEVMLog)
 	for _, log := range logs {
 		logsByTransaction[log.TransactionHash] = append(logsByTransaction[log.TransactionHash], log)

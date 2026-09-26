@@ -115,6 +115,9 @@ func finalCaptureReleaseContractCensusWithSources(current *SetupPlan, deployment
 			return finalReleaseContractCaptureCensus{}, fmt.Errorf("historical release capture has foreign plan %s", hash)
 		}
 	}
+	if _, err := finalHistoricalCoordinatorProxyCensus(current, plans, entries); err != nil {
+		return finalReleaseContractCaptureCensus{}, err
+	}
 
 	currentSet, err := finalReleaseContractAddressSet(deployment, batcher)
 	if err != nil {
