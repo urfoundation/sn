@@ -1,5 +1,32 @@
 # Testnet execution plan
 
+## R47 zero-funded measured settlement — 2026-09-26 15:49 UTC
+
+Independent LAN archive receipts establish that both epoch-651
+`EmissionCaptured` events at block 8,090,977 reported zero, both
+`EntitlementFinalized` events at block 8,091,127 set total zero, and sampled
+successful `Claimed` transactions at blocks 8,091,156 and 8,091,174 had
+zero amount with no `ClaimPaid` log. This corrects the earlier provisional
+interpretation of finalized claim statuses: they do not show money moved.
+The bounded capture scan includes 50 events from blocks 8,084,000–8,091,280;
+its latest nonzero capture is epoch 631 at block 8,084,977, followed by
+42 zero captures through epoch 652. [Raw LAN receipts and owner row](sim-testnet/peerreview/evidence/FINAL-3-R47-zero-entitlement-20260926/README.md)
+are portable and SHA-256-pinned. R47 is still live; no final verdict is
+claimed from this checkpoint.
+
+Both authenticated native-1690 pool audits marked the operator pools
+`zero_pool_weight` because their lagged source payout root was unavailable
+on-chain, and the applied vectors omitted pool UIDs 3 and 4. The live vault
+reports those same UIDs for operators 1 and 2. The cause of continuing zero
+pool stake is under native-state review; a one-edge history adoption by
+itself would not create funding. The successor must prove positive eligible
+weights and actual funding, then independently replay the economic receipts.
+
+An isolated adversary selector/pre-arm fix (`4ac7618b`) is now integrated;
+combined focused normal/race tests are running. It cannot erase R47's valid
+SEED failures. The separate source-egress EXTEND 400 and artifact GET
+exhaustion remain hard findings, with no unsafe status remapping.
+
 ## R47 financial and adversary progress — 2026-09-26 15:29 UTC
 
 The live R47 owner remains active. Its 55th retained observation at

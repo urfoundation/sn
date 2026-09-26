@@ -2715,6 +2715,38 @@ errors. Deterministic normal and race tests now cover read, Close, retry wait,
 and next-attempt boundaries; include this behavior in mainnet evidence clients
 and operational diagnostics. The correction is not in the signed R47 binary.
 
+R47 shows why an on-chain payout root and a finalized `Claimed` event
+cannot substitute for a positive economic settlement. Epoch-651
+`EmissionCaptured` was zero for both operator pools, each
+`EntitlementFinalized.total` was zero, and sampled successful `Claimed`
+receipts had zero amount and no `ClaimPaid`. The LAN archive scan found 42
+consecutive zero captures after the last nonzero epoch-631 capture. The
+vault's zero-capture branch reads zero pool-hotkey stake; it is distinct from
+minimum-transfer dust or a missed boundary. The authenticated native-1690
+pool audits classified both pools as `zero_pool_weight` because the lagged
+source payout root was unavailable on-chain, and both applied vectors omit
+pool UIDs 3 and 4. Before mainnet acceptance, require a committed lagged
+source root, compliant deposit, actual positive eligible pool weights, and
+nonzero native emission/stake delta before claiming an economically valid
+payout epoch. Test zero-root, uncommitted-root, stale-source, deferred dust,
+zero capture, carry and zero-amount claim paths distinctly. A native history
+adoption alone does not mint or move funds.
+
+The R47 valid VERIFY adversary selected miners hidden by approved lifecycle
+filters and miner controls; the same wrong provider repeated every 500-sample
+rotation. Publish exact approved preparation fault targets before arming the
+filter, retain an authenticated armed/pending target through the first
+acceptance heartbeat, and select only provisioned providers outside active
+fault scope for expected-valid probes. Never infer scope from an unsigned
+filter file or convert an actual bad response to success. Deterministic
+production-membership and ordering tests cover lifecycle, miner-control and
+swarm-restart targets. Separately, a valid EXTEND returned the protocol's
+non-oracle HTTP 400 after an unplanned source-egress teardown; preserve the
+same external failure parity across wrong-source and poison cases while
+investigating underlying connection custody. Two artifact-history GETs also
+exhausted their finite retry owner during shared storage cancellation outside
+a signed fault. These remain hard R47 findings pending a clean successor.
+
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
 Select one authenticated generation for both the attack vector and metrics;
