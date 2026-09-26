@@ -1,0 +1,9 @@
+--- FAIL: TestNativeHistoryRecoveryV2SealedEarlyFailure (4.15s)
+        native_history_recovery_boundary_v2_test.go:79: owner-sealed early failure requires no fabricated terminal coverage native recovery source has not observed its complete terminal interval
+--- FAIL: TestNativeHistoryRecoveryV2RejectsSelectionWithoutGeneration (0.39s)
+    native_history_recovery_boundary_v2_test.go:121: native recovery selection was ignored without generation authority
+--- FAIL: TestNativeHistoryRecoveryV2ApplyPreparationDoesNotWrite (2.89s)
+    native_history_recovery_boundary_v2_test.go:138: native recovery preparation wrote before locked receipt publication <nil>
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	7.525s
+FAIL

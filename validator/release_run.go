@@ -698,6 +698,12 @@ func runReleaseWithActivationSetup(ctx context.Context, configPath string, retai
 }
 
 func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2, adoption *ReleaseHistoryAdoptionV2) (returnErr error) {
+	return runReleaseWithRecoveryStartupV2(ctx, configPath, retainedSetup, adoption, nil)
+}
+
+// Recovery is a distinct approved startup mode and cannot compose with either
+// retained setup deferral or the strict final-history adoption entry point.
+func runReleaseWithRecoveryStartupV2(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2, adoption *ReleaseHistoryAdoptionV2, recovery *ReleaseNativeHistoryRecoveryV2) (returnErr error) {
 	if ctx == nil {
 		return errors.New("release production lifecycle context is unavailable")
 	}
@@ -707,6 +713,14 @@ func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSet
 	cfg, err := LoadReleaseConfig(configPath)
 	if err != nil {
 		return err
+	}
+	if recovery != nil {
+		if retainedSetup != nil || adoption != nil {
+			return errors.New("native history recovery requires its sole explicit startup authority")
+		}
+		if err := recovery.configure(ctx, cfg, configPath); err != nil {
+			return err
+		}
 	}
 	if adoption != nil {
 		if retainedSetup != nil {

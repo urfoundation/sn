@@ -1,0 +1,146 @@
+// Read-only current-schedule qualification of the exact recovery capture path.
+// No key seed, signer, source writer, supervisor mutation or approval is opened.
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/validator"
+)
+
+// Output exposes only public identities and original file digests.
+func main() {
+	state := flag.String("state-root", "", "retained source root")
+	rpc := flag.String("substrate", "", "approved read-only native RPC")
+	flag.Parse()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	raw, err := os.ReadFile(filepath.Join(*state, "supervisor.json"))
+	if err != nil {
+		panic(err)
+	}
+	var supervisor struct {
+		Specs []struct {
+			Id, Role, Identity string
+			Args               []string
+		}
+	}
+	if err := json.Unmarshal(raw, &supervisor); err != nil {
+		panic(err)
+	}
+	native, err := crv4.DialChainContext(ctx, *rpc)
+	if err != nil {
+		panic(err)
+	}
+	defer native.API.Client.Close()
+	var runtimeArtifacts []map[string]any
+	if err := native.EnableProvisionalRuntimeCompatibility(native.GenesisHash, func(a crv4.AuthenticatedRuntimeArtifact) error {
+		runtimeArtifacts = append(runtimeArtifacts, map[string]any{"version": a.Version, "code_hash": a.CodeHash, "metadata_hash": a.MetadataHash, "compatibility_profile": a.CompatibilityProfile})
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+	head, err := crv4.FinalizedHeadContext(ctx, native)
+	if err != nil {
+		panic(err)
+	}
+	header, err := native.HeaderAtContext(ctx, head)
+	if err != nil {
+		panic(err)
+	}
+	output := map[string]any{"schema": "r48-native-current-schedule-v1", "read_only": true, "approval_granted": false, "source_exclusively_captured": false, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "finalized_head": map[string]any{"number": uint64(header.Number), "hash": head.Hex()}}
+	var rows []map[string]any
+	for _, spec := range supervisor.Specs {
+		if spec.Role != "validator" {
+			continue
+		}
+		row := map[string]any{"validator": spec.Id}
+		rows = append(rows, row)
+		err := func() error {
+			path := ""
+			for _, arg := range spec.Args {
+				if strings.HasPrefix(arg, "--config=") {
+					if path != "" {
+						return errors.New("duplicate selected config")
+					}
+					path = strings.TrimPrefix(arg, "--config=")
+				}
+			}
+			cfg, err := validator.LoadReleaseConfig(path)
+			if err != nil {
+				return err
+			}
+			genesis, err := types.NewHashFromHexString(cfg.GenesisHash)
+			if err != nil {
+				return err
+			}
+			key, err := ss58.DecodeWithPrefix(spec.Identity, ss58.BittensorPrefix)
+			if err != nil {
+				return err
+			}
+			pins := map[string]string{}
+			paths := map[string]string{"config": path, "intent": filepath.Join(cfg.StateDir, "steering-intents.json"), "ema": filepath.Join(cfg.StateDir, "head-ema.json")}
+			for name, path := range paths {
+				b, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				pins[name] = fmt.Sprintf("sha256:%x", sha256.Sum256(b))
+				if name == "intent" {
+					var store struct {
+						Current *validator.SteeringIntent `json:"current"`
+					}
+					if err := json.Unmarshal(b, &store); err != nil {
+						return err
+					}
+					if store.Current == nil {
+						return errors.New("retained intent missing")
+					}
+					row["retained_native_epoch"], row["retained_status"] = store.Current.SubnetEpoch, store.Current.Status
+				}
+			}
+			anchor := crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.RuntimeSpec, TransactionVersion: cfg.TransactionVersion, StateVersion: cfg.StateVersion}, CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash}
+			observed, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{GenesisHash: genesis, BlockHash: head, BlockNumber: uint64(header.Number), Netuid: cfg.Netuid, Hotkey: key, MaximumSubnetUIDs: 65535}, validator.HistoricalReleaseRuntimeArtifacts(anchor)...)
+			if err != nil {
+				return err
+			}
+			row["config_anchor"], row["actual_runtime"], row["compatibility_profile"] = anchor, observed.Stake.Identity.Runtime, cfg.ProvisionalRuntimeCompatibility
+			row["uid"], row["hotkey_sha256"] = observed.Stake.Identity.UID, fmt.Sprintf("sha256:%x", sha256.Sum256(key[:]))
+			row["native_epoch"], row["non_self_stake_and_permit"] = observed.SubnetEpochIndex, observed.Stake.MeetsNonSelfStakeAndPermit()
+			row["new_first_epoch_must_exceed"] = observed.SubnetEpochIndex
+			for name, path := range paths {
+				b, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				if pins[name] != fmt.Sprintf("sha256:%x", sha256.Sum256(b)) {
+					return errors.New("retained source changed")
+				}
+			}
+			row["source_sha256"], row["source_bytes_unchanged"] = pins, true
+			return ctx.Err()
+		}()
+		row["authenticated"] = err == nil
+		if err != nil {
+			row["error"] = err.Error()
+		}
+	}
+	output["validators"], output["authenticated_runtime_artifacts"] = rows, runtimeArtifacts
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		panic(err)
+	}
+}

@@ -75,6 +75,7 @@ type ReleaseConfig struct {
 	ProvisionalDeferClosedNativeInput bool   `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
 	ProvisionalRuntimeCompatibility   string `yaml:"provisional_runtime_compatibility,omitempty" json:"provisional_runtime_compatibility,omitempty"`
 	historyAdoptionV2                 *ReleaseHistoryAdoptionV2
+	nativeHistoryRecoveryV2           *ReleaseNativeHistoryRecoveryV2
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {

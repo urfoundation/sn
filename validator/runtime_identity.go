@@ -132,6 +132,12 @@ func authenticateReleaseNativeRuntimeAtContext(ctx context.Context, chain *crv4.
 	if artifact.CompatibilityProfile != "" && (cfg.ProvisionalRuntimeCompatibility != artifact.CompatibilityProfile || !chain.RuntimeArtifactCompatible(artifact)) {
 		return errors.New("native runtime compatibility lacks explicit validator authority")
 	}
+	if recovery := cfg.nativeHistoryRecoveryV2; recovery != nil && !historical {
+		identity := crv4.RuntimeArtifactIdentity{Version: artifact.Version, CodeHash: artifact.CodeHash, MetadataHash: artifact.MetadataHash}
+		if identity != recovery.Runtime || artifact.CompatibilityProfile != recovery.CompatibilityProfile {
+			return errors.New("native history recovery runtime differs from its exact approved artifact")
+		}
+	}
 	chain.Meta = artifact.Metadata
 	chain.Runtime = &types.RuntimeVersion{
 		SpecName:           artifact.Version.SpecName,

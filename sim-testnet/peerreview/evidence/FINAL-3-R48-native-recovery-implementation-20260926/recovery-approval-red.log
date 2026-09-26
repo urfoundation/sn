@@ -1,0 +1,5 @@
+--- FAIL: TestNativeHistoryRecoveryV2CannotRetargetApprovalDuringVerification (3.48s)
+    native_history_recovery_v2_test.go:407: native verification retargeted an already approved first epoch
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	3.586s
+FAIL

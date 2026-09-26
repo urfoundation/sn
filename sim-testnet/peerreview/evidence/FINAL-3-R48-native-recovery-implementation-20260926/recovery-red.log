@@ -1,0 +1,5 @@
+--- FAIL: TestNativeHistoryRecoveryV2RejectsUnapprovedLauncherArguments (4.45s)
+    native_history_recovery_v2_test.go:21: generation projection retained an unapproved native recovery argument
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	4.544s
+FAIL

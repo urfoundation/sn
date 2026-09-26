@@ -44,6 +44,8 @@ func finalCaptureHistoryAdoptionV2(ctx context.Context, cfg *ResolvedConfig, sta
 		}
 		for _, arg := range spec.Args {
 			switch {
+			case strings.HasPrefix(arg, "--native-history-recovery"):
+				return nil, nil, errors.New("provisional native history recovery requires separate final archive authority")
 			case strings.HasPrefix(arg, "--strict-history-adoption="):
 				if path != "" {
 					return nil, nil, errors.New("final history request path is duplicated")

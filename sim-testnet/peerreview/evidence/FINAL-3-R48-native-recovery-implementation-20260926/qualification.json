@@ -1,0 +1,99 @@
+{
+  "schema": "r48-native-recovery-implementation-qualification-v1",
+  "source_base": "c7f829c56d84672da27a8f41d52518b85318b3cd",
+  "source_files": {
+    "sim-testnet/config.go": "sha256:8c3618876b9f7fe88452625282927862b27b9e9e97d0396c3faa67f6f1d275a1",
+    "sim-testnet/final_semantic_adoption_v2.go": "sha256:9e1e42189ce1bdfc174176efae77b944840c483778ee93e48f4ec19559428a03",
+    "sim-testnet/main.go": "sha256:8497ab5c4f964e913b943bdf60e70abae3bbe64e2fc6070b3ddfd61d13dfd08c",
+    "sim-testnet/native_history_recovery_boundary_v2_test.go": "sha256:ce3c44ccea7b477c1870117e77f72a5997aef41ba0ae26642c0dd6d5b68891dc",
+    "sim-testnet/native_history_recovery_command_v2.go": "sha256:d15c14e400f22cb14edfb90ee3289b38e3944f7d1d68136623d20b618b0569c7",
+    "sim-testnet/native_history_recovery_v2.go": "sha256:a502fb3146721abc0b3b223e5611ed10f073706ce9a9baeb2380311b1d58b990",
+    "sim-testnet/native_history_recovery_v2_test.go": "sha256:80d5cc222030cfcd85816c8d95fe83026870e9014b4f372a71755c2227570cd6",
+    "sim-testnet/owned_rpc.go": "sha256:2768327a96b1d2585539f4eb46f3ca0e240990616ea2a6a4c83426dd459d424d",
+    "sim-testnet/policy_rollover_handoff_v2.go": "sha256:a02a41d59489d60a2ec6f7e87940ad3304f784d4d390b368730ab9b81d3d661a",
+    "sim-testnet/provisional_continuation.go": "sha256:d8afeb35ba0b0ebb970845cc06946e71db015adb4c2ec36d5d63c608f17bd386",
+    "sim-testnet/provisional_resume.go": "sha256:96e7ed888b72752ce323a524358bced38ef0cd159022422feb0784fdb927e484",
+    "sim-testnet/strict_history_adoption.go": "sha256:3b02f12a3f870128eabd26ee054430069556b9656b0993c06ba6a0b01fc33ded",
+    "validator/config.go": "sha256:cf4299019814ef9bab76a4cf34f1574cf7509d82cecbef190991d73c45902466",
+    "validator/release_native_history_recovery_v2.go": "sha256:02f866cb27f6fe264af86c0da7e1890e14bc9f930b3215481c5990067afb2f6a",
+    "validator/release_native_history_recovery_v2_test.go": "sha256:d5233711c9b49cb3c05eb63a7e516c7090b13e11d7adb35734204d63a2cf6b3a",
+    "validator/release_run.go": "sha256:edd82eb4567597ac9107921b64133e6318183d6b919bbefef73a63588da416a8",
+    "validator/runtime_identity.go": "sha256:d70f85a2e4f3aa7293803135e5f35a5f971bffc949f1352e3e85b7e6961b1f43"
+  },
+  "go_version": "go1.26.6",
+  "gomaxprocs": 2,
+  "go_test_package_parallelism": 2,
+  "count": 1,
+  "nice": 15,
+  "runs": [
+    {
+      "log": "recovery-red.log",
+      "expected_exit_code": 1,
+      "observed_result": "expected regression failure",
+      "race": false,
+      "package": "./sim-testnet",
+      "selector": "^TestNativeHistoryRecoveryV2RejectsUnapprovedLauncherArguments$",
+      "raw_log_sha256": "36746dc09918a26fdf240f58000c2a6ed99bd59948efe1a9cf0d0d392c8f3e0e"
+    },
+    {
+      "log": "recovery-approval-red.log",
+      "expected_exit_code": 1,
+      "observed_result": "expected regression failure",
+      "race": false,
+      "package": "./sim-testnet",
+      "selector": "^TestNativeHistoryRecoveryV2CannotRetargetApprovalDuringVerification$",
+      "raw_log_sha256": "3821edba80bb5a603f9c70227f69ecdf33a7d02feae862eda591221e0e349095"
+    },
+    {
+      "log": "recovery-boundary-red.log",
+      "expected_exit_code": 1,
+      "observed_result": "expected regression failure",
+      "race": false,
+      "package": "./sim-testnet",
+      "selector": "^TestNativeHistoryRecoveryV2(SealedEarlyFailure|RejectsSelectionWithoutGeneration|ApplyPreparationDoesNotWrite)$",
+      "raw_log_sha256": "ae4a28783332dd2d8fa52217928702b3cd2c0449ace638731917f7aa437717ce"
+    },
+    {
+      "log": "recovery-validator-focused-normal.log",
+      "expected_exit_code": 0,
+      "observed_result": "pass",
+      "race": false,
+      "package": "./validator",
+      "selector": "^(TestReleaseNativeHistoryRecoveryV2|TestReleaseHistoryAdoptionV2|TestReleaseProvisionalRuntime|TestReleaseNativeObservationV2|TestHeadEmaNativeEpochGap|TestSteeringIntentNativeEpochGap|TestReleaseNativeEpochPreflight|TestReleaseRuntimeNativeEpochGap|TestHeadEMAProvisionalGapV2)",
+      "raw_log_sha256": "c265022f594554adef633cd6b8f429e802c5270e70d0677790368bd9775ac1c6"
+    },
+    {
+      "log": "recovery-validator-focused-race.log",
+      "expected_exit_code": 0,
+      "observed_result": "pass",
+      "race": true,
+      "package": "./validator",
+      "selector": "^(TestReleaseNativeHistoryRecoveryV2|TestReleaseHistoryAdoptionV2|TestReleaseProvisionalRuntime|TestReleaseNativeObservationV2|TestHeadEmaNativeEpochGap|TestSteeringIntentNativeEpochGap|TestReleaseNativeEpochPreflight|TestReleaseRuntimeNativeEpochGap|TestHeadEMAProvisionalGapV2)",
+      "raw_log_sha256": "82d2950e8ee7ae576fcae09bcd4423486b2a3c8db4dde28943ce69c6e82a7af3"
+    },
+    {
+      "log": "recovery-simulator-sealed-normal.log",
+      "expected_exit_code": 0,
+      "observed_result": "pass",
+      "race": false,
+      "package": "./sim-testnet",
+      "selector": "^(TestNativeHistoryRecoveryV2|TestStrictHistoryAdoption|TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext|TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles|TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof|TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay)",
+      "raw_log_sha256": "efaba16e48ae51d71ea0b21dcef4d0f20e4b6db3157ee5c23dfff15c416c7fe3"
+    },
+    {
+      "log": "recovery-simulator-sealed-race.log",
+      "expected_exit_code": 0,
+      "observed_result": "pass",
+      "race": true,
+      "package": "./sim-testnet",
+      "selector": "^(TestNativeHistoryRecoveryV2|TestStrictHistoryAdoption|TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext|TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles|TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof|TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay)",
+      "raw_log_sha256": "6d78cb369415bfde4dfba9fd9c3c2968086c311df83e56da61c06c68f667f8b3"
+    }
+  ],
+  "live_apply_performed": false,
+  "exclusive_source_capture_performed": false,
+  "native_epoch_selected": false,
+  "final_acceptance": false,
+  "historical_runtime_migration_implemented": false,
+  "campaign_timeout_migration_included": false
+}

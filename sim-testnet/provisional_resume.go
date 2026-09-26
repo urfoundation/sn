@@ -144,6 +144,13 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ConfigHash: cfg.ConfigHash,
 		ReleaseLockHash: plan.ReleaseLockHash, RetainedSNRepo: cfg.Repos.SN, Driver: driver,
 	}
+	// Native recovery keeps preparation invocation-local. Only its dedicated
+	// stopped, locked publication helper can write the signed approval and pins.
+	if command == "native-history-recovery" {
+		cfg.provisionalResume.Record = record
+		cfg.provisionalResume.AcceptedPlanHashes = acceptedPlanHashes
+		return nil
+	}
 	encoded, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err

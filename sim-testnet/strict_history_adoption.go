@@ -58,7 +58,7 @@ func (self *strictHistoryAdoptionState) preflightContext(ctx context.Context) (c
 
 func validateStrictHistoryAdoptionOptions(command string, options cliOptions) error {
 	requested := options.StrictHistoryAdoption != "" || options.StrictHistoryAdoptionSHA256 != ""
-	if options.FirstNativeEpoch != 0 && command != "history-adoption" {
+	if options.FirstNativeEpoch != 0 && command != "history-adoption" && command != "native-history-recovery" {
 		return errors.New("--first-native-epoch requires the read-only history-adoption command")
 	}
 	if command == "history-adoption" {

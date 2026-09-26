@@ -212,8 +212,11 @@ func authenticatePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfi
 // predecessor-only provisional handoff from fresh validator arguments.
 func attachPolicyRolloverProcessConfigsV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, specs []ProcessSpec) error {
 	h, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, plan)
-	if err != nil || h == nil {
+	if err != nil {
 		return err
+	}
+	if h == nil {
+		return attachNativeHistoryRecoveryV2(ctx, cfg, stateDir, plan, nil, specs)
 	}
 	for _, validator := range h.Validators {
 		found := false
@@ -240,5 +243,5 @@ func attachPolicyRolloverProcessConfigsV2(ctx context.Context, cfg *ResolvedConf
 			return errors.New("rollover handoff has no validator process owner")
 		}
 	}
-	return nil
+	return attachNativeHistoryRecoveryV2(ctx, cfg, stateDir, plan, h, specs)
 }

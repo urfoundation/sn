@@ -1,0 +1,204 @@
+// Read-only pool eligibility diagnostic. This does not construct or submit a
+// weight vector, mutate a deposit, authorize recovery, or claim an emission.
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"math/big"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/validator"
+)
+
+// The production finalized readers and pure audit own all eligibility facts.
+func observe(ctx context.Context, path, evm string) (map[string]any, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	configHash := sha256.Sum256(raw)
+	cfg, err := validator.LoadReleaseConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	chain, err := validator.DialReleaseChainContext(ctx, []string{evm}, common.HexToAddress(cfg.Coordinator))
+	if err != nil {
+		return nil, err
+	}
+	defer chain.Close()
+	snapshot, err := chain.ReleaseSnapshotContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	policyHash, err := cfg.Policy.Hash()
+	if err != nil || snapshot.Policy.PolicyHash != policyHash || chain.ChainId().Uint64() != cfg.ChainID {
+		return nil, errors.Join(errors.New("finalized policy or chain differs from selected config"), err)
+	}
+	netuid, err := chain.ReleaseNetuidAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash)
+	if err != nil || netuid != cfg.Netuid {
+		return nil, errors.Join(errors.New("finalized coordinator subnet differs from selected config"), err)
+	}
+	if snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
+		return nil, errors.New("current settlement epoch is invalid")
+	}
+	epoch := snapshot.Epoch.Uint64()
+	if epoch < cfg.Policy.Deposit.UsageLagEpochs {
+		return nil, errors.New("source epoch is still bootstrap")
+	}
+	source := epoch - cfg.Policy.Deposit.UsageLagEpochs
+	sourceBig := new(big.Int).SetUint64(source)
+	start, err := chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceBig)
+	if err != nil {
+		return nil, err
+	}
+	end, err := chain.ReleaseEpochEndBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceBig)
+	if err != nil {
+		return nil, err
+	}
+	currentStart, err := chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
+	if err != nil {
+		return nil, err
+	}
+	if start == 0 || end <= start || end != currentStart || end > snapshot.BlockNumber {
+		return nil, errors.New("source boundaries do not match the finalized current epoch")
+	}
+	startHash, err := chain.BlockHashContext(ctx, start)
+	if err != nil {
+		return nil, err
+	}
+	endHash, err := chain.BlockHashContext(ctx, end)
+	if err != nil {
+		return nil, err
+	}
+	if snapshot.Policy.RootCommitWindowBlocks > ^uint64(0)-currentStart {
+		return nil, errors.New("artifact deadline overflows")
+	}
+	deadline := currentStart + snapshot.Policy.RootCommitWindowBlocks
+	result := map[string]any{"schema": "r48-current-pool-audit-v1", "read_only": true, "approval_granted": false, "final_acceptance": false, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "validator_id": cfg.ValidatorID, "config_sha256": fmt.Sprintf("sha256:%x", configHash), "policy_hash": cfg.PolicyHash, "current_epoch": epoch, "lagged_source_epoch": source, "finalized_head": map[string]any{"number": snapshot.BlockNumber, "hash": fmt.Sprintf("0x%x", snapshot.BlockHash)}, "source_start": map[string]any{"number": start, "hash": fmt.Sprintf("0x%x", startHash)}, "source_end": map[string]any{"number": end, "hash": fmt.Sprintf("0x%x", endHash)}, "actual_positive_pool_weight_proven": false, "native_emission_proven": false, "nonzero_vault_capture_proven": false, "fresh_stats_and_quality_required": true}
+	controlled := map[uint64]bool{}
+	for _, id := range cfg.ControlledNOIDs {
+		controlled[id] = true
+	}
+	var rows []map[string]any
+	allEligible := len(cfg.Operators) > 0
+	for _, operator := range cfg.Operators {
+		id := new(big.Int).SetUint64(operator.NoID)
+		row := map[string]any{"no_id": operator.NoID, "controlled_by_validator": controlled[operator.NoID]}
+		rows = append(rows, row)
+		err := func() error {
+			op, err := chain.ReleaseOperatorAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, id, snapshot.Epoch)
+			if err != nil {
+				return err
+			}
+			uid, found, err := chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, op.PoolHotkey)
+			if err != nil || !found {
+				return errors.Join(errors.New("pool UID absent from finalized metagraph"), err)
+			}
+			row["pool_uid"], row["operator_active"] = uid, op.Active
+			deposit, err := chain.ReleaseEpochDepositAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch, id)
+			if err != nil {
+				return err
+			}
+			conviction, err := chain.ReleaseConvictionAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, id)
+			if err != nil {
+				return err
+			}
+			added, err := chain.ReleaseEpochConvictionAddedAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch, id)
+			if err != nil {
+				return err
+			}
+			before := new(big.Int).Sub(new(big.Int).Set(conviction), deposit)
+			before.Sub(before, added)
+			if before.Sign() < 0 {
+				return errors.New("conviction snapshot underflows")
+			}
+			commitment, err := chain.ReleaseRootCommitmentAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceBig, id)
+			if err != nil {
+				return err
+			}
+			row["root_commit_block"] = commitment.CommitBlock
+			row["root_committed"] = commitment.CommitBlock != 0
+			var audit validator.DepositAudit
+			if commitment.CommitBlock == 0 {
+				status := validator.DepositAuditUnavailablePending
+				if snapshot.BlockNumber > deadline {
+					status = validator.DepositAuditUnavailable
+				}
+				audit = validator.FailedDepositAudit(epoch, source, operator.NoID, deposit, before, status, errors.New("source payout root is not committed on chain"))
+			} else {
+				reader, err := validator.NewHTTPArtifactReader(operator.APIURL, cfg.DeploymentID, cfg.Netuid)
+				if err != nil {
+					return err
+				}
+				artifact, err := reader.Read(ctx, source, operator.NoID)
+				if err != nil {
+					status := validator.DepositAuditInvalid
+					if errors.Is(err, validator.ErrArtifactEquivocation) {
+						status = validator.DepositAuditEquivocation
+					} else if errors.Is(err, validator.ErrArtifactUnavailable) {
+						status = validator.DepositAuditUnavailable
+					}
+					audit = validator.FailedDepositAudit(epoch, source, operator.NoID, deposit, before, status, err)
+				} else {
+					sourceOperator, err := chain.ReleaseOperatorAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, id, sourceBig)
+					if err != nil {
+						return err
+					}
+					audit = validator.EvaluateDepositArtifact(artifact, validator.DepositArtifactExpectation{DeploymentID: cfg.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.GenesisHash, Netuid: cfg.Netuid, Coordinator: common.HexToAddress(cfg.Coordinator), SettlementVault: common.HexToAddress(cfg.SettlementVault), PolicyHash: cfg.PolicyHash, Epoch: source, NoID: operator.NoID, Signer: common.HexToAddress(operator.ArtifactSigner), Start: payoutartifact.Boundary{Number: start, Hash: fmt.Sprintf("0x%x", startHash)}, End: payoutartifact.Boundary{Number: end, Hash: fmt.Sprintf("0x%x", endHash)}, PayoutRoot: commitment.PayoutRoot, ArtifactHash: commitment.ArtifactHash, Committer: commitment.Committer, RootSigner: sourceOperator.RootSigner, CommitBlock: commitment.CommitBlock}, epoch, deposit, before, cfg.Policy.Deposit)
+				}
+			}
+			audit.ObservedAtBlock, audit.ArtifactDeadlineBlock = snapshot.BlockNumber, deadline
+			// The reader may report a public URL in a failure; retain the actual
+			// outcome locally but avoid publishing the operational origin.
+			if strings.Contains(audit.Error, operator.APIURL) {
+				audit.Error = strings.ReplaceAll(audit.Error, operator.APIURL, "[selected operator origin]")
+			}
+			row["deposit_audit"] = audit
+			eligible := op.Active && !controlled[operator.NoID] && audit.Compliant && deposit.Sign() > 0
+			row["positive_pool_deposit_prerequisites_satisfied"] = eligible
+			allEligible = allEligible && eligible
+			return nil
+		}()
+		row["read_succeeded"] = err == nil
+		if err != nil {
+			row["error"] = err.Error()
+			allEligible = false
+		}
+	}
+	canonical, err := chain.BlockHashContext(ctx, snapshot.BlockNumber)
+	if err != nil || canonical != snapshot.BlockHash {
+		return nil, errors.Join(errors.New("finalized EVM snapshot changed"), err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || sha256.Sum256(after) != configHash {
+		return nil, errors.Join(errors.New("selected config changed during observation"), err)
+	}
+	result["operators"], result["all_pool_deposit_prerequisites_satisfied"], result["config_bytes_unchanged"] = rows, allEligible, true
+	return result, ctx.Err()
+}
+
+func main() {
+	config := flag.String("config", "", "selected validator config")
+	evm := flag.String("evm", "", "approved read-only EVM RPC")
+	flag.Parse()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	result, err := observe(ctx, *config, *evm)
+	if err != nil {
+		panic(err)
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(result); err != nil {
+		panic(err)
+	}
+}

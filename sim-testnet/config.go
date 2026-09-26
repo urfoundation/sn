@@ -368,6 +368,7 @@ type ResolvedConfig struct {
 	provisionalResume                *provisionalResumeState
 	provisionalProductionSourceRunID string
 	strictHistoryAdoption            *strictHistoryAdoptionState
+	nativeHistoryRecoveryV2          *nativeHistoryRecoverySelectionV2
 	provisionalRPCAuthority          string
 	// This strict invocation route is separately bound into SetupPlan and
 	// ResolvedInputsHash, preserving the original activation ConfigHash.

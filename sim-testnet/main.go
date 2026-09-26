@@ -28,6 +28,7 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	NativeRecoverySource, NativeRecoveryPlan, NativeRecoveryPlanHash, NativeRecoveryHandoff, NativeRecoveryHandoffSha256            string
 	DiagnosticOutput                                                                                                                string
 	ProvisionalReleaseRunID                                                                                                         string
 	WaitForTerminal                                                                                                                 bool
@@ -66,6 +67,7 @@ Commands:
   release-lock  render or atomically refresh observed release-lock fields from clean repositories
   plan     archive and print the exact setup review; never changes the active plan or chain
   history-adoption  capture a source-pinned request for strict startup after retained V2 history
+  native-history-recovery  review or sign one provisional native edge in generation 2
   relay-continuation  capture or adopt one fixed continuation inside the original relay reserve
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
@@ -106,6 +108,9 @@ Common options:
   --provisional-capture  read-only non-accepting relay capture against the exact active plan
   --relay-continuation-plan PATH  exact saved continuation plan for adoption
   --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
+  --native-history-recovery-source PATH  sealed failed release source for read-only recovery capture
+  --native-history-recovery-plan PATH --native-history-recovery-plan-hash HASH  exact separately approved recovery plan
+  --native-history-recovery-handoff PATH --native-history-recovery-handoff-sha256 HASH  signed recovery selection for provisional resume
   --then-release-candidate  strict detached resume continues the full campaign under the same writer; returns only after the campaign
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
   --owned-rpc-authority HOST:PORT  strict plan-bound owned private IPv4 route; owned RPC has no request ceiling
@@ -136,6 +141,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	valid := map[string]bool{"doctor": true, "audit": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	valid["probe-recovery"] = true
 	valid["policy-rollover"] = true
+	valid["native-history-recovery"] = true
 	valid["terminal-diagnostics"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
@@ -143,6 +149,11 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var o cliOptions
+	fs.StringVar(&o.NativeRecoverySource, "native-history-recovery-source", "", "")
+	fs.StringVar(&o.NativeRecoveryPlan, "native-history-recovery-plan", "", "")
+	fs.StringVar(&o.NativeRecoveryPlanHash, "native-history-recovery-plan-hash", "", "")
+	fs.StringVar(&o.NativeRecoveryHandoff, "native-history-recovery-handoff", "", "")
+	fs.StringVar(&o.NativeRecoveryHandoffSha256, "native-history-recovery-handoff-sha256", "", "")
 	fs.StringVar(&o.DiagnosticOutput, "diagnostic-output", "", "")
 	fs.BoolVar(&o.WaitForTerminal, "wait-for-terminal", false, "")
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
@@ -242,6 +253,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateNativeHistoryRecoveryOptionsV2(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateCoordinatorRepairOptions(cmd, o); err != nil {
@@ -394,11 +408,14 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		var configPath string
 		var provisionalSetupPath, provisionalSetupSHA256 string
 		var strictHistoryPath, strictHistorySHA256 string
+		var nativeRecoveryPath, nativeRecoverySha256 string
 		fs.StringVar(&configPath, "config", "", "")
 		fs.StringVar(&provisionalSetupPath, "provisional-activation-setup", "", "")
 		fs.StringVar(&provisionalSetupSHA256, "provisional-activation-setup-sha256", "", "")
 		fs.StringVar(&strictHistoryPath, "strict-history-adoption", "", "")
 		fs.StringVar(&strictHistorySHA256, "strict-history-adoption-sha256", "", "")
+		fs.StringVar(&nativeRecoveryPath, "native-history-recovery", "", "")
+		fs.StringVar(&nativeRecoverySha256, "native-history-recovery-sha256", "", "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -413,6 +430,11 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		if strictHistoryPath != "" || strictHistorySHA256 != "" {
 			if component != "__validator" || strictHistoryPath == "" || strictHistorySHA256 == "" || provisionalSetupPath != "" {
 				return errors.New("strict history handoff requires its sole validator path and hash")
+			}
+		}
+		if nativeRecoveryPath != "" || nativeRecoverySha256 != "" {
+			if component != "__validator" || nativeRecoveryPath == "" || nativeRecoverySha256 == "" || strictHistoryPath != "" || strictHistorySHA256 != "" || provisionalSetupPath != "" || provisionalSetupSHA256 != "" {
+				return errors.New("native history recovery requires its sole validator path and hash")
 			}
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -437,6 +459,13 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 				return err
 			}
 			return validatorcomponent.RunReleaseWithHistoryAdoptionV2(ctx, configPath, raw, strictHistorySHA256)
+		}
+		if nativeRecoveryPath != "" {
+			raw, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, nativeRecoveryPath, validatorcomponent.ReleaseNativeHistoryRecoveryV2MaximumBytes)
+			if err != nil {
+				return err
+			}
+			return validatorcomponent.RunReleaseWithNativeHistoryRecoveryV2(ctx, configPath, raw, nativeRecoverySha256)
 		}
 		return validatorcomponent.RunRelease(ctx, configPath)
 	}
@@ -520,6 +549,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	defer cancel()
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	requireSecrets = requireSecrets || cmd == "probe-recovery" || cmd == "policy-rollover" || cmd == "terminal-diagnostics"
+	requireSecrets = requireSecrets || cmd == "native-history-recovery"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -546,6 +576,9 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	if err != nil {
 		return err
 	}
+	if o.NativeRecoveryHandoff != "" {
+		resolved.nativeHistoryRecoveryV2 = &nativeHistoryRecoverySelectionV2{path: o.NativeRecoveryHandoff, sha256: o.NativeRecoveryHandoffSha256}
+	}
 	readResolved := resolved
 	if commandUsesCampaignEgress(cmd) {
 		active, err := supervisedCampaignEgressActive(ctx, stateDir)
@@ -570,6 +603,8 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return runFleetRenewal(ctx, resolved, stateDir, o)
 	case "policy-rollover":
 		return runPolicyRolloverV2(ctx, resolved, stateDir, o)
+	case "native-history-recovery":
+		return runNativeHistoryRecoveryV2(ctx, resolved, stateDir, o)
 	case "history-adoption":
 		bundle, err := captureStrictHistoryAdoption(ctx, resolved, stateDir, o.FirstNativeEpoch)
 		if err != nil {
@@ -713,6 +748,8 @@ func writeJSONResult(writer io.Writer, v any) error {
 	switch value := v.(type) {
 	case *SetupPlan, SetupPlan:
 		compact, boundedPlan = true, true
+	case *nativeHistoryRecoveryPlanV2, nativeHistoryRecoveryPlanV2:
+		compact = true
 	case *fleetRenewalBudgetError:
 		compact = true
 	case map[string]any:

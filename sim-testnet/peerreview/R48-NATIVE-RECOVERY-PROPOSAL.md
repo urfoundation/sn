@@ -4,7 +4,12 @@ This is a reviewable recovery design, not an approved recovery request. No live
 file, signer, process, plan, or validator state was changed. The implementation
 branch starts at `dd0909a6` on `origin/codex/r46-integration-20260926`. Existing
 authority does not grant the missing native edge, so no production permission
-was widened. R47 must retain its real terminal result and failed native attempts.
+was widened. R47 has sealed and been invalidated after an early failure. Its last
+observed block is **8,091,300**, before the planned terminal block **8,092,324**.
+The signed reason is `execution-exited-before-completion`; six assertions include
+five failures. Sealing does not supply the unobserved interval. Its failed result,
+fault snapshot and native attempts remain unchanged. The bundle is committed as `7a4a26bb`
+and its report as `6fd5fa1f` on the integration branch.
 
 ## Authenticated starting point
 
@@ -174,7 +179,7 @@ The new subplan must bind these exact fields:
 | Bound data | Required content |
 | --- | --- |
 | Current authority | Exact setup plan, deployment/chain/genesis/netuid, config and policy hashes |
-| Predecessor | R47 recovery generation and terminal result/invalidation hashes once sealed |
+| Predecessor | R47 recovery generation 47; sealed result SHA-256 `1f89032d92aa3ac694288742880c11e86f021adbed2b05c4a79a626beaa9e951`; signed invalidation SHA-256 `bb4c9f5f3fb540c1f3dc2dad28002ef1df0795188fcfc3aa59001cf9f5c27a2b` |
 | Selected generation | Generation 2, original rollover plan and handoff hashes, selected source-role plan and signed handoff hashes |
 | Executable | Qualified source revision, binary hash, and relevant verifier version |
 | Each validator | Selected config path/bytes/hash, exact coordinator/client namespaces, retained source-role descriptor, identity, complete applied intent prefix count/hash, terminal native epoch and artifact hash, compact EMA hash |
@@ -183,8 +188,8 @@ The new subplan must bind these exact fields:
 | Edge | One shared, explicitly chosen future `FirstNativeEpoch=N`; per-validator `LastNativeEpoch=1690` if unchanged at exclusive capture; missing native range `[1691,N-1]` recorded as absent |
 | Scope | `provisional=true`, `final_acceptance=false`, no state import, no setup replay, no additional allowance or acceptance waiver |
 
-`N` is intentionally **unassigned now**. R47 is still active. The final owner
-must first acquire stopped-topology exclusivity, recapture the exact source,
+`N` remains intentionally **unassigned** after R47 sealed. The final owner
+must acquire stopped-topology exclusivity, recapture the exact source,
 read a canonical finalized native schedule, and choose an epoch with enough
 time for measured full startup. A source or epoch change requires a newly
 reviewed hash; this draft cannot mint that approval.
@@ -273,19 +278,21 @@ recovery must not silently authorize them.
 
 ## Deterministic qualification
 
-Existing deterministic tests cover exact prefix mutation, one permitted bridge,
+The original proposal qualification covered exact prefix mutation, one permitted bridge,
 wrong first epoch, one actual EMA fold, same-epoch replay, restart after the edge,
 changed custody, full interior-terminal authentication, pending lifecycle,
 separate runtime permission and signed-input/reservation cleanup. They use
-synthetic data. No production behavior changed in this proposal, so there is no
-claimed new red/green fix.
+synthetic data. The original evidence bundle preserves that baseline unchanged.
 
 Focused validation uses Go 1.26.6, `GOMAXPROCS=2`, `nice -n 15`, `-p=2`, and
 `-count=1`; the private workspace is in the evidence directory. Logs there retain
 the complete result. Validator normal passed in 12.391 seconds, validator race
 passed in 69.643 seconds, simulator normal passed in 49.404 seconds, and simulator
 race passed in 167.130 seconds. This validates the current refusal and adoption
-boundaries; it does not qualify an unimplemented recovery migration.
+boundaries. The [implementation qualification bundle](evidence/FINAL-3-R48-native-recovery-implementation-20260926/README.md)
+records the new launcher, exact-approval, early-sealed-source, custody and restart
+regressions. Its focused validator normal/race suites passed in 13.710/85.100
+seconds; simulator normal/race passed in 91.708/241.275 seconds.
 
 The implementation's completion gate must add deterministic red/green tests for
 both native recovery and each newly admitted boundary: a real generation-2
@@ -299,8 +306,10 @@ tests or final acceptance assertions.
 
 ## Next-run sequence
 
-1. Let R47 seal its terminal result and preserve its signed invalidation when
-   required by succession. Keep its current owner running until that boundary.
+1. Preserve the sealed R47 result and signed invalidation. The run is
+   `20260926T112551.425107945Z-release-1.0`; its original signed source is
+   `campaign-attempts/release-1.0.recovery.47.evidence.json`. Its observed boundary
+   is partial and failed; the validator source still needs exclusive recapture.
 2. Qualify the separate recovery implementation and runtime-archive decision.
    Under the authorized stopped-topology path, freeze and recapture the selected
    generation-2 sources, all required settlement history and native schedule.
@@ -315,3 +324,100 @@ tests or final acceptance assertions.
 5. Run every ordinary terminal/public/native/conservation/archive/final assertion.
    Preserve all failed predecessor evidence. Final success remains conditional on
    those checks and the separately approved historical-runtime treatment.
+
+## Offline implementation and exact review workflow
+
+The isolated implementation adds `native-history-recovery`, a distinct provisional
+child decoder, a separately owner-signed immutable plan, and launcher admission
+after generation/source-role selection. It leaves the original strict adoption
+API and historical-runtime catalog unchanged. Dry-run takes the existing
+deployment lock through a read-only descriptor, requires a stopped supervisor,
+validators and restored perturbations, authenticates the sealed predecessor and
+the actual native sources, and prints canonical review data without writing live
+provenance or runtime observations. Apply creates only new immutable plan, child
+request and signed receipt files; it has no transaction executor.
+
+The sealed predecessor may be an interrupted partial interval. Admission requires
+the exact owner-signed invalidation, a completed failed result with matching
+identity, observed boundary, window and unchanged fault snapshot, and consistent
+failure counts. A partial interval must retain the failed
+`acceptance_interval_observed` assertion. Historical active/pending faults and
+cleanup after its last observed block remain visible; current perturbation
+restoration is checked separately before recovery publication.
+
+After the qualified executable and stopped source have been pinned, the exact
+command shape is:
+
+```sh
+$R48_DRIVER native-history-recovery --config "$R48_CONFIG" --state-dir "$R48_STATE" \
+  --provisional-resume --plan-hash "$R48_BASE_PLAN" --owned-rpc-authority "$R48_RPC" \
+  --native-history-recovery-source "$R48_STATE/campaign-attempts/release-1.0.recovery.47.evidence.json" \
+  --first-native-epoch "$R48_FIRST_NATIVE_EPOCH" --format json > "$R48_REVIEW_PLAN"
+```
+
+`R48_FIRST_NATIVE_EPOCH` must be selected from a fresh finalized native schedule
+with measured startup time available. The reviewed plan includes its actual
+`plan_hash`; capture does not constitute permission to apply it. An exact-hash
+approval is still required for:
+
+```sh
+$R48_DRIVER native-history-recovery --config "$R48_CONFIG" --state-dir "$R48_STATE" \
+  --provisional-resume --plan-hash "$R48_BASE_PLAN" --owned-rpc-authority "$R48_RPC" \
+  --apply --native-history-recovery-plan "$R48_REVIEW_PLAN" \
+  --native-history-recovery-plan-hash "$R48_RECOVERY_PLAN_HASH" --format json
+```
+
+The returned receipt path and SHA-256 select the recovery on the separately
+authorized provisional resume using `--native-history-recovery-handoff` and
+`--native-history-recovery-handoff-sha256`. Retained restarts verify the same
+signed plan and exact child pins from the supervisor. A missed unused N fails
+closed; recapture and a newly reviewed plan are required to select another N.
+The original prefix is never rewritten and no successful native1691 is created.
+
+This does not qualify a final archive or satisfy the economic gate. The exact
+selected configs retain operator concurrency 4. The observed completed usage
+shortfall and any proposed concurrency change require a separate source/config
+migration and readiness review. After native recovery, observe signed lagged
+root/artifact availability, exact deposit compliance, positive pool weight from
+an uncontrolled eligible active validator, native emission and vault-owned stake
+growth, then a timely nonzero vault capture. Keep a failed gate as a failed gate.
+
+## Separate campaign timeout migration
+
+The composed successor driver rejects the old harness values
+`request_timeout_milliseconds: 10000` and
+`maximum_p99_latency_milliseconds: 15000`. The user-required successor values
+are 60000 and 60000. This changes the harness ConfigHash and needs a separate
+exact-field owner-approved migration, while preserving both selected validator
+config files, generation-2 coordinator/client namespaces, source-role receipt,
+policy, custody, and operational route. It does not authorize a concurrency
+change.
+
+Current retained-generation readers require equal source/current ConfigHash;
+current native recovery also binds the R47 terminal to its actual source plan and
+ConfigHash. Neither comparison may be relaxed based on ancestry alone. An
+authenticated migration resolver must load the real archived old configuration,
+recompute its old hash, verify the exact two-field transition and owner receipt,
+and return both actual source/current authorities. Native recovery can then bind
+that receipt explicitly in a separate integration change. Until that receipt and
+adapter exist, a changed harness configuration fails closed.
+
+## Current read-only readiness observations
+
+At finalized block **8,091,767** (`0x28d569cb11b9d97089da28a4e529fe9406955179c400b0c951be21f45f2960cc`),
+the exact native schedule reader used by capture authenticated both selected
+467/1/1 config anchors against runtime471/1/1 through the consumed-interface
+profile. UIDs 254/255 satisfy native non-self stake and permit; current native epoch
+is 1694 while both retained applied sources remain 1690. Config, intent and EMA
+digests remained unchanged. This diagnostic is not exclusive capture and does
+not choose N; the later approved N must exceed the newly captured current epoch.
+
+At finalized block **8,091,801** (`0xdfb5ccefbc5da14a10ab140afe2eb56113d76a14ec5cafa6a8a3690601386f21`),
+selected validator 2's unchanged config authenticated current settlement 654/source 653
+payout commitments for pools 3/4, both committed at 8,091,580. Both public signed
+artifacts passed the existing exact deposit audit: operator 1 required and observed
+208,721,995 rao for 9,338,064 bytes; operator 2 required and observed 207,305,833 rao
+for 9,274,706 bytes. Validator 2 controls neither operator. This is a later prerequisite
+observation, distinct from native1690's failed source648 audit. Fresh stats and
+quality, actual positive weights, subsequent emission and nonzero vault capture
+remain separate observation gates. These facts must be rechecked at cutover.
