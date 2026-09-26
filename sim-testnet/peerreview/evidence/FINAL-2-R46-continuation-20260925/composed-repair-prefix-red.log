@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 05:51:29.662843  811773 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 05:51:29.663045  811773 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 05:51:29.663124  811773 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 05:51:29.663169  811773 env.go:78] [env]settings = map[]
+--- FAIL: TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry (1.48s)
+    final_semantic_repair_capture_test.go:28: exact signed correction was refused: historical release journal action repair.coordinator-rounding.deploy is not approved: plan 0x48889b1adaf525bdbeae9753c00d12bdb61b87d05a7849a813036702ec181190 has no action repair.coordinator-rounding.deploy
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	1.569s
+FAIL

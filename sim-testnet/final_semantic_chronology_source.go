@@ -222,7 +222,7 @@ func finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence *FinalSe
 	if evidence == nil || current == nil || len(plans) == 0 || evidence.EVMCampaignStartHead.Number < 2 {
 		return nil, errors.New("historical coordinator journal action inputs are incomplete")
 	}
-	relayActions, err := evidenceRelayRequestActions(plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
 	if err != nil {
 		return nil, err
 	}

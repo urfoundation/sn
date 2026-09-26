@@ -2441,6 +2441,19 @@ completed cleanup that lacks the signed request in that history. Test both
 the valid multi-step path and a forged start-to-complete jump through
 recovery and terminal diagnostics.
 
+The complete R46 diagnostic then found a second historical-reader gap:
+`repair.coordinator-rounding.deploy` had an owner-signed corrective request,
+signed finalized result and exact source-plan journal rows, but the release
+capture census looked only in static plan actions and relay requests. Mainnet
+historical readers must share one action admission rule for static, relay and
+signed corrective actions. The corrective path must require the exact
+predecessor plan, signatures, action intents and unique finalized journal
+rows; an action-name prefix alone grants nothing. Chronology must recognize
+the signed activation as an upgrade transition and verify its distinct
+repair-result postcondition rather than inventing an ordinary `StageVerified`
+row. Test capture, receipts and chronology against a valid carried repair,
+changed intent, missing carry and duplicate finalization.
+
 R46's operator stats and proof reads hit their 100,000-row and 10,000-row
 caps while the APIs returned oldest-first history. A healthy response could
 therefore show stale scoring and hide the current proof interval. Mainnet

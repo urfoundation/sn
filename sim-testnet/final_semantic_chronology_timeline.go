@@ -133,7 +133,7 @@ func finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence *FinalSem
 	if evidence == nil || current == nil || len(plans) == 0 || evidence.EVMCampaignStartHead.Number < 2 {
 		return nil, errors.New("historical coordinator timeline inputs are incomplete")
 	}
-	relayActions, err := evidenceRelayRequestActions(plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence *FinalSem
 			continue
 		}
 		initial := action.ID == "evm.coordinator-proxy"
-		activation := action.ID == "evm.coordinator-upgrade-activate"
+		activation := action.ID == "evm.coordinator-upgrade-activate" || action.ID == "repair.coordinator-rounding.activate"
 		if !initial && !activation {
 			continue
 		}
@@ -206,7 +206,7 @@ func finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence *FinalSem
 		if observedErr != nil {
 			return nil, observedErr
 		}
-		post, postErr := finalHistoricalCoordinatorTransitionPostIdentity(plan, initial)
+		post, postErr := finalHistoricalCoordinatorActionPostIdentity(current, plan, action, initial)
 		if postErr != nil || !strings.EqualFold(post.Implementation, observed) {
 			return nil, stateMismatchError(postErr, "historical coordinator transition %s implementation differs from its approved action", action.ID)
 		}
@@ -324,6 +324,29 @@ func finalHistoricalCoordinatorTransitionPostIdentity(plan *SetupPlan, initial b
 	hash := strings.ToLower(plan.CoordinatorUpgrade.RuntimeCodeHash)
 	if address == (common.Address{}).Hex() || requireFinalHex32("historical coordinator upgrade runtime", hash) != nil {
 		return FinalHistoricalCoordinatorRuntimeIdentity{}, errors.New("historical coordinator upgrade implementation is incomplete")
+	}
+	return FinalHistoricalCoordinatorRuntimeIdentity{Implementation: address, RuntimeHash: hash}, nil
+}
+
+// A carried repair executes under its original source plan but installs the
+// implementation signed in the later corrective request, not the source
+// plan's earlier upgrade payload.
+func finalHistoricalCoordinatorActionPostIdentity(current, source *SetupPlan, action Action, initial bool) (FinalHistoricalCoordinatorRuntimeIdentity, error) {
+	if action.ID != "repair.coordinator-rounding.activate" {
+		return finalHistoricalCoordinatorTransitionPostIdentity(source, initial)
+	}
+	if initial || current == nil || source == nil || current.CoordinatorRepairCarry == nil {
+		return FinalHistoricalCoordinatorRuntimeIdentity{}, errors.New("historical corrective activation is unbound")
+	}
+	request := current.CoordinatorRepairCarry.Request.Request
+	if source.PlanHash != request.PlanHash || !finalJSONEqual(action, request.Activate) {
+		return FinalHistoricalCoordinatorRuntimeIdentity{}, errors.New("historical corrective activation differs from signed action")
+	}
+	upgrade := request.Upgrade
+	address := strings.ToLower(upgrade.Implementation.Hex())
+	hash := strings.ToLower(upgrade.RuntimeCodeHash)
+	if address == (common.Address{}).Hex() || requireFinalHex32("historical corrective runtime", hash) != nil {
+		return FinalHistoricalCoordinatorRuntimeIdentity{}, errors.New("historical corrective runtime is incomplete")
 	}
 	return FinalHistoricalCoordinatorRuntimeIdentity{Implementation: address, RuntimeHash: hash}, nil
 }

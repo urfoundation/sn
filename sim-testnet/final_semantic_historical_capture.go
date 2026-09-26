@@ -149,7 +149,7 @@ func finalCaptureReleaseContractCensusWithRelayRequests(current *SetupPlan, depl
 			releaseSet[strings.ToLower(historicalBatcher.Hex())] = historicalBatcher
 		}
 	}
-	relayActions, err := evidenceRelayRequestActions(plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
 	if err != nil {
 		return finalReleaseContractCaptureCensus{}, err
 	}
