@@ -2355,3 +2355,14 @@ response itself; unrelated process-health failures remain separate strict
 findings. Verification faults must not excuse a semantically invalid signed
 response. Exercise saturated history, changed signing keys, replayed samples,
 and later success after earlier errors with deterministic regression tests.
+
+R46 retained 18 receive-sequence exit gaps across 10 swarm processes. The
+deployed receive idle rule retires a sequence after 120 seconds while the
+sender retains it for 300 seconds; several observed resumptions fell inside
+that mismatch. Before mainnet, force actual receive-only idle retirement and
+same-sequence resumption through the production sender/receiver path, then
+test lost first acknowledgement, carrier replacement, cancellation and
+foreign session rejection. Preserve exit-gap findings until that causal test
+proves a fix. The native-1674 gap is separate: durable input objects did not
+create an applied validator intent. Mainnet admission must require complete
+authenticated native history or a specifically approved fresh generation.

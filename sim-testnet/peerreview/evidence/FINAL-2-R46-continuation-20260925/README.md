@@ -157,6 +157,11 @@ samples. `r46-adversary-fix-review.receipt.json` lists the isolated fixes,
 normal/race tests and controlled old-behavior failures. Those code changes
 postdate R46 and cannot change its historical result.
 
+`r46-gap-native-root-review.receipt.json` pins every retained exit-gap class
+and the native-1674 continuity evidence. Its 120-second receiver versus
+300-second sender idle-rule mismatch is a bounded hypothesis requiring a
+real lifecycle regression, not an established repair.
+
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
 completion observations inside the authenticated prefix. It identifies the
