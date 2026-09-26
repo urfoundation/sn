@@ -2280,6 +2280,21 @@ invalid signatures or conflicting content. Test slow, interrupted, duplicate
 and conflicting chunks without reducing final integrity checks or restarting
 unrelated runtime work.
 
+R46's sealed diagnostic reached its one-hour source deadline at cut 70/96;
+the next independent checks still ran and preserved their failures. Diagnostic
+capture now permits exactly two origin readers with one synchronous archive
+owner, a fresh one-minute context per immutable read attempt and a five-minute
+read budget inside the unchanged job deadline. Completed origin/kind/hash/size
+witnesses survive retries only within that invocation; a new invocation must
+prove custody again. The other origin may finish after one origin fails, but
+the complete source result still fails. Require deterministic overlap, broken
+body recovery, unchanged prefix custody, cancellation joins, global byte/object
+limits, hard integrity/close failures and downstream checks after timeout.
+`TestReleaseCaptureOrigins*`, `TestReleaseCaptureStreamRetry*` and
+`TestTerminalDiagnosticCaptureTimeoutKeepsLaterChecks` enforce these boundaries.
+Strict capture defaults remain serial without these diagnostic retries; a
+late nil return after a check deadline is a failure, never a passing closure.
+
 R45 source review found eleven previously qualified recovery fixes absent from
 the candidate main branch. A passing component test or isolated branch is not
 deployment evidence. Before mainnet launch, derive the release image from a
