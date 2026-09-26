@@ -2290,3 +2290,7 @@ classification, original-child signaling proof, write-ahead fault intent,
 pending container restore and post-transition completion heads in the
 composed recovery rehearsal. A documentation-only main advance should not
 change the approved executable, but it must not conceal a missing code patch.
+
+### Bind RPC agreement to the requested block
+
+R46 follow-up found an adjacent actor validation defect: two endpoints could return equal hashes at an unrequested height, and equal malformed hash strings passed the block decoder. Require both returned heights to equal the exact common finalized height, and require prefixed 32-byte hexadecimal hashes before runtime or precompile evidence is admitted. `TestAdversaryRpcCommonBlockRejectsReturnedHeightDrift`, `TestAdversaryRpcCommonBlockRejectsMalformedHashAgreement`, and `TestAdversaryRpcBlockDecoderRequiresCanonicalHash` reproduce the old acceptance; the exact-height positive also covers the explicitly owned shared RPC route. This refusal-only hardening does not attribute or waive the 35 sealed R46 RPC errors, whose individual chronology was not retained.
