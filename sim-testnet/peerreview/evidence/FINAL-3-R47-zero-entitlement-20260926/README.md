@@ -2,7 +2,7 @@
 
 This read-only bundle was collected from the LAN archive RPC
 `http://192.168.1.162:9944` while R47 remained live. The finalized head in
-`onchain-epoch651-zero-entitlement.json` was at least block 8,091,189. The
+`onchain-epoch651-zero-entitlement.json` was block 8,091,280. The
 contract is the immutable settlement vault
 `0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e` on EVM chain 945.
 
