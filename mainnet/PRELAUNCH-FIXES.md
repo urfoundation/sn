@@ -2471,6 +2471,13 @@ produce a stamped binary, build from a clean full clone of the approved
 revision. Record the source revision, executable digest and preflight result
 with the diagnostic; a later script edit must not be presented as evidence
 that an already-running process passed that preflight.
+The follow-up current-main payout test first failed to compile because its
+Server worktree lacked the required sibling SN checkout, then because its
+sibling operator-proxy checkout lagged the Server API. Mainnet qualification
+must pin and record the complete Go replacement-module revision set before
+testing or building the release. A missing or mismatched sibling source is a
+workspace preflight failure, not a payout failure; after repairing the
+workspace, rerun the exact normal and race tests against the recorded set.
 
 R46's operator stats and proof reads hit their 100,000-row and 10,000-row
 caps while the APIs returned oldest-first history. A healthy response could
