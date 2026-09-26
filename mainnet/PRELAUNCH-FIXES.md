@@ -2604,6 +2604,14 @@ worst-case source/retry workload (at least 69,106 objects/hour and 21,895,096
 retry requests/hour at this workload) and rerun the forecast using the actual
 rendered operator configuration before any accepting interval. A forecast
 warning is not evidence that the constrained service can sustain load.
+At 2026-09-26 11:42:09 UTC, the R47 verify adversary recorded one HTTP 400
+at EXTEND depth 7. The operator-1 API log identifies the rejection as
+`source-egress-unresolved` for the assigned pending hop. The owner continued
+and retained the error. Before mainnet acceptance, reproduce a disappearing or
+unresolved source egress during an otherwise valid trail, specify whether the
+controller should return a retryable response or reassign the hop, and test the
+adversary's bounded retry and evidence accounting at that boundary. Do not
+silently classify this HTTP 400 as an invalid validator signature.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
