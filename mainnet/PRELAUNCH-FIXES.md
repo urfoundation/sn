@@ -2307,11 +2307,16 @@ interval must fail that interval explicitly instead of being counted healthy
 from a PID alone.
 
 R46 operator 2 epoch 634 has on-chain `RootMissed` with no committed root,
-and the terminal payout census lacks that epoch's authenticated tier. Mainnet
+and the terminal payout census lacks that epoch's authenticated tier. The
+pinned taskworker closed with zero payout leaves and the server deliberately
+skipped submission; this is an empty eligibility census, not a demonstrated
+failed transaction. Four proof streams had zero completed epoch-634 proofs,
+but the exact provider eligibility cause still needs a source census. Mainnet
 must reconcile every expected epoch through capture, carry, root commit,
 payment and claim state, including a missed-root path. A later artifact cannot
 repair the missing original root silently. Keep the exact missed epoch in
-the result and test a validator restart crossing root submission. Separately,
+the result and test a validator restart crossing payout eligibility and root
+submission, including a zero-leaf control. Separately,
 one claim was still uncertain at the terminal cut; reconcile its durable
 transaction through finalized on-chain state with a bounded post-terminal
 read, preserving the original terminal verdict and recording later resolution

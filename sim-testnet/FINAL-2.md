@@ -212,8 +212,8 @@ measurement end. It selects complete epoch-635 usage of **6,804,866** and
 and again fails rate readiness: operator 1 yields **136,834 TAO rao** against
 the **200,000-rao** two-times-native threshold. An independent LAN
 `eth_getBlockByNumber` read matched its exact EVM head hash. This proves all
-five measured epochs were observed, not that terminal acceptance passed or
-that the original owner has sealed a result.
+five measured epochs were observed. The sealed owner result below records
+terminal acceptance as failed.
 [Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch636-first-observation.json)
 (SHA-256 `b7f3ec16f0f3b6802c3c1fc2e8fc48cf67b17848fefc3b6ae419299fb2f79197`),
 [offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch635-closure.receipt.json)
@@ -229,7 +229,7 @@ This supports restart replay starvation as the likely explanation for the
 epoch-634 rate collapse; it does not establish a deadlock or a complete
 causal account of every low-usage interval. The swarm exit-gap event count
 was unchanged after 20:43:05 UTC in the bounded review. These remain strict
-findings, while the owner continues to collect the terminal tail.
+findings in the sealed terminal result.
 [Bounded proof and process receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-restart-causality.receipt.json)
 (SHA-256 `17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4`),
 [validator-1 startup receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/validator1-startup-phase-2233.receipt.json)
@@ -293,6 +293,19 @@ not used to rewrite the terminal verdict. The operator-2 count of 199 is
 associated with the missed epoch-634 root, not with miner 881's submission.
 [Historical LAN call, event and claim-cut receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/no2-epoch634-rootmissed-claim-cut.receipt.json)
 (SHA-256 `1ca99f9efbc4d1d055813fe1468c427ac3b1dc7557beecec6b44e8ad61247ffa`).
+The pinned taskworker log closes operator 2's epoch 634 at 21:46:43 UTC with
+**zero payout leaves and a zero root**. Operator 1 closed the same epoch with
+four leaves and confirmed its nonzero root 32 seconds later. The pinned
+server intentionally skips root submission when no leaves exist; the chain's
+`RootMissed` is therefore consistent with an empty operator-2 payout census,
+not evidence of a timed-out root submission. All four validator/operator
+proof streams had zero completed epoch-634 proofs after the scheduled
+restarts, making proof starvation a plausible upstream cause. A
+provider-by-provider eligibility census is absent, so this evidence does not
+establish exclusive causality for the empty census. The original missed root
+remains a strict historical failure.
+[Taskworker, source and chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-empty-payout-census.receipt.json)
+(SHA-256 `0e32519ae98e26f137b73cb851624f89d9670c2a3c9a6ed157bd5096aebffe7e`).
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
 It found **808/808 fleet bindings valid** and current-policy rate readiness

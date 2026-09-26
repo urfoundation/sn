@@ -1,0 +1,131 @@
+{
+  "captured_at": "2026-09-26T00:27:45.312967+00:00",
+  "chain_evidence": {
+    "historical_eth_call": {
+      "block_hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a",
+      "block_number": 8086545,
+      "calldata": "0x11f5fe7d000000000000000000000000000000000000000000000000000000000000027a0000000000000000000000000000000000000000000000000000000000000002",
+      "decoded_fields": {
+        "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "claimed_rao": 0,
+        "expiry_block": 0,
+        "funded_rao": 0,
+        "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "status": 3,
+        "total_rao": 0
+      },
+      "return_data": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    "lan_rpc_authority": "192.168.1.162:9944",
+    "observed_contract_row": {
+      "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "claimed_rao": "0",
+      "commit_block": 0,
+      "committer": "0x0000000000000000000000000000000000000000",
+      "conviction_added_rao": "0",
+      "deposit_rao": "399763964",
+      "expiry_block": 0,
+      "funded_rao": "0",
+      "no_id": 2,
+      "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "status": 3,
+      "total_rao": "0"
+    },
+    "observed_payout_tier_present": false,
+    "root_missed_event": {
+      "blockHash": "0x0ee275b0377d64887fb06186802a2eea750f7ae7ae11c85b7af6a4a6d1ef5358",
+      "blockNumber": "0x7b620b",
+      "data": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "logIndex": "0x2",
+      "topics": [
+        "0x48152d6b76926d2c286e4d33083847a9371068ce54d7fc4420cd73432e5d8b94",
+        "0x000000000000000000000000000000000000000000000000000000000000027a",
+        "0x0000000000000000000000000000000000000000000000000000000000000002"
+      ],
+      "transactionHash": "0xd7edee5109490c124debd59420de2628c71bcb3c29c32cd45f8e924ab87d35a6"
+    },
+    "vault_address": "0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e"
+  },
+  "chain_receipt": {
+    "bytes": 4773,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/no2-epoch634-rootmissed-claim-cut.receipt.json",
+    "sha256": "1ca99f9efbc4d1d055813fe1468c427ac3b1dc7557beecec6b44e8ad61247ffa"
+  },
+  "final_result": {
+    "bytes": 567121,
+    "path": "/mnt/data/sn-testnet/qualification/r46-terminal-replay-hardening-20260926/r46-final-result.json",
+    "sha256": "e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9"
+  },
+  "interpretation": {
+    "chain": "The historical settlement-vault read and RootMissed event prove NO2 had no committed epoch-634 payout root; the chain status is consistent with the intentionally skipped empty census.",
+    "observed": "NO2 closed epoch 634 with zero payout leaves and a zero root; NO1 closed the same epoch with four leaves and confirmed its nonzero root 32 seconds later.",
+    "strict_boundary": "R46 historical epoch-634 settlement/eligibility cannot be repaired by inventing a leaf or backdating a commit. The result remains failed; future fixes must restore proof production and readiness before measurement.",
+    "submission": "This is an empty payout census, not evidence of a failed NO2 commit submission. The exact pinned server explicitly records skipped when no leaves exist; nothing is sent and the pool carries.",
+    "upstream": "All four validator/operator proof streams had zero completed epoch-634 proofs after scheduled restarts. Startup replay preceded proof workers. The pinned provider builder requires usage plus assignment/confirmation exposure and excludes active heads, so proof starvation is a plausible upstream cause of zero eligible payout leaves. The provider-by-provider database census is not retained here, so exclusive causality is not proven."
+  },
+  "mode": "read-only; taskworker lines are retained append-only prefixes; no live mutation",
+  "pinned_build_identity": "\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/connect/sctp\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/connect\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/glog\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/goidenticons\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/operator-proxy\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/proxy\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/sdk\t(devel)\t\n\tdep\tgithub.com/urnetwork/server\tv0.0.0\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server\t(devel)\t\n\t=>\t/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/userwireguard\t(devel)\t\n\tbuild\tvcs.revision=6100394b04fc3386b03870b8bdcc9a6abb5614a7\n",
+  "proof_blackout_receipt": {
+    "bytes": 130284,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.receipt.json",
+    "sha256": "17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4"
+  },
+  "schema": "r46-epoch634-empty-payout-census-review-v1",
+  "source_rules": [
+    {
+      "excerpt": "func stBuildReleaseProviderInputs(\n\tusages []*model.StProviderUsage,\n\treliabilityRows []*model.StClientReliability,\n\twallets map[server.Id]*model.StProviderWallet,\n\tbindings []*StFleetBindingState,\n\treliabilityAMin int64,\n) ([]startifact.ProviderInput, error) {\n\tif len(bindings) != len(usages) {\n\t\treturn nil, fmt.Errorf(\"bindingAt batch returned %d rows for %d clients\", len(bindings), len(usages))\n\t}\n\ttype reliability struct{ assignments, confirmations uint64 }\n\treliabilities := map[server.Id]reliability{}\n\tfor _, row := range reliabilityRows {\n\t\tr := reliabilities[row.ClientId]\n\t\tif row.Assignments > 0 {\n\t\t\tr.assignments += uint64(row.Assignments)\n\t\t}\n\t\tif row.Confirmations > 0 {\n\t\t\tr.confirmations += uint64(row.Confirmations)\n\t\t}\n\t\treliabilities[row.ClientId] = r\n\t}\n\tproviders := make([]startifact.ProviderInput, 0, len(usages))\n\tfor index, usage := range usages {\n\t\tprovider := startifact.ProviderInput{ClientID: stId16(usage.ClientId), NetworkID: stId16(usage.NetworkId)}\n\t\tif usage.PayoutByteCount > 0 {\n\t\t\tprovider.UsageBytes = uint64(usage.PayoutByteCount)\n\t\t}\n\t\tr := reliabilities[usage.ClientId]\n\t\tprovider.Assignments, provider.Confirmations = r.assignments, r.confirmations\n\t\tif provider.Confirmations > provider.Assignments {\n\t\t\tprovider.Confirmations = provider.Assignments\n\t\t}\n\t\tif wallet := wallets[usage.ClientId]; wallet != nil {\n\t\t\tprovider.Coldkey = wallet.ColdkeyPubkey\n\t\t} else {\n\t\t\tprovider.ExclusionReason = \"missing_payout_wallet\"\n\t\t}\n\t\tbinding := bindings[index]\n\t\tif binding == nil {\n\t\t\treturn nil, fmt.Errorf(\"bindingAt batch row %d for %s is nil\", index, usage.ClientId)\n\t\t}\n\t\tif binding.Active {\n\t\t\tprovider.HeadExcluded = true\n\t\t\tprovider.BindingGeneration = binding.Generation\n\t\t\tprovider.ExclusionReason = \"head_fleet_active\"\n\t\t}\n\t\tprovider.Eligible = provider.UsageBytes > 0 && provider.Assignments >= uint64(reliabilityAMin) && provider.Confirmations > 0 && provider.Coldkey != ([32]byte{}) && !provider.HeadExcluded\n\t\tif !provider.Eligible && provider.ExclusionReason == \"\" {\n\t\t\tprovider.ExclusionReason = \"reliability_exposure_floor\"\n\t\t}\n\t\tproviders = append(providers, provider)\n\t}\n\treturn providers, nil\n}\n",
+      "excerpt_sha256": "16e88f7d0c194faf4d7e03d9eb6ca91405c63b678f221e8534b8ba75e2d3e304",
+      "first_line": 2970,
+      "last_line": 3024,
+      "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/controller/st_controller.go",
+      "source_sha256": "54c8ba84c66327e5f28c86f80ec8aa5444f854168b876fec77467f4b953d6fe4"
+    },
+    {
+      "excerpt": "\tleaves := model.GetStPayoutLeaves(ctx, cfg.DeploymentKey(), epoch, cfg.NoId)\n\tif len(leaves) == 0 {\n\t\toutcome := &StPublishOutcome{\n\t\t\tStatus: model.StPublishStatusSkipped,\n\t\t\tReason: \"no payout leaves for epoch (nothing to commit; pool total carries)\",\n\t\t}\n\t\tpublishId := model.AddStPublish(ctx, cfg.DeploymentKey(), epoch, model.StPublishKindCommit)\n\t\tstResolvePublish(ctx, publishId, outcome)\n\t\treturn outcome, nil\n\t}\n\ttree, err := stBuildPayoutTree(leaves)\n",
+      "excerpt_sha256": "a199f852ce619093a30572315da3eb65412db8eaf08020d7b5be7ef4c1778bd1",
+      "first_line": 3258,
+      "last_line": 3268,
+      "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/controller/st_controller.go",
+      "source_sha256": "54c8ba84c66327e5f28c86f80ec8aa5444f854168b876fec77467f4b953d6fe4"
+    },
+    {
+      "excerpt": "\troot, leafCount, err := controller.StComputeEpochPayout(ctx, stEpochClose.Epoch)\n\tif err != nil {\n\t\tglog.Infof(\"[st]epoch %d close failed (attempt %d): %s\\n\", stEpochClose.Epoch, stEpochClose.Attempt, err)\n\t\treturn &StEpochCloseResult{Retry: true}, nil\n\t}\n\tmodel.SetStEpochStatus(ctx, deploymentKey, stEpochClose.Epoch, model.StEpochStatusClosed)\n\tglog.Infof(\"[st]epoch %d closed: %d leaves root 0x%x\\n\", stEpochClose.Epoch, leafCount, root)\n\treturn &StEpochCloseResult{}, nil\n",
+      "excerpt_sha256": "a41b869918bb7000988eb29abea1de68b3f2936dd223e38d3405f7873cba7cec",
+      "first_line": 217,
+      "last_line": 224,
+      "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/taskworker/work/st_work.go",
+      "source_sha256": "1eb214406c9058cc4d5194a9150d0da0a349734c690e4d9904525114731dbe2d"
+    },
+    {
+      "excerpt": "\t\t\t\ttask.RunAt(server.NowUtc().Add(stEpochCloseRetryDelay)),\n\t\t\t\ttask.MaxTime(1*time.Hour),\n\t\t\t)\n\t\t}\n\t\treturn nil\n\t}\n\t// the commit window opened at the epoch boundary \u2014 commit immediately\n\ttask.ScheduleTaskInTx(\n\t\ttx,\n\t\tStCommitRoot,\n\t\t&StCommitRootArgs{DeploymentKey: stEpochClose.DeploymentKey, Epoch: stEpochClose.Epoch},\n\t\tclientSession,\n\t\ttask.RunOnce(\"st_commit_root\", stEpochClose.DeploymentKey, stEpochClose.Epoch),\n\t\ttask.MaxTime(30*time.Minute),\n\t)\n\treturn nil\n",
+      "excerpt_sha256": "c92370531b5cae743f02c86fbf399c243629767e18c86f7e200ac5de25e95929",
+      "first_line": 244,
+      "last_line": 259,
+      "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/taskworker/work/st_work.go",
+      "source_sha256": "1eb214406c9058cc4d5194a9150d0da0a349734c690e4d9904525114731dbe2d"
+    }
+  ],
+  "taskworker_rows": [
+    {
+      "bytes": 149,
+      "offset": 158414677,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-taskworker.stderr.log",
+      "raw_line": "I0925 21:46:43.944581   42774 st_work.go:223] [st]epoch 634 closed: 0 leaves root 0x0000000000000000000000000000000000000000000000000000000000000000\n",
+      "sha256": "8c67f72b02c3c86bd6536e8379ab9cd3917f381c8b70cc182275972037601ef3"
+    },
+    {
+      "bytes": 149,
+      "offset": 159197105,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-taskworker.stderr.log",
+      "raw_line": "I0925 21:46:44.593786   27200 st_work.go:223] [st]epoch 634 closed: 4 leaves root 0x97fc71881f1d626660bed740a1fa8f8ca3922ea097c92ad9c16e8309f5901aef\n",
+      "sha256": "e787bc456e965cd0da14487baa696ff3db4f19ed99ce3890fa486844d44497bd"
+    },
+    {
+      "bytes": 227,
+      "offset": 159204242,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-taskworker.stderr.log",
+      "raw_line": "I0925 21:47:16.070548   27200 st_controller.go:3349] [st]epoch 634 commit confirmed: root 0x97fc71881f1d626660bed740a1fa8f8ca3922ea097c92ad9c16e8309f5901aef tx 0x347baacdecd183ec76fdba85c71fcd13d8b1512d96e3cd5750d70367df5f646e\n",
+      "sha256": "ab9d0442ad1aa7c5d28ca687b7c08d8745813780d00b02921660c0d5e8d1d8d9"
+    }
+  ]
+}

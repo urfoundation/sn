@@ -159,3 +159,9 @@ The selected claim projection separately records miner 881's operator-1
 epoch-635 submission as unresolved at the terminal cut, even though a later
 queue receipt finalized after the signed terminal block. Neither later
 artifact nor later claim changes the original acceptance verdict.
+
+`epoch634-empty-payout-census.receipt.json` binds the pinned taskworker's
+zero-leaf operator-2 close, operator-1's four-leaf close and root confirmation,
+the server's deliberate no-leaf submission skip, the proof blackout and the
+historical LAN `RootMissed` evidence. It supports an empty payout census,
+without proving the exclusive upstream provider eligibility cause.
