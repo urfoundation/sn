@@ -1,0 +1,56 @@
+{
+  "bucket": "blob",
+  "census_sha256": "aaa37e5cce7c6e965908cfa8f963da8c76de79a8ca996ea83f9509ed1efa00d0",
+  "completed_at": "2026-09-25T14:07:23.255604728Z",
+  "group_new_objects": {
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/content/sha256": {
+      "objects": 2,
+      "bytes": 289926
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/evidence/content": {
+      "objects": 1,
+      "bytes": 1600747
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/evidence/history": {
+      "objects": 1,
+      "bytes": 1600747
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/history/ur-subnet-testnet-v1": {
+      "objects": 2,
+      "bytes": 289926
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/content/sha256": {
+      "objects": 2,
+      "bytes": 337915
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/content": {
+      "objects": 1,
+      "bytes": 1600747
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/history": {
+      "objects": 1,
+      "bytes": 1600747
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/history/ur-subnet-testnet-v1": {
+      "objects": 2,
+      "bytes": 337915
+    }
+  },
+  "hourly_new_objects": {
+    "2026-09-25T13:00Z": {
+      "objects": 12,
+      "bytes": 7658670
+    }
+  },
+  "limitation": "creation/modification census; cannot count writes rejected by quota or historical overwritten/deleted bytes",
+  "r45_early_growth_lower_bound": {
+    "objects": 12,
+    "bytes": 7658670
+  },
+  "r45_early_interval_end": "2026-09-25T14:00:00Z",
+  "r45_early_interval_start": "2026-09-25T13:38:00Z",
+  "total": {
+    "objects": 162362,
+    "bytes": 34505448693
+  }
+}

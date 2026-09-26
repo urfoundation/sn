@@ -1,0 +1,45 @@
+{
+  "causal_controls": [
+    {
+      "expected": "RED",
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/sol-causal/no-line-hash.log",
+      "sha256": "79e23357ec22d70da552d0e19fa6f736d8f215a95761725e47b451aec9b775cc"
+    },
+    {
+      "expected": "RED",
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/sol-causal/old-call.log",
+      "sha256": "67065f265a01493124970bdc7fe10cef590d1adf706b13d2fe8122b47b2a1e41"
+    },
+    {
+      "expected": "RED",
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/sol-causal/old-stale.log",
+      "sha256": "cd36221d8aec807f876f44cb4cdfe77eebca37ee53e8cd6d93a2a512b7fd8386"
+    }
+  ],
+  "normal_and_race": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/focused-normal-final.log",
+      "sha256": "bceca3063383e2894a78d37149edd30891201a4dfee8b5a3a83cc02a18f78c78"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/focused-race-final.log",
+      "sha256": "c20d9a215ce508db885b6f1e348656d621fc2bd46790aecace3aaa2a7275bc77"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/sol-normal.log",
+      "sha256": "9802d5e32c2720e41a2a059ab77633f3491c46c5d6c0b0c0df64ac3035ff0865"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/sol-race.log",
+      "sha256": "bfcc84309b05ce1cd0f328ee8a625fbf0ed49c6d2dfc90afc8ff4b2d701bb64d"
+    }
+  ],
+  "qualified_at": "2026-09-25T17:14:49.153410+00:00",
+  "schema": "urnetwork-r46-qualified-process-continuation-v1",
+  "source_base": "6100394b04fc3386b03870b8bdcc9a6abb5614a7",
+  "source_commit": "ad5c05eca00a73bada9fdc35dfa516487a616177",
+  "source_fence": {
+    "path": "/mnt/data/sn-testnet/qualification/r45-provisional-process-continuation-20260925/source-candidate.sha256",
+    "sha256": "a5aefefa25a0d965c908703e6affc507710a29b43ccfa5aac314a1cb30409b09"
+  }
+}

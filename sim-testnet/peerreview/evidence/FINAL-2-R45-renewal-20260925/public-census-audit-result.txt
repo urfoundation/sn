@@ -1,0 +1,1 @@
+2026-09-25T14:32:05+00:00 goofe run-release-r45-6100394b.sh[3792501]: sim-testnet: provisional evidence relay pending_public_census=false public_census_audit_passed=true final_acceptance=false

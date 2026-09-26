@@ -1,0 +1,282 @@
+{
+  "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "captured_at": "2026-09-25T18:57:32.400648+00:00",
+  "collection_started_at": "2026-09-25T18:56:16.739681+00:00",
+  "continuation_evidenced": true,
+  "continuation_policy": {
+    "rule": "Authenticated provisional release permits the typed exit-gap-timeout finding; raw findings remain blocking and strict final gate is unchanged.",
+    "source": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/sim-testnet/scenario_process_log_continuation.go",
+    "source_commit": "ad5c05eca00a73bada9fdc35dfa516487a616177",
+    "source_line": 36,
+    "source_sha256": "237b5ff0b807b352670bfbbc089c3209484289cc6f74ef28562818c1c66508ad"
+  },
+  "final_acceptance": false,
+  "gate": {
+    "bytes": 99398,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/exit-gap-three-1856.gate.json",
+    "sha256": "7bd7bd7de764949e0e845887aae3fe2e72586745da7e747087218181f6522e3e"
+  },
+  "gate_updated_at": "2026-09-25T18:55:05.806532704Z",
+  "latest_monitor_observation": {
+    "epoch": 632,
+    "fleet_binding_count": 808,
+    "fleet_bindings_valid": true,
+    "head": {
+      "hash": "0x828e9cc57f37d60446b8f677f3616c70a4878689f3b2b0bc777824974d60301c",
+      "number": 8084997
+    },
+    "observation_hash": "0xc23ba0d0c6d56f2613fe4806ba63fcb18c6c7fdebced357a306607f4134b9dd7",
+    "observed_at": "2026-09-25T18:51:03.394608115Z",
+    "rate_ready": false
+  },
+  "limits": [
+    "Shared sender and missing initial sequence are evidenced; underlying packet loss or restart cause is not yet proven.",
+    "Three affected workers do not qualify for the strict single-worker isolated-recovery projection.",
+    "The 18:51:03 epoch-632 full observation postdates all three timeout rows and, with the explicit owner journal continuation message, proves continuing execution; it does not prove successful terminal acceptance or repair of the failed sequences."
+  ],
+  "mechanism": {
+    "bounded_timeout": "Receiver closes this sequence after its first unresolved predecessor gap exceeds 60 seconds and bounded already-present handoff reconciliation fails. Process itself remains running.",
+    "expected_sequence": 0,
+    "queued_field_meaning": "Earliest retained out-of-order sequence number, not queue length. Raw values are 58, 22 and 18.",
+    "sender_process": "validator-1",
+    "shared_pattern": "Validator-1 sender reached its 60-second ACK lifetime after nine sends on message numbers 57, 21 and 17; each matching receiver later timed out expecting 0 with next queued number 58, 22 and 18 respectively. Exact cause of lost sequence/ACK state is still under investigation.",
+    "shared_sender": "01a0d941-ccf2-794f-a74c-d02bf1a9232b",
+    "source": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/connect/transfer.go",
+    "source_line": 14822,
+    "source_sha256": "7bd6b826b724600bcfe1aa9f6def64eff3f07f01c8e4219f276a28f2d8fa62cd"
+  },
+  "monitor_observed_at": "2026-09-25T18:55:11.803483+00:00",
+  "owner_continuation_journal": [
+    {
+      "MESSAGE": "sim-testnet: provisional runtime process finding retained; observation_continues=true final_gate_unchanged=true; process log gate found 5 release-blocking class(es); first=miner-swarm-1/stderr/exit-gap-timeout count=1",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42330;b=484e122110374a108279bc05397861eb;m=369208f060;t=65c5329e653d4;x=2c70ac147d45b4a1",
+      "__MONOTONIC_TIMESTAMP": "234378293344",
+      "__REALTIME_TIMESTAMP": "1790362115265492"
+    }
+  ],
+  "owner_status": "MainPID=4123621\nExecMainStartTimestamp=Fri 2026-09-25 17:18:19 UTC\nExecMainStatus=0\nId=urnetwork-sim-release-r46.service\nActiveState=active\nSubState=running\n\nMainPID=3780072\nExecMainStartTimestamp=Fri 2026-09-25 13:35:25 UTC\nExecMainStatus=0\nId=urnetwork-sim-ur-subnet-testnet-v1.service\nActiveState=active\nSubState=running\n\nMainPID=4187925\nExecMainStartTimestamp=Fri 2026-09-25 18:12:14 UTC\nExecMainStatus=0\nId=urnetwork-sim-release-r46-monitor-v2.service\nActiveState=active\nSubState=running\n",
+  "raw_witnesses": [
+    {
+      "classifier_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "cursor": {
+        "chunk_count": 12,
+        "device": 64512,
+        "digest_offset": 90710142,
+        "initial_offset": 89987340,
+        "inode": 39095171,
+        "offset": 90771158,
+        "path": "processes/miner-swarm-1.stderr.log",
+        "process_id": "miner-swarm-1",
+        "role": "miner-swarm",
+        "scanned_bytes": 783818,
+        "scanned_chunk_chain_sha256": "c887284f0faf7505056ea060b44569d4ff8dc550b7c69245c54d39666ab4a7c7",
+        "scanned_lines": 4851,
+        "stream": "stderr"
+      },
+      "device": 64512,
+      "finding": {
+        "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+        "blocking": true,
+        "class": "exit-gap-timeout",
+        "count": 1,
+        "disposition": "unexplained",
+        "first_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+        "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+        "first_offset": 90737145,
+        "last_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+        "last_observed_at": "2026-09-25T18:48:35.150186392Z",
+        "last_offset": 90737145,
+        "process_id": "miner-swarm-1",
+        "role": "miner-swarm",
+        "stream": "stderr",
+        "summary": "worker exit-gap recovery timed out"
+      },
+      "inode": 39095171,
+      "offset": 90737145,
+      "raw_line": "E0925 18:47:21.848449 3780520 transfer.go:14822] [r]01a050c5-f5eb-6049-092b-d715490223bf<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=22 age=1m0.001045943s budget=1m0s\n",
+      "raw_line_bytes": 236,
+      "raw_line_sha256": "0ad84b56a00115350cd20b88d3176bb3b773804f04266c41523887622e5029f5",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-1.stderr.log",
+      "source_size_at_read": 90778436
+    },
+    {
+      "classifier_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "cursor": {
+        "chunk_count": 15,
+        "device": 64512,
+        "digest_offset": 92840865,
+        "initial_offset": 91922524,
+        "inode": 39095203,
+        "offset": 92868760,
+        "path": "processes/miner-swarm-17.stderr.log",
+        "process_id": "miner-swarm-17",
+        "role": "miner-swarm",
+        "scanned_bytes": 946236,
+        "scanned_chunk_chain_sha256": "790005cdbe2148b68b5e13052c0fb3bddf83575ea30281a13c1921b336882ee3",
+        "scanned_lines": 5662,
+        "stream": "stderr"
+      },
+      "device": 64512,
+      "finding": {
+        "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+        "blocking": true,
+        "class": "exit-gap-timeout",
+        "count": 1,
+        "disposition": "unexplained",
+        "first_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+        "first_observed_at": "2026-09-25T18:44:29.978008228Z",
+        "first_offset": 92822790,
+        "last_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+        "last_observed_at": "2026-09-25T18:44:29.978008228Z",
+        "last_offset": 92822790,
+        "process_id": "miner-swarm-17",
+        "role": "miner-swarm",
+        "stream": "stderr",
+        "summary": "worker exit-gap recovery timed out"
+      },
+      "inode": 39095203,
+      "offset": 92822790,
+      "raw_line": "E0925 18:43:11.461814 3787845 transfer.go:14822] [r]01a050c6-4a5e-bfb6-6623-1d473f81a65c<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=58 age=1m0.00008741s budget=1m0s\n",
+      "raw_line_bytes": 235,
+      "raw_line_sha256": "fa2c727b98cae32428385f309f118e4cf78d51603099c6d53f6e6c5d17c7ec46",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "source_size_at_read": 92878252
+    },
+    {
+      "classifier_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "cursor": {
+        "chunk_count": 14,
+        "device": 64512,
+        "digest_offset": 93288757,
+        "initial_offset": 92479355,
+        "inode": 39095187,
+        "offset": 93314555,
+        "path": "processes/miner-swarm-9.stderr.log",
+        "process_id": "miner-swarm-9",
+        "role": "miner-swarm",
+        "scanned_bytes": 835200,
+        "scanned_chunk_chain_sha256": "93c2daf832ee17b68ed6b09c2c0ca9ee18ecc31acf095da37808ab7eb33f20a5",
+        "scanned_lines": 5145,
+        "stream": "stderr"
+      },
+      "device": 64512,
+      "finding": {
+        "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+        "blocking": true,
+        "class": "exit-gap-timeout",
+        "count": 1,
+        "disposition": "unexplained",
+        "first_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+        "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+        "first_offset": 93283970,
+        "last_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+        "last_observed_at": "2026-09-25T18:48:35.150186392Z",
+        "last_offset": 93283970,
+        "process_id": "miner-swarm-9",
+        "role": "miner-swarm",
+        "stream": "stderr",
+        "summary": "worker exit-gap recovery timed out"
+      },
+      "inode": 39095187,
+      "offset": 93283970,
+      "raw_line": "E0925 18:47:56.728586 3784119 transfer.go:14822] [r]01a050c6-2283-0d41-51c1-da6e1f133b95<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000273404s budget=1m0s\n",
+      "raw_line_bytes": 236,
+      "raw_line_sha256": "2b0ee8f4d0cbf59c11f73c2e6ac009c4f971e911ba4dc58f827533c17d620a8f",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "source_size_at_read": 93324616
+    }
+  ],
+  "read_only_live_state": true,
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-exit-gap-readonly-receipt-v2",
+  "sender_ack_lifetime_witnesses": [
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "line_sha256": "fcad891d41cb6d08d974be0e0d7e10b1fd66d02b9def9b14619637cc42ea3f48",
+      "offset": 311768489,
+      "process_id": "validator-1",
+      "raw_line": "I0925 18:42:16.456935 3826369 transfer_sequence_exit.go:67] [s]event=sequence_exit reason=ack_lifetime client=01a0d941-ccf2-794f-a74c-d02bf1a9232b destination=01a050c6-4a5e-bfb6-6623-1d473f81a65c sequence=01a0d9ce-f6d2-e05e-d6e6-a2713458e4b4 stream=00000000-0000-0000-0000-000000000000 ctx=<nil> parent_ctx=<nil> cause=context deadline exceeded pending=10 message=01a0d9df-2aa8-312b-905e-bc636e732416 number=57 sends=9 lifetime_start_ns=1790361676456124664 write_started_ns=1790361676456203704 lifetime_ns=60000000000 deadline_ns=1790361736456124664 observed_ns=1790361736456926025 selective=false route_written=true reliable=true unreliable=false carrier_changed=false retained=false head_set=true head_number=56 head_received_ns=1790361394294043492 pending_head=0 pending_sacks=0 pending_contracts=0\n",
+      "raw_line_bytes": 802,
+      "raw_line_sha256": "241bc54f174d3d96a4deebd1a52e1749384dfe7db7ed11aaba81e572fac4c872",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    },
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "line_sha256": "6925a8ad9711c946e66a36344a1cb7d45c70ecf6812ac186b17b449c4fa817f5",
+      "offset": 311916705,
+      "process_id": "validator-1",
+      "raw_line": "I0925 18:46:26.841369 3826369 transfer_sequence_exit.go:67] [s]event=sequence_exit reason=ack_lifetime client=01a0d941-ccf2-794f-a74c-d02bf1a9232b destination=01a050c5-f5eb-6049-092b-d715490223bf sequence=01a0d9df-1986-a7c5-57dc-f3fc199a1f33 stream=00000000-0000-0000-0000-000000000000 ctx=<nil> parent_ctx=<nil> cause=context deadline exceeded pending=9 message=01a0d9e2-fcb8-d4de-3957-b342a1132513 number=21 sends=9 lifetime_start_ns=1790361926840876975 write_started_ns=1790361926840967822 lifetime_ns=60000000000 deadline_ns=1790361986840876975 observed_ns=1790361986841352280 selective=false route_written=true reliable=true unreliable=false carrier_changed=false retained=false head_set=true head_number=20 head_received_ns=1790361770462352793 pending_head=0 pending_sacks=0 pending_contracts=0\n",
+      "raw_line_bytes": 801,
+      "raw_line_sha256": "7ed079d2916268ffe34c24edc68ac1f4b844c29add532f08508a01f9a8bb291a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    },
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "line_sha256": "bd07e079cdd6f188554d1545e5c5ba8845acb8852de7042d27b2cf90ed8e3879",
+      "offset": 311918356,
+      "process_id": "validator-1",
+      "raw_line": "I0925 18:47:01.722097 3826369 transfer_sequence_exit.go:67] [s]event=sequence_exit reason=ack_lifetime client=01a0d941-ccf2-794f-a74c-d02bf1a9232b destination=01a050c6-2283-0d41-51c1-da6e1f133b95 sequence=01a0d9df-b934-6f5b-8185-ea537297b31e stream=00000000-0000-0000-0000-000000000000 ctx=<nil> parent_ctx=<nil> cause=context deadline exceeded pending=9 message=01a0d9e3-84f9-bc93-757c-03f7b27300d3 number=17 sends=9 lifetime_start_ns=1790361961721549062 write_started_ns=1790361961721598587 lifetime_ns=60000000000 deadline_ns=1790362021721549062 observed_ns=1790362021722086938 selective=false route_written=true reliable=true unreliable=false carrier_changed=false retained=false head_set=true head_number=16 head_received_ns=1790361742993290791 pending_head=0 pending_sacks=0 pending_contracts=0\n",
+      "raw_line_bytes": 801,
+      "raw_line_sha256": "b72b77d0fe17e378f5db8f495df178c0e623dc45e43cf6cfb17945f7f5c5720d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    }
+  ],
+  "subsequent_owner_trail": [
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=12.704s",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42358;b=484e122110374a108279bc05397861eb;m=3694572efe;t=65c532c349273;x=1221d220d3f56170",
+      "__MONOTONIC_TIMESTAMP": "234416975614",
+      "__REALTIME_TIMESTAMP": "1790362153947763"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=13.426s",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=4235e;b=484e122110374a108279bc05397861eb;m=369849d70e;t=65c5330273a83;x=8048a1389d5d011c",
+      "__MONOTONIC_TIMESTAMP": "234483209998",
+      "__REALTIME_TIMESTAMP": "1790362220182147"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=13.304s",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42361;b=484e122110374a108279bc05397861eb;m=36a29c1427;t=65c533a79779b;x=7896ae83dc9fc725",
+      "__MONOTONIC_TIMESTAMP": "234656371751",
+      "__REALTIME_TIMESTAMP": "1790362393343899"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=13.699s",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42364;b=484e122110374a108279bc05397861eb;m=36a5d1139d;t=65c533dae7711;x=4aa72f75acdb6890",
+      "__MONOTONIC_TIMESTAMP": "234710176669",
+      "__REALTIME_TIMESTAMP": "1790362447148817"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=14.102s",
+      "_EXE": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-ad5c05ec",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=4236a;b=484e122110374a108279bc05397861eb;m=36abcea873;t=65c5343ac0be8;x=f3fc9a438974aca6",
+      "__MONOTONIC_TIMESTAMP": "234810681459",
+      "__REALTIME_TIMESTAMP": "1790362547653608"
+    }
+  ],
+  "supersedes_receipt": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/exit-gap-three-1856.receipt.json",
+    "reason": "Correct the observation timing limit: the latest observation now postdates all three timeout rows.",
+    "sha256": "d96698fa9acdac756c346930431162ac9d7388c235e307ec8a638a8b1e21273e"
+  }
+}

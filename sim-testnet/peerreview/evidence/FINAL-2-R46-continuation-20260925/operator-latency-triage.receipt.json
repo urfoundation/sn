@@ -1,0 +1,649 @@
+{
+  "captured_at": "2026-09-25T18:13:32.805146+00:00",
+  "cpu_pressure": "some avg10=27.90 avg60=14.99 avg300=11.92 total=9268871557\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+  "dependency_faults": [
+    {
+      "applied_block": 8084711,
+      "id": "release-dependency-postgres-1",
+      "kind": "container-restart",
+      "restore_block": 8084729,
+      "restored_block": 8084731,
+      "status": "restored"
+    },
+    {
+      "applied_block": 8084740,
+      "id": "release-dependency-redis-1",
+      "kind": "container-restart",
+      "restore_block": 8084754,
+      "restored_block": 8084760,
+      "status": "restored"
+    },
+    {
+      "applied_block": 8084760,
+      "id": "release-dependency-postgres-2",
+      "kind": "container-restart",
+      "restore_block": 8084779,
+      "restored_block": 8084781,
+      "status": "restored"
+    },
+    {
+      "applied_block": 8084785,
+      "id": "release-dependency-redis-2",
+      "kind": "container-restart",
+      "restore_block": 8084804,
+      "restored_block": 8084805,
+      "status": "restored"
+    },
+    {
+      "applied_block": 8084809,
+      "id": "release-dependency-rpc-path",
+      "kind": "process-pause",
+      "restore_block": 8084829,
+      "status": "active"
+    }
+  ],
+  "interpretation": "Both 30-second endpoint failures overlap scheduled PostgreSQL faults; operator2 route logged SQLSTATE57P01 administrator termination. API processes remain healthy. Successful endpoints return in low single-digit seconds outside faults. Resource snapshot shows available memory and no swap/I/O saturation; this does not prove absence of per-request query queuing.",
+  "io_pressure": "some avg10=0.42 avg60=0.30 avg300=0.28 total=12964691719\nfull avg10=0.01 avg60=0.08 avg300=0.09 total=8197025574\n",
+  "live_changes": false,
+  "memory": "               total        used        free      shared  buff/cache   available\nMem:           125Gi        23Gi       4.2Gi       1.3Gi       100Gi       101Gi\nSwap:          8.0Gi       1.5Mi       8.0Gi\n",
+  "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=42434142\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=28130070\n",
+  "router_stats_meaning": "Logged milliseconds are median successful route duration for each periodic interval, not a bound on failed or individual requests.",
+  "routes": [
+    {
+      "bytes": 129,
+      "offset": 1547187602,
+      "raw_line": "I0925 17:49:43.234072 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/proofs$                     1808ms 0/4",
+      "sha256": "d630b51f35f2cf8251ee6b4d39a560981ba143e22b92daad44e7b9d4b43b4a17",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547187861,
+      "raw_line": "I0925 17:49:43.234083 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/stats$                      2524ms 0/3",
+      "sha256": "8367132ed06a6fc45149fea631f4fa158b127e75fe345f424e17a35d05f97f95",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547334649,
+      "raw_line": "I0925 17:50:43.234835 3780233 router_stats.go:146] [127.0.0.1][api][sim1][08]GET ^/verify/proofs$                     1846ms 0/3",
+      "sha256": "2b2b280164b86edacba58d7d14276b57e05f7ec280ce66d4f51c3336153f133c",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547334908,
+      "raw_line": "I0925 17:50:43.234862 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2562ms 0/2",
+      "sha256": "6ef11fdd50f277239c554e1682b38f7c68934e42acc6ff796d3f8e00fe2217e8",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547519986,
+      "raw_line": "I0925 17:51:43.235620 3780233 router_stats.go:146] [127.0.0.1][api][sim1][08]GET ^/verify/proofs$                     1762ms 0/5",
+      "sha256": "571d826699641ce7c1140311581edae810c6ecfdf194cbdf0e985e67740b65f2",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547520115,
+      "raw_line": "I0925 17:51:43.235631 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/stats$                      2477ms 0/3",
+      "sha256": "797f6190e28ee113cd9033e1001fced149565aded62a10da60507e54ed6ff234",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547702172,
+      "raw_line": "I0925 17:52:43.236722 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/proofs$                     1834ms 0/3",
+      "sha256": "fa2e1a144925fe76622b8d1035633718a155601f1d9924ecf24fcf4f5e439adb",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547702301,
+      "raw_line": "I0925 17:52:43.236743 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2762ms 0/2",
+      "sha256": "33359d3436ea3f532c4b3652c6cf79169502e96e7b6bb0af62e25ba8b434037f",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547936345,
+      "raw_line": "I0925 17:53:43.237614 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/proofs$                     1719ms 0/3",
+      "sha256": "81cd93742a7e57a1bcac06c5dd655fac7ab8b15fd35e44339d5d92ff6fe0e697",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1547936474,
+      "raw_line": "I0925 17:53:43.237625 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2685ms 0/2",
+      "sha256": "731c1aca344a038676347d6c9d2dadd58abf66fc1b5f77487d64a40b8ebd522f",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1548832760,
+      "raw_line": "I0925 17:57:43.241468 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/proofs$                     1802ms 0/2",
+      "sha256": "4a4a7b417f59e311355cf9510ade0bfffbc2c7f6fec90427e484c28aa86ec058",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549058530,
+      "raw_line": "I0925 17:58:43.242496 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2525ms 0/3",
+      "sha256": "b056fcaeb6279156e7f6a014cc29b5d22986feddba1798d827ce3a1c056cecfa",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549058659,
+      "raw_line": "I0925 17:58:43.242509 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/proofs$                     1806ms 0/3",
+      "sha256": "d5aa97ff249d9c7d8c8736eff829c25b1efd35936d2941efdddf3b8c4ed47ab8",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549306842,
+      "raw_line": "I0925 17:59:43.243644 3780233 router_stats.go:146] [127.0.0.1][api][sim1][12]GET ^/verify/proofs$                     1934ms 0/3",
+      "sha256": "c294003642157049f5b393252dc06d43c578e8c53226ab2e308fd31ee83f56a8",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549306971,
+      "raw_line": "I0925 17:59:43.243668 3780233 router_stats.go:146] [127.0.0.1][api][sim1][13]GET ^/verify/stats$                      2926ms 0/2",
+      "sha256": "f2c14c2d50c1a52c38b567cdbb6d1029e7978fcd70b57813a92cca939ee92ee3",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549553989,
+      "raw_line": "I0925 18:00:43.244057 3780233 router_stats.go:146] [127.0.0.1][api][sim1][07]GET ^/verify/stats$                      2829ms 0/4",
+      "sha256": "20a42ee3748add1f35fb0263621be4e9102a7ac858d0c5fc35990c09047be0a2",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549554118,
+      "raw_line": "I0925 18:00:43.244072 3780233 router_stats.go:146] [127.0.0.1][api][sim1][08]GET ^/verify/proofs$                     1892ms 0/1",
+      "sha256": "c05bfd4ccc0df599ece63911c8212dfa6ceb0dc98a0761ee76c1c6fbf03b9670",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1549818600,
+      "raw_line": "I0925 18:01:43.244721 3780233 router_stats.go:146] [127.0.0.1][api][sim1][07]GET ^/verify/stats$                      2818ms 0/2",
+      "sha256": "c19ea36fbf350b5283ebcc91d42df65b30d939fb71be2c136ad909997bdb6ad5",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550066782,
+      "raw_line": "I0925 18:02:43.245633 3780233 router_stats.go:146] [127.0.0.1][api][sim1][06]GET ^/verify/stats$                      2753ms 0/2",
+      "sha256": "dca14f44f3179c1df0e4dd99c19dcac451084f967196f88ca76e4132a81ed393",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550214368,
+      "raw_line": "I0925 18:03:43.246479 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/stats$                      2839ms 0/2",
+      "sha256": "0fbea54342727468afd4a7a0760a6df17b44720ffdc5f1a9e4233f53c75c23c9",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550356892,
+      "raw_line": "I0925 18:04:43.247862 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/proofs$                     1798ms 0/3",
+      "sha256": "adaa36aa5a5a7baadf9961d0f269143c845c9cb4553377dd5cc7ca0341c856ca",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550357021,
+      "raw_line": "I0925 18:04:43.247874 3780233 router_stats.go:146] [127.0.0.1][api][sim1][12]GET ^/verify/stats$                      2837ms 0/2",
+      "sha256": "20bbd1f99819fb3edeba181b35593f90574751048220d71e3eced7553457ddfc",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550500999,
+      "raw_line": "I0925 18:05:43.249420 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/proofs$                     1759ms 0/3",
+      "sha256": "c5f0adb6be970a9486d6a55ab2351a6bacd30143f7eac8bbd1db61d40257d6ba",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550501128,
+      "raw_line": "I0925 18:05:43.249442 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/stats$                      2357ms 0/2",
+      "sha256": "00cd5d2d717c2ed0a5e6d2bfebe03c688e2c4feb6e4103bbf2ca6fd24dc1b87d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550686591,
+      "raw_line": "I0925 18:06:43.250541 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/proofs$                     1848ms 0/4",
+      "sha256": "bb1096fb77c24ad6043c587cf2af8f4f4d807e32a483226e3dacbe8cf6a58819",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550686720,
+      "raw_line": "I0925 18:06:43.250566 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/stats$                      2454ms 0/3",
+      "sha256": "a66b08f2c72195e66c7af457132b647ad24fcaabf0ebeb4d5fdcd89252740607",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550832792,
+      "raw_line": "I0925 18:07:43.251906 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/stats$                      2646ms 0/3",
+      "sha256": "c81334959d038947c59f87cf130f9d400a191abfa33842029ecb61f554c96d46",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550832921,
+      "raw_line": "I0925 18:07:43.251915 3780233 router_stats.go:146] [127.0.0.1][api][sim1][12]GET ^/verify/proofs$                     1733ms 0/3",
+      "sha256": "c7b361c26b0d3e483057fee3e664b4e2602b2e1451cf85ee24a28295c66c7187",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550944072,
+      "raw_line": "I0925 18:08:43.253005 3780233 router_stats.go:146] [127.0.0.1][api][sim1][12]GET ^/verify/proofs$                     1698ms 0/3",
+      "sha256": "7ecb18bebb10131145db7c6a3a7a3c16b4a241974f59dd2daf044e8e83d00955",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1550944201,
+      "raw_line": "I0925 18:08:43.253011 3780233 router_stats.go:146] [127.0.0.1][api][sim1][13]GET ^/verify/stats$                      2654ms 0/2",
+      "sha256": "15f854b24722cc06ebe4e567078105641e995a88c4a90789e438625632e06729",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551016495,
+      "raw_line": "I0925 18:09:43.253498 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2398ms 0/3",
+      "sha256": "b6857c55b776d86e0c4092a0358840402313cb37512e121af70d57f6f60cbeb2",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551016624,
+      "raw_line": "I0925 18:09:43.253509 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/proofs$                     1995ms 0/3",
+      "sha256": "2b8d8a4bd6c6204e42a8f9d899787a2ff48498da4884add0051abab6976fd664",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551138672,
+      "raw_line": "I0925 18:10:43.253904 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/proofs$                     1601ms 0/3",
+      "sha256": "18e68e2edd376ce5d358e79beb1d82e799872cd002dd9056302add0b9293379c",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551138801,
+      "raw_line": "I0925 18:10:43.253912 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/stats$                      3219ms 0/2",
+      "sha256": "c4de4afac834c78d1d66216679454e0a1fef3837f1f3aa3616d23956e639724b",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551257047,
+      "raw_line": "I0925 18:11:43.254652 3780233 router_stats.go:146] [127.0.0.1][api][sim1][09]GET ^/verify/stats$                      2443ms 0/3",
+      "sha256": "53bb92fc4ce398acff962a76069bad210cc561caf3312ceef6f29a7305e7899d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551257302,
+      "raw_line": "I0925 18:11:43.254664 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/proofs$                     2125ms 0/2",
+      "sha256": "e55f7548843ce9587a61f244fb638308c4d88c9cf36444fc1d49efba1cbea8fa",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551358212,
+      "raw_line": "I0925 18:12:43.255974 3780233 router_stats.go:146] [127.0.0.1][api][sim1][10]GET ^/verify/stats$                      2773ms 0/3",
+      "sha256": "42e61dcebe5af329e34a8314e28a21dce5b05d6abf46010bab5c506d5ce02832",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1551358341,
+      "raw_line": "I0925 18:12:43.255982 3780233 router_stats.go:146] [127.0.0.1][api][sim1][11]GET ^/verify/proofs$                     1515ms 0/3",
+      "sha256": "f6595c4b5a005b4587b062168354054be37539529586b284e8975492fad3feb2",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1232913603,
+      "raw_line": "I0925 17:30:43.278632 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1889ms 0/1",
+      "sha256": "1250557c5f397fa8ba98485b123408ccd7ef9a3a12554b629940f454e57479ae",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233057452,
+      "raw_line": "I0925 17:31:43.279465 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1885ms 0/6",
+      "sha256": "97fd4adea8ba2f395967f2bad010ea5bdac33c88033e9e69bc71a9be7194fa02",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233057838,
+      "raw_line": "I0925 17:31:43.279492 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/stats$                      2838ms 0/1",
+      "sha256": "fc1cdd3fb002c9d3174882b07477f8284f33044f4062e34b66088d36c9dd60ed",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233214682,
+      "raw_line": "I0925 17:32:43.280677 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1856ms 0/6",
+      "sha256": "27b517618990d09f8d1aaef6ba0edff54011a8325301bc669f9d66ebab4aa9a0",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233434404,
+      "raw_line": "I0925 17:33:43.281929 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1876ms 0/7",
+      "sha256": "5b40eec2ecabd3380fdc4e362c5d7bfb6914c4b1092d3e336dff9f98946c4d36",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233734487,
+      "raw_line": "I0925 17:34:43.283063 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1776ms 0/5",
+      "sha256": "193e102fc68c542f8e1824b89db21ff10bee8dbbab5a754ac1c50b02a77343dc",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1233888705,
+      "raw_line": "I0925 17:35:43.284323 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1912ms 0/6",
+      "sha256": "b87b4abfa5cf60ef9e28567396bd77f4abba605ebc396138a7ae8d860cc2cbf0",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234038323,
+      "raw_line": "I0925 17:36:43.284922 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1862ms 0/6",
+      "sha256": "ebf91c887c9c57912ccf83b74c94a9e8d5fd976ae37d2501a92c1af4cb88ad38",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234203999,
+      "raw_line": "I0925 17:37:43.286278 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1913ms 0/5",
+      "sha256": "6df727fe06b413de1626d4a963e350bb27aa9854b039559057a84cf116e80f80",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234357960,
+      "raw_line": "I0925 17:38:43.287219 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1872ms 0/7",
+      "sha256": "99b9dc3cc06f2b345bb451c919bf2e90f02f1f51d01a45a891b4fa2fd4d19f84",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234524122,
+      "raw_line": "I0925 17:39:43.287951 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1817ms 0/6",
+      "sha256": "ec288317e1b0e9040dcbc514febd25845608ddfce7eb2ad7f1b17debb3bbc98a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234678339,
+      "raw_line": "I0925 17:40:43.289600 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1900ms 0/6",
+      "sha256": "b05720ff8fa7f2170c6f7a0f7f10f5a1aefe870e454dad9b25cbe998d5abc3fc",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1234842791,
+      "raw_line": "I0925 17:41:43.290339 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/proofs$                     1770ms 0/5",
+      "sha256": "3ef19523fab70156970f38d5c2a4fc3b260ed408919b1c20acab312b78e406fe",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235066722,
+      "raw_line": "I0925 17:42:43.291280 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1844ms 0/6",
+      "sha256": "aafd54298963715c39a0343db5079068c5a8b77502ab9ce00cbfff60169eca59",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235306404,
+      "raw_line": "I0925 17:43:43.292949 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1799ms 0/8",
+      "sha256": "703eb9391556839bd033ee04602338986196244aae735a3c1e4ee618555acaa4",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235523780,
+      "raw_line": "I0925 17:44:43.293814 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1881ms 0/6",
+      "sha256": "82ad88ab12f8f52fd55bf84d74792e9155fa3687bab577143b1d9c2b7c7e20b4",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235524037,
+      "raw_line": "I0925 17:44:43.293837 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/stats$                      2938ms 0/1",
+      "sha256": "b3d922adbc8da77c534a5cf2d3be56fca38e534218bd5b231024e761e4b50107",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235718685,
+      "raw_line": "I0925 17:45:43.295030 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1819ms 0/6",
+      "sha256": "29d63df1e25e7b9ba644834433cf55e8dccd619dc1cfead709fdcd6f7203754a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1235960587,
+      "raw_line": "I0925 17:46:43.296462 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1874ms 0/5",
+      "sha256": "4c25ae6a23d6ed995fa0114aa31269433d13ee2284aea21c48e7062a4a43af0a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236067677,
+      "raw_line": "I0925 17:47:43.297346 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1795ms 0/6",
+      "sha256": "4071af22ed95c355c6d4f666b5584d61097b245ea721b5e7564d970977015f69",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236273100,
+      "raw_line": "I0925 17:48:43.298202 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1839ms 0/8",
+      "sha256": "b2ad1f88bda2e9fdfe2e2dfa23ed03262afaf90cfa0d2a34559923878fe6e030",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236273487,
+      "raw_line": "I0925 17:48:43.298238 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/stats$                      2742ms 0/1",
+      "sha256": "daccdd2252c08fa466635a8103fed7e9dbec3659174879f779158d588604051b",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236456726,
+      "raw_line": "I0925 17:49:43.298945 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1792ms 0/6",
+      "sha256": "5452463aeecbf25c5db95dfeb5686ee095b6f9ffcf6617eaa6ea72c2b7d180e0",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236597696,
+      "raw_line": "I0925 17:50:43.299931 3780334 router_stats.go:146] [127.0.0.1][api][sim2][06]GET ^/verify/proofs$                     1732ms 0/6",
+      "sha256": "aea7cc62d499e680a0dda4efa9b2d4ba2969072e5a05f5feec6537576db48f66",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1236850095,
+      "raw_line": "I0925 17:51:43.301839 3780334 router_stats.go:146] [127.0.0.1][api][sim2][13]GET ^/verify/proofs$                     1734ms 0/5",
+      "sha256": "47b1bef90fd78c0311c67ed4838e381b88a01bc4377493d1d9743530df2046a3",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237032547,
+      "raw_line": "I0925 17:52:43.302824 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1776ms 0/6",
+      "sha256": "9560584c44cfa28f37648bd123c7f579e2a432fcca697fdb498e8c9b8e03327d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237259237,
+      "raw_line": "I0925 17:53:43.303284 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1673ms 0/7",
+      "sha256": "da20601b6cf255b43179146d82ebd32b88d4f9fa8a99f13cd74d261fea9b0216",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237448248,
+      "raw_line": "I0925 17:54:43.303719 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1819ms 0/5",
+      "sha256": "0ca3e85976240d4326c876bedb7d99f7ddab6a0e9dfcd6db03b8d6534d34e4f1",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237448503,
+      "raw_line": "I0925 17:54:43.303736 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/stats$                      2718ms 0/1",
+      "sha256": "3a599a9cd8cc836fdb47969e41ff36475f512e34848a634ec8097f8fd19f3e27",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237685300,
+      "raw_line": "I0925 17:55:43.305219 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/proofs$                     1852ms 0/4",
+      "sha256": "1e1a6c0ffdbd5c933e762acf8de0a9e40fc3ad9c272c1a241f1ed1e34eec2038",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1237891898,
+      "raw_line": "I0925 17:56:43.306498 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/proofs$                     1760ms 0/5",
+      "sha256": "365a1d107f59790a0ed0a35c8e4cbdfe9b8892a9de98e245c0ecd1e983e31a7d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238112283,
+      "raw_line": "I0925 17:57:43.307443 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/proofs$                     1599ms 0/5",
+      "sha256": "8c7a2fe3230253277d9b1f070bbd97304d20a9cdbe55d2d0f9e37355b986d10b",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238299456,
+      "raw_line": "I0925 17:58:43.308726 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1658ms 0/6",
+      "sha256": "aced75a9e1777a4367520c0ab697ec40a74138f5acaa69d7c99b9044c0ff8b23",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238506186,
+      "raw_line": "I0925 17:59:43.310114 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1913ms 0/6",
+      "sha256": "d9393b2353adb867562def3eddb773ca94181c6802321e95c3fe8a6c6b191370",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238719476,
+      "raw_line": "I0925 18:00:43.311970 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1834ms 0/5",
+      "sha256": "1b87859ebb3b6917fecc061ac19348a5328d57ef280cf0c3fa38f6e8a5a843c4",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238719605,
+      "raw_line": "I0925 18:00:43.311984 3780334 router_stats.go:146] [127.0.0.1][api][sim2][12]GET ^/verify/stats$                      2864ms 0/1",
+      "sha256": "214711e9c7b7231926fe9b94e6b6dbab5ea144ee68b026a9988d39de6d691f7f",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1238941826,
+      "raw_line": "I0925 18:01:43.313841 3780334 router_stats.go:146] [127.0.0.1][api][sim2][10]GET ^/verify/proofs$                     1717ms 0/5",
+      "sha256": "820192556615ecd987ef52d47c500d8070cff30ad812d5b2d42faccf353ada63",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239154729,
+      "raw_line": "I0925 18:02:43.314995 3780334 router_stats.go:146] [127.0.0.1][api][sim2][09]GET ^/verify/proofs$                     1838ms 0/6",
+      "sha256": "f4f63b168a3894c4c51a4b7d543a091759122ab457d7b1a723c7371244dc7289",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 3664,
+      "offset": 1239233352,
+      "raw_line": "I0925 18:03:21.833798 3780334 router.go:140] [h]unhandled error from route GET ^/verify/proofs$: {\"error\":\"*pgconn.PgError=FATAL: terminating connection due to administrator command (SQLSTATE 57P01)\",\"stack\":[\"goroutine 1281600 [running]:\",\"runtime/debug.Stack()\",\"runtime/debug/stack.go:26 +0x5e\",\"github.com/urnetwork/server/router.(*Router).ServeHTTP.func1()\",\"github.com/urnetwork/server@v0.0.0/router/router.go:143 +0xea\",\"panic({0x36d5340?, 0x3997162a1500?})\",\"runtime/panic.go:860 +0x13a\",\"github.com/urnetwork/server.dbWithPool.func1.2()\",\"github.com/urnetwork/server@v0.0.0/db.go:619 +0x1a5\",\"panic({0x36d5340?, 0x3997162a1500?})\",\"runtime/panic.go:860 +0x13a\",\"github.com/urnetwork/server.Raise(...)\",\"github.com/urnetwork/server@v0.0.0/util.go:154\",\"github.com/urnetwork/server.WithPgResult({0x4647020, 0x39971ac4aea0}, {0x0?, 0x0?}, {0x344f560?, 0x399716e606c0?})\",\"github.com/urnetwork/server@v0.0.0/db.go:916 +0x116\",\"github.com/urnetwork/server/model.ListVerifyTrailRows.func1(0x399719d07b18)\",\"github.com/urnetwork/server@v0.0.0/model/verify_model.go:1430 +0x33c\",\"github.com/urnetwork/server.dbWithPool.func1(0x4627b50?, 0x39971a0e43c0?, {0x4627b50?, 0x39971a0e43c0?}, 0x780000000a?, 0x97?, 0xc?, 0x98?, 0x7?)\",\"github.com/urnetwork/server@v0.0.0/db.go:631 +0x112\",\"github.com/urnetwork/server.dbWithPool({0x4627b50, 0x39971a0e43c0}, 0x6b48000, 0x399721147640, {0x0?, 0x78?, 0x399721147568?})\",\"github.com/urnetwork/server@v0.0.0/db.go:632 +0x479\",\"github.com/urnetwork/server.Db.func1(...)\",\"github.com/urnetwork/server@v0.0.0/db.go:478\",\"github.com/urnetwork/server.Db({0x4627b50, 0x39971a0e43c0}, 0x399721147640, {0x0, 0x0, 0x0})\",\"github.com/urnetwork/server@v0.0.0/db.go:489 +0x22e\",\"github.com/urnetwork/server/model.ListVerifyTrailRows({0x4627b50, 0x39971a0e43c0}, {0x3997199b37a0?, 0x1?, 0x0?}, {0xb?, 0x39971611b368?, 0x0?}, 0x2710)\",\"github.com/urnetwork/server@v0.0.0/model/verify_model.go:1421 +0x130\",\"github.com/urnetwork/server/controller.GetVerifyProofs(0x3997199b3818?, 0x39971a0e4410)\",\"github.com/urnetwork/server@v0.0.0/controller/verify_controller.go:1149 +0x1a9\",\"github.com/urnetwork/server/api/handlers.GetVerifyProofs.func1(0x63c865?)\",\"github.com/urnetwork/server@v0.0.0/api/handlers/verify_handlers.go:99 +0x1d\",\"github.com/urnetwork/server/router.WrapNoAuth[...].func1()\",\"github.com/urnetwork/server@v0.0.0/router/handler_utils.go:187 +0x25\",\"github.com/urnetwork/server/router.wrap[...](0x3997199b38e0, {0x4622f70, 0x399716d81d18}, 0x3997199b38f8, {0x0?, 0x0, 0x428ba5})\",\"github.com/urnetwork/server@v0.0.0/router/handler_utils.go:94 +0x5d\",\"github.com/urnetwork/server/router.WrapNoAuth[...](0x399716d81d18?, {0x4622f70?, 0x399716d81d18?}, 0x0?, {0x0?, 0x4945ee?, 0x3997199b3950?})\",\"github.com/urnetwork/server@v0.0.0/router/handler_utils.go:185 +0x46\",\"github.com/urnetwork/server/api/handlers.GetVerifyProofs({0x4622f70, 0x399716d81d18}, 0x39971ef33040)\",\"github.com/urnetwork/server@v0.0.0/api/handlers/verify_handlers.go:98 +0xa5\",\"github.com/urnetwork/server/router.(*Router).ServeHTTP(0x3997167321e0, {0x461f530, 0x3997173d3b30}, 0x39971ef33040)\",\"github.com/urnetwork/server@v0.0.0/router/router.go:179 +0x5fd\",\"github.com/urnetwork/server.(*drainHandler).ServeHTTP(0x48c3b9?, {0x461f530?, 0x3997173d3b30?}, 0x3997199b3b30?)\",\"github.com/urnetwork/server@v0.0.0/http_drain.go:175 +0x10a\",\"net/http.serverHandler.ServeHTTP({0x399718060b00?}, {0x461f530?, 0x3997173d3b30?}, 0x1?)\",\"net/http/server.go:3309 +0x8e\",\"net/http.(*conn).serve(0x399718a28480, {0x4627b18, 0x399716f3ab10})\",\"net/http/server.go:2067 +0x690\",\"created by net/http.(*Server).Serve in goroutine 372\",\"net/http/server.go:3462 +0x485\",\"\"]}",
+      "sha256": "91d837af3e0dab969c8050296b6b28ba3e4e8ad038aaf4fe7d6853beaec598d1",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239266686,
+      "raw_line": "I0925 18:03:43.315919 3780334 router_stats.go:146] [127.0.0.1][api][sim2][00]GET ^/verify/proofs$                     1982ms 1/3",
+      "sha256": "24bf558643d6fd811f7faf4baedafe0cf7f2f0941c283bbf9b7c7164b41098c6",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239681384,
+      "raw_line": "I0925 18:07:43.321190 3780334 router_stats.go:146] [127.0.0.1][api][sim2][11]GET ^/verify/proofs$                     1888ms 0/2",
+      "sha256": "9c7651eacfcc1d2db214024104fe10821a20c8982f3495613e4071a96f81e861",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239781570,
+      "raw_line": "I0925 18:08:43.322352 3780334 router_stats.go:146] [127.0.0.1][api][sim2][08]GET ^/verify/proofs$                     1757ms 0/5",
+      "sha256": "8a0a8d49f1df25d81d111b4ff42f5d201c75fba599eea34570505b613806115a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239851589,
+      "raw_line": "I0925 18:09:43.322608 3780334 router_stats.go:146] [127.0.0.1][api][sim2][06]GET ^/verify/proofs$                     1738ms 0/2",
+      "sha256": "76c0510426dafda9f31df28f86c70809c45ee4e2568a2d4fe087dbb9cd1ff840",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1239955369,
+      "raw_line": "I0925 18:10:43.323445 3780334 router_stats.go:146] [127.0.0.1][api][sim2][07]GET ^/verify/proofs$                     1732ms 0/2",
+      "sha256": "60fdecb3a4cd096005afe618234f202f8d256b2e9fb89794b604bcd39d16c9cc",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1240049832,
+      "raw_line": "I0925 18:11:43.324194 3780334 router_stats.go:146] [127.0.0.1][api][sim2][06]GET ^/verify/proofs$                     1716ms 0/4",
+      "sha256": "ccae18324c4d068a8edadc8b8ecf3a3d95381e399e3f241aff2d74278ad3a56a",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1240049961,
+      "raw_line": "I0925 18:11:43.324204 3780334 router_stats.go:146] [127.0.0.1][api][sim2][07]GET ^/verify/stats$                      2658ms 0/1",
+      "sha256": "18a963de737976ce3d0f14f76dee1858c3923f2211b6ed9df024f2a0b1ee9d41",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    },
+    {
+      "bytes": 129,
+      "offset": 1240154228,
+      "raw_line": "I0925 18:12:43.325820 3780334 router_stats.go:146] [127.0.0.1][api][sim2][12]GET ^/verify/proofs$                     1798ms 0/2",
+      "sha256": "c791f9ec29697e37d3cfba9709b1f25badecb9ab9e243b0cd797e8ea3e3c4b06",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log"
+    }
+  ],
+  "schema": "urnetwork-r46-operator-latency-triage-v1"
+}

@@ -1,0 +1,84 @@
+{
+  "bucket": "blob",
+  "census_sha256": "f746220a9b5b0e1e48d329d382f89b292069dbfe99784026695cc6aaffcf4f95",
+  "completed_at": "2026-09-25T15:55:06.738270013Z",
+  "group_new_objects": {
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/content/sha256": {
+      "objects": 2,
+      "bytes": 273052
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/evidence/content": {
+      "objects": 81,
+      "bytes": 194167
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/evidence/history": {
+      "objects": 81,
+      "bytes": 194167
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v1/history/ur-subnet-testnet-v1": {
+      "objects": 2,
+      "bytes": 273052
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v2/attempt/metadata": {
+      "objects": 87,
+      "bytes": 4004406
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v2/attempt/proofs": {
+      "objects": 8,
+      "bytes": 6785442
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-1/st/v2/attempt/records": {
+      "objects": 32,
+      "bytes": 110497672
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/content/sha256": {
+      "objects": 2,
+      "bytes": 265909
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/content": {
+      "objects": 2,
+      "bytes": 4105
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/evidence/history": {
+      "objects": 2,
+      "bytes": 4105
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v1/history/ur-subnet-testnet-v1": {
+      "objects": 2,
+      "bytes": 265909
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v2/attempt/metadata": {
+      "objects": 87,
+      "bytes": 4004406
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v2/attempt/proofs": {
+      "objects": 8,
+      "bytes": 6785442
+    },
+    "blob/sim-testnet/ur-subnet-testnet-v1/operator-2/st/v2/attempt/records": {
+      "objects": 32,
+      "bytes": 110497672
+    }
+  },
+  "hourly_new_objects": {
+    "2026-09-25T14:00Z": {
+      "objects": 4,
+      "bytes": 5872
+    },
+    "2026-09-25T15:00Z": {
+      "objects": 424,
+      "bytes": 244043634
+    }
+  },
+  "limitation": "creation/modification census; cannot count writes rejected by quota or historical overwritten/deleted bytes",
+  "r45_active_epoch628_growth_lower_bound": {
+    "objects": 428,
+    "bytes": 244049506
+  },
+  "r45_active_epoch628_interval_end": "2026-09-25T15:51:00Z",
+  "r45_active_epoch628_interval_start": "2026-09-25T14:46:05Z",
+  "total": {
+    "objects": 162982,
+    "bytes": 34749960292
+  }
+}

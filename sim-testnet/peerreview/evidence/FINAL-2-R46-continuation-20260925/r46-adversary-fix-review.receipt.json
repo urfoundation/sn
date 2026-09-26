@@ -1,0 +1,288 @@
+{
+  "branch": "codex/r46-adversary-actor-hardening-20260926",
+  "causal_files": [
+    {
+      "bytes": 124146,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/adversary_actors.go",
+      "sha256": "317bea5136286ed2d2fbf9dc9b98f902ea307989d5e349bde2e9869bafa178de"
+    },
+    {
+      "bytes": 36707,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/adversary_verify.go",
+      "sha256": "c80714632b523fd4074a9cfe020e4f64130cf1624fe39b2721581af4766a6fbf"
+    },
+    {
+      "bytes": 37603,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/adversary_without_error_chronology.go",
+      "sha256": "ea633af7cd9b5a915cf0c5f773af1d68898e796b12f2ca99ad7adba9084e7876"
+    },
+    {
+      "bytes": 246,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/chronology-overlay.json",
+      "sha256": "180a0c24f8b90868e6f13e06960e47ed681027624bad60dab5884f2591fe2780"
+    },
+    {
+      "bytes": 675,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/overlay.json",
+      "sha256": "f370661043bfeae2426ea551e9c2ce12f17ca3a3295bddc771ec149c361917cd"
+    },
+    {
+      "bytes": 4342,
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/scenario_operator_reads.go",
+      "sha256": "3cac34d21fd0c0253c73b0e6d02c0bb0b3c6f40f094a3aca13ef720d17de620f"
+    }
+  ],
+  "causal_method": "Go overlays restore exact old decisions while retaining new test signatures. These are controlled counterfactuals, not an unmodified historical checkout.",
+  "clean_worktree": true,
+  "commits_to_reuse": {
+    "049f56af": "049f56af1cfd6f780cb299213a309a0ad6ee6060",
+    "517001c2": "517001c22c60bee02025f1f78d4c85609d806103",
+    "545ddb9e": "545ddb9e15e6ec24383c79ccff31ff7eae9b7cbc",
+    "70d83c12": "70d83c122d1e10b6896cd49b6b6353616504aa24",
+    "87371323": "87371323e79dc44d84b3bd2ac2d2be4ba0df7748",
+    "ffafe2d6": "ffafe2d6036570f68b385d0dc347ae072285a9bd"
+  },
+  "deployed_endpoint_semantics": {
+    "default_stats_period_seconds": 900,
+    "maximum_range_days": 93,
+    "proof_predicate": "create_time >= from AND create_time < to ORDER BY create_time, trail_id LIMIT 10000",
+    "server_commit": "4b2c45872ea0e2baef3db4012df8c47e280015dd",
+    "sources": [
+      {
+        "bytes": 60662,
+        "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/model/verify_model.go",
+        "sha256": "428e732ca61d760e2f0a781b8d8d58f2d03014f31c372d564fa06e1a0741c1de"
+      },
+      {
+        "bytes": 45150,
+        "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/server/controller/verify_controller.go",
+        "sha256": "ba313dd32d50f86dd9947797b824fc3975f3e24bc8bce61b0617e189f8525292"
+      }
+    ],
+    "stats_predicate": "period_end > from AND period_start < to ORDER BY period_start, client_id LIMIT 100000"
+  },
+  "duplicate_dependencies_to_skip": {
+    "0e7f204a": "79d1eab8",
+    "5da2ccce": "ba3d6f02"
+  },
+  "final_r46_acceptance": false,
+  "fixed_source_files": [
+    {
+      "bytes": 273430,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/scenario.go",
+      "sha256": "29b8391ac7f1641d4229a89d78cfa72923578c37cb2a29ecec35a66ea3b4bec8"
+    },
+    {
+      "bytes": 4298,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/scenario_operator_reads.go",
+      "sha256": "6321480373d0c949cbabece63584c3960e3db26456cd940b49b1c5254127d967"
+    },
+    {
+      "bytes": 8337,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/scenario_operator_history_test.go",
+      "sha256": "6cd06f8720a66cd7fd3002d523a21e30464be0ee641a5c4803f5d1eb8f45dd1b"
+    },
+    {
+      "bytes": 37562,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/adversary.go",
+      "sha256": "cb1465d6ab991bd4955b47af4fee52d43b2045c4abae774f837420a34408ab05"
+    },
+    {
+      "bytes": 124126,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/adversary_actors.go",
+      "sha256": "a9b72068c7ce2d991a790d62b2152c1ad911b747057d8dd6968640a516c8c665"
+    },
+    {
+      "bytes": 7421,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/adversary_error_log.go",
+      "sha256": "04c2a7e0fda71d3751e74094a474cac64ceb0a179ab0c969db82f44b4bcb0b16"
+    },
+    {
+      "bytes": 36664,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/adversary_verify.go",
+      "sha256": "46e0d23c83ce3394e2fcf9c67c3cea99b36cd6bad5e30310ae8b93d2b2f6e9b5"
+    },
+    {
+      "bytes": 2337,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926/sim-testnet/adversary_verify_faults.go",
+      "sha256": "b999dc20f9fbe15c1e3a09ff540f50247808e482780449ddc205050a47ee3e0d"
+    }
+  ],
+  "head": "517001c22c60bee02025f1f78d4c85609d806103",
+  "live_fleet_modified": false,
+  "production_acceptance_thresholds_changed": false,
+  "recorded_at": "2026-09-26T00:47:39.620885+00:00",
+  "review": {
+    "bytes": 6117,
+    "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/review.md",
+    "sha256": "bb28c14a6973fb962840328d8c725a5cb537c33829d067369c3d94b6cb70cae2"
+  },
+  "schema": "urnetwork-r46-adversary-hardening-review-v1",
+  "sealed_evidence_modified": false,
+  "signed_expected_fault_targets_changed": false,
+  "tests": [
+    {
+      "bytes": 78651,
+      "command": "GOMAXPROCS=2 sim-testnet.test -test.run 'Test(Adversary|VerifyFaultAttribution|VerifyProofHistory|OperatorApiSuccessful|OperatorSupervisorIdentity|ScenarioOperator)' -test.count=1 -test.v",
+      "exit_code": 0,
+      "failed": [],
+      "passed": [
+        "TestAdversaryErrorChronologyRetainsOnlyErrors",
+        "TestAdversaryErrorChronologyBoundsAndReopen",
+        "TestAdversaryErrorChronologyRejectsReplacedWriter",
+        "TestAdversaryErrorChronologyRecordsClockRegression",
+        "TestAdversaryGetRetriesTransientFailuresWithExactAccounting",
+        "TestAdversaryGetExhaustionKeepsFinalFailureAndFiniteBudget",
+        "TestAdversaryGetCancellationCannotRestartSampleBudget",
+        "TestAdversaryGetTimeoutDividesOriginalFiniteBudget",
+        "TestAdversaryGetSemanticFailuresDoNotRetry",
+        "TestAdversaryGetClosesIncompleteBodyBeforeRetryAndKeepsSizeBound",
+        "TestAdversaryGetDoesNotAuthorizePostReplay",
+        "TestAdversaryGetDoesNotFollowRedirectToAnotherEvidenceOrigin",
+        "TestAdversaryGetCloseFailureRemainsHard",
+        "TestAdversaryGetOperatorSampleRetainsRecoveryAndStrictFailures",
+        "TestOperatorApiSuccessfulResponseAllowsUnhealthyUnrelatedProcess",
+        "TestAdversaryGetMalformedHistoryIsHardForArtifactAndMerkleActors",
+        "TestAdversaryGetVerifyCallersCountRetriesAndRejectMalformedBodies",
+        "TestAdversaryReferenceDiscoveryFollowsSymlinkedRepositoryRoot",
+        "TestAdversaryCommitRevealRuntimeObservationFailsClosed",
+        "TestAdversaryAdditionalMetricModelsMeasureMultiMetricRows",
+        "TestAdversaryReleaseBytecodeMetricsRejectMalformedAndEmptyRuntime",
+        "TestAdversaryLiveCoordinatorImplementationUsesFinalizedCode",
+        "TestAdversaryCommitRevealProbeCachesOnlyValidatedDirectState",
+        "TestOperatorSupervisorIdentityBindsDurableIdentityAndRestartCount",
+        "TestAdversaryRequestGateCapsRate",
+        "TestAdversaryCampaignDoesNotCountShutdownCancellation",
+        "TestAdversaryCampaignRejectsCanceledParentBeforeActorLaunch",
+        "TestAdversaryFaultWindowAttributesOnlyExactTargetAndBoundedGrace",
+        "TestAdversaryCampaignEnforcesErrorAndLatencyBounds",
+        "TestAdversaryCampaignRejectsUnsignedSamplingGapAcrossHappyPath",
+        "TestAdversaryCampaignRejectsLastSampleBeforeHappyPathCompletion",
+        "TestAdversaryCampaignRequiresLiveInvalidMerkleProofEvidence",
+        "TestAdversaryMetricSnapshotOwnsCampaignHistory",
+        "TestAdversaryLatencyRatioUsesOneMillisecondControlFloor",
+        "TestAdversaryVectorRequiresNamedMeasuredMetric",
+        "TestAdversaryVectorRequiresEveryNamedMeasuredMetric",
+        "TestAdversaryAssertionsRequireEveryNamedMeasuredMetric",
+        "TestAdversaryHTTPRejectsNonLoopbackSource",
+        "TestAdversaryHTTPConcurrentPairActuallyOverlapsWithinReservedSlots",
+        "TestVerifyFaultAttributionKeepsSignedWalkSemanticsBlocking",
+        "TestVerifyFaultAttributionRequiresTypedUnavailability",
+        "TestVerifyFaultAttributionRetainsUnavailableReadBoundary",
+        "TestVerifyProofHistoryBoundsFreshWalkAgainstSaturatedHistory",
+        "TestVerifyProofHistoryRetainsStrictUniquenessAndLimit",
+        "TestVerifyProofHistoryRejectsInvalidWalkRange",
+        "TestScenarioOperatorHistoryExcludesSaturatedRetainedPrefix",
+        "TestScenarioOperatorHistoryPinsBoundariesAcrossRetriesAndSnapshots",
+        "TestScenarioOperatorHistorySaturationRemainsIncomplete",
+        "TestScenarioOperatorHistoryRejectsInvalidRange",
+        "TestScenarioOperatorReadRetryFreshAttemptAndLongResponse",
+        "TestScenarioOperatorReadRetryExhaustsOneOperationBudget",
+        "TestScenarioOperatorReadRetryRetainsCompletedSurfaceOwners",
+        "TestScenarioOperatorReadRetryRejectsPermanentAndMixedFailures",
+        "TestScenarioOperatorReadRetryKeepsResponseValidationStrict",
+        "TestScenarioOperatorReadRetryPreservesParentCancellation",
+        "TestScenarioOperatorReadRetryRejectsCloseFailureAndLateSuccess",
+        "TestScenarioOperatorReadRetryPreservesMalformedProjection",
+        "TestScenarioOperatorReadsBoundParallelWorkAndKeepResponseOwners",
+        "TestScenarioOperatorReadsCancelAllSurfacesWithoutRetainedSuccess",
+        "TestScenarioOperatorReadsObserveFreshResponsesAcrossSnapshots",
+        "TestScenarioOperatorReadsKeepTimeoutsVisibleInSuccessiveObservations"
+      ],
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/targeted-green.log",
+      "race_reports": 0,
+      "sha256": "fee2fcf807d66be8c7a164fd1e3c6dea9cc3f1798c3906d787ebded8a521283f"
+    },
+    {
+      "bytes": 75709,
+      "command": "GOMAXPROCS=2 go test -race -p 2 ./sim-testnet -run 'Test(AdversaryErrorChronology|AdversaryGet|VerifyFaultAttribution|VerifyProofHistory|OperatorApiSuccessful|OperatorSupervisorIdentity|ScenarioOperator)' -count=1 -v",
+      "exit_code": 0,
+      "failed": [],
+      "passed": [
+        "TestAdversaryErrorChronologyRetainsOnlyErrors",
+        "TestAdversaryErrorChronologyBoundsAndReopen",
+        "TestAdversaryErrorChronologyRejectsReplacedWriter",
+        "TestAdversaryErrorChronologyRecordsClockRegression",
+        "TestAdversaryGetRetriesTransientFailuresWithExactAccounting",
+        "TestAdversaryGetExhaustionKeepsFinalFailureAndFiniteBudget",
+        "TestAdversaryGetCancellationCannotRestartSampleBudget",
+        "TestAdversaryGetTimeoutDividesOriginalFiniteBudget",
+        "TestAdversaryGetSemanticFailuresDoNotRetry",
+        "TestAdversaryGetClosesIncompleteBodyBeforeRetryAndKeepsSizeBound",
+        "TestAdversaryGetDoesNotAuthorizePostReplay",
+        "TestAdversaryGetDoesNotFollowRedirectToAnotherEvidenceOrigin",
+        "TestAdversaryGetCloseFailureRemainsHard",
+        "TestAdversaryGetOperatorSampleRetainsRecoveryAndStrictFailures",
+        "TestOperatorApiSuccessfulResponseAllowsUnhealthyUnrelatedProcess",
+        "TestAdversaryGetMalformedHistoryIsHardForArtifactAndMerkleActors",
+        "TestAdversaryGetVerifyCallersCountRetriesAndRejectMalformedBodies",
+        "TestOperatorSupervisorIdentityBindsDurableIdentityAndRestartCount",
+        "TestVerifyFaultAttributionKeepsSignedWalkSemanticsBlocking",
+        "TestVerifyFaultAttributionRequiresTypedUnavailability",
+        "TestVerifyFaultAttributionRetainsUnavailableReadBoundary",
+        "TestVerifyProofHistoryBoundsFreshWalkAgainstSaturatedHistory",
+        "TestVerifyProofHistoryRetainsStrictUniquenessAndLimit",
+        "TestVerifyProofHistoryRejectsInvalidWalkRange",
+        "TestScenarioOperatorHistoryExcludesSaturatedRetainedPrefix",
+        "TestScenarioOperatorHistoryPinsBoundariesAcrossRetriesAndSnapshots",
+        "TestScenarioOperatorHistorySaturationRemainsIncomplete",
+        "TestScenarioOperatorHistoryRejectsInvalidRange",
+        "TestScenarioOperatorReadRetryFreshAttemptAndLongResponse",
+        "TestScenarioOperatorReadRetryExhaustsOneOperationBudget",
+        "TestScenarioOperatorReadRetryRetainsCompletedSurfaceOwners",
+        "TestScenarioOperatorReadRetryRejectsPermanentAndMixedFailures",
+        "TestScenarioOperatorReadRetryKeepsResponseValidationStrict",
+        "TestScenarioOperatorReadRetryPreservesParentCancellation",
+        "TestScenarioOperatorReadRetryRejectsCloseFailureAndLateSuccess",
+        "TestScenarioOperatorReadRetryPreservesMalformedProjection",
+        "TestScenarioOperatorReadsBoundParallelWorkAndKeepResponseOwners",
+        "TestScenarioOperatorReadsCancelAllSurfacesWithoutRetainedSuccess",
+        "TestScenarioOperatorReadsObserveFreshResponsesAcrossSnapshots",
+        "TestScenarioOperatorReadsKeepTimeoutsVisibleInSuccessiveObservations"
+      ],
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/targeted-race.log",
+      "race_reports": 0,
+      "sha256": "65dde279790c9f25dbe39565924b010aaa142d6612c889f6badb7d1f25c1955a"
+    },
+    {
+      "bytes": 2650,
+      "command": "GOMAXPROCS=2 go test -p 2 -overlay=/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/overlay.json ./sim-testnet -run 'Test(OperatorApiSuccessfulResponseAllowsUnhealthyUnrelatedProcess|VerifyProofHistoryBoundsFreshWalkAgainstSaturatedHistory|VerifyFaultAttributionKeepsSignedWalkSemanticsBlocking|ScenarioOperatorHistoryExcludesSaturatedRetainedPrefix)$' -count=1 -v",
+      "exit_code": 1,
+      "failed": [
+        "TestOperatorApiSuccessfulResponseAllowsUnhealthyUnrelatedProcess",
+        "TestVerifyFaultAttributionKeepsSignedWalkSemanticsBlocking",
+        "TestVerifyProofHistoryBoundsFreshWalkAgainstSaturatedHistory",
+        "TestScenarioOperatorHistoryExcludesSaturatedRetainedPrefix"
+      ],
+      "passed": [],
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal-red.log",
+      "race_reports": 0,
+      "sha256": "74a9f5dc2a1d5b8332f16fad78852f6cb6afd9f60b861a0ab993370a9976a806"
+    },
+    {
+      "bytes": 754,
+      "command": "GOMAXPROCS=2 go test -p 2 -overlay=/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/causal/chronology-overlay.json ./sim-testnet -run '^TestAdversaryErrorChronologyRetainsOnlyErrors$' -count=1 -v",
+      "exit_code": 1,
+      "failed": [
+        "TestAdversaryErrorChronologyRetainsOnlyErrors"
+      ],
+      "passed": [],
+      "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/chronology-causal-red.log",
+      "race_reports": 0,
+      "sha256": "fa0bc287c22750235ca0e532db615e5ccc172c2a183daa844c44bb0cbc6fe725"
+    }
+  ],
+  "triage": {
+    "bytes": 213150,
+    "path": "/mnt/data/sn-testnet/qualification/r46-adversary-actor-hardening-20260926/triage.receipt.json",
+    "sha256": "b0d9cab66764c9ae213d810299a00f257fd046c3303c4f524ce926ca6091b8e1"
+  },
+  "unproven_remaining_causes": [
+    "The exact decomposition of1809 API,2774 verify,35 RPC and6 artifact errors cannot be recovered from final aggregate counters. Do not assert every error is explained by a confirmed harness defect.",
+    "All20 swarm process-health rows occur at18:10:43 during release-dependency-rpc-path; signed impacts omit swarms. No scoped expectation expansion is justified without causal proof.",
+    "The substrate proxy process-health row at18:15:44 occurs during rolling EVM proxy recovery, without exact substrate impact authorization.",
+    "Validator restart deltas are in-run actual changes, not terminal cancellation effects. Startup/continuity ownership is investigated separately.",
+    "All18 exit-gap witnesses show expected=0 with queued tails and60second budgets. Idle receiver retirement/compact-contract recovery remains a hypothesis. Need deterministic full-path initialized nonzero prefix, receiver-idle retirement before sender-idle, same-sequence resume, missing-contract feedback/full-proof recovery, lost recovery ACK and carrier replacement."
+  ],
+  "worktree": "/mnt/data/sn-testnet/worktrees/r46-adversary-actor-hardening-20260926"
+}

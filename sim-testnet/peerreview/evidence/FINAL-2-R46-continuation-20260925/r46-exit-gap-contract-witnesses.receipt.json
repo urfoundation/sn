@@ -1,0 +1,452 @@
+{
+  "conclusion": "Contract-ahead reproduction logs no-contract errors; test against sealed peer windows before attributing.",
+  "events": [
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790362041.848449,
+      "omitted": 0,
+      "process_id": "miner-swarm-1",
+      "witnesses": [
+        {
+          "offset": 90725250,
+          "raw": "I0925 18:41:12.138859 3780520 transfer_encrypt.go:2074] [tls]01a050c5-f5eb-6049-092b-d715490223bf server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 369.70958999177674,
+          "sha256": "4c211112bb0b1d8f69df6c1994e3e948fef091f8dd3c69ce480e60a5fd34696b"
+        },
+        {
+          "offset": 90737145,
+          "raw": "E0925 18:47:21.848449 3780520 transfer.go:14822] [r]01a050c5-f5eb-6049-092b-d715490223bf<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=22 age=1m0.001045943s budget=1m0s",
+          "seconds_before_exit": -8.221832104027271e-09,
+          "sha256": "0ad84b56a00115350cd20b88d3176bb3b773804f04266c41523887622e5029f5"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790362997.70676,
+      "omitted": 0,
+      "process_id": "miner-swarm-11",
+      "witnesses": [
+        {
+          "offset": 92824966,
+          "raw": "I0925 18:56:13.312382 3785061 transfer_encrypt.go:2074] [tls]01a050c6-9565-db47-0973-1221147450a3 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 424.3943779296533,
+          "sha256": "3a9e17caf4f667ef444edc46a8bbe644152024f6ff57d05b2a3cdbbf3eca4e40"
+        },
+        {
+          "offset": 92846144,
+          "raw": "E0925 19:03:17.706760 3785061 transfer.go:14822] [r]01a050c6-9565-db47-0973-1221147450a3<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000452477s budget=1m0s",
+          "seconds_before_exit": -7.034395821392536e-08,
+          "sha256": "4514381139c2c3025dc9b3f3be2fbf4b75a57fa022b81e6f05c6145bbd9c3ec9"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790363336.050764,
+      "omitted": 0,
+      "process_id": "miner-swarm-12",
+      "witnesses": [
+        {
+          "offset": 92829887,
+          "raw": "I0925 19:02:41.040529 3785062 transfer_encrypt.go:2074] [tls]01a050c6-98cd-4ee9-43eb-992739b1b911 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 375.01023508385697,
+          "sha256": "2b058a4a2f8dc8c70784d81f6b64ca61cc950c6bdf95f9dc1a51c2086e6234dd"
+        },
+        {
+          "offset": 92855790,
+          "raw": "E0925 19:08:56.050764 3785062 transfer.go:14822] [r]01a050c6-98cd-4ee9-43eb-992739b1b911<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000932306s budget=1m0s",
+          "seconds_before_exit": 8.386268746107817e-08,
+          "sha256": "89653ead730a5b3be9bad866c8a78c59e8efe8fdae9b2719a3b804c547d92140"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790363471.631907,
+      "omitted": 0,
+      "process_id": "miner-swarm-14",
+      "witnesses": [
+        {
+          "offset": 92371748,
+          "raw": "I0925 19:05:41.262195 3785870 transfer_encrypt.go:2074] [tls]01a050c6-a4d5-8ab1-1b7a-c7293c0eca32 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 330.3697119862336,
+          "sha256": "2516351e04358ab797ad1c9a3a61559bed511c4b40b488238ea8d1fdd4d74ed7"
+        },
+        {
+          "offset": 92377534,
+          "raw": "E0925 19:11:11.631907 3785870 transfer.go:14822] [r]01a050c6-a4d5-8ab1-1b7a-c7293c0eca32<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001099899s budget=1m0s",
+          "seconds_before_exit": -1.3766111806035042e-08,
+          "sha256": "1587ec419a1df13c70e1955efc2662d7a114c2233b7b62df71e2dcaab0fc001f"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790362896.299611,
+      "omitted": 0,
+      "process_id": "miner-swarm-15",
+      "witnesses": [
+        {
+          "offset": 92317703,
+          "raw": "I0925 18:55:31.595897 3786892 transfer_encrypt.go:2074] [tls]01a050c6-a9b2-5d32-2732-2f024be4f154 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 364.70371409160725,
+          "sha256": "89bb932f10c241ba89dbbd7e5c73f0913e56478d9d1aa52845048857417ef62e"
+        },
+        {
+          "offset": 92341695,
+          "raw": "E0925 19:01:36.299611 3786892 transfer.go:14822] [r]01a050c6-a9b2-5d32-2732-2f024be4f154<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=23 age=1m0.000530585s budget=1m0s",
+          "seconds_before_exit": 9.16188582777977e-08,
+          "sha256": "984bb9877da00e68d837371f147246caeff0703774ef4d9d933d2e0a3cef84e3"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790362952.22091,
+      "omitted": 0,
+      "process_id": "miner-swarm-15",
+      "witnesses": [
+        {
+          "offset": 92315572,
+          "raw": "I0925 18:55:16.272176 3786892 transfer_encrypt.go:2074] [tls]01a050c6-a6bd-4380-7228-47592427c089 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 435.9487340723281,
+          "sha256": "082337f076b56c3117b678f607a3e6a0da653d4b9d2d969be7b46e98cc64213c"
+        },
+        {
+          "offset": 92342424,
+          "raw": "E0925 19:02:32.220910 3786892 transfer.go:14822] [r]01a050c6-a6bd-4380-7228-47592427c089<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001045235s budget=1m0s",
+          "seconds_before_exit": 7.232301868498325e-08,
+          "sha256": "e5db0ffff32591bad995a986afa8d1ca771c44307daac8f558319aadd0618771"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790367974.708301,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92510844,
+          "raw": "I0925 20:21:06.376837  127571 transfer_encrypt.go:2074] [tls]01a050c6-4308-f7c5-66ec-6fd9e0454dd5 server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 308.33146406734886,
+          "sha256": "27d62ca2f9ec9dff2f25b566f56c94f89b5577819c48a939bc8cfc1ae52474c7"
+        },
+        {
+          "offset": 92526259,
+          "raw": "E0925 20:26:14.708301  127571 transfer.go:14822] [r]01a050c6-4308-f7c5-66ec-6fd9e0454dd5<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.00100961s budget=1m0s",
+          "seconds_before_exit": 6.734626367688179e-08,
+          "sha256": "5908a88318961128ef7a03cb447e52ae445e2b450d4028dd08605c31936e34fe"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1
+      },
+      "event_time": 1790368073.195725,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92531025,
+          "raw": "E0925 20:27:53.195725  127571 transfer.go:14822] [r]01a050c6-478a-7fcd-2305-f4c42e957c23<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=23 age=1m0.000466952s budget=1m0s",
+          "seconds_before_exit": -3.585591912269592e-08,
+          "sha256": "4fb022446806a89cde5c3639c00909954f6a95f195553476a4f3fee9c543ddae"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1
+      },
+      "event_time": 1790368153.516579,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92542963,
+          "raw": "E0925 20:29:13.516579  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=27 age=1m0.000920753s budget=1m0s",
+          "seconds_before_exit": -8.726783562451601e-08,
+          "sha256": "44372dcc56a5d291e89c4cd66435f7ae16f6fa1c4ae4c046223c690413733b03"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790368783.499078,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92558541,
+          "raw": "I0925 20:34:43.995471  127571 transfer_encrypt.go:2074] [tls]01a050c6-478a-7fcd-2305-f4c42e957c23 server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 299.5036070353526,
+          "sha256": "5f6fa8642d270c3a3b2dfa2347c7de69324a5fe7a40e5317cb0502224941b195"
+        },
+        {
+          "offset": 92573680,
+          "raw": "E0925 20:39:43.499078  127571 transfer.go:14822] [r]01a050c6-478a-7fcd-2305-f4c42e957c23<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=17 age=1m0.000897111s budget=1m0s",
+          "seconds_before_exit": 3.536115400493145e-08,
+          "sha256": "daaa6845c1fd15986a2d84cf4b75f4f47af79fa5e882f40d3c55679d9fa00f1a"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790368851.941607,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92561092,
+          "raw": "I0925 20:34:58.748034  127571 transfer_encrypt.go:2074] [tls]01a050c6-b11c-00ed-a4e1-82921c0c7583 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 353.1935729984398,
+          "sha256": "3cb0fbce7eb3958dbaf27eb290a6ae043cfbd186ed47d233e171b632ec57ed39"
+        },
+        {
+          "offset": 92573916,
+          "raw": "E0925 20:40:51.941607  127571 transfer.go:14822] [r]01a050c6-b11c-00ed-a4e1-82921c0c7583<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=19 age=1m0.000719951s budget=1m0s",
+          "seconds_before_exit": -1.5570549294352531e-09,
+          "sha256": "72c28130be40b3509e673427a1a78459a64646b7499d6bf29fd535badea96858"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790368926.17895,
+      "omitted": 0,
+      "process_id": "miner-swarm-16",
+      "witnesses": [
+        {
+          "offset": 92565172,
+          "raw": "I0925 20:35:38.611501  127571 transfer_encrypt.go:2074] [tls]01a050c6-b010-082d-3ed4-0b89a574acd7 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 387.56744907132816,
+          "sha256": "bc83f4cf269e8a9ca49862d13c90c6ef4a0afeeaa1944aa373d1931dd034adb8"
+        },
+        {
+          "offset": 92579320,
+          "raw": "E0925 20:42:06.178950  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000468271s budget=1m0s",
+          "seconds_before_exit": 7.133348844945431e-08,
+          "sha256": "17bc1e20f1d7a0af22a40cc0cabcffb4d7695d2b203bbbe0b545d06500e9b27f"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1
+      },
+      "event_time": 1790361791.461814,
+      "omitted": 0,
+      "process_id": "miner-swarm-17",
+      "witnesses": [
+        {
+          "offset": 92822790,
+          "raw": "E0925 18:43:11.461814 3787845 transfer.go:14822] [r]01a050c6-4a5e-bfb6-6623-1d473f81a65c<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=58 age=1m0.00008741s budget=1m0s",
+          "seconds_before_exit": -7.329799700528383e-08,
+          "sha256": "fa2c727b98cae32428385f309f118e4cf78d51603099c6d53f6e6c5d17c7ec46"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790368751.064827,
+      "omitted": 0,
+      "process_id": "miner-swarm-17",
+      "witnesses": [
+        {
+          "offset": 93324739,
+          "raw": "I0925 20:33:53.978916  132487 transfer_encrypt.go:2074] [tls]01a050c6-4ca9-34d4-3493-adc30a5d46a3 server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 317.0859109653393,
+          "sha256": "e13dbc08de1154ade855a195dbd877e80a2dd26f62ba3ec757a235a221eb5b35"
+        },
+        {
+          "offset": 93342348,
+          "raw": "E0925 20:39:11.064827  132487 transfer.go:14822] [r]01a050c6-4ca9-34d4-3493-adc30a5d46a3<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.0005188s budget=1m0s",
+          "seconds_before_exit": -3.466266207396984e-08,
+          "sha256": "a8e4d4392f6619430842432ba9edbe714ac13e3a8995636d308ceafff8f163b7"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790368859.461067,
+      "omitted": 0,
+      "process_id": "miner-swarm-18",
+      "witnesses": [
+        {
+          "offset": 94356218,
+          "raw": "I0925 20:33:46.395696  138598 transfer_encrypt.go:2074] [tls]01a050c6-5188-73f2-7b98-dd5e47952db8 server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 433.0653709612816,
+          "sha256": "f4d5eaf399fde6a6471e8ba0ff0d3a319c9b032d509ba346a93401bfe16239eb"
+        },
+        {
+          "offset": 94382708,
+          "raw": "E0925 20:40:59.461067  138598 transfer.go:14822] [r]01a050c6-5188-73f2-7b98-dd5e47952db8<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=43 age=1m0.000048765s budget=1m0s",
+          "seconds_before_exit": -3.8708094507455826e-08,
+          "sha256": "85758f16bf6cd600d912b40bfc7db9222179adb13f370db3ce78a1a14010c096"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790363707.98024,
+      "omitted": 0,
+      "process_id": "miner-swarm-8",
+      "witnesses": [
+        {
+          "offset": 93572407,
+          "raw": "I0925 19:08:18.155003 3783246 transfer_encrypt.go:2074] [tls]01a050c6-8749-fd01-2edd-c261bf60abd9 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 409.8252371065755,
+          "sha256": "12599d2c6915b5ccb5141f5bfa7a8caf88e37e530d18f5fc60da53ec7e9171b0"
+        },
+        {
+          "offset": 93586809,
+          "raw": "E0925 19:15:07.980240 3783246 transfer.go:14822] [r]01a050c6-8749-fd01-2edd-c261bf60abd9<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=17 age=1m0.000281504s budget=1m0s",
+          "seconds_before_exit": 1.0657822713255882e-07,
+          "sha256": "89b0d8721a9d1267848b36eee4908777095d6deed272443677266d7df803af6b"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790362076.728586,
+      "omitted": 0,
+      "process_id": "miner-swarm-9",
+      "witnesses": [
+        {
+          "offset": 93269109,
+          "raw": "I0925 18:41:52.990572 3784119 transfer_encrypt.go:2074] [tls]01a050c6-2283-0d41-51c1-da6e1f133b95 server c=false 01a0d941-ccf2-794f-a74c-d02bf1a9232b peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 363.7380139584857,
+          "sha256": "ab6133d8e029c054e0a0410fcd4dd151819e988fd5362df4472b87b8d1bc2853"
+        },
+        {
+          "offset": 93283970,
+          "raw": "E0925 18:47:56.728586 3784119 transfer.go:14822] [r]01a050c6-2283-0d41-51c1-da6e1f133b95<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000273404s budget=1m0s",
+          "seconds_before_exit": -4.151661414653063e-08,
+          "sha256": "2b0ee8f4d0cbf59c11f73c2e6ac009c4f971e911ba4dc58f827533c17d620a8f"
+        }
+      ]
+    },
+    {
+      "class_counts": {
+        "exit gap timeout": 1,
+        "peer identity proof verified": 1
+      },
+      "event_time": 1790363283.180481,
+      "omitted": 0,
+      "process_id": "miner-swarm-9",
+      "witnesses": [
+        {
+          "offset": 93335563,
+          "raw": "I0925 19:02:37.606662 3784119 transfer_encrypt.go:2074] [tls]01a050c6-89ff-3114-27b7-321765c6ac95 server c=false 01a0d941-ccf3-4b6c-e544-2bd40efb6745 peer identity proof verified \u2014 cipher is now usable",
+          "seconds_before_exit": 325.57381895702565,
+          "sha256": "f042297aea3ed9672b0cfe6f75420aed534ba7a71385f524fb934e1dbc37b0a1"
+        },
+        {
+          "offset": 93358671,
+          "raw": "E0925 19:08:03.180481 3784119 transfer.go:14822] [r]01a050c6-89ff-3114-27b7-321765c6ac95<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000787097s budget=1m0s",
+          "seconds_before_exit": -4.2971805669367313e-08,
+          "sha256": "4b84e299cf7f15c75646799cfc58762e94af055bb3fe4ff1637d151fa23aa38c"
+        }
+      ]
+    }
+  ],
+  "schema": "urnetwork-r46-compact-contract-witnesses-v1",
+  "sources": [
+    {
+      "bytes": 91225048,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-1.stderr.log",
+      "sha256": "b91953b835c586c097cf0b69e5da527e9af3955eb6246c78def12aba1855ec18"
+    },
+    {
+      "bytes": 93452359,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-11.stderr.log",
+      "sha256": "f8bf48bd733feec1f34131155bc3ed8bcd9c5a1930396b947a5b5954022b5720"
+    },
+    {
+      "bytes": 93374726,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-12.stderr.log",
+      "sha256": "026b49b1eb156c75349c4595d2e99d5273f7c15dcd3c45126017cc8282f55f5b"
+    },
+    {
+      "bytes": 92887986,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-14.stderr.log",
+      "sha256": "f4a4774dd8251f0e32de4f4d786f96dcf0acd9bb6f782e395351a8c929ec0733"
+    },
+    {
+      "bytes": 92799144,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-15.stderr.log",
+      "sha256": "c664b93d5cff79071034116a01ad4f68c379224c87f04728de0c73556d4c4af1"
+    },
+    {
+      "bytes": 92703032,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "sha256": "e5f4a98de4f3d9c163f6fbc546711dda96e2bb55c6e29016d30b7de0d9be1e7a"
+    },
+    {
+      "bytes": 93466312,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "sha256": "48231b54164c0b370596f0b5c1763e230a4162d05fc868e50a45c648e4f9f305"
+    },
+    {
+      "bytes": 94511979,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-18.stderr.log",
+      "sha256": "f51cf246272136ab5f018e1d84a0953a051119920d805adf6e8d886cc87283ec"
+    },
+    {
+      "bytes": 94112164,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-8.stderr.log",
+      "sha256": "019c81fa391da6406a311bbe028cf0e2f287eb3adafb035b10efd0762c780d63"
+    },
+    {
+      "bytes": 93842966,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "sha256": "2937f6045d089b3a13c4e742f83e66c090824cc1450ea59407dbeeaebed9744b"
+    }
+  ],
+  "window": "600 seconds before through 10 seconds after each exact receive gap, September25 only"
+}

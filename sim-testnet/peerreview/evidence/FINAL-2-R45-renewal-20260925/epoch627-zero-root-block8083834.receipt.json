@@ -1,0 +1,91 @@
+{
+  "schema": "urnetwork-read-only-root-commitment-receipt-v1",
+  "recorded_at": "2026-09-25T15:00:16.060458+00:00",
+  "endpoint": "http://127.0.0.10:19944",
+  "read_only": true,
+  "source_revision": "6100394b04fc3386b03870b8bdcc9a6abb5614a7",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "observation_note": "Block 8083834 was finalized in initial read at 2026-09-25T14:58:09.902869Z; receipt replays both calls at its exact canonical hash. No transactions submitted.",
+  "head_request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "eth_getBlockByNumber",
+    "params": [
+      "0x7b597a",
+      false
+    ]
+  },
+  "head_response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "number": "0x7b597a",
+      "hash": "0xe52b5205ee6ac72170379ee4b3bf20862cecab66b449c841d2fc1ea6b191502d",
+      "parentHash": "0x4c22a07f5b8b145eeecc50a3fe59ce2b024c0d089fb4b8c4bdf83dd92eeb2dfc",
+      "timestamp": "0x6ab68be0"
+    }
+  },
+  "root_commit_deadline_block": 8083824,
+  "calls": [
+    {
+      "epoch": 627,
+      "no_id": 1,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+            "data": "0x548f3b8600000000000000000000000000000000000000000000000000000000000002730000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "blockHash": "0xe52b5205ee6ac72170379ee4b3bf20862cecab66b449c841d2fc1ea6b191502d",
+            "requireCanonical": true
+          }
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "decoded": {
+        "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "committer": "0x0000000000000000000000000000000000000000",
+        "commit_block": 0
+      }
+    },
+    {
+      "epoch": 627,
+      "no_id": 2,
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "eth_call",
+        "params": [
+          {
+            "to": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+            "data": "0x548f3b8600000000000000000000000000000000000000000000000000000000000002730000000000000000000000000000000000000000000000000000000000000002"
+          },
+          {
+            "blockHash": "0xe52b5205ee6ac72170379ee4b3bf20862cecab66b449c841d2fc1ea6b191502d",
+            "requireCanonical": true
+          }
+        ]
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "decoded": {
+        "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "committer": "0x0000000000000000000000000000000000000000",
+        "commit_block": 0
+      }
+    }
+  ]
+}

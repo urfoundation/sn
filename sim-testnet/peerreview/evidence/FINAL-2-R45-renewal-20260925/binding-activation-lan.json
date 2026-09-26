@@ -1,0 +1,8 @@
+{
+  "schema": "r45-binding-activation-read-v1",
+  "read_at": "2026-09-25T14:46:05.337994+00:00",
+  "rpc_url": "http://192.168.1.162:9944",
+  "activation_block": 8083774,
+  "finalized_block": 8083774,
+  "finalized_hash": "0x6f6284b275845a8234033f46d5fec486d05294dfbbbb5cf320a0105bf473dc25"
+}

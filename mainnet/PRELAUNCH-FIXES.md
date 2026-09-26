@@ -2365,3 +2365,83 @@ before runtime or precompile evidence is admitted.
 acceptance; the exact-height positive also covers the explicitly owned shared
 RPC route. This refusal-only hardening does not attribute or waive the 35
 sealed R46 RPC errors, whose individual chronology was not retained.
+
+### R46 measured-run lessons
+
+R46 completed all five measured epochs and crossed its terminal block, then
+sealed a failed provisional result with 86 failed assertions. Both validators
+had zero epoch-634 proofs during scheduled rolling restarts. Validator 2 took
+about 80 minutes to resume proof production; validator 1 remained in census
+replay at the terminal cut. Process liveness and a successful restart receipt
+therefore do not establish release readiness. Mainnet restart admission must
+require fresh proof production through both operators and an applied native
+decision from each validator before scheduling the next disruptive fault.
+Persist authenticated replay checkpoints and reuse exact already verified
+stream chunks or signature results within their bounded authority; test
+interrupted replay, a changed origin/key/body, and the point at which proof
+workers actually start. A restart that cannot recover within the signed
+interval must fail that interval explicitly instead of being counted healthy
+from a PID alone.
+
+R46 operator 2 epoch 634 has on-chain `RootMissed` with no committed root,
+and the terminal payout census lacks that epoch's authenticated tier. The
+pinned taskworker closed with zero payout leaves and the server deliberately
+skipped submission; this is an empty eligibility census, not a demonstrated
+failed transaction. Four proof streams had zero completed epoch-634 proofs,
+but the exact provider eligibility cause still needs a source census. Mainnet
+must reconcile every expected epoch through capture, carry, root commit,
+payment and claim state, including a missed-root path. A later artifact cannot
+repair the missing original root silently. Keep the exact missed epoch in
+the result and test a validator restart crossing payout eligibility and root
+submission, including a zero-leaf control. Separately,
+one claim was still uncertain at the terminal cut; reconcile its durable
+transaction through finalized on-chain state with a bounded post-terminal
+read, preserving the original terminal verdict and recording later resolution
+as a supplement rather than rewriting history.
+
+R46 also showed a terminal control problem: after the signed interval and all
+42 faults were complete, failed strict assertions and an adversary actor with
+zero samples kept the owner polling for hours. Separate collection completion
+from acceptance. Once an authenticated in-window outcome is immutable and all
+fault/lifecycle cleanup is retained, seal a failed result promptly with the
+full strict assertion and adversary inventory; keep retrying mutable reads
+while they can still satisfy acceptance. Test both paths, including an actor
+whose prerequisite never appears. Diagnostic readers must run against the
+sealed result: an earlier read-only inventory that timed out waiting for the
+result is historical, not a substitute for a fresh final check.
+
+The sealed R46 diagnostic also rejected legitimate lifecycle cleanup because
+its final-result reader compared the original start fault record directly to
+the completed record using a validator meant for adjacent checkpoints. The
+live owner had signed the intermediate request before cleanup. Mainnet
+history verification must replay each authenticated checkpoint in order,
+applying the strict adjacent transition validator at every edge, and then
+bind the final result to the last checkpoint. It must still reject a
+completed cleanup that lacks the signed request in that history. Test both
+the valid multi-step path and a forged start-to-complete jump through
+recovery and terminal diagnostics.
+
+R46's operator stats and proof reads hit their 100,000-row and 10,000-row
+caps while the APIs returned oldest-first history. A healthy response could
+therefore show stale scoring and hide the current proof interval. Mainnet
+observers must request an explicit, pinned time range for every sampled
+operator, reject a full page that might be truncated, and retain the queried
+range with the result. A transient GET may retry within its approved budget
+without changing that range. API response liveness must be judged from the
+response itself; unrelated process-health failures remain separate strict
+findings. Verification faults must not excuse a semantically invalid signed
+response. Exercise saturated history, changed signing keys, replayed samples,
+and later success after earlier errors with deterministic regression tests.
+
+R46 retained 18 receive-sequence exit gaps across 10 swarm processes. The
+deployed receive idle rule retires a sequence after 120 seconds while the
+sender retains it for 300 seconds; all 18 matched sender/receiver pairs have
+their next write inside that mismatch. Actual plain, encrypted and combined
+receive/TLS wire fixtures nevertheless recover after 155 seconds idle; the
+asymmetry alone is not a demonstrated root cause. Before mainnet, force lost
+first acknowledgement, contract-ahead state, carrier replacement,
+cancellation and foreign session rejection through the production path.
+Preserve exit-gap findings until a causal test proves a fix. The native-1674
+gap is separate: durable input objects did not
+create an applied validator intent. Mainnet admission must require complete
+authenticated native history or a specifically approved fresh generation.

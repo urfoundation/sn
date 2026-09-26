@@ -1,0 +1,43 @@
+{
+  "binary_sha256": "195c12551e72010d868d2e6b3689aa7b17ba58e44eeb7169b37c5986b1bc7491",
+  "cache_observations": [
+    {
+      "directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/relay-cold-census-v1",
+      "file_count": 2457,
+      "newest_mtime_utc": "2026-09-24T08:33:31.288839+00:00"
+    },
+    {
+      "directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/relay-startup-cache-v2",
+      "file_count": 3,
+      "newest_mtime_utc": "2026-09-24T02:55:44.197641+00:00"
+    }
+  ],
+  "captured_at": "2026-09-25T14:38:29.061678+00:00",
+  "completion_time_utc": "2026-09-25T14:32:05.519240+00:00",
+  "interpretation": "The live worker emitted this row only after fixed public census verification and witness revalidation succeeded. The result is retained in memory and joined by WaitPublicAudit; this path writes no standalone completion receipt. Existing cache mtimes are separately reported and are not represented as R45 completion receipts. final_acceptance remains false.",
+  "journal_raw_path": "/mnt/data/sn-testnet/qualification/r45-publication-capacity-advisory-20260925/public-census-audit-20260925T143205.journal.jsonl",
+  "journal_raw_sha256": "e1918707283fa92d63e2d040c77a0dd0e2fba04c09e95c628815e12e3c4a0b3d",
+  "journal_record": {
+    "MESSAGE": "sim-testnet: provisional evidence relay pending_public_census=false public_census_audit_passed=true final_acceptance=false",
+    "_EXE": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/build/sim-testnet-r45-6100394b-connectc98eb715",
+    "_PID": "3792501",
+    "_SYSTEMD_INVOCATION_ID": "e7c0d7518cbb4ccb81c6cb1544cfc6e3",
+    "_SYSTEMD_USER_UNIT": "urnetwork-sim-release-r45.service",
+    "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=41fba;b=484e122110374a108279bc05397861eb;m=32fcbc0c14;t=65c4f94996f88;x=95cc6c84e28a53e3",
+    "__REALTIME_TIMESTAMP": "1790346725519240"
+  },
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "record_kind": "service journal completion observation; not a signed standalone audit receipt",
+  "run_id": "20260925T134346.277250758Z-release-1.0",
+  "schema": "external-read-only-public-census-log-observation-v1",
+  "signed_attempt_snapshot_path": "/mnt/data/sn-testnet/qualification/r45-publication-capacity-advisory-20260925/attempt-20260925T142812Z.evidence.json",
+  "signed_attempt_snapshot_sha256": "d0d804704c75bc5bac4d7b3d6a412f45d6021e638112c46e95ab1c9adc57f520",
+  "source_file_sha256": {
+    "sim-testnet/evidence_relay_campaign.go": "527a00bfe99c8aaec56160076557a73599350e4e1073cdddd4e2ce389b2f567a",
+    "sim-testnet/evidence_relay_cold_census.go": "f1a041c8bda760208dc0a5fdc3a5d099f0c0dd3a8706cab822ccabbc7b2ae2e5",
+    "sim-testnet/evidence_relay_policy_rollover.go": "a17ed29744569eca15f02704efb0f3bf4a5ab41d4efa2f12514e7f43b8837a8f",
+    "sim-testnet/evidence_relay_public_audit.go": "19034ecc611b31f17810e67f3c81c4dab579326e2f019f6a6c54ad48ad2d9b1d",
+    "sim-testnet/evidence_relay_startup_cache.go": "6130f9d89f32aefdadf479ce7c469e028d533c5f7abf94907e5552dcf90cb002"
+  },
+  "source_revision": "6100394b04fc3386b03870b8bdcc9a6abb5614a7"
+}

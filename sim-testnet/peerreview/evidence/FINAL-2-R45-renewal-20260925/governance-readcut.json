@@ -1,0 +1,10 @@
+{
+  "schema": "urnetwork-sim-r45-governance-readcut-v1",
+  "read_at": "2026-09-25T14:15:48.193062+00:00",
+  "run_id": "20260925T134346.277250758Z-release-1.0",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "expected_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/public/governance-drill.json",
+  "present": false,
+  "read_only": true,
+  "final_acceptance": false
+}

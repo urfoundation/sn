@@ -1,0 +1,119 @@
+{
+  "captured_at": "2026-09-25T20:23:38.128128+00:00",
+  "faults": [
+    {
+      "applied_block": 8084711,
+      "applied_block_hash": "0xc12e7c8f33ca94948966235810d5632a81bba94de542ba486508a9c401f3a74f",
+      "fleet_index": 4,
+      "id": "validator-local-head-boundary",
+      "impacts": [
+        "validator-1"
+      ],
+      "kind": "validator-view-filter",
+      "minimum_duration_blocks": 20,
+      "processes": [
+        {
+          "id": "operator-2-validator-1-head-view",
+          "identity": "no:2",
+          "pid": 3780334,
+          "role": "operator-api-validator-view"
+        }
+      ],
+      "restore_block": 8085445,
+      "restore_condition": "validator-local-head-boundary-diverged",
+      "restored_block": 8085449,
+      "restored_block_hash": "0x040b161da4bab7ea678640bcfe2d7e871f24892c3a947b24d3e2a8444415b786",
+      "restored_processes": [
+        {
+          "id": "operator-2-validator-1-head-view",
+          "identity": "no:2",
+          "pid": 31417,
+          "role": "operator-api-validator-view"
+        }
+      ],
+      "status": "restored",
+      "targets": [
+        "operator-2-validator-1-head-view"
+      ],
+      "trigger_block": 8084703,
+      "validator_id": 1
+    },
+    {
+      "applied_block": 8084711,
+      "applied_block_hash": "0xc12e7c8f33ca94948966235810d5632a81bba94de542ba486508a9c401f3a74f",
+      "id": "head-boundary",
+      "kind": "miner-control",
+      "minimum_duration_blocks": 20,
+      "processes": [
+        {
+          "id": "miner-10",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-11",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-12",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-9",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        }
+      ],
+      "restore_block": 8085444,
+      "restore_condition": "global-head-boundary-diverged",
+      "restored_block": 8085444,
+      "restored_block_hash": "0xae3f7c68de27d454bc20f20ef54daba9cc32ebaef41c3976397e7c50667ae761",
+      "restored_processes": [
+        {
+          "id": "miner-10",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-11",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-12",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        },
+        {
+          "id": "miner-9",
+          "identity": "miners:1-50",
+          "pid": 3780520,
+          "role": "miner"
+        }
+      ],
+      "status": "restored",
+      "targets": [
+        "miner-9",
+        "miner-10",
+        "miner-11",
+        "miner-12"
+      ],
+      "trigger_block": 8084704
+    }
+  ],
+  "final_acceptance": false,
+  "owner_status": "MainPID=4123621\nActiveState=active\n",
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-head-boundary-restoration-v1",
+  "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/faults.json",
+  "source_sha256": "d369887fa7b26fe0c0b275a4018ae1db29161e22b5b5a3f2c5adbbe2b5b0f10f"
+}

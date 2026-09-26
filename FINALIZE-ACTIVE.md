@@ -1,5 +1,171 @@
 # Testnet execution plan
 
+## R45 sealed failure and retained recovery — 2026-09-25 16:56 UTC
+
+The owner exited 1 after sealing `runs/20260925T134346.277250758Z-release-1.0/result.json`:
+five of six assertions failed, `final_acceptance=false`. The last completed
+owner observation was epoch 629 at finalized block 8,084,357, before the
+signed first measured block 8,084,374. The chain crossed that block, but the
+owner did **not** produce a measured epoch-630 observation. The actual stop
+was `heartbeat process log gate`, with five release-blocking finding rows;
+validator-2's native attempt also reported `compact head EMA epoch jumped`.
+The signed recovery-45 envelope invalidated acceptance at 16:55:38 UTC with
+`execution-exited-before-completion`. Preserve the signed start as history,
+not accepted progress. Two validator-view filters remain active in the exact
+fault ledger, quality-cohort was restored, and the supervisor is still active.
+A subsequent read-only filesystem check found no live active-fault or operator
+view-filter files; this does not rewrite the historical terminal fault state.
+Do not manually edit fault or process evidence or stop that supervisor.
+Both operator scenario bundles were published according to the sealed result.
+The exact result, fault ledger, process-log snapshot, invalidated envelope
+and steering receipt are in the R45 portable bundle. Isolated provisional
+continuation and strict replay fixes are under qualification; the next owner
+must authenticate and continue retained actions without repeating setup.
+
+## R45 release boundary signed — 2026-09-25 15:52 UTC
+
+The live R45 owner has signed `campaign-start.evidence.json` at 15:52:25 UTC
+after matching both epoch-628 artifacts to nonzero on-chain roots and recording
+the bounded provisional low-usage deferral. Its acceptance baseline is
+finalized block 8,084,084; measured epochs are 630–634, starting at block
+8,084,374, ending at 8,085,874, with terminal block 8,086,024. The exact
+signed envelope and baseline observation are in the R45 portable bundle.
+The owner remains the only writer. Do not restart it for the isolated fixes.
+The LAN RPC finalized the signed first measured block 8,084,374 (hash
+`0x00bb53a7d661754e4d66df69cab503eb7a905990f1a2d06d1816c4605493d5c6`,
+timestamp 16:45:36 UTC). The interval is underway on-chain; preserve the
+owner's later post-start observations before claiming measured behavior.
+Final acceptance remains open, including governance drill, relay horizon,
+publication capacity and the scoped R44 exception.
+The read-only full active-epoch object census has since measured 428 retained
+objects and 244,049,506 bytes during 14:46:05–15:51:00. Bucket headroom was
+33,969,516,444 bytes; a doubled five-hour projection at the measured rate is
+2,255,656,538 bytes, giving about fifteen times that doubled margin. This
+supports the observed-workload byte gate, subject to the listing's lower-bound
+limit for overwritten, deleted or rejected writes. The pinned API request-rate
+advisory remains a separate unclosed strict check. Portable summary is in the
+R45 bundle; raw listing stays on `/mnt/data`.
+
+## R45 preparation record — 2026-09-25 13:50 UTC
+
+Round-7 fleet renewal completed with 202 fleets and 1,212 finalized,
+postcondition-verified actions. Its
+[portable result](sim-testnet/peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md)
+includes the journal summary and direct LAN-RPC sample receipt. Retained
+resume exited 0 with `setup_actions_dispatched=0`. The single owned
+`urnetwork-sim-release-r45.service` is active, authenticated all 44 prior
+recovery generations, and signed recovery-45. At this earlier cut acceptance
+had not started;
+do not launch a second writer or treat the signed attempt as completion.
+Before its acceptance boundary, remeasure `blob` storage growth with active
+epoch-628 bindings and require a twofold projected-growth margin. Preserve
+R44's failed owner verdict and scoped R44-LC-1 exception without widening it.
+Both resumed-configuration operator probes passed two exact content/history
+readbacks at 13:52 UTC, and the live 64 GiB quota was re-read. The admin usage
+snapshot was stale; this does not close the active-epoch storage gate.
+The controller logged a provisional, nonblocking protected-publication
+forecast shortfall at 13:54 UTC: per replica 32,768 versus 34,553 objects/hour
+and 8,388,608 versus 10,947,548 retry requests/hour. Byte capacity passes.
+The active limits were not changed; retain the advisory in terminal evidence
+and do not treat its waiver as acceptance. Do not mutate the pinned config
+under the current owner.
+The read-only 14:07 UTC object listing established a 34,505,448,693-byte
+baseline and 7,658,670 bytes of preactivation writes. It does not close the
+active-binding storage gate. The owner also logged an elapsed relay horizon
+forecast and deferred public census; the latter remains required at final
+audit. The owner and supervisor are still running.
+At 14:08 UTC the owner verified precompile preparation but logged
+`governance_drill_startup_waived=true`; its expected public drill evidence was
+absent at the later read cut. This is an open strict acceptance failure, not a
+reason to interrupt the current release owner before it yields terminal
+evidence.
+The owned parallel public evidence census finished at 14:32 UTC and logged
+`public_census_audit_passed=true`, `pending_public_census=false`. Keep its
+result distinct from final acceptance and the remaining capacity, horizon,
+governance and active-binding storage gates.
+The LAN RPC finalized renewal activation block 8,083,774 at 14:46 UTC,
+hash `0x6f6284b275845a8234033f46d5fec486d05294dfbbbb5cf320a0105bf473dc25`.
+Fresh admin reads confirmed 64 GiB quota and 464,104,980,480 bytes of healthy
+disk availability; usage was cached. Await the owner's next observation for
+fleet-binding validity and the independent active object census before
+claiming the storage gate or acceptance boundary.
+The independent 14:50 UTC full object listing counted 162,366 objects and
+34,505,454,565 bytes, with only 5,872 bytes in the first activation minutes.
+Keep the active full-epoch growth gate open; this short baseline is not a
+healthy-run projection.
+The first post-activation observation at finalized block 8,083,792 reports
+supervisor healthy and 808/808 fleet bindings valid. Policy-rate readiness is
+still false on complete epoch 627 (operator 1 zero bytes/zero tao-rao versus
+200,000-rao twice-native threshold), with no provisional low-usage deferral.
+Do not count this as a signed acceptance boundary. The exact observation is in
+the R45 portable evidence bundle.
+At finalized block 8,083,834, canonical LAN-RPC calls proved that both epoch
+627 root commitments are zero after their block-8,083,824 commit deadline.
+The workers correctly produced no roots for the zero-leaf epoch, while the
+current provisional rate deferral requires a payout root from that same
+rate-source epoch. This is a pre-acceptance compatibility finding. Preserve
+the active owner and its checkpoints; observe epoch 628 and prepare the
+isolated fix without changing the pinned binary or treating R44-LC-1 as a
+waiver for this separate issue. The receipt is in the R45 portable bundle.
+Epoch 628 has now closed. Exact canonical LAN-RPC reads at finalized block
+8,084,091 show both operator roots and artifact hashes nonzero, committed at
+8,084,080. At this read cut the owner postboundary match and acceptance
+boundary were still pending; both are documented at the top of this file.
+
+## R44 sealed result and R45 renewal — 2026-09-25 12:16 UTC
+
+R44's original owner exited at 11:50 UTC after sealing
+[its final result](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
+(SHA-256 `b631ca4cd6f8fca591497770f2d066a6a568cc84fe388e08ca6e00f3ccf18c46`):
+85 of 182 assertions failed, `result=fail`, `final_acceptance=false`,
+finalized head 8,082,861. The five release epochs did finish; no signed
+completion or `complete.json` exists. R44-LC-1 records only the bypassed
+lifecycle mutation and companion filter's failed early-restore condition;
+the hard restore at block 8,082,634 and all other failures remain visible.
+The post-owner read-only terminal diagnostic completed with 37 checks:
+14 pass, 14 fail, one named exception and eight unavailable. Its
+[report](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/post-owner-diagnostic.json)
+has SHA-256 `80b56cd76704b126ac486a431883b98054f3e6a3289693bd6015e551149b1ddf`.
+It was still running after the fleet stop and successor-plan archive, so late
+source-health and receipt failures are post-stop availability findings. The
+sealed R44 result remains the authority for original-owner acceptance.
+
+The `blob` bucket was above its 32 GiB hard quota during R44 terminal
+publication. A bounded admin update raised it to 64 GiB, read back exactly,
+with no object or lifecycle mutation. Both operators' new preflight envelopes
+then passed two POSTs and exact content/history readbacks using the pinned
+handler. The underlying HTTP 400 body was not retained, so the quota is the
+strongest evidenced shared-store cause, not a proven original response. The
+[quota receipt](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-quota-expansion.json)
+and [operator probes](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/README.md)
+are prospective repair evidence; R44 acceptance stays failed. Persist the
+64 GiB quota in configuration before any storage redeploy.
+The [object census](sim-testnet/peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-growth.json)
+measures about 1.326 GB created during R44 and a 0.300 GB peak complete
+hour, leaving about 34.225 GB beneath the new quota. Quota refusals and
+expired bindings censor this rate; remeasure after renewed bindings become
+active and require a twofold projected-growth margin before another full
+interval. Do not treat the historical rate as a healthy-run ceiling.
+
+The guarded fleet stop exited 0 after R44 ended, preserving on-chain state.
+Vault's reviewed alpha-ceiling edit was committed as `df003713` without
+changing the retained plan. Clean SN `6100394b` plus Connect `c98eb715`
+built binary SHA-256 `195c12551e72010d868d2e6b3689aa7b17ba58e44eeb7169b37c5986b1bc7491`;
+its external-copy doctor has 66 checks, zero hard failures and `ready=true`.
+The round-7 plan `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`
+contains 202 renewal fleets, 808 signed bindings and 1,212 new actions for
+epochs 628–659, no revocations, and remains within the approved 512 TAO /
+512 EVM / 47,000 alpha ceilings. The first two exact-plan apply services
+failed doctor on incomplete systemd/PATH environments before any round-7
+journal action. The corrected owned user service
+`urnetwork-sim-r45-round7-renew-envfull.service` adopted the same plan and
+its first ten commitment transactions finalized at block 8,083,024, hash
+`0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`,
+with ten retained postcondition verifications at that read cut. The completed
+renewal and retained resume are recorded in the newer section above.
+Its hash-pinned launcher is
+`/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/run-round7-apply-6100394b.sh`.
+
 ## R44 fourth terminal diagnostic complete — 2026-09-25 11:09 UTC
 
 The read-only `da7689f8` service exited successfully. Its

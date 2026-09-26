@@ -1,0 +1,525 @@
+{
+  "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "blocking_row_count": 13,
+  "captured_at": "2026-09-25T20:49:07.032665+00:00",
+  "cause": "The new validator-1 native-1677 attempt failed because a termination signal canceled its compact live-head census observation POST. The signed release-rolling-30 fault targets the exact former validator-1 PID at block 8085559; stderr records termination and the replacement startup at 20:43:07. This is not an HTTP timeout. The raw classified finding remains blocking.",
+  "collection_started_at": "2026-09-25T20:49:06.290254+00:00",
+  "decision": "Continue the progressing provisional owner through the scheduled validator restart and terminal evidence collection. Replacement startup is active; post-restart proof/intent/weight recovery is not yet evidenced.",
+  "fault_ledger": {
+    "bytes": 113054,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/validator1-restart-2049.faults.json",
+    "sha256": "c3d57488885edf7a0e7b5fc5486f0db86d56daec5002cf0129847453e98b0382"
+  },
+  "final_acceptance": false,
+  "gate": {
+    "bytes": 124967,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/validator1-restart-2049.gate.json",
+    "sha256": "379f4a15650d436c2da1b2c4a8a80cc5b09da794eedf66c055d2bcd70bcdba38"
+  },
+  "gate_updated_at": "2026-09-25T20:48:54.548803443Z",
+  "health_receipt": {
+    "bytes": 10518,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/swarm-health-2047.receipt.json",
+    "sha256": "e872f264cd605908e5abe40df861ba9b3533c878b4e42e196125142548288521"
+  },
+  "intent_state": [
+    {
+      "files": [
+        {
+          "exists": false,
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2/head-ema.json"
+        },
+        {
+          "exists": false,
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json"
+        }
+      ],
+      "sampled_at": "2026-09-25T20:49:06.317170+00:00",
+      "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+      "validator_id": 1
+    },
+    {
+      "files": [
+        {
+          "bytes": 231,
+          "exists": true,
+          "last_subnet_epoch": 1661,
+          "mtime_ns": 1790300123759527257,
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/head-ema.json",
+          "sha256": "df9d03914619ee03181a186d917e014f29a3f7f18868e2f5389817f016331bc7"
+        },
+        {
+          "bytes": 8007,
+          "current": {
+            "application_block": 8080373,
+            "finalized_block": 8079823,
+            "settlement_epoch": 614,
+            "status": "applied",
+            "subnet_epoch": 1661,
+            "updated_at": "2026-09-25T03:26:48.7518971Z",
+            "validator_id": 2,
+            "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+          },
+          "exists": true,
+          "history_count": 0,
+          "mtime_ns": 1790306868243473294,
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/steering-intents.json",
+          "sha256": "2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce"
+        }
+      ],
+      "sampled_at": "2026-09-25T20:49:06.317408+00:00",
+      "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+      "validator_id": 2
+    }
+  ],
+  "latest_complete_owner_observation": {
+    "fleet_binding_count": 808,
+    "fleet_bindings_valid": true,
+    "head": {
+      "hash": "0x3ee9ca883ec8b57f6eed7eddee8d77036bc39e0d3db118582cf7db3cd780cba3",
+      "number": 8085546
+    },
+    "observation_hash": "0xba707015cd40e39e939e5cd4135d7aad3ab097fd963c5dc6b37562bd4c2d8eeb",
+    "observed_at": "2026-09-25T20:40:46.972564181Z",
+    "offset": 40942430,
+    "rate_ready": true,
+    "raw_line_bytes": 1221005,
+    "raw_line_sha256": "83108586ac4eff184a6f338b82a6599f301f2169ea5387bad8816ee332ec31f2",
+    "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+    "validator_proof_counts": [
+      {
+        "applied_intents": 0,
+        "current_epoch": null,
+        "current_status": null,
+        "finalized_intents": 0,
+        "path_proof_counts": {
+          "1": 14858,
+          "2": 15233
+        },
+        "validator_id": 1
+      },
+      {
+        "applied_intents": 0,
+        "current_epoch": 1661,
+        "current_status": "applied",
+        "finalized_intents": 0,
+        "path_proof_counts": {
+          "1": 8925,
+          "2": 9040
+        },
+        "validator_id": 2
+      }
+    ]
+  },
+  "limitations": [
+    "Supervisor health and CPU/read activity do not prove startup completion or fresh economic work.",
+    "No validator-1 EMA or intent exists in the active retained directory at capture, and no post-restart proof row is present in the stated progress snapshot.",
+    "Validator-2 retains native-1661 applied intent; its latest proofs at 19:56 predate this restart. No new weight acceptance is inferred.",
+    "The latest observation may have begun before the restart; exact inner proof checkpoints and process times are retained separately.",
+    "Swarm gap findings remain repeated transport failures; full provider lifecycle health is not equivalent to successful delivery of their abandoned sequences.",
+    "No live configuration, binary, process ownership, fault ledger, or signed evidence was changed."
+  ],
+  "owner_continuation_and_progress_journal": [
+    {
+      "MESSAGE": "sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl completed_proofs=14858 completed_bytes=35300436 scan_cut_bytes=35300436 durable=true",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42584;b=484e122110374a108279bc05397861eb;m=382b580312;t=65c54c3356687;x=95a7147617d60196",
+      "__REALTIME_TIMESTAMP": "1790368982328967"
+    },
+    {
+      "MESSAGE": "sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl completed_proofs=15233 completed_bytes=36190665 scan_cut_bytes=36190665 durable=true",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42585;b=484e122110374a108279bc05397861eb;m=382b70acfd;t=65c54c34e1071;x=836a9d70d5762c55",
+      "__REALTIME_TIMESTAMP": "1790368983945329"
+    },
+    {
+      "MESSAGE": "sim-testnet: provisional runtime process finding retained; observation_continues=true final_gate_unchanged=true; process log gate found 12 release-blocking class(es); first=miner-swarm-1/stderr/exit-gap-timeout count=1",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42586;b=484e122110374a108279bc05397861eb;m=382b85fd4e;t=65c54c36360c3;x=a1ff032acb98d43c",
+      "__REALTIME_TIMESTAMP": "1790368985342147"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=11.628s",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=4258d;b=484e122110374a108279bc05397861eb;m=382dc3d3df;t=65c54c5a13753;x=ffb77025dcc799ce",
+      "__REALTIME_TIMESTAMP": "1790369022949203"
+    },
+    {
+      "MESSAGE": "sim-testnet: provisional runtime process finding retained; observation_continues=true final_gate_unchanged=true; process log gate found 13 release-blocking class(es); first=miner-swarm-1/stderr/exit-gap-timeout count=1",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=4258f;b=484e122110374a108279bc05397861eb;m=382ea8517e;t=65c54c685b4f3;x=4164179395d240e3",
+      "__REALTIME_TIMESTAMP": "1790369037923571"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=12.9s",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=42599;b=484e122110374a108279bc05397861eb;m=38335aa30c;t=65c54cb380681;x=cfbd059b14ab08f2",
+      "__REALTIME_TIMESTAMP": "1790369116718721"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=13.033s",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=425a1;b=484e122110374a108279bc05397861eb;m=383c577481;t=65c54d434d7f5;x=2302e59e53760690",
+      "__REALTIME_TIMESTAMP": "1790369267505141"
+    },
+    {
+      "MESSAGE": "sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl completed_proofs=14860 completed_bytes=35305191 scan_cut_bytes=35305191 durable=true",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=425a2;b=484e122110374a108279bc05397861eb;m=383dd8cb22;t=65c54d5b62e96;x=a9303ace85c21c79",
+      "__REALTIME_TIMESTAMP": "1790369292758678"
+    },
+    {
+      "MESSAGE": "sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl completed_proofs=15234 completed_bytes=36193026 scan_cut_bytes=36193026 durable=true",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=425a3;b=484e122110374a108279bc05397861eb;m=383dec94aa;t=65c54d5c9f81e;x=a6c11b670e9a7be2",
+      "__REALTIME_TIMESTAMP": "1790369294055454"
+    },
+    {
+      "MESSAGE": "sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=1 elapsed=12.155s",
+      "_PID": "4123621",
+      "_SYSTEMD_INVOCATION_ID": "19ef4c8a357e4411911b026b3740a276",
+      "__CURSOR": "s=3b9d47ad94ad4f788fe9d746c064a03f;i=425a7;b=484e122110374a108279bc05397861eb;m=383f74de36;t=65c54d75241aa;x=d93b129a9322c2c4",
+      "__REALTIME_TIMESTAMP": "1790369319764394"
+    }
+  ],
+  "owner_status": "MainPID=4123621\nId=urnetwork-sim-release-r46.service\nActiveState=active\nSubState=running\n\nMainPID=4187925\nId=urnetwork-sim-release-r46-monitor-v2.service\nActiveState=active\nSubState=running\n\nMainPID=3780072\nId=urnetwork-sim-ur-subnet-testnet-v1.service\nActiveState=active\nSubState=running\n",
+  "process_activity": [
+    {
+      "clock_ticks_per_second": 100,
+      "executable": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/build/sim-testnet",
+      "io": {
+        "cancelled_write_bytes": 78200832,
+        "rchar": 2094518733,
+        "read_bytes": 162639872,
+        "syscr": 711750,
+        "syscw": 109425,
+        "wchar": 346463221,
+        "write_bytes": 346595328
+      },
+      "matches_supervisor_start_ticks": true,
+      "pid": 163939,
+      "process_id": "validator-1",
+      "sampled_at": "2026-09-25T20:49:06.314130+00:00",
+      "start_time_ticks": 24125014,
+      "state": "S",
+      "system_cpu_ticks": 1088,
+      "user_cpu_ticks": 29212
+    },
+    {
+      "clock_ticks_per_second": 100,
+      "executable": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/build/sim-testnet",
+      "io": {
+        "cancelled_write_bytes": 0,
+        "rchar": 879234907,
+        "read_bytes": 0,
+        "syscr": 319798,
+        "syscw": 137,
+        "wchar": 129716,
+        "write_bytes": 24576
+      },
+      "matches_supervisor_start_ticks": true,
+      "pid": 169276,
+      "process_id": "validator-2",
+      "sampled_at": "2026-09-25T20:49:06.314866+00:00",
+      "start_time_ticks": 24154709,
+      "state": "S",
+      "system_cpu_ticks": 213,
+      "user_cpu_ticks": 12818
+    }
+  ],
+  "proof_progress_receipt": {
+    "bytes": 14414,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/proof-progress-2047.receipt.json",
+    "sha256": "3bc0227b5f26129309826f5d3e6f4839f895d9476df19ced46e6410c91e5519e"
+  },
+  "proof_progress_summary": {
+    "interval_start_times": [
+      "2026-09-25T20:20:00+00:00",
+      "2026-09-25T20:30:00+00:00",
+      "2026-09-25T20:40:00+00:00",
+      "2026-09-25T20:43:07+00:00"
+    ],
+    "last_interval_end": "2026-09-25T20:47:03.159472+00:00",
+    "rows": [
+      {
+        "interval_counts": [
+          100,
+          125,
+          81,
+          0
+        ],
+        "latest_complete_at": "2026-09-25T20:43:04.101000+00:00",
+        "operator": 1,
+        "validator": 1
+      },
+      {
+        "interval_counts": [
+          92,
+          203,
+          61,
+          0
+        ],
+        "latest_complete_at": "2026-09-25T20:43:03.943000+00:00",
+        "operator": 2,
+        "validator": 1
+      },
+      {
+        "interval_counts": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "latest_complete_at": "2026-09-25T19:56:22.350000+00:00",
+        "operator": 1,
+        "validator": 2
+      },
+      {
+        "interval_counts": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "latest_complete_at": "2026-09-25T19:56:15.704000+00:00",
+        "operator": 2,
+        "validator": 2
+      }
+    ]
+  },
+  "provider_health_summary": {
+    "configured": 1000,
+    "running": 1000,
+    "unhealthy": []
+  },
+  "raw_witnesses": [
+    {
+      "classifier_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "device": 64512,
+      "inode": 39095201,
+      "offset": 92526259,
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:26:14.708301  127571 transfer.go:14822] [r]01a050c6-4308-f7c5-66ec-6fd9e0454dd5<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.00100961s budget=1m0s\n",
+      "raw_line_sha256": "5908a88318961128ef7a03cb447e52ae445e2b450d4028dd08605c31936e34fe",
+      "scope": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "stream": "stderr"
+    },
+    {
+      "classifier_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "device": 64512,
+      "inode": 39095201,
+      "offset": 92579320,
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:42:06.178950  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000468271s budget=1m0s\n",
+      "raw_line_sha256": "17bc1e20f1d7a0af22a40cc0cabcffb4d7695d2b203bbbe0b545d06500e9b27f",
+      "scope": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "stream": "stderr"
+    },
+    {
+      "classifier_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "device": 64512,
+      "inode": 39095205,
+      "offset": 94382708,
+      "process_id": "miner-swarm-18",
+      "raw_line": "E0925 20:40:59.461067  138598 transfer.go:14822] [r]01a050c6-5188-73f2-7b98-dd5e47952db8<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=43 age=1m0.000048765s budget=1m0s\n",
+      "raw_line_sha256": "85758f16bf6cd600d912b40bfc7db9222179adb13f370db3ce78a1a14010c096",
+      "scope": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-18.stderr.log",
+      "stream": "stderr"
+    },
+    {
+      "classifier_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "device": 64512,
+      "inode": 39095214,
+      "offset": 30518248,
+      "process_id": "validator-1",
+      "raw_line": "release steer: subnet epoch 1677 attempt 1: compact live head client census observation read: Post \"http://127.0.0.1:18081/sn/client-key/observations\": terminated signal received\n",
+      "raw_line_sha256": "37dd52613467526c7e024fc2355a992f593c32e3e15f8ea28f4fa6cfd64e9b96",
+      "scope": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stdout.log",
+      "stream": "stdout"
+    }
+  ],
+  "read_only_live_state": true,
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "urnetwork-r46-validator1-restart-readonly-triage-v1",
+  "selected_scoped_findings": [
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 6,
+      "disposition": "unexplained",
+      "first_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "first_observed_at": "2026-09-25T20:27:59.64872196Z",
+      "first_offset": 92526259,
+      "last_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 92579320,
+      "process_id": "miner-swarm-16",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "first_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "first_offset": 94382708,
+      "last_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 94382708,
+      "process_id": "miner-swarm-18",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-attempt-failure",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "first_observed_at": "2026-09-25T20:43:57.77026898Z",
+      "first_offset": 30518248,
+      "last_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "last_observed_at": "2026-09-25T20:43:57.77026898Z",
+      "last_offset": 30518248,
+      "process_id": "validator-1",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "release steering reported a failed native epoch attempt"
+    }
+  ],
+  "stderr_restart_witnesses": [
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "offset": 316056415,
+      "raw_line": "sim-testnet: compact live head client census observation read: Post \"http://127.0.0.1:18081/sn/client-key/observations\": terminated signal received\n",
+      "raw_line_sha256": "3e4326f2309b30099ed5463c86fbb2d6d9cb507dcf3cf970ed138d1d6c7acf7d",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    },
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "offset": 316056934,
+      "raw_line": "I0925 20:43:07.181003  163939 env.go:861] [env]try /srv/warp/config, [settings.yml]\n",
+      "raw_line_sha256": "5471acf64983c4927514a64c296edcc61d5ec2c09eba3367f215539fbb4686c6",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    },
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "offset": 316057018,
+      "raw_line": "I0925 20:43:07.181273  163939 env.go:861] [env]try /srv/warp/site, [settings.yml]\n",
+      "raw_line_sha256": "fbaea7ed334b019aeee68edf74fe933f90eeeadce54fcabb09add5f44aa91273",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    },
+    {
+      "device": 64512,
+      "inode": 39095215,
+      "offset": 316057100,
+      "raw_line": "I0925 20:43:07.181334  163939 env.go:78] [env]settings = map[]\n",
+      "raw_line_sha256": "178e629189c8f45347420abc03cea8b2517220c16991a17aa4d9ca11ab59ac67",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stderr.log"
+    }
+  ],
+  "supervisor_state": {
+    "bytes": 8747,
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/validator1-restart-2049.supervisor.json",
+    "sha256": "104d854c74ae035ae99a684713effc886b6b959be94f833705079f561eb8d2be"
+  },
+  "validator_processes": [
+    {
+      "healthy": true,
+      "id": "validator-1",
+      "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+      "pid": 163939,
+      "restarts": 7,
+      "role": "validator",
+      "start_time_ticks": 24125014,
+      "started_at": "2026-09-25T20:43:07Z"
+    },
+    {
+      "healthy": true,
+      "id": "validator-2",
+      "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+      "pid": 169276,
+      "restarts": 17,
+      "role": "validator",
+      "start_time_ticks": 24154709,
+      "started_at": "2026-09-25T20:48:04Z"
+    }
+  ],
+  "validator_restart_records": [
+    {
+      "applied_block": 8085559,
+      "applied_block_hash": "0xb4505f96003d9f75362c282467f32534df85c5aaca829226a67cd63ed56567e0",
+      "id": "release-rolling-30",
+      "kind": "process-restart",
+      "processes": [
+        {
+          "id": "validator-1",
+          "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+          "pid": 3826369,
+          "role": "validator",
+          "start_time_ticks": 21732054
+        }
+      ],
+      "restore_block": 8085579,
+      "restored_block": 8085579,
+      "restored_block_hash": "0xb5fd66cf8527d32603df2c64ed0daaff1b863c15c664b4f296e9d40cbd5b4f26",
+      "restored_processes": [
+        {
+          "id": "validator-1",
+          "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+          "pid": 163939,
+          "role": "validator"
+        }
+      ],
+      "status": "restored",
+      "targets": [
+        "validator-1"
+      ],
+      "trigger_block": 8085559
+    },
+    {
+      "applied_block": 8085584,
+      "applied_block_hash": "0xc1769e0a64bcc835374838e33b3dd6981afd56c708b7f1badd88adb41c4aaaf9",
+      "id": "release-rolling-31",
+      "kind": "process-restart",
+      "processes": [
+        {
+          "id": "validator-2",
+          "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+          "pid": 114702,
+          "role": "validator",
+          "start_time_ticks": 23845826
+        }
+      ],
+      "restore_block": 8085604,
+      "status": "active",
+      "targets": [
+        "validator-2"
+      ],
+      "trigger_block": 8085584
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "complete_time_ms_bounds": [
+    1790361000000,
+    1790361600000,
+    1790362200000,
+    1790362800000,
+    1790363257998
+  ],
+  "interval_start_times": [
+    "2026-09-25T18:30:00+00:00",
+    "2026-09-25T18:40:00+00:00",
+    "2026-09-25T18:50:00+00:00",
+    "2026-09-25T19:00:00+00:00"
+  ],
+  "last_interval_end": "2026-09-25T19:07:37.998525+00:00",
+  "observed_at": "2026-09-25T19:07:37.998525+00:00",
+  "read_only": true,
+  "rows": [
+    {
+      "interval_counts": [
+        131,
+        105,
+        121,
+        109
+      ],
+      "interval_unique_hop_clients": [
+        434,
+        400,
+        413,
+        412
+      ],
+      "latest_recent_raw_witness": [
+        {
+          "complete_time_ms": 1790363254045,
+          "epoch": 632,
+          "offset": 32927325,
+          "raw_line": "{\"v\":1,\"epoch\":632,\"trail_id\":\"01a0d9f7-3bcb-32bd-f6c2-051dcc0a5a13\",\"server_nonce\":\"uDIM2s2EJukyW4Hlo2vxdTkv/dZnZEkJRdxoqVmIgOg=\",\"vpk\":\"86wWmQJd8vlfe6zMhHhC7FjJz/3VOru2BCvzueLhqqc=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-4f33-e272-a389-6ce75d9b6267\",\"time_ms\":1790363253707,\"egress_ip_hash\":[245,209,189,174,9,70,122,23,36,222,69,130,215,144,218,147,239,142,56,150,188,197,247,113,224,0,238,197,184,246,169,233]},{\"client_id\":\"01a050c6-35cd-ccaa-53b8-24247a721148\",\"time_ms\":1790363253734,\"egress_ip_hash\":[112,210,84,225,146,149,232,39,64,248,168,242,112,117,8,43,249,111,105,232,157,9,192,161,104,142,200,40,31,187,86,46]},{\"client_id\":\"01a050c6-36f8-7776-50ff-e51b09172431\",\"time_ms\":1790363253789,\"egress_ip_hash\":[188,85,233,237,173,26,142,156,127,230,131,49,116,80,228,250,198,230,187,40,75,226,178,139,41,10,136,56,117,162,11,235]},{\"client_id\":\"01a050c6-12c6-0cf0-4e04-bb98bf2011d0\",\"time_ms\":1790363253830,\"egress_ip_hash\":[107,104,20,164,216,112,140,120,39,173,153,162,122,129,64,18,215,232,148,239,34,155,180,88,169,16,237,232,51,123,217,63]},{\"client_id\":\"01a050c6-1237-1621-ad7d-f2df9e55b361\",\"time_ms\":1790363253910,\"egress_ip_hash\":[208,204,213,233,240,174,36,240,237,234,49,1,240,221,15,202,192,22,116,6,222,62,135,9,12,88,117,135,213,67,237,218]},{\"client_id\":\"01a050c6-0261-0e49-fdc8-00ca05201616\",\"time_ms\":1790363253955,\"egress_ip_hash\":[253,51,73,47,6,22,70,64,81,210,99,62,253,133,132,97,34,241,209,54,175,100,194,234,59,158,189,243,169,46,116,7]},{\"client_id\":\"01a050c6-2943-2046-b0a1-ae7bd13f2449\",\"time_ms\":1790363253999,\"egress_ip_hash\":[30,22,206,106,28,175,165,200,59,49,43,3,129,94,142,11,134,12,176,123,234,103,83,214,196,231,88,125,181,243,201,186]},{\"client_id\":\"01a050c6-0442-6638-7f72-2aacb7038296\",\"time_ms\":1790363254045,\"egress_ip_hash\":[8,167,108,111,63,121,43,1,16,127,41,231,251,9,10,196,219,59,92,162,255,70,138,187,143,98,43,251,63,136,212,161]}],\"server_key_id\":0,\"final_sig\":\"d/bp/RBu7Vr3BFOrHlf50z85LzRLCwr/4p5fn5zA/1SeU4RwJqFA5/2RShk+ApuIhHVCMmfxZZ/cMKWSIfyoAg==\",\"verifier_sig\":\"v0meE3H7OYBmEvmeo6RpwI5DuQiQtJj0fijI3SedrAUmYLYPNFwaV8J4SaN35Vh3PwREabXcNi7hajLYEWfUAA==\",\"final_digest\":\"piOPPjrMe//kedz8CB8Q81L7G6mXE7oF8qpiP1LjYqE=\",\"vpk_sig\":\"cckvynwGRXwt7fjHfd85TAIJfweKFX9iC16tYzEum3eS9roFUteaQeO5JPWPjctvT98hSKae1t6M7Qsco1vBBA==\",\"coverage\":7,\"path_id\":\"JkzdPXCFCkC2W6sHltkvRKp38BifMpWeyoob7QoYuSw=\",\"complete_time_ms\":1790363254045}\n",
+          "raw_line_sha256": "0a30416129e835d35d48488fa79f8d020dcd6559b7a864b196cab41844756527"
+        }
+      ],
+      "newest_complete_at": "2026-09-25T19:07:34.045000+00:00",
+      "newest_complete_time_ms": 1790363254045,
+      "oldest_complete_time_ms": 1790324945714,
+      "operator": 1,
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl",
+      "source_cut_bytes": 32929708,
+      "source_device": 64512,
+      "source_inode": 39756011,
+      "suffix_offset": 20346796,
+      "suffix_sha256": "080946d9758b944a49b989c1f8ceef19549636143ec182a42937c6e456534b5c",
+      "validator": 1
+    },
+    {
+      "interval_counts": [
+        284,
+        181,
+        84,
+        66
+      ],
+      "interval_unique_hop_clients": [
+        493,
+        466,
+        372,
+        321
+      ],
+      "latest_recent_raw_witness": [
+        {
+          "complete_time_ms": 1790363257101,
+          "epoch": 632,
+          "offset": 33893390,
+          "raw_line": "{\"v\":1,\"epoch\":632,\"trail_id\":\"01a0d9f7-4104-f1e7-1bc2-b44ce06b3354\",\"server_nonce\":\"ezS7SGvbMTLrOwY60J2Vhiqrfm9JMzCohSd+/eEeONI=\",\"vpk\":\"JxYHeUq16UYzYtos5jKXxovFIPY1i3Pmxx1OGIslc8A=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-a796-cb47-4c19-669bf424f4c9\",\"time_ms\":1790363255044,\"egress_ip_hash\":[157,194,33,9,74,130,5,11,221,162,222,178,124,142,110,53,219,21,205,160,18,236,105,150,122,171,35,88,141,13,247,112]},{\"client_id\":\"01a050c6-9b3d-7e8e-7ab6-49c637444342\",\"time_ms\":1790363255093,\"egress_ip_hash\":[172,219,31,13,53,162,9,69,50,231,233,43,208,243,107,48,18,52,46,105,31,65,133,240,91,130,219,5,14,130,8,171]},{\"client_id\":\"01a050c6-6b22-fbbd-9467-0219efae5f3f\",\"time_ms\":1790363255707,\"egress_ip_hash\":[63,87,181,129,29,236,56,151,90,117,233,165,48,191,253,192,238,230,251,239,165,136,95,38,127,217,181,134,33,234,169,54]},{\"client_id\":\"01a050c6-8531-beaf-6d59-f99fe99188e5\",\"time_ms\":1790363255749,\"egress_ip_hash\":[83,41,105,156,111,70,145,200,0,28,151,143,24,209,179,171,173,157,149,38,12,19,203,110,66,161,107,43,177,243,56,3]},{\"client_id\":\"01a050c6-c06d-060c-1f6c-6a7f0627f0db\",\"time_ms\":1790363256331,\"egress_ip_hash\":[52,253,244,134,150,160,110,51,66,172,153,107,229,247,40,33,102,213,93,173,201,58,78,117,225,34,121,124,9,197,24,71]},{\"client_id\":\"01a050c6-bd02-1d44-47c3-8c8599db9f77\",\"time_ms\":1790363256375,\"egress_ip_hash\":[202,105,90,152,148,219,141,185,4,179,117,53,249,147,216,149,130,0,235,7,53,119,85,73,103,92,78,117,58,238,190,245]},{\"client_id\":\"01a050c6-7c99-181c-e966-2815f3788094\",\"time_ms\":1790363256487,\"egress_ip_hash\":[158,120,61,250,83,119,82,19,145,166,13,193,240,165,175,213,12,46,91,98,65,57,250,44,80,23,176,131,211,212,231,190]},{\"client_id\":\"01a050c6-a00d-4633-816a-38c9ec07d724\",\"time_ms\":1790363257101,\"egress_ip_hash\":[229,39,142,155,136,152,220,247,46,117,139,239,171,213,165,172,13,151,140,122,93,164,140,171,94,70,201,202,249,241,233,76]}],\"server_key_id\":0,\"final_sig\":\"Fxq6baUxZkMk2y1/BF2gzTRgUl1oA/laBqikIkn2EKy2SjK0IyX7uxAHdaSsnPNOjIjSj1KI7v+4GfKp0i2HAQ==\",\"verifier_sig\":\"xTwGtaCxrLVXBUWWxJJnwoelsNOPDggryPVibTnA3vjvFgcoWfj9p6bObj3RPqrZrY9cfYUcLUEifgxmFItKDA==\",\"final_digest\":\"X4lTMVHIENSnOCbhsL7g/J7/+Xub+eoTv4TgR/R5auQ=\",\"vpk_sig\":\"8YhoJ+KDTjp3x48lUTIn4J+rzvsIDAMpiMwxej+gmTBgRTPK7k18gHsZUUH4j20Gz/+zgGbBiOmEiZJMnTfgCw==\",\"coverage\":7,\"path_id\":\"2+V8x2UuIovZ0oojs4l7bwfCB1NYlf6akjnLQ4oml3k=\",\"complete_time_ms\":1790363257101}\n",
+          "raw_line_sha256": "84109f6d4d1332e092ddfe5b0ba828aa733c748734c83ca76ca6043fd2407b13"
+        }
+      ],
+      "newest_complete_at": "2026-09-25T19:07:37.101000+00:00",
+      "newest_complete_time_ms": 1790363257101,
+      "oldest_complete_time_ms": 1790331657590,
+      "operator": 2,
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl",
+      "source_cut_bytes": 33895769,
+      "source_device": 64512,
+      "source_inode": 39854369,
+      "suffix_offset": 21312857,
+      "suffix_sha256": "24a7f54e45cc7789da34864695e65fa49406a3f1f39387bb71e72a11a99e53f2",
+      "validator": 1
+    },
+    {
+      "interval_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "interval_unique_hop_clients": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "latest_recent_raw_witness": [],
+      "newest_complete_at": "2026-09-25T18:08:01.274000+00:00",
+      "newest_complete_time_ms": 1790359681274,
+      "oldest_complete_time_ms": 1790289209079,
+      "operator": 1,
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl",
+      "source_cut_bytes": 20738774,
+      "source_device": 64512,
+      "source_inode": 39854371,
+      "suffix_offset": 8155862,
+      "suffix_sha256": "4623c0cc3101fb130233d5ae0d78abdf758f9f5e1e5c2c52805cee31de5f55bd",
+      "validator": 2
+    },
+    {
+      "interval_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "interval_unique_hop_clients": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "latest_recent_raw_witness": [],
+      "newest_complete_at": "2026-09-25T18:00:40.493000+00:00",
+      "newest_complete_time_ms": 1790359240493,
+      "oldest_complete_time_ms": 1790289677857,
+      "operator": 2,
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl",
+      "source_cut_bytes": 21034459,
+      "source_device": 64512,
+      "source_inode": 39854374,
+      "suffix_offset": 8451547,
+      "suffix_sha256": "d42c5fb54c4c8c082c68e681562e94b06ec71bba4c7821e2c6568260ddaca978",
+      "validator": 2
+    }
+  ],
+  "schema": "urnetwork-r46-readonly-proof-progress-v1",
+  "scope": "Counts of retained local proof rows; canonical acceptance authentication remains owned by R46 and no fresh signature audit was performed here. Last interval is partial."
+}

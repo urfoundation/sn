@@ -1,0 +1,13 @@
+{
+  "after_bytes": 68719476736,
+  "available_before_bytes": 467214139392,
+  "before_bytes": 34359738368,
+  "bucket": "blob",
+  "completed_at": "2026-09-25T12:25:21.716883076Z",
+  "mutations": "one quota PUT; no object or lifecycle writes",
+  "put_error": "\u003cnil\u003e",
+  "readback_error": "\u003cnil\u003e",
+  "started_at": "2026-09-25T12:25:21.57509605Z",
+  "total_disk_bytes": 923866628096,
+  "verified": true
+}

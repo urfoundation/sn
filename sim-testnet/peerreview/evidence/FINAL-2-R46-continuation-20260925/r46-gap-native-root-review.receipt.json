@@ -1,0 +1,396 @@
+{
+  "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "assessment": {
+    "confirmed_gap": "The sealed gate retains 18 sequence exit-gap events across 10 swarm processes; every exact line has expected=0 and nonzero queued sequence. These are sequence exits, not process exits. The late health/proof receipt records20/20 healthy swarm processes and proof recovery on validator2.",
+    "confirmed_native": "The exact immutable native1674 records object was later present at both replicas and both operator input cuts were durable. Head EMA and last applied intent remained1661;1674 has no applied intent in retained state. Object presence does not supply a timed-out acknowledgement or erase the prior13-native-epoch continuity gap.",
+    "gap_hypothesis": "The exact pinned receive idle timeout is120s versus sender300s, contradicting its comment. The first three bound sender/receiver examples resumed after156/219/282s idle. Receiver recreation while sender retains a nonzero sequence is a strong hypothesis. Existing rows do not establish which missing-contract ACK, full head or route failed; do not claim the entire18-event population has one proved recovery defect.",
+    "gap_next_test": "Force real sender/receiver compact-head lifecycle through receive-only idle retirement and same send-sequence resumption. Require missing-contract ACK/full-proof recovery and exact once delivery; independently lose first ACK, replace carrier, cancel, and reject foreign contracts/session generations. Choose a production change only from the failing boundary.",
+    "native_next_gate": "Keep EMA continuity strict and reject inherited missing native history at admission; require authenticated complete history or explicitly approved fresh native generation. Any later immutable POST reconciliation must re-read exact origin/kind/hash/length under the original authority and bounded ownership; do not treat it as native intent finality."
+  },
+  "blocking_gap_class_count": 10,
+  "captured_at": "2026-09-26T00:49:11.599221+00:00",
+  "exact_rows": [
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "offset": 90737145,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-1.stderr.log",
+      "process_id": "miner-swarm-1",
+      "raw_line": "E0925 18:47:21.848449 3780520 transfer.go:14822] [r]01a050c5-f5eb-6049-092b-d715490223bf<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=22 age=1m0.001045943s budget=1m0s\n",
+      "sha256": "0ad84b56a00115350cd20b88d3176bb3b773804f04266c41523887622e5029f5"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "offset": 92846144,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-11.stderr.log",
+      "process_id": "miner-swarm-11",
+      "raw_line": "E0925 19:03:17.706760 3785061 transfer.go:14822] [r]01a050c6-9565-db47-0973-1221147450a3<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000452477s budget=1m0s\n",
+      "sha256": "4514381139c2c3025dc9b3f3be2fbf4b75a57fa022b81e6f05c6145bbd9c3ec9"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "offset": 92855790,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-12.stderr.log",
+      "process_id": "miner-swarm-12",
+      "raw_line": "E0925 19:08:56.050764 3785062 transfer.go:14822] [r]01a050c6-98cd-4ee9-43eb-992739b1b911<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000932306s budget=1m0s\n",
+      "sha256": "89653ead730a5b3be9bad866c8a78c59e8efe8fdae9b2719a3b804c547d92140"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "offset": 92377534,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-14.stderr.log",
+      "process_id": "miner-swarm-14",
+      "raw_line": "E0925 19:11:11.631907 3785870 transfer.go:14822] [r]01a050c6-a4d5-8ab1-1b7a-c7293c0eca32<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001099899s budget=1m0s\n",
+      "sha256": "1587ec419a1df13c70e1955efc2662d7a114c2233b7b62df71e2dcaab0fc001f"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "313c0b871756a229f70ec473d5d015afe0c7c9bd22126851bead5730561814f0",
+      "offset": 92341695,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-15.stderr.log",
+      "process_id": "miner-swarm-15",
+      "raw_line": "E0925 19:01:36.299611 3786892 transfer.go:14822] [r]01a050c6-a9b2-5d32-2732-2f024be4f154<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=23 age=1m0.000530585s budget=1m0s\n",
+      "sha256": "984bb9877da00e68d837371f147246caeff0703774ef4d9d933d2e0a3cef84e3"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "810e5090bf0d64f68cf543ea3ff645f8ec6f16982e4dd19b6a74a15090fc3fdc",
+      "offset": 92342424,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-15.stderr.log",
+      "process_id": "miner-swarm-15",
+      "raw_line": "E0925 19:02:32.220910 3786892 transfer.go:14822] [r]01a050c6-a6bd-4380-7228-47592427c089<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001045235s budget=1m0s\n",
+      "sha256": "e5db0ffff32591bad995a986afa8d1ca771c44307daac8f558319aadd0618771"
+    },
+    {
+      "bytes": 235,
+      "classifier_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "offset": 92526259,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:26:14.708301  127571 transfer.go:14822] [r]01a050c6-4308-f7c5-66ec-6fd9e0454dd5<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.00100961s budget=1m0s\n",
+      "sha256": "5908a88318961128ef7a03cb447e52ae445e2b450d4028dd08605c31936e34fe"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "1d405887616a8c5823455c17df3e1e2aa0b6b208c4337d936f9a1d56a0325b4a",
+      "offset": 92531025,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:27:53.195725  127571 transfer.go:14822] [r]01a050c6-478a-7fcd-2305-f4c42e957c23<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=23 age=1m0.000466952s budget=1m0s\n",
+      "sha256": "4fb022446806a89cde5c3639c00909954f6a95f195553476a4f3fee9c543ddae"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "1f9eb170a2a29b4f2efa8e6c87016ba43c5abb907107e0cef409c927375fec4f",
+      "offset": 92542963,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:29:13.516579  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=27 age=1m0.000920753s budget=1m0s\n",
+      "sha256": "44372dcc56a5d291e89c4cd66435f7ae16f6fa1c4ae4c046223c690413733b03"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "c990eca19dc9943543899cabc5163a5d16e3c55a662560542d57553dd0e395a1",
+      "offset": 92573680,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:39:43.499078  127571 transfer.go:14822] [r]01a050c6-478a-7fcd-2305-f4c42e957c23<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=17 age=1m0.000897111s budget=1m0s\n",
+      "sha256": "daaa6845c1fd15986a2d84cf4b75f4f47af79fa5e882f40d3c55679d9fa00f1a"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "f4a9fa2c9dfb78f17c14a290da727f2ef5bc658199038e6772541dd725adc45d",
+      "offset": 92573916,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:40:51.941607  127571 transfer.go:14822] [r]01a050c6-b11c-00ed-a4e1-82921c0c7583<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=19 age=1m0.000719951s budget=1m0s\n",
+      "sha256": "72c28130be40b3509e673427a1a78459a64646b7499d6bf29fd535badea96858"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "offset": 92579320,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:42:06.178950  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000468271s budget=1m0s\n",
+      "sha256": "17bc1e20f1d7a0af22a40cc0cabcffb4d7695d2b203bbbe0b545d06500e9b27f"
+    },
+    {
+      "bytes": 235,
+      "classifier_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "offset": 92822790,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "process_id": "miner-swarm-17",
+      "raw_line": "E0925 18:43:11.461814 3787845 transfer.go:14822] [r]01a050c6-4a5e-bfb6-6623-1d473f81a65c<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=58 age=1m0.00008741s budget=1m0s\n",
+      "sha256": "fa2c727b98cae32428385f309f118e4cf78d51603099c6d53f6e6c5d17c7ec46"
+    },
+    {
+      "bytes": 234,
+      "classifier_line_sha256": "dd70507faaf1a49c5e7fbc53cb8acc693f7f76f5f56003bb3157afc8a1ed7f35",
+      "offset": 93342348,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "process_id": "miner-swarm-17",
+      "raw_line": "E0925 20:39:11.064827  132487 transfer.go:14822] [r]01a050c6-4ca9-34d4-3493-adc30a5d46a3<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.0005188s budget=1m0s\n",
+      "sha256": "a8e4d4392f6619430842432ba9edbe714ac13e3a8995636d308ceafff8f163b7"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "offset": 94382708,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-18.stderr.log",
+      "process_id": "miner-swarm-18",
+      "raw_line": "E0925 20:40:59.461067  138598 transfer.go:14822] [r]01a050c6-5188-73f2-7b98-dd5e47952db8<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=43 age=1m0.000048765s budget=1m0s\n",
+      "sha256": "85758f16bf6cd600d912b40bfc7db9222179adb13f370db3ce78a1a14010c096"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "offset": 93586809,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-8.stderr.log",
+      "process_id": "miner-swarm-8",
+      "raw_line": "E0925 19:15:07.980240 3783246 transfer.go:14822] [r]01a050c6-8749-fd01-2edd-c261bf60abd9<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=17 age=1m0.000281504s budget=1m0s\n",
+      "sha256": "89b0d8721a9d1267848b36eee4908777095d6deed272443677266d7df803af6b"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "offset": 93283970,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "process_id": "miner-swarm-9",
+      "raw_line": "E0925 18:47:56.728586 3784119 transfer.go:14822] [r]01a050c6-2283-0d41-51c1-da6e1f133b95<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000273404s budget=1m0s\n",
+      "sha256": "2b0ee8f4d0cbf59c11f73c2e6ac009c4f971e911ba4dc58f827533c17d620a8f"
+    },
+    {
+      "bytes": 236,
+      "classifier_line_sha256": "37ef9916788cc10c89a563b51da0fde817fc54a23e712b994885755ee81a9add",
+      "offset": 93358671,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "process_id": "miner-swarm-9",
+      "raw_line": "E0925 19:08:03.180481 3784119 transfer.go:14822] [r]01a050c6-89ff-3114-27b7-321765c6ac95<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000787097s budget=1m0s\n",
+      "sha256": "4b84e299cf7f15c75646799cfc58762e94af055bb3fe4ff1637d151fa23aa38c"
+    }
+  ],
+  "findings": [
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "first_offset": 90737145,
+      "last_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "last_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "last_offset": 90737145,
+      "process_id": "miner-swarm-1",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "first_observed_at": "2026-09-25T19:04:05.460124465Z",
+      "first_offset": 92846144,
+      "last_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "last_observed_at": "2026-09-25T19:04:05.460124465Z",
+      "last_offset": 92846144,
+      "process_id": "miner-swarm-11",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "first_observed_at": "2026-09-25T19:09:15.262708159Z",
+      "first_offset": 92855790,
+      "last_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "last_observed_at": "2026-09-25T19:09:15.262708159Z",
+      "last_offset": 92855790,
+      "process_id": "miner-swarm-12",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "first_observed_at": "2026-09-25T19:11:39.165377723Z",
+      "first_offset": 92377534,
+      "last_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "last_observed_at": "2026-09-25T19:11:39.165377723Z",
+      "last_offset": 92377534,
+      "process_id": "miner-swarm-14",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "313c0b871756a229f70ec473d5d015afe0c7c9bd22126851bead5730561814f0",
+      "first_observed_at": "2026-09-25T19:03:13.086998976Z",
+      "first_offset": 92341695,
+      "last_line_sha256": "810e5090bf0d64f68cf543ea3ff645f8ec6f16982e4dd19b6a74a15090fc3fdc",
+      "last_observed_at": "2026-09-25T19:03:13.086998976Z",
+      "last_offset": 92342424,
+      "process_id": "miner-swarm-15",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 6,
+      "disposition": "unexplained",
+      "first_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "first_observed_at": "2026-09-25T20:27:59.64872196Z",
+      "first_offset": 92526259,
+      "last_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 92579320,
+      "process_id": "miner-swarm-16",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "first_observed_at": "2026-09-25T18:44:29.978008228Z",
+      "first_offset": 92822790,
+      "last_line_sha256": "dd70507faaf1a49c5e7fbc53cb8acc693f7f76f5f56003bb3157afc8a1ed7f35",
+      "last_observed_at": "2026-09-25T20:39:23.564187216Z",
+      "last_offset": 93342348,
+      "process_id": "miner-swarm-17",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "first_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "first_offset": 94382708,
+      "last_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 94382708,
+      "process_id": "miner-swarm-18",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "first_observed_at": "2026-09-25T19:16:44.926409202Z",
+      "first_offset": 93586809,
+      "last_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "last_observed_at": "2026-09-25T19:16:44.926409202Z",
+      "last_offset": 93586809,
+      "process_id": "miner-swarm-8",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "first_offset": 93283970,
+      "last_line_sha256": "37ef9916788cc10c89a563b51da0fde817fc54a23e712b994885755ee81a9add",
+      "last_observed_at": "2026-09-25T19:08:23.081991217Z",
+      "last_offset": 93358671,
+      "process_id": "miner-swarm-9",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    }
+  ],
+  "gap_event_count": 18,
+  "pinned_connect_rule": {
+    "excerpts": [
+      {
+        "first_line": 886,
+        "last_line": 897,
+        "sha256": "2df05cea7c97c0fba2ab0de0fc18c3bfaec64707368d0a03b723d79d0e3a6729",
+        "text": "\t\tRttWindowTimeout: 60 * time.Second,\n\t\tAckTimeout:       60 * time.Second,\n\t\t// A live lossy datagram carrier can need longer than MultiClient's\n\t\t// ordinary 30-second provider-failure bar to recover one Pack. The\n\t\t// liveness watchdog owns early dead-exit conviction; this is only the\n\t\t// final reliable-delivery lifetime and must not bypass those gates.\n\t\tUnreliableAckTimeout: 90 * time.Second,\n\t\tIdleTimeout:          300 * time.Second,\n\t\t// pause on resend for selectively acknowledged messages\n\t\tSelectiveAckTimeout: 60 * time.Second,\n\t\t// Three distinct later deliveries are the conventional reordering-safe\n\t\t// evidence for one missing Pack. Recovery is limited to one immediate\n"
+      },
+      {
+        "first_line": 1018,
+        "last_line": 1028,
+        "sha256": "aa16dd777f624de5ff24ae48370dfefb1e338580aece6bd557d5b2a07e476e06",
+        "text": "}\n\nfunc DefaultReceiveBufferSettingsWithBufferSize(bufferSize int) *ReceiveBufferSettings {\n\tsettings := &ReceiveBufferSettings{\n\t\tGapTimeout: 60 * time.Second,\n\t\t// the receive idle timeout should be a bit longer than the send idle timeout\n\t\tIdleTimeout:          120 * time.Second,\n\t\tSequenceBufferSize:   bufferSize,\n\t\tH1SequenceBufferSize: bufferSize,\n\t\t// Count headroom absorbs a flight of small tunnel packets. Retained\n\t\t// encoded Transfer bytes remain independently bounded, so large frames\n"
+      }
+    ],
+    "path": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source/connect/transfer.go",
+    "sha256": "7bd6b826b724600bcfe1aa9f6def64eff3f07f01c8e4219f276a28f2d8fa62cd"
+  },
+  "read_only": true,
+  "schema": "r46-retained-gap-native-root-review-v1",
+  "sealed_process_gate": {
+    "bytes": 124969,
+    "path": "/mnt/data/sn-testnet/qualification/r46-terminal-replay-hardening-20260926/r46-final-process-logs.json",
+    "sha256": "aacc0c39ffb94e4826dbdb808345e00bce8a3bbe8c79d384ad624f3ae4eb857a"
+  },
+  "supporting_receipts": [
+    {
+      "bytes": 18011,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/exit-gap-three-1856.receipt-v2.json",
+      "sha256": "c1d45234c8ea98037f15ac838c9b903e2767ead1d824343d93991fdbd1a4ef1a"
+    },
+    {
+      "bytes": 130284,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.receipt.json",
+      "sha256": "17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4"
+    },
+    {
+      "bytes": 4611,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-triage.receipt.json",
+      "sha256": "1bc3ac7a1c725958c8f429e094fb569464e6a4a202f09d867a35338fd723da8d"
+    },
+    {
+      "bytes": 1697,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-record-replica-readback.receipt.json",
+      "sha256": "ef2f8b1f7c5802ec52caa1858f373f3283384c02abeb6e4ff4dffa075b263165"
+    }
+  ]
+}

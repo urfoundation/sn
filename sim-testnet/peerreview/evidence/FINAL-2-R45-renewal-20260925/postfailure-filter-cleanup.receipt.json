@@ -1,0 +1,362 @@
+{
+  "current_filter_receipts": [],
+  "current_live_paths": [
+    {
+      "exists": false,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/active-faults.json"
+    },
+    {
+      "exists": false,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-1/verify-assignment-filter.json"
+    },
+    {
+      "exists": false,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-2/verify-assignment-filter.json"
+    }
+  ],
+  "historical_fault_states": [
+    {
+      "applied_block": 8084381,
+      "id": "quality-cohort",
+      "kind": "miner-control",
+      "restore_block": 8084399,
+      "restored_block": 8084402,
+      "status": "restored",
+      "trigger_block": 8084379
+    },
+    {
+      "id": "validator-local-head-boundary",
+      "kind": "validator-view-filter",
+      "restore_block": 8085145,
+      "status": "pending",
+      "trigger_block": 8084403
+    },
+    {
+      "id": "head-boundary",
+      "kind": "miner-control",
+      "restore_block": 8085144,
+      "status": "pending",
+      "trigger_block": 8084404
+    },
+    {
+      "applied_block": 8084375,
+      "id": "fleet-lifecycle-target-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8086834,
+      "status": "active",
+      "trigger_block": 8084375
+    },
+    {
+      "applied_block": 8084375,
+      "id": "fleet-lifecycle-companion-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8086834,
+      "status": "active",
+      "trigger_block": 8084375
+    },
+    {
+      "id": "release-dependency-postgres-1",
+      "kind": "container-restart",
+      "restore_block": 8084429,
+      "status": "pending",
+      "trigger_block": 8084409
+    },
+    {
+      "id": "release-dependency-redis-1",
+      "kind": "container-restart",
+      "restore_block": 8084454,
+      "status": "pending",
+      "trigger_block": 8084434
+    },
+    {
+      "id": "release-dependency-postgres-2",
+      "kind": "container-restart",
+      "restore_block": 8084479,
+      "status": "pending",
+      "trigger_block": 8084459
+    },
+    {
+      "id": "release-dependency-redis-2",
+      "kind": "container-restart",
+      "restore_block": 8084504,
+      "status": "pending",
+      "trigger_block": 8084484
+    },
+    {
+      "id": "release-dependency-rpc-path",
+      "kind": "process-pause",
+      "restore_block": 8084529,
+      "status": "pending",
+      "trigger_block": 8084509
+    },
+    {
+      "id": "release-rolling-01",
+      "kind": "process-restart",
+      "restore_block": 8084554,
+      "status": "pending",
+      "trigger_block": 8084534
+    },
+    {
+      "id": "release-rolling-02",
+      "kind": "process-restart",
+      "restore_block": 8084579,
+      "status": "pending",
+      "trigger_block": 8084559
+    },
+    {
+      "id": "release-rolling-03",
+      "kind": "process-restart",
+      "restore_block": 8084604,
+      "status": "pending",
+      "trigger_block": 8084584
+    },
+    {
+      "id": "release-rolling-04",
+      "kind": "process-restart",
+      "restore_block": 8084629,
+      "status": "pending",
+      "trigger_block": 8084609
+    },
+    {
+      "id": "release-rolling-05",
+      "kind": "process-restart",
+      "restore_block": 8084654,
+      "status": "pending",
+      "trigger_block": 8084634
+    },
+    {
+      "id": "release-rolling-06",
+      "kind": "process-restart",
+      "restore_block": 8084679,
+      "status": "pending",
+      "trigger_block": 8084659
+    },
+    {
+      "id": "release-rolling-07",
+      "kind": "process-restart",
+      "restore_block": 8084704,
+      "status": "pending",
+      "trigger_block": 8084684
+    },
+    {
+      "id": "release-rolling-08",
+      "kind": "process-restart",
+      "restore_block": 8084729,
+      "status": "pending",
+      "trigger_block": 8084709
+    },
+    {
+      "id": "release-rolling-09",
+      "kind": "process-restart",
+      "restore_block": 8084754,
+      "status": "pending",
+      "trigger_block": 8084734
+    },
+    {
+      "id": "release-rolling-10",
+      "kind": "process-restart",
+      "restore_block": 8084779,
+      "status": "pending",
+      "trigger_block": 8084759
+    },
+    {
+      "id": "release-rolling-11",
+      "kind": "process-restart",
+      "restore_block": 8084804,
+      "status": "pending",
+      "trigger_block": 8084784
+    },
+    {
+      "id": "release-rolling-12",
+      "kind": "process-restart",
+      "restore_block": 8084829,
+      "status": "pending",
+      "trigger_block": 8084809
+    },
+    {
+      "id": "release-rolling-13",
+      "kind": "process-restart",
+      "restore_block": 8084854,
+      "status": "pending",
+      "trigger_block": 8084834
+    },
+    {
+      "id": "release-rolling-14",
+      "kind": "process-restart",
+      "restore_block": 8084879,
+      "status": "pending",
+      "trigger_block": 8084859
+    },
+    {
+      "id": "release-rolling-15",
+      "kind": "process-restart",
+      "restore_block": 8084904,
+      "status": "pending",
+      "trigger_block": 8084884
+    },
+    {
+      "id": "release-rolling-16",
+      "kind": "process-restart",
+      "restore_block": 8084929,
+      "status": "pending",
+      "trigger_block": 8084909
+    },
+    {
+      "id": "release-rolling-17",
+      "kind": "process-restart",
+      "restore_block": 8084954,
+      "status": "pending",
+      "trigger_block": 8084934
+    },
+    {
+      "id": "release-rolling-18",
+      "kind": "process-restart",
+      "restore_block": 8084979,
+      "status": "pending",
+      "trigger_block": 8084959
+    },
+    {
+      "id": "release-rolling-19",
+      "kind": "process-restart",
+      "restore_block": 8085004,
+      "status": "pending",
+      "trigger_block": 8084984
+    },
+    {
+      "id": "release-rolling-20",
+      "kind": "process-restart",
+      "restore_block": 8085029,
+      "status": "pending",
+      "trigger_block": 8085009
+    },
+    {
+      "id": "release-rolling-21",
+      "kind": "process-restart",
+      "restore_block": 8085054,
+      "status": "pending",
+      "trigger_block": 8085034
+    },
+    {
+      "id": "release-rolling-22",
+      "kind": "process-restart",
+      "restore_block": 8085079,
+      "status": "pending",
+      "trigger_block": 8085059
+    },
+    {
+      "id": "release-rolling-23",
+      "kind": "process-restart",
+      "restore_block": 8085104,
+      "status": "pending",
+      "trigger_block": 8085084
+    },
+    {
+      "id": "release-rolling-24",
+      "kind": "process-restart",
+      "restore_block": 8085129,
+      "status": "pending",
+      "trigger_block": 8085109
+    },
+    {
+      "id": "release-rolling-25",
+      "kind": "process-restart",
+      "restore_block": 8085154,
+      "status": "pending",
+      "trigger_block": 8085134
+    },
+    {
+      "id": "release-rolling-26",
+      "kind": "process-restart",
+      "restore_block": 8085179,
+      "status": "pending",
+      "trigger_block": 8085159
+    },
+    {
+      "id": "release-rolling-27",
+      "kind": "process-restart",
+      "restore_block": 8085204,
+      "status": "pending",
+      "trigger_block": 8085184
+    },
+    {
+      "id": "release-rolling-28",
+      "kind": "process-restart",
+      "restore_block": 8085229,
+      "status": "pending",
+      "trigger_block": 8085209
+    },
+    {
+      "id": "release-rolling-29",
+      "kind": "process-restart",
+      "restore_block": 8085254,
+      "status": "pending",
+      "trigger_block": 8085234
+    },
+    {
+      "id": "release-rolling-30",
+      "kind": "process-restart",
+      "restore_block": 8085279,
+      "status": "pending",
+      "trigger_block": 8085259
+    },
+    {
+      "id": "release-rolling-31",
+      "kind": "process-restart",
+      "restore_block": 8085304,
+      "status": "pending",
+      "trigger_block": 8085284
+    },
+    {
+      "id": "release-head-owner-rolling-01",
+      "kind": "process-restart",
+      "restore_block": 8085329,
+      "status": "pending",
+      "trigger_block": 8085309
+    }
+  ],
+  "historical_faults": {
+    "bytes": 86192,
+    "exists": true,
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/faults.json",
+    "sha256": "e0ea0fc9fe754121873a6158f7627b1aceacb0eff15804e293cc1f4765f28d88"
+  },
+  "historical_result": {
+    "bytes": 264348,
+    "exists": true,
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/result.json",
+    "sha256": "3a3b78827adadac55cbb037208ddaa31e90587f2dc0a6ee1cd4f83cc9d74c6df"
+  },
+  "interpretation": "R45 terminal fault snapshot remains preserved. Actual live active ledger and both filter files are absent after owner cleanup. No additional cleanup action is required; no inference that the failed interval completed.",
+  "method": "Read filesystem, /proc, and user service state only; no writes to live state or processes.",
+  "observed_at": "2026-09-25T17:08:18.364692+00:00",
+  "schema": "urnetwork-r45-read-only-postfailure-cleanup-receipt-v1",
+  "service": {
+    "urnetwork-sim-release-r45.service": [
+      "MainPID=0",
+      "Result=exit-code",
+      "ExecMainStatus=1",
+      "ActiveState=failed",
+      "SubState=failed"
+    ],
+    "urnetwork-sim-ur-subnet-testnet-v1.service": [
+      "MainPID=3780072",
+      "Result=success",
+      "ExecMainStatus=0",
+      "ActiveState=active",
+      "SubState=running"
+    ]
+  },
+  "supervisor": {
+    "manifest_hash": "0x2bd5bbef8665fa4fee3a7ca085b3144f95504395ea348652f3552fc76a7bba9a",
+    "pid": 3780072,
+    "start_ticks_proc": 21558815,
+    "start_ticks_recorded": 21558815,
+    "state_file": {
+      "bytes": 8794,
+      "exists": true,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+      "sha256": "88e64130d5fc3ab84f1538d0042a8e4b1ef1be48f17367fa25e3dfe9b4b9bc08"
+    },
+    "state_updated_at": "2026-09-25T17:08:16.02457569Z"
+  }
+}

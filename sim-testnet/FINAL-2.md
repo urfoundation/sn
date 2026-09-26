@@ -1,5 +1,708 @@
 # Sim-testnet finalization report 2
 
+**R46 completed five measured epochs; sealed provisional result failed on
+2026-09-26.** The owner recorded **182 assertions, 86 failed**, and **182
+open anomalies**. `final_acceptance=false`; this report does not claim a
+qualified release or production soak. The independent terminal diagnostic is
+being rerun against the sealed source, so its final check inventory remains
+pending. [Exact owner result](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-result.json)
+(SHA-256 `e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9`).
+The R46 owner ran as `urnetwork-sim-release-r46.service` from clean
+source revision `ad5c05ec` with the unchanged approved plan, 2,048 funded
+slots, retained fleet supervisor, and LAN RPC `192.168.1.162:9944`.
+Its in-service preflight authenticated R45's sealed failure and signed
+invalidation, the retained journal and supervisor identities, pinned input
+hashes, and finalized LAN block 8,084,535. The owner subsequently
+authenticated all 45 prior campaign generations and signed recovery
+generation 46 (run `20260925T172403.199659160Z-release-1.0`), binding
+the exact failed R45 result and invalidated envelope. The owner completed
+preparation and signed a fresh R46 acceptance boundary at 17:47:11 UTC:
+baseline epoch **630** at finalized block **8,084,658**, five measured
+epochs **631–635**, start block **8,084,674**, end block **8,086,174**, and
+terminal block **8,086,324**. The LAN node finalized block 8,084,682 after
+the signed start. The owner completed its first measured observation at
+17:47:49 UTC on finalized block **8,084,680** (hash
+`0x914e4fd82d14e5f17dd19a4f3eb0455495f88cda1c01487caecef60e80087e4f`),
+six blocks after start. It found 808 valid fleet bindings and policy rate
+readiness. Its observation hash is
+`0x8adaccc861dba35a59e47303a9b5f9f15af51e24f23f1ebeac4699b438a81d81`.
+This proves measured observation began; complete epochs and terminal
+acceptance are still separate requirements.
+[Signed start envelope](peerreview/evidence/FINAL-2-R46-continuation-20260925/generation46-signed-start.evidence.json)
+(SHA-256 `4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd`),
+[first measured observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-observation.json)
+(SHA-256 `99cc4fe919e076cde81993fe875d09b240b73e0ef43bb5bb4a48d01dabd03873`).
+The displayed contract head hash is the **EVM block hash**: an independent
+LAN `eth_getBlockByNumber` read at 8,084,680 returned it exactly. The
+Substrate `chain_getBlockHash` at the same height is a different hash by
+design; the two should not be compared as if they were the same namespace.
+[Exact RPC responses](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-measured-chain-hashes.receipt.json)
+(SHA-256 `f456e08e4719854328eaa254dc37e68ef9687ee5bfa4c82a1b6760a042169261`).
+One later snapshot at finalized block **8,084,710** marked rate readiness
+false because both local operator stats and proofs GETs exceeded their
+30-second single-attempt deadline. The owner stayed active. Its next durable
+snapshot at block **8,084,740** marked rate readiness true again from a
+complete current-policy source epoch, with valid fleet bindings. This is an
+intermittent observation error, retained for final review rather than erased
+by the recovery. [Timeout](peerreview/evidence/FINAL-2-R46-continuation-20260925/local-get-timeout-observation.json)
+(SHA-256 `68482b1d4cb2ee51f01ae19b87430a1f1635b895e3a1f5912d20383cac2af93e`),
+[recovery](peerreview/evidence/FINAL-2-R46-continuation-20260925/local-get-recovered-observation.json)
+(SHA-256 `6009dcaf3a37e0865e8a373506faf089254100e5132d379985dcea81458d4150`).
+The [observation-pair receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/operator-read-recovery.receipt.json)
+(SHA-256 `3589c3c75fe4b421ed0d0d74185dba77dfc8a965b6ea39305f0c07f9755535f2`)
+retains their exact JSONL offsets and hashes.
+The strict anomaly checker walks retained observations, so recovery does not
+remove that timeout row. Its `operator-error` is expected to remain an open
+final anomaly unless the terminal checker establishes an applicable expected
+fault; no such fault target is present in this row. This is a prospective
+strict-gate finding, not a reason to stop the continuing partial run.
+A second 30-second local GET timeout occurred for operator 2 in an observation
+at block **8,084,769**. That row does include `operator-2-api` among expected
+fault targets. A read-only latency review correlated the endpoint failures
+with scheduled PostgreSQL restarts and found healthy API processes and low
+single-digit successful route times outside faults; it does not prove the
+exact request's cause. The second row and its fault context remain available
+to the terminal checker. [Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/second-local-get-timeout-observation.json)
+(SHA-256 `942f450a894b2f48a7dee768ba66bafc2e02c1dda4d947146d13d200c5c24618`),
+[latency triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/operator-latency-triage.receipt.json)
+(SHA-256 `6d4522af1f38460bf5ac0b69836776b2baacda2600d5caa37609aecb5458367d`).
+At 18:03 UTC, the live owner also logged
+`public_census_audit_passed=true`; this closes that deferred preparation
+audit while strict terminal acceptance remains open. The
+[bound owner-journal receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/public-census-passed.receipt.json)
+(SHA-256 `2af3a976a778093f1e711a01102fefa43b4d0bf1f61f2ac357fb0513148315d7`)
+retains the exact cursor and owner identity.
+At 18:08 UTC the owner retained two R46-scoped validator-2 steering classes
+as provisional process findings and explicitly continued observing. The raw
+lines show native epoch 1674 attempt 1 timed out waiting for headers from
+operator 2's local `/sn/attempt-artifact`; attempt 2 reported a compact-head
+EMA epoch jump; steering then advanced from incomplete 1674 to 1675. These
+are real strict-gate findings, not part of the companion-filter exception.
+The auxiliary read-only monitor initially selected the wrong scope field and
+underreported them; its corrected v2 summary and original raw owner gate are
+preserved in the [finding receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/process-findings-180814.receipt.json)
+(SHA-256 `f632ef67a4c21cbd423fd7684b1cbd82a71f9b2916636a353a3ecec94da66308`)
+and [gate copy](peerreview/evidence/FINAL-2-R46-continuation-20260925/process-findings-180814.gate.json)
+(SHA-256 `8db8ebba9a4e1d7dcc94af7725cad445a39f23e367256a14d0e0e75f29fa169a`).
+Read-only reconciliation found the exact 249,748-byte records object on both
+publication replicas; the timed-out POST did not leave it missing. Both
+native-1674 operator inputs were retained, but validator 2's active steering
+intent and EMA are still at native epoch **1661**, with no later intent history.
+Thus object recovery does not establish native-1674 steering, and the
+continuity failure remains real. This is a strict finding for final review,
+while the R46 owner continues. [State triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/native1674-triage.receipt.json)
+(SHA-256 `1bc3ac7a1c725958c8f429e094fb569464e6a4a202f09d867a35338fd723da8d`),
+[replica readback](peerreview/evidence/FINAL-2-R46-continuation-20260925/native1674-record-replica-readback.receipt.json)
+(SHA-256 `ef2f8b1f7c5802ec52caa1858f373f3283384c02abeb6e4ff4dffa075b263165`).
+The owner then crossed the first measured epoch boundary without stopping. Its
+first completed epoch-632 observation, taken at 18:51:03 UTC on finalized
+block **8,084,997**, reports 808 valid fleet bindings and a complete epoch-631
+usage source for both operators. The LAN `eth_getBlockByNumber` independently
+returned its exact EVM head hash. Policy rate readiness is **false** in this
+observation: operator 2 recorded **14,687,835 bytes**, equivalent to **177,208
+TAO rao** at the 10,000,000,000-rao tier, below the configured
+**200,000-rao** two-times-native threshold. The source marks this as a
+provisional low-usage shortfall, not final acceptance. The run continues to
+collect later epochs and terminal evidence; this row remains a strict final
+review finding. [Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-first-observation.json)
+(SHA-256 `7f1ea3f1ea13f035f125a5df029f92a9e6a6cc10d292df08ad21e36181077c2d`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch631-closure.receipt.json)
+(SHA-256 `b15298ebb333bcc3d8cba380bd9d650947e37c6b494e18498b147688fea320bd`).
+Three further R46-scoped process findings came from miner-swarm receivers:
+`exit-gap-timeout` on swarms 17, 1 and 9. The raw lines each show an
+unresolved sequence 0 after 60 seconds. A read-only comparison found
+validator 1's matching sender ACK-lifetime warnings on message numbers 57,
+21 and 17. The `queued=58/22/18` field means the earliest retained
+out-of-order sequence, not a count of queued packets. The exact cause of the
+missing sequence or ACK state is unresolved. The owner explicitly logged
+`observation_continues=true final_gate_unchanged=true` with these findings
+and remained active. They stay blocking in raw final evidence; provisional
+continuation does not convert them to passes.
+[Raw-line and continuation receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/exit-gap-three-1856.receipt-v2.json)
+(SHA-256 `c1d45234c8ea98037f15ac838c9b903e2767ead1d824343d93991fdbd1a4ef1a`).
+By the 19:09 read-only cut, this pattern had grown to **eight timeout events
+across six swarms**. It is recurring transport degradation, not a benign
+single warning. Continuing still yields useful measured evidence: **996 of
+1,000 providers** were running, the four disabled providers were the signed
+head-boundary targets, and validator 1 produced **175 fresh proofs** through
+both operators during 19:00–19:07:38. Validator 2's native steering gap
+remains a separate strict failure. The owner and fleet supervisor remained
+active; no live repair or waiver was applied.
+[Read-only synthesis](peerreview/evidence/FINAL-2-R46-continuation-20260925/exit-gap-spread-1908.receipt-v2.json)
+(SHA-256 `998b2924731a710b9cf0962121cf4e0e8771bcde5ff38c4f64167c214e881667`),
+[provider health](peerreview/evidence/FINAL-2-R46-continuation-20260925/swarm-health-1906.receipt.json)
+(SHA-256 `fa7abecea4d61206d7f88c1e23553ae7c01e4b19ed76e87197be0672acd32fd6`),
+[proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-1907.receipt.json)
+(SHA-256 `866584729cdce559badb5e0771ca84eda9d4d5372d7e8fa1142fd893914a2699`).
+R46 also crossed the second measured boundary. The owner's first epoch-633
+observation is pinned to finalized block **8,085,274**. It had valid fleet
+bindings but rate readiness false because its source still identified epoch
+631; the rate check requires the immediately preceding complete epoch 632.
+The next completed owner observation, at block **8,085,300**, selected
+complete epoch-632 sources for both operators: **20,824,859** and
+**23,593,398 bytes**. It reports rate readiness **true** and valid fleet
+bindings. Independent LAN EVM reads matched both observation head hashes.
+The boundary lag is preserved; the later recovery does not erase it or grant
+final acceptance. [Boundary observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-boundary-observation.json)
+(SHA-256 `44abbf91cb060bc54cfd0644a970c3288c25d61bdf577a232482a0c9c2953233`),
+[boundary receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-boundary.receipt.json)
+(SHA-256 `9606fe03882b7529a950c1d3430896a311c770b135c5432ac8ac418f8ccd6005`),
+[recovered observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-source-recovered-observation.json)
+(SHA-256 `c0a47feb3472dbacaf45e982bf2c950ea3132ddd4f796c7db4d70c6a20ec5d5d`),
+[recovery receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch632-source-recovery.receipt.json)
+(SHA-256 `360d86eb1f8b6df2b1106eb4af771c2e01123426e5a00e43359a6fc9b8ba2d24`).
+During epoch 633 the scheduled `head-boundary` miner control was recorded
+restored at block **8,085,444**, and the paired
+`validator-local-head-boundary` view filter at block **8,085,449**. The
+owner remained active and kept observing after both. The read-only
+[restoration receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/head-boundary-restored.receipt.json)
+(SHA-256 `70137f9ca120522d416bbd1080b8deafb58604fafd4b11373681cb205c72f769`)
+binds both rows to the sampled fault-file hash; it does not claim the other
+scheduled faults or final interval are complete.
+At the 20:49 cut, R46 retained a new validator-1
+`release-steering-attempt-failure`: its local client-observation POST was
+canceled by a termination signal during the signed `release-rolling-30`
+validator-1 restart. The fault ledger records that restart restored at block
+**8,085,579**; a replacement validator process was active. The raw finding
+remains blocking even though its trigger was scheduled. All 1,000 provider
+processes were running in the read-only health sample, and validator 1 had
+produced fresh proofs before the restart. No post-restart proof or new
+validator-1 intent/weight recovery had been established at this cut.
+Validator 2's prior steering gap remained open, and its own scheduled rolling
+restart had begun. [Bound restart receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/validator1-restart-2049.receipt.json)
+(SHA-256 `eecf23fc6a73e4943cd6eee5692f701400343ad9235ba3d73e00a3f9e40d5f4d`),
+[provider health](peerreview/evidence/FINAL-2-R46-continuation-20260925/swarm-health-2047.receipt.json)
+(SHA-256 `e872f264cd605908e5abe40df861ba9b3533c878b4e42e196125142548288521`),
+[proof progress](peerreview/evidence/FINAL-2-R46-continuation-20260925/proof-progress-2047.receipt.json)
+(SHA-256 `3bc0227b5f26129309826f5d3e6f4839f895d9476df19ced46e6410c91e5519e`).
+The owner subsequently crossed the third measured epoch boundary. Its first
+epoch-634 observation, at finalized block **8,085,598**, selected complete
+epoch-633 usage sources of **21,465,073** and **17,885,137 bytes** for
+operators 1 and 2. It reports rate readiness true and 808 valid fleet
+bindings. An independent LAN `eth_getBlockByNumber` read matched the exact
+EVM head hash. This establishes that the owner observed the epoch-633 close;
+it does not establish terminal acceptance or post-restart validator steering.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-first-observation.json)
+(SHA-256 `e8be91fb30a95620357e946940a3b427342f1cbc153d9e51e3f4de12dab43b0b`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch633-closure.receipt.json)
+(SHA-256 `1b98ee7a1912f1e2c834df8130085782ba6c44773cefd37c586fdd0e57783a77`).
+The owner then crossed the fourth measured boundary. Its first epoch-635
+observation at finalized block **8,085,878** selects complete epoch-634
+usage sources of only **5,250,701** and **5,732,655 bytes** for operators
+1 and 2. Fleet bindings remain valid, but rate readiness is **false**:
+operator 1's source yields **105,582 TAO rao** at the zero-conviction tier,
+below the configured **200,000-rao** two-times-native threshold. This is an
+authenticated low-usage result, not a stale-source identity error. The
+rolling validator restarts overlap this period, but the exact traffic-loss
+cause is not established by this observation. R46 continues through its
+fifth measured epoch and terminal checks despite this strict shortfall.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch635-first-observation.json)
+(SHA-256 `adda8561024d55080fd8bdfbfa08550886b9e021c60e64fa5ff7a44a2ac0ff85`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-closure.receipt.json)
+(SHA-256 `5556ea9345629fb0f393fdefc629f4605c63b071105bb7f1e98728c6bdbe148d`).
+The narrow code change permits
+authenticated provisional process-log findings to be retained while the
+owner continues observing; the strict terminal gate still sees them. No
+final acceptance is claimed from the provisional continuation.
+[Launch bundle](peerreview/evidence/FINAL-2-R46-continuation-20260925/README.md).
+The owner subsequently observed the fifth measured epoch close. Its first
+epoch-636 observation is pinned to finalized block **8,086,174**, the signed
+measurement end. It selects complete epoch-635 usage of **6,804,866** and
+**6,654,281 bytes** for operators 1 and 2, reports 808 valid fleet bindings,
+and again fails rate readiness: operator 1 yields **136,834 TAO rao** against
+the **200,000-rao** two-times-native threshold. An independent LAN
+`eth_getBlockByNumber` read matched its exact EVM head hash. This proves all
+five measured epochs were observed. The sealed owner result below records
+terminal acceptance as failed.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch636-first-observation.json)
+(SHA-256 `b7f3ec16f0f3b6802c3c1fc2e8fc48cf67b17848fefc3b6ae419299fb2f79197`),
+[offset and LAN-chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch635-closure.receipt.json)
+(SHA-256 `45db21698da6851ece9eac87faac287dbd88beb3ed72dd5a92bcd9775792c7db`).
+
+Read-only restart analysis found **zero epoch-634 proofs in all four
+validator/operator proof files**. Validator 1 stopped producing proofs at
+20:43:04 UTC during its scheduled restart; validator 2 resumed both streams
+at 22:07:38 UTC after approximately 80 minutes. Validator 1's replacement
+process remained alive and advanced its census-replay scratch files, but no
+post-restart proof or running announcement had appeared by the 22:33 cut.
+This supports restart replay starvation as the likely explanation for the
+epoch-634 rate collapse; it does not establish a deadlock or a complete
+causal account of every low-usage interval. The swarm exit-gap event count
+was unchanged after 20:43:05 UTC in the bounded review. These remain strict
+findings in the sealed terminal result.
+[Bounded proof and process receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-restart-causality.receipt.json)
+(SHA-256 `17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4`),
+[validator-1 startup receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/validator1-startup-phase-2233.receipt.json)
+(SHA-256 `8aacf6e26f77e3bd61515e9c06dc146d94eced99f98d2b12ffec48ab0801d8d1`).
+After the fifth epoch and signed terminal block were crossed, the owner kept
+polling failed strict assertions. All **42** scheduled faults had been
+restored, but the accepted epoch usage and retained process findings could
+not be repaired by a later observation. A graceful interrupt requested a
+failed partial terminal result rather than waiting several more hours for
+the watchdog. The owner sealed its result at 00:08:52 UTC with end epoch
+**637**, finalized EVM head **8,086,545**, and no final acceptance; it exited
+at 00:10:48 UTC. The signed generation-46 envelope retains the exact
+boundary and records `execution-exited-before-completion` at 00:09:56 UTC.
+The independent monitor captured **19 files, 184,188,789 bytes**, with zero
+copy errors after owner exit. These facts establish a complete measured
+window and a sealed failed owner result, not a passing release.
+[Signed exit envelope](peerreview/evidence/FINAL-2-R46-continuation-20260925/generation46-signed-exit.evidence.json)
+(SHA-256 `5b4e635ae2fcabdb78eb9e9a3bb2766e570b180a1599ddf7f5231a39f91fa4a6`),
+[independent capture receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/terminal-capture.receipt.json)
+(SHA-256 `40cd5376a6473c1946afd06f1d42a868c5f2055f5757b319a418e55ed47dc35d`).
+Independent LAN `eth_getBlockByNumber` reads returned signed terminal block
+**8,086,324** and matched the owner's exact end-head hash at **8,086,545**.
+[Terminal chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/terminal-chain-heads.receipt.json)
+(SHA-256 `bb9378a8346fb4d2d3c5233360cbba8c0149fe836c251e26fa9f96ac3821f21f`).
+The post-R46 terminal-control fix seals a failed provisional result once an
+immutable in-window failure and complete fault cleanup are authenticated,
+instead of polling for an adversary sample that can never make that interval
+pass. Its real scheduled-fault controller, negative controls and race tests
+passed in an isolated source build; final acceptance rules remain strict.
+[Terminal fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-completion-fix-review.md)
+(SHA-256 `45834e44a5872f9b288a1ea651ddf39a218eb252a95ffe6545ac793d487b5754`).
+Composed review caught an adjacent wire-format error before deployment: the
+process-log scanner emits bare 64-character line hashes, while the first
+terminal fix accepted only `sha256:`-prefixed hashes. Real repeated
+exit-gap/TLS findings therefore remained strict but did not trigger prompt
+failed sealing. A scanner-produced pre-fix regression failed; the narrow
+correction passed normal and race tests, with malformed, foreign-scope and
+recovering findings still ineligible. [Hash-format fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-log-hash-fix-review.md)
+(SHA-256 `13733f4a26e895e0661fc754f15ac60b12e2557ec5a55b82a97f6293890f607b`).
+
+The sealed **86** failures have been assigned once each to these diagnostic
+groups. Counts are failed assertion rows, not independent root causes:
+
+| Diagnostic group | Rows | Current interpretation |
+| --- | ---: | --- |
+| Adversary actors or prerequisites | 59 | Fifty-four vector rows share a handful of failing actors; consensus sampling was skipped without applied independent validator intent. |
+| Validator native decisions missing | 14 | Validator 1 produced no fresh applied decision, vector or deposit audit after restart. |
+| Inherited lifecycle exception | 3 | The approved prune/re-register bypass still cannot satisfy strict lifecycle proof. |
+| Retained process findings | 2 | Ten miner exit-gap classes and validator steering failures remain in the strict log gate. |
+| Claim census at the terminal cut | 2 | The selected census has 200 finalized claims for operator 1 and 199 for operator 2; miner 881's operator-1 epoch-635 submission was unresolved at that cut. |
+| Cancellation and publication | 2 | Graceful terminal cancellation interrupted publication; the owner result is still retained. |
+| Governance drill, payout tier, cohort separation, open-anomaly aggregate | 4 | One row each, requiring separate source review. |
+
+The [exact failure-cluster receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/failure-clusters.receipt.json)
+(SHA-256 `bb861d78cbbb5449c9f2b439e6ecfea231620ae6ad33d2ff5112cfd5b5a5f0bc`)
+lists every assertion ID, message and observation hash. This grouping is
+triage, not a waiver or a claim that any failed gate passed. The owner
+[faults](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-faults.json),
+[process logs](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-process-logs.json),
+[adversary evidence](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-adversaries.json)
+and [anomalies](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-anomalies.json)
+are copied byte-for-byte from the independent terminal capture.
+
+An independent actor review found a concrete observation defect: each healthy
+operator surface in the retained samples returned exactly **100,000 stats
+rows and 10,000 proof rows**, and the per-operator body hashes stayed
+unchanged across R46. The pinned server orders those endpoints oldest-first;
+an unbounded request capped at those counts can omit the current interval and
+freeze quality-cohort measurements. It also found separate harness defects
+where a successful API response inherited unrelated process unhealthiness,
+signed verify failures could be excused by a scheduled fault, and later
+success obscured earlier actor errors. Isolated fixes request bounded time
+ranges, reject a full page, and retain strict provenance and process checks.
+Their fixed focused suite passed **61** tests and the race subset **40**;
+five controlled old-behavior checks failed as expected. These patches were
+not present in R46 and do not revise its verdict. The same review leaves
+**35 RPC errors, six artifact errors, 21 health findings, two restart
+anomalies and 18 exit-gap events** as strict findings with no proven shared
+root yet.
+[Exact sealed triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversary-triage.receipt.json)
+(SHA-256 `b0d9cab66764c9ae213d810299a00f257fd046c3303c4f524ce926ca6091b8e1`),
+[isolated fix and test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversary-fix-review.receipt.json)
+(SHA-256 `b20be41e763ba3b996d33075de1b581d02d6ca1ef57155aff0eb0d1efd1733d9`).
+The sealed actor summaries, observations and owner journal do not retain
+individual RPC and artifact error chronology, so the **35 RPC** and **six
+artifact** error counts cannot yet be assigned a specific shared cause.
+The non-faulted EVM egress logged no R46-scoped failures; earlier deadline
+lines precede this acceptance window. A read-only census of the diagnostic
+capture found 31 epoch closures and 142 referenced streams totaling about
+878 MB before overlap. Validator-2 capture was still reading serial source
+chunks at the recorded cut. A separate RPC verifier defect was found and
+tested afterward: two responses at the same wrong height, or two malformed
+32-byte hashes, could be accepted as a common owned block. That is an
+adjacent integrity fix, **not established as the cause of R46's 35 RPC
+errors**. [Actor and capture triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-rpc-artifact-capture-triage.receipt.json)
+(SHA-256 `bb20784b39dd38b0d003fbc5ed675724ecb072ae88cf560c699f93e63b3a31fd`).
+
+A separate exact-log review pins **18 receive-sequence exit-gap events across
+10 swarms**; these are sequence gaps, not process exits. The pinned receive
+idle timeout is **120 seconds**, whereas the sender retains its sequence for
+**300 seconds**. A follow-up join found a matching same-peer validator-1
+ACK-lifetime exit for **all 18** receive gaps. Each sender's idle interval
+before the next write was **154.30–295.32 seconds**, inside that mismatch,
+and its first unacknowledged number was one below the queued receiver tail.
+That timing suggested premature receiver retirement. A deterministic actual
+wire/HMAC/encryption fixture, however, recovered after 155 seconds idle in
+plain, encrypted and combined receive/TLS state-loss lanes. The timeout
+asymmetry alone is therefore **insufficient to reproduce the failure**.
+The retained rows still do not identify
+the missing acknowledgement, full head or route for every event, and they do
+not establish one shared defect for all 18. Lost feedback, contract-ahead
+state and route replacement need separate causal tests before changing
+transport behavior. The same
+review confirms the epoch-1674 native records object on both replicas and
+both durable input cuts, while the applied intent remained at native epoch
+1661; a recovered object does not repair that authenticated continuity gap.
+[Exact gap and native review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-gap-native-root-review.receipt.json)
+(SHA-256 `a5e4a466e3e20a23db821b6bdfe6b9c6c932e6cda09c6616f6d7146811f6aa8d`),
+[all 18 sender/receiver pairs](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-idle-pairs.receipt.json)
+(SHA-256 `b93eb1ed494b9a118e91963e781af69663335f4c0325d567c29191ffa330cba6`).
+A separate prefetch-ordering bug was reproduced on the actual signed and
+encrypted wire path after idle, but a bounded scan of all 18 sealed R46 peer
+windows found **zero** no-contract or contract-verification failure witnesses
+and prior verified cipher evidence in 15 windows. That fix is adjacent
+hardening, not an established explanation of R46's exit gaps.
+[Contract-witness scan](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-contract-witnesses.receipt.json)
+(SHA-256 `dd0242ef057041cc49002621697bf82c49cf5fc5b5ddb082da7218407474e905`).
+
+The sealed read-only diagnostic currently reports
+`result-start-and-fault-binding` failed with “lifecycle cleanup completion
+appeared without its prior signed request.” The exact retained sequence is
+more specific: the signed start has both lifecycle faults pending; the
+authenticated observation at block **8,086,331** records their request; the
+observation at **8,086,382** records completion; and both final result rows
+equal the signed latest checkpoint. The authenticated observation prefix
+contains **74 rows and 89,796,733 bytes**, with no uncredited suffix.
+The diagnostic reader compared start directly to final using an adjacent
+transition rule, so this diagnostic failure does not prove a missing request.
+It also does not turn the failed R46 acceptance into a pass. The final
+diagnostic inventory is still pending.
+[Sealed checkpoint comparison](peerreview/evidence/FINAL-2-R46-continuation-20260925/sealed-r46-cleanup-history.receipt.json)
+(SHA-256 `97352693576e783b6a81edf42c38341293f20a81b721f2ca47fd0e44403f39ff`).
+The post-R46 reader fix walks the authenticated intermediate checkpoints in
+order, retaining the strict adjacent transition validator on each edge.
+Five focused normal tests, adjacent normal tests and the combined race run
+passed; three controlled old-behavior cases failed as expected. The code
+change cannot revise R46's sealed owner result.
+[Cleanup-reader fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-cleanup-history-fix-review.md)
+(SHA-256 `fe8b49807072161d0b60510ece8401f5e6999d6a8765eda5df15f611f718b551`).
+
+The independent sealed diagnostic advanced after its validator-2 source
+capture deadline. That capture failed at cut **70/96**, operator 2, while
+reading a 3,162,606-byte records chunk; its dependent native-application and
+relay-readback checks were marked unavailable. It then retained the strict
+process-log and lifecycle activation failures, captured companion evidence,
+and passed the signed-payout-artifacts check. At the 36-check checkpoint,
+compact validator capture and lifecycle payout artifacts were unavailable;
+the adversarial matrix check passed, while its campaign reader was unavailable
+because it selected the diagnostic directory instead of the retained run.
+The diagnostic remains in progress; none of these partial checks override
+the owner result. [36-check progress receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-diagnostic-progress-36.receipt.json)
+(SHA-256 `ebea67dc3525d7526152c945437d32219154f04461075291ca3515d6f9905360`).
+The subsequent read-only capture fix bounds parallel origin readers, retains
+durable witness ownership and rejects late success after a deadline; its
+isolated normal and race suites passed, with old-behavior controls failing.
+[Capture fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-capture-fix-review.md)
+(SHA-256 `c13b3fd10d9d5e81380b6df79bd0332869c86423df92c2fccc2848b9e93b5f2f`).
+
+The missed payout is independently visible on-chain. A LAN historical
+`eth_call` at the owner's finalized block **8,086,545** returns status **3
+(`RootMissed`)** with zero commitment fields for operator 2, epoch **634**.
+The `RootMissed(634, 2, 0)` log was emitted in transaction
+`0xd7edee5109490c124debd59420de2628c71bcb3c29c32cd45f8e924ab87d35a6`
+at block **8,086,027**, inside the signed measurement window. No operator-2
+epoch-634 payout tier is present; later epoch artifacts do not prove that
+missing root. The selected claim census has a separate timing finding:
+miner 881's operator-1 epoch-635 claim was still `submitting` at the owner's
+cut, although its queue later finalized at block **8,086,568**, after the
+signed terminal block. The later receipt must be recorded as a supplement,
+not used to rewrite the terminal verdict. The operator-2 count of 199 is
+associated with the missed epoch-634 root, not with miner 881's submission.
+[Historical LAN call, event and claim-cut receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/no2-epoch634-rootmissed-claim-cut.receipt.json)
+(SHA-256 `1ca99f9efbc4d1d055813fe1468c427ac3b1dc7557beecec6b44e8ad61247ffa`).
+The pinned taskworker log closes operator 2's epoch 634 at 21:46:43 UTC with
+**zero payout leaves and a zero root**. Operator 1 closed the same epoch with
+four leaves and confirmed its nonzero root 32 seconds later. The pinned
+server intentionally skips root submission when no leaves exist; the chain's
+`RootMissed` is therefore consistent with an empty operator-2 payout census,
+not evidence of a timed-out root submission. All four validator/operator
+proof streams had zero completed epoch-634 proofs after the scheduled
+restarts, making proof starvation a plausible upstream cause. A
+provider-by-provider eligibility census is absent, so this evidence does not
+establish exclusive causality for the empty census. The original missed root
+remains a strict historical failure.
+[Taskworker, source and chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/epoch634-empty-payout-census.receipt.json)
+(SHA-256 `0e32519ae98e26f137b73cb851624f89d9670c2a3c9a6ed157bd5096aebffe7e`).
+The post-R46 restart correction now requires a replacement validator to
+produce fresh, fully signed proof trails for every approved operator before
+the scheduler treats the restart as restored. An isolated **32-test normal
+and race suite** passed; old PID-only and final-hop-only controls failed as
+expected. A separate server test exercises zero confirmations, zero leaves,
+then a newly confirmed exposure producing one leaf, while Solidity tests
+cover zero-root refusal and operator-scoped `RootMissed` carry. These are
+future-run fixes and controls, not retroactive evidence of R46 acceptance.
+[Fix and test review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-restart-payout-fix-review.md)
+(SHA-256 `569b4ff0c0bc55766c0326bbc07bd326ca473858094330da4410cec82107a4ed`),
+[exact native steering rows](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-native-steering-rows.receipt.json)
+(SHA-256 `195a9ce4e4c15a979cb3dfd4773f7d8d3cf3547919a557fde6aa45dfe02e2858`).
+The first durable R46 observation was taken at 17:30:57 UTC on finalized
+block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
+It found **808/808 fleet bindings valid** and current-policy rate readiness
+true: complete epoch 629 carried 21,410,245 and 20,543,745 bytes for the two
+operators, clearing twice the native minimum at every tier. This is a fresh
+readiness observation, not a signed acceptance start.
+[Exact observation](peerreview/evidence/FINAL-2-R46-continuation-20260925/first-observation.json)
+(SHA-256 `fd20218e9bd65fdde89613e8e198562e4c881a25141c4555344886e23e717073`).
+The companion-filter dependency remains known exception **R44-LC-1** below,
+with its lifecycle assertion failed rather than waived as a pass.
+
+**R45 sealed owner result, 2026-09-25 16:56 UTC — failed before a measured observation.**
+The live owner crossed the signed start block on-chain, but its last completed
+observation was still epoch 629 at finalized block **8,084,357**, before the
+first measured block 8,084,374. A process-log heartbeat gate then interrupted
+the scenario. Its [sealed result](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-result.json)
+(SHA-256 `3a3b78827adadac55cbb037208ddaa31e90587f2dc0a6ee1cd4f83cc9d74c6df`)
+reports **five failed assertions of six**, `result=fail`, `provisional=true`,
+and `final_acceptance=false`. The failures are incomplete acceptance interval,
+114 open anomalies, process-log completion/publication, and scenario context.
+The process-log gate counted five release-blocking finding rows, beginning
+with miner-swarm-17's `restart-stale-contract`; validator 2 also reported
+`compact head EMA epoch jumped` on native epoch 1673. The owner continued
+until this gate; the supervisor was still active at the result read cut.
+[Process-log snapshot](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-process-logs.json),
+[steering receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/steering-failure.receipt.json).
+
+The signed recovery-45 envelope was updated with
+`acceptance_invalidated_at=2026-09-25T16:55:38.185272726Z` and reason
+`execution-exited-before-completion`. The earlier signed boundary remains
+historical evidence, **not** authority to count this attempt as accepted.
+[Invalidated envelope](peerreview/evidence/FINAL-2-R45-renewal-20260925/recovery-45-invalidated.evidence.json)
+(SHA-256 `1f5a459a7bd0d5e5c9c4534c51a68f7c6e17a516f2671ac1ffc45a7409a5201f`).
+At the seal, 39 scheduled faults were pending, two validator-view filters
+remained active, and `quality-cohort` was restored. Preserve their exact
+[fault record](peerreview/evidence/FINAL-2-R45-renewal-20260925/owner-faults.json)
+for owned recovery; no fault is deemed restored merely because the owner
+exited. A later read-only
+[cleanup receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/postfailure-filter-cleanup.receipt.json)
+(SHA-256 `3e07876cf7dbfadb2575e98eee6656dade3216731226ca5e1328b3dabd470be3`)
+found no live active-fault file, operator view-filter files or filter receipts,
+while the original fault record still shows their terminal-time status. This
+documents live cleanup without rewriting R45's failed assertions. Both
+operator scenario bundles were published according to the sealed
+result, unlike R44's failed publication. This is prospective publication
+repair evidence, not R45 acceptance.
+
+**R45 continuation, 2026-09-25 15:52 UTC — release boundary signed; measured interval pending.**
+The round-7 renewal of 202 fleets for epochs 628–659 completed with
+`postcondition_verified` status on the unchanged plan
+`0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`.
+Its retained journal records all 1,212 new actions through intent, broadcast,
+inclusion, finalization, and postcondition verification. One EVM mirror
+transaction, `0xc424bf210d337f82b70c5e3fb0de42868288797b80a0380ab9324c58e578d044`,
+has a direct LAN-RPC receipt with status `0x1` at block 8,083,027.
+[Renewal result and journal](peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md)
+include the exact hashes and a portable RPC response. The retained resume
+then dispatched zero setup actions. The R45 controller authenticated all 44
+prior recovery generations and signed a new recovery-45 attempt at 13:45 UTC.
+That first signed attempt was a preparation checkpoint. The controller remains
+active, and the renewed bindings became valid at epoch 628. A full active-epoch
+storage census is in progress; no R45 final acceptance result is claimed here.
+
+At 13:52 UTC, separate nonaccepting publication probes using each operator's
+resumed runtime configuration and the pinned HTTP handler each passed two
+POSTs with exact content/history readbacks. The fresh admin read confirmed a
+64 GiB hard quota. The admin usage report was cached at 13:39 UTC, so it cannot
+measure the active-binding write rate. These probes establish prospective
+publication behavior only; the active-epoch storage gate remains open.
+[Operator 1](peerreview/evidence/FINAL-2-R45-renewal-20260925/operator1-publication-preflight.json),
+[operator 2](peerreview/evidence/FINAL-2-R45-renewal-20260925/operator2-publication-preflight.json),
+[quota readback](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-quota-readback.json).
+
+At 13:54 UTC, the live controller logged a **nonblocking provisional forecast
+advisory** for all four validator publication replicas. The pinned older rate
+configuration sets 32,768 objects/hour and 8,388,608 retry requests/hour;
+the current source forecast requires 34,553 and 10,947,548 respectively.
+Byte capacity exceeds its forecast. The provisional waiver leaves runtime
+limits unchanged and `final_acceptance=false`; it is not evidence that the
+publication workload will fit. The current repository configuration has
+higher limits, but substituting it mid-attempt would change the pinned
+configuration. Keep R45 running and evaluate any capacity correction against
+its immutable continuation boundary. [Exact advisory](peerreview/evidence/FINAL-2-R45-renewal-20260925/publication-capacity-advisory.txt).
+
+The owner also recorded an elapsed evidence-relay horizon forecast and a
+pending public census at 13:58–13:59 UTC. Both are provisional advisories;
+the public census remains a final-audit requirement, and no accepted relay
+result is implied. [Exact relay log](peerreview/evidence/FINAL-2-R45-renewal-20260925/relay-forecast-advisory.txt).
+An independent read-only bucket listing completed at 14:07 UTC with **162,362
+objects and 34,505,448,693 bytes**. In the 13:38–14:00 UTC preactivation
+window it identified 12 new objects totaling 7,658,670 bytes, including the
+nonaccepting publication probes. This gives a fresh baseline, not an
+active-binding rate. The complete 38,669,627-byte listing remains at the
+external path in the [bundle README](peerreview/evidence/FINAL-2-R45-renewal-20260925/README.md);
+the [summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-early-census-summary.json)
+contains its `census_sha256`. The initial listing attempt
+hit its own three-minute timeout; a read-only retry with a 20-minute bound
+completed without touching the live run.
+
+At 14:08 UTC, the R45 owner verified precompile preparation but explicitly
+skipped the governance drill at startup under its provisional continuation.
+Its own log states that incomplete proof cannot pass. A read-only 14:15 UTC
+check found the expected `public/governance-drill.json` absent. The release
+still continues; final acceptance must independently account for this missing
+drill rather than infer it from native dividend activity.
+[Owner log](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-startup-advisory.txt),
+[read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/governance-readcut.json).
+
+At 14:32 UTC the same live owner completed its parallel read-only evidence
+relay public census and logged `public_census_audit_passed=true` with
+`pending_public_census=false`. This closes that deferred preparation check; it
+does not close the other provisional findings or establish final acceptance.
+The pinned worker retains its successful audit result in memory for the final
+join and emits no standalone signed completion receipt. An external read-only
+capture binds the exact systemd journal cursor, owner PID, signed attempt,
+binary and plan; it is a log observation rather than an acceptance signature.
+[Owner audit result](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-result.txt),
+[bound read cut](peerreview/evidence/FINAL-2-R45-renewal-20260925/public-census-audit-readcut.json).
+
+**Renewed-binding activation head observed 2026-09-25 14:46 UTC.** The owned LAN
+RPC finalized exactly block **8,083,774**, hash
+`0x6f6284b275845a8234033f46d5fec486d05294dfbbbb5cf320a0105bf473dc25`.
+The read-only storage check at that head confirmed the 64 GiB hard quota,
+healthy MinIO disk state and 464,104,980,480 physical bytes available. The
+admin bucket-usage value was cached from 14:38 UTC; an independent current
+object listing is underway. A finalized activation block makes the renewed
+bindings eligible for observation, but does not itself prove the scenario's
+fleet-binding assertion or start its acceptance interval.
+[LAN head](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-lan.json),
+[quota](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-quota.json),
+[disk](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-storage.json),
+[cached usage](peerreview/evidence/FINAL-2-R45-renewal-20260925/binding-activation-usage-cached.json).
+The independent full object listing finished at 14:50 UTC: **162,366 objects,
+34,505,454,565 bytes**, with listing SHA-256
+`2805ad102d5d5f9c85159785841ca054934eb7a8cb0fc263fcc384042bccaeb5`.
+Only four objects totaling 5,872 bytes were created during the first
+14:46:05–14:50:00 activation minutes. This is a fresh baseline, not a complete
+healthy source epoch or a twofold growth-margin proof.
+[Census summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-activation-census-summary.json).
+The first owner observation pinned after activation was taken at 14:50:01 UTC,
+finalized block **8,083,792**. It reports a healthy supervisor and **808/808
+fleet bindings valid**; the raw observation hash is
+`0xd1784a3c947a994d7a29bcaaf9362fd339df8f2374e03b1b078bed769ac250d4`.
+Its rate proof is still not ready: complete epoch 627 has zero usage for
+operator 1 and yields zero tao-rao against the 200,000-rao twice-native
+threshold. The typed provisional low-usage deferral is absent at this cut.
+This observation proves the renewed binding check, not acceptance start.
+[Exact observation](peerreview/evidence/FINAL-2-R45-renewal-20260925/first-postactivation-observation.json)
+(raw SHA-256 `1181150cc6096d64c6f365a7f71fbfae948c247f880effe4f6ee5c19672156d3`).
+
+At finalized block **8,083,834**, after epoch 627's root-commit deadline
+8,083,824, exact canonical LAN-RPC reads returned zero root commitments for
+both operators. The workers closed that zero-leaf epoch without roots, as the
+contract requires; the current readiness check expects the latest payout root
+to match the latest signed rate-source epoch. That producer/consumer mismatch
+prevents the provisional low-usage deferral for epoch 627. It is an R45
+pre-acceptance finding, **not** an additional R44 exception or evidence that
+R45 has started acceptance. The owner remains active while a qualified
+successor fix is prepared and the next complete epoch is observed.
+[Canonical root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch627-zero-root-block8083834.receipt.json)
+(SHA-256 `a0286b25b729d3f71e251e2053abd48bbafe6fcb0a89ec1dd05f7896b5def0af`).
+
+Epoch 628 crossed its boundary at block 8,084,074. A separate exact
+canonical LAN-RPC read at finalized block **8,084,091** found nonzero payout
+roots and artifact hashes for both operators, committed at block **8,084,080**.
+This establishes on-chain commitments for the new epoch; the owner's signed
+artifact match, policy-rate threshold and acceptance boundary are still
+separate checks. [Epoch-628 root receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/epoch628-committed-roots-block8084091.receipt.json)
+(SHA-256 `360b693569649fb3f36107f68f8cd721f1f0f46eff09dbda787d20625f7696b5`).
+
+The owner's first post-boundary observation at 15:48:31 UTC, finalized block
+**8,084,084**, matched both signed epoch-628 artifact hashes to those chain
+commitments. Operator usage was 4,251,058 and 4,168,806 bytes, yielding
+85,481 and 83,827 tao-rao at tier 0, each below the 200,000-rao twice-native
+margin. The owner recorded the designed **provisional low-usage deferral**,
+not strict rate readiness. [Exact baseline observation](peerreview/evidence/FINAL-2-R45-renewal-20260925/acceptance-baseline-observation.json)
+(raw SHA-256 `a45f5ccf9e26e1e34c85ec5427f711d3c3fa6f12f2e5e5f0707a501c590f2612`).
+
+At **15:52:25 UTC**, the owner wrote its signed
+[campaign-start envelope](peerreview/evidence/FINAL-2-R45-renewal-20260925/campaign-start.evidence.json)
+(raw SHA-256 `082d17a8781226c28514ce35b03c82d2597724c0e9b2adc2fca5b5cbfdbfcd7b`,
+content hash `sha256:84d3d58d3e8a16cdb9e0f24b0ceb3d4032a1b578d1c515bb493456c97cd35b4f`).
+It binds that exact baseline to five measured epochs **630–634**: start block
+**8,084,374**, end block **8,085,874**, and terminal block **8,086,024**.
+This is the release acceptance boundary, not completed final validation.
+The earlier R44-LC-1 exception, R45 governance-drill gap and remaining strict
+checks retain their identities while the owner runs to terminal evidence.
+The signed first measured block **8,084,374** was later confirmed canonical
+and finalized by the LAN RPC. Its block hash is
+`0x00bb53a7d661754e4d66df69cab503eb7a905990f1a2d06d1816c4605493d5c6`
+and timestamp is 16:45:36 UTC. The owner remained active as the chain crossed
+it; its first post-start observation and terminal result are separate evidence.
+[Start-block LAN receipt](peerreview/evidence/FINAL-2-R45-renewal-20260925/release-start-block8084374-lan.json)
+(SHA-256 `65ae97503bbfa8279e5525d1850615683d260f78dc3052253c58e9a2937f9fe6`).
+
+The independent full-bucket listing completed at 15:56 UTC and measured the
+14:46:05–15:51:00 active-epoch window: **428 retained new objects and
+244,049,506 bytes**. The full bucket then held 34,749,960,292 bytes under a
+68,719,476,736-byte quota, leaving **33,969,516,444 bytes**. The measured
+rate is about 225.6 MB/hour; doubling it across the five-hour measured release
+window projects **2.256 GB**, about fifteen times below that headroom. This
+supports the twofold byte-capacity margin for the observed workload. Object
+listing is a lower bound if writes were overwritten, deleted or rejected; it
+does not itself prove the pinned API request-rate forecast or final publication.
+[Census summary](peerreview/evidence/FINAL-2-R45-renewal-20260925/blob-epoch628-census-summary.json)
+(SHA-256 `81ef30d35f78234df3403c77d863d9114a38100139b6aca8aeede87b39b30191`;
+full listing SHA-256 `f746220a9b5b0e1e48d329d382f89b292069dbfe99784026695cc6aaffcf4f95`).
+
+**R44 sealed owner result, 2026-09-25 11:50 UTC — failed, retained for review.**
+The original owner exited after publishing its final
+[result](peerreview/evidence/FINAL-2-R44-terminal-20260925/owner-result.json)
+(SHA-256 `b631ca4cd6f8fca591497770f2d066a6a568cc84fe388e08ca6e00f3ccf18c46`).
+It reports **85 failed assertions of 182**, `result=fail`,
+`provisional=true`, and `final_acceptance=false` at finalized block
+**8,082,861** (`0xac30508c90362291e2326eb14b174a1ecc1586223766ef28e8b774e93d885fc9`).
+The five release epochs reached their terminal observation, but this did not
+complete the testnet qualification. The signed attempt records exit before
+completion; no `complete.json` exists. The owner additionally failed evidence
+publication (operator 1 HTTP 400) and process-log publication. The remaining
+assertion failures retain their original identities and messages.
+
+The operator taskworker also logged `Bucket quota exceeded` during that
+publication window. The API did not retain its underlying HTTP 400 cause, so
+the quota is a strongly supported shared-store cause rather than a proven
+historical response body. An admin read showed the `blob` bucket's 32 GiB hard
+quota already exceeded by about 122 MiB. The approved bounded repair raised
+it to 64 GiB with exact admin readback and no object deletion. Both operators'
+separate new preflight envelopes then passed two POSTs and exact immutable
+content/history readbacks through the pinned handler. These prospective
+checks do not retroactively pass R44's failed `evidence_publication` assertion.
+[Quota receipt](peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-quota-expansion.json),
+[operator-1 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator1-publication-preflight.json),
+[operator-2 probe](peerreview/evidence/FINAL-2-R44-terminal-20260925/operator2-publication-preflight.json).
+The [post-repair object census](peerreview/evidence/FINAL-2-R44-terminal-20260925/blob-growth.json)
+finds about 1.326 GB of R44 interval writes and a 0.300 GB peak complete hour.
+That measured rate leaves substantial room under 64 GiB, but it is a lower
+bound because the full bucket and expired bindings suppressed work. Recheck
+headroom against actual R45 growth with a twofold margin before the next
+release interval.
+
+**Known exception R44-LC-1 remains narrow.** The approved bypass omitted the
+terminal-effective lifecycle mutation required by the companion filter's
+early-restore condition. The filter was hard-restored at finalized block
+**8,082,634**, but `RestoreConditionMet=false`; the owner's
+`fleet_lifecycle_fault_tail_bounded` assertion is therefore failed. This is a
+documented exception to conformance, not a pass or a waiver of any other
+failed assertion. The post-owner read-only diagnostic completed its external
+capture after the official fleet stop: its
+[report](peerreview/evidence/FINAL-2-R44-terminal-20260925/post-owner-diagnostic.json)
+(SHA-256 `80b56cd76704b126ac486a431883b98054f3e6a3289693bd6015e551149b1ddf`)
+has 37 checks: **14 pass, 14 fail, one named exception and eight unavailable**,
+with `final_acceptance=false`. It cannot turn the original result into
+acceptance. Some later source-health and receipt checks encountered the
+stopped fleet or successor-plan archive; they are post-stop availability
+findings, not new original-owner assertions. The
+[scope assessment](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/POST-OWNER-ASSESSMENT.md)
+keeps those observations distinct from the sealed R44 result. R45 planning produced
+candidate `0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e`
+for epochs 628–659. Two launch-environment doctor failures occurred before
+any round-7 transaction; the corrected user service adopted the same plan.
+Its first ten commitment transactions finalized and passed exact postcondition
+checks at block **8,083,024** (`0x504d3158e83192c4d83ccd18baba0fd4f2a0da2a425b9ab97aff64056a7f9456`).
+At that earlier read cut, the rest of the renewal and successor qualification
+were pending; the later renewal result is reported at the top of this file.
+
 **Fourth independent diagnostic completed 2026-09-25 11:08 UTC.** The
 clean Git-stamped `da7689f8` collector exited 0 after a read-only capture.
 Its [report](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/fourth-terminal-da7689f8/report.json)
@@ -12,20 +715,20 @@ absent. Validator 1's compact input journal remains unavailable. Companion
 capture and ordinary signed payout artifacts pass. Terminal assertions,
 the original process-log report and fault timing fail independently. The
 diagnostic evaluated those assertions at its 10:19 UTC read cut, before the
-companion's later hard restore; it has not reclassified that failure. The
-R44 owner has not sealed `result.json`, so result-dependent checks and strict
-acceptance remain unavailable.
+companion's later hard restore; it has not reclassified that failure. At this
+diagnostic's read cut, the owner had not sealed `result.json`, so
+result-dependent checks were unavailable then. The later sealed failure is
+reported above.
 
 **Companion hard restore observed 2026-09-25 after finalized block 8,082,634.**
 The owner fault record now shows `fleet-lifecycle-companion-prune` restored
 at its scheduled hard deadline, with no `RestoreConditionMet` proof. The
-read-only [hard-restore observation](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/COMPANION-HARD-RESTORE.json)
+read-only [hard-restore observation](peerreview/evidence/FINAL-2-R44-terminal-20260925/hard-restore-observation.json)
 has SHA-256 `c7a330fe494e0d8e8037b45f2fb060c7964bb2f98bf5b64aac5a7f7051f641f5`
 and preserves the source file hash and LAN finalized head. This is the named
-R44-LC-1 exception, not a successful lifecycle assertion. The owner remains
-active without `result.json` or signed completion. The fourth independent
-read-only diagnostic continues collecting the remaining terminal evidence;
-other failed and unavailable checks remain separate.
+R44-LC-1 exception, not a successful lifecycle assertion. At this observation
+cut, the owner was still active without `result.json` or signed completion;
+the later sealed result and post-owner diagnostic are reported above.
 
 **Third read-only terminal diagnostic, completed 2026-09-25 10:00 UTC:**
 The clean Git-stamped successor authenticated the same signed R44 start,
@@ -103,16 +806,20 @@ epoch 620. The lifecycle-tail assertion is only one member of this group.
 These are the diagnostic's reported conditions, pending comparison with the
 owner's eventual sealed result.
 
-**Exception R44-LC-1 — bypassed lifecycle mutation and companion filter.**
-The external [exception record](/mnt/data/sn-testnet/qualification/r44-terminal-exception-review-20260925/KNOWN-EXCEPTION.json)
+**Additional known exception R44-LC-1 — companion filter depends on the bypassed lifecycle mutation.**
+The external [exception record](peerreview/evidence/FINAL-2-R44-terminal-20260925/known-exception.json)
 uses identifier `R44-COMPANION-LIFECYCLE-FILTER` for this same exception;
 its SHA-256 is
 `b28e5bbef7d9faa4399ceb7e0a794e08e73548b35f4bb84142fd66d9daa7dcde`.
-The approved provisional lifecycle bypass leaves no terminal-effective
-mutation epoch. The companion validator-view filter's early restoration
-condition therefore cannot be proved. Keep that filter and the lifecycle
+The previously approved omission of the older lifecycle step is one noted
+exception. Its dependent companion-filter restoration is this additional
+known exception: the bypass leaves no terminal-effective mutation epoch, so
+the companion validator-view filter's early restoration condition cannot be
+proved. Keep that filter and the lifecycle
 assertion failed in strict acceptance; do not infer a mutation from a
-`release-handoff` stage. At owner observation 77, finalized block 8,081,388,
+`release-handoff` stage. These two report-level exceptions remain one
+dependency finding in the diagnostic count; neither is a passing check.
+At owner observation 77, finalized block 8,081,388,
 the old binary incorrectly restored the *target* filter with
 `RestoreConditionMet=true` solely because it counted the bypass stage as
 provider-paid. That flag is preserved as a finding, not lifecycle conformance.

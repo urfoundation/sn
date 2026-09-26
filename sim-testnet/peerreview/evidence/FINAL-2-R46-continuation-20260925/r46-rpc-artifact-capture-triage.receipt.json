@@ -1,0 +1,649 @@
+{
+  "schema": "r46-actor-and-capture-triage-v1",
+  "observed_at": "2026-09-26T01:10:11.640347+00:00",
+  "read_only": true,
+  "sealed_result": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-capture-20260926T001100.916269Z/run/result.json",
+    "bytes": 567121,
+    "sha256": "e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9"
+  },
+  "sealed_actors": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-capture-20260926T001100.916269Z/run/adversaries.json",
+    "bytes": 112346,
+    "sha256": "3aa5af34fef8598d80c0cfaef0e91199c8c57803ce620faed0c275d6c9499dbc"
+  },
+  "sealed_gate": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-capture-20260926T001100.916269Z/run/process-logs.json",
+    "bytes": 124969,
+    "sha256": "aacc0c39ffb94e4826dbdb808345e00bce8a3bbe8c79d384ad624f3ae4eb857a"
+  },
+  "proxy_scoped_logs": [
+    {
+      "process_id": "subtensor-evm-egress",
+      "stream": "stderr",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-evm-egress.stderr.log",
+      "device": 64512,
+      "inode": 39096682,
+      "start": 37362,
+      "end": 37362,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw": ""
+    },
+    {
+      "process_id": "subtensor-evm-egress",
+      "stream": "stdout",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-evm-egress.stdout.log",
+      "device": 64512,
+      "inode": 39090209,
+      "start": 0,
+      "end": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw": ""
+    },
+    {
+      "process_id": "subtensor-rpc-proxy",
+      "stream": "stderr",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-rpc-proxy.stderr.log",
+      "device": 64512,
+      "inode": 39086203,
+      "start": 51253,
+      "end": 51555,
+      "sha256": "ac9e59baf94ecadc0bc29148d6ab18c8dae5d4f32fec4ff0e29135156d80299e",
+      "raw": "[env]glog not configured from command line. Using default configuration.\nI0925 18:18:08.914782    3665 env.go:861] [env]try /srv/warp/config, [settings.yml]\nI0925 18:18:08.915078    3665 env.go:861] [env]try /srv/warp/site, [settings.yml]\nI0925 18:18:08.915212    3665 env.go:78] [env]settings = map[]\n"
+    },
+    {
+      "process_id": "subtensor-rpc-proxy",
+      "stream": "stdout",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-rpc-proxy.stdout.log",
+      "device": 64512,
+      "inode": 39086202,
+      "start": 0,
+      "end": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw": ""
+    },
+    {
+      "process_id": "subtensor-substrate-rpc-proxy",
+      "stream": "stderr",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-substrate-rpc-proxy.stderr.log",
+      "device": 64512,
+      "inode": 39086205,
+      "start": 50561,
+      "end": 50863,
+      "sha256": "816d8aa3a55dfc722b6f91076a2d8c0b7fcd863f18587f77425845a0a04438dc",
+      "raw": "[env]glog not configured from command line. Using default configuration.\nI0925 18:23:56.528281   10271 env.go:861] [env]try /srv/warp/config, [settings.yml]\nI0925 18:23:56.528531   10271 env.go:861] [env]try /srv/warp/site, [settings.yml]\nI0925 18:23:56.528582   10271 env.go:78] [env]settings = map[]\n"
+    },
+    {
+      "process_id": "subtensor-substrate-rpc-proxy",
+      "stream": "stdout",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/subtensor-substrate-rpc-proxy.stdout.log",
+      "device": 64512,
+      "inode": 39086204,
+      "start": 0,
+      "end": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw": ""
+    }
+  ],
+  "rpc_error_limit": "35 errors are exact; failed sample details were overwritten. Empty egress logs neither prove availability nor identify failures. Workload proxy faults do not authorize errors on the non-faulted campaign route.",
+  "artifact_error_limit": "Six errors are exact. Final LastDetail is successful; available aggregate retry metrics and route buckets cannot identify six exact failed requests.",
+  "diagnostic": {
+    "pid": 375683,
+    "progress": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-rpc-artifact-capture-triage-20260926/diagnostic-progress-0110.json",
+      "bytes": 1348231,
+      "sha256": "d94e6cc23af6e1b6f53fce27a6b3bf6930a24833bf6c1f83019d588dd9b99342"
+    },
+    "progress_original_path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/progress.json",
+    "status": "validator-2/signed-source-capture remains running",
+    "input_files": 550,
+    "input_bytes": 586866977,
+    "closure_epochs": [
+      604,
+      605,
+      606,
+      607,
+      608,
+      609,
+      610,
+      611,
+      612,
+      613,
+      614,
+      615,
+      616,
+      617,
+      618,
+      619,
+      620,
+      621,
+      622,
+      623,
+      624,
+      625,
+      626,
+      627,
+      628,
+      629,
+      630,
+      631,
+      632,
+      633,
+      634
+    ],
+    "distinct_stream_references": 142,
+    "distinct_reference_bytes_before_overlap": 878024312,
+    "uncaptured_nonempty_manifests": 49,
+    "uncaptured_reference_bytes_before_overlap": 308478658,
+    "known_chunks": 200,
+    "present_known_chunks": 200,
+    "present_known_chunk_bytes": 561162692,
+    "proc_io": "rchar: 6308772970\nwchar: 702871858\nsyscr: 173709\nsyscw: 4689\nread_bytes: 12288\nwrite_bytes: 703574016\ncancelled_write_bytes: 0\n",
+    "source_controls": [
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/495120fd1979440d33559988e8fcffbf4c98addaab198089f992e70e7932a167.bin",
+        "bytes": 158422,
+        "sha256": "495120fd1979440d33559988e8fcffbf4c98addaab198089f992e70e7932a167"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/62dcb7fc70eddee70f97116472594c556505b49c95376b8c1acc23149a679fea.bin",
+        "bytes": 128281,
+        "sha256": "62dcb7fc70eddee70f97116472594c556505b49c95376b8c1acc23149a679fea"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/1d488e25bd1cd2399bfa9acca9fced690a9dbb7dd332142dd7a6783a0c4e8776.bin",
+        "bytes": 408805,
+        "sha256": "1d488e25bd1cd2399bfa9acca9fced690a9dbb7dd332142dd7a6783a0c4e8776"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/cd1293bd5fe28575916009bcf331269e9a4a52626d88395e7ea12fb43ed575cc.bin",
+        "bytes": 344535,
+        "sha256": "cd1293bd5fe28575916009bcf331269e9a4a52626d88395e7ea12fb43ed575cc"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/e80ff1636cd4347f27ff000f952aa22a6403d5fbe824b198f8b39f76d4fd2ec7.bin",
+        "bytes": 94973,
+        "sha256": "e80ff1636cd4347f27ff000f952aa22a6403d5fbe824b198f8b39f76d4fd2ec7"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/7e69f3ea2fc98a9bc0f711670f78b7351716a5a8a082560160b87585c7a760d2.bin",
+        "bytes": 351115,
+        "sha256": "7e69f3ea2fc98a9bc0f711670f78b7351716a5a8a082560160b87585c7a760d2"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/9ac011aadf5699b77c5a7573edd3753f004ca64e5a0419afec7dad4eb69b39ef.bin",
+        "bytes": 411162,
+        "sha256": "9ac011aadf5699b77c5a7573edd3753f004ca64e5a0419afec7dad4eb69b39ef"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/93b91defbf394fa93b2c65d34ef5a5b123df5cb79b51a8a6f2b23d66da39a3fb.bin",
+        "bytes": 151653,
+        "sha256": "93b91defbf394fa93b2c65d34ef5a5b123df5cb79b51a8a6f2b23d66da39a3fb"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/b8b349d3d02ad95602594b55a23b246d2cf3a9d54e2dddae3c730e7a2fe6d018.bin",
+        "bytes": 153965,
+        "sha256": "b8b349d3d02ad95602594b55a23b246d2cf3a9d54e2dddae3c730e7a2fe6d018"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/32bb5180e5b2c0f276f2b854cf349328bfac9f79d2a751f145eef991c153a223.bin",
+        "bytes": 151785,
+        "sha256": "32bb5180e5b2c0f276f2b854cf349328bfac9f79d2a751f145eef991c153a223"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/45548f649f411a43ee0d7cae294fd4b6c1377073971a10893e42bafa8ac0da35.bin",
+        "bytes": 412059,
+        "sha256": "45548f649f411a43ee0d7cae294fd4b6c1377073971a10893e42bafa8ac0da35"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/1e2621885217271ee30bb56de1731cadde3b47afb3e02bf524b22592949f588f.bin",
+        "bytes": 1310599,
+        "sha256": "1e2621885217271ee30bb56de1731cadde3b47afb3e02bf524b22592949f588f"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/95158b1d8e5d48ed16f16017384e5d5fa70a086648b99185e500a563bab8fc03.bin",
+        "bytes": 144855,
+        "sha256": "95158b1d8e5d48ed16f16017384e5d5fa70a086648b99185e500a563bab8fc03"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/548dbb1ec8f37bae514c47dce124fb4190e81a504d7e1095a149f4c68885cc97.bin",
+        "bytes": 385681,
+        "sha256": "548dbb1ec8f37bae514c47dce124fb4190e81a504d7e1095a149f4c68885cc97"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/421c62c6d104b63ca85dfc7e3e0d03249c20aa7fbfd49ba2bdddc5f328724ba5.bin",
+        "bytes": 410522,
+        "sha256": "421c62c6d104b63ca85dfc7e3e0d03249c20aa7fbfd49ba2bdddc5f328724ba5"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/5478c1418c716542430f022d3c72de15769530376da8fa7bdb013e0a9f244728.bin",
+        "bytes": 380060,
+        "sha256": "5478c1418c716542430f022d3c72de15769530376da8fa7bdb013e0a9f244728"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/34eff474d3eb0beaef13ad295abc58bc8f3c0921f00165cd0c091e83f914a183.bin",
+        "bytes": 412306,
+        "sha256": "34eff474d3eb0beaef13ad295abc58bc8f3c0921f00165cd0c091e83f914a183"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/4d4eb6bd2ed3b25b825fe4bf2a985f2d14282165ebe9e5af4ffdfe6d4cad6708.bin",
+        "bytes": 153833,
+        "sha256": "4d4eb6bd2ed3b25b825fe4bf2a985f2d14282165ebe9e5af4ffdfe6d4cad6708"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/16471f7a7f4a99d3b697eda382e16c77fa1278a36727aa6fdb398e0187ca141a.bin",
+        "bytes": 149209,
+        "sha256": "16471f7a7f4a99d3b697eda382e16c77fa1278a36727aa6fdb398e0187ca141a"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/0a48a22dc0bfd46c4687d7aee71ec43cfbdde22f11e91a9bdf35c9c7c6528e86.bin",
+        "bytes": 144794,
+        "sha256": "0a48a22dc0bfd46c4687d7aee71ec43cfbdde22f11e91a9bdf35c9c7c6528e86"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/2edbbc13033885f571e9d8f7d007f84c116b8649ad05b8c2e7fc98d8a1067379.bin",
+        "bytes": 151325,
+        "sha256": "2edbbc13033885f571e9d8f7d007f84c116b8649ad05b8c2e7fc98d8a1067379"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/84e28bbd886b3caf0e0a38a7168154f3266f4ea306b0778b36dee1c97ce64997.bin",
+        "bytes": 154693,
+        "sha256": "84e28bbd886b3caf0e0a38a7168154f3266f4ea306b0778b36dee1c97ce64997"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/13e36cf300b793a05f834f62107350cf3ef2d32b5ba4a498d174e86d1d6c9a63.bin",
+        "bytes": 158007,
+        "sha256": "13e36cf300b793a05f834f62107350cf3ef2d32b5ba4a498d174e86d1d6c9a63"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/a58d31c482a271bd109013d72a5fc0c955043cca244c47e37f3070eec869ea8a.bin",
+        "bytes": 145381,
+        "sha256": "a58d31c482a271bd109013d72a5fc0c955043cca244c47e37f3070eec869ea8a"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/5af5813ae5dd96ed937bc2b82b1b77dd27845bf7f51f9b2ee12a0f2f8538cfb1.bin",
+        "bytes": 403919,
+        "sha256": "5af5813ae5dd96ed937bc2b82b1b77dd27845bf7f51f9b2ee12a0f2f8538cfb1"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/c3a5cf2ef5d4d5cd3df2ba3855a0f1a9b719eeb72294a636aec51cf7dc8bcdc8.bin",
+        "bytes": 5274,
+        "sha256": "c3a5cf2ef5d4d5cd3df2ba3855a0f1a9b719eeb72294a636aec51cf7dc8bcdc8"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/3730c4e2ce8af6d070866848cef7135ccdd220ba4d366a94d2830be020c52418.bin",
+        "bytes": 402184,
+        "sha256": "3730c4e2ce8af6d070866848cef7135ccdd220ba4d366a94d2830be020c52418"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/45b700c243e55e9a5b74c62d785ada550179ea978cf839ae5e0b99f0c2e6de47.bin",
+        "bytes": 352893,
+        "sha256": "45b700c243e55e9a5b74c62d785ada550179ea978cf839ae5e0b99f0c2e6de47"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/29a19eddc5a477291054bcf17169362247a756d0e36458a53429ba2a3072a96f.bin",
+        "bytes": 406698,
+        "sha256": "29a19eddc5a477291054bcf17169362247a756d0e36458a53429ba2a3072a96f"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/0e60778fc3e64432584bbda0ad89185928efa5ad1ce6a753a99061f3f3f8bbe1.bin",
+        "bytes": 407171,
+        "sha256": "0e60778fc3e64432584bbda0ad89185928efa5ad1ce6a753a99061f3f3f8bbe1"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/5a1e66b46e250aaa7a25bf73aa25eb3c43cc8277b8a068cb27d61866406b5067.bin",
+        "bytes": 411018,
+        "sha256": "5a1e66b46e250aaa7a25bf73aa25eb3c43cc8277b8a068cb27d61866406b5067"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/97579faffcb76341e8808bd66d19cb2b56ad2cdf5133ec585242416685785f4b.bin",
+        "bytes": 151853,
+        "sha256": "97579faffcb76341e8808bd66d19cb2b56ad2cdf5133ec585242416685785f4b"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/03aefe3855e623b6b314fb448751c66613c5fca9a16366f33dafd39b56184a2b.bin",
+        "bytes": 145249,
+        "sha256": "03aefe3855e623b6b314fb448751c66613c5fca9a16366f33dafd39b56184a2b"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/d77f3be937c6f0c1681e55970b4d1578bba21fa044694b9abc741135bdc6fbdd.bin",
+        "bytes": 392133,
+        "sha256": "d77f3be937c6f0c1681e55970b4d1578bba21fa044694b9abc741135bdc6fbdd"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/cd556ffb22cb3914a0fcf0845a8a7b6b6c6e13d716df7fe82e6f0cb01e99fa15.bin",
+        "bytes": 5272,
+        "sha256": "cd556ffb22cb3914a0fcf0845a8a7b6b6c6e13d716df7fe82e6f0cb01e99fa15"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/a96d30af5161bce28b959c41bd61c08cf4c21ff33b7fad403c8944d31aa9d960.bin",
+        "bytes": 410513,
+        "sha256": "a96d30af5161bce28b959c41bd61c08cf4c21ff33b7fad403c8944d31aa9d960"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/cdbc3de66f0382eebf9031e91b417b4781f61b71f803b14df00d7dfe8245562c.bin",
+        "bytes": 374145,
+        "sha256": "cdbc3de66f0382eebf9031e91b417b4781f61b71f803b14df00d7dfe8245562c"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/3c0cb48f4c6fc7e309b922feb621149bfa17a800e88b1eb76cc55ac7de0ddfbe.bin",
+        "bytes": 347281,
+        "sha256": "3c0cb48f4c6fc7e309b922feb621149bfa17a800e88b1eb76cc55ac7de0ddfbe"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/01df1a72520d14a645416a1dbf7e4cd2780bf170f353c8cfcc7bd8059e57e9e8.bin",
+        "bytes": 143403,
+        "sha256": "01df1a72520d14a645416a1dbf7e4cd2780bf170f353c8cfcc7bd8059e57e9e8"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/e0589c5d37326a01b5da94d51506da3ef0aca4d2e4e345e65a8c4f1bb21feca5.bin",
+        "bytes": 136990,
+        "sha256": "e0589c5d37326a01b5da94d51506da3ef0aca4d2e4e345e65a8c4f1bb21feca5"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/722ef0940e35e78f210bda7f918dc71f8731dce742818269cfef19a7f48282f9.bin",
+        "bytes": 396197,
+        "sha256": "722ef0940e35e78f210bda7f918dc71f8731dce742818269cfef19a7f48282f9"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/36a48f7c91b2f79a008139a83342c2d460f5d60bc7077f7c52e3d77a4f47b670.bin",
+        "bytes": 100112,
+        "sha256": "36a48f7c91b2f79a008139a83342c2d460f5d60bc7077f7c52e3d77a4f47b670"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/781e6d79d82994cc09da2c3b95088180efe1fe17d79db1c47a72b7a62d761d73.bin",
+        "bytes": 130429,
+        "sha256": "781e6d79d82994cc09da2c3b95088180efe1fe17d79db1c47a72b7a62d761d73"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/fa13ea93862737022da5bc244ba694003f969528c10d670b79c725a170292e60.bin",
+        "bytes": 152515,
+        "sha256": "fa13ea93862737022da5bc244ba694003f969528c10d670b79c725a170292e60"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/f169ac90fbecc417440e8d6ff9825303010ddb430fee42f6447e02a12ee4472f.bin",
+        "bytes": 149013,
+        "sha256": "f169ac90fbecc417440e8d6ff9825303010ddb430fee42f6447e02a12ee4472f"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/1c6cd7edfa31cffcbf62799cfaa560f8e7fd0231a89aa2e14e6af78387cd63b7.bin",
+        "bytes": 408694,
+        "sha256": "1c6cd7edfa31cffcbf62799cfaa560f8e7fd0231a89aa2e14e6af78387cd63b7"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/6f0681ff09777bd6af5d1a4191cc803935d79ac8b8f47ae056bdcafa2809b597.bin",
+        "bytes": 145581,
+        "sha256": "6f0681ff09777bd6af5d1a4191cc803935d79ac8b8f47ae056bdcafa2809b597"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/22bd54fd5d4f4abeb5109d8e7b7fe6fc7165a5539d213c7f7eddc29ea85c217c.bin",
+        "bytes": 139732,
+        "sha256": "22bd54fd5d4f4abeb5109d8e7b7fe6fc7165a5539d213c7f7eddc29ea85c217c"
+      },
+      {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v2-sealed/final-inputs/validators/v2/abbf7bccc7e7f8fd6cbef1c5a720460ab5a940f3d39901cbe3381960c77cd5a7.bin",
+        "bytes": 147643,
+        "sha256": "abbf7bccc7e7f8fd6cbef1c5a720460ab5a940f3d39901cbe3381960c77cd5a7"
+      }
+    ],
+    "route_bucket_rows": [
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580227125,
+        "sha256": "37e1fff662d251e928852009663ea985eaee4191d862999e067b97eebfaa1cfd",
+        "raw": "I0926 00:50:10.679369   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               211ms 0/38"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580290633,
+        "sha256": "0d178a0913cf42f47fa5492c0479a23b4ed3ee83b9cd07763101536d093c6777",
+        "raw": "I0926 00:51:10.680936   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               553ms 0/33"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580362412,
+        "sha256": "0e1b2b63ce8714e54f60739f6fb7582081fdfe2470fd586d8bfdaa34975ada6f",
+        "raw": "I0926 00:52:10.682262   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               919ms 0/34"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580436029,
+        "sha256": "40133b76bf96ddb13b61499ff23891f33d3e1787fa86f05b5c19ac9ad967ec14",
+        "raw": "I0926 00:53:10.683312   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               207ms 0/35"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580512406,
+        "sha256": "b52c3ab0f2e46827937b6f7c0c064b3d94b4009512ef3eb7fabfaa079640415e",
+        "raw": "I0926 00:54:10.683881   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               984ms 0/29"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580606115,
+        "sha256": "1d4b3e708dc025e44e941d30cbefafda1231fb49a7104d884f5497b03bf75c5b",
+        "raw": "I0926 00:55:10.684824   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               3102ms 0/29"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580697987,
+        "sha256": "de3e87fc17d9900fc2068f298fee7c7b288336336c425567d220de0a4ca1f2b4",
+        "raw": "I0926 00:56:10.686383   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               1355ms 0/32"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580804689,
+        "sha256": "eec4221e2ee7cd4ba3e89bd3151c08d7d9cfbebb28a6cb7418c0b1255668cae6",
+        "raw": "I0926 00:57:10.687091   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               957ms 0/42"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1580917697,
+        "sha256": "c413097a012c97849df5bc96a04840ad912a26f439b5d73b493061b33d919c44",
+        "raw": "I0926 00:58:10.688198   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               409ms 0/43"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581016920,
+        "sha256": "e70ae16178fe236170d0b30224938f5ffb80debce13c08ef54940000c9b08f93",
+        "raw": "I0926 00:59:10.688661   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               315ms 0/44"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581079511,
+        "sha256": "aab0d066f3bc95072be864ded1474434663d9b7ed4245dd7455df856dbfcbb2d",
+        "raw": "I0926 01:00:10.689398   15359 router_stats.go:146] [127.0.0.1][api][sim1][03]GET ^/sn/attempt-artifact$               6049ms 0/29"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581167579,
+        "sha256": "3d89c9b50ea324642f0ea2e42b7fb2ec463a9f8578188662b1201fb33d47901e",
+        "raw": "I0926 01:01:10.690312   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               208ms 0/51"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581229251,
+        "sha256": "6a336d2b0747a80758cd5738d4519836aedaca3fccb0e274648898e85184c3b3",
+        "raw": "I0926 01:02:10.691212   15359 router_stats.go:146] [127.0.0.1][api][sim1][03]GET ^/sn/attempt-artifact$               5888ms 0/27"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581298198,
+        "sha256": "a57b7c327490c24b35e1c5626696ef3d8e68fbb9e891ce52de96223268208bb0",
+        "raw": "I0926 01:03:10.692251   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               658ms 0/42"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581360661,
+        "sha256": "f95bfc35e96c786917bdef5f626860ba7267704b265107cfe9014b7563b5b1d2",
+        "raw": "I0926 01:04:10.693609   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               785ms 0/32"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581426800,
+        "sha256": "812a11e7469ddde75e8b78b32c75501bd55e3411d84a7a5584a2376bdf2ecd2f",
+        "raw": "I0926 01:05:10.695094   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               325ms 0/36"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581480201,
+        "sha256": "bffd8b00d79af655d2cd8de7315f49bc29718f81e56a41179edf7e473f5b1da1",
+        "raw": "I0926 01:06:10.695997   15359 router_stats.go:146] [127.0.0.1][api][sim1][03]GET ^/sn/attempt-artifact$               7282ms 0/26"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581548970,
+        "sha256": "b038e7e05f2df61e29ef1269265c7f832692b98dc79d9b01c4424eb04490ffe3",
+        "raw": "I0926 01:07:10.697446   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               468ms 0/39"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581598695,
+        "sha256": "cef3a384ef6346a8b44bc856b90b0cdb9c8fd0aea5a5f0d784066e4363078b15",
+        "raw": "I0926 01:08:10.698927   15359 router_stats.go:146] [127.0.0.1][api][sim1][03]GET ^/sn/attempt-artifact$               7421ms 0/24"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581665626,
+        "sha256": "608fd1ffb6b22ecf26651d5a2b13091837a855c30c2d6b06c79ea67eacca3ebf",
+        "raw": "I0926 01:09:10.699991   15359 router_stats.go:146] [127.0.0.1][api][sim1][02]GET ^/sn/attempt-artifact$               219ms 0/41"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-1-api.stderr.log",
+        "offset": 1581716270,
+        "sha256": "27f3abd3e0ae7eba175cb1121e3c188aacda12b5e3ed6fc52bbb047a749768e3",
+        "raw": "I0926 01:10:10.700441   15359 router_stats.go:146] [127.0.0.1][api][sim1][03]GET ^/sn/attempt-artifact$               6535ms 0/24"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1265940218,
+        "sha256": "2f441fdded49312fcc5e58f0a64673cad029f171af8c7dd53fe6b496112d8e5e",
+        "raw": "I0926 00:50:56.405250   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               11771ms 0/14"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1265999133,
+        "sha256": "d19b1b61781dff5fb3ca34e4a4c692a69afaf92248c9ed1ec2a9b178eab2c00d",
+        "raw": "I0926 00:51:56.406965   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               551ms 0/24"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266061594,
+        "sha256": "2c7edc7e8cec2db620234e23dfce6163a9afa28a3c56fafa0930d6d611059f0b",
+        "raw": "I0926 00:52:56.407708   31417 router_stats.go:146] [127.0.0.1][api][sim2][02]GET ^/sn/attempt-artifact$               207ms 0/29"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266129955,
+        "sha256": "14cfb1c29373b1ed1708c9b46a8f9d0e1c0a6a5957bbcd126c27ba97e84b861a",
+        "raw": "I0926 00:53:56.408614   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               787ms 0/22"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266209215,
+        "sha256": "76760fd714d8447fd5ae91a8fe18c4e5f587bff6f29f9fe49da7be52d8bc8747",
+        "raw": "I0926 00:54:56.409758   31417 router_stats.go:146] [127.0.0.1][api][sim2][04]GET ^/sn/attempt-artifact$               7822ms 0/11"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266295572,
+        "sha256": "9053e55dd12b180dd046070f7bcc40e01f07156bde75d481e9dc9c56daeb58de",
+        "raw": "I0926 00:55:56.410252   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               541ms 0/29"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266363549,
+        "sha256": "12faf7cf443abef3ab61ec42d98a84cd0128f8d2a743297b70bf691940c38bee",
+        "raw": "I0926 00:56:56.410731   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               780ms 0/13"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266430479,
+        "sha256": "01c6849acd0ca0cf9259082051cad7fee56ca99bb136457ccc3ebfdab9422e8e",
+        "raw": "I0926 00:57:56.412121   31417 router_stats.go:146] [127.0.0.1][api][sim2][02]GET ^/sn/attempt-artifact$               545ms 0/37"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266485844,
+        "sha256": "72a0fd656566ba33adc16e3aa480bd53d1dd375dfb5aa215577d0ec781c5dda0",
+        "raw": "I0926 00:58:56.412964   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               2416ms 0/15"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266540037,
+        "sha256": "50f359380244a58d5aedf75c1577977ce0af29314d4645d38e388e6961b96abd",
+        "raw": "I0926 00:59:56.413629   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               1988ms 0/12"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266631781,
+        "sha256": "42e2f80927af5a34552a21e118050d7d9c32284348f5d68e0ed59a024cb87800",
+        "raw": "I0926 01:00:56.414524   31417 router_stats.go:146] [127.0.0.1][api][sim2][02]GET ^/sn/attempt-artifact$               1719ms 0/30"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266690875,
+        "sha256": "54aa7769f78c5ccc7c138202e8e2e21b847e5137657d0959cce4d168b6ea2652",
+        "raw": "I0926 01:01:56.415411   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               1011ms 0/21"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266730364,
+        "sha256": "1d16e70741be27c5faf0197b4e60d9be8dee34a6fb6bac9279833f8453455ef7",
+        "raw": "I0926 01:02:56.416840   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               4553ms 0/12"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266773529,
+        "sha256": "843e22b2f3cddd8267558b685f10f0bd8d661943dd4621593105debf5047f0b6",
+        "raw": "I0926 01:03:56.418128   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               4230ms 0/15"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266823483,
+        "sha256": "55dbc0f59639ca483fb2f77ae2c4181584cb8cc7ba8b2b21f42d7fa409680077",
+        "raw": "I0926 01:04:56.419262   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               948ms 0/26"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266867566,
+        "sha256": "351d26d14a0459150d738b0b0b6ef2d47f0bd741ffc62939d5d87a825017119e",
+        "raw": "I0926 01:05:56.419877   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               7132ms 0/13"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266910731,
+        "sha256": "4fcaecebfcc92e568376709ee3456b4311b295cb982b6f7f36f2274d63184f99",
+        "raw": "I0926 01:06:56.420816   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               5039ms 0/17"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266949428,
+        "sha256": "a128130488db9171af1dd2224426729ac3a254d0479cb2d685e7cb9337ac3ced",
+        "raw": "I0926 01:07:56.422498   31417 router_stats.go:146] [127.0.0.1][api][sim2][04]GET ^/sn/attempt-artifact$               8821ms 0/9"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1266991724,
+        "sha256": "564eab813af248ffda465e59ba0e55988fbe46ecd24d61fc318f0957539a7df6",
+        "raw": "I0926 01:08:56.424216   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               6566ms 0/18"
+      },
+      {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/operator-2-api.stderr.log",
+        "offset": 1267041322,
+        "sha256": "17060a9c33c906a2f011ea1ea706f6465d4c786af21f1f222319023cb39ee1c2",
+        "raw": "I0926 01:09:56.425697   31417 router_stats.go:146] [127.0.0.1][api][sim2][03]GET ^/sn/attempt-artifact$               592ms 0/17"
+      }
+    ],
+    "earlier_stack": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v1-sigquit.stack.log",
+      "bytes": 36833,
+      "sha256": "8e55472dc4c7adc42ff055b1b117f73678cd9e609ee7588851e6c2b6295b348c"
+    },
+    "earlier_stack_excerpt": {
+      "first_line": 20,
+      "last_line": 82,
+      "raw": "goroutine 1 gp=0xfc32a4f03c0 m=nil [IO wait]:\nruntime.gopark(0x4b5f85?, 0xfc32b397250?, 0xa0?, 0x72?, 0xb?)\n\truntime/proc.go:462 +0xce fp=0xfc32b397228 sp=0xfc32b397208 pc=0x48feae\nruntime.netpollblock(0x4b4078?, 0x41be46?, 0x0?)\n\truntime/netpoll.go:575 +0xf7 fp=0xfc32b397260 sp=0xfc32b397228 pc=0x4526d7\ninternal/poll.runtime_pollWait(0x71ea6ea59c00, 0x72)\n\truntime/netpoll.go:351 +0x85 fp=0xfc32b397280 sp=0xfc32b397260 pc=0x48f085\ninternal/poll.(*pollDesc).wait(0xfc34bdb6100?, 0xfc32ad44000?, 0x0)\n\tinternal/poll/fd_poll_runtime.go:84 +0x27 fp=0xfc32b3972a8 sp=0xfc32b397280 pc=0x50fec7\ninternal/poll.(*pollDesc).waitRead(...)\n\tinternal/poll/fd_poll_runtime.go:89\ninternal/poll.(*FD).Read(0xfc34bdb6100, {0xfc32ad44000, 0x1000, 0x1000})\n\tinternal/poll/fd_unix.go:165 +0x2ae fp=0xfc32b397340 sp=0xfc32b3972a8 pc=0x5110ee\nnet.(*netFD).Read(0xfc34bdb6100, {0xfc32ad44000?, 0x7008?, 0x23008?})\n\tnet/fd_posix.go:68 +0x25 fp=0xfc32b397388 sp=0xfc32b397340 pc=0x5d9f05\nnet.(*conn).Read(0xfc32a63a190, {0xfc32ad44000?, 0x71ea6eb00a0a?, 0x5?})\n\tnet/net.go:196 +0x45 fp=0xfc32b3973d0 sp=0xfc32b397388 pc=0x5ecc05\nnet/http.(*persistConn).Read(0xfc341f10280, {0xfc32ad44000?, 0xffe?, 0x6c37170?})\n\tnet/http/transport.go:2174 +0x47 fp=0xfc32b397430 sp=0xfc32b3973d0 pc=0x789587\nbufio.(*Reader).Read(0xfc32db68120, {0xfc33774d040, 0x2, 0x64223a302c227569?})\n\tbufio/bufio.go:245 +0x197 fp=0xfc32b397468 sp=0xfc32b397430 pc=0x6e8eb7\nio.ReadAtLeast({0x4602580, 0xfc32db68120}, {0xfc33774d040, 0x2, 0x2}, 0x2)\n\tio/io.go:335 +0x8e fp=0xfc32b3974b0 sp=0xfc32b397468 pc=0x50390e\nio.ReadFull(...)\n\tio/io.go:354\nnet/http/internal.(*chunkedReader).Read(0xfc33774d020, {0xfc3314c6000?, 0xfc32a5b9570?, 0xfc32b397590?})\n\tnet/http/internal/chunked.go:106 +0x98 fp=0xfc32b397528 sp=0xfc32b3974b0 pc=0x71bb58\nnet/http.(*body).readLocked(0xfc347a765c0, {0xfc3314c6000?, 0x3921ba0?, 0x71e9c477d901?})\n\tnet/http/transfer.go:845 +0x3b fp=0xfc32b397570 sp=0xfc32b397528 pc=0x77d69b\nnet/http.(*body).Read(0x38d6be0?, {0xfc3314c6000?, 0xe71d6102b279?, 0xfc32b397620?})\n\tnet/http/transfer.go:837 +0xff fp=0xfc32b3975e0 sp=0xfc32b397570 pc=0x77d59f\nnet/http.(*bodyEOFSignal).Read(0xfc347a76600, {0xfc3314c6000, 0x1c000, 0x1c000})\n\tnet/http/transport.go:3075 +0x13c fp=0xfc32b397660 sp=0xfc32b3975e0 pc=0x78d85c\ngithub.com/urfoundation/sn/validator.(*attemptStreamV2HTTPBody).Read(0xfc32fff4b00, {0xfc3314c6000, 0x1c000, 0x1c000})\n\tgithub.com/urfoundation/sn/validator/attempt_stream_v2_http.go:241 +0x13e fp=0xfc32b397770 sp=0xfc32b397660 pc=0x17bbd3e\nio.ReadAll({0x71e9c41ed800, 0xfc32fff4b00})\n\tio/io.go:722 +0x10d fp=0xfc32b3978f0 sp=0xfc32b397770 pc=0x50496d\ngithub.com/urfoundation/sn/validator.(*releaseCaptureStreamsV2).capture.func2({0x0, 0x76f2, 0x7a1f, 0x32e, 0x3ff398, {0xfc349b8dc70, 0x42}})\n\tgithub.com/urfoundation/sn/validator/release_capture_stream_v2.go:81 +0x3af fp=0xfc32b397b10 sp=0xfc32b3978f0 pc=0x186480f\ngithub.com/urfoundation/sn/validator.walkAttemptStreamV2DescriptorsWithPageHook({0x4629d68, 0xfc32aa7a690}, {0x3caa420, 0x7}, {{0xfc34a6ceff0, 0x42}, 0xfb, 0x1e76, 0x2665dad, 0xa, ...}, ...)\n\tgithub.com/urfoundation/sn/validator/attempt_stream_v2.go:395 +0x951 fp=0xfc32b397d30 sp=0xfc32b397b10 pc=0x17b9091\ngithub.com/urfoundation/sn/validator.WalkAttemptStreamV2Descriptors(...)\n\tgithub.com/urfoundation/sn/validator/attempt_stream_v2.go:320\ngithub.com/urfoundation/sn/validator.(*releaseCaptureStreamsV2).capture(0xfc32b39afa8, {0x4629d68, 0xfc32aa7a690}, {0xfc32b191788, 0x16}, {0x3caa420, 0x7}, {{0xfc34a6ceff0, 0x42}, 0xfb, ...}, ...)\n\tgithub.com/urfoundation/sn/validator/release_capture_stream_v2.go:52 +0x336 fp=0xfc32b397f20 sp=0xfc32b397d30 pc=0x1864396\ngithub.com/urfoundation/sn/validator.CaptureReleaseEvidenceV2({0x4629d68, 0xfc32aa7a690}, 0xfc340ab6c08, 0xfc32d678000, 0xfc3423f8190, {{0xee, 0xf9, 0x34, 0x51, 0x76, ...}, ...}, ...)\n\tgithub.com/urfoundation/sn/validator/release_capture_v2.go:446 +0x5c25 fp=0xfc32b39be10 sp=0xfc32b397f20 pc=0x186aea5\nmain.collectTerminalDiagnosticValidator.func2({0x4629d68, 0xfc32aa7a690})\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics_capture.go:248 +0x614 fp=0xfc32b39c388 sp=0xfc32b39be10 pc=0x312c7d4\nmain.(*terminalDiagnosticCollector).check.func1(0x462a950?, {0x4629d68?, 0xfc32aa7a690?})\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics.go:87 +0x71 fp=0xfc32b39c3f0 sp=0xfc32b39c388 pc=0x3122391\nmain.(*terminalDiagnosticCollector).check(0xfc3303041c0, {0xfc340d06480, 0x21}, {0x0?, 0x1?}, 0x34630b8a000, 0xfc32b39c610)\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics.go:88 +0x111 fp=0xfc32b39c538 sp=0xfc32b39c3f0 pc=0x3121d31\nmain.collectTerminalDiagnosticValidator(0xfc3303041c0, 0xfc35449e008, {0x7ffe39f9da73, 0x45}, 0x2, 0xfc33b6d4390, 0x1)\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics_capture.go:211 +0x315 fp=0xfc32b39c6d0 sp=0xfc32b39c538 pc=0x312c015\nmain.collectTerminalDiagnosticSources(0xfc3303041c0, 0xfc35449e008, {0x7ffe39f9da73, 0x45}, {0xfc32dd38800, 0x71}, 0xfc32ad5a780, 0x0, 0xfc335030908, {0xfc32a897688, ...}, ...)\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics_capture.go:87 +0x2fb fp=0xfc32b39c9d0 sp=0xfc32b39c6d0 pc=0x312849b\nmain.runTerminalDiagnostics({_, _}, _, {_, _}, {{0x7ffe39f9dc31, 0x5a}, {0x0, 0x0}, 0x1, ...})\n\tgithub.com/urfoundation/sn/sim-testnet/terminal_diagnostics.go:405 +0x1185 fp=0xfc32b39d210 sp=0xfc32b39c9d0 pc=0x3125965\nmain.runMainWithReleaseDependencies({0xfc32a5fa5b0, 0x1d, 0x1d}, 0x45d9338, 0x45d9370)\n\tgithub.com/urfoundation/sn/sim-testnet/main.go:562 +0x42f2 fp=0xfc32b39def0 sp=0xfc32b39d210 pc=0x2e63fb2\nmain.runMain(...)\n\tgithub.com/urfoundation/sn/sim-testnet/main.go:299\n"
+    },
+    "inference": "Capture is making progress in immutable HTTP body I/O. Origin reads are serial in the deployed source. The stack is from the earlier v1 invocation, not a fresh stack of v2. Route buckets aggregate all callers, not only diagnostics. Unique retained bytes do not prove that both origins have completed. No store, networking or server CPU root cause is proved."
+  }
+}

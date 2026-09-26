@@ -1,0 +1,359 @@
+{
+  "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+  "created_at": "2026-09-25T17:13:12.168223+00:00",
+  "immutable_files": [
+    {
+      "bytes": 45943856,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/plan.json",
+      "sha256": "8f50d953a71d853ae3adf5df3fdb59df4cd4c63f9f4d175b2329445b704c8b06"
+    },
+    {
+      "bytes": 42798,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.json",
+      "sha256": "f592d22ea3708734ad1c5cc44c9255e3300f87bbb8494137d4c399be3039f172"
+    },
+    {
+      "bytes": 546187,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime-config-manifest.json",
+      "sha256": "c8d7668dee62bc396a7a9984e226dbc64e1b5fc6dcb4de6cb80568ffa04bcf34"
+    },
+    {
+      "bytes": 14923,
+      "path": "/mnt/data/sn-testnet/qualification/release37-release-20260923/rate-config/sim-testnet/testnet.yml",
+      "sha256": "65e4eb5bcb1910a203ec5302572a46a2e004ab89eca632fe94e13d2fd5802352"
+    },
+    {
+      "bytes": 1156,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.evidence.json",
+      "sha256": "fa4b770ee2e31b5f4ba3d1c2874e3c44a36db716fab3874d9c50f50678a02959"
+    },
+    {
+      "bytes": 87690,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.10.evidence.json",
+      "sha256": "193b05da0a9a1637d9bc8c7696c9e204788f4107a9abc425237c4da778ecd4c0"
+    },
+    {
+      "bytes": 105414,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.11.evidence.json",
+      "sha256": "ec67b08d8999d6ad9712507b1d1b78d14bb287d952bee2dd75ef7f5652c3ac92"
+    },
+    {
+      "bytes": 114632,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.12.evidence.json",
+      "sha256": "8863cd48a23adbc81c6dbd4fb1d8f1ad3547c72b985709cef2ffad352e8cd0ab"
+    },
+    {
+      "bytes": 2099,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.13.evidence.json",
+      "sha256": "e9156ca3131e13b182afe38142276a72b68e515ade10d930b28d253782307563"
+    },
+    {
+      "bytes": 73105,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.14.evidence.json",
+      "sha256": "29306141e538151ebefdd501865ec9bcc761e69e40236592d01ada2ca943de30"
+    },
+    {
+      "bytes": 106096,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.15.evidence.json",
+      "sha256": "2f38da55788b1d0f5ffa25d7d94daf85fc5024d06154294eb0f11cd291fea6f1"
+    },
+    {
+      "bytes": 73031,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.16.evidence.json",
+      "sha256": "490de2c72971e212bfae90bacd85a8fbb8dd7e4e99c3da71b2a55e2b85d0606a"
+    },
+    {
+      "bytes": 89934,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.17.evidence.json",
+      "sha256": "1b8e207e5b691e737561e89688a8ef5b069b92351096621a6ab594844411e70b"
+    },
+    {
+      "bytes": 73032,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.18.evidence.json",
+      "sha256": "16a24a2d21321deaa0bf11ce71b0bcd3bfe3466d139c9174f1dac37296bc91b8"
+    },
+    {
+      "bytes": 73021,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.19.evidence.json",
+      "sha256": "d2eb927e73c800274e473365fdcf1fa528ffb3ea9dc0d1224d4cb5db953777eb"
+    },
+    {
+      "bytes": 2200,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.2.evidence.json",
+      "sha256": "36f99aebdb2f89b1e058d32a9f800a3e0aefefd25f1c2229b27405783a126bb5"
+    },
+    {
+      "bytes": 2099,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.20.evidence.json",
+      "sha256": "9c849ecc608ba8d92758d71d631de80828e9ae5a21dac6d4f41e73bc5071fb37"
+    },
+    {
+      "bytes": 2166,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.21.evidence.json",
+      "sha256": "398ab5ecced07d05bc12cb6105498e041c7e5d0c0db5092b5b80693d30e96740"
+    },
+    {
+      "bytes": 89921,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.22.evidence.json",
+      "sha256": "1a96a12fff7f7ac8c274fe26c64076d5d4e67298f3e176be25ece681bbc5851a"
+    },
+    {
+      "bytes": 73018,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.23.evidence.json",
+      "sha256": "3957db40145c5cb5a6d8a5e19cfda89f251ba20b0a70a39c0ffe198a82dca3e9"
+    },
+    {
+      "bytes": 73031,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.24.evidence.json",
+      "sha256": "5d40b794db8138e8a43cb650ea7d65e2d3a3a7439a7edade48db4cbd6f651c1d"
+    },
+    {
+      "bytes": 73810,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.25.evidence.json",
+      "sha256": "ab5985a5d04829f2a6553c2a6842f11166c2eb4949c720d6cab17f8082a2212b"
+    },
+    {
+      "bytes": 73807,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.26.evidence.json",
+      "sha256": "395ad78f6b1fc3b4f96b4bdc18fc51decd48cafabe092022864e559013b13a3c"
+    },
+    {
+      "bytes": 90576,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.27.evidence.json",
+      "sha256": "b6f9bb24c553cb7bdfba8bd4e27415734d9e667f6af6faca0f849d721ca1b835"
+    },
+    {
+      "bytes": 2134,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.28.evidence.json",
+      "sha256": "09adabea9177273a80071ddf9f334763e752ebd8279cb2cd0320cedc456c9515"
+    },
+    {
+      "bytes": 2327,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.29.evidence.json",
+      "sha256": "2e5749bed963cb0bf75b6c9247f7fdf00bc09b9abfc364471013d6497b4d2bca"
+    },
+    {
+      "bytes": 70857,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.3.evidence.json",
+      "sha256": "e1c600ac1dd24bdb716e3692b3c005727d568ce907aef540b9ecf4e13a634f07"
+    },
+    {
+      "bytes": 113985,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.30.evidence.json",
+      "sha256": "b605f39731410a1a942e6d1c17ed2ec15646126ad4bfb33add54744bf4612f1c"
+    },
+    {
+      "bytes": 106276,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.31.evidence.json",
+      "sha256": "f0d222112c9e722c06ef4f20f3c11319a41fc10e29837bbada26e6db8ee5fbf1"
+    },
+    {
+      "bytes": 107777,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.32.evidence.json",
+      "sha256": "dc4910fda615f197d46c48cd2bfa06fe5f04ce2295a7d51bccc6873acc6c7e7b"
+    },
+    {
+      "bytes": 112748,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.33.evidence.json",
+      "sha256": "1b9d2a8064974c857a83ac98037381b9dff256c5b66e27cc7588069b14f2f510"
+    },
+    {
+      "bytes": 111979,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.34.evidence.json",
+      "sha256": "7f3b3b93cd660bb724e712e91a4f5763fef811e2012ebce5912d8ce3f1372b55"
+    },
+    {
+      "bytes": 135978,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.35.evidence.json",
+      "sha256": "05d6551bfc212a5e026374ed3a64384415ab1e3c75964a61065550f6120114a7"
+    },
+    {
+      "bytes": 121635,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.36.evidence.json",
+      "sha256": "8f13c855416094d3835a0ae5807f5bba81ba9dcfe277b2ad9d588dbde5210f73"
+    },
+    {
+      "bytes": 2134,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.37.evidence.json",
+      "sha256": "c42d480d646f0ea50b01482aa3d22867f97097ebf47c39bbdafd07fc5e9fc7d8"
+    },
+    {
+      "bytes": 2327,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.38.evidence.json",
+      "sha256": "b4bc787e20525d416cf6a77c330484f48ac0c159b049102f7937e41ff9e1e21a"
+    },
+    {
+      "bytes": 2326,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.39.evidence.json",
+      "sha256": "31f435929a78896a417db66152aba995da774d45fce67fef34d936348a2b3c74"
+    },
+    {
+      "bytes": 70786,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.4.evidence.json",
+      "sha256": "4ca92c6c140f4df020ae3ef0938dfbccb525a5fd5a640f2f31193ffa8bc7f0bf"
+    },
+    {
+      "bytes": 112954,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.40.evidence.json",
+      "sha256": "74c9d08ebf83633d0f81ea88cf2489ddf34b6bb47e5106a375e813bb1f6a1c5c"
+    },
+    {
+      "bytes": 2134,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.41.evidence.json",
+      "sha256": "6fbea4c4a51dd0514e82a15d94b086c0f051a07c68dd1054308621a5ef2d819f"
+    },
+    {
+      "bytes": 122079,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.42.evidence.json",
+      "sha256": "c3a9f6b0511eb0f7fe9dbd5de38af19ed5a24449acc870984ad68e4c554ab305"
+    },
+    {
+      "bytes": 121348,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.43.evidence.json",
+      "sha256": "f58d66cf7049c5358ab7eebb9ad865e3059eb97bf3700594ee00b551977fabbf"
+    },
+    {
+      "bytes": 138324,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.44.evidence.json",
+      "sha256": "adb43d12f5412e0bf36e653e27b138d56bb368f553c465c0aef8a208ce844b17"
+    },
+    {
+      "bytes": 106099,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.45.evidence.json",
+      "sha256": "1f5a459a7bd0d5e5c9c4534c51a68f7c6e17a516f2671ac1ffc45a7409a5201f"
+    },
+    {
+      "bytes": 107631,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.5.evidence.json",
+      "sha256": "23976719592f976b09b5133949c16acd5f1eba05df5ff6862b31abc6ec137f82"
+    },
+    {
+      "bytes": 105409,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.6.evidence.json",
+      "sha256": "b20db6d82f23ed34db8d32971deb3f1126808d1557ae0a6707f0aa48740b16b3"
+    },
+    {
+      "bytes": 103849,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.7.evidence.json",
+      "sha256": "b0481e507be7792c80e1f255107f06668fb2a606d32a791ea179cb337d721b70"
+    },
+    {
+      "bytes": 106150,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.8.evidence.json",
+      "sha256": "ff54c51f55a8badea3f8041b8ebdc6ed4a438d7264ea2da9902f8cbbb00df5d9"
+    },
+    {
+      "bytes": 105410,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.9.evidence.json",
+      "sha256": "b24faf7522f4d034d262109e6cd75008df16144448392707d41772e286da263e"
+    },
+    {
+      "bytes": 1959,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.recovery.evidence.json",
+      "sha256": "8c52af26f7b819edec9333d742346c78050dfa4adc1463c07d0535d177d0060c"
+    },
+    {
+      "bytes": 130367,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/campaign-attempts/release-1.0.successor.evidence.json",
+      "sha256": "9858b897eb4217c8f17e5dc0ad351d3dadfadb949c96e16637b7378d299d2ad7"
+    },
+    {
+      "bytes": 111315,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/adversaries.json",
+      "sha256": "06e41407bc63759e283825d9196da13b8ca9cfa367ca0402e4901da7a715ae82"
+    },
+    {
+      "bytes": 24487,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/analysis.html",
+      "sha256": "f4f4b7cd091d659ea45ad85bba7a21be7c1942662d824660f6bf392998ee91d5"
+    },
+    {
+      "bytes": 17810,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/analysis.json",
+      "sha256": "637635200053b9697e3e125db3b3e347e3b7be9393e7c74a0449ad8d87d735a2"
+    },
+    {
+      "bytes": 50928,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/anomalies.json",
+      "sha256": "859aaba83fceca982ae1dbdeffbc05197d8edfaf111cb6c2d2e0afdbdf88bf6b"
+    },
+    {
+      "bytes": 2901,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/assertions.json",
+      "sha256": "f6c11f57c4d803d6066c02fb41e780910bcb8774798571226d37f94f0fe91637"
+    },
+    {
+      "bytes": 72899,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/campaign-start.evidence.json",
+      "sha256": "082d17a8781226c28514ce35b03c82d2597724c0e9b2adc2fca5b5cbfdbfcd7b"
+    },
+    {
+      "bytes": 86192,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/faults.json",
+      "sha256": "e0ea0fc9fe754121873a6158f7627b1aceacb0eff15804e293cc1f4765f28d88"
+    },
+    {
+      "bytes": 1725,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/junit.xml",
+      "sha256": "f95750e0ebb8ce43b5f87dfb0876a9a098ae88ffd7d0ccbcfae13c3ef3edbfde"
+    },
+    {
+      "bytes": 42510919,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/observations.jsonl",
+      "sha256": "00c395a19ee0ddb4ea2b3d1f99a98266b3fdf584f07ceada74a5141302afd2d3"
+    },
+    {
+      "bytes": 84855,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/process-logs.json",
+      "sha256": "baa2ccb972903143580e0fa3155413717d20de3c5e8e8cb6b2368a684222b014"
+    },
+    {
+      "bytes": 264348,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/result.json",
+      "sha256": "3a3b78827adadac55cbb037208ddaa31e90587f2dc0a6ee1cd4f83cc9d74c6df"
+    },
+    {
+      "bytes": 1379793,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/scenario-bundle.operator-1.evidence.json",
+      "sha256": "ac6d1869b8e05d369e929b1de376fca0885f18063eff9fdb24243f9b601ed971"
+    },
+    {
+      "bytes": 1379793,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T134346.277250758Z-release-1.0/scenario-bundle.operator-2.evidence.json",
+      "sha256": "fcee76abafecde170f789506e8e5d12435d0524874b58ebfca238422cca5f9cf"
+    }
+  ],
+  "journal_prefix": {
+    "bytes": 44986710,
+    "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/journal.jsonl",
+    "sha256": "4cfa33b624f2a3b44e3b1d8b33ae2b6fa366a79b13bc2a6e078045525be7ac9a"
+  },
+  "limits": {
+    "alpha_rao": 47000000000000,
+    "evm_gas_wei": 512000000000000000000,
+    "registrations": 262,
+    "subnet_creations": 0,
+    "tao_rao": 512000000000
+  },
+  "maximum_spend": {
+    "alpha_rao": 46498306443274,
+    "evm_gas_wei": 370590700000000000000,
+    "registrations": 259,
+    "subnet_creations": 0,
+    "tao_rao": 404091441000
+  },
+  "new_slots": 1250,
+  "owned_rpc_authority": "192.168.1.162:9944",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+  "predecessor_generation": 45,
+  "predecessor_run_id": "20260925T134346.277250758Z-release-1.0",
+  "retained_debits": 798,
+  "schema": "urnetwork-r46-retained-resume-preflight-v1",
+  "state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4",
+  "supervisor": {
+    "manifest_hash": "0x2bd5bbef8665fa4fee3a7ca085b3144f95504395ea348652f3552fc76a7bba9a",
+    "supervisor_pid": 3780072,
+    "supervisor_start_time_ticks": 21558815
+  }
+}

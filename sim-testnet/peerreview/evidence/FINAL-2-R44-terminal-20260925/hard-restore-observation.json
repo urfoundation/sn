@@ -1,0 +1,27 @@
+{
+  "schema": "r44-companion-hard-restore-observation-v1",
+  "recorded_at": "2026-09-25T10:59:06.103766+00:00",
+  "read_only": true,
+  "unsigned_review": true,
+  "final_acceptance": false,
+  "exception_id": "R44-COMPANION-LIFECYCLE-FILTER",
+  "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T021136.926474885Z-release-1.0/faults.json",
+  "source_sha256": "sha256:7fb63a434cbc84d06c9b9c436183a320526fe1b9f9c3a43240abf7d53f11481a",
+  "finalized_head": {
+    "number": 8082639,
+    "hash": "0x0c3e2df98c89dd3a9d1ad8a3d1fd28f25bd42bd01baff77291f8aeb11fcdd17d"
+  },
+  "observed_fault": {
+    "id": "fleet-lifecycle-companion-prune",
+    "status": "restored",
+    "trigger_block": 8080175,
+    "restore_block": 8082634,
+    "applied_block": 8080175,
+    "restored_block": 8082634,
+    "restored_block_hash": "0xece0547abfb7930eee902d18070aa60fa93fde4d1a567b119f2bd82e611bf46d",
+    "restore_condition": "fleet-lifecycle-terminal-effective",
+    "restore_condition_met": null,
+    "restore_condition_block": null
+  },
+  "interpretation": "Scheduled hard restore occurred. Lifecycle terminal-effective condition remains unproved; this is a named exception, not a passing strict assertion."
+}

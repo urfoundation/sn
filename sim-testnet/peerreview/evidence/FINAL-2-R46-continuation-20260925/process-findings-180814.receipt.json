@@ -1,0 +1,297 @@
+{
+  "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "captured_at": "2026-09-25T18:12:14.799623+00:00",
+  "final_acceptance": false,
+  "monitor_correction": "v1 summary queried nonexistent acceptance_scope; v2 queries exact acceptance_scope_sha256 and checks gate boundary against the signed current generation. Original log evidence is unchanged.",
+  "monitor_v1_sha256": "d636517e764d444dd5d1d8abab31491550cf6031b527de5ebac2b067eb338d3c",
+  "monitor_v2_sha256": "6d685716b7b537f176baf16480d50fec6e0fe7cb99f4df3a9cd9617bda6e65bf",
+  "owner_status": "MainPID=4123621\nActiveState=active\n",
+  "process_gate_copy": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/process-findings-180814.gate.json",
+  "process_gate_sha256": "8db8ebba9a4e1d7dcc94af7725cad445a39f23e367256a14d0e0e75f29fa169a",
+  "raw_blocking_witnesses": [
+    {
+      "bytes": 74,
+      "class": "release-steering-continuity",
+      "device": 64512,
+      "inode": 39095217,
+      "line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "offset": 251730462,
+      "raw_line": "sim-testnet: release steering advanced from incomplete epoch 1674 to 1675",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stderr.log"
+    },
+    {
+      "bytes": 304,
+      "class": "release-steering-attempt-failure",
+      "device": 64512,
+      "inode": 39095216,
+      "line_sha256": "4bc40d362ed03d88f3427c61122bbd485037ca8e3d0aac3edc6cfc2d27b0c887",
+      "offset": 39492660,
+      "raw_line": "release steer: subnet epoch 1674 attempt 1: release V2 native operator 1: attempt replica 2: Post \"http://127.0.0.1:18082/sn/attempt-artifact?hash=0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769&kind=records\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stdout.log"
+    },
+    {
+      "bytes": 74,
+      "class": "release-steering-attempt-failure",
+      "device": 64512,
+      "inode": 39095216,
+      "line_sha256": "76badba4ee341d06ffa2f4c10fd6a4d5cbaa09624d3f33f3e5e65af315dfd3b6",
+      "offset": 39519582,
+      "raw_line": "release steer: subnet epoch 1674 attempt 2: compact head EMA epoch jumped",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stdout.log"
+    }
+  ],
+  "schema": "urnetwork-r46-provisional-findings-receipt-v1",
+  "scoped_rows": [
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "warning",
+      "count": 2,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "release-dependency-postgres-1"
+      ],
+      "fault_kinds": [
+        "container-restart"
+      ],
+      "first_line_sha256": "6586a2d97b2f8ca101ab585785e93b9653b3cb100df1b21fd6c311be12368148",
+      "first_observed_at": "2026-09-25T17:58:17.662827123Z",
+      "first_offset": 1548538637,
+      "last_line_sha256": "9e983df907fb118219a5c46b10cde865b3f10d1e7b9baa3c331d5f26828b8a9e",
+      "last_observed_at": "2026-09-25T17:58:17.662827123Z",
+      "last_offset": 1548792750,
+      "process_id": "operator-1-api",
+      "role": "operator-api",
+      "stream": "stderr",
+      "summary": "process emitted an unclassified warning log"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "commit-deadline-warning",
+      "count": 1,
+      "disposition": "pending-commit-retry",
+      "first_line_sha256": "18fb04d0d9e17f27272078a1592afb2bef92e299a17451464a96f789bfbe04dc",
+      "first_observed_at": "2026-09-25T17:48:19.754538668Z",
+      "first_offset": 154985244,
+      "last_line_sha256": "18fb04d0d9e17f27272078a1592afb2bef92e299a17451464a96f789bfbe04dc",
+      "last_observed_at": "2026-09-25T17:48:19.754538668Z",
+      "last_offset": 154985244,
+      "process_id": "operator-1-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "summary": "root commit was unconfirmed before its deadline"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "commit-deadline-warning",
+      "count": 1,
+      "disposition": "pending-commit-retry",
+      "first_line_sha256": "f51bee23f23cd7872ee4f8228423ee94cc834dba3c8feaf04cb8394a72327eb7",
+      "first_observed_at": "2026-09-25T17:48:19.754538668Z",
+      "first_offset": 155219219,
+      "last_line_sha256": "f51bee23f23cd7872ee4f8228423ee94cc834dba3c8feaf04cb8394a72327eb7",
+      "last_observed_at": "2026-09-25T17:48:19.754538668Z",
+      "last_offset": 155219219,
+      "process_id": "operator-2-taskworker",
+      "role": "operator-taskworker",
+      "stream": "stderr",
+      "summary": "root commit was unconfirmed before its deadline"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "h3-tls-internal",
+      "count": 3,
+      "disposition": "resilient-fallback",
+      "first_line_sha256": "f80e051e4dd86a806818058938b80d11f89a173b7f44cef344c8dcf3aa2abe95",
+      "first_observed_at": "2026-09-25T17:58:17.662827123Z",
+      "first_offset": 311064110,
+      "last_line_sha256": "37776860ca3033549c2507e019bcd4a1fddde68f7dc108dfdaf09d96f56dc9a4",
+      "last_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "last_offset": 311078008,
+      "process_id": "validator-1",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "HTTP/3 connection failed with a TLS internal error"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "seed-unavailable",
+      "count": 13,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "fleet-lifecycle-companion-prune",
+        "fleet-lifecycle-target-prune",
+        "release-dependency-postgres-2",
+        "release-dependency-redis-1",
+        "validator-local-head-boundary"
+      ],
+      "fault_kinds": [
+        "validator-view-filter",
+        "validator-view-filter",
+        "container-restart",
+        "container-restart",
+        "validator-view-filter"
+      ],
+      "first_line_sha256": "591f2c745a3b800f58c5bcc61ec3e4d35d8da1b0289f430464ce0fe3850fbbf8",
+      "first_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "first_offset": 30074869,
+      "last_line_sha256": "dc3104f73f83cb85da1ea63a278cb461b3c37ba4b9ced847eefa4816ba45efa4",
+      "last_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "last_offset": 30076225,
+      "process_id": "validator-1",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "worker could not find a seed provider"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "contract-create",
+      "count": 3,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "fleet-lifecycle-companion-prune",
+        "fleet-lifecycle-target-prune",
+        "release-dependency-redis-1"
+      ],
+      "fault_kinds": [
+        "validator-view-filter",
+        "validator-view-filter",
+        "container-restart"
+      ],
+      "first_line_sha256": "9c09de0413b4cfd9c94abe645a29dc76d208683357fad3d42e5a243b6f3380cd",
+      "first_observed_at": "2026-09-25T18:00:13.368543931Z",
+      "first_offset": 251294213,
+      "last_line_sha256": "eb7856c1a959fd78c76070aa9b94cc1b10d826ef3e987e911381e197e9297dd4",
+      "last_observed_at": "2026-09-25T18:00:13.368543931Z",
+      "last_offset": 251300224,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "worker exited because it could not create a contract"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-continuity",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "first_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "first_offset": 251730462,
+      "last_line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "last_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "last_offset": 251730462,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "release steering advanced past an incomplete native epoch"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "tls-handshake-timeout",
+      "count": 3,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "fleet-lifecycle-companion-prune",
+        "fleet-lifecycle-target-prune",
+        "release-dependency-postgres-2",
+        "release-dependency-redis-1"
+      ],
+      "fault_kinds": [
+        "validator-view-filter",
+        "validator-view-filter",
+        "container-restart",
+        "container-restart"
+      ],
+      "first_line_sha256": "e4f1b26ffdba6be443c77dd03300cd6bd90b29fd123e0751ba8f60ed22f007e2",
+      "first_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "first_offset": 251326261,
+      "last_line_sha256": "456c7318ffdfcad1fd21185830869e9fb993f0ddbe0c9f2c5118096b98b1b3ea",
+      "last_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "last_offset": 251328804,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "TLS handshake timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "tls-handshake-timeout",
+      "count": 1,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "fleet-lifecycle-companion-prune",
+        "fleet-lifecycle-target-prune",
+        "release-dependency-redis-1"
+      ],
+      "fault_kinds": [
+        "validator-view-filter",
+        "validator-view-filter",
+        "container-restart"
+      ],
+      "first_line_sha256": "eb51125040c787b414fb9b710043346a4782ceeab8841d33c2aa74af302830c8",
+      "first_observed_at": "2026-09-25T18:00:13.368543931Z",
+      "first_offset": 251294416,
+      "last_line_sha256": "eb51125040c787b414fb9b710043346a4782ceeab8841d33c2aa74af302830c8",
+      "last_observed_at": "2026-09-25T18:00:13.368543931Z",
+      "last_offset": 251294416,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "TLS handshake timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-attempt-failure",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "4bc40d362ed03d88f3427c61122bbd485037ca8e3d0aac3edc6cfc2d27b0c887",
+      "first_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "first_offset": 39492660,
+      "last_line_sha256": "76badba4ee341d06ffa2f4c10fd6a4d5cbaa09624d3f33f3e5e65af315dfd3b6",
+      "last_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "last_offset": 39519582,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "release steering reported a failed native epoch attempt"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": false,
+      "class": "seed-unavailable",
+      "count": 13,
+      "disposition": "expected-fault",
+      "fault_ids": [
+        "fleet-lifecycle-companion-prune",
+        "fleet-lifecycle-target-prune",
+        "release-dependency-postgres-2",
+        "release-dependency-redis-1"
+      ],
+      "fault_kinds": [
+        "validator-view-filter",
+        "validator-view-filter",
+        "container-restart",
+        "container-restart"
+      ],
+      "first_line_sha256": "2e086198c28ffc146fc0bce310fc4c3c7b1d16a4267178fb0c8104bc4ec60fd3",
+      "first_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "first_offset": 39485269,
+      "last_line_sha256": "2e086198c28ffc146fc0bce310fc4c3c7b1d16a4267178fb0c8104bc4ec60fd3",
+      "last_observed_at": "2026-09-25T18:04:14.282837649Z",
+      "last_offset": 39487894,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "worker could not find a seed provider"
+    }
+  ]
+}
