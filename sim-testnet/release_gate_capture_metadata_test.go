@@ -16,7 +16,7 @@ import (
 )
 
 // Pin the selected families independently of their growing source population.
-const releaseGateCaptureSelector = "^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ValidatorStateNamespace|QualificationLauncher|SimulatorAttemptCutV2|ProducerGateStateSelection|ProducerGateCustodySelection|ProducerGateCaptureSelection|FinalCaptureV2|FinalCaptureCapacity|ScenarioNativeWarmupV2|ScenarioNativeObservationV2|StrictHistoryAdoption|FleetRenewal|OwnedRPC|OwnedRpc|CoordinatorRepairCarry|ProvisionalCoordinatorRepair)"
+const releaseGateCaptureSelector = "^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ValidatorStateNamespace|QualificationLauncher|SimulatorAttemptCutV2|ProducerGateStateSelection|ProducerGateCustodySelection|ProducerGateCaptureSelection|FinalCaptureV2|FinalCaptureCapacity|ScenarioNativeWarmupV2|ScenarioNativeObservationV2|StrictHistoryAdoption|FleetRenewal|ProvisionalFleetRenewal|OwnedRPC|OwnedRpc|CoordinatorRepairCarry|ProvisionalCoordinatorRepair)"
 
 const releaseGateCapturePopulationRoot = "TestCampaignEvidencePopulationV2StreamsPhaseCensusWithBoundedOwners"
 
@@ -594,7 +594,7 @@ func TestProducerGateCaptureSelectionRejectsSourceCensusDrift(t *testing.T) {
 			t.Fatalf("duplicate source %s escaped exact declaration membership: %v", name, err)
 		}
 	}
-	for _, family := range []string{"FleetRenewal", "CampaignEvidence", "FinalArchive"} {
+	for _, family := range []string{"FleetRenewal", "ProvisionalFleetRenewal", "CampaignEvidence", "FinalArchive"} {
 		changed := strings.Replace(script, "capture_tests='"+releaseGateCaptureSelector+"'", "capture_tests='"+strings.Replace(releaseGateCaptureSelector, family+"|", "", 1)+"'", 1)
 		if changed == script {
 			t.Fatalf("capture family %s lost its mutation prerequisite", family)

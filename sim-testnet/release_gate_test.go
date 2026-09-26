@@ -111,7 +111,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 
 const releaseAdversarialSelector = "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison|Runtime454)"
 
-const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|ReleaseRuntime459|ReleaseRuntime460|EVMCheckpoint)"
+const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|ReleaseRuntime459|ReleaseRuntime460|ReleaseRuntime461|ReleaseRuntime467|ReleaseCurrentRuntime|EVMCheckpoint)"
 
 const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
 
@@ -2696,7 +2696,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, family := range []string{"Runtime461|", "Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|"} {
+	for _, family := range []string{"Runtime461|", "Runtime460|", "Runtime459|", "Runtime458|", "CarriedFleetHistory|", "FinalSemanticRPC|", "ReleaseSubstrateDial|"} {
 		changedSelector := strings.Replace(selector, family, "", 1)
 		changed := strings.Replace(script, group.variable+"='"+selector+"'", group.variable+"='"+changedSelector+"'", 1)
 		if changed == script || verifyReleaseEvidenceV2GateGroup(changed, group) == nil {

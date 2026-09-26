@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-const releaseGateSimulatorEvidenceSelector = "^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation)"
+const releaseGateSimulatorEvidenceSelector = "^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvidencePolicyGap|EvidencePolicyRollover|EvmTxManager|ClientKeyHistory|RuntimeProvisional|ProvisionalRelay|RelayContinuation)"
 const releaseGateSimulatorEvidenceSlowSelector = "^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads)$"
 const releaseGateSimulatorEvidenceRenderSelector = "^TestRuntimeEvidenceOwnedReservedStagingRerenderReplacesProvisionalConfig$"
 const releaseGateSimulatorEvidenceProvisionalRenderSelector = "^TestRuntimeProvisionalStagingRenderBindsRetainedAuthority$"

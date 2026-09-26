@@ -45,6 +45,76 @@ func releaseClosureFunctionCalls(t *testing.T, path, name string) map[string]boo
 	return nil
 }
 
+// Pin the exact owner, argument and callback when a lifecycle method hands
+// execution to an operation instead of invoking the callback directly.
+func releaseClosureFunctionPassesCallback(t *testing.T, path, function, owner string, argument int, callback string) bool {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return releaseClosureCallbackOwner(parsed, function, owner, argument, callback)
+}
+
+// Only a real callback argument in the named function establishes ownership.
+func releaseClosureCallbackOwner(parsed *ast.File, function, owner string, argument int, callback string) bool {
+	name := func(expression ast.Expr) string {
+		switch target := expression.(type) {
+		case *ast.Ident:
+			return target.Name
+		case *ast.SelectorExpr:
+			if receiver, ok := target.X.(*ast.Ident); ok {
+				return receiver.Name + "." + target.Sel.Name
+			}
+		}
+		return ""
+	}
+	for _, declaration := range parsed.Decls {
+		declared, ok := declaration.(*ast.FuncDecl)
+		if !ok || declared.Name.Name != function || declared.Body == nil {
+			continue
+		}
+		matched := false
+		ast.Inspect(declared.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if ok && name(call.Fun) == owner && argument >= 0 && argument < len(call.Args) && name(call.Args[argument]) == callback {
+				matched = true
+			}
+			return true
+		})
+		return matched
+	}
+	return false
+}
+
+// Decoys and displaced callback arguments must not reconnect a severed owner.
+func TestProducerGateStateSelectionPinsOwnedCallbacks(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name, source string
+		want         bool
+	}{
+		{name: "owned callback", source: "func run() { self.retry(ctx, self.advance) }", want: true},
+		{name: "owned nested callback", source: "func run() { wrap(func() { self.retry(ctx, self.advance) }) }", want: true},
+		{name: "other owner", source: "func run() { other.retry(ctx, self.advance) }"},
+		{name: "other receiver", source: "func run() { self.retry(ctx, other.advance) }"},
+		{name: "other callback", source: "func run() { self.retry(ctx, self.bypass) }"},
+		{name: "wrong argument", source: "func run() { self.retry(self.advance, ctx) }"},
+		{name: "absent argument", source: "func run() { self.retry(ctx) }"},
+		{name: "direct call", source: "func run() { self.retry(ctx, self.advance()) }"},
+		{name: "string decoy", source: "func run() { _ = `self.retry(ctx, self.advance)` }"},
+		{name: "other function", source: "func run() {}\nfunc unrelated() { self.retry(ctx, self.advance) }"},
+	} {
+		parsed, err := parser.ParseFile(token.NewFileSet(), "synthetic.go", "package fixture\n"+testCase.source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := releaseClosureCallbackOwner(parsed, "run", "self.retry", 1, "self.advance"); got != testCase.want {
+			t.Fatalf("%s callback ownership=%t, want %t", testCase.name, got, testCase.want)
+		}
+	}
+}
+
 // Both gate paths retain the production closure and all its adjacent tests.
 func TestReleaseSemanticCensusPinsSettlementClosureRegressions(t *testing.T) {
 	producerBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")

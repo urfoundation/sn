@@ -195,16 +195,29 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 		{path: "scenario.go", function: "runScenarioCampaignAttemptWithTimeout", callee: "runScenarioWithEvidenceRelay"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "runScenarioWithProbe"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "waitClosures"},
-		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitThrough"},
+		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitPublicAudit"},
+		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitRange"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitAuditPass"},
-		{path: "scenario.go", function: "Snapshot", callee: "inspectValidatorPathProofsCached"},
+		{path: "scenario.go", function: "Snapshot", callee: "precompileContinuationSnapshot"},
+		{path: "precompile_continuation.go", function: "precompileContinuationSnapshot", callee: "observe"},
+		{path: "scenario.go", function: "observeSnapshot", callee: "inspectValidators"},
+		{path: "scenario_validator_authority.go", function: "inspectValidators", callee: "validatorSourceConfig"},
+		{path: "scenario_validator_authority.go", function: "inspectValidators", callee: "inspectValidatorPathProofsCached"},
+		{path: "scenario_validator_authority.go", function: "validatorSourceConfig", callee: "validateCampaignRPCTransport"},
 		{path: "scenario.go", function: "inspectValidatorPathProofs", callee: "inspectValidatorPathProofsCached"},
-		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "loadFinalOperatorPathAuthority"},
+		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "loadScenarioPathAuthorityV2"},
 		{path: "scenario.go", function: "inspectValidatorPathProofsCached", callee: "VerifyProofRecord"},
 		{path: "scenario.go", function: "runScenarioWithProbe", callee: "waitClosures"},
 		{path: "scenario.go", function: "runScenarioWithProbe", callee: "collect"},
 		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "collectFinalValidatorInputsWithPathAuthority"},
-		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "loadFinalOperatorPathAuthority"},
+		{path: "final_semantic_collect.go", function: "CollectFinalSemanticInputs", callee: "loadFinalOperatorPathAuthorityV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadFinalOperatorPathAuthorityV2", callee: "loadScenarioPathAuthorityV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "readPolicyRolloverObservationV2"},
+		{path: "policy_rollover_observation_v2.go", function: "readPolicyRolloverObservationV2", callee: "readPolicyRolloverHandoffV2"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "loadFinalOperatorPathAuthority"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "ReadReleaseEvidenceV2File"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "decodeFinalOperatorPathAuthority"},
+		{path: "policy_rollover_observation_v2.go", function: "loadScenarioPathAuthorityV2", callee: "LoadRawSeedFile"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputs", callee: "collectFinalValidatorInputsWithSeedObserver"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputsWithSeedObserver", callee: "loadFinalOperatorPathAuthority"},
 		{path: "final_semantic_collect.go", function: "collectFinalValidatorInputsWithSeedObserver", callee: "collectFinalValidatorInputsWithPathAuthority"},
@@ -218,6 +231,9 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 		if !releaseClosureFunctionCalls(t, check.path, check.function)[check.callee] {
 			t.Errorf("%s omits actual simulator custody call %s", check.function, check.callee)
 		}
+	}
+	if !releaseClosureFunctionPassesCallback(t, "scenario.go", "Snapshot", "precompileContinuationSnapshot", 2, "p.observeSnapshot") {
+		t.Fatal("live snapshot does not pass its owned observation to precompile continuation")
 	}
 	parsed, err := parser.ParseFile(token.NewFileSet(), "scenario.go", nil, 0)
 	if err != nil {

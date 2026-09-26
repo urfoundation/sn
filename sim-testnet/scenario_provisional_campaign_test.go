@@ -4,7 +4,6 @@ package main
 
 import (
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,6 +27,7 @@ func provisionalCampaignReceiptsTest(cfg *ResolvedConfig) *scenarioEvaluation {
 
 // Both actual phase definitions must select the honest local check and still
 // bind exactly the approved five/three epochs, matrix, faults and adversaries.
+// Provisional release adds one mandatory precompile continuation completion.
 func TestProvisionalFullCampaignSelectsLocalReceiptsWithoutChangingWork(t *testing.T) {
 	t.Parallel()
 	for _, phase := range []string{"release-1.0", "production-soak"} {
@@ -46,14 +46,49 @@ func TestProvisionalFullCampaignSelectsLocalReceiptsWithoutChangingWork(t *testi
 			t.Fatalf("%s provisional matrix cannot bind its real checks: %v", phase, err)
 		}
 		if provisional.GoalEpochs != strict.GoalEpochs || !reflect.DeepEqual(provisional.Faults, strict.Faults) ||
-			provisional.MatrixHash != strict.MatrixHash || provisional.AdversarialMatrixHash != strict.AdversarialMatrixHash || len(provisional.Checks) != len(strict.Checks) {
+			provisional.MatrixHash != strict.MatrixHash || provisional.AdversarialMatrixHash != strict.AdversarialMatrixHash {
 			t.Fatalf("%s provisional mode changed the approved workload", phase)
 		}
+		wantAdded := 0
+		if phase == "release-1.0" {
+			wantAdded = 1
+		}
+		if len(provisional.Checks) != len(strict.Checks)+wantAdded {
+			t.Fatalf("%s provisional checks=%d, want original %d plus %d conformance check", phase, len(provisional.Checks), len(strict.Checks), wantAdded)
+		}
 		evaluation := provisionalCampaignReceiptsTest(cfg)
-		replaced := 0
+		replaced, added := 0, 0
 		normalized := provisional
-		normalized.Checks = slices.Clone(provisional.Checks)
-		for index, check := range provisional.Checks {
+		normalized.Checks = make([]scenarioCheck, 0, len(strict.Checks))
+		for _, check := range provisional.Checks {
+			if phase == "release-1.0" && check.ID == "precompile_conformance_complete" {
+				added++
+				current := &ScenarioObservation{}
+				conformance := &scenarioEvaluation{Cfg: cfg, Current: current}
+				if passed, _ := check.Check(conformance); passed {
+					t.Fatal("provisional release accepted absent precompile conformance")
+				}
+				current.PrecompileConformance = completePrecompileEvidence()
+				current.PrecompileConformanceValid = true
+				if passed, message := check.Check(conformance); !passed {
+					t.Fatalf("provisional release refused complete precompile conformance: %s", message)
+				}
+				current.PrecompileConformance.Dividend = PrecompileDividendStep{}
+				if passed, _ := check.Check(conformance); passed {
+					t.Fatal("provisional release accepted incomplete precompile conformance")
+				}
+				current.PrecompileConformance = completePrecompileEvidence()
+				current.PrecompileConformanceError = "synthetic conformance failure"
+				if passed, _ := check.Check(conformance); passed {
+					t.Fatal("provisional release accepted failed precompile conformance")
+				}
+				continue
+			}
+			index := len(normalized.Checks)
+			if index >= len(strict.Checks) {
+				t.Fatalf("%s added unrelated assertion %s", phase, check.ID)
+			}
+			normalized.Checks = append(normalized.Checks, check)
 			if strict.Checks[index].ID == "validator_intents_finalized" {
 				if check.ID != "validator_local_v2_receipts_finalized_and_applied" {
 					t.Fatalf("%s retained an impossible strict receipt check", phase)
@@ -75,8 +110,8 @@ func TestProvisionalFullCampaignSelectsLocalReceiptsWithoutChangingWork(t *testi
 				}
 			}
 		}
-		if hash, err := scenarioDefinitionHash(normalized); err != nil || hash != strictHash || replaced != 1 {
-			t.Fatalf("%s changed more than the explicit receipt assertion: %v", phase, err)
+		if hash, err := scenarioDefinitionHash(normalized); err != nil || hash != strictHash || replaced != 1 || added != wantAdded {
+			t.Fatalf("%s changed the approved checks beyond one local receipt substitution and %d conformance check: %v", phase, wantAdded, err)
 		}
 		cfg.provisionalResume = nil
 		again, err := scenarioDefinitionFor(cfg, phase)

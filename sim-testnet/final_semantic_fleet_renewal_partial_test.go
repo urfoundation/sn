@@ -59,6 +59,7 @@ func finalFleetRenewalPartialLineageFixture(t *testing.T) (*FinalSemanticEvidenc
 // The first round has 201 completed fleet versions and two genuine revokes;
 // the successor contributes 202 more. Missing writes are never counted as paid.
 func TestFinalFleetRenewalPartialRoundPreservesCutoffAndCompletesSuccessor(t *testing.T) {
+	t.Parallel()
 	evidence, lineage := finalFleetRenewalPartialLineageFixture(t)
 	if err := verifyFinalFleetGenerationLineage(evidence, lineage); err != nil {
 		t.Fatal(err)
@@ -85,6 +86,7 @@ func TestFinalFleetRenewalPartialRoundPreservesCutoffAndCompletesSuccessor(t *te
 // Incomplete markers cannot hide an existing binding, erase prior consent, or
 // excuse missing terminal renewal work.
 func TestFinalFleetRenewalPartialRoundRejectsFabricatedClosure(t *testing.T) {
+	t.Parallel()
 	evidence, original := finalFleetRenewalPartialLineageFixture(t)
 	raw, err := json.Marshal(original)
 	if err != nil {
