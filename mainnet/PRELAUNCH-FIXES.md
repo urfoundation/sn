@@ -2595,6 +2595,15 @@ not sufficient. Test stopped/retried cutovers, mixed generations, forged
 contexts, changed quotas, and rollback refusal. Cache authenticated runtime
 inputs within one invocation so this check does not repeatedly read the full
 historical journal while the fleet is stopped.
+R47's provisional startup also forecast 34,553 protected publication objects
+per hour against a configured 32,768, and 10,947,548 retry requests per hour
+against 8,388,608, for each of the four validator/operator pairs. The
+diagnostic owner waived that forecast without changing runtime limits. Mainnet
+must size both quotas with the approved 2× resource margin against the
+worst-case source/retry workload (at least 69,106 objects/hour and 21,895,096
+retry requests/hour at this workload) and rerun the forecast using the actual
+rendered operator configuration before any accepting interval. A forecast
+warning is not evidence that the constrained service can sustain load.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
