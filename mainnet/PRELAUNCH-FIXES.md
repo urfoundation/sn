@@ -2776,3 +2776,29 @@ revisions together, update the verifier's value model, and exercise positive,
 zero-price and per-user-only cases before adopting that mainline version for
 a testnet release or mainnet. The R46 integration branch has not adopted this
 unqualified sync.
+
+### R47 sealed early: provisional process warnings must not end the interval
+
+R47 stopped at finalized block 8,091,300, well before its signed terminal
+8,092,324, because the heartbeat promoted four process-log classes into an
+immediate `scenario_context` error. The first class was two operator-1 MinIO
+records-stream connection-reset warnings; operator 2 logged the same class.
+The exact log bytes, offsets and hashes and the signed failed/invalidation
+records are retained in the R47 terminal peer-review bundle. A later healthy
+MinIO GET does not erase the transport errors or prove their cause.
+
+Production separation must be explicit: during a provisional interval,
+record authenticated process findings and continue observing to the signed
+terminal while required processes and chain identity remain sound. At final
+acceptance, evaluate the complete retained log ledger strictly against exact
+approved fault scope. Deterministic tests must inject warnings from both
+operators, cover recovery and continued observation, and prove that terminal
+acceptance still fails for an unexcused warning. A sealed early exit remains
+a partial failure and must never be presented as terminal coverage.
+
+R47 also showed real low epoch-652 completed usage rather than a missing
+escrow sweep. The immutable provider-usage snapshots match the published
+artifact totals, and most closures were expired or unconfirmed. Mainnet
+readiness should verify enough confirmed closed usage for the governed tier
+and native movement margin under restart/fault load, not infer throughput
+from process health alone.

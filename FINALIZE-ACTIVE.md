@@ -1,5 +1,36 @@
 # Testnet execution plan
 
+## R47 sealed partial failure; R48 preparation — 2026-09-26 16:12 UTC
+
+R47 is no longer live. Its owner exited after finalized block 8,091,300,
+before the signed measurement end 8,092,174 or terminal block 8,092,324.
+The sealed result is `fail`, `final_acceptance=false`, with six assertions,
+five failed, and 119 open anomaly-ledger entries. The signed generation-47
+attempt is invalidated as `execution-exited-before-completion`; it cannot be
+continued in place. The exact result, signed envelopes, observations and
+warning-line hashes are preserved in
+[the R47 terminal bundle](sim-testnet/peerreview/evidence/FINAL-3-R47-terminal-20260926/README.md).
+The next numbered [partial report](sim-testnet/FINAL-3.md) records the
+on-chain and off-chain limits separately.
+
+The immediate exit was a provisional heartbeat process-log gate that treated
+two operator-1 MinIO records-stream connection-reset warnings (and related
+operator-2 warnings) as grounds to stop before terminal. The strict final
+gate must still see those findings, but provisional observation should retain
+and continue. An isolated candidate fix with deterministic tests is in
+progress; it is not part of R47's signed executable. The epoch-652 complete
+source also fell below rate margin on both operators, and zero-funded claims
+and missing pool weights remain independent strict findings.
+
+R48 preparation must keep the fleet supervisor and R47 sealed evidence,
+qualify the provisional-continuation fix and ordinary simulator batch, then
+bind a new signed continuation. The [authenticated native recovery proposal](sim-testnet/peerreview/R48-NATIVE-RECOVERY-PROPOSAL.md)
+identifies the exact generation-2 native-1690 starting point and missing
+history authority. Positive pool weight, emission/stake and nonzero vault
+capture are separate acceptance gates; a one-edge history adoption alone
+does not fund the pools. No R48 live mutation or successor interval is
+claimed at this checkpoint.
+
 ## R47 zero-funded measured settlement — 2026-09-26 15:49 UTC
 
 Independent LAN archive receipts establish that both epoch-651
