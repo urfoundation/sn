@@ -2461,6 +2461,17 @@ signatures, unique journal finalization, altered result bytes and an invented
 verified row. Keep a failed archive check strict even if synthetic unit tests
 pass.
 
+The R46 replay also exposed an operational attestation trap: Go did not stamp
+VCS build information when the diagnostic executable was built from a linked
+worktree, even with `-buildvcs=true`. The release driver correctly rejected
+that executable before reading historical state. Mainnet build preparation
+must preflight `go version -m` for the exact revision and `vcs.modified=false`
+before invoking any long-running command. If the linked worktree cannot
+produce a stamped binary, build from a clean full clone of the approved
+revision. Record the source revision, executable digest and preflight result
+with the diagnostic; a later script edit must not be presented as evidence
+that an already-running process passed that preflight.
+
 R46's operator stats and proof reads hit their 100,000-row and 10,000-row
 caps while the APIs returned oldest-first history. A healthy response could
 therefore show stale scoring and hide the current proof interval. Mainnet
