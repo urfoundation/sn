@@ -10,3 +10,13 @@ R47's signed measured interval began at finalized Subtensor block 8,090,674. The
 The Substrate block hash and EVM block hash for height 8,090,680 are different chain-view identities; both are retained in the JSON. A reviewer can independently call `eth_getTransactionReceipt` with either transaction hash and `eth_getLogs` for coordinator proxy `0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8` over block `0x7b7438`. The `RootCommitted` event topic is `0xeca8a9321e98d9973e8f088688c773bd76fbd6b6cd7212fbd5f2f9128eda8805`; its indexed values are epoch 650 and operator 1 or 2. The first two data words are the payout root and artifact hash.
 
 These receipts prove commitments only. Source usage of 52,450,233 and 50,903,383 bytes, the native-margin check, fault execution, funding, settlement, and terminal acceptance need separate evidence in `FINAL-3.md`.
+
+The later `epoch651-rolling-observation.json` is the exact owner JSONL row at
+byte offset 50,551,522, observed 2026-09-26 14:21:06 UTC. It reports epoch
+651, finalized block 8,090,848, rate readiness, valid fleet bindings, and
+the first rolling restart among expected faults. Its SHA-256 and owner
+observation hash are in `epoch651-rolling-onchain-receipt.json`. That receipt
+also retains the independent LAN `eth_getBlockByNumber` response for
+`0x7b74e0`; the EVM block hash matches the owner row exactly. The RPC proves
+the block identity, while the rate, fleet and fault fields remain owner
+observations requiring terminal cross-checks.

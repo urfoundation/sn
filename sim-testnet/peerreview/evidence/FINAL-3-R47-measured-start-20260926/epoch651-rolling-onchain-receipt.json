@@ -1,0 +1,84 @@
+{
+  "byte_offset": 50551522,
+  "epoch": 651,
+  "expected_fault_ids": [
+    "fleet-lifecycle-companion-prune",
+    "fleet-lifecycle-target-prune",
+    "head-boundary",
+    "release-rolling-02",
+    "validator-local-head-boundary"
+  ],
+  "finalized_head": {
+    "hash": "0x57005a7339e5e36e2ae04c738a8e6fb8ab4001dcb5d85e8f527019f5d73b003f",
+    "number": 8090848
+  },
+  "fleet_bindings_valid": true,
+  "lan_rpc_method": "eth_getBlockByNumber",
+  "lan_rpc_params": [
+    "0x7b74e0",
+    false
+  ],
+  "lan_rpc_response": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "author": "0x5338b9af84771a18b2d6d16bd6fe0cac9b9d3346",
+      "baseFeePerGas": "0x2540be400",
+      "difficulty": "0x0",
+      "extraData": "0x",
+      "gasLimit": "0x47868c0",
+      "gasUsed": "0x4ac0f",
+      "hash": "0x57005a7339e5e36e2ae04c738a8e6fb8ab4001dcb5d85e8f527019f5d73b003f",
+      "logsBloom": "0x040000000000000000000000400000000000004000004000005000000000000000000800000000000280000000000000000010050000000000000000000000000000000000000000000000080000001800000080010000400000000000000000000000400a0000000000000000000800000000000000800000000010000000000100000000040000000000000000000020000000000000101000000010000080040000000000002000000100000400000000000008000000240080000000000200000042010000000000000020000200000000040000000020000000000020008800000000000000000040000000000000200000008000000000000000000000",
+      "miner": "0x5338b9af84771a18b2d6d16bd6fe0cac9b9d3346",
+      "nonce": "0x0000000000000000",
+      "number": "0x7b74e0",
+      "parentHash": "0x083bfdf62db79f514067c8749a22e19a625d1b168af2019a796fba909b6a58b9",
+      "receiptsRoot": "0xc520f6329f3fc9c6cb307321931b2f1da992573ba4ef0abb5080eb0d110ca023",
+      "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+      "size": "0x615",
+      "stateRoot": "0x409ccebf6757c1a84078d30d67b442f41ffcd0177042f3de5e1cce9c3325eb11",
+      "timestamp": "0x6ab7d4a8",
+      "totalDifficulty": "0x0",
+      "transactions": [
+        "0x2a06fee6b71c7347d464c6c8486fd831bdad41ffa40a69c87a23f035b1fa0d8e",
+        "0x9af2efa600da08f79fed83fa3d3ad891e9cccd3ae953e3962e31d9fd75280401",
+        "0x3e153036215bd42855e45063a866faf2a438cf8583349187292e6569da344767",
+        "0x73c2b5666cf1c1511e5fddfad5cf0a406c08f01aa5a577960a9bafdc56fd4035"
+      ],
+      "transactionsRoot": "0x5371fcac94eb5fa04ec4fde9da4c921b679b9907bee3fad4e2e16b9b49906a99",
+      "uncles": []
+    }
+  },
+  "observation_hash": "0x62befc12c0945a816b3123e8717109d5b85c2bb9d852b093d48001e37ca1e997",
+  "observation_sha256": "16f1f6a7764bbc9574752a5fd5449efd48f127a7c946c5c5627fa1070cb59069",
+  "observed_at": "2026-09-26T14:21:06.397129897Z",
+  "policy_rate_readiness": {
+    "alpha_price_wei": "539777000000000",
+    "detail": "complete current-policy source epoch clears twice the native minimum at every rate tier",
+    "head": {
+      "hash": "0x57005a7339e5e36e2ae04c738a8e6fb8ab4001dcb5d85e8f527019f5d73b003f",
+      "number": 8090848
+    },
+    "minimum_transfer_tao_rao": 100000,
+    "ready": true,
+    "sources": [
+      {
+        "content_hash": "sha256:97321c15c64df89f287a643f4aef0773f405c9dba6c1b4e5cb615ea8bf88cf94",
+        "epoch": 650,
+        "no_id": 1,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 52450233
+      },
+      {
+        "content_hash": "sha256:9f20f608ba1b00cfdc8d949567d25de75d51614638aadb7a9d3ac07f78dae180",
+        "epoch": 650,
+        "no_id": 2,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "total_usage_bytes": 50903383
+      }
+    ]
+  },
+  "schema": "urnetwork-r47-epoch651-rolling-observation-receipt-v1",
+  "source": "R47 observations.jsonl"
+}
