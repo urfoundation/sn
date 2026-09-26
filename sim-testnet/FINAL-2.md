@@ -3,9 +3,10 @@
 **R46 completed five measured epochs; sealed provisional result failed on
 2026-09-26.** The owner recorded **182 assertions, 86 failed**, and **182
 open anomalies**. `final_acceptance=false`; this report does not claim a
-qualified release or production soak. The independent terminal diagnostic is
-being rerun against the sealed source, so its final check inventory remains
-pending. [Exact owner result](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-result.json)
+qualified release or production soak. The independent sealed terminal
+diagnostic completed with **19 passes, 9 failures, 9 unavailable checks, one
+finding and one documented exception**; it also reports
+`final_acceptance=false`. [Exact owner result](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-result.json)
 (SHA-256 `e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9`).
 The R46 owner ran as `urnetwork-sim-release-r46.service` from clean
 source revision `ad5c05ec` with the unchanged approved plan, 2,048 funded
@@ -379,8 +380,8 @@ equal the signed latest checkpoint. The authenticated observation prefix
 contains **74 rows and 89,796,733 bytes**, with no uncredited suffix.
 The diagnostic reader compared start directly to final using an adjacent
 transition rule, so this diagnostic failure does not prove a missing request.
-It also does not turn the failed R46 acceptance into a pass. The final
-diagnostic inventory is still pending.
+It also does not turn the failed R46 acceptance into a pass. The completed
+diagnostic retains this false failure in its original, immutable result.
 [Sealed checkpoint comparison](peerreview/evidence/FINAL-2-R46-continuation-20260925/sealed-r46-cleanup-history.receipt.json)
 (SHA-256 `97352693576e783b6a81edf42c38341293f20a81b721f2ca47fd0e44403f39ff`).
 The post-R46 reader fix walks the authenticated intermediate checkpoints in
@@ -391,6 +392,25 @@ change cannot revise R46's sealed owner result.
 [Cleanup-reader fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-cleanup-history-fix-review.md)
 (SHA-256 `fe8b49807072161d0b60510ece8401f5e6999d6a8765eda5df15f611f718b551`).
 
+The independent sealed diagnostic completed at **01:46:49 UTC on September
+26** with **39 checks: 19 pass, 9 fail, 9 unavailable, one finding and one
+exception**. Its complete report and receipt are copied into the evidence
+bundle without changing the owner result. The nine failures include the
+signed owner invalidation, absent clean completion, terminal assertions,
+strict acceptance, process-log findings, lifecycle timing, validator-2
+source capture, the cleanup-history reader's false transition, and historical
+contract-census authorization. The last failure needs a precise comparison
+with the retained signed corrective request and approved plan; it is not
+waived. The nine unavailable checks cover source-dependent validator checks,
+lifecycle artifacts, compact capture, the campaign reader's wrong directory,
+and the absent original semantic input bundle. The passing adversarial matrix
+does not imply a passing captured adversarial campaign. The lifecycle bypass
+remains a disclosed exception, not acceptance.
+[Complete 39-check report](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-report.json)
+(SHA-256 `59cdb27223fa48bc95184dc19f38674b80bb7d88ebc97f3e5de9183efece6421`),
+[terminal receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic.receipt.json)
+(SHA-256 `01dbe81a994fa5fa2a9ca5ae9b04616000033a5f94521b68bc9b49b0b4321885`).
+
 The independent sealed diagnostic advanced after its validator-2 source
 capture deadline. That capture failed at cut **70/96**, operator 2, while
 reading a 3,162,606-byte records chunk; its dependent native-application and
@@ -400,8 +420,8 @@ and passed the signed-payout-artifacts check. At the 36-check checkpoint,
 compact validator capture and lifecycle payout artifacts were unavailable;
 the adversarial matrix check passed, while its campaign reader was unavailable
 because it selected the diagnostic directory instead of the retained run.
-The diagnostic remains in progress; none of these partial checks override
-the owner result. [36-check progress receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-diagnostic-progress-36.receipt.json)
+This was an intermediate checkpoint; its partial checks do not override
+the later complete inventory or owner result. [36-check progress receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-diagnostic-progress-36.receipt.json)
 (SHA-256 `ebea67dc3525d7526152c945437d32219154f04461075291ca3515d6f9905360`).
 The subsequent read-only capture fix bounds parallel origin readers, retains
 durable witness ownership and rejects late success after a deadline; its
