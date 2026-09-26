@@ -166,8 +166,9 @@ and the native-1674 continuity evidence. Its 120-second receiver versus
 real lifecycle regression, not an established repair.
 `r46-exit-gap-idle-pairs.receipt.json` matches all 18 receive gaps to
 same-peer sender ACK-lifetime exits inside the 120–300-second idle mismatch.
-It strengthens the hypothesis but does not substitute for a causal transport
-test.
+Actual plain, encrypted and combined wire/HMAC fixtures recover from idle
+state loss after 155 seconds, so the mismatch alone does not reproduce the
+failure. Lost feedback and routing still need causal tests.
 
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
@@ -177,6 +178,8 @@ the strict failed R46 result.
 `r46-terminal-completion-fix-review.md` and
 `r46-cleanup-history-fix-review.md` retain exact post-R46 source fences,
 normal/race outcomes and controlled pre-fix failures for those two fixes.
+`r46-terminal-log-hash-fix-review.md` covers the subsequent scanner-hash
+format regression found in composed review and its strict negative controls.
 
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault

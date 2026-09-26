@@ -261,6 +261,14 @@ pass. Its real scheduled-fault controller, negative controls and race tests
 passed in an isolated source build; final acceptance rules remain strict.
 [Terminal fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-completion-fix-review.md)
 (SHA-256 `45834e44a5872f9b288a1ea651ddf39a218eb252a95ffe6545ac793d487b5754`).
+Composed review caught an adjacent wire-format error before deployment: the
+process-log scanner emits bare 64-character line hashes, while the first
+terminal fix accepted only `sha256:`-prefixed hashes. Real repeated
+exit-gap/TLS findings therefore remained strict but did not trigger prompt
+failed sealing. A scanner-produced pre-fix regression failed; the narrow
+correction passed normal and race tests, with malformed, foreign-scope and
+recovering findings still ineligible. [Hash-format fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-log-hash-fix-review.md)
+(SHA-256 `13733f4a26e895e0661fc754f15ac60b12e2557ec5a55b82a97f6293890f607b`).
 
 The sealed **86** failures have been assigned once each to these diagnostic
 groups. Counts are failed assertion rows, not independent root causes:
@@ -326,11 +334,15 @@ idle timeout is **120 seconds**, whereas the sender retains its sequence for
 ACK-lifetime exit for **all 18** receive gaps. Each sender's idle interval
 before the next write was **154.30–295.32 seconds**, inside that mismatch,
 and its first unacknowledged number was one below the queued receiver tail.
-Receiver retirement before sender retirement is therefore a strong recovery
-hypothesis. The retained rows still do not identify
+That timing suggested premature receiver retirement. A deterministic actual
+wire/HMAC/encryption fixture, however, recovered after 155 seconds idle in
+plain, encrypted and combined receive/TLS state-loss lanes. The timeout
+asymmetry alone is therefore **insufficient to reproduce the failure**.
+The retained rows still do not identify
 the missing acknowledgement, full head or route for every event, and they do
-not establish one shared defect for all 18. A real sender/receiver idle
-retirement test is required before changing transport behavior. The same
+not establish one shared defect for all 18. Lost feedback, contract-ahead
+state and route replacement need separate causal tests before changing
+transport behavior. The same
 review confirms the epoch-1674 native records object on both replicas and
 both durable input cuts, while the applied intent remained at native epoch
 1661; a recovered object does not repair that authenticated continuity gap.
