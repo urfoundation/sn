@@ -279,6 +279,7 @@ func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampai
 	startPath := filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative), scenarioCampaignStartFilename)
 	preAcceptance := prior.payload.AcceptanceBoundary == nil
 	var startRaw []byte
+	var startBoundary *scenarioCampaignAcceptanceBoundary
 	if preAcceptance {
 		if _, err := os.Lstat(startPath); err == nil {
 			return nil, time.Time{}, errors.New("campaign recovery pre-acceptance predecessor has a campaign-start marker")
@@ -293,11 +294,7 @@ func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampai
 		if start.payload.RunID != prior.payload.RunID || start.payload.AcceptanceInvalidation != "" || !scenarioCampaignRecoveryStaticBoundaryMatches(start.payload.AcceptanceBoundary, prior.payload.AcceptanceBoundary) {
 			return nil, time.Time{}, errors.New("campaign recovery start marker differs from the invalidated attempt")
 		}
-		if prior.historicalEvidence {
-			if err := validateScenarioFaultProgress(start.payload.AcceptanceBoundary.Faults, prior.payload.AcceptanceBoundary.Faults); err != nil {
-				return nil, time.Time{}, fmt.Errorf("historical campaign recovery fault schedule or progress changed: %w", err)
-			}
-		}
+		startBoundary = start.payload.AcceptanceBoundary
 		startRaw = raw
 	}
 	terminalResult, resultRaw, err := readScenarioCampaignRecoveryResult(prior.cfg, attempt.stateDir, prior)
@@ -321,8 +318,21 @@ func readScenarioCampaignRecoverySourcesWithPlans(attempt, prior *scenarioCampai
 		if err != nil {
 			return nil, time.Time{}, err
 		}
-		if _, _, _, _, _, err := prior.loadAuthenticatedRecoveryRuntimeForensics(filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative))); err != nil {
+		history, _, _, _, _, err := prior.loadAuthenticatedRecoveryRuntimeForensics(filepath.Join(attempt.stateDir, filepath.FromSlash(runRelative)))
+		if err != nil {
 			return nil, time.Time{}, err
+		}
+		if scenarioHasLifecycleCleanup(prior.payload.AcceptanceBoundary.Faults) || scenarioHasLifecycleCleanup(terminalResult.Faults) {
+			if err := validateScenarioAuthenticatedFaultHistory(prior.cfg, terminalResult, startBoundary.Faults, prior.payload.AcceptanceBoundary, history); err != nil {
+				return nil, time.Time{}, fmt.Errorf("campaign recovery cumulative fault history: %w", err)
+			}
+			if err := validateScenarioFaultProgress(prior.payload.AcceptanceBoundary.Faults, terminalResult.Faults); err != nil {
+				return nil, time.Time{}, fmt.Errorf("campaign recovery result fault progress: %w", err)
+			}
+		} else if prior.historicalEvidence {
+			if err := validateScenarioFaultProgress(startBoundary.Faults, prior.payload.AcceptanceBoundary.Faults); err != nil {
+				return nil, time.Time{}, fmt.Errorf("historical campaign recovery fault schedule or progress changed: %w", err)
+			}
 		}
 	}
 	processLogRaw, err := readValidatorEvidenceHistoricalFile(attempt.stateDir, runRelative+"/"+processLogEvidenceFilename, maximumCampaignEvidenceRawFileBytes)
