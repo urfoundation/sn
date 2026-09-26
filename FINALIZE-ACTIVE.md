@@ -1,5 +1,28 @@
 # Testnet execution plan
 
+## R47 financial and adversary progress — 2026-09-26 15:29 UTC
+
+The live R47 owner remains active. Its 55th retained observation at
+15:22:20 UTC has healthy operator surfaces, valid fleet bindings and policy
+rate readiness. LAN RPC finalized block 8,091,187 at 15:28:42 UTC, leaving
+1,137 blocks to the signed 8,092,324 terminal target. The epoch-651
+artifacts contain 12 and 15 payable leaves; the 27 claim rows in retry match
+those leaves, while the other 973 miner rows legitimately have no epoch-651
+claim. Both claim relayers are finalizing the older epoch-650 backlog: operator
+1 retry rows fell from 209 to 196 and operator 2 from 21 to 11 between the
+15:16 and 15:22 observations. This is progress, not yet proof of terminal
+settlement or all claims.
+
+The adversary ledger has strict failures beyond the native steering gap. Valid
+SEED probes selected miners deliberately hidden by the signed fleet-prune
+filters; an isolated current-branch selector correction is under test. A valid
+EXTEND returned HTTP 400 when its operator-2 source egress vanished during a
+connect-session teardown; that incident is not explained by an active fault
+target. The API intentionally gives the same public 400 for source, path and
+poison failures, so changing this single private reason to 503 would violate
+its non-oracle contract. The live findings remain strict and the owner must
+continue to terminal. Candidate fixes cannot rewrite R47 history.
+
 ## R47 continuation and successor fixes — 2026-09-26 15:14 UTC
 
 R47 owner PID 1255308 and retained fleet supervisor PID 1242083 are still
