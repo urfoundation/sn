@@ -123,7 +123,9 @@ func scenarioIrreversibleProcessFailure(scope string, findings []ProcessLogFindi
 	projectIsolatedProcessLogTlsTimeouts(scoped)
 	projectIsolatedProcessLogExitGapTimeout(scoped)
 	for _, finding := range scoped {
-		if !finding.Blocking || finding.Disposition != "unexplained" || !slices.Contains([]string{"tls-handshake-timeout", "exit-gap-timeout"}, finding.Class) || finding.ProcessID == "" || finding.Count == 0 || finding.FirstOffset < 0 || finding.LastOffset < finding.FirstOffset || !validSHA256ContentHash(finding.FirstLineSHA256) || !validSHA256ContentHash(finding.LastLineSHA256) || len(finding.FaultIDs) != 0 || len(finding.FaultKinds) != 0 || finding.RecoveryStartedAt != "" || finding.RecoveryDeadlineAt != "" || finding.RecoveryObservedAt != "" || finding.RecoveryLineSHA256 != "" || finding.RecoveryLogAt != "" || finding.RecoveryOffset != 0 {
+		// Scanner line hashes are bare hex. Add only the validator's domain
+		// prefix; retained scanner bytes and strict classifications stay intact.
+		if !finding.Blocking || finding.Disposition != "unexplained" || !slices.Contains([]string{"tls-handshake-timeout", "exit-gap-timeout"}, finding.Class) || finding.ProcessID == "" || finding.Count == 0 || finding.FirstOffset < 0 || finding.LastOffset < finding.FirstOffset || !validSHA256ContentHash("sha256:"+finding.FirstLineSHA256) || !validSHA256ContentHash("sha256:"+finding.LastLineSHA256) || len(finding.FaultIDs) != 0 || len(finding.FaultKinds) != 0 || finding.RecoveryStartedAt != "" || finding.RecoveryDeadlineAt != "" || finding.RecoveryObservedAt != "" || finding.RecoveryLineSHA256 != "" || finding.RecoveryLogAt != "" || finding.RecoveryOffset != 0 {
 			continue
 		}
 		return fmt.Sprintf("accepted process log %s/%s/%s retains %d strict blocking occurrence(s), first line %s", finding.ProcessID, finding.Stream, finding.Class, finding.Count, finding.FirstLineSHA256)
