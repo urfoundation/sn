@@ -2336,3 +2336,17 @@ needs authenticated complete native history or an explicitly authorized fresh
 generation. Signed-source diagnostic capture is also a separate owner: it
 captures original RPC, controls and stream bytes before independent replay, so
 a replay-signature optimization cannot explain or fix its HTTP/RPC latency.
+
+### Bind RPC agreement to the requested block
+
+R46 follow-up found an adjacent actor validation defect: two endpoints could
+return equal hashes at an unrequested height, and equal malformed hash strings
+passed the block decoder. Require both returned heights to equal the exact
+common finalized height, and require prefixed 32-byte hexadecimal hashes
+before runtime or precompile evidence is admitted.
+`TestAdversaryRpcCommonBlockRejectsReturnedHeightDrift`,
+`TestAdversaryRpcCommonBlockRejectsMalformedHashAgreement`, and
+`TestAdversaryRpcBlockDecoderRequiresCanonicalHash` reproduce the old
+acceptance; the exact-height positive also covers the explicitly owned shared
+RPC route. This refusal-only hardening does not attribute or waive the 35
+sealed R46 RPC errors, whose individual chronology was not retained.

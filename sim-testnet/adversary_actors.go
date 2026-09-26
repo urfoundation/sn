@@ -491,13 +491,18 @@ func (self *rpcAdversary) call(ctx context.Context, endpoint, method string, par
 	return response, nil
 }
 
+// Exact-width hexadecimal hashes protect every block reader; equal malformed
+// strings cannot become common-chain authority merely by agreeing.
 func decodeRPCBlock(response rpcResponse) (rpcBlock, uint64, error) {
 	if response.Error != nil {
 		return rpcBlock{}, 0, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
 	}
 	var block rpcBlock
-	if json.Unmarshal(response.Result, &block) != nil || !strings.HasPrefix(block.Number, "0x") || len(strings.TrimPrefix(block.Hash, "0x")) != 64 {
+	if json.Unmarshal(response.Result, &block) != nil || !strings.HasPrefix(block.Number, "0x") || len(block.Hash) != 66 || !strings.HasPrefix(block.Hash, "0x") {
 		return rpcBlock{}, 0, errors.New("rpc returned an invalid block")
+	}
+	if _, err := hex.DecodeString(block.Hash[2:]); err != nil {
+		return rpcBlock{}, 0, errors.New("rpc returned an invalid block hash")
 	}
 	number, err := strconv.ParseUint(strings.TrimPrefix(block.Number, "0x"), 16, 64)
 	return block, number, err
@@ -702,10 +707,10 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	tag := fmt.Sprintf("0x%x", commonNumber)
 	privateCommon, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+7)
 	publicCommon, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+8)
-	privateAt, _, decodePrivateErr := decodeRPCBlock(privateCommon)
-	publicAt, _, decodePublicErr := decodeRPCBlock(publicCommon)
-	if privateErr != nil || publicErr != nil || decodePrivateErr != nil || decodePublicErr != nil || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%s public=%s errors=%v/%v/%v/%v", commonNumber, privateAt.Hash, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 8, MaxInFlight: 1}
+	privateAt, privateAtNumber, decodePrivateErr := decodeRPCBlock(privateCommon)
+	publicAt, publicAtNumber, decodePublicErr := decodeRPCBlock(publicCommon)
+	if privateErr != nil || publicErr != nil || decodePrivateErr != nil || decodePublicErr != nil || privateAtNumber != commonNumber || publicAtNumber != commonNumber || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%d/%s public=%d/%s errors=%v/%v/%v/%v", commonNumber, privateAtNumber, privateAt.Hash, publicAtNumber, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 8, MaxInFlight: 1}
 	}
 	privateRuntimeResponse, privateRuntimeErr := self.call(ctx, privateEndpoint, "state_getRuntimeVersion", []any{privateFinalized}, sequence*32+9)
 	publicRuntimeResponse, publicRuntimeErr := self.call(ctx, publicEndpoint, "state_getRuntimeVersion", []any{publicFinalized}, sequence*32+10)
