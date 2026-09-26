@@ -350,6 +350,13 @@ both durable input cuts, while the applied intent remained at native epoch
 (SHA-256 `a5e4a466e3e20a23db821b6bdfe6b9c6c932e6cda09c6616f6d7146811f6aa8d`),
 [all 18 sender/receiver pairs](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-idle-pairs.receipt.json)
 (SHA-256 `b93eb1ed494b9a118e91963e781af69663335f4c0325d567c29191ffa330cba6`).
+A separate prefetch-ordering bug was reproduced on the actual signed and
+encrypted wire path after idle, but a bounded scan of all 18 sealed R46 peer
+windows found **zero** no-contract or contract-verification failure witnesses
+and prior verified cipher evidence in 15 windows. That fix is adjacent
+hardening, not an established explanation of R46's exit gaps.
+[Contract-witness scan](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-contract-witnesses.receipt.json)
+(SHA-256 `dd0242ef057041cc49002621697bf82c49cf5fc5b5ddb082da7218407474e905`).
 
 The sealed read-only diagnostic currently reports
 `result-start-and-fault-binding` failed with “lifecycle cleanup completion
@@ -372,6 +379,24 @@ passed; three controlled old-behavior cases failed as expected. The code
 change cannot revise R46's sealed owner result.
 [Cleanup-reader fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-cleanup-history-fix-review.md)
 (SHA-256 `fe8b49807072161d0b60510ece8401f5e6999d6a8765eda5df15f611f718b551`).
+
+The independent sealed diagnostic advanced after its validator-2 source
+capture deadline. That capture failed at cut **70/96**, operator 2, while
+reading a 3,162,606-byte records chunk; its dependent native-application and
+relay-readback checks were marked unavailable. It then retained the strict
+process-log and lifecycle activation failures, captured companion evidence,
+and passed the signed-payout-artifacts check. At the 36-check checkpoint,
+compact validator capture and lifecycle payout artifacts were unavailable;
+the adversarial matrix check passed, while its campaign reader was unavailable
+because it selected the diagnostic directory instead of the retained run.
+The diagnostic remains in progress; none of these partial checks override
+the owner result. [36-check progress receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-diagnostic-progress-36.receipt.json)
+(SHA-256 `ebea67dc3525d7526152c945437d32219154f04461075291ca3515d6f9905360`).
+The subsequent read-only capture fix bounds parallel origin readers, retains
+durable witness ownership and rejects late success after a deadline; its
+isolated normal and race suites passed, with old-behavior controls failing.
+[Capture fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-capture-fix-review.md)
+(SHA-256 `c13b3fd10d9d5e81380b6df79bd0332869c86423df92c2fccc2848b9e93b5f2f`).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

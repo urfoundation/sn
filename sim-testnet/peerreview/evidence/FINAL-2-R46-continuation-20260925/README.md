@@ -169,6 +169,8 @@ same-peer sender ACK-lifetime exits inside the 120–300-second idle mismatch.
 Actual plain, encrypted and combined wire/HMAC fixtures recover from idle
 state loss after 155 seconds, so the mismatch alone does not reproduce the
 failure. Lost feedback and routing still need causal tests.
+`r46-exit-gap-contract-witnesses.receipt.json` bounds the adjacent prefetch
+defect against all 18 sealed peer windows without attributing it to R46.
 
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
@@ -180,6 +182,10 @@ the strict failed R46 result.
 normal/race outcomes and controlled pre-fix failures for those two fixes.
 `r46-terminal-log-hash-fix-review.md` covers the subsequent scanner-hash
 format regression found in composed review and its strict negative controls.
+`r46-diagnostic-progress-36.receipt.json` preserves the sealed diagnostic's
+post-timeout 36-check checkpoint; `r46-terminal-capture-fix-review.md` records
+the later isolated source-capture correction and tests. The diagnostic
+checkpoint is partial, and neither file changes the failed owner result.
 
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault
