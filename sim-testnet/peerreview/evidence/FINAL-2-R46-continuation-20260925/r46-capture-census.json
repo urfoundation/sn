@@ -1,0 +1,48 @@
+{
+  "terminal-diagnostics-v2-sealed": {
+    "observed_at": "2026-09-26T07:10:51.472079+00:00",
+    "private_inputs": 32,
+    "closures": 31,
+    "closure_epoch_range": [
+      604,
+      634
+    ],
+    "intent_artifacts": 1,
+    "cuts": 96,
+    "unique_nonempty_references": 141,
+    "unique_reference_data_bytes_one_origin_upper": 878024312,
+    "references_with_all_chunk_paths": 114,
+    "references_without_manifest": 27,
+    "references_incomplete_with_manifest": 0,
+    "described_unique_chunks": 257,
+    "described_unique_data_bytes": 740746965,
+    "described_absent_chunks": 0,
+    "described_absent_data_bytes": 0,
+    "missing_reference_data_bytes_one_origin_upper": 112117689,
+    "unique_files": 653,
+    "unique_retained_path_bytes": 766507945
+  },
+  "terminal-diagnostics-v3-repair-proof-20260926": {
+    "observed_at": "2026-09-26T07:10:52.495940+00:00",
+    "private_inputs": 33,
+    "closures": 36,
+    "closure_epoch_range": [
+      604,
+      639
+    ],
+    "intent_artifacts": 1,
+    "cuts": 107,
+    "unique_nonempty_references": 149,
+    "unique_reference_data_bytes_one_origin_upper": 984400967,
+    "references_with_all_chunk_paths": 104,
+    "references_without_manifest": 44,
+    "references_incomplete_with_manifest": 1,
+    "described_unique_chunks": 232,
+    "described_unique_data_bytes": 655926701,
+    "described_absent_chunks": 2,
+    "described_absent_data_bytes": 7197287,
+    "missing_reference_data_bytes_one_origin_upper": 320091304,
+    "unique_files": 613,
+    "unique_retained_path_bytes": 676425364
+  }
+}

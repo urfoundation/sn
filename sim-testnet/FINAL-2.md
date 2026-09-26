@@ -463,6 +463,15 @@ durable witness ownership and rejects late success after a deadline; its
 isolated normal and race suites passed, with old-behavior controls failing.
 [Capture fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-capture-fix-review.md)
 (SHA-256 `c13b3fd10d9d5e81380b6df79bd0332869c86423df92c2fccc2848b9e93b5f2f`).
+The active independent replay uses that corrected two-origin capture. A
+read-only [source census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-census.json)
+at 07:10:52 UTC counted **107** immutable cuts, compared with **96** in the
+earlier diagnostic: later retained closures enlarged the archive being
+replayed. It found no additional concrete retry or custody defect. The
+[bounded review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review.md)
+and [normal/race test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review-tests.receipt.json)
+do not predict a passing source capture; the active replay's eventual result
+will be reported separately.
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

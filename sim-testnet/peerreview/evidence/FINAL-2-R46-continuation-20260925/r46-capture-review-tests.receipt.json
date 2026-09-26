@@ -1,0 +1,28 @@
+{
+  "review_revision": "6adc7be2e4abdd5c17426dbdf9b8ca66536bdba7",
+  "finished_at": "2026-09-26T07:16:10.587666+00:00",
+  "code_changed": false,
+  "go_version": "go1.26.6 linux/amd64",
+  "gomaxprocs": 2,
+  "parallel_packages": 1,
+  "package": "./validator",
+  "selector": "^(TestReleaseCapture|TestReleaseNativeCapture|TestAttemptStreamV2HTTP|TestEvidenceTransport)",
+  "count": 1,
+  "timeout": "10m",
+  "normal_exit": 0,
+  "race_exit": 0,
+  "receipts": {
+    "normal.log": {
+      "sha256": "9471428fca9e83c8eb4a65d9d79d7abd423c5f6f2ad6f5d3e230e6e717bac365",
+      "bytes": 49
+    },
+    "race.log": {
+      "sha256": "475006faa2bc46c3672ea615129a0ebda9970e228999153ed7f7669d4450b7d1",
+      "bytes": 50
+    },
+    "stream-census.json": {
+      "sha256": "c39a832455ccc882a2fcd287bdd478bb20b86e3b7154586d75e6ccb0158b41e2",
+      "bytes": 1549
+    }
+  }
+}

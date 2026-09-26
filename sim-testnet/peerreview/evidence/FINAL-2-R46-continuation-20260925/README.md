@@ -192,6 +192,10 @@ format regression found in composed review and its strict negative controls.
 post-timeout 36-check checkpoint; `r46-terminal-capture-fix-review.md` records
 the later isolated source-capture correction and tests. The diagnostic
 checkpoint is partial, and neither file changes the failed owner result.
+`r46-capture-review.md`, `r46-capture-census.json` and
+`r46-capture-review-tests.receipt.json` record the later read-only source
+inventory, its limits and unchanged normal/race capture tests. The active
+replay result will be added separately.
 
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault
