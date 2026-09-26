@@ -116,4 +116,37 @@ certify terminal acceptance.
 the owner's first epoch-635 observation to its exact JSONL offset and a
 matching LAN EVM block response. Complete epoch-634 usage is low for both
 operators and fails the two-times-native rate threshold. The fifth measured
-epoch and terminal acceptance remain open.
+epoch is evidenced below; terminal acceptance remains open.
+
+`epoch636-first-observation.json` and `epoch635-closure.receipt.json` bind
+the owner's first epoch-636 observation to exact JSONL bytes and an
+independent matching LAN EVM block response at signed measurement end block
+8,086,174. Complete epoch-635 usage also falls below the two-times-native
+threshold. This establishes that all five measured epochs were observed; it
+does not establish a passing terminal gate or a sealed owner result.
+
+`epoch634-restart-causality.receipt.json` bounds all four proof-file scans and
+the validator and swarm process samples used to investigate the epoch-634
+rate collapse. `validator1-startup-phase-2233.receipt.json` pins the
+replacement validator's still-incomplete startup phase. The paired
+`EPOCH634-RESTART-REVIEW.md` explains the inference and its limits. These
+read-only records neither repair the running owner nor waive strict findings.
+
+R46 subsequently crossed the signed terminal block and sealed a failed
+provisional owner result after graceful cancellation. `owner-result.json`,
+`owner-faults.json`, `owner-process-logs.json`, `owner-adversaries.json`,
+`owner-anomalies.json`, `owner-analysis.json`, and
+`generation46-signed-exit.evidence.json` are exact bytes from the independent
+terminal capture, not regenerated summaries. `terminal-capture.receipt.json`
+hashes every copied source and records zero capture errors. The owner result
+contains 182 assertions, 86 failures, 182 open anomalies and
+`final_acceptance=false`; the signed generation records
+`execution-exited-before-completion`. `terminal-chain-heads.receipt.json`
+independently retrieves signed terminal block 8,086,324 and verifies the
+owner's end-head hash at 8,086,545 through the LAN RPC.
+
+`failure-clusters.receipt.json` assigns all 86 failed assertion rows to
+bounded diagnostic groups without treating derived adversary-vector rows as
+independent root causes or converting any failure to a pass. A fresh
+read-only terminal diagnostic is running against the sealed files; its
+completed report will be added separately.

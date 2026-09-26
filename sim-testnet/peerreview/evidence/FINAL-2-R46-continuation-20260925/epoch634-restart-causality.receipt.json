@@ -1,0 +1,2015 @@
+{
+  "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+  "captured_completed_at": "2026-09-25T22:30:27.443780+00:00",
+  "captured_started_at": "2026-09-25T22:30:15.779050+00:00",
+  "final_acceptance": false,
+  "gap_summary": {
+    "classes": 10,
+    "counts": {
+      "miner-swarm-1": 1,
+      "miner-swarm-11": 1,
+      "miner-swarm-12": 1,
+      "miner-swarm-14": 1,
+      "miner-swarm-15": 2,
+      "miner-swarm-16": 6,
+      "miner-swarm-17": 2,
+      "miner-swarm-18": 1,
+      "miner-swarm-8": 1,
+      "miner-swarm-9": 2
+    },
+    "events": 18,
+    "latest_observed_at": "2026-09-25T20:43:05.167242023Z",
+    "prior_gate": {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/validator1-restart-2049.gate.json",
+      "sha256": "379f4a15650d436c2da1b2c4a8a80cc5b09da794eedf66c055d2bcd70bcdba38",
+      "updated_at": "2026-09-25T20:48:54.548803443Z"
+    },
+    "unchanged_from_2049_gate": true
+  },
+  "gate_updated_at": "2026-09-25T22:28:27.426018927Z",
+  "interpretation": {
+    "most_likely_causal_chain": "Scheduled validator restarts stopped proof workers; retained replay and terminal census publication delayed worker restart. All four files contain zero completed epoch-634 proofs. Epoch-634 usage consequently fell sharply while operator and provider processes remained live. Swarm gap warnings predate this blackout and their exact scoped event counts have not increased since the prior 20:49 gate.",
+    "next_run_fix_1": "Make retained startup/census replay resumable with authenticated cut/plan/replica checkpoints and delta-tail revalidation; preserve every signed prefix and publication identity. Gate rolling-restart readiness on fresh proofs from both operators, not PID health. Deterministic restart fixture should prove bounded verified replay and proof resumption before the next full epoch; mismatch/changed prefix/replica failures must remain fail-closed.",
+    "next_run_fix_2": "Investigate Connect idle sequence-state recovery for receive idle 120s vs send idle 300s. The recurring expected-sequence-zero/queued-later-sequence pattern is a hypothesis, not a proven cause. Test a 121-299s idle interval, lost first ACK and route changes with exact-once delivery and full trail proof recovery; do not simply relax the final log gate.",
+    "terminal_collection": "Continue R46 untouched. Current owner observations, bindings, and monitor progress remain useful. V1 proof starvation harms evidence completeness and strict acceptance, but is not itself a requirement to block collection of the signed terminal and honest failed/partial result.",
+    "validator1": "Healthy means live supervised PID, not proof production. Increasing CPU/IO plus replay scratch descriptors demonstrate ongoing work; they do not prove a particular completion time or rule out an algorithmic performance problem. No deadlock or need for live repair established.",
+    "validator2": "Both operator proof streams resumed in epoch635; native steering still has retained EMA-jump failure and must not be called recovered merely because path proofs advance."
+  },
+  "mutation_scope": "Only new immutable qualification files. No process, fleet, live log, fault ledger, config or chain mutations.",
+  "observations": [
+    {
+      "device": 64512,
+      "inode": 39756073,
+      "length": 1220435,
+      "offset": 55578143,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+      "row_sha256": "b843b4883a99c01740852fb4e9a6eeb3bd4bbe815207ff6f93c62ef44aa55809",
+      "selected": {
+        "epoch": 634,
+        "fleet_binding_count": 808,
+        "fleet_bindings_valid": true,
+        "fleet_commitment_valid": true,
+        "head": {
+          "hash": "0x794c7891158fc912f1866d1134e4073ef96dbaadf989656cb22bedfb4841f457",
+          "number": 8085852
+        },
+        "observation_hash": "0xba8bdb86076d5bc47036a51be5fbdd3288dac2c8e82734dcfbd1886aa64ba6d8",
+        "observed_at": "2026-09-25T21:42:06.603702594Z",
+        "operators": [
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:e5722382d5f4c881e593bf9317365c8826956325f16815610e84fbe33ae95bc1",
+            "latest_payout_root": "0x2c8c015fde90b69d2a961f14ed4b4f0547e19e10e2f47a9f52dab707ae99b6a0",
+            "no_id": 1,
+            "rate_source": {
+              "content_hash": "sha256:e5722382d5f4c881e593bf9317365c8826956325f16815610e84fbe33ae95bc1",
+              "epoch": 633,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 21465073
+            },
+            "status_code": 200
+          },
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+            "latest_payout_root": "0x1b0c84975f057f8fb8a9dd6e3d732c33c69ff3ba39732628c638064eb17634e9",
+            "no_id": 2,
+            "rate_source": {
+              "content_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+              "epoch": 633,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 17885137
+            },
+            "status_code": 200
+          }
+        ],
+        "policy_rate_readiness": {
+          "alpha_price_wei": "539777000000000",
+          "detail": "complete current-policy source epoch clears twice the native minimum at every rate tier",
+          "head": {
+            "hash": "0x794c7891158fc912f1866d1134e4073ef96dbaadf989656cb22bedfb4841f457",
+            "number": 8085852
+          },
+          "minimum_transfer_tao_rao": 100000,
+          "ready": true,
+          "sources": [
+            {
+              "content_hash": "sha256:e5722382d5f4c881e593bf9317365c8826956325f16815610e84fbe33ae95bc1",
+              "epoch": 633,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 21465073
+            },
+            {
+              "content_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+              "epoch": 633,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 17885137
+            }
+          ]
+        },
+        "public_identities_valid": true,
+        "status_healthy": true,
+        "validators": [
+          {
+            "applied_intents": 0,
+            "current_epoch": null,
+            "current_status": null,
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T21:43:46.252582196Z",
+              "recorded_applied_intents": 0,
+              "recorded_finalized_intents": 0,
+              "scope": "local-runtime-observation",
+              "state": "absent",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2"
+            },
+            "path_proof_counts": {
+              "1": 14860,
+              "2": 15234
+            },
+            "validator_id": 1
+          },
+          {
+            "applied_intents": 0,
+            "current_epoch": 1661,
+            "current_status": "applied",
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T21:45:19.429703401Z",
+              "recorded_applied_intents": 1,
+              "recorded_finalized_intents": 1,
+              "recorded_receipts": [
+                {
+                  "application_block": 8080373,
+                  "application_block_hash": "0xa89b90325bc23df066e5d35907643102c24504aae3ea98cac4c161004348ae1f",
+                  "extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "finalized_block": 8079823,
+                  "finalized_block_hash": "0x863cc0010364fcd3d3e7695b3a8b595ce80515bd92595ee1458a15ebdeea329b",
+                  "prepared_at_block": 8079810,
+                  "prepared_at_block_hash": "0x94cbf9925f8229d29fa2ce1719ead86cfdeca0c6238768920100e341f08678e7",
+                  "prepared_extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "reveal_block": 8080091,
+                  "settlement_epoch": 614,
+                  "status": "applied",
+                  "subnet_epoch": 1661,
+                  "updated_at": "2026-09-25T03:26:48.7518971Z",
+                  "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+                }
+              ],
+              "scope": "local-runtime-observation",
+              "state": "observed",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+              "store_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce"
+            },
+            "path_proof_counts": {
+              "1": 8925,
+              "2": 9040
+            },
+            "validator_id": 2
+          }
+        ]
+      }
+    },
+    {
+      "device": 64512,
+      "inode": 39756073,
+      "length": 1221254,
+      "offset": 56798578,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+      "row_sha256": "adda8561024d55080fd8bdfbfa08550886b9e021c60e64fa5ff7a44a2ac0ff85",
+      "selected": {
+        "epoch": 635,
+        "fleet_binding_count": 808,
+        "fleet_bindings_valid": true,
+        "fleet_commitment_valid": true,
+        "head": {
+          "hash": "0xf0d35182d839f42081ae7745f0ab4466a7672f7f7dbc17874b58e58292a04957",
+          "number": 8085878
+        },
+        "observation_hash": "0xa5a86a9085be10d95f4fa401ca4b13b7cbf2d3d3080040d9dad1ba79253874c8",
+        "observed_at": "2026-09-25T21:47:18.122710197Z",
+        "operators": [
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:e5722382d5f4c881e593bf9317365c8826956325f16815610e84fbe33ae95bc1",
+            "latest_payout_root": "0x2c8c015fde90b69d2a961f14ed4b4f0547e19e10e2f47a9f52dab707ae99b6a0",
+            "no_id": 1,
+            "rate_source": {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            "status_code": 200
+          },
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+            "latest_payout_root": "0x1b0c84975f057f8fb8a9dd6e3d732c33c69ff3ba39732628c638064eb17634e9",
+            "no_id": 2,
+            "rate_source": {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            },
+            "status_code": 200
+          }
+        ],
+        "policy_rate_readiness": {
+          "alpha_price_wei": "539777000000000",
+          "detail": "operator 1 complete epoch 634 bytes=5250701 gives 105582 tao rao at tier 0; require twice native minimum 200000",
+          "head": {
+            "hash": "0xf0d35182d839f42081ae7745f0ab4466a7672f7f7dbc17874b58e58292a04957",
+            "number": 8085878
+          },
+          "minimum_transfer_tao_rao": 100000,
+          "ready": false,
+          "sources": [
+            {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            }
+          ]
+        },
+        "public_identities_valid": true,
+        "status_healthy": true,
+        "validators": [
+          {
+            "applied_intents": 0,
+            "current_epoch": null,
+            "current_status": null,
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T21:49:00.522190878Z",
+              "recorded_applied_intents": 0,
+              "recorded_finalized_intents": 0,
+              "scope": "local-runtime-observation",
+              "state": "absent",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2"
+            },
+            "path_proof_counts": {
+              "1": 14860,
+              "2": 15234
+            },
+            "validator_id": 1
+          },
+          {
+            "applied_intents": 0,
+            "current_epoch": 1661,
+            "current_status": "applied",
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T21:50:35.220125678Z",
+              "recorded_applied_intents": 1,
+              "recorded_finalized_intents": 1,
+              "recorded_receipts": [
+                {
+                  "application_block": 8080373,
+                  "application_block_hash": "0xa89b90325bc23df066e5d35907643102c24504aae3ea98cac4c161004348ae1f",
+                  "extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "finalized_block": 8079823,
+                  "finalized_block_hash": "0x863cc0010364fcd3d3e7695b3a8b595ce80515bd92595ee1458a15ebdeea329b",
+                  "prepared_at_block": 8079810,
+                  "prepared_at_block_hash": "0x94cbf9925f8229d29fa2ce1719ead86cfdeca0c6238768920100e341f08678e7",
+                  "prepared_extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "reveal_block": 8080091,
+                  "settlement_epoch": 614,
+                  "status": "applied",
+                  "subnet_epoch": 1661,
+                  "updated_at": "2026-09-25T03:26:48.7518971Z",
+                  "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+                }
+              ],
+              "scope": "local-runtime-observation",
+              "state": "observed",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+              "store_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce"
+            },
+            "path_proof_counts": {
+              "1": 8925,
+              "2": 9040
+            },
+            "validator_id": 2
+          }
+        ]
+      }
+    },
+    {
+      "device": 64512,
+      "inode": 39756073,
+      "length": 1219110,
+      "offset": 62895556,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+      "row_sha256": "a4c8ff5582132a476b9d594161c1461dcc186ce3d53f92de313b66e1799e9903",
+      "selected": {
+        "epoch": 635,
+        "fleet_binding_count": 808,
+        "fleet_bindings_valid": true,
+        "fleet_commitment_valid": true,
+        "head": {
+          "hash": "0x13d9ab78c18540a6a44f381117cb79fceefd1ead0c70234f37806b71dba9c45a",
+          "number": 8086009
+        },
+        "observation_hash": "0xd2d323bae20e1c2a53e5e546c85a8c65db67093e428a7f4319151495807b4320",
+        "observed_at": "2026-09-25T22:13:28.233717308Z",
+        "operators": [
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 634,
+            "latest_artifact_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+            "latest_payout_root": "0x97fc71881f1d626660bed740a1fa8f8ca3922ea097c92ad9c16e8309f5901aef",
+            "no_id": 1,
+            "rate_source": {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            "status_code": 200
+          },
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+            "latest_payout_root": "0x1b0c84975f057f8fb8a9dd6e3d732c33c69ff3ba39732628c638064eb17634e9",
+            "no_id": 2,
+            "rate_source": {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            },
+            "status_code": 200
+          }
+        ],
+        "policy_rate_readiness": {
+          "alpha_price_wei": "539777000000000",
+          "detail": "operator 1 complete epoch 634 bytes=5250701 gives 105582 tao rao at tier 0; require twice native minimum 200000",
+          "head": {
+            "hash": "0x13d9ab78c18540a6a44f381117cb79fceefd1ead0c70234f37806b71dba9c45a",
+            "number": 8086009
+          },
+          "minimum_transfer_tao_rao": 100000,
+          "ready": false,
+          "sources": [
+            {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            }
+          ]
+        },
+        "public_identities_valid": true,
+        "status_healthy": true,
+        "validators": [
+          {
+            "applied_intents": 0,
+            "current_epoch": null,
+            "current_status": null,
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T22:15:02.635019315Z",
+              "recorded_applied_intents": 0,
+              "recorded_finalized_intents": 0,
+              "scope": "local-runtime-observation",
+              "state": "absent",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2"
+            },
+            "path_proof_counts": {
+              "1": 14860,
+              "2": 15234
+            },
+            "validator_id": 1
+          },
+          {
+            "applied_intents": 0,
+            "current_epoch": 1661,
+            "current_status": "applied",
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T22:16:34.697459309Z",
+              "recorded_applied_intents": 1,
+              "recorded_finalized_intents": 1,
+              "recorded_receipts": [
+                {
+                  "application_block": 8080373,
+                  "application_block_hash": "0xa89b90325bc23df066e5d35907643102c24504aae3ea98cac4c161004348ae1f",
+                  "extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "finalized_block": 8079823,
+                  "finalized_block_hash": "0x863cc0010364fcd3d3e7695b3a8b595ce80515bd92595ee1458a15ebdeea329b",
+                  "prepared_at_block": 8079810,
+                  "prepared_at_block_hash": "0x94cbf9925f8229d29fa2ce1719ead86cfdeca0c6238768920100e341f08678e7",
+                  "prepared_extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "reveal_block": 8080091,
+                  "settlement_epoch": 614,
+                  "status": "applied",
+                  "subnet_epoch": 1661,
+                  "updated_at": "2026-09-25T03:26:48.7518971Z",
+                  "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+                }
+              ],
+              "scope": "local-runtime-observation",
+              "state": "observed",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+              "store_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce"
+            },
+            "path_proof_counts": {
+              "1": 9059,
+              "2": 9177
+            },
+            "validator_id": 2
+          }
+        ]
+      }
+    },
+    {
+      "device": 64512,
+      "inode": 39756073,
+      "length": 1220549,
+      "offset": 65334699,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+      "row_sha256": "aa961904022f80abb99a295867f99988ada13d529365108f3b7e52ab80e457b6",
+      "selected": {
+        "epoch": 635,
+        "fleet_binding_count": 808,
+        "fleet_bindings_valid": true,
+        "fleet_commitment_valid": true,
+        "head": {
+          "hash": "0xca76a56eba12ae5b19041d1478a04095f1031c84c71b0b6c7bea23e9338f4420",
+          "number": 8086064
+        },
+        "observation_hash": "0x3336f971d41ef8ea8ea57d2bb98537f968796f168cb1f67f76f73cc8fe2ee9d1",
+        "observed_at": "2026-09-25T22:24:24.247073314Z",
+        "operators": [
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 634,
+            "latest_artifact_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+            "latest_payout_root": "0x97fc71881f1d626660bed740a1fa8f8ca3922ea097c92ad9c16e8309f5901aef",
+            "no_id": 1,
+            "rate_source": {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            "status_code": 200
+          },
+          {
+            "healthy": true,
+            "latest_artifact_epoch": 633,
+            "latest_artifact_hash": "sha256:7451913cefd4fd2269ef525ffae5d43d4233ea5a14123178c0b01fffbc1e3f7d",
+            "latest_payout_root": "0x1b0c84975f057f8fb8a9dd6e3d732c33c69ff3ba39732628c638064eb17634e9",
+            "no_id": 2,
+            "rate_source": {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            },
+            "status_code": 200
+          }
+        ],
+        "policy_rate_readiness": {
+          "alpha_price_wei": "539777000000000",
+          "detail": "operator 1 complete epoch 634 bytes=5250701 gives 105582 tao rao at tier 0; require twice native minimum 200000",
+          "head": {
+            "hash": "0xca76a56eba12ae5b19041d1478a04095f1031c84c71b0b6c7bea23e9338f4420",
+            "number": 8086064
+          },
+          "minimum_transfer_tao_rao": 100000,
+          "ready": false,
+          "sources": [
+            {
+              "content_hash": "sha256:d30fa389e742c92fbbc7f225a6c4b4d2cf262e863bf6beaaba1572f64c39490e",
+              "epoch": 634,
+              "no_id": 1,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5250701
+            },
+            {
+              "content_hash": "sha256:6fce7b184a271eba4c4029675e328d0098cc2eb2c5435c75d419741dd7d568f3",
+              "epoch": 634,
+              "no_id": 2,
+              "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+              "total_usage_bytes": 5732655
+            }
+          ]
+        },
+        "public_identities_valid": true,
+        "status_healthy": true,
+        "validators": [
+          {
+            "applied_intents": 0,
+            "current_epoch": null,
+            "current_status": null,
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T22:26:07.123064791Z",
+              "recorded_applied_intents": 0,
+              "recorded_finalized_intents": 0,
+              "scope": "local-runtime-observation",
+              "state": "absent",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2"
+            },
+            "path_proof_counts": {
+              "1": 14860,
+              "2": 15234
+            },
+            "validator_id": 1
+          },
+          {
+            "applied_intents": 0,
+            "current_epoch": 1661,
+            "current_status": "applied",
+            "finalized_intents": 0,
+            "local_runtime_intents": {
+              "final_acceptance": false,
+              "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+              "observed_at": "2026-09-25T22:27:46.974941132Z",
+              "recorded_applied_intents": 1,
+              "recorded_finalized_intents": 1,
+              "recorded_receipts": [
+                {
+                  "application_block": 8080373,
+                  "application_block_hash": "0xa89b90325bc23df066e5d35907643102c24504aae3ea98cac4c161004348ae1f",
+                  "extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "finalized_block": 8079823,
+                  "finalized_block_hash": "0x863cc0010364fcd3d3e7695b3a8b595ce80515bd92595ee1458a15ebdeea329b",
+                  "prepared_at_block": 8079810,
+                  "prepared_at_block_hash": "0x94cbf9925f8229d29fa2ce1719ead86cfdeca0c6238768920100e341f08678e7",
+                  "prepared_extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+                  "reveal_block": 8080091,
+                  "settlement_epoch": 614,
+                  "status": "applied",
+                  "subnet_epoch": 1661,
+                  "updated_at": "2026-09-25T03:26:48.7518971Z",
+                  "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d"
+                }
+              ],
+              "scope": "local-runtime-observation",
+              "state": "observed",
+              "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+              "store_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce"
+            },
+            "path_proof_counts": {
+              "1": 9390,
+              "2": 9506
+            },
+            "validator_id": 2
+          }
+        ]
+      }
+    }
+  ],
+  "proof_cuts": [
+    {
+      "complete_rows": 14860,
+      "cut_bytes": 35305191,
+      "cut_sha256": "d06bfc19f733df0ef0a1d04e944e19f4c08a61dae3dbff2cfe56560c377d99ed",
+      "device": 64512,
+      "epoch_counts": {
+        "605": 834,
+        "607": 1362,
+        "609": 293,
+        "611": 721,
+        "612": 1030,
+        "614": 516,
+        "615": 78,
+        "616": 597,
+        "617": 192,
+        "618": 746,
+        "620": 1375,
+        "621": 838,
+        "623": 874,
+        "624": 1015,
+        "629": 1700,
+        "630": 1068,
+        "631": 391,
+        "632": 727,
+        "633": 503
+      },
+      "epoch_time_bounds_ms": {
+        "633": [
+          1790366900145,
+          1790368984101
+        ]
+      },
+      "inode": 39756069,
+      "operator_id": 1,
+      "partial_trailing_bytes": 0,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl",
+      "read_completed_at": "2026-09-25T22:30:19.222687+00:00",
+      "validator_id": 1,
+      "witnesses": {
+        "633:first": {
+          "complete_time_ms": 1790366900145,
+          "completed_at": "2026-09-25T20:08:20.145000+00:00",
+          "epoch": 633,
+          "length": 2358,
+          "offset": 34110324,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da2e-d8c4-5dc6-24b0-238ed37cc25c\",\"server_nonce\":\"F0mzCjQmBkEPO2p2FI5Pay197aokyZhsMcLiSMkzWpA=\",\"vpk\":\"86wWmQJd8vlfe6zMhHhC7FjJz/3VOru2BCvzueLhqqc=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-5047-243c-5531-e221078aefae\",\"time_ms\":1790366898372,\"egress_ip_hash\":[20,143,248,60,2,85,37,196,81,109,122,149,230,80,36,106,213,149,209,229,220,216,189,127,177,25,24,236,71,66,215,63]},{\"client_id\":\"01a050c6-33c5-3da2-8fdc-fa5b2e9dbb81\",\"time_ms\":1790366898487,\"egress_ip_hash\":[35,169,191,43,139,35,39,53,52,76,122,9,144,183,197,4,0,190,175,93,137,106,68,88,56,138,237,134,248,124,184,191]},{\"client_id\":\"01a050c6-057d-8051-8c95-68ae0f47d85a\",\"time_ms\":1790366898617,\"egress_ip_hash\":[251,48,27,253,177,60,195,197,170,184,66,201,88,80,138,0,105,147,21,3,56,74,213,90,227,150,229,170,53,169,53,38]},{\"client_id\":\"01a050c6-40bc-4c4f-9c3b-4dd2f105ba58\",\"time_ms\":1790366898753,\"egress_ip_hash\":[166,9,123,154,36,152,51,64,144,224,92,23,167,33,165,139,183,189,77,47,243,215,246,3,61,85,156,110,251,33,130,86]},{\"client_id\":\"01a050c6-193d-fe2d-0455-5d6868c6f5a6\",\"time_ms\":1790366898845,\"egress_ip_hash\":[251,35,7,74,93,22,95,51,58,104,179,241,169,87,45,92,124,220,195,114,6,168,182,2,252,141,52,157,111,87,243,98]},{\"client_id\":\"01a050c6-5329-f24f-08e5-61ae179279cc\",\"time_ms\":1790366899497,\"egress_ip_hash\":[59,82,31,203,196,248,52,11,32,98,162,171,74,101,203,4,152,196,15,81,20,247,221,121,135,63,42,229,58,166,39,46]},{\"client_id\":\"01a050c6-14ae-2796-398e-6e546491e43e\",\"time_ms\":1790366899995,\"egress_ip_hash\":[36,50,97,159,45,149,231,73,61,254,168,6,50,67,241,7,186,202,37,207,172,75,233,120,139,10,8,180,116,172,107,233]},{\"client_id\":\"01a050c6-10b9-7d4a-2da9-baea7396ddbe\",\"time_ms\":1790366900145,\"egress_ip_hash\":[73,223,153,244,114,211,185,143,130,20,233,160,157,42,133,174,172,106,33,206,179,244,177,105,86,128,211,176,12,241,6,17]}],\"server_key_id\":0,\"final_sig\":\"1EgIMAMm0E9IjvC7vuKabW3Ks9zZS7T2Iy6dyQHWT46EgO+a0toi0eg54w9n2Dq9dSh2p7wnBMzy4Cx60h9pBw==\",\"verifier_sig\":\"pQn7OFEU8W4P+aa0YLOnf8fZleB41QNe1BZZW3enWKRUphdjYdoeBifVBk27E/oNBbIsH000Chb7ZojxUoz2Bg==\",\"final_digest\":\"RAldJhNqzkvN3QbRXkT8/Io7tu0XYrkOrOTe3uluRXQ=\",\"vpk_sig\":\"a8ZCELZUFrVhJU5nW7Gc1hH9gbLfoRZiO314meTxWSKPl1jq3TIWqDFxrjqPBN0kbw+OjJETxs6mNsA1GysmBw==\",\"coverage\":7,\"path_id\":\"fkia3kvr4vSG0rYNaS86fcZfmZkIvGh8+KLXSfVMrRY=\",\"complete_time_ms\":1790366900145}\n",
+          "row_sha256": "5ac22896690ebabff60d2da897f9caf164640c98e86014268765e123358ce41f"
+        },
+        "633:last": {
+          "complete_time_ms": 1790368984101,
+          "completed_at": "2026-09-25T20:43:04.101000+00:00",
+          "epoch": 633,
+          "length": 2380,
+          "offset": 35302811,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da4e-aa51-fcec-fc03-db738ceaa741\",\"server_nonce\":\"Gr+pwfyLkylKIe6abrgCzHFLbpoDxT5DeE+xOMrwBGI=\",\"vpk\":\"86wWmQJd8vlfe6zMhHhC7FjJz/3VOru2BCvzueLhqqc=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-2d61-bdf2-0b91-2241574269f3\",\"time_ms\":1790368983633,\"egress_ip_hash\":[109,215,167,27,200,138,96,40,254,244,68,196,115,239,205,92,96,32,183,90,118,243,200,105,27,85,228,16,79,43,149,18]},{\"client_id\":\"01a050c5-fb00-4f8d-5bd8-0698f5f38da8\",\"time_ms\":1790368983762,\"egress_ip_hash\":[207,244,145,78,64,208,110,202,222,119,24,122,12,68,203,178,95,42,154,114,16,196,25,202,41,44,147,65,65,201,26,194]},{\"client_id\":\"01a050c6-3a96-2381-2e09-1ad25d648563\",\"time_ms\":1790368983817,\"egress_ip_hash\":[194,161,203,93,65,250,27,249,211,220,33,51,214,202,73,161,52,205,43,196,15,83,90,73,202,169,109,208,240,107,1,182]},{\"client_id\":\"01a050c6-37c2-6e59-f9c0-7070027999db\",\"time_ms\":1790368983865,\"egress_ip_hash\":[7,196,18,172,151,109,77,33,36,203,52,152,41,63,222,133,236,160,24,183,161,88,141,145,249,26,193,97,128,123,56,69]},{\"client_id\":\"01a050c6-5047-243c-5531-e221078aefae\",\"time_ms\":1790368983939,\"egress_ip_hash\":[20,143,248,60,2,85,37,196,81,109,122,149,230,80,36,106,213,149,209,229,220,216,189,127,177,25,24,236,71,66,215,63]},{\"client_id\":\"01a050c5-fca7-5627-56e6-ba93591005a0\",\"time_ms\":1790368983996,\"egress_ip_hash\":[188,168,182,179,112,157,155,139,192,174,237,50,109,128,175,181,143,25,128,8,115,231,192,126,144,108,130,247,199,127,36,249]},{\"client_id\":\"01a050c6-0045-79d9-06bd-2c44ea6caecb\",\"time_ms\":1790368984058,\"egress_ip_hash\":[121,24,194,154,135,130,208,49,142,211,240,108,227,116,29,239,163,184,132,30,44,193,18,40,112,158,51,33,6,74,134,66]},{\"client_id\":\"01a050c6-4b9c-b66d-e67f-306dc3fe4701\",\"time_ms\":1790368984101,\"egress_ip_hash\":[90,254,222,157,204,82,39,0,11,78,150,247,145,128,39,212,11,94,204,22,108,235,91,129,14,40,150,253,76,96,203,255]}],\"server_key_id\":0,\"final_sig\":\"tCnPRhEOtIiSMsWHHDXsKT37dYxBL62syVMxsqtydyDjI2XHrEj9oC7IGKjE1+Prqx1ooY4oVoR89vH2anHCAw==\",\"verifier_sig\":\"amWkkR+YTQCtOwuK9g9C9/UVeA/j4M5UcUx9x9Eb67jwOz2lfbjNlhW+7n3Iaxk4aIVvPEMal/97vXfcPkPwAw==\",\"final_digest\":\"ab/veIpGlmw29Iu0kNrbU2veBR53NtgCi5ZMO+tU5yQ=\",\"vpk_sig\":\"XYPw09i8qde7ERB5gTkM7jFQjdVm9jXvOJDo6gGUQexeAwTMMbX5GQclqUVlMoyRgFd9rLwkDA9+zSLMxsmeDw==\",\"coverage\":7,\"path_id\":\"iIeRFmObqw2IaQ8SSM959DUhIZVG1a4UKpZrQULXZ40=\",\"complete_time_ms\":1790368984101}\n",
+          "row_sha256": "b82f1188d6c3338e9ae563293ba1615952a2a70055639fb6cb9068827c7218e7"
+        },
+        "all:last": {
+          "complete_time_ms": 1790368984101,
+          "completed_at": "2026-09-25T20:43:04.101000+00:00",
+          "epoch": 633,
+          "length": 2380,
+          "offset": 35302811,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da4e-aa51-fcec-fc03-db738ceaa741\",\"server_nonce\":\"Gr+pwfyLkylKIe6abrgCzHFLbpoDxT5DeE+xOMrwBGI=\",\"vpk\":\"86wWmQJd8vlfe6zMhHhC7FjJz/3VOru2BCvzueLhqqc=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-2d61-bdf2-0b91-2241574269f3\",\"time_ms\":1790368983633,\"egress_ip_hash\":[109,215,167,27,200,138,96,40,254,244,68,196,115,239,205,92,96,32,183,90,118,243,200,105,27,85,228,16,79,43,149,18]},{\"client_id\":\"01a050c5-fb00-4f8d-5bd8-0698f5f38da8\",\"time_ms\":1790368983762,\"egress_ip_hash\":[207,244,145,78,64,208,110,202,222,119,24,122,12,68,203,178,95,42,154,114,16,196,25,202,41,44,147,65,65,201,26,194]},{\"client_id\":\"01a050c6-3a96-2381-2e09-1ad25d648563\",\"time_ms\":1790368983817,\"egress_ip_hash\":[194,161,203,93,65,250,27,249,211,220,33,51,214,202,73,161,52,205,43,196,15,83,90,73,202,169,109,208,240,107,1,182]},{\"client_id\":\"01a050c6-37c2-6e59-f9c0-7070027999db\",\"time_ms\":1790368983865,\"egress_ip_hash\":[7,196,18,172,151,109,77,33,36,203,52,152,41,63,222,133,236,160,24,183,161,88,141,145,249,26,193,97,128,123,56,69]},{\"client_id\":\"01a050c6-5047-243c-5531-e221078aefae\",\"time_ms\":1790368983939,\"egress_ip_hash\":[20,143,248,60,2,85,37,196,81,109,122,149,230,80,36,106,213,149,209,229,220,216,189,127,177,25,24,236,71,66,215,63]},{\"client_id\":\"01a050c5-fca7-5627-56e6-ba93591005a0\",\"time_ms\":1790368983996,\"egress_ip_hash\":[188,168,182,179,112,157,155,139,192,174,237,50,109,128,175,181,143,25,128,8,115,231,192,126,144,108,130,247,199,127,36,249]},{\"client_id\":\"01a050c6-0045-79d9-06bd-2c44ea6caecb\",\"time_ms\":1790368984058,\"egress_ip_hash\":[121,24,194,154,135,130,208,49,142,211,240,108,227,116,29,239,163,184,132,30,44,193,18,40,112,158,51,33,6,74,134,66]},{\"client_id\":\"01a050c6-4b9c-b66d-e67f-306dc3fe4701\",\"time_ms\":1790368984101,\"egress_ip_hash\":[90,254,222,157,204,82,39,0,11,78,150,247,145,128,39,212,11,94,204,22,108,235,91,129,14,40,150,253,76,96,203,255]}],\"server_key_id\":0,\"final_sig\":\"tCnPRhEOtIiSMsWHHDXsKT37dYxBL62syVMxsqtydyDjI2XHrEj9oC7IGKjE1+Prqx1ooY4oVoR89vH2anHCAw==\",\"verifier_sig\":\"amWkkR+YTQCtOwuK9g9C9/UVeA/j4M5UcUx9x9Eb67jwOz2lfbjNlhW+7n3Iaxk4aIVvPEMal/97vXfcPkPwAw==\",\"final_digest\":\"ab/veIpGlmw29Iu0kNrbU2veBR53NtgCi5ZMO+tU5yQ=\",\"vpk_sig\":\"XYPw09i8qde7ERB5gTkM7jFQjdVm9jXvOJDo6gGUQexeAwTMMbX5GQclqUVlMoyRgFd9rLwkDA9+zSLMxsmeDw==\",\"coverage\":7,\"path_id\":\"iIeRFmObqw2IaQ8SSM959DUhIZVG1a4UKpZrQULXZ40=\",\"complete_time_ms\":1790368984101}\n",
+          "row_sha256": "b82f1188d6c3338e9ae563293ba1615952a2a70055639fb6cb9068827c7218e7"
+        }
+      }
+    },
+    {
+      "complete_rows": 15234,
+      "cut_bytes": 36193026,
+      "cut_sha256": "a90e32ed666561e2016e0aa796da159738208af126ccafebf7cdac2f88a218ff",
+      "device": 64512,
+      "epoch_counts": {
+        "605": 835,
+        "607": 1207,
+        "609": 276,
+        "611": 724,
+        "612": 1483,
+        "614": 356,
+        "615": 76,
+        "616": 719,
+        "617": 173,
+        "618": 796,
+        "620": 1248,
+        "621": 961,
+        "623": 874,
+        "624": 1021,
+        "629": 1659,
+        "630": 1071,
+        "631": 638,
+        "632": 540,
+        "633": 577
+      },
+      "epoch_time_bounds_ms": {
+        "633": [
+          1790366900252,
+          1790368983943
+        ]
+      },
+      "inode": 39854367,
+      "operator_id": 2,
+      "partial_trailing_bytes": 0,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl",
+      "read_completed_at": "2026-09-25T22:30:23.031853+00:00",
+      "validator_id": 1,
+      "witnesses": {
+        "633:first": {
+          "complete_time_ms": 1790366900252,
+          "completed_at": "2026-09-25T20:08:20.252000+00:00",
+          "epoch": 633,
+          "length": 2374,
+          "offset": 34822371,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da2e-d8b2-eb64-69d3-c15197314c65\",\"server_nonce\":\"hflOfileRfgMTw0l8FBrUHAw54yJX0vutwKZYv/oKzg=\",\"vpk\":\"JxYHeUq16UYzYtos5jKXxovFIPY1i3Pmxx1OGIslc8A=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-baac-c8ee-3167-29c3131918da\",\"time_ms\":1790366898354,\"egress_ip_hash\":[73,140,216,178,84,80,131,216,205,1,152,73,90,56,173,86,30,169,162,212,173,191,238,46,100,57,113,52,32,5,50,135]},{\"client_id\":\"01a050c6-9c05-16b2-cd4e-e9ae682756df\",\"time_ms\":1790366898526,\"egress_ip_hash\":[16,173,229,142,203,25,128,228,59,130,100,154,145,96,228,101,43,92,201,54,233,182,1,199,123,254,159,202,153,62,52,23]},{\"client_id\":\"01a050c6-bc08-11d6-1ac4-7bb1a4319dda\",\"time_ms\":1790366898632,\"egress_ip_hash\":[217,227,137,198,207,194,2,7,58,151,43,208,111,196,9,29,184,81,105,116,128,226,27,74,132,94,117,201,55,20,2,113]},{\"client_id\":\"01a050c6-90cd-c88b-d4b0-b22ef3858ef9\",\"time_ms\":1790366898760,\"egress_ip_hash\":[23,191,203,168,191,206,17,228,13,5,211,107,79,183,212,26,36,49,131,176,179,38,136,94,8,226,103,33,115,31,192,66]},{\"client_id\":\"01a050c6-95d8-e453-2ed6-6a12e695fb20\",\"time_ms\":1790366899479,\"egress_ip_hash\":[189,61,44,10,115,202,75,34,22,136,234,36,19,4,145,62,38,165,32,200,153,153,43,114,244,22,94,157,165,137,73,87]},{\"client_id\":\"01a050c6-b313-f68e-9026-a461963b0d91\",\"time_ms\":1790366900021,\"egress_ip_hash\":[141,125,220,203,113,176,213,127,60,229,190,186,74,117,77,163,74,38,126,170,173,230,84,183,158,196,245,252,138,73,194,218]},{\"client_id\":\"01a050c6-6f51-a5b0-bbc9-a09e70fffcb9\",\"time_ms\":1790366900132,\"egress_ip_hash\":[134,26,236,108,113,126,48,99,7,144,96,81,165,235,192,136,2,13,122,147,220,190,119,37,117,45,115,167,18,176,173,163]},{\"client_id\":\"01a050c6-a6f2-7507-f3d6-8c4086431212\",\"time_ms\":1790366900252,\"egress_ip_hash\":[185,156,118,80,19,68,185,163,184,55,52,20,217,124,157,234,215,44,242,140,65,224,25,40,215,127,227,135,36,250,196,253]}],\"server_key_id\":0,\"final_sig\":\"AmVcXFhLjt+sX4k6ePexgZ4J27nD6JMrYVfgtzn6VR/a92t9gzRmhIbITe/1Nlw62u4ulz2vGHbAsK/tndT5DQ==\",\"verifier_sig\":\"o2+TVhUPanzi3P3ELkV17q/oDD10LncLFW/DUXMM2flBVItfnZ8oj93P6p19aqGeCuDuyAZUBSoGN2oVdnyKDw==\",\"final_digest\":\"q4JwVl2kct7thQaiZK6EA8wi0xa7i3mVEc0uT5R5R1A=\",\"vpk_sig\":\"TJoMpObxfJNUcGgnLo46ERK8ZgKGxbuIZhkiOM5OzelWM3IhAep9TBc1LtU6XwyX1muTTncEIFgnTqW5f9yGBg==\",\"coverage\":7,\"path_id\":\"+3HYVNDbgyxostpk6IiM8f0lEuFyqe2V0gY6R0HYD10=\",\"complete_time_ms\":1790366900252}\n",
+          "row_sha256": "5bf4e3d4df1d5432e64362699414f575d83404642a248a4297c8b75b9a1bcfa5"
+        },
+        "633:last": {
+          "complete_time_ms": 1790368983943,
+          "completed_at": "2026-09-25T20:43:03.943000+00:00",
+          "epoch": 633,
+          "length": 2361,
+          "offset": 36190665,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da4e-a9f8-10d2-3120-838c08fcc474\",\"server_nonce\":\"48sKslYkZEo2A4E6x2Xv7wiX6k9+15LNnHB+fT6gXOE=\",\"vpk\":\"JxYHeUq16UYzYtos5jKXxovFIPY1i3Pmxx1OGIslc8A=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-9169-51d2-0f96-d9253b47af07\",\"time_ms\":1790368983544,\"egress_ip_hash\":[49,159,213,207,222,120,19,78,183,8,119,88,204,136,119,29,13,71,255,62,136,195,53,5,150,240,38,116,125,184,176,211]},{\"client_id\":\"01a050c6-aac1-554e-5f11-c87609c24506\",\"time_ms\":1790368983587,\"egress_ip_hash\":[226,188,18,152,67,195,213,63,14,24,155,154,186,246,179,165,222,26,65,75,222,162,251,133,246,117,3,134,52,35,24,22]},{\"client_id\":\"01a050c6-91db-0835-16de-f5f17d07b7ba\",\"time_ms\":1790368983633,\"egress_ip_hash\":[174,178,69,121,10,66,10,235,40,151,32,96,201,230,244,42,119,93,109,17,19,231,11,167,133,85,235,177,220,91,43,204]},{\"client_id\":\"01a050c6-63d0-9337-89fc-04738a390c97\",\"time_ms\":1790368983696,\"egress_ip_hash\":[78,11,35,139,57,99,250,218,146,245,200,200,162,49,152,138,38,228,68,228,5,75,37,109,2,189,16,179,208,45,244,36]},{\"client_id\":\"01a050c6-baac-c8ee-3167-29c3131918da\",\"time_ms\":1790368983748,\"egress_ip_hash\":[73,140,216,178,84,80,131,216,205,1,152,73,90,56,173,86,30,169,162,212,173,191,238,46,100,57,113,52,32,5,50,135]},{\"client_id\":\"01a050c6-7801-935f-8629-b0ba229352ff\",\"time_ms\":1790368983813,\"egress_ip_hash\":[255,25,4,119,216,108,33,254,52,17,63,161,86,51,22,229,229,191,42,20,122,28,165,67,137,103,209,67,23,244,220,14]},{\"client_id\":\"01a050c6-a945-85d2-510c-8566657ecc00\",\"time_ms\":1790368983866,\"egress_ip_hash\":[135,13,115,50,246,35,232,137,230,44,98,95,173,67,215,49,236,38,8,147,40,166,227,190,143,243,113,239,155,184,90,217]},{\"client_id\":\"01a050c6-b566-b1a2-2a20-4da533c81403\",\"time_ms\":1790368983943,\"egress_ip_hash\":[20,130,41,96,249,246,98,217,237,52,162,120,145,86,95,65,34,172,178,166,79,121,185,155,56,37,98,91,51,60,250,83]}],\"server_key_id\":0,\"final_sig\":\"u+euZUDI5cAVecpndsyV3xPWl0IDZBzFGgYNnYLP8mBC4UIZBh3Xi4QIn291Q9YlJDeppdisUpgID/ILOsc+DQ==\",\"verifier_sig\":\"eSgtNZ4p9EusLsskaGDIGmyoHSbqoD+S5J1Y3nX5BDmGYUoknPmiUqr1lXfAHDzBCJOM67HPLaFTROU0m4lPBA==\",\"final_digest\":\"vRVc+xeP8dgVMP7X6y6NLiofeDTRYK359PaR3H6Lhjc=\",\"vpk_sig\":\"0erawvPIkpwyTbPcdGL5pgDT3s/kyQj+b5pbxXyWVS/8TKTTnbiYW/QXeNvQC3ErUuv2akWdyNZQxmdMCo34AQ==\",\"coverage\":7,\"path_id\":\"Wktm0uJ6pO8HVrS48q/JVbvE1PDaMrL3Qj9oaqzbYX0=\",\"complete_time_ms\":1790368983943}\n",
+          "row_sha256": "40465be58d552e3bfb4f02c396d27768ec0775d6eee8b384d92ef9d25d38a4c5"
+        },
+        "all:last": {
+          "complete_time_ms": 1790368983943,
+          "completed_at": "2026-09-25T20:43:03.943000+00:00",
+          "epoch": 633,
+          "length": 2361,
+          "offset": 36190665,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da4e-a9f8-10d2-3120-838c08fcc474\",\"server_nonce\":\"48sKslYkZEo2A4E6x2Xv7wiX6k9+15LNnHB+fT6gXOE=\",\"vpk\":\"JxYHeUq16UYzYtos5jKXxovFIPY1i3Pmxx1OGIslc8A=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-9169-51d2-0f96-d9253b47af07\",\"time_ms\":1790368983544,\"egress_ip_hash\":[49,159,213,207,222,120,19,78,183,8,119,88,204,136,119,29,13,71,255,62,136,195,53,5,150,240,38,116,125,184,176,211]},{\"client_id\":\"01a050c6-aac1-554e-5f11-c87609c24506\",\"time_ms\":1790368983587,\"egress_ip_hash\":[226,188,18,152,67,195,213,63,14,24,155,154,186,246,179,165,222,26,65,75,222,162,251,133,246,117,3,134,52,35,24,22]},{\"client_id\":\"01a050c6-91db-0835-16de-f5f17d07b7ba\",\"time_ms\":1790368983633,\"egress_ip_hash\":[174,178,69,121,10,66,10,235,40,151,32,96,201,230,244,42,119,93,109,17,19,231,11,167,133,85,235,177,220,91,43,204]},{\"client_id\":\"01a050c6-63d0-9337-89fc-04738a390c97\",\"time_ms\":1790368983696,\"egress_ip_hash\":[78,11,35,139,57,99,250,218,146,245,200,200,162,49,152,138,38,228,68,228,5,75,37,109,2,189,16,179,208,45,244,36]},{\"client_id\":\"01a050c6-baac-c8ee-3167-29c3131918da\",\"time_ms\":1790368983748,\"egress_ip_hash\":[73,140,216,178,84,80,131,216,205,1,152,73,90,56,173,86,30,169,162,212,173,191,238,46,100,57,113,52,32,5,50,135]},{\"client_id\":\"01a050c6-7801-935f-8629-b0ba229352ff\",\"time_ms\":1790368983813,\"egress_ip_hash\":[255,25,4,119,216,108,33,254,52,17,63,161,86,51,22,229,229,191,42,20,122,28,165,67,137,103,209,67,23,244,220,14]},{\"client_id\":\"01a050c6-a945-85d2-510c-8566657ecc00\",\"time_ms\":1790368983866,\"egress_ip_hash\":[135,13,115,50,246,35,232,137,230,44,98,95,173,67,215,49,236,38,8,147,40,166,227,190,143,243,113,239,155,184,90,217]},{\"client_id\":\"01a050c6-b566-b1a2-2a20-4da533c81403\",\"time_ms\":1790368983943,\"egress_ip_hash\":[20,130,41,96,249,246,98,217,237,52,162,120,145,86,95,65,34,172,178,166,79,121,185,155,56,37,98,91,51,60,250,83]}],\"server_key_id\":0,\"final_sig\":\"u+euZUDI5cAVecpndsyV3xPWl0IDZBzFGgYNnYLP8mBC4UIZBh3Xi4QIn291Q9YlJDeppdisUpgID/ILOsc+DQ==\",\"verifier_sig\":\"eSgtNZ4p9EusLsskaGDIGmyoHSbqoD+S5J1Y3nX5BDmGYUoknPmiUqr1lXfAHDzBCJOM67HPLaFTROU0m4lPBA==\",\"final_digest\":\"vRVc+xeP8dgVMP7X6y6NLiofeDTRYK359PaR3H6Lhjc=\",\"vpk_sig\":\"0erawvPIkpwyTbPcdGL5pgDT3s/kyQj+b5pbxXyWVS/8TKTTnbiYW/QXeNvQC3ErUuv2akWdyNZQxmdMCo34AQ==\",\"coverage\":7,\"path_id\":\"Wktm0uJ6pO8HVrS48q/JVbvE1PDaMrL3Qj9oaqzbYX0=\",\"complete_time_ms\":1790368983943}\n",
+          "row_sha256": "40465be58d552e3bfb4f02c396d27768ec0775d6eee8b384d92ef9d25d38a4c5"
+        }
+      }
+    },
+    {
+      "complete_rows": 9447,
+      "cut_bytes": 22444770,
+      "cut_sha256": "28e32acc315f425142369d338a910ec75822e31a9806663b351c47e1f4c3d13a",
+      "device": 64512,
+      "epoch_counts": {
+        "605": 774,
+        "606": 465,
+        "607": 1032,
+        "608": 239,
+        "609": 463,
+        "610": 72,
+        "611": 746,
+        "612": 950,
+        "613": 403,
+        "614": 441,
+        "615": 219,
+        "616": 457,
+        "617": 168,
+        "620": 819,
+        "621": 378,
+        "622": 271,
+        "628": 612,
+        "629": 103,
+        "630": 105,
+        "631": 12,
+        "632": 74,
+        "633": 122,
+        "635": 522
+      },
+      "epoch_time_bounds_ms": {
+        "633": [
+          1790365737865,
+          1790366182350
+        ],
+        "635": [
+          1790374057981,
+          1790375422583
+        ]
+      },
+      "inode": 39854373,
+      "operator_id": 1,
+      "partial_trailing_bytes": 0,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/state/operators/no-1/proofs.jsonl",
+      "read_completed_at": "2026-09-25T22:30:25.135146+00:00",
+      "validator_id": 2,
+      "witnesses": {
+        "633:first": {
+          "complete_time_ms": 1790365737865,
+          "completed_at": "2026-09-25T19:48:57.865000+00:00",
+          "epoch": 633,
+          "length": 2380,
+          "offset": 20914569,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da1d-1d1c-57a3-f197-b57c6cab721a\",\"server_nonce\":\"fL0K6j/9A8nLHWoLpm8Xh60uWboNmBby0LZo/hnaFf0=\",\"vpk\":\"bN10/rWjd5CHabpwpjvc8ndjoYTWyAya8XcbmakPX+E=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-4d1a-650a-23b9-34513711833e\",\"time_ms\":1790365736220,\"egress_ip_hash\":[167,66,17,206,234,37,62,32,95,178,172,131,11,102,115,79,82,143,179,226,143,234,22,47,69,64,186,157,88,176,103,109]},{\"client_id\":\"01a050c6-040b-1fd8-b9b0-6816a4c25863\",\"time_ms\":1790365736882,\"egress_ip_hash\":[118,176,220,163,235,16,197,199,120,214,98,78,91,150,76,109,4,147,52,172,189,37,230,158,50,94,213,180,191,21,23,24]},{\"client_id\":\"01a050c5-fc03-d650-e071-a39f3fbc9bbc\",\"time_ms\":1790365737340,\"egress_ip_hash\":[91,225,42,81,99,133,193,78,117,206,172,54,94,193,225,8,54,164,188,84,157,40,81,46,5,121,45,30,234,200,147,158]},{\"client_id\":\"01a050c6-5b1e-c923-b673-97512ee0f062\",\"time_ms\":1790365737441,\"egress_ip_hash\":[175,100,252,239,52,58,133,210,216,86,234,54,207,207,141,86,214,30,48,167,88,157,52,165,219,20,6,83,15,223,186,228]},{\"client_id\":\"01a050c6-492d-2210-dd0c-186649600860\",\"time_ms\":1790365737562,\"egress_ip_hash\":[216,252,103,216,183,125,12,92,138,6,146,96,204,172,239,84,105,16,167,173,209,114,55,90,32,228,233,155,82,202,157,24]},{\"client_id\":\"01a050c5-ffd8-1552-c928-d99731663fc1\",\"time_ms\":1790365737634,\"egress_ip_hash\":[109,141,244,152,137,104,51,124,154,219,207,254,23,161,91,194,14,95,158,196,214,23,29,102,140,119,186,109,219,196,196,208]},{\"client_id\":\"01a050c6-15b5-7cd9-ae19-9dba867c64f1\",\"time_ms\":1790365737772,\"egress_ip_hash\":[116,62,238,139,172,12,191,4,91,111,231,118,159,141,141,123,93,226,18,188,224,93,98,204,110,71,108,214,202,251,110,168]},{\"client_id\":\"01a050c5-f826-ad5c-0352-736f07b416d7\",\"time_ms\":1790365737865,\"egress_ip_hash\":[164,104,210,228,14,6,239,181,149,93,139,45,195,12,126,43,207,144,14,99,246,151,124,75,15,46,39,55,195,151,6,189]}],\"server_key_id\":0,\"final_sig\":\"NMFxGL8NwLNUP9026VMihIr2Kst5E265G/h6eKnhqe3BJS0TK5Q47kdBpSH/HLUn84YlJse3zax257rRHzOOAg==\",\"verifier_sig\":\"HdqzV/Lz01SATlkYSM49i+9fupjQjt3Y6+cq+vToaQleW7rxeek48hAXcrjkp0BC2nXD7zpWt/2QKCzgRZMNDw==\",\"final_digest\":\"dYWYswpgBvkWO8iJSDPxuw6P3jc5NAvwcaPSrkjPg6Q=\",\"vpk_sig\":\"NklpnOhayAeNBHNAAFL9d5Y5d8KAwiUjXCyz4mDdB3aYfAqBbvezzOWtOUj36zifxqxTO8/isKGl4QQbBAcJCw==\",\"coverage\":7,\"path_id\":\"vcGB3TweH7kIDWxprktor/C/jjgs86wMUUBSQh3aUFU=\",\"complete_time_ms\":1790365737865}\n",
+          "row_sha256": "8b30e1ed3eb1707c274e5468ad66c0394503b5d3dda8631ab45e08e061b26813"
+        },
+        "633:last": {
+          "complete_time_ms": 1790366182350,
+          "completed_at": "2026-09-25T19:56:22.350000+00:00",
+          "epoch": 633,
+          "length": 2365,
+          "offset": 21202037,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da23-e676-983f-812c-ad13ed0a647f\",\"server_nonce\":\"xlnK5hnLDE4d5D5oaeHgrwExHUKmoetG1IUCnmIngoU=\",\"vpk\":\"bN10/rWjd5CHabpwpjvc8ndjoYTWyAya8XcbmakPX+E=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-258a-a781-43e6-fffa150c2c20\",\"time_ms\":1790366180982,\"egress_ip_hash\":[139,196,193,139,66,3,117,241,114,155,158,169,70,188,34,210,85,140,138,232,85,171,171,252,92,76,38,25,172,1,137,38]},{\"client_id\":\"01a050c6-5570-e1d0-e23f-b0f8144b1326\",\"time_ms\":1790366181847,\"egress_ip_hash\":[198,63,92,200,215,193,187,234,66,94,110,186,29,66,197,46,199,109,255,194,195,77,43,16,14,162,238,9,100,62,44,35]},{\"client_id\":\"01a050c6-4024-f589-8320-15d3dd84e3bc\",\"time_ms\":1790366181946,\"egress_ip_hash\":[36,192,113,20,243,60,198,48,234,147,72,59,19,19,222,54,217,243,191,2,202,76,212,110,1,226,83,196,192,145,227,94]},{\"client_id\":\"01a050c6-54cd-fb65-e19a-388799eb4ee3\",\"time_ms\":1790366182017,\"egress_ip_hash\":[135,214,215,42,171,204,242,31,139,83,197,111,136,207,30,146,197,54,27,67,102,8,91,12,50,244,54,249,43,86,75,188]},{\"client_id\":\"01a050c6-0ed6-62f3-850d-b3b00d153cb8\",\"time_ms\":1790366182087,\"egress_ip_hash\":[72,237,47,30,224,143,217,203,12,236,119,217,83,27,31,169,250,207,235,116,166,7,249,28,51,108,109,25,72,13,44,238]},{\"client_id\":\"01a050c6-528f-928f-6b0e-ad7904fb3943\",\"time_ms\":1790366182159,\"egress_ip_hash\":[44,11,175,0,205,245,85,99,116,19,21,96,210,8,138,52,239,198,42,92,142,58,213,59,101,34,163,106,84,131,151,107]},{\"client_id\":\"01a050c6-3cd3-dd54-a3a6-4633dc634109\",\"time_ms\":1790366182279,\"egress_ip_hash\":[221,183,218,143,237,13,248,178,2,69,198,71,142,54,34,120,250,27,218,111,156,19,77,210,156,219,108,255,100,93,159,148]},{\"client_id\":\"01a050c6-1f99-2cae-4dd4-ae52f1263bac\",\"time_ms\":1790366182350,\"egress_ip_hash\":[26,227,71,37,5,105,174,238,95,218,177,143,206,75,161,185,15,133,61,69,218,186,193,238,165,7,146,33,201,171,88,199]}],\"server_key_id\":0,\"final_sig\":\"fb7vVwu3p1WoQiQTiGv8CQdSO3hbzs/TgoPGYB7WShQooCb47JyQ3M++mBXYuucRxw//y2gxkR1rZnSQNXrfBw==\",\"verifier_sig\":\"mBBFsUwPKTcQWJAG4uhVbkGynkDEOFIRE07q6/Xtt9ZLwH/SY6ga3XZhMvmdCRug7l/pAhyW7KxhOm/e5JP5CQ==\",\"final_digest\":\"QSpaNDadH+4aAbUdPuhUX/FM7smGAacKdLTz8G0k5hE=\",\"vpk_sig\":\"+qswwlEUBqpyApNnUyI/SFIkEXVUL+3SP+6DvizD7B5tKy8a0Ldxy5bQ21Z0d5rPK/1o2vlNVhpdvegcP9zDAw==\",\"coverage\":7,\"path_id\":\"EEulEif1t5eRhj3ftliX9+iSOaINkToiXfMMTPkaVEk=\",\"complete_time_ms\":1790366182350}\n",
+          "row_sha256": "564f3b92a08dd718141f2f3176a3ae0e8f011ce215430715f149e8431aec41a2"
+        },
+        "635:first": {
+          "complete_time_ms": 1790374057981,
+          "completed_at": "2026-09-25T22:07:37.981000+00:00",
+          "epoch": 635,
+          "length": 2390,
+          "offset": 21204402,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0da9c-13d4-f4c6-a7b1-2d572f32ce1e\",\"server_nonce\":\"cXM3wFp/M32kR2rIhEvyHF+3CNZgdsg4cQDvuV1Rf9Y=\",\"vpk\":\"bN10/rWjd5CHabpwpjvc8ndjoYTWyAya8XcbmakPX+E=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-4658-8e85-4e93-553313e05beb\",\"time_ms\":1790374056916,\"egress_ip_hash\":[29,15,187,98,11,10,208,113,178,200,113,5,168,128,150,63,162,210,222,144,239,150,155,239,218,120,102,24,31,79,142,252]},{\"client_id\":\"01a050c6-10b9-7d4a-2da9-baea7396ddbe\",\"time_ms\":1790374057033,\"egress_ip_hash\":[73,223,153,244,114,211,185,143,130,20,233,160,157,42,133,174,172,106,33,206,179,244,177,105,86,128,211,176,12,241,6,17]},{\"client_id\":\"01a050c6-4ce3-1e62-1909-af32051bdf2c\",\"time_ms\":1790374057166,\"egress_ip_hash\":[170,22,255,207,217,118,154,144,194,22,109,242,13,187,167,100,249,251,158,214,63,48,70,118,130,94,42,212,189,182,61,5]},{\"client_id\":\"01a050c6-2002-fa0d-59fe-049ff7374a2b\",\"time_ms\":1790374057342,\"egress_ip_hash\":[229,78,234,155,58,219,150,246,64,242,247,189,4,106,227,82,83,142,184,188,78,91,58,123,69,170,53,210,108,49,101,85]},{\"client_id\":\"01a050c6-12f1-24ac-edb7-8dd2a70ec1b0\",\"time_ms\":1790374057507,\"egress_ip_hash\":[186,186,26,180,104,30,15,239,57,244,134,241,66,211,149,19,194,106,145,107,46,247,37,131,199,41,84,126,133,50,248,100]},{\"client_id\":\"01a050c6-167b-e26f-6e17-a042feb41b8b\",\"time_ms\":1790374057666,\"egress_ip_hash\":[97,234,185,77,86,115,226,131,190,122,76,219,55,222,232,11,191,94,238,17,142,198,253,116,245,202,63,31,82,14,166,61]},{\"client_id\":\"01a050c6-4341-c89d-f6f5-950bc487b84f\",\"time_ms\":1790374057815,\"egress_ip_hash\":[4,0,125,104,64,28,205,227,31,152,72,12,218,67,24,59,198,164,87,193,24,8,205,136,176,229,176,223,145,126,169,105]},{\"client_id\":\"01a050c6-2283-0d41-51c1-da6e1f133b95\",\"time_ms\":1790374057981,\"egress_ip_hash\":[194,210,156,152,19,144,11,141,250,110,113,72,4,169,232,169,182,188,60,27,193,137,94,83,150,152,68,199,211,169,248,102]}],\"server_key_id\":0,\"final_sig\":\"2V9F/TbtmKhvvo2eHyPmGVLbmLjTV67obEQaHFxiofaUUflOY113fztNzRazTvD4vKxmy8ZK+lB5VfVKNxyKAA==\",\"verifier_sig\":\"wKo5KhaEI2DlRU82ZkObwsvy6rxxbCww11sqNskGugAnATVe+aXk/PeKeEQJOg/3wq9+w3+RTfmpiwpb7gfGDw==\",\"final_digest\":\"lEZmIvBfHXHV5I4x7coRkeUiaTT8dkiXunQCXdmLY10=\",\"vpk_sig\":\"icO1hirK4cG6k7NVc8j81oP12XjMSbk0pg/eaDxD6iJTlI2kBVULCCpswr+tKim+RDzl2ZIrmTI8dlKhLJaMCQ==\",\"coverage\":7,\"path_id\":\"Lhf2aEuy7oHL/Td6f3QAawK8/uWfkuQ+ipCpT2s4eiM=\",\"complete_time_ms\":1790374057981}\n",
+          "row_sha256": "447a0f5df7a8ab9b2756be3446d19f9f5634864d4db97a38798b39c4c1983caf"
+        },
+        "635:last": {
+          "complete_time_ms": 1790375422583,
+          "completed_at": "2026-09-25T22:30:22.583000+00:00",
+          "epoch": 635,
+          "length": 2383,
+          "offset": 22442387,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0dab0-e464-dc38-d894-f6aa0f757abe\",\"server_nonce\":\"sbqFYDLqqyE5l4Wm9cRUXXCCaTDjHJsCnYuYO7Xr+Ig=\",\"vpk\":\"bN10/rWjd5CHabpwpjvc8ndjoYTWyAya8XcbmakPX+E=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-0621-7e91-7856-79682ba1d281\",\"time_ms\":1790375421028,\"egress_ip_hash\":[19,30,133,254,193,223,25,180,104,185,36,145,249,193,63,55,197,11,226,159,80,22,17,64,34,67,231,145,155,27,173,86]},{\"client_id\":\"01a050c6-4587-2077-0ad3-d70b541f6960\",\"time_ms\":1790375421073,\"egress_ip_hash\":[77,202,194,223,102,253,126,236,254,94,68,33,37,234,24,225,208,244,84,189,248,166,226,254,217,84,97,75,218,155,16,249]},{\"client_id\":\"01a050c6-0e2d-13f1-aa25-9e5e2c136562\",\"time_ms\":1790375421463,\"egress_ip_hash\":[65,206,217,112,70,222,19,237,100,160,192,143,100,157,222,148,188,20,27,101,25,3,129,249,67,37,66,168,149,247,199,192]},{\"client_id\":\"01a050c6-0bd2-095d-61cf-8d3fe70c6f05\",\"time_ms\":1790375422183,\"egress_ip_hash\":[5,144,130,72,172,6,113,129,129,115,100,205,183,1,63,212,171,111,27,27,140,166,18,241,0,76,67,1,37,66,150,97]},{\"client_id\":\"01a050c6-31f2-85cb-00dc-0ecb8b5b5b5a\",\"time_ms\":1790375422324,\"egress_ip_hash\":[78,249,106,175,253,60,186,232,240,70,247,61,225,219,182,234,245,69,35,36,133,52,161,165,186,139,220,68,198,0,28,238]},{\"client_id\":\"01a050c6-290e-318f-00e6-64de7e0a7a50\",\"time_ms\":1790375422386,\"egress_ip_hash\":[115,31,182,11,77,41,202,201,121,212,104,231,202,126,231,171,251,66,19,247,233,46,149,227,153,245,70,29,2,67,129,37]},{\"client_id\":\"01a050c6-11d8-1f7a-d85d-41a49bf6f7a3\",\"time_ms\":1790375422529,\"egress_ip_hash\":[202,165,63,93,15,89,193,181,170,145,35,211,47,142,30,102,166,229,246,133,101,168,223,94,195,118,100,20,115,249,175,188]},{\"client_id\":\"01a050c6-535c-5843-fa25-cbe481d90ffd\",\"time_ms\":1790375422583,\"egress_ip_hash\":[87,169,233,181,229,106,115,195,193,7,56,3,196,216,144,251,211,225,12,163,121,48,196,7,134,75,201,239,182,158,124,189]}],\"server_key_id\":0,\"final_sig\":\"LDJb1wgXWgem2N1AhWtZwFqYUiyj3A7luvSER76zfjl4SUL18cgkvhUS6HQ7T1+0oZ5GxwqUkCZV4by1b/d0Cg==\",\"verifier_sig\":\"cZGH4v2WozTSxB5i2TNU+Qow+Casd5Hy9OaF+otbelsLMy/+3yleGwcta9RgpCTEfKe9aBHcahBwbBuLuEoXCQ==\",\"final_digest\":\"MdRpkzxAFo+70hs/UEWClB0GowbNPid805z1Cxa3tm0=\",\"vpk_sig\":\"xIN308jRcYXg5gGRa8/bJJtAo6WEJfsuKGaIgxIp15BAI/YuD2Sr+iAuwlU5l16sQrQRbKwcwoo7I2q0qBroAw==\",\"coverage\":7,\"path_id\":\"my+2EOTxEMLnqHTlNlC2/6DyUcsl8RIG+FSWOZg/rl8=\",\"complete_time_ms\":1790375422583}\n",
+          "row_sha256": "66a6be64ace5a64c453401310067ecc3f66a76065095c3cefe81bb7966afd001"
+        },
+        "all:last": {
+          "complete_time_ms": 1790375422583,
+          "completed_at": "2026-09-25T22:30:22.583000+00:00",
+          "epoch": 635,
+          "length": 2383,
+          "offset": 22442387,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0dab0-e464-dc38-d894-f6aa0f757abe\",\"server_nonce\":\"sbqFYDLqqyE5l4Wm9cRUXXCCaTDjHJsCnYuYO7Xr+Ig=\",\"vpk\":\"bN10/rWjd5CHabpwpjvc8ndjoYTWyAya8XcbmakPX+E=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-0621-7e91-7856-79682ba1d281\",\"time_ms\":1790375421028,\"egress_ip_hash\":[19,30,133,254,193,223,25,180,104,185,36,145,249,193,63,55,197,11,226,159,80,22,17,64,34,67,231,145,155,27,173,86]},{\"client_id\":\"01a050c6-4587-2077-0ad3-d70b541f6960\",\"time_ms\":1790375421073,\"egress_ip_hash\":[77,202,194,223,102,253,126,236,254,94,68,33,37,234,24,225,208,244,84,189,248,166,226,254,217,84,97,75,218,155,16,249]},{\"client_id\":\"01a050c6-0e2d-13f1-aa25-9e5e2c136562\",\"time_ms\":1790375421463,\"egress_ip_hash\":[65,206,217,112,70,222,19,237,100,160,192,143,100,157,222,148,188,20,27,101,25,3,129,249,67,37,66,168,149,247,199,192]},{\"client_id\":\"01a050c6-0bd2-095d-61cf-8d3fe70c6f05\",\"time_ms\":1790375422183,\"egress_ip_hash\":[5,144,130,72,172,6,113,129,129,115,100,205,183,1,63,212,171,111,27,27,140,166,18,241,0,76,67,1,37,66,150,97]},{\"client_id\":\"01a050c6-31f2-85cb-00dc-0ecb8b5b5b5a\",\"time_ms\":1790375422324,\"egress_ip_hash\":[78,249,106,175,253,60,186,232,240,70,247,61,225,219,182,234,245,69,35,36,133,52,161,165,186,139,220,68,198,0,28,238]},{\"client_id\":\"01a050c6-290e-318f-00e6-64de7e0a7a50\",\"time_ms\":1790375422386,\"egress_ip_hash\":[115,31,182,11,77,41,202,201,121,212,104,231,202,126,231,171,251,66,19,247,233,46,149,227,153,245,70,29,2,67,129,37]},{\"client_id\":\"01a050c6-11d8-1f7a-d85d-41a49bf6f7a3\",\"time_ms\":1790375422529,\"egress_ip_hash\":[202,165,63,93,15,89,193,181,170,145,35,211,47,142,30,102,166,229,246,133,101,168,223,94,195,118,100,20,115,249,175,188]},{\"client_id\":\"01a050c6-535c-5843-fa25-cbe481d90ffd\",\"time_ms\":1790375422583,\"egress_ip_hash\":[87,169,233,181,229,106,115,195,193,7,56,3,196,216,144,251,211,225,12,163,121,48,196,7,134,75,201,239,182,158,124,189]}],\"server_key_id\":0,\"final_sig\":\"LDJb1wgXWgem2N1AhWtZwFqYUiyj3A7luvSER76zfjl4SUL18cgkvhUS6HQ7T1+0oZ5GxwqUkCZV4by1b/d0Cg==\",\"verifier_sig\":\"cZGH4v2WozTSxB5i2TNU+Qow+Casd5Hy9OaF+otbelsLMy/+3yleGwcta9RgpCTEfKe9aBHcahBwbBuLuEoXCQ==\",\"final_digest\":\"MdRpkzxAFo+70hs/UEWClB0GowbNPid805z1Cxa3tm0=\",\"vpk_sig\":\"xIN308jRcYXg5gGRa8/bJJtAo6WEJfsuKGaIgxIp15BAI/YuD2Sr+iAuwlU5l16sQrQRbKwcwoo7I2q0qBroAw==\",\"coverage\":7,\"path_id\":\"my+2EOTxEMLnqHTlNlC2/6DyUcsl8RIG+FSWOZg/rl8=\",\"complete_time_ms\":1790375422583}\n",
+          "row_sha256": "66a6be64ace5a64c453401310067ecc3f66a76065095c3cefe81bb7966afd001"
+        }
+      }
+    },
+    {
+      "complete_rows": 9566,
+      "cut_bytes": 22728553,
+      "cut_sha256": "b55654e65abd5c98156a4b538aaccbd4c4dd22bfbb89199dcf9267712d81a4ff",
+      "device": 64512,
+      "epoch_counts": {
+        "605": 769,
+        "606": 474,
+        "607": 1031,
+        "608": 239,
+        "609": 363,
+        "610": 72,
+        "611": 743,
+        "612": 985,
+        "613": 719,
+        "614": 423,
+        "615": 218,
+        "616": 458,
+        "617": 183,
+        "620": 751,
+        "621": 378,
+        "622": 271,
+        "628": 609,
+        "629": 102,
+        "630": 10,
+        "631": 55,
+        "632": 75,
+        "633": 112,
+        "635": 526
+      },
+      "epoch_time_bounds_ms": {
+        "633": [
+          1790365738620,
+          1790366175704
+        ],
+        "635": [
+          1790374058272,
+          1790375424336
+        ]
+      },
+      "inode": 39854371,
+      "operator_id": 2,
+      "partial_trailing_bytes": 0,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/state/operators/no-2/proofs.jsonl",
+      "read_completed_at": "2026-09-25T22:30:27.122823+00:00",
+      "validator_id": 2,
+      "witnesses": {
+        "633:first": {
+          "complete_time_ms": 1790365738620,
+          "completed_at": "2026-09-25T19:48:58.620000+00:00",
+          "epoch": 633,
+          "length": 2387,
+          "offset": 21212513,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da1d-1d47-c66c-81d3-2d00c9e67829\",\"server_nonce\":\"fAoLjcNaQ0TWhN/JwIWLpv96ujbIHKTpsK1VdYFx2YU=\",\"vpk\":\"Zqea4WiekhmwYHIMEB2YuGQ+LCMaYsYeNLCMKw4TyjM=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-6758-845e-f828-0ec9b31dcc7e\",\"time_ms\":1790365736263,\"egress_ip_hash\":[29,125,158,46,126,57,186,41,41,210,158,236,80,111,56,222,157,170,81,139,237,149,59,83,75,224,174,141,174,250,167,243]},{\"client_id\":\"01a050c6-9425-fd42-8964-452fa59f3c02\",\"time_ms\":1790365737841,\"egress_ip_hash\":[181,189,68,227,230,182,116,102,199,234,157,3,202,16,81,245,175,195,246,97,51,89,127,37,136,148,144,152,67,251,121,162]},{\"client_id\":\"01a050c6-60b8-49f4-577c-3b5939f69d5e\",\"time_ms\":1790365737980,\"egress_ip_hash\":[198,75,150,222,8,26,129,32,23,167,150,79,184,192,74,166,14,143,18,160,90,63,197,247,169,60,4,184,172,22,15,165]},{\"client_id\":\"01a050c6-7dd5-5b41-d141-baaf54f1c62e\",\"time_ms\":1790365738144,\"egress_ip_hash\":[230,42,204,128,119,88,170,200,33,63,48,180,235,30,215,94,206,12,153,106,131,251,160,107,42,127,140,173,240,169,80,217]},{\"client_id\":\"01a050c6-7e0a-dfc4-3713-150d9f5ad3e7\",\"time_ms\":1790365738235,\"egress_ip_hash\":[15,45,23,32,104,166,96,253,183,134,142,134,83,120,173,7,229,157,30,103,172,116,33,226,232,166,187,153,211,158,59,249]},{\"client_id\":\"01a050c6-a979-8df3-1690-288a918c9e23\",\"time_ms\":1790365738370,\"egress_ip_hash\":[95,81,247,48,171,19,31,228,8,229,153,167,207,182,216,147,112,237,142,200,88,66,212,110,213,189,124,101,178,254,63,192]},{\"client_id\":\"01a050c6-7765-212a-0a9b-0b003897ddd3\",\"time_ms\":1790365738517,\"egress_ip_hash\":[18,150,62,191,101,137,198,224,132,128,69,243,225,1,87,45,73,41,145,6,200,88,186,107,87,34,144,169,240,233,239,253]},{\"client_id\":\"01a050c6-ad4b-74cb-0dc0-c51a2751aa8e\",\"time_ms\":1790365738620,\"egress_ip_hash\":[255,130,53,10,156,77,158,127,0,117,77,102,16,211,12,151,214,84,159,178,106,77,28,212,48,252,123,206,120,83,22,62]}],\"server_key_id\":0,\"final_sig\":\"DACYHALAeIRzm0Nr0J07PJWCbw+29BPuZDsVb2bRUNYs7HghLtkzBh2jHOFr1yFLUZSlISlg6n67lrKbPzNVAw==\",\"verifier_sig\":\"GXxeGPixlMq4fATaGcNy0UoNkmprH6vuSmuDuyfYsu+MlNn838Z4jbLyY0pbidZUUYyT63doMHJPnZMXVOoPCQ==\",\"final_digest\":\"/Exk0ELDPRJjQ5QaGAgPL15sgXb+c0L21PYwCUbsqe4=\",\"vpk_sig\":\"NlAPp3rqqjJDYP0hSn19ItJNOkm3to3gLe4e5Oh9cuH3YGkDnJvG5R41ZDpRneQ0AldJiS3p+oCXI+ST/rTvBQ==\",\"coverage\":7,\"path_id\":\"zdm9BRbfuBRMjuzqzKLQQg0PEztGllHhxxAx2h5lJ00=\",\"complete_time_ms\":1790365738620}\n",
+          "row_sha256": "a82691031d3243a4837654894db571c18074f1af8ed5d4890d1fa6588c5586e6"
+        },
+        "633:last": {
+          "complete_time_ms": 1790366175704,
+          "completed_at": "2026-09-25T19:56:15.704000+00:00",
+          "epoch": 633,
+          "length": 2370,
+          "offset": 21476334,
+          "raw_line": "{\"v\":1,\"epoch\":633,\"trail_id\":\"01a0da23-d04e-c4d7-06eb-34400380ca4a\",\"server_nonce\":\"Z8U0BcIirdmljKsxeABbELKV6lKlK2MZ0aaR48tmWgY=\",\"vpk\":\"Zqea4WiekhmwYHIMEB2YuGQ+LCMaYsYeNLCMKw4TyjM=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-a796-cb47-4c19-669bf424f4c9\",\"time_ms\":1790366175310,\"egress_ip_hash\":[157,194,33,9,74,130,5,11,221,162,222,178,124,142,110,53,219,21,205,160,18,236,105,150,122,171,35,88,141,13,247,112]},{\"client_id\":\"01a050c6-7c61-6dcb-c375-1bea88e3ada0\",\"time_ms\":1790366175346,\"egress_ip_hash\":[178,114,9,137,117,22,10,229,236,86,116,169,122,242,52,169,166,53,139,228,14,99,0,237,38,238,40,55,173,249,175,149]},{\"client_id\":\"01a050c6-9101-8db7-1c8d-c0e03a06c74a\",\"time_ms\":1790366175383,\"egress_ip_hash\":[202,44,133,79,68,128,95,240,105,66,254,17,96,56,130,221,221,70,130,216,4,64,200,211,198,4,13,33,143,188,71,27]},{\"client_id\":\"01a050c6-7555-e13a-b359-2a302b2af6d9\",\"time_ms\":1790366175445,\"egress_ip_hash\":[169,15,208,29,214,219,62,64,50,153,46,137,75,18,116,47,99,91,244,227,70,85,39,77,179,244,125,209,111,104,176,213]},{\"client_id\":\"01a050c6-779b-d747-068b-ee0892fe1e7a\",\"time_ms\":1790366175551,\"egress_ip_hash\":[167,235,23,21,247,244,33,217,96,121,74,209,32,221,39,149,158,152,67,238,190,116,8,144,216,158,23,113,29,223,121,52]},{\"client_id\":\"01a050c6-8ed6-b60f-35c8-9694cbf9d50c\",\"time_ms\":1790366175597,\"egress_ip_hash\":[54,152,59,59,195,36,28,238,92,141,104,224,253,187,215,230,117,140,25,203,12,37,162,252,196,210,10,212,129,107,94,202]},{\"client_id\":\"01a050c6-9b9a-ac67-8eb2-78a50d7880b3\",\"time_ms\":1790366175643,\"egress_ip_hash\":[35,203,117,149,113,34,243,20,45,186,220,182,30,133,18,8,164,16,175,144,157,98,201,47,40,40,170,175,86,96,133,4]},{\"client_id\":\"01a050c6-bed0-32ec-b968-0739ad970e88\",\"time_ms\":1790366175704,\"egress_ip_hash\":[127,104,175,192,94,160,138,89,149,168,227,175,35,52,98,42,117,35,134,33,161,20,167,88,154,107,39,176,28,80,50,209]}],\"server_key_id\":0,\"final_sig\":\"MzIMF+48hzXmEtck1eN+CPBgzLmWwYz30QLsFry10JtUUS59QC31sLSGF2dKePnv3o7BuslCwAzBixUr5IggDg==\",\"verifier_sig\":\"c6nnHgEZnbQUq+V7u4h/NFe6EgSIuuz2WXIWaaKeWZ8I8mpkeAKTrO2a3REjy+/jIsDcHABk/hYGml8l4BbwDA==\",\"final_digest\":\"116rMEe78/Nd0Hh6PtQsXYTP4dkxUpbg6gp8piaOIPA=\",\"vpk_sig\":\"s96Ysm7YWAlTWLbPnvaOtMUoj/v1GwP3D49yvxlSKY7iV15ivJUMKhX//95i1LUtefGlwMR92axgnIxrQzDVCw==\",\"coverage\":7,\"path_id\":\"OFD5r3YZXEOXSs4T6QjytlsUjOotR0UkmS1cV8g6RlU=\",\"complete_time_ms\":1790366175704}\n",
+          "row_sha256": "1f409191be5392bd0d58d8a8b25ca00a48a14068473b6477463e7d47ddd99fe3"
+        },
+        "635:first": {
+          "complete_time_ms": 1790374058272,
+          "completed_at": "2026-09-25T22:07:38.272000+00:00",
+          "epoch": 635,
+          "length": 2388,
+          "offset": 21478704,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0da9c-144a-8033-96df-6d6c79f8d6d0\",\"server_nonce\":\"QopVBoFu6CzATQt28uAaF4IzmGyLege52LpM1gRhdFU=\",\"vpk\":\"Zqea4WiekhmwYHIMEB2YuGQ+LCMaYsYeNLCMKw4TyjM=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-76c9-6b0e-0587-b15e72c9faef\",\"time_ms\":1790374057034,\"egress_ip_hash\":[108,208,255,248,226,201,172,238,80,190,27,23,49,101,138,233,181,145,151,117,84,34,174,42,234,52,126,95,214,150,67,117]},{\"client_id\":\"01a050c6-aa8a-fc38-4ab2-01c512159bc6\",\"time_ms\":1790374057164,\"egress_ip_hash\":[128,86,137,248,172,161,49,59,236,32,84,0,61,255,16,162,194,232,130,157,145,0,50,174,170,239,243,146,179,20,252,152]},{\"client_id\":\"01a050c6-9c54-e2f9-9c00-7d164be87305\",\"time_ms\":1790374057339,\"egress_ip_hash\":[162,226,149,131,243,241,101,124,71,216,150,37,7,135,108,219,247,116,254,199,210,19,200,240,214,80,152,222,21,69,96,226]},{\"client_id\":\"01a050c6-a071-8c7c-8d51-7c19e9a1d2a1\",\"time_ms\":1790374057508,\"egress_ip_hash\":[230,140,19,156,188,124,177,254,245,209,78,32,118,68,83,229,94,131,22,147,88,45,31,80,80,57,56,188,254,188,241,104]},{\"client_id\":\"01a050c6-a651-d59d-06f6-88614b6e8b01\",\"time_ms\":1790374057697,\"egress_ip_hash\":[242,67,77,189,56,33,122,111,165,176,96,3,144,28,199,20,207,234,144,51,134,149,243,36,188,49,189,110,248,51,100,6]},{\"client_id\":\"01a050c6-71e9-8e10-8563-ed4364aa38bb\",\"time_ms\":1790374057906,\"egress_ip_hash\":[222,170,171,98,245,130,170,103,245,60,240,61,64,98,32,66,16,200,181,62,102,246,243,184,38,175,234,6,226,192,164,250]},{\"client_id\":\"01a050c6-c51d-043b-2a3d-f586b9cbe66e\",\"time_ms\":1790374058083,\"egress_ip_hash\":[79,26,255,96,129,141,254,212,32,155,36,44,74,136,130,138,100,2,151,249,5,52,196,121,0,154,9,183,124,129,126,218]},{\"client_id\":\"01a050c6-a9b2-5d32-2732-2f024be4f154\",\"time_ms\":1790374058272,\"egress_ip_hash\":[118,193,218,230,82,240,225,14,136,17,252,139,161,198,55,126,46,67,228,110,165,155,232,137,68,98,120,135,125,135,173,242]}],\"server_key_id\":0,\"final_sig\":\"ZnBofeA2SojM57zbwsEaGFmMceLCpyolkju9qKVsyygJGQfcwSgz/1Wroh3cFskzmAF2N4TUy3euBzITbnn5AA==\",\"verifier_sig\":\"f23oLbF3vYhdA7hzx+LWpOkHfUMT89+EOcoSc4enbnUWdJrZpoU2VWh7cdnVUdJKmsIgpn5vFliJu9IWRLI2Dg==\",\"final_digest\":\"Xcc4bh1EyidEpwfoatdrq6UceEkZkj2E4fj26WNTtOg=\",\"vpk_sig\":\"W7KijHPsuKgGMEbr13kTx7553GFE6Np/MbzTxYxB+1bWFnPfPcN/hr6dDPyLRSgAkk1rn1ZZ1TN6P3lWD8IcCA==\",\"coverage\":7,\"path_id\":\"LjrhSfsciR3KwwEemDqa9ES7wNhdmB81vjFLi7e8s90=\",\"complete_time_ms\":1790374058272}\n",
+          "row_sha256": "947dba6ec1d821c1e4efb5f9d91c7e8f31658bc2e8bd98a4408b17f8739892f5"
+        },
+        "635:last": {
+          "complete_time_ms": 1790375424336,
+          "completed_at": "2026-09-25T22:30:24.336000+00:00",
+          "epoch": 635,
+          "length": 2370,
+          "offset": 22726183,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0dab0-f01c-ff23-6620-f4624f63085b\",\"server_nonce\":\"qptgyRRCy3KssgT4xbS1jauh4SRbTZdClxB9IAt3TfU=\",\"vpk\":\"Zqea4WiekhmwYHIMEB2YuGQ+LCMaYsYeNLCMKw4TyjM=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-76fe-ae33-9177-14ea6f29f10c\",\"time_ms\":1790375424028,\"egress_ip_hash\":[225,193,70,243,69,42,214,254,35,129,203,218,26,131,88,239,143,142,90,187,55,238,77,76,86,224,72,52,74,145,130,67]},{\"client_id\":\"01a050c6-b921-020b-d5e2-c60d81357c2a\",\"time_ms\":1790375424072,\"egress_ip_hash\":[132,3,210,137,25,3,115,65,230,199,33,222,43,184,100,35,203,164,39,107,72,136,64,64,118,135,239,254,251,21,143,127]},{\"client_id\":\"01a050c6-877b-27d9-ce00-c75b7b21aef6\",\"time_ms\":1790375424117,\"egress_ip_hash\":[44,102,100,34,0,28,184,42,72,32,227,247,17,225,58,216,190,220,135,83,144,186,130,215,6,221,100,223,69,143,133,189]},{\"client_id\":\"01a050c6-b6fd-9e1b-8624-f724cb38576a\",\"time_ms\":1790375424152,\"egress_ip_hash\":[126,5,88,79,108,25,97,21,209,71,51,218,96,240,199,72,189,167,62,110,162,143,54,61,76,234,112,134,140,73,109,247]},{\"client_id\":\"01a050c6-9d2c-d889-bbe6-9d401d97fc87\",\"time_ms\":1790375424201,\"egress_ip_hash\":[224,203,215,138,169,216,145,214,85,195,97,187,59,0,35,118,232,128,104,246,121,255,101,69,141,227,78,76,176,89,8,183]},{\"client_id\":\"01a050c6-9796-2e4e-fbd7-daac7c2570e8\",\"time_ms\":1790375424253,\"egress_ip_hash\":[26,133,176,212,31,23,77,135,133,153,15,111,113,163,41,26,131,152,115,115,1,138,127,150,206,181,113,212,35,9,101,4]},{\"client_id\":\"01a050c6-73de-68fa-d94a-6e01ab1048e2\",\"time_ms\":1790375424288,\"egress_ip_hash\":[79,100,60,29,235,49,136,39,123,19,9,178,15,157,26,68,80,124,80,27,205,50,167,169,103,64,80,210,146,151,32,140]},{\"client_id\":\"01a050c6-6945-4313-2385-ca0697306026\",\"time_ms\":1790375424336,\"egress_ip_hash\":[131,137,135,216,240,171,139,45,131,16,133,13,194,44,51,51,191,48,175,100,235,30,27,168,177,140,67,127,102,210,107,0]}],\"server_key_id\":0,\"final_sig\":\"7a0ibP7k7abn45utXHGUjisfHm4f2niMuxr0VPuoZjJnVgSTxHUUFC2Ufanip3ZbIbjhr7z2gTxLPQU8PEueBQ==\",\"verifier_sig\":\"1DvrgChf+7qasGJQ4yGDLZ9oF4tIdfM4rolmiUaeMLTXw3BVnpgQrYqSYVpCATGPP9DnfdL7pyvNz06r/FVhAw==\",\"final_digest\":\"2BIspxty02gAV72+Ovfmwtx6Z5p6rOcvIHfcMSUccKY=\",\"vpk_sig\":\"8IAfcpuYixLvcaMgbpdcIr51styD3r4GfKZ6aTXvtsCwdXnE72Ubu3ib3Ipx/zHlHIa5HUGdW47PnAFgngWzAw==\",\"coverage\":7,\"path_id\":\"PQHIhYPKdHPJYY3wvPxN9TIjdmNHrRw9Xo2q+rdbS2g=\",\"complete_time_ms\":1790375424336}\n",
+          "row_sha256": "4256b467a5303d0eb72307cd4890938b7b9cbabd2c0815ff45c5985c40308a97"
+        },
+        "all:last": {
+          "complete_time_ms": 1790375424336,
+          "completed_at": "2026-09-25T22:30:24.336000+00:00",
+          "epoch": 635,
+          "length": 2370,
+          "offset": 22726183,
+          "raw_line": "{\"v\":1,\"epoch\":635,\"trail_id\":\"01a0dab0-f01c-ff23-6620-f4624f63085b\",\"server_nonce\":\"qptgyRRCy3KssgT4xbS1jauh4SRbTZdClxB9IAt3TfU=\",\"vpk\":\"Zqea4WiekhmwYHIMEB2YuGQ+LCMaYsYeNLCMKw4TyjM=\",\"m\":8,\"hops\":[{\"client_id\":\"01a050c6-76fe-ae33-9177-14ea6f29f10c\",\"time_ms\":1790375424028,\"egress_ip_hash\":[225,193,70,243,69,42,214,254,35,129,203,218,26,131,88,239,143,142,90,187,55,238,77,76,86,224,72,52,74,145,130,67]},{\"client_id\":\"01a050c6-b921-020b-d5e2-c60d81357c2a\",\"time_ms\":1790375424072,\"egress_ip_hash\":[132,3,210,137,25,3,115,65,230,199,33,222,43,184,100,35,203,164,39,107,72,136,64,64,118,135,239,254,251,21,143,127]},{\"client_id\":\"01a050c6-877b-27d9-ce00-c75b7b21aef6\",\"time_ms\":1790375424117,\"egress_ip_hash\":[44,102,100,34,0,28,184,42,72,32,227,247,17,225,58,216,190,220,135,83,144,186,130,215,6,221,100,223,69,143,133,189]},{\"client_id\":\"01a050c6-b6fd-9e1b-8624-f724cb38576a\",\"time_ms\":1790375424152,\"egress_ip_hash\":[126,5,88,79,108,25,97,21,209,71,51,218,96,240,199,72,189,167,62,110,162,143,54,61,76,234,112,134,140,73,109,247]},{\"client_id\":\"01a050c6-9d2c-d889-bbe6-9d401d97fc87\",\"time_ms\":1790375424201,\"egress_ip_hash\":[224,203,215,138,169,216,145,214,85,195,97,187,59,0,35,118,232,128,104,246,121,255,101,69,141,227,78,76,176,89,8,183]},{\"client_id\":\"01a050c6-9796-2e4e-fbd7-daac7c2570e8\",\"time_ms\":1790375424253,\"egress_ip_hash\":[26,133,176,212,31,23,77,135,133,153,15,111,113,163,41,26,131,152,115,115,1,138,127,150,206,181,113,212,35,9,101,4]},{\"client_id\":\"01a050c6-73de-68fa-d94a-6e01ab1048e2\",\"time_ms\":1790375424288,\"egress_ip_hash\":[79,100,60,29,235,49,136,39,123,19,9,178,15,157,26,68,80,124,80,27,205,50,167,169,103,64,80,210,146,151,32,140]},{\"client_id\":\"01a050c6-6945-4313-2385-ca0697306026\",\"time_ms\":1790375424336,\"egress_ip_hash\":[131,137,135,216,240,171,139,45,131,16,133,13,194,44,51,51,191,48,175,100,235,30,27,168,177,140,67,127,102,210,107,0]}],\"server_key_id\":0,\"final_sig\":\"7a0ibP7k7abn45utXHGUjisfHm4f2niMuxr0VPuoZjJnVgSTxHUUFC2Ufanip3ZbIbjhr7z2gTxLPQU8PEueBQ==\",\"verifier_sig\":\"1DvrgChf+7qasGJQ4yGDLZ9oF4tIdfM4rolmiUaeMLTXw3BVnpgQrYqSYVpCATGPP9DnfdL7pyvNz06r/FVhAw==\",\"final_digest\":\"2BIspxty02gAV72+Ovfmwtx6Z5p6rOcvIHfcMSUccKY=\",\"vpk_sig\":\"8IAfcpuYixLvcaMgbpdcIr51styD3r4GfKZ6aTXvtsCwdXnE72Ubu3ib3Ipx/zHlHIa5HUGdW47PnAFgngWzAw==\",\"coverage\":7,\"path_id\":\"PQHIhYPKdHPJYY3wvPxN9TIjdmNHrRw9Xo2q+rdbS2g=\",\"complete_time_ms\":1790375424336}\n",
+          "row_sha256": "4256b467a5303d0eb72307cd4890938b7b9cbabd2c0815ff45c5985c40308a97"
+        }
+      }
+    }
+  ],
+  "raw_process_witnesses": [
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095171,
+      "length": 236,
+      "line_without_lf_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "matches_gate_hash": true,
+      "offset": 90737145,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-1.stderr.log",
+      "process_id": "miner-swarm-1",
+      "raw_line": "E0925 18:47:21.848449 3780520 transfer.go:14822] [r]01a050c5-f5eb-6049-092b-d715490223bf<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=22 age=1m0.001045943s budget=1m0s\n",
+      "row_sha256": "0ad84b56a00115350cd20b88d3176bb3b773804f04266c41523887622e5029f5",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095191,
+      "length": 236,
+      "line_without_lf_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "matches_gate_hash": true,
+      "offset": 92846144,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-11.stderr.log",
+      "process_id": "miner-swarm-11",
+      "raw_line": "E0925 19:03:17.706760 3785061 transfer.go:14822] [r]01a050c6-9565-db47-0973-1221147450a3<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000452477s budget=1m0s\n",
+      "row_sha256": "4514381139c2c3025dc9b3f3be2fbf4b75a57fa022b81e6f05c6145bbd9c3ec9",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095193,
+      "length": 236,
+      "line_without_lf_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "matches_gate_hash": true,
+      "offset": 92855790,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-12.stderr.log",
+      "process_id": "miner-swarm-12",
+      "raw_line": "E0925 19:08:56.050764 3785062 transfer.go:14822] [r]01a050c6-98cd-4ee9-43eb-992739b1b911<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000932306s budget=1m0s\n",
+      "row_sha256": "89653ead730a5b3be9bad866c8a78c59e8efe8fdae9b2719a3b804c547d92140",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095197,
+      "length": 236,
+      "line_without_lf_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "matches_gate_hash": true,
+      "offset": 92377534,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-14.stderr.log",
+      "process_id": "miner-swarm-14",
+      "raw_line": "E0925 19:11:11.631907 3785870 transfer.go:14822] [r]01a050c6-a4d5-8ab1-1b7a-c7293c0eca32<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001099899s budget=1m0s\n",
+      "row_sha256": "1587ec419a1df13c70e1955efc2662d7a114c2233b7b62df71e2dcaab0fc001f",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "313c0b871756a229f70ec473d5d015afe0c7c9bd22126851bead5730561814f0",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095199,
+      "length": 236,
+      "line_without_lf_sha256": "313c0b871756a229f70ec473d5d015afe0c7c9bd22126851bead5730561814f0",
+      "matches_gate_hash": true,
+      "offset": 92341695,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-15.stderr.log",
+      "process_id": "miner-swarm-15",
+      "raw_line": "E0925 19:01:36.299611 3786892 transfer.go:14822] [r]01a050c6-a9b2-5d32-2732-2f024be4f154<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=23 age=1m0.000530585s budget=1m0s\n",
+      "row_sha256": "984bb9877da00e68d837371f147246caeff0703774ef4d9d933d2e0a3cef84e3",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "810e5090bf0d64f68cf543ea3ff645f8ec6f16982e4dd19b6a74a15090fc3fdc",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "last",
+      "inode": 39095199,
+      "length": 236,
+      "line_without_lf_sha256": "810e5090bf0d64f68cf543ea3ff645f8ec6f16982e4dd19b6a74a15090fc3fdc",
+      "matches_gate_hash": true,
+      "offset": 92342424,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-15.stderr.log",
+      "process_id": "miner-swarm-15",
+      "raw_line": "E0925 19:02:32.220910 3786892 transfer.go:14822] [r]01a050c6-a6bd-4380-7228-47592427c089<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.001045235s budget=1m0s\n",
+      "row_sha256": "e5db0ffff32591bad995a986afa8d1ca771c44307daac8f558319aadd0618771",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095201,
+      "length": 235,
+      "line_without_lf_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "matches_gate_hash": true,
+      "offset": 92526259,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:26:14.708301  127571 transfer.go:14822] [r]01a050c6-4308-f7c5-66ec-6fd9e0454dd5<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.00100961s budget=1m0s\n",
+      "row_sha256": "5908a88318961128ef7a03cb447e52ae445e2b450d4028dd08605c31936e34fe",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "last",
+      "inode": 39095201,
+      "length": 236,
+      "line_without_lf_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "matches_gate_hash": true,
+      "offset": 92579320,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-16.stderr.log",
+      "process_id": "miner-swarm-16",
+      "raw_line": "E0925 20:42:06.178950  127571 transfer.go:14822] [r]01a050c6-b010-082d-3ed4-0b89a574acd7<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=13 age=1m0.000468271s budget=1m0s\n",
+      "row_sha256": "17bc1e20f1d7a0af22a40cc0cabcffb4d7695d2b203bbbe0b545d06500e9b27f",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095203,
+      "length": 235,
+      "line_without_lf_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "matches_gate_hash": true,
+      "offset": 92822790,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "process_id": "miner-swarm-17",
+      "raw_line": "E0925 18:43:11.461814 3787845 transfer.go:14822] [r]01a050c6-4a5e-bfb6-6623-1d473f81a65c<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=58 age=1m0.00008741s budget=1m0s\n",
+      "row_sha256": "fa2c727b98cae32428385f309f118e4cf78d51603099c6d53f6e6c5d17c7ec46",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "dd70507faaf1a49c5e7fbc53cb8acc693f7f76f5f56003bb3157afc8a1ed7f35",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "last",
+      "inode": 39095203,
+      "length": 234,
+      "line_without_lf_sha256": "dd70507faaf1a49c5e7fbc53cb8acc693f7f76f5f56003bb3157afc8a1ed7f35",
+      "matches_gate_hash": true,
+      "offset": 93342348,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-17.stderr.log",
+      "process_id": "miner-swarm-17",
+      "raw_line": "E0925 20:39:11.064827  132487 transfer.go:14822] [r]01a050c6-4ca9-34d4-3493-adc30a5d46a3<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.0005188s budget=1m0s\n",
+      "row_sha256": "a8e4d4392f6619430842432ba9edbe714ac13e3a8995636d308ceafff8f163b7",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095205,
+      "length": 236,
+      "line_without_lf_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "matches_gate_hash": true,
+      "offset": 94382708,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-18.stderr.log",
+      "process_id": "miner-swarm-18",
+      "raw_line": "E0925 20:40:59.461067  138598 transfer.go:14822] [r]01a050c6-5188-73f2-7b98-dd5e47952db8<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=43 age=1m0.000048765s budget=1m0s\n",
+      "row_sha256": "85758f16bf6cd600d912b40bfc7db9222179adb13f370db3ce78a1a14010c096",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095185,
+      "length": 236,
+      "line_without_lf_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "matches_gate_hash": true,
+      "offset": 93586809,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-8.stderr.log",
+      "process_id": "miner-swarm-8",
+      "raw_line": "E0925 19:15:07.980240 3783246 transfer.go:14822] [r]01a050c6-8749-fd01-2edd-c261bf60abd9<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=17 age=1m0.000281504s budget=1m0s\n",
+      "row_sha256": "89b0d8721a9d1267848b36eee4908777095d6deed272443677266d7df803af6b",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "first",
+      "inode": 39095187,
+      "length": 236,
+      "line_without_lf_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "matches_gate_hash": true,
+      "offset": 93283970,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "process_id": "miner-swarm-9",
+      "raw_line": "E0925 18:47:56.728586 3784119 transfer.go:14822] [r]01a050c6-2283-0d41-51c1-da6e1f133b95<-01a0d941-ccf2-794f-a74c-d02bf1a9232b s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000273404s budget=1m0s\n",
+      "row_sha256": "2b0ee8f4d0cbf59c11f73c2e6ac009c4f971e911ba4dc58f827533c17d620a8f",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "37ef9916788cc10c89a563b51da0fde817fc54a23e712b994885755ee81a9add",
+      "finding_class": "exit-gap-timeout",
+      "finding_position": "last",
+      "inode": 39095187,
+      "length": 236,
+      "line_without_lf_sha256": "37ef9916788cc10c89a563b51da0fde817fc54a23e712b994885755ee81a9add",
+      "matches_gate_hash": true,
+      "offset": 93358671,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/miner-swarm-9.stderr.log",
+      "process_id": "miner-swarm-9",
+      "raw_line": "E0925 19:08:03.180481 3784119 transfer.go:14822] [r]01a050c6-89ff-3114-27b7-321765c6ac95<-01a0d941-ccf3-4b6c-e544-2bd40efb6745 s(00000000-0000-0000-0000-000000000000) exit gap timeout expected=0 queued=18 age=1m0.000787097s budget=1m0s\n",
+      "row_sha256": "4b84e299cf7f15c75646799cfc58762e94af055bb3fe4ff1637d151fa23aa38c",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "finding_class": "release-steering-attempt-failure",
+      "finding_position": "first",
+      "inode": 39095214,
+      "length": 179,
+      "line_without_lf_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "matches_gate_hash": true,
+      "offset": 30518248,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stdout.log",
+      "process_id": "validator-1",
+      "raw_line": "release steer: subnet epoch 1677 attempt 1: compact live head client census observation read: Post \"http://127.0.0.1:18081/sn/client-key/observations\": terminated signal received\n",
+      "row_sha256": "37dd52613467526c7e024fc2355a992f593c32e3e15f8ea28f4fa6cfd64e9b96",
+      "stream": "stdout"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "finding_class": "release-steering-continuity",
+      "finding_position": "first",
+      "inode": 39095217,
+      "length": 74,
+      "line_without_lf_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "matches_gate_hash": true,
+      "offset": 251730462,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stderr.log",
+      "process_id": "validator-2",
+      "raw_line": "sim-testnet: release steering advanced from incomplete epoch 1674 to 1675\n",
+      "row_sha256": "53db1ec2964bf4c67db847d67ca3b8d9cefebf76c7beaa463a5391e6ec90baa6",
+      "stream": "stderr"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "4bc40d362ed03d88f3427c61122bbd485037ca8e3d0aac3edc6cfc2d27b0c887",
+      "finding_class": "release-steering-attempt-failure",
+      "finding_position": "first",
+      "inode": 39095216,
+      "length": 304,
+      "line_without_lf_sha256": "4bc40d362ed03d88f3427c61122bbd485037ca8e3d0aac3edc6cfc2d27b0c887",
+      "matches_gate_hash": true,
+      "offset": 39492660,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stdout.log",
+      "process_id": "validator-2",
+      "raw_line": "release steer: subnet epoch 1674 attempt 1: release V2 native operator 1: attempt replica 2: Post \"http://127.0.0.1:18082/sn/attempt-artifact?hash=0x73bca5b7e027060956c27234c4b789e120ff36f43d6daad1925ce45d861c9769&kind=records\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)\n",
+      "row_sha256": "c55f9dceade344377ef892b12aafb0790a33fc43f18ac7bc59c3fadc68918cca",
+      "stream": "stdout"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "device": 64512,
+      "expected_line_sha256": "ba432076d0219df0207e3eff6b0516ed3c4bdd96c0d7885d646ef76e8cabb794",
+      "finding_class": "release-steering-attempt-failure",
+      "finding_position": "last",
+      "inode": 39095216,
+      "length": 74,
+      "line_without_lf_sha256": "ba432076d0219df0207e3eff6b0516ed3c4bdd96c0d7885d646ef76e8cabb794",
+      "matches_gate_hash": true,
+      "offset": 39689889,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-2.stdout.log",
+      "process_id": "validator-2",
+      "raw_line": "release steer: subnet epoch 1678 attempt 2: compact head EMA epoch jumped\n",
+      "row_sha256": "52d6b13936e307f07c10b96b71cd3bc910b1f169ec0903759a265e2bb501ff19",
+      "stream": "stdout"
+    }
+  ],
+  "related_prior_receipts": [
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-closure.receipt.json",
+      "sha256": "5556ea9345629fb0f393fdefc629f4605c63b071105bb7f1e98728c6bdbe148d"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/validator1-restart-2049.receipt.json",
+      "sha256": "eecf23fc6a73e4943cd6eee5692f701400343ad9235ba3d73e00a3f9e40d5f4d"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/swarm-health-2047.receipt.json",
+      "sha256": "e872f264cd605908e5abe40df861ba9b3533c878b4e42e196125142548288521"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/native1674-triage.receipt.json",
+      "sha256": "1bc3ac7a1c725958c8f429e094fb569464e6a4a202f09d867a35338fd723da8d"
+    },
+    {
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/EXIT-GAP-REVIEW.md",
+      "sha256": "54ef1047b0ad03848d3e20cc1d6afb82699dda3deab57087711690b84660f4f3"
+    }
+  ],
+  "remaining_active_faults": [
+    {
+      "applied_block": 8084681,
+      "id": "fleet-lifecycle-target-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8087134,
+      "status": "active"
+    },
+    {
+      "applied_block": 8084681,
+      "id": "fleet-lifecycle-companion-prune",
+      "kind": "validator-view-filter",
+      "restore_block": 8087134,
+      "status": "active"
+    }
+  ],
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "scheduled_restarts": [
+    {
+      "applied_block": 8085559,
+      "applied_block_hash": "0xb4505f96003d9f75362c282467f32534df85c5aaca829226a67cd63ed56567e0",
+      "id": "release-rolling-30",
+      "kind": "process-restart",
+      "processes": [
+        {
+          "id": "validator-1",
+          "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+          "pid": 3826369,
+          "role": "validator",
+          "start_time_ticks": 21732054
+        }
+      ],
+      "restore_block": 8085579,
+      "restored_block": 8085579,
+      "restored_block_hash": "0xb5fd66cf8527d32603df2c64ed0daaff1b863c15c664b4f296e9d40cbd5b4f26",
+      "restored_processes": [
+        {
+          "id": "validator-1",
+          "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+          "pid": 163939,
+          "role": "validator"
+        }
+      ],
+      "status": "restored",
+      "targets": [
+        "validator-1"
+      ],
+      "trigger_block": 8085559
+    },
+    {
+      "applied_block": 8085584,
+      "applied_block_hash": "0xc1769e0a64bcc835374838e33b3dd6981afd56c708b7f1badd88adb41c4aaaf9",
+      "id": "release-rolling-31",
+      "kind": "process-restart",
+      "processes": [
+        {
+          "id": "validator-2",
+          "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+          "pid": 114702,
+          "role": "validator",
+          "start_time_ticks": 23845826
+        }
+      ],
+      "restore_block": 8085604,
+      "restored_block": 8085604,
+      "restored_block_hash": "0xca1980df44804d37b6b33bb3378646532aa39aebf9e25d51af4453a4af0d90e6",
+      "restored_processes": [
+        {
+          "id": "validator-2",
+          "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+          "pid": 169276,
+          "role": "validator"
+        }
+      ],
+      "status": "restored",
+      "targets": [
+        "validator-2"
+      ],
+      "trigger_block": 8085584
+    }
+  ],
+  "schema": "urnetwork-r46-epoch634-readonly-triage-v1",
+  "scoped_blocking_findings": [
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "first_offset": 90737145,
+      "last_line_sha256": "2d3b243ccda77c869ff6686b4e90e2cf9a5ee497ce8942557e7005565b48d6d6",
+      "last_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "last_offset": 90737145,
+      "process_id": "miner-swarm-1",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "first_observed_at": "2026-09-25T19:04:05.460124465Z",
+      "first_offset": 92846144,
+      "last_line_sha256": "e8f08c81b3f622a0f0916e3e876b410503d298238f5045c9bec9dddd36a9b868",
+      "last_observed_at": "2026-09-25T19:04:05.460124465Z",
+      "last_offset": 92846144,
+      "process_id": "miner-swarm-11",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "first_observed_at": "2026-09-25T19:09:15.262708159Z",
+      "first_offset": 92855790,
+      "last_line_sha256": "f7d654f4dd77ea88860b8cc6795a524a3a4d66133897fabf39273113c4ee2963",
+      "last_observed_at": "2026-09-25T19:09:15.262708159Z",
+      "last_offset": 92855790,
+      "process_id": "miner-swarm-12",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "first_observed_at": "2026-09-25T19:11:39.165377723Z",
+      "first_offset": 92377534,
+      "last_line_sha256": "5686f00eef8801c49ee33354e72187e6002cd5b05e0bc7f67e90354a196c0140",
+      "last_observed_at": "2026-09-25T19:11:39.165377723Z",
+      "last_offset": 92377534,
+      "process_id": "miner-swarm-14",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "313c0b871756a229f70ec473d5d015afe0c7c9bd22126851bead5730561814f0",
+      "first_observed_at": "2026-09-25T19:03:13.086998976Z",
+      "first_offset": 92341695,
+      "last_line_sha256": "810e5090bf0d64f68cf543ea3ff645f8ec6f16982e4dd19b6a74a15090fc3fdc",
+      "last_observed_at": "2026-09-25T19:03:13.086998976Z",
+      "last_offset": 92342424,
+      "process_id": "miner-swarm-15",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 6,
+      "disposition": "unexplained",
+      "first_line_sha256": "5396693c5af9f8b7f958fade4d3e4424c78ba5dfd1e05f22e445693c6bde0c70",
+      "first_observed_at": "2026-09-25T20:27:59.64872196Z",
+      "first_offset": 92526259,
+      "last_line_sha256": "5d1ec9ff5e9ec1d8f534061717eeceba07bd3025cd8b60f34f217ebd550335e5",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 92579320,
+      "process_id": "miner-swarm-16",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "73e86d35b4b8218f2f490a04fed7f3de1a14ab66b7cc0a3418009dd268512a40",
+      "first_observed_at": "2026-09-25T18:44:29.978008228Z",
+      "first_offset": 92822790,
+      "last_line_sha256": "dd70507faaf1a49c5e7fbc53cb8acc693f7f76f5f56003bb3157afc8a1ed7f35",
+      "last_observed_at": "2026-09-25T20:39:23.564187216Z",
+      "last_offset": 93342348,
+      "process_id": "miner-swarm-17",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "first_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "first_offset": 94382708,
+      "last_line_sha256": "40eabcf682721da7e682455c88e90a492f03b546665b5a7a4a08ea5ad1cccb15",
+      "last_observed_at": "2026-09-25T20:43:05.167242023Z",
+      "last_offset": 94382708,
+      "process_id": "miner-swarm-18",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "first_observed_at": "2026-09-25T19:16:44.926409202Z",
+      "first_offset": 93586809,
+      "last_line_sha256": "25cecd31f163b1a02ecefd3b18a845eebccd17b2e653356bd51dc74427c22d32",
+      "last_observed_at": "2026-09-25T19:16:44.926409202Z",
+      "last_offset": 93586809,
+      "process_id": "miner-swarm-8",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "exit-gap-timeout",
+      "count": 2,
+      "disposition": "unexplained",
+      "first_line_sha256": "45f7855f9679a246596154922f020b37fbd5ed7d2759b1f31864f41084bb6a5a",
+      "first_observed_at": "2026-09-25T18:48:35.150186392Z",
+      "first_offset": 93283970,
+      "last_line_sha256": "37ef9916788cc10c89a563b51da0fde817fc54a23e712b994885755ee81a9add",
+      "last_observed_at": "2026-09-25T19:08:23.081991217Z",
+      "last_offset": 93358671,
+      "process_id": "miner-swarm-9",
+      "role": "miner-swarm",
+      "stream": "stderr",
+      "summary": "worker exit-gap recovery timed out"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-attempt-failure",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "first_observed_at": "2026-09-25T20:43:57.77026898Z",
+      "first_offset": 30518248,
+      "last_line_sha256": "0a572d34b6ab80fad7d89d3ab847f99c656e8756c7fa4e87471d0d55ac6dda3d",
+      "last_observed_at": "2026-09-25T20:43:57.77026898Z",
+      "last_offset": 30518248,
+      "process_id": "validator-1",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "release steering reported a failed native epoch attempt"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-continuity",
+      "count": 1,
+      "disposition": "unexplained",
+      "first_line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "first_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "first_offset": 251730462,
+      "last_line_sha256": "0d00f6f138a1d617e9a976277543fd737ef8ad016dba1e7e1ebd38cd5e2628b5",
+      "last_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "last_offset": 251730462,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stderr",
+      "summary": "release steering advanced past an incomplete native epoch"
+    },
+    {
+      "acceptance_scope_sha256": "0xc8a8fe0f01370b3fbec39241a366d0ada01f2cab68a1c895b886a7253c6f1b76",
+      "blocking": true,
+      "class": "release-steering-attempt-failure",
+      "count": 7,
+      "disposition": "unexplained",
+      "first_line_sha256": "4bc40d362ed03d88f3427c61122bbd485037ca8e3d0aac3edc6cfc2d27b0c887",
+      "first_observed_at": "2026-09-25T18:08:14.086480148Z",
+      "first_offset": 39492660,
+      "last_line_sha256": "ba432076d0219df0207e3eff6b0516ed3c4bdd96c0d7885d646ef76e8cabb794",
+      "last_observed_at": "2026-09-25T22:22:55.523566229Z",
+      "last_offset": 39689889,
+      "process_id": "validator-2",
+      "role": "validator",
+      "stream": "stdout",
+      "summary": "release steering reported a failed native epoch attempt"
+    }
+  ],
+  "services": "MainPID=4123621\nExecMainStartTimestamp=Fri 2026-09-25 17:18:19 UTC\nId=urnetwork-sim-release-r46.service\nActiveState=active\nSubState=running\n\nMainPID=3780072\nExecMainStartTimestamp=Fri 2026-09-25 13:35:25 UTC\nId=urnetwork-sim-ur-subnet-testnet-v1.service\nActiveState=active\nSubState=running\n\nMainPID=4187925\nExecMainStartTimestamp=Fri 2026-09-25 18:12:14 UTC\nId=urnetwork-sim-release-r46-monitor-v2.service\nActiveState=active\nSubState=running\n",
+  "snapshots": {
+    "faults": {
+      "bytes": 114074,
+      "device": 64512,
+      "inode": 39756077,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.faults.json",
+      "sha256": "fecc397f0d07d377f4d7e205b977cd1d446687704f70925c7bfb137b0ad201d3",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/faults.json",
+      "source_size_at_open": 114074
+    },
+    "gate": {
+      "bytes": 124968,
+      "device": 64512,
+      "inode": 39756074,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.gate.json",
+      "sha256": "bdb086eb9b60aa1b628e2c411ef1c39746e7acb992ab03470ba3541be0768cb8",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/process-logs.json",
+      "source_size_at_open": 124968
+    },
+    "supervisor": {
+      "bytes": 8746,
+      "device": 64512,
+      "inode": 39118302,
+      "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.supervisor.json",
+      "sha256": "332237f27fe2114175b42733c98155e32d0cb458e3fbf9ae3294d5369b1f5a97",
+      "source": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json",
+      "source_size_at_open": 8746
+    }
+  },
+  "source_review": {
+    "claims": [
+      {
+        "finding": "Native startup then initial terminal publication must complete before runReleaseOperatorWorkers and running announcement.",
+        "lines": [
+          841,
+          859
+        ],
+        "path": "validator/release_run.go"
+      },
+      {
+        "finding": "publishWithReadHooks creates census-replay and census-replica-two scratch directories for closed census publication.",
+        "lines": [
+          266,
+          339
+        ],
+        "path": "validator/release_runtime_v2.go"
+      },
+      {
+        "finding": "Terminal requires epoch >=636 and finalized block >=8086324.",
+        "lines": [
+          23,
+          33
+        ],
+        "path": "sim-testnet/scenario_interval.go"
+      },
+      {
+        "finding": "Provisional terminal completion requires full interval, restored faults and custody/chain integrity, not rate readiness or new path proof counts.",
+        "lines": [
+          215,
+          232
+        ],
+        "path": "sim-testnet/scenario_lifecycle_cleanup.go"
+      },
+      {
+        "finding": "Integrity assertions: contracts_installed, native_custody_hotkeys, policy_hash_matches, runtime_code_matches, public_identities, rao_conservation, runtime_transfer_minimum_bound.",
+        "lines": [
+          103,
+          105
+        ],
+        "path": "sim-testnet/provisional_production_handoff.go"
+      },
+      {
+        "finding": "Strict settlement closure wait runs only when all acceptance assertions already complete; known failures do not cause it to wait indefinitely.",
+        "lines": [
+          4581,
+          4591
+        ],
+        "path": "sim-testnet/scenario.go"
+      },
+      {
+        "finding": "Scenario outputs are persisted before provisional finish; missing validator progress does not require a live repair to preserve an honest failed result.",
+        "lines": [
+          4675,
+          4696
+        ],
+        "path": "sim-testnet/scenario.go"
+      }
+    ],
+    "deployed_commit": "ad5c05eca00a73bada9fdc35dfa516487a616177",
+    "files": {
+      "sim-testnet/provisional_production_handoff.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/sim-testnet/provisional_production_handoff.go",
+        "sha256": "0f27264d393de9048560495b373a56e5cc52e2198b92f13feb9d6082ffcf496f"
+      },
+      "sim-testnet/scenario.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/sim-testnet/scenario.go",
+        "sha256": "0ecc7d2932e8c3d13110f7f2578d15ad431f9fcdbe243e08124f54601a446a90"
+      },
+      "sim-testnet/scenario_interval.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/sim-testnet/scenario_interval.go",
+        "sha256": "f6f2081ed2a13a0b45ae3b75ed298813467db38c394f12affea208a9475a10c4"
+      },
+      "sim-testnet/scenario_lifecycle_cleanup.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/sim-testnet/scenario_lifecycle_cleanup.go",
+        "sha256": "42e394eea85e0b39f12500ff98128d4cfa943177830dc8f9c2d8ea66b1256aa3"
+      },
+      "validator/release_run.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/validator/release_run.go",
+        "sha256": "bc2e1720358da3a823da3d20c661324a49c4879d9f995c3eb519fcfb4e220aac"
+      },
+      "validator/release_runtime_v2.go": {
+        "path": "/mnt/data/sn-testnet/worktrees/r45-provisional-process-continuation-20260925/validator/release_runtime_v2.go",
+        "sha256": "ed0f49df387cd5577cb2ea6452ffa268e3f8cec5d11239125869093735ae394d"
+      }
+    },
+    "supervised_validator_source_base": "6100394b04fc3386b03870b8bdcc9a6abb5614a7"
+  },
+  "supervisor_summary": {
+    "manifest_hash": "0x2bd5bbef8665fa4fee3a7ca085b3144f95504395ea348652f3552fc76a7bba9a",
+    "supervisor_pid": 3780072,
+    "supervisor_start_time_ticks": 21558815,
+    "swarm_processes": [
+      {
+        "healthy": true,
+        "id": "miner-swarm-1",
+        "pid": 174590,
+        "restarts": 1,
+        "start_time_ticks": 24185097
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-10",
+        "pid": 94754,
+        "restarts": 1,
+        "start_time_ticks": 23735109
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-11",
+        "pid": 100017,
+        "restarts": 1,
+        "start_time_ticks": 23764800
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-12",
+        "pid": 105461,
+        "restarts": 1,
+        "start_time_ticks": 23795363
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-13",
+        "pid": 110891,
+        "restarts": 1,
+        "start_time_ticks": 23825163
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-14",
+        "pid": 116208,
+        "restarts": 1,
+        "start_time_ticks": 23854875
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-15",
+        "pid": 121779,
+        "restarts": 1,
+        "start_time_ticks": 23885018
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-16",
+        "pid": 127571,
+        "restarts": 1,
+        "start_time_ticks": 23918508
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-17",
+        "pid": 132487,
+        "restarts": 1,
+        "start_time_ticks": 23946358
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-18",
+        "pid": 138598,
+        "restarts": 1,
+        "start_time_ticks": 23981509
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-19",
+        "pid": 142765,
+        "restarts": 1,
+        "start_time_ticks": 24004908
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-2",
+        "pid": 49327,
+        "restarts": 1,
+        "start_time_ticks": 23496075
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-20",
+        "pid": 149368,
+        "restarts": 1,
+        "start_time_ticks": 24041283
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-3",
+        "pid": 57012,
+        "restarts": 1,
+        "start_time_ticks": 23525741
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-4",
+        "pid": 62916,
+        "restarts": 1,
+        "start_time_ticks": 23556738
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-5",
+        "pid": 68899,
+        "restarts": 1,
+        "start_time_ticks": 23588230
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-6",
+        "pid": 74162,
+        "restarts": 1,
+        "start_time_ticks": 23618559
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-7",
+        "pid": 78994,
+        "restarts": 1,
+        "start_time_ticks": 23645349
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-8",
+        "pid": 84138,
+        "restarts": 1,
+        "start_time_ticks": 23674885
+      },
+      {
+        "healthy": true,
+        "id": "miner-swarm-9",
+        "pid": 89516,
+        "restarts": 1,
+        "start_time_ticks": 23705221
+      }
+    ],
+    "updated_at": "2026-09-25T22:30:11.022546177Z",
+    "validators": [
+      {
+        "healthy": true,
+        "id": "validator-1",
+        "identity": "5ERfE1N5qWqXZ7xvV8MvnzsuEkTFSgPt67Zmj4hxxKHzfGos",
+        "pid": 163939,
+        "restarts": 7,
+        "role": "validator",
+        "start_time_ticks": 24125014,
+        "started_at": "2026-09-25T20:43:07Z"
+      },
+      {
+        "healthy": true,
+        "id": "validator-2",
+        "identity": "5HU3HMs29vVPqP1MLBJf93nNY2MTh411w1FjQxgaZKftPGL1",
+        "pid": 169276,
+        "restarts": 17,
+        "role": "validator",
+        "start_time_ticks": 24154709,
+        "started_at": "2026-09-25T20:48:04Z"
+      }
+    ]
+  },
+  "validator1_proc_after": {
+    "clock_ticks_per_second": 100,
+    "io": {
+      "cancelled_write_bytes": 2535374848,
+      "rchar": 8039740126,
+      "read_bytes": 162799616,
+      "syscr": 2540418,
+      "syscw": 1369407,
+      "wchar": 4395135078,
+      "write_bytes": 4403437568
+    },
+    "observed_at": "2026-09-25T22:30:27.122951+00:00",
+    "pid": 163939,
+    "replay_fds": [
+      {
+        "fd": 38,
+        "fdinfo": "pos:\t1511308\nflags:\t02500001\nmnt_id:\t31\nino:\t45111450\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/000006.log"
+      },
+      {
+        "fd": 130,
+        "fdinfo": "pos:\t2345407\nflags:\t02500001\nmnt_id:\t31\nino:\t45111451\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/000006.log"
+      },
+      {
+        "fd": 153,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111425\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b"
+      },
+      {
+        "fd": 155,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111425\nlock:\t1: FLOCK  ADVISORY  WRITE 163939 fc:00:45111425 0 EOF\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b"
+      },
+      {
+        "fd": 157,
+        "fdinfo": "pos:\t0\nflags:\t02500002\nmnt_id:\t31\nino:\t45111439\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/LOCK"
+      },
+      {
+        "fd": 159,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111435\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b"
+      },
+      {
+        "fd": 161,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111435\nlock:\t1: FLOCK  ADVISORY  WRITE 163939 fc:00:45111435 0 EOF\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b"
+      },
+      {
+        "fd": 162,
+        "fdinfo": "pos:\t0\nflags:\t02500002\nmnt_id:\t31\nino:\t45111440\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/LOCK"
+      },
+      {
+        "fd": 163,
+        "fdinfo": "pos:\t276\nflags:\t02500001\nmnt_id:\t31\nino:\t45111442\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/MANIFEST-000000"
+      },
+      {
+        "fd": 166,
+        "fdinfo": "pos:\t276\nflags:\t02500001\nmnt_id:\t31\nino:\t45111443\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/MANIFEST-000000"
+      }
+    ],
+    "start_time_ticks": 24125014,
+    "state": "S",
+    "system_cpu_ticks": 12380,
+    "user_cpu_ticks": 257082
+  },
+  "validator1_proc_before": {
+    "clock_ticks_per_second": 100,
+    "io": {
+      "cancelled_write_bytes": 2526953472,
+      "rchar": 8030469744,
+      "read_bytes": 162799616,
+      "syscr": 2537612,
+      "syscw": 1366068,
+      "wchar": 4384685524,
+      "write_bytes": 4392976384
+    },
+    "observed_at": "2026-09-25T22:30:15.779185+00:00",
+    "pid": 163939,
+    "replay_fds": [
+      {
+        "fd": 130,
+        "fdinfo": "pos:\t2396518\nflags:\t02500001\nmnt_id:\t31\nino:\t45111451\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/000004.log"
+      },
+      {
+        "fd": 152,
+        "fdinfo": "pos:\t2737436\nflags:\t02500001\nmnt_id:\t31\nino:\t45111420\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/000004.log"
+      },
+      {
+        "fd": 153,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111425\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b"
+      },
+      {
+        "fd": 155,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111425\nlock:\t1: FLOCK  ADVISORY  WRITE 163939 fc:00:45111425 0 EOF\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b"
+      },
+      {
+        "fd": 157,
+        "fdinfo": "pos:\t0\nflags:\t02500002\nmnt_id:\t31\nino:\t45111439\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/LOCK"
+      },
+      {
+        "fd": 159,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111435\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b"
+      },
+      {
+        "fd": 161,
+        "fdinfo": "pos:\t0\nflags:\t02500000\nmnt_id:\t31\nino:\t45111435\nlock:\t1: FLOCK  ADVISORY  WRITE 163939 fc:00:45111435 0 EOF\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b"
+      },
+      {
+        "fd": 162,
+        "fdinfo": "pos:\t0\nflags:\t02500002\nmnt_id:\t31\nino:\t45111440\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/LOCK"
+      },
+      {
+        "fd": 163,
+        "fdinfo": "pos:\t202\nflags:\t02500001\nmnt_id:\t31\nino:\t45111442\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replica-two-ec548d01c8d91ab3a49f224f9b72445b/MANIFEST-000000"
+      },
+      {
+        "fd": 166,
+        "fdinfo": "pos:\t202\nflags:\t02500001\nmnt_id:\t31\nino:\t45111443\n",
+        "target": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/scratch-v2/no-1/replay/census-replay-54191a1a1640d64e3cf53cec52be041b/MANIFEST-000000"
+      }
+    ],
+    "start_time_ticks": 24125014,
+    "state": "S",
+    "system_cpu_ticks": 12350,
+    "user_cpu_ticks": 256494
+  },
+  "validator1_proc_delta": {
+    "io": {
+      "cancelled_write_bytes": 8421376,
+      "rchar": 9270382,
+      "read_bytes": 0,
+      "syscr": 2806,
+      "syscw": 3339,
+      "wchar": 10449554,
+      "write_bytes": 10461184
+    },
+    "system_cpu_ticks": 30,
+    "user_cpu_ticks": 588
+  }
+}

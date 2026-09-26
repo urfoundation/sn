@@ -1,0 +1,18 @@
+{
+  "base_receipt": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/epoch634-restart-causality.receipt.json",
+    "sha256": "17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4"
+  },
+  "bytes": 281,
+  "cut_end": 30518529,
+  "device": 64512,
+  "inode": 39095214,
+  "interpretation": "No running announcement after the exact scheduled restart failure. Together with changing census replay files and absent post-restart proofs, source order locates the current work before runReleaseOperatorWorkers, rather than an observed deadlock. No live process was modified.",
+  "observed_at": "2026-09-25T22:33:24.424357+00:00",
+  "offset": 30518248,
+  "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/processes/validator-1.stdout.log",
+  "raw_tail": "release steer: subnet epoch 1677 attempt 1: compact live head client census observation read: Post \"http://127.0.0.1:18081/sn/client-key/observations\": terminated signal received\ncontext canceled\ncontext canceled\ncontext canceled\ncontext canceled\ncontext canceled\ncontext canceled\n",
+  "running_announcements_after_restart": 0,
+  "schema": "urnetwork-r46-validator1-startup-phase-readonly-v1",
+  "sha256": "bec262cf234c69579afe6f71c508e08a2a7ab79beca93c6804cd204357dc6a52"
+}
