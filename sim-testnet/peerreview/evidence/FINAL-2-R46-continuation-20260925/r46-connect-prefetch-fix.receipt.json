@@ -1,0 +1,341 @@
+{
+  "artifacts": [
+    {
+      "bytes": 54030,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/sender-receiver-idle-pairs.json",
+      "sha256": "b93eb1ed494b9a118e91963e781af69663335f4c0325d567c29191ffa330cba6"
+    },
+    {
+      "bytes": 21388,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/contract-witnesses.receipt.json",
+      "sha256": "dd0242ef057041cc49002621697bf82c49cf5fc5b5ddb082da7218407474e905"
+    },
+    {
+      "bytes": 7549,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/health-runtime-window.json",
+      "sha256": "20121ccb01cd199e46116e08ffe1732f77fac0594ae487c6553182c9a4dec7ac"
+    },
+    {
+      "bytes": 23555,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/health-causal-boundary.receipt.json",
+      "sha256": "2206af2ade2e8bdbc2adf1f55edb3f3f86d32a0b2bf168c9b2ea67db2763f795"
+    },
+    {
+      "bytes": 1025,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/sealed-input-hashes.json",
+      "sha256": "200594d8674d258634563f03e1a1d358de580077935ab6dadba68cef83a35e51"
+    },
+    {
+      "bytes": 48296,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-normal-controls.log",
+      "sha256": "e7182acafe71a14b089493fac85841994a0c58a372ff905a90311bef6e534638"
+    },
+    {
+      "bytes": 52645,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-race-controls.log",
+      "sha256": "e710ae497aea7b0a1f37e1023dac4714bd81f90b80d5c2b7157bddea4703efe0"
+    },
+    {
+      "bytes": 6749,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-pre-fix-overlay.log",
+      "sha256": "668def853e3953dc46d893da4032c480ced95aa44e297db81e6e18c1f7cb1399"
+    },
+    {
+      "bytes": 184,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/pre-fix-overlay.json",
+      "sha256": "7a89701e82800995cc14892f02d4da8232c95ef434e31ef7f5ce8b2a35b5a36c"
+    },
+    {
+      "bytes": 656007,
+      "path": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/transfer-pre-fix.go",
+      "sha256": "7bd6b826b724600bcfe1aa9f6def64eff3f07f01c8e4219f276a28f2d8fa62cd"
+    },
+    {
+      "bytes": 656265,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926/transfer.go",
+      "sha256": "06af418b23ac7a4eb797cd1c51cb8dda813dda46d63eb375d9f1f3ff9f4bd5e0"
+    },
+    {
+      "bytes": 16012,
+      "path": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926/transfer_idle_contract_recovery_test.go",
+      "sha256": "ccc237e61ab5877cfd4a5eea726756eb867d3498ea323419712255d0ba32c3de"
+    },
+    {
+      "bytes": 28515,
+      "path": "/home/by/urnetwork/connect/CODESTYLE.md",
+      "sha256": "778ff616de0b131fd99eb670455ffdae41ee005aeb17f65b43405c14b4e6d584"
+    }
+  ],
+  "base_commit": "c98eb7153540b268ee52945f8d7a9d12590daa3c",
+  "branch": "codex/r46-exit-gap-root-20260926",
+  "commit": "e1fe2daf4841729599dda77793e215b46fc84899",
+  "confirmed_adjacent_fix": {
+    "after": "Defer successor announcement while sendItems is empty. The ordinary current-contract head resumes first and recovers its full verified proof. A second application Pack admitted while that head is outstanding still announces and acknowledges the successor exactly once.",
+    "before": "Non-head successor announcement became first outstanding Pack. Its resend was promoted to a head carrying the successor proof while contract_ahead kept that successor non-current. The receiver lacked the authenticated current contract and rejected it with No contract; sender exhausted its lifetime.",
+    "controls": [
+      "plain and encrypted idle resume",
+      "combined receiver sequence and cipher loss",
+      "single missing-contract response loss recovery",
+      "permanent feedback loss retains ACK and gap timeout evidence",
+      "normal successor prefetch and exactly-once payload after head",
+      "wrong-contract request rejection",
+      "foreign/malformed encryption generation rejection",
+      "malformed signed-contract rejection",
+      "owner cancellation and pool ownership"
+    ],
+    "performance_boundary": "Sparse or NoAck-only traffic can defer an ahead announcement until an acknowledged current-contract Pack is outstanding; queued grants and byte/deadline thresholds remain unchanged.",
+    "production_change": "One len(sendItems)==0 guard plus explanatory comment; no receiver authentication, proof contents, protocol, budgets, deadline or acceptance threshold changed.",
+    "production_files": [
+      "transfer.go"
+    ],
+    "r46_attribution": "Adjacent proven defect only. All18 exact R46 peer windows lack the reproduced no-contract/contract-verification error witness, so this fix is not claimed to resolve their root cause.",
+    "test_layer": "Real SendBuffer/ReceiveBuffer workers, production protobuf codecs, standard SHA256 HMAC verified signed grants, generated test identities, actual TLS sessions, in-memory route wires, testing/synctest fake clock, locked generation snapshots and joined workers.",
+    "trigger": "Receiver retires after155 seconds of idle; unchanged sender remains. A fresh prefetched successor is available and the resumed application crosses the unchanged lead floor."
+  },
+  "go_version": "go version go1.26.6 linux/amd64",
+  "live_fleet_modified": false,
+  "main_checkout_modified": false,
+  "next_reproduction_requirements": [
+    "Bounded per-sequence progress keyed by sequence ID and message ID: head flag, sequence number, contract-ahead flag, compact/full proof kind, verified contract ID, encryption role/epoch and exact route generation.",
+    "Missing-contract request generation, ACK write start/end disposition, peer ACK decode/admission and full-contract resend disposition with monotonic times and bounded counts.",
+    "Receiver generation create/idle retirement, cipher availability and first unresolved queue item. Keep sender ACK lifetime and receiver gap timeout strict.",
+    "For each failed health probe: deadline, start/end, transport error class or HTTP status, bounded sanitized response and omission counters.",
+    "For each unhealthy swarm: configured/running/disabled counts and distinct connection-vs-registration readiness transitions, correlated with exact fault apply/restore time and block.",
+    "For an unhealthy RPC proxy: bind supervisor HTTP result to upstream dial start/end and error class; do not increase deadlines merely to hide a failed probe.",
+    "Use existing -tags acklineagetrace with a non-nil bounded nonblocking ProgressObserver for a diagnostic reproduction; the tag alone records nothing. A source search of pinned SN miner/validator and SDK device_local* found no ProgressObserver or TransferWireMessageObserver installation.",
+    "Preserve exact synthetic155-second receiver-retirement barrier and retained sender; vary a single feedback boundary at a time on the actual reliable carrier: receiver request creation, local ACK-route write refusal, carrier handoff, sender decode/admission. One lost response must recover; permanent loss must retain strict failures.",
+    "Do not treat the fixed prefetched-successor boundary as the18-event cause without a matching per-message witness."
+  ],
+  "qualification": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "4",
+        ".",
+        "-run",
+        "Test(Signed|Encrypted)Contract|Test.*ContractAhead|Test.*Announc|TestReceiveSequenceGap|TestNegotiatedContractHead|TestPromotedHead|TestAcknowledgedContractHead|TestFullContractDelivery|TestReceiveUnknownCompactHead|TestReceiveAcknowledgedHead|TestOptimisticHandshake|TestOptimisticIdentityProof|TestMalformedEncryptedControlEpoch|TestReceiveSequenceAckRetry|TestContractOpenDuringRekey|TestContractControlResend|TestContractDataHead|TestStoredContractHmacCutover|TestReceiveSequenceMalformedContractRejectsRetransmits",
+        "-count=1",
+        "-timeout",
+        "120s",
+        "-v"
+      ],
+      "cwd": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926",
+      "env": {
+        "GOMAXPROCS": "8"
+      },
+      "exit_status": 0,
+      "failed_tests": [],
+      "kind": "normal",
+      "log": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-normal-controls.log",
+      "passed_tests": [
+        "TestNegotiatedContractHeadUsesCompactIdAndRequestRestoresContract",
+        "TestPromotedHeadUsesNegotiatedCompactContract",
+        "TestAcknowledgedContractHeadStaysFullWithoutRecoveryCapability",
+        "TestFullContractDeliveryAckNegotiatesCompactRecovery",
+        "TestReceiveUnknownCompactHeadRequestsContractWithoutAcknowledging",
+        "TestReceiveAcknowledgedHeadUsesPreviouslyVerifiedContractId",
+        "TestTheContractAheadCapabilityIsReadFromDeliveryAcknowledgements",
+        "TestASenderStaysConservativeAgainstAPeerThatNeverAdvertisesContractAhead",
+        "TestTheContractAheadCapabilityIsWithdrawnByBothTriggers",
+        "TestALegacyAcknowledgementDecodesToTheContractAheadFallback",
+        "TestAdvertisingContractAheadCostsNothingAgainstASenderThatIgnoresIt",
+        "TestTheContractAheadThresholdIsDerivedOrTheFloor",
+        "TestASenderDoesNotAnnounceAheadToALegacyPeer",
+        "TestTheAnnouncedContractSwitchesWithoutPromotion",
+        "TestTheAnnouncedContractRemovesTheAcquisitionFromTheSendPath",
+        "TestTheContractAheadAcknowledgementMarksTheSuccessor",
+        "TestTheContractAheadAnnouncementCarriesTheSuccessorAndNoData",
+        "TestAnAnnouncedContractIsStoredWithoutBecomingCurrent",
+        "TestStoredContractHmacCutover",
+        "TestContractControlResendAfterFailedRekey",
+        "TestContractDataHeadRetainsCipherAfterFailedRekey",
+        "TestContractOpenDuringRekeySymmetric",
+        "TestContractOpenDuringRekeyCompanion",
+        "TestContractControlResendStartsRekeyAfterQueue",
+        "TestContractDataHeadRetainsCipherDuringRekey",
+        "TestOptimisticIdentityProofCarriesEpoch",
+        "TestOptimisticHandshakeRejectsForeignWireGenerations",
+        "TestOptimisticHandshakeAcceptsExactWireGeneration",
+        "TestOptimisticHandshakePreservesUnnamedLegacyBoundary",
+        "TestOptimisticHandshakeRejectsMalformedWireGeneration",
+        "TestOptimisticIdentityProofRejectsMalformedWireGeneration",
+        "TestMalformedEncryptedControlEpochCannotActAsLegacy",
+        "TestSignedContractRecoversAfterReceiverIdle",
+        "TestEncryptedContractRecoversAfterReceiverIdle",
+        "TestEncryptedContractRecoversAfterReceiverStateLoss",
+        "TestSignedContractRecoversAfterLostMissingContractRequest",
+        "TestSignedContractMissingFeedbackRetainsStrictDeadlines",
+        "TestSignedContractRecoversWhenIdleResumeCrossesAheadThreshold",
+        "TestEncryptedContractRecoversWhenIdleResumeCrossesAheadThreshold",
+        "TestReceiveSequenceAckRetryCoalescesNewHeadAndRetainsMetadata",
+        "TestReceiveSequenceAckRetryPreservesOnlyUnwrittenResponseSuffix",
+        "TestReceiveSequenceAckRetryZeroWaitIsBoundedAndCancelable",
+        "TestReceiveSequenceAckRetryDoesNotRequeueClosedWriter",
+        "TestReceiveSequenceGapWakeWritesProvableHoleEarly",
+        "TestReceiveSequenceGapWakeWritesHoleFillHeadAckEarly",
+        "TestReceiveSequenceGapWakeGuards",
+        "TestReceiveSequenceGapHandoffClosesAdmittedHole",
+        "TestReceiveSequenceGapHandoffDoesNotRefillExpiredPrefix",
+        "TestReceiveSequenceGapHandoffCancellationPreservesOwnership",
+        "TestReceiveSequenceGapHandoffRetainsPacketValidation",
+        "TestReceiveSequenceGapHandoffReconcilesReadyRendezvous",
+        "TestReceiveSequenceGapHandoffPreservesExactDeadline",
+        "TestReceiveSequenceGapClosedBeforeExpiredQueueDrain",
+        "TestReceiveSequenceGapOwnerCancellationPrecedesQueueInspection",
+        "TestReceiveSequenceGapRetainsUnresolvedDeadlineAndEvidence",
+        "TestReceiveSequenceMalformedContractRejectsRetransmits"
+      ],
+      "race_reports": 0
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "4",
+        ".",
+        "-run",
+        "Test(Signed|Encrypted)Contract|Test.*ContractAhead|Test.*Announc|TestReceiveSequenceGap|TestNegotiatedContractHead|TestPromotedHead|TestAcknowledgedContractHead|TestFullContractDelivery|TestReceiveUnknownCompactHead|TestReceiveAcknowledgedHead|TestOptimisticHandshake|TestOptimisticIdentityProof|TestMalformedEncryptedControlEpoch|TestReceiveSequenceAckRetry|TestContractOpenDuringRekey|TestContractControlResend|TestContractDataHead|TestStoredContractHmacCutover|TestReceiveSequenceMalformedContractRejectsRetransmits",
+        "-count=1",
+        "-timeout",
+        "180s",
+        "-v"
+      ],
+      "cwd": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926",
+      "env": {
+        "GOMAXPROCS": "8"
+      },
+      "exit_status": 0,
+      "failed_tests": [],
+      "kind": "race",
+      "log": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-race-controls.log",
+      "passed_tests": [
+        "TestNegotiatedContractHeadUsesCompactIdAndRequestRestoresContract",
+        "TestPromotedHeadUsesNegotiatedCompactContract",
+        "TestAcknowledgedContractHeadStaysFullWithoutRecoveryCapability",
+        "TestFullContractDeliveryAckNegotiatesCompactRecovery",
+        "TestReceiveUnknownCompactHeadRequestsContractWithoutAcknowledging",
+        "TestReceiveAcknowledgedHeadUsesPreviouslyVerifiedContractId",
+        "TestTheContractAheadCapabilityIsReadFromDeliveryAcknowledgements",
+        "TestASenderStaysConservativeAgainstAPeerThatNeverAdvertisesContractAhead",
+        "TestTheContractAheadCapabilityIsWithdrawnByBothTriggers",
+        "TestALegacyAcknowledgementDecodesToTheContractAheadFallback",
+        "TestAdvertisingContractAheadCostsNothingAgainstASenderThatIgnoresIt",
+        "TestTheContractAheadThresholdIsDerivedOrTheFloor",
+        "TestASenderDoesNotAnnounceAheadToALegacyPeer",
+        "TestTheAnnouncedContractSwitchesWithoutPromotion",
+        "TestTheAnnouncedContractRemovesTheAcquisitionFromTheSendPath",
+        "TestTheContractAheadAcknowledgementMarksTheSuccessor",
+        "TestTheContractAheadAnnouncementCarriesTheSuccessorAndNoData",
+        "TestAnAnnouncedContractIsStoredWithoutBecomingCurrent",
+        "TestStoredContractHmacCutover",
+        "TestContractControlResendAfterFailedRekey",
+        "TestContractDataHeadRetainsCipherAfterFailedRekey",
+        "TestContractOpenDuringRekeySymmetric",
+        "TestContractOpenDuringRekeyCompanion",
+        "TestContractControlResendStartsRekeyAfterQueue",
+        "TestContractDataHeadRetainsCipherDuringRekey",
+        "TestOptimisticIdentityProofCarriesEpoch",
+        "TestOptimisticHandshakeRejectsForeignWireGenerations",
+        "TestOptimisticHandshakeAcceptsExactWireGeneration",
+        "TestOptimisticHandshakePreservesUnnamedLegacyBoundary",
+        "TestOptimisticHandshakeRejectsMalformedWireGeneration",
+        "TestOptimisticIdentityProofRejectsMalformedWireGeneration",
+        "TestMalformedEncryptedControlEpochCannotActAsLegacy",
+        "TestSignedContractRecoversAfterReceiverIdle",
+        "TestEncryptedContractRecoversAfterReceiverIdle",
+        "TestEncryptedContractRecoversAfterReceiverStateLoss",
+        "TestSignedContractRecoversAfterLostMissingContractRequest",
+        "TestSignedContractMissingFeedbackRetainsStrictDeadlines",
+        "TestSignedContractRecoversWhenIdleResumeCrossesAheadThreshold",
+        "TestEncryptedContractRecoversWhenIdleResumeCrossesAheadThreshold",
+        "TestReceiveSequenceAckRetryCoalescesNewHeadAndRetainsMetadata",
+        "TestReceiveSequenceAckRetryPreservesOnlyUnwrittenResponseSuffix",
+        "TestReceiveSequenceAckRetryZeroWaitIsBoundedAndCancelable",
+        "TestReceiveSequenceAckRetryDoesNotRequeueClosedWriter",
+        "TestReceiveSequenceGapWakeWritesProvableHoleEarly",
+        "TestReceiveSequenceGapWakeWritesHoleFillHeadAckEarly",
+        "TestReceiveSequenceGapWakeGuards",
+        "TestReceiveSequenceGapHandoffClosesAdmittedHole",
+        "TestReceiveSequenceGapHandoffDoesNotRefillExpiredPrefix",
+        "TestReceiveSequenceGapHandoffCancellationPreservesOwnership",
+        "TestReceiveSequenceGapHandoffRetainsPacketValidation",
+        "TestReceiveSequenceGapHandoffReconcilesReadyRendezvous",
+        "TestReceiveSequenceGapHandoffPreservesExactDeadline",
+        "TestReceiveSequenceGapClosedBeforeExpiredQueueDrain",
+        "TestReceiveSequenceGapOwnerCancellationPrecedesQueueInspection",
+        "TestReceiveSequenceGapRetainsUnresolvedDeadlineAndEvidence",
+        "TestReceiveSequenceMalformedContractRejectsRetransmits"
+      ],
+      "race_reports": 0
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "4",
+        "-overlay",
+        "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/pre-fix-overlay.json",
+        ".",
+        "-run",
+        "Test(Signed|Encrypted)ContractRecoversWhenIdleResumeCrossesAheadThreshold$",
+        "-count=1",
+        "-timeout",
+        "120s",
+        "-v"
+      ],
+      "cwd": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926",
+      "env": {
+        "GOMAXPROCS": "8"
+      },
+      "exit_status": 1,
+      "failed_tests": [
+        "TestSignedContractRecoversWhenIdleResumeCrossesAheadThreshold",
+        "TestEncryptedContractRecoversWhenIdleResumeCrossesAheadThreshold"
+      ],
+      "kind": "pre_fix_red",
+      "log": "/mnt/data/sn-testnet/qualification/r46-exit-gap-root-20260926/synchronized-pre-fix-overlay.log",
+      "passed_tests": [],
+      "race_reports": 0
+    }
+  ],
+  "r46_acceptance_unchanged": false,
+  "r46_exit_gap_evidence": {
+    "all_between_receive120_and_send300_seconds": true,
+    "all_receiver_expected_sequence": 0,
+    "all_sender_sends": 9,
+    "blocking_process_classes": 10,
+    "events": 18,
+    "falsified_sufficient_cause": "Asymmetric idle alone. All real-wire signed/encrypted idle controls recover.",
+    "prior_ack_to_new_write_seconds": [
+      154.30490661,
+      295.317510342
+    ],
+    "remaining_unknown": "Historical head receipt/decryption, missing-contract feedback generation/write/delivery and exact carrier/route ownership were not recorded per message. The sender pending_contracts=0 exit snapshot cannot distinguish no request from a previously consumed request.",
+    "same_peer_sender_matches": 18,
+    "sender_first_unacked_is_one_before_receiver_queued_tail": true,
+    "synthetic_causal_positive": "Dropping every missing-contract response produces sender lifetime failure and subsequent receive gap timeout without unauthenticated delivery."
+  },
+  "r46_health_evidence": {
+    "classification": "Keep all21 strict. Coincidence with signed RPC dependency/rolling faults is insufficient to expand targets. Boolean-only probe evidence cannot distinguish timeout versus non-2xx readiness versus registration/carrier loss.",
+    "later_recovery": "Independent read-only captures show19/20 swarms healthy at19:06 and20/20 at20:47; this does not erase the earlier findings.",
+    "miner_swarms": 20,
+    "other_process": "subtensor-substrate-rpc-proxy",
+    "proxy_first_observation": "2026-09-25T18:15:44.732288515Z",
+    "proxy_supervisor_time": "2026-09-25T18:15:18.025464595Z",
+    "restart_boundary": "Sealed validator PID/restart changes precede terminal teardown. Exact scheduled/unscheduled restart attribution remains in the validator readiness lane; no restart waiver added here.",
+    "runtime_not_teardown": true,
+    "sealed_findings": 21,
+    "swarm_first_observation": "2026-09-25T18:10:43.404547878Z",
+    "swarm_supervisor_time": "2026-09-25T18:10:16.035291176Z",
+    "unchanged_live_pid_and_restart_counts": true,
+    "unexpected_restart_rows": 2
+  },
+  "schema": "urnetwork-r46-exit-gap-causal-review-v1",
+  "sealed_r46_modified": false,
+  "worktree": "/mnt/data/sn-testnet/worktrees/r46-exit-gap-root-20260926"
+}

@@ -357,6 +357,17 @@ and prior verified cipher evidence in 15 windows. That fix is adjacent
 hardening, not an established explanation of R46's exit gaps.
 [Contract-witness scan](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-contract-witnesses.receipt.json)
 (SHA-256 `dd0242ef057041cc49002621697bf82c49cf5fc5b5ddb082da7218407474e905`).
+The adjacent Connect correction defers a non-head `ContractAhead`
+announcement while no acknowledged application packet is outstanding, so a
+recovering current-contract head can arrive first. Its final **56 normal and
+56 race tests passed**; old-source wire regressions failed as expected. The
+guard may defer prefetch on sparse or no-ack-only traffic until an
+acknowledged packet exists. This bounded performance effect and the absence
+of matching R46 contract-failure witnesses prevent a claim that it repaired
+the sealed exit gaps. [Connect fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-connect-prefetch-fix-review.md)
+(SHA-256 `17d662865b9ac684a86fdcf1cb890b8a29815d9586a202b48e92260c547b181b`),
+[qualification receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-connect-prefetch-fix.receipt.json)
+(SHA-256 `8a4f028e50aefd9b4dbd00aa40b2fefcfa001375ad8a613166731e8c22d1a058`).
 
 The sealed read-only diagnostic currently reports
 `result-start-and-fault-binding` failed with “lifecycle cleanup completion

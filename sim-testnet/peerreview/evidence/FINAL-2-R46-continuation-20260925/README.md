@@ -171,6 +171,9 @@ state loss after 155 seconds, so the mismatch alone does not reproduce the
 failure. Lost feedback and routing still need causal tests.
 `r46-exit-gap-contract-witnesses.receipt.json` bounds the adjacent prefetch
 defect against all 18 sealed peer windows without attributing it to R46.
+`r46-connect-prefetch-fix-review.md` and
+`r46-connect-prefetch-fix.receipt.json` record the qualified adjacent Connect
+ordering fix, its test results and its sparse-traffic prefetch limit.
 
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
