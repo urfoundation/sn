@@ -1,0 +1,175 @@
+{
+  "schema": "urnetwork-r47-epoch-649-readiness-checkpoint-v1",
+  "observed_at": "2026-09-26T12:50:06.881025037Z",
+  "observation_log_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260926T112551.425107945Z-release-1.0/observations.jsonl",
+  "full_observation_line_sha256": "864e42c6829875faab27274bdc4a90e737a42f0009133090fe4ec7c2988c9813",
+  "observation_hash": "0xb703d5283cda310c4823b0e1a9a6050c012152f7871d5218c45444a3d1ac2325",
+  "finalized_head": {
+    "number": 8090392,
+    "hash": "0xad7cfc014ad2e055e8cf5ee66f4d247dcf8ad9d0ebac8062de17adb9171c3037"
+  },
+  "current_epoch": 650,
+  "policy_rate_readiness": {
+    "ready": false,
+    "detail": "operator 1 complete epoch 649 bytes=4089094 gives 82224 tao rao at tier 0; require twice native minimum 200000",
+    "head": {
+      "number": 8090392,
+      "hash": "0xad7cfc014ad2e055e8cf5ee66f4d247dcf8ad9d0ebac8062de17adb9171c3037"
+    },
+    "alpha_price_wei": "539777000000000",
+    "minimum_transfer_tao_rao": 100000,
+    "sources": [
+      {
+        "no_id": 1,
+        "epoch": 649,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "content_hash": "sha256:161dadc8af08b8c419282c02d9aefe8641823acb48ad7682be2ca6e50fd1648a",
+        "total_usage_bytes": 4089094
+      },
+      {
+        "no_id": 2,
+        "epoch": 649,
+        "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+        "content_hash": "sha256:c6ca550a6523115b6de42d193c11c959b754d5f2e32b9369270f855a8b2890dd",
+        "total_usage_bytes": 4690199
+      }
+    ],
+    "provisional_low_usage": {
+      "scope": "complete-source-native-floor-margin",
+      "provisional": true,
+      "final_acceptance": false,
+      "shortfalls": [
+        {
+          "no_id": 1,
+          "epoch": 649,
+          "total_usage_bytes": 4089094,
+          "min_conviction_rao": 0,
+          "equivalent_tao_rao": "82224",
+          "required_tao_rao": "200000"
+        },
+        {
+          "no_id": 1,
+          "epoch": 649,
+          "total_usage_bytes": 4089094,
+          "min_conviction_rao": 1000000000,
+          "equivalent_tao_rao": "65779",
+          "required_tao_rao": "200000"
+        },
+        {
+          "no_id": 1,
+          "epoch": 649,
+          "total_usage_bytes": 4089094,
+          "min_conviction_rao": 10000000000,
+          "equivalent_tao_rao": "49334",
+          "required_tao_rao": "200000"
+        },
+        {
+          "no_id": 2,
+          "epoch": 649,
+          "total_usage_bytes": 4690199,
+          "min_conviction_rao": 0,
+          "equivalent_tao_rao": "94311",
+          "required_tao_rao": "200000"
+        },
+        {
+          "no_id": 2,
+          "epoch": 649,
+          "total_usage_bytes": 4690199,
+          "min_conviction_rao": 1000000000,
+          "equivalent_tao_rao": "75449",
+          "required_tao_rao": "200000"
+        },
+        {
+          "no_id": 2,
+          "epoch": 649,
+          "total_usage_bytes": 4690199,
+          "min_conviction_rao": 10000000000,
+          "equivalent_tao_rao": "56587",
+          "required_tao_rao": "200000"
+        }
+      ]
+    }
+  },
+  "operators": [
+    {
+      "no_id": 1,
+      "latest_artifact_epoch": 649,
+      "latest_artifact_hash": "sha256:161dadc8af08b8c419282c02d9aefe8641823acb48ad7682be2ca6e50fd1648a",
+      "matching_onchain_artifacts": 7
+    },
+    {
+      "no_id": 2,
+      "latest_artifact_epoch": 649,
+      "latest_artifact_hash": "sha256:c6ca550a6523115b6de42d193c11c959b754d5f2e32b9369270f855a8b2890dd",
+      "matching_onchain_artifacts": 7
+    }
+  ],
+  "settlement_epochs": [
+    {
+      "epoch": 648,
+      "operators": [
+        {
+          "no_id": 1,
+          "deposit_rao": "697280466",
+          "conviction_added_rao": "0",
+          "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "committer": "0x0000000000000000000000000000000000000000",
+          "commit_block": 0,
+          "funded_rao": "0",
+          "total_rao": "0",
+          "claimed_rao": "0",
+          "expiry_block": 0,
+          "status": 3
+        },
+        {
+          "no_id": 2,
+          "deposit_rao": "641488038",
+          "conviction_added_rao": "0",
+          "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "committer": "0x0000000000000000000000000000000000000000",
+          "commit_block": 0,
+          "funded_rao": "0",
+          "total_rao": "0",
+          "claimed_rao": "0",
+          "expiry_block": 0,
+          "status": 3
+        }
+      ]
+    },
+    {
+      "epoch": 649,
+      "operators": [
+        {
+          "no_id": 1,
+          "deposit_rao": "304373972",
+          "conviction_added_rao": "0",
+          "payout_root": "0x8a01634d5d4d546930ef7a2c23323932c46e81c5993c16299734be18e141bdbf",
+          "artifact_hash": "0x161dadc8af08b8c419282c02d9aefe8641823acb48ad7682be2ca6e50fd1648a",
+          "committer": "0xd6f9165C4CC35Ce380EA1EfF3c518407173af60A",
+          "commit_block": 8090380,
+          "funded_rao": "0",
+          "total_rao": "0",
+          "claimed_rao": "0",
+          "expiry_block": 0,
+          "status": 1
+        },
+        {
+          "no_id": 2,
+          "deposit_rao": "286750786",
+          "conviction_added_rao": "0",
+          "payout_root": "0x163b759064703770007ae70084fd04caa6895c71cc2c88ec933e728d69d48694",
+          "artifact_hash": "0xc6ca550a6523115b6de42d193c11c959b754d5f2e32b9369270f855a8b2890dd",
+          "committer": "0x5C278cf6693ce582AdEa0241034d810d8933B3EB",
+          "commit_block": 8090381,
+          "funded_rao": "0",
+          "total_rao": "0",
+          "claimed_rao": "0",
+          "expiry_block": 0,
+          "status": 1
+        }
+      ]
+    }
+  ]
+}
