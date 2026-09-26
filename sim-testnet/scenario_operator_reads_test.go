@@ -44,7 +44,12 @@ func TestScenarioOperatorReadsBoundParallelWorkAndKeepResponseOwners(t *testing.
 		if request.URL.Host == "operator-2" && request.URL.Path == "/verify/stats" {
 			code = http.StatusNotFound
 		}
-		return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(request.URL.Host + request.URL.RequestURI())), Header: http.Header{}}, nil
+		identity := *request.URL
+		query := identity.Query()
+		query.Del("from")
+		query.Del("to")
+		identity.RawQuery = query.Encode()
+		return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(identity.Host + identity.RequestURI())), Header: http.Header{}}, nil
 	})}}
 	bases := []string{"http://operator-1", "http://operator-2", "http://operator-3"}
 	done := make(chan []scenarioOperatorSurfaces, 1)
