@@ -2691,6 +2691,16 @@ and settlement path; include retry requests and retained objects separately.
 Recheck the rendered server hard caps and the approved resource margin against
 that forecast. R47's provisional quota waiver does not establish capacity.
 
+The ordinary post-R47 package partition exposed evidence GET response
+ownership lost during cancellation: the request owner returned only the
+context error after a response body read or Close had already failed. This
+hid a real close failure in the replica evidence gate. Preserve the complete
+bounded response read/Close error when cancellation or retry-wait interruption
+wins, and distinguish mixed permanent body errors from retryable transport
+errors. Deterministic normal and race tests now cover read, Close, retry wait,
+and next-attempt boundaries; include this behavior in mainnet evidence clients
+and operational diagnostics. The correction is not in the signed R47 binary.
+
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
 Select one authenticated generation for both the attack vector and metrics;
