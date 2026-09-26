@@ -385,8 +385,9 @@ func evidenceRelayOnlyRequestCancellation(err, requestErr error) bool {
 	return false
 }
 
-// A missing next manifest is ordinary unpublished state, never permission to
-// skip a source or epoch. The campaign's required-epoch wait enforces its end.
+// Each authenticated generation owns its cursor. A missing predecessor stays
+// unresolved without blocking the independent successor's signed cutoff.
+// No generation skips its own missing epoch or borrows another's publication.
 func (self *evidenceRelayRuntime) advance() error {
 	block, hash, err := self.chain.FinalizedBlockContext(self.ctx)
 	if err != nil {
@@ -396,27 +397,32 @@ func (self *evidenceRelayRuntime) advance() error {
 		return err
 	}
 	for index := range self.sources {
-		if err := self.serviceRemainingRequests(); err != nil {
-			return err
-		}
 		source := &self.sources[index]
-		path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.forEpoch(source.nextEpoch).stateDir, source.nextEpoch)
-		if err != nil {
-			return err
-		}
-		manifest, err := validatorcomponent.ReadValidatorEvidencePublicationV2Manifest(self.ctx, path, source.bounds.MaxClosureBytes, source.bounds.MaxParticipants)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		requests, err := self.readClosedPublication(self.ctx, source, manifest, block, hash)
-		if err != nil {
-			return err
-		}
-		if err := self.advanceClosedPublication(source, manifest, requests, block); err != nil {
-			return err
+		for _, generation := range source.generations() {
+			if err := self.serviceRemainingRequests(); err != nil {
+				return err
+			}
+			if source.forEpoch(generation.nextEpoch) != generation {
+				continue
+			}
+			path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(generation.stateDir, generation.nextEpoch)
+			if err != nil {
+				return err
+			}
+			manifest, err := validatorcomponent.ReadValidatorEvidencePublicationV2Manifest(self.ctx, path, generation.bounds.MaxClosureBytes, generation.bounds.MaxParticipants)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			requests, err := self.readClosedPublication(self.ctx, source, manifest, block, hash)
+			if err != nil {
+				return err
+			}
+			if err := self.advanceClosedPublication(generation, manifest, requests, block); err != nil {
+				return err
+			}
 		}
 	}
 	return self.ctx.Err()
@@ -476,7 +482,7 @@ func (self *evidenceRelayRuntime) advanceClosedPublication(source *evidenceRelay
 		func() {
 			self.stateLock.Lock()
 			defer self.stateLock.Unlock()
-			self.through[source.validatorId], self.completed[source.validatorId] = source.nextEpoch, true
+			self.through[source.validatorId], self.completed[source.validatorId] = max(self.through[source.validatorId], source.nextEpoch), true
 			close(self.changed)
 			self.changed = make(chan struct{})
 		}()
