@@ -20,3 +20,16 @@ also retains the independent LAN `eth_getBlockByNumber` response for
 `0x7b74e0`; the EVM block hash matches the owner row exactly. The RPC proves
 the block identity, while the rate, fleet and fault fields remain owner
 observations requiring terminal cross-checks.
+
+The first completed measured epoch has its own checkpoint. The exact owner
+`epoch651-first-completed-observation.json` row at byte offset 56,622,325
+reports epoch-651 usage of 19,396,509 and 18,756,754 bytes for operators 1
+and 2, respectively, and rate readiness at the first epoch-652 observation
+(finalized block 8,090,975). The LAN archive RPC independently returned both
+epoch-651 `RootCommitted` logs in finalized block 8,090,980. Both transaction
+receipts have status `0x1`, and each event's artifact hash matches the owner
+source content hash byte for byte. `onchain-epoch651.json` retains the exact
+logs, receipts, EVM and Substrate block hashes, finalized-head checkpoint,
+observation hash and SHA-256. This proves root commitments and source identity;
+entitlements, claims, native steering and terminal acceptance remain separate
+checks.
