@@ -21,7 +21,8 @@ import (
 
 const (
 	processLogGateSchema        = "urnetwork-sim-process-log-gate-v1"
-	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v12"
+	processLogClassifierVersion = "urnetwork-sim-process-log-classifier-v13"
+	processLogClassifierV12     = "urnetwork-sim-process-log-classifier-v12"
 	processLogClassifierV11     = "urnetwork-sim-process-log-classifier-v11"
 	processLogClassifierV10     = "urnetwork-sim-process-log-classifier-v10"
 	processLogClassifierV2      = "urnetwork-sim-process-log-classifier-v2"
@@ -296,6 +297,9 @@ func classifyProcessLogLine(line []byte) (processLogClassification, bool) {
 	}
 	if processLogArtifactRequestCancellation(text) {
 		return processLogClassification{class: "artifact-request-canceled", summary: "immutable artifact reader canceled its request", nonblockingDisposition: "request-canceled"}, true
+	}
+	if processLogArtifactTransportReset(text) {
+		return processLogClassification{class: "artifact-stream-transport-reset", summary: "immutable artifact stream transport was reset by its peer"}, true
 	}
 
 	// These exact classes are expected protocol/lifecycle noise and have their
@@ -701,7 +705,7 @@ func sameProcessLogCursorInventory(actual, expected []processLogCursor) bool {
 }
 
 func validatePersistedProcessLogGate(state processLogGateState) error {
-	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
+	if state.Schema != processLogGateSchema || state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV12 && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV2 {
 		return errors.New("process log gate schema or classifier does not match this release")
 	}
 	if state.Classifier == processLogClassifierV2 {
@@ -727,7 +731,7 @@ func validatePersistedProcessLogGate(state processLogGateState) error {
 		return errors.New("process log gate supervisor generation is incomplete")
 	}
 	for _, cursor := range state.Cursors {
-		if state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && cursor.ArtifactCancellationContinuation {
+		if state.Classifier != processLogClassifierVersion && state.Classifier != processLogClassifierV12 && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV10 && cursor.ArtifactCancellationContinuation {
 			return errors.New("legacy process log classifier has a future artifact continuation")
 		}
 		if cursor.InitialOffset < 0 || cursor.Offset < cursor.InitialOffset || cursor.DigestOffset < cursor.InitialOffset || cursor.DigestOffset > cursor.Offset || (cursor.Device == 0) != (cursor.Inode == 0) || cursor.InitialOffset > 0 && cursor.Inode == 0 || cursor.ScannedBytes != uint64(cursor.Offset-cursor.InitialOffset) || cursor.ChunkChain == "" {
@@ -794,7 +798,7 @@ func migrateProcessLogClassifier(state *processLogGateState) (bool, error) {
 	if state.Classifier == processLogClassifierVersion {
 		return false, nil
 	}
-	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV11 {
+	if state.Classifier != processLogClassifierV2 && state.Classifier != processLogClassifierV3 && state.Classifier != processLogClassifierV4 && state.Classifier != processLogClassifierV5 && state.Classifier != processLogClassifierV6 && state.Classifier != processLogClassifierV7 && state.Classifier != processLogClassifierV8 && state.Classifier != processLogClassifierV9 && state.Classifier != processLogClassifierV10 && state.Classifier != processLogClassifierV11 && state.Classifier != processLogClassifierV12 {
 		return false, errors.New("process log classifier has no supported migration")
 	}
 	if err := validatePersistedProcessLogGate(*state); err != nil {
