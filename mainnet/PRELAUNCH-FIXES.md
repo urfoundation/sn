@@ -2569,6 +2569,15 @@ continuation before resuming workers; an absent local intent cannot excuse
 an occupied chain slot. The focused successor and source-role normal/race
 tests pass, but live generation-2 activation and fresh native history remain
 unproven.
+The live testnet successor published all four zero-value consents before its
+approved activation boundary, with finalized receipts and contiguous keeper
+nonces. The apply command then exited with the explicit instruction to resume
+after that boundary finalizes; it had completed publication but had not yet
+staged the new clients or selected the successor. Mainnet automation must
+record this as durable staged progress, reapply the **same** immutable plan
+after the exact finalized boundary, and reconcile the four old receipts
+without rebroadcast. It must not interpret the nonzero waiting exit as a
+reason to replan, abandon the generation or stop the serving supervisor.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
