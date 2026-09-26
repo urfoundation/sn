@@ -19,8 +19,11 @@ rerun. Astra's isolated native-gap analysis found missed epoch 1691 cannot be
 recreated by repeatedly attempting 1692. Its successor patch `7700efad`
 refuses a known gap before signing new input but after reconciling existing
 signed input and draining eligible unsigned reservations. Isolated normal and
-race tests passed; combined-branch validation is running. Neither patch is in
-the live R47 executable. Do not restart R47 for either patch.
+race tests passed. The combined-branch validator selector also passed normally
+(66.272 seconds) and under race detection (110.712 seconds), with logs at
+`/mnt/data/sn-testnet/qualification/r47-ema-integration-{normal,race}.log`.
+Both successor patches are pushed through `de1c23eb`; neither is in the live
+R47 executable. Do not restart R47 for either patch.
 
 ## R47 first measured epoch closed — 2026-09-26 14:51 UTC
 
