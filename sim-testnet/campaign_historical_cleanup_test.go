@@ -85,7 +85,7 @@ func TestScenarioCleanupHistoricalApprovalRejectsForeignContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prior, _, err := reader.read(f.cleanup.history.attempt.path())
+	prior, priorRaw, err := reader.read(f.cleanup.history.attempt.path())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +96,22 @@ func TestScenarioCleanupHistoricalApprovalRejectsForeignContext(t *testing.T) {
 	}
 	if err := validateScenarioLifecycleHandoffBinding(prior.cfg, binding, raw); err != nil {
 		t.Fatal("authenticated historical view lost its original handoff", err)
+	}
+	projections, err := scenarioCampaignRecoveryProject([]scenarioCampaignRecoveryRecord{{attempt: prior, raw: priorRaw}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expanded, err := scenarioCampaignRecoveryExpand(c.cfg, c.stateDir, c.roles, projections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateScenarioLifecycleHandoffBinding(expanded[0].attempt.cfg, binding, raw); err != nil {
+		t.Fatal("warm recovery lost its authenticated historical approval", err)
+	}
+	expanded[0].attempt.cfg.campaignHistoricalApproval.AcceptedPlanHashes[0] = "synthetic-mutated-consumer"
+	expanded, err = scenarioCampaignRecoveryExpand(c.cfg, c.stateDir, c.roles, projections)
+	if err != nil || !reflect.DeepEqual(expanded[0].attempt.cfg.campaignHistoricalApproval, prior.cfg.campaignHistoricalApproval) {
+		t.Fatal("cache consumers shared mutable historical approval", err)
 	}
 	for _, mutate := range []func(*ScenarioLifecycleHandoff){
 		func(value *ScenarioLifecycleHandoff) { value.PlanHash = c.current.PlanHash },

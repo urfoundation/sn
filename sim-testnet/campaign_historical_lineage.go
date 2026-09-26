@@ -19,9 +19,12 @@ var errScenarioCampaignHistoricalLineage = errors.New("scenario campaign belongs
 // Historical handoff checks use their own signed approval without replacing
 // the actual invocation's provenance or admitting those bytes as a current run.
 type scenarioCampaignHistoricalApproval struct {
-	invocationPlanHash string
-	runId              string
-	plan               *SetupPlan
+	InvocationPlanHash string
+	RunId              string
+	PlanHash           string
+	ConfigHash         string
+	PolicyHash         string
+	AcceptedPlanHashes []string
 }
 
 // One read traversal shares immutable decoded approvals. It is not a durable
@@ -124,7 +127,11 @@ func (self *scenarioCampaignLineageReader) read(path string) (*scenarioCampaignA
 		return nil, nil, err
 	}
 	if attempt.historicalEvidence {
-		attempt.cfg.campaignHistoricalApproval = &scenarioCampaignHistoricalApproval{invocationPlanHash: self.planHash, runId: attempt.payload.RunID, plan: plan}
+		accepted, err := provisionalAcceptedPlanHashes(plan)
+		if err != nil {
+			return nil, nil, err
+		}
+		attempt.cfg.campaignHistoricalApproval = &scenarioCampaignHistoricalApproval{InvocationPlanHash: self.planHash, RunId: attempt.payload.RunID, PlanHash: plan.PlanHash, ConfigHash: plan.ConfigHash, PolicyHash: plan.PolicyHash, AcceptedPlanHashes: accepted}
 	}
 	return attempt, raw, nil
 }

@@ -99,15 +99,10 @@ func validateScenarioLifecycleHandoffProvenance(cfg *ResolvedConfig, binding Sce
 	}
 	planHash, acceptedPlanHashes := cfg.provisionalResume.Record.PlanHash, cfg.provisionalResume.AcceptedPlanHashes
 	if historical := cfg.campaignHistoricalApproval; historical != nil {
-		if !cfg.readOnlyAudit || historical.plan == nil || historical.invocationPlanHash != planHash || historical.runId != binding.CurrentRunID || historical.plan.ConfigHash != cfg.ConfigHash || historical.plan.PolicyHash != cfg.PolicyHash {
+		if !cfg.readOnlyAudit || historical.InvocationPlanHash != planHash || historical.RunId != binding.CurrentRunID || historical.ConfigHash != cfg.ConfigHash || historical.PolicyHash != cfg.PolicyHash {
 			return errors.New("historical lifecycle handoff differs from its authenticated read-only approval")
 		}
-		planHash = historical.plan.PlanHash
-		var err error
-		acceptedPlanHashes, err = provisionalAcceptedPlanHashes(historical.plan)
-		if err != nil {
-			return err
-		}
+		planHash, acceptedPlanHashes = historical.PlanHash, historical.AcceptedPlanHashes
 	}
 	if planHash != binding.PlanHash {
 		return errors.New("inherited release lifecycle handoff provenance is incomplete or inconsistent")

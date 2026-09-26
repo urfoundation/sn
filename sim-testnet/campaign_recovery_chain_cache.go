@@ -22,6 +22,7 @@ type scenarioCampaignRecoveryProjection struct {
 	payload    []byte
 	policy     []byte
 	historical bool
+	approval   []byte
 }
 
 // Configuration copies share the invocation, but callers receive independent
@@ -163,11 +164,21 @@ func scenarioCampaignRecoveryProject(records []scenarioCampaignRecoveryRecord) (
 		if err != nil {
 			return nil, err
 		}
-		retainedBytes += len(payload) + len(record.raw) + len(policy)
+		var approval []byte
+		if record.attempt.historicalEvidence {
+			if record.attempt.cfg.campaignHistoricalApproval == nil {
+				return nil, errors.New("historical recovery projection has no authenticated approval")
+			}
+			approval, err = json.Marshal(record.attempt.cfg.campaignHistoricalApproval)
+			if err != nil {
+				return nil, err
+			}
+		}
+		retainedBytes += len(payload) + len(record.raw) + len(policy) + len(approval)
 		if retainedBytes > scenarioCampaignRecoveryChainCacheBytes {
 			return nil, errors.New("recovery chain projection exceeds its cache byte bound")
 		}
-		projections = append(projections, scenarioCampaignRecoveryProjection{file: record.file, raw: bytes.Clone(record.raw), payload: payload, policy: policy, historical: record.attempt.historicalEvidence})
+		projections = append(projections, scenarioCampaignRecoveryProjection{file: record.file, raw: bytes.Clone(record.raw), payload: payload, policy: policy, historical: record.attempt.historicalEvidence, approval: approval})
 	}
 	return projections, nil
 }
@@ -187,6 +198,13 @@ func scenarioCampaignRecoveryExpand(cfg *ResolvedConfig, stateDir string, roles 
 			view.Policy = nil
 			if err := json.Unmarshal(projection.policy, &view.Policy); err != nil {
 				return nil, err
+			}
+			view.campaignHistoricalApproval = nil
+			if err := json.Unmarshal(projection.approval, &view.campaignHistoricalApproval); err != nil {
+				return nil, err
+			}
+			if view.campaignHistoricalApproval == nil {
+				return nil, errors.New("historical recovery projection lost its authenticated approval")
 			}
 			attempt.cfg = &view
 		}
