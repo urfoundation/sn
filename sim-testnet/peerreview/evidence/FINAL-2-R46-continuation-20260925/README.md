@@ -156,6 +156,9 @@ surfaces and the unresolved actor, process and restart findings to sealed
 samples. `r46-adversary-fix-review.receipt.json` lists the isolated fixes,
 normal/race tests and controlled old-behavior failures. Those code changes
 postdate R46 and cannot change its historical result.
+`r46-rpc-artifact-capture-triage.receipt.json` bounds RPC/artifact error
+attribution and the still-running serial diagnostic source capture. It does
+not infer an incident cause from pre-window proxy logs.
 
 `r46-gap-native-root-review.receipt.json` pins every retained exit-gap class
 and the native-1674 continuity evidence. Its 120-second receiver versus

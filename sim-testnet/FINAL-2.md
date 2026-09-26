@@ -305,6 +305,19 @@ root yet.
 (SHA-256 `b0d9cab66764c9ae213d810299a00f257fd046c3303c4f524ce926ca6091b8e1`),
 [isolated fix and test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversary-fix-review.receipt.json)
 (SHA-256 `b20be41e763ba3b996d33075de1b581d02d6ca1ef57155aff0eb0d1efd1733d9`).
+The sealed actor summaries, observations and owner journal do not retain
+individual RPC and artifact error chronology, so the **35 RPC** and **six
+artifact** error counts cannot yet be assigned a specific shared cause.
+The non-faulted EVM egress logged no R46-scoped failures; earlier deadline
+lines precede this acceptance window. A read-only census of the diagnostic
+capture found 31 epoch closures and 142 referenced streams totaling about
+878 MB before overlap. Validator-2 capture was still reading serial source
+chunks at the recorded cut. A separate RPC verifier defect was found and
+tested afterward: two responses at the same wrong height, or two malformed
+32-byte hashes, could be accepted as a common owned block. That is an
+adjacent integrity fix, **not established as the cause of R46's 35 RPC
+errors**. [Actor and capture triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-rpc-artifact-capture-triage.receipt.json)
+(SHA-256 `bb20784b39dd38b0d003fbc5ed675724ecb072ae88cf560c699f93e63b3a31fd`).
 
 A separate exact-log review pins **18 receive-sequence exit-gap events across
 10 swarms**; these are sequence gaps, not process exits. The pinned receive
