@@ -151,6 +151,12 @@ independent root causes or converting any failure to a pass. A fresh
 read-only terminal diagnostic is running against the sealed files; its
 completed report will be added separately.
 
+`r46-adversary-triage.receipt.json` binds the capped oldest-first operator
+surfaces and the unresolved actor, process and restart findings to sealed
+samples. `r46-adversary-fix-review.receipt.json` lists the isolated fixes,
+normal/race tests and controlled old-behavior failures. Those code changes
+postdate R46 and cannot change its historical result.
+
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
 completion observations inside the authenticated prefix. It identifies the

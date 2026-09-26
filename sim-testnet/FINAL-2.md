@@ -278,6 +278,27 @@ triage, not a waiver or a claim that any failed gate passed. The owner
 and [anomalies](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-anomalies.json)
 are copied byte-for-byte from the independent terminal capture.
 
+An independent actor review found a concrete observation defect: each healthy
+operator surface in the retained samples returned exactly **100,000 stats
+rows and 10,000 proof rows**, and the per-operator body hashes stayed
+unchanged across R46. The pinned server orders those endpoints oldest-first;
+an unbounded request capped at those counts can omit the current interval and
+freeze quality-cohort measurements. It also found separate harness defects
+where a successful API response inherited unrelated process unhealthiness,
+signed verify failures could be excused by a scheduled fault, and later
+success obscured earlier actor errors. Isolated fixes request bounded time
+ranges, reject a full page, and retain strict provenance and process checks.
+Their fixed focused suite passed **61** tests and the race subset **40**;
+five controlled old-behavior checks failed as expected. These patches were
+not present in R46 and do not revise its verdict. The same review leaves
+**35 RPC errors, six artifact errors, 21 health findings, two restart
+anomalies and 18 exit-gap events** as strict findings with no proven shared
+root yet.
+[Exact sealed triage](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversary-triage.receipt.json)
+(SHA-256 `b0d9cab66764c9ae213d810299a00f257fd046c3303c4f524ce926ca6091b8e1`),
+[isolated fix and test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversary-fix-review.receipt.json)
+(SHA-256 `b20be41e763ba3b996d33075de1b581d02d6ca1ef57155aff0eb0d1efd1733d9`).
+
 The sealed read-only diagnostic currently reports
 `result-start-and-fault-binding` failed with “lifecycle cleanup completion
 appeared without its prior signed request.” The exact retained sequence is
