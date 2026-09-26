@@ -277,7 +277,7 @@ func TestScenarioFailedTerminalPinsIrreversibleArtifactToAcceptedChainRow(t *tes
 func TestScenarioFailedTerminalUsesOnlyIrreversibleScopedProcessFindings(t *testing.T) {
 	scope := "0x" + strings.Repeat("61", 32)
 	finding := ProcessLogFinding{ProcessID: "synthetic-worker", Stream: "stderr", Class: "exit-gap-timeout", Blocking: true, Disposition: "unexplained", Count: 2,
-		FirstOffset: 10, LastOffset: 30, FirstLineSHA256: "sha256:" + strings.Repeat("62", 32), LastLineSHA256: "sha256:" + strings.Repeat("63", 32), AcceptanceScope: scope}
+		FirstOffset: 10, LastOffset: 30, FirstLineSHA256: strings.Repeat("62", 32), LastLineSHA256: strings.Repeat("63", 32), AcceptanceScope: scope}
 	if scenarioIrreversibleProcessFailure(scope, []ProcessLogFinding{finding}) == "" {
 		t.Fatal("repeated exact timeout did not establish strict failure")
 	}
@@ -291,6 +291,10 @@ func TestScenarioFailedTerminalUsesOnlyIrreversibleScopedProcessFindings(t *test
 		{name: "recovering", edit: func(f *ProcessLogFinding) { f.RecoveryStartedAt = "2026-09-03T12:00:00Z" }},
 		{name: "unknown", edit: func(f *ProcessLogFinding) { f.Class = "unknown-control" }},
 		{name: "missing-byte-proof", edit: func(f *ProcessLogFinding) { f.FirstLineSHA256 = "" }},
+		{name: "nonhex-first-proof", edit: func(f *ProcessLogFinding) { f.FirstLineSHA256 = strings.Repeat("zz", 32) }},
+		{name: "short-last-proof", edit: func(f *ProcessLogFinding) { f.LastLineSHA256 = strings.Repeat("63", 31) }},
+		{name: "prefixed-first-proof", edit: func(f *ProcessLogFinding) { f.FirstLineSHA256 = "sha256:" + f.FirstLineSHA256 }},
+		{name: "prefixed-last-proof", edit: func(f *ProcessLogFinding) { f.LastLineSHA256 = "sha256:" + f.LastLineSHA256 }},
 		{name: "bounded-tls", edit: func(f *ProcessLogFinding) { f.Class = "tls-handshake-timeout" }},
 	} {
 		copy := finding
@@ -302,5 +306,56 @@ func TestScenarioFailedTerminalUsesOnlyIrreversibleScopedProcessFindings(t *test
 	finding.Class, finding.Count = "tls-handshake-timeout", 3
 	if scenarioIrreversibleProcessFailure(scope, []ProcessLogFinding{finding}) == "" {
 		t.Fatal("repeated strict TLS finding was erased")
+	}
+}
+
+// Exercise the actual scanner wire identifiers, its isolated-event budget and
+// a persisted reload. Failed completion must not rewrite or waive strict logs.
+func TestScenarioFailedTerminalRecognizesScannerProducedProcessHashes(t *testing.T) {
+	for _, test := range []struct {
+		class   string
+		message string
+		count   int
+	}{
+		{class: "exit-gap-timeout", message: "exit gap timeout", count: 2},
+		{class: "tls-handshake-timeout", message: "completeHandshake failed: tls handshake timeout", count: 3},
+	} {
+		fixture := newProcessLogGateFixture(t, "", "")
+		_, scope, err := fixture.gate.BindAcceptance(time.Date(2032, time.January, 2, 3, 4, 5, 0, time.UTC))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 1; i <= test.count; i++ {
+			appendProcessLog(t, fixture.stderrPath, "E0102 03:04:06 "+test.message+"\n")
+			scan, err := fixture.gate.Scan(false)
+			if err != nil || len(scan.Findings) != 1 || scan.Findings[0].Class != test.class || scan.Findings[0].Count != uint64(i) {
+				t.Fatalf("%s real scan: %+v %v", test.class, scan, err)
+			}
+			reason := scenarioIrreversibleProcessFailure(scope, scan.Findings)
+			if i < test.count && reason != "" {
+				t.Errorf("%s isolated occurrence ended observation: %s", test.class, reason)
+			}
+			if i == test.count && (reason == "" || len(blockingProcessLogFindings(scan.Findings)) != 1) {
+				t.Errorf("%s scanner-produced strict failure could not seal a failed interval: reason=%q findings=%+v", test.class, reason, scan.Findings)
+			}
+			if scenarioIrreversibleProcessFailure("0x"+strings.Repeat("64", 32), scan.Findings) != "" {
+				t.Fatal("another acceptance scope borrowed scanner evidence")
+			}
+		}
+		before := append([]ProcessLogFinding(nil), fixture.gate.state.Findings...)
+		reloaded, err := loadProcessLogGate(fixture.dir, fixture.manifest, fixture.supervisor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		final, err := reloaded.Scan(true)
+		if err != nil || !reflect.DeepEqual(before, reloaded.state.Findings) || len(blockingProcessLogFindings(final.Findings)) != 1 {
+			t.Fatalf("%s final scan lost strict raw evidence: %+v %v", test.class, final, err)
+		}
+		if reason := scenarioIrreversibleProcessFailure(scope, final.Findings); reason == "" {
+			t.Errorf("%s persisted scanner hashes were not recognized: %+v", test.class, final.Findings)
+		}
+		if err := reloaded.RequireClean(true); err == nil {
+			t.Fatal("failed completion made strict final process gate pass")
+		}
 	}
 }
