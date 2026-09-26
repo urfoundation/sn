@@ -2662,6 +2662,16 @@ controller should return a retryable response or reassign the hop, and test the
 adversary's bounded retry and evidence accounting at that boundary. Do not
 silently classify this HTTP 400 as an invalid validator signature.
 
+During R47's measured epoch 651, the scheduled second Redis outage made both
+validators' native steering uploads return HTTP 500 with a Redis connection
+refusal. The owner continued and restored Redis, but the process-log gate
+retained the failed attempts as blocking findings. Before mainnet, test the
+complete outage-to-recovery sequence: a failed immutable upload must reconcile
+its durable object and retry after Redis returns, and the final gate must
+distinguish a recovered, fault-scoped attempt from a permanently skipped native
+epoch. Keep the missed-epoch and custody checks strict even if an individual
+attempt is classified as expected during the signed fault window.
+
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
 Select one authenticated generation for both the attack vector and metrics;
