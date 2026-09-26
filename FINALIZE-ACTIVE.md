@@ -1,5 +1,27 @@
 # Testnet execution plan
 
+## R47 continuation and successor fixes — 2026-09-26 15:14 UTC
+
+R47 owner PID 1255308 and retained fleet supervisor PID 1242083 are still
+running. The owner has retained 52 observations through 15:06:24 UTC, with
+both operator surfaces healthy, policy rate readiness true, and valid fleet
+bindings at the latest row. It has no sealed terminal result. The signed fault
+controller has restored 16 of 42 faults, with the head-boundary and fleet
+view filters active and rolling restart 11 in progress at the read cut. The
+native steering attempt failures remain strict, unexplained process findings;
+continuing the live owner preserves all later measured and terminal evidence.
+
+The ordinary simulator package partition found that cancellation after a
+response read/Close failure discarded the body ownership error. A deterministic
+fix preserving joined causes passed 28 focused tests normally and with race
+detection, was pushed as `57e6a9e8`, and is now under full ordinary-partition
+rerun. Astra's isolated native-gap analysis found missed epoch 1691 cannot be
+recreated by repeatedly attempting 1692. Its successor patch `7700efad`
+refuses a known gap before signing new input but after reconciling existing
+signed input and draining eligible unsigned reservations. Isolated normal and
+race tests passed; combined-branch validation is running. Neither patch is in
+the live R47 executable. Do not restart R47 for either patch.
+
 ## R47 first measured epoch closed — 2026-09-26 14:51 UTC
 
 The LAN chain crossed the epoch-651 close at block 8,090,974. The active R47

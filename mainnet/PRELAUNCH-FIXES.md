@@ -2681,6 +2681,20 @@ retryable type. Preserve the exact semantic-failure budget and strict
 incomplete-epoch boundary, but let typed transport/service failures retry in
 the same process without consuming that budget; test the outage, recovery,
 malformed nonempty acknowledgement, and persistent semantic failure cases.
+R47 then advanced from failed native epoch 1691 to native 1692 with both
+validators still retaining applied intent and compact EMA at 1690. Repeating
+1692 cannot recreate an absent 1691 commit. Runtime-version compatibility is
+not authority to skip native history. Before mainnet, make a known successor
+gap explicit before publishing another signed input, with the exact missing
+range in the error; keep strict default refusal unless a separately approved,
+authenticated history adoption or closed-input deferral grants that edge.
+Place this negative preflight after reconciliation of already published signed
+inputs and cancellation of eligible drained unsigned reservations so an
+unrecoverable steering gap does not strand independent terminal settlement.
+Test strict, permitted, pending-intent, same-epoch, custody, cleanup, and
+restart paths. The post-R47 candidate implements this preflight and typed
+diagnostic; it cannot retroactively fill R47's missed native epoch.
+
 The capacity forecasts in `runtime_client_key_upload_capacity.go` and
 `runtime_evidence_source_capacity.go` still multiply native windows by the ten
 semantic-failure limit. Transport retries can poll throughout a native window,
