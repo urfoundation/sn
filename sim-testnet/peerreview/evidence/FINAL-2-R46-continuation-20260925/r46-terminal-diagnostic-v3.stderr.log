@@ -1,0 +1,90 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 06:30:25.652771  859891 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 06:30:25.653062  859891 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 06:30:25.653251  859891 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 06:30:25.653283  859891 env.go:78] [env]settings = map[]
+sim-testnet: terminal diagnostic signed-acceptance-start: pass; final_acceptance=false
+sim-testnet: terminal diagnostic signed-latest-checkpoint: pass; final_acceptance=false
+sim-testnet: terminal diagnostic acceptance-not-invalidated: fail; final_acceptance=false
+sim-testnet: campaign recovery lineage; authenticated_generations=0 total_generations=46 phase=validating
+sim-testnet: campaign recovery lineage; authenticated_generations=1 total_generations=46 generation=1 cached_plans=2 elapsed=3.989s
+sim-testnet: campaign recovery lineage; authenticated_generations=2 total_generations=46 generation=2 cached_plans=2 elapsed=9.325s
+sim-testnet: campaign recovery lineage; authenticated_generations=3 total_generations=46 generation=3 cached_plans=2 elapsed=14.03s
+sim-testnet: campaign recovery lineage; authenticated_generations=4 total_generations=46 generation=4 cached_plans=2 elapsed=14.429s
+sim-testnet: campaign recovery lineage; authenticated_generations=5 total_generations=46 generation=5 cached_plans=2 elapsed=14.767s
+sim-testnet: campaign recovery lineage; authenticated_generations=6 total_generations=46 generation=6 cached_plans=2 elapsed=15.446s
+sim-testnet: campaign recovery lineage; authenticated_generations=7 total_generations=46 generation=7 cached_plans=2 elapsed=15.902s
+sim-testnet: campaign recovery lineage; authenticated_generations=8 total_generations=46 generation=8 cached_plans=2 elapsed=16.438s
+sim-testnet: campaign recovery lineage; authenticated_generations=9 total_generations=46 generation=9 cached_plans=2 elapsed=17.018s
+sim-testnet: campaign recovery lineage; authenticated_generations=10 total_generations=46 generation=10 cached_plans=2 elapsed=17.521s
+sim-testnet: campaign recovery lineage; authenticated_generations=11 total_generations=46 generation=11 cached_plans=2 elapsed=18.024s
+sim-testnet: campaign recovery lineage; authenticated_generations=12 total_generations=46 generation=12 cached_plans=2 elapsed=18.59s
+sim-testnet: campaign recovery lineage; authenticated_generations=13 total_generations=46 generation=13 cached_plans=2 elapsed=19.907s
+sim-testnet: campaign recovery lineage; authenticated_generations=14 total_generations=46 generation=14 cached_plans=2 elapsed=24.928s
+sim-testnet: campaign recovery lineage; authenticated_generations=15 total_generations=46 generation=15 cached_plans=2 elapsed=25.682s
+sim-testnet: campaign recovery lineage; authenticated_generations=16 total_generations=46 generation=16 cached_plans=2 elapsed=26.38s
+sim-testnet: campaign recovery lineage; authenticated_generations=17 total_generations=46 generation=17 cached_plans=2 elapsed=26.924s
+sim-testnet: campaign recovery lineage; authenticated_generations=18 total_generations=46 generation=18 cached_plans=2 elapsed=27.368s
+sim-testnet: campaign recovery lineage; authenticated_generations=19 total_generations=46 generation=19 cached_plans=2 elapsed=28.146s
+sim-testnet: campaign recovery lineage; authenticated_generations=20 total_generations=46 generation=20 cached_plans=3 elapsed=32.878s
+sim-testnet: campaign recovery lineage; authenticated_generations=21 total_generations=46 generation=21 cached_plans=4 elapsed=41.523s
+sim-testnet: campaign recovery lineage; authenticated_generations=22 total_generations=46 generation=22 cached_plans=4 elapsed=46.903s
+sim-testnet: campaign recovery lineage; authenticated_generations=23 total_generations=46 generation=23 cached_plans=4 elapsed=47.378s
+sim-testnet: campaign recovery lineage; authenticated_generations=24 total_generations=46 generation=24 cached_plans=4 elapsed=47.73s
+sim-testnet: campaign recovery lineage; authenticated_generations=25 total_generations=46 generation=25 cached_plans=4 elapsed=48.335s
+sim-testnet: campaign recovery lineage; authenticated_generations=26 total_generations=46 generation=26 cached_plans=4 elapsed=48.808s
+sim-testnet: campaign recovery lineage; authenticated_generations=27 total_generations=46 generation=27 cached_plans=5 elapsed=54.282s
+sim-testnet: campaign recovery lineage; authenticated_generations=28 total_generations=46 generation=28 cached_plans=5 elapsed=57.562s
+sim-testnet: campaign recovery lineage; authenticated_generations=29 total_generations=46 generation=29 cached_plans=5 elapsed=1m3.632s
+sim-testnet: campaign recovery lineage; authenticated_generations=30 total_generations=46 generation=30 cached_plans=5 elapsed=1m9.085s
+sim-testnet: campaign recovery lineage; authenticated_generations=31 total_generations=46 generation=31 cached_plans=5 elapsed=1m11.932s
+sim-testnet: campaign recovery lineage; authenticated_generations=32 total_generations=46 generation=32 cached_plans=5 elapsed=1m14.211s
+sim-testnet: campaign recovery lineage; authenticated_generations=33 total_generations=46 generation=33 cached_plans=5 elapsed=1m16.766s
+sim-testnet: campaign recovery lineage; authenticated_generations=34 total_generations=46 generation=34 cached_plans=5 elapsed=1m20.636s
+sim-testnet: campaign recovery lineage; authenticated_generations=35 total_generations=46 generation=35 cached_plans=5 elapsed=1m25.204s
+sim-testnet: campaign recovery lineage; authenticated_generations=36 total_generations=46 generation=36 cached_plans=5 elapsed=1m36.683s
+sim-testnet: campaign recovery lineage; authenticated_generations=37 total_generations=46 generation=37 cached_plans=6 elapsed=1m48.413s
+sim-testnet: campaign recovery lineage; authenticated_generations=38 total_generations=46 generation=38 cached_plans=6 elapsed=1m53.964s
+sim-testnet: campaign recovery lineage; authenticated_generations=39 total_generations=46 generation=39 cached_plans=6 elapsed=1m59.335s
+sim-testnet: campaign recovery lineage; authenticated_generations=40 total_generations=46 generation=40 cached_plans=6 elapsed=2m4.588s
+sim-testnet: campaign recovery lineage; authenticated_generations=41 total_generations=46 generation=41 cached_plans=6 elapsed=2m7.539s
+sim-testnet: campaign recovery lineage; authenticated_generations=42 total_generations=46 generation=42 cached_plans=6 elapsed=2m14.859s
+sim-testnet: campaign recovery lineage; authenticated_generations=43 total_generations=46 generation=43 cached_plans=6 elapsed=2m18.963s
+sim-testnet: campaign recovery lineage; authenticated_generations=44 total_generations=46 generation=44 cached_plans=6 elapsed=2m31.486s
+sim-testnet: campaign recovery lineage; authenticated_generations=45 total_generations=46 generation=45 cached_plans=7 elapsed=2m57.218s
+sim-testnet: campaign recovery lineage; authenticated_generations=46 total_generations=46 generation=46 cached_plans=7 elapsed=3m3.834s
+sim-testnet: terminal diagnostic full-retained-campaign-lineage: pass; final_acceptance=false
+sim-testnet: terminal diagnostic signed-observation-prefix: pass; final_acceptance=false
+sim-testnet: terminal diagnostic complete-epoch-terminal: pass; final_acceptance=false
+sim-testnet: terminal diagnostic original-scenario-result: pass; final_acceptance=false
+sim-testnet: terminal diagnostic owner-signed-completion: fail; final_acceptance=false
+sim-testnet: terminal diagnostic result-start-and-fault-binding: pass; final_acceptance=false
+sim-testnet: terminal diagnostic terminal-epoch-observation-fields: pass; final_acceptance=false
+sim-testnet: terminal diagnostic terminal-scenario-assertions: fail; final_acceptance=false
+sim-testnet: terminal diagnostic strict-final-acceptance-gate: fail; final_acceptance=false
+sim-testnet: terminal diagnostic active-generation-path-authority: pass; final_acceptance=false
+sim-testnet: terminal diagnostic operator-1/current-signed-artifacts: pass; final_acceptance=false
+sim-testnet: terminal diagnostic operator-2/current-signed-artifacts: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/local-intents: finding; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/path-proofs: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/exact-production-config: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/signed-source-capture: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/native-application-coverage: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic validator-1/relay-publication-readback: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/local-intents: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/path-proofs: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/exact-production-config: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/native-application-coverage: pass; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/relay-publication-readback: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic validator-2/signed-source-capture: pass; final_acceptance=false
+sim-testnet: terminal diagnostic original-process-log-report: fail; final_acceptance=false
+sim-testnet: terminal diagnostic acceptance-fault-timing: fail; final_acceptance=false
+sim-testnet: terminal diagnostic companion-evidence-capture: pass; final_acceptance=false
+sim-testnet: terminal diagnostic signed-payout-artifacts: pass; final_acceptance=false
+sim-testnet: terminal diagnostic lifecycle-payout-artifacts: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic compact-validator-final-capture: unavailable; final_acceptance=false
+sim-testnet: terminal diagnostic adversarial-matrix: pass; final_acceptance=false
+sim-testnet: terminal diagnostic adversarial-campaign: fail; final_acceptance=false
+sim-testnet: terminal diagnostic closed-foundation-receipts-and-topology: pass; final_acceptance=false
+sim-testnet: terminal diagnostic canonical-contract-receipts-and-native-rewards: fail; final_acceptance=false
+sim-testnet: terminal diagnostic original-strict-semantic-source: unavailable; final_acceptance=false

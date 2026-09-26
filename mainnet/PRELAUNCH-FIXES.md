@@ -2469,6 +2469,16 @@ source-baseline rule for ordinary upgrades. Test a valid constructor →
 ordinary upgrade → correction chain, a missing predecessor and a changed
 retained runtime, then replay the exact archived timeline before mainnet.
 
+The complete R46 v3 diagnostic found another historical approval seam:
+`repair.precompile-residual.v2.1` is finalized in the journal but absent
+from its source plan's static actions. Its separate recovery documents may
+authorize it, but the chain census must prove exact source-plan binding,
+both required signatures, approved step and intent, signed completion and
+unique finalized journal row before admitting it. A repair-name prefix or
+operator assertion is insufficient. Exercise the valid carried repair and
+changed source, step, signature, calldata and duplicate controls; preserve
+the diagnostic failure until that proof is implemented and replayed.
+
 The R46 replay also exposed an operational attestation trap: Go did not stamp
 VCS build information when the diagnostic executable was built from a linked
 worktree, even with `-buildvcs=true`. The release driver correctly rejected

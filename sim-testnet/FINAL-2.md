@@ -484,7 +484,25 @@ replayed. It found no additional concrete retry or custody defect. The
 [bounded review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review.md)
 and [normal/race test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review-tests.receipt.json)
 do not predict a passing source capture; the active replay's eventual result
-will be reported separately.
+is reported next.
+
+The independent **v3 replay completed** at 07:46:02 UTC with **39 checks:
+22 pass, eight fail, seven unavailable, one finding and one disclosed
+exception**. Its exit code 0 means the read-only report completed;
+`final_acceptance=false`. Relative to v2, the retained result binding,
+validator-2 signed-source capture and validator-2 native coverage now pass.
+The original adversarial campaign is no longer misreported as missing: its
+authenticated failed vector remains a strict failure. The corrected
+historical chain census still fails on a different journal action,
+`repair.precompile-residual.v2.1`, absent from static plan
+`0x016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b`.
+Its authorization must be proved from exact signed carried evidence or the
+failure retained. The original strict semantic source is unavailable because
+the original run has no `final-inputs` directory; v3 does not create a
+passing semantic bundle. [Complete v3 report](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-v3.report.json)
+(SHA-256 `bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb`),
+[comparison and provenance receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-v3.receipt.json)
+(SHA-256 `cd332db64dfe7fabd8e1e69aa4d5e208304fc4fe735065d79ed91d1a4242e5bd`).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

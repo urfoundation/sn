@@ -195,7 +195,12 @@ checkpoint is partial, and neither file changes the failed owner result.
 `r46-capture-review.md`, `r46-capture-census.json` and
 `r46-capture-review-tests.receipt.json` record the later read-only source
 inventory, its limits and unchanged normal/race capture tests. The active
-replay result will be added separately.
+replay result is recorded next.
+`r46-terminal-diagnostic-v3.report.json` is that later complete read-only
+replay. Its paired provenance, stderr, exit and comparison receipt show a
+completed 39-check report with failed acceptance, a successful validator-2
+source capture, and the still-unapproved precompile residual journal action.
+The sealed v2 diagnostic and owner result remain unchanged.
 `r46-repair-timeline-review.md`, `r46-timeline-retained-field-comparison.json`
 and `r46-timeline-qualification.json` record the signed predecessor
 chronology correction and its normal/race controls. The paired

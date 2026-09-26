@@ -1,0 +1,67 @@
+{
+  "schema": "urnetwork-r46-terminal-diagnostic-v3-review-v1",
+  "read_only": true,
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "started_at": "2026-09-26T06:30:53.818809835Z",
+  "completed_at": "2026-09-26T07:46:02.551259335Z",
+  "status": "complete-with-findings",
+  "final_acceptance": false,
+  "driver": {
+    "executable_path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-diagnostic-363882d6",
+    "executable_sha256": "sha256:d8d63a01a2ed716be14f81dad2dafb02dcc43f1c149c0c3f549c1f64a75c2d0e",
+    "build": {
+      "PackagePath": "github.com/urfoundation/sn/sim-testnet",
+      "ModulePath": "github.com/urfoundation/sn",
+      "Revision": "363882d6e9d1fe2892c3ca40c03635e06bc6cdf9",
+      "Modified": false,
+      "Trimpath": false
+    }
+  },
+  "process_exit": 0,
+  "checks": 39,
+  "status_counts": {
+    "pass": 22,
+    "fail": 8,
+    "exception": 1,
+    "finding": 1,
+    "unavailable": 7
+  },
+  "changed_check_statuses": {
+    "adversarial-campaign": {
+      "v2": "unavailable",
+      "v3": "fail"
+    },
+    "result-start-and-fault-binding": {
+      "v2": "fail",
+      "v3": "pass"
+    },
+    "validator-2/native-application-coverage": {
+      "v2": "unavailable",
+      "v3": "pass"
+    },
+    "validator-2/signed-source-capture": {
+      "v2": "fail",
+      "v3": "pass"
+    }
+  },
+  "files": {
+    "r46-terminal-diagnostic-v3.report.json": {
+      "sha256": "bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+      "bytes": 2689936
+    },
+    "r46-terminal-diagnostic-v3.provenance.json": {
+      "sha256": "63637b6251cac4deb995efead41201e322a0f33d91b734b5ee7e59e3f46ad7d5",
+      "bytes": 1133
+    },
+    "r46-terminal-diagnostic-v3.stderr.log": {
+      "sha256": "b4a989520ba7fabc38f50a6b924004582c54fe3c8d0e5a85778227e0ff0e672d",
+      "bytes": 10339
+    },
+    "r46-terminal-diagnostic-v3.exit": {
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    }
+  },
+  "limits": "Diagnostic exit 0 means a complete read-only report, not release acceptance. The signed owner result and original v2 report remain unchanged."
+}

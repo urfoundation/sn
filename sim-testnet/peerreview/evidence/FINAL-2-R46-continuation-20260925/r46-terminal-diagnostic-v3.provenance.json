@@ -1,0 +1,25 @@
+{
+  "schema": "urnetwork-sim-provisional-resume-v1",
+  "provisional": true,
+  "final_acceptance": false,
+  "read_only": true,
+  "started_at": "2026-09-26T06:30:53.811048524Z",
+  "command": "terminal-diagnostics",
+  "scenario": "release-1.0",
+  "deployment_id": "ur-subnet-testnet-v1",
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+  "retained_release_lock_hash": "0xcfbaf5be4e47aeca951e742ca96519c5704a4dc4b3ea49a3a8d0bc585f6b308a",
+  "retained_configuration_sn_repository": "/home/by/urnetwork/sn",
+  "actual_driver": {
+    "executable_path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/build/sim-testnet-r46-diagnostic-363882d6",
+    "executable_sha256": "sha256:d8d63a01a2ed716be14f81dad2dafb02dcc43f1c149c0c3f549c1f64a75c2d0e",
+    "build": {
+      "PackagePath": "github.com/urfoundation/sn/sim-testnet",
+      "ModulePath": "github.com/urfoundation/sn",
+      "Revision": "363882d6e9d1fe2892c3ca40c03635e06bc6cdf9",
+      "Modified": false,
+      "Trimpath": false
+    }
+  }
+}
