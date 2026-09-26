@@ -4410,6 +4410,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	var runtimeAssertions []AssertionRecord
 	var cleanupHandoff *ScenarioLifecycleHandoff
 	provisionalTerminalComplete := false
+	provisionalTerminalFailure := ""
 	snapshotFailureCount := 0
 scenarioLoop:
 	for (!scenarioAcceptanceIntervalObserved(window, current) || !scenarioAssertionsComplete(cfg, definition, assertions) || !faultsComplete(faults) || (options.FleetLifecycle != nil && !options.FleetLifecycle.Complete()) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
@@ -4574,6 +4575,12 @@ scenarioLoop:
 		if faultErr != nil {
 			break
 		}
+		if boundaryCommitted {
+			provisionalTerminalFailure = scenarioProvisionalFailureCompletion(cfg, definition, window, current, faults, assertions, options)
+			if provisionalTerminalFailure != "" {
+				break
+			}
+		}
 		if cleanupHandoff != nil && options.FleetLifecycle.Complete() && (options.Adversaries == nil || options.Adversaries.Ready()) && scenarioLifecycleOperationalCompletion(cfg, definition, window, current, cleanupHandoff, faults, assertions) {
 			provisionalTerminalComplete = true
 			break
@@ -4601,7 +4608,7 @@ scenarioLoop:
 			acceptanceIncomplete = true
 		}
 	}
-	if boundaryCommitted && acceptanceIncomplete && !provisionalTerminalComplete {
+	if boundaryCommitted && acceptanceIncomplete && !provisionalTerminalComplete && provisionalTerminalFailure == "" {
 		if terminalErr == nil {
 			terminalErr = errors.New("signed scenario acceptance ended before every assertion, fault, lifecycle, and adversary gate completed")
 		}
@@ -4634,6 +4641,13 @@ scenarioLoop:
 	}
 	if provisionalTerminalComplete {
 		assertions = append(assertions, AssertionRecord{ID: "provisional_lifecycle_terminal_cleanup", Passed: false, Message: "full signed interval observed; local lifecycle filters cleaned under exact bypass handoff " + cleanupHandoff.ContentHash + "; lifecycle mutations remain unproved; final_acceptance=false", StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano), ObservationHash: current.ObservationHash})
+	}
+	if provisionalTerminalFailure != "" {
+		assertions = append(assertions, AssertionRecord{
+			ID: "provisional_failed_interval_complete", Passed: false,
+			Message:   "complete signed interval and fault cleanup observed; immutable failure retained: " + provisionalTerminalFailure + "; final_acceptance=false",
+			StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: completed.UTC().Format(time.RFC3339Nano), DurationSeconds: completed.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+		})
 	}
 	assertions = append(assertions, runtimeAssertions...)
 	assertions = append(assertions, snapshotRetries.assertions()...)
