@@ -42,7 +42,8 @@ func (self *liveScenarioProbe) getCampaignEvidence(ctx context.Context, endpoint
 }
 
 // An invocation-local wait seam permits deterministic cancellation/exhaustion
-// tests without replacing transport, decoding or authentication results.
+// tests without replacing transport, decoding or authentication results. An
+// interrupted retry retains the last request's read/close failure.
 func (self *liveScenarioProbe) getCampaignEvidenceWithWait(ctx context.Context, endpoint, kind string, maximum int64, limits campaignEvidenceLimits, wait func(context.Context, time.Duration) error) ([]byte, int, error) {
 	if self == nil || ctx == nil || wait == nil || maximum <= 0 || uint64(maximum) > limits.maximumEnvelopeBytes() {
 		return nil, 0, errors.New("campaign evidence request authority is invalid")
@@ -66,18 +67,15 @@ func (self *liveScenarioProbe) getCampaignEvidenceWithWait(ctx context.Context, 
 	var failure error
 	for attempt := 1; attempt <= evidenceRequestMaximumAttempts; attempt++ {
 		if err := requestCtx.Err(); err != nil {
-			return nil, status, err
+			return nil, status, errors.Join(failure, err)
 		}
 		raw, code, err := getScenarioProbeWithClient(requestCtx, &owned, endpoint, maximum)
 		status, failure = code, err
-		if err == nil {
-			if err := requestCtx.Err(); err != nil {
-				return nil, status, err
-			}
-			return raw, status, nil
-		}
 		if err := requestCtx.Err(); err != nil {
-			return nil, status, err
+			return nil, status, errors.Join(failure, err)
+		}
+		if failure == nil {
+			return raw, status, nil
 		}
 		transient := scenarioSnapshotTransportError(failure, true)
 		var response *evidenceRequestStatusError
@@ -92,7 +90,7 @@ func (self *liveScenarioProbe) getCampaignEvidenceWithWait(ctx context.Context, 
 		}
 		fmt.Fprintf(os.Stderr, "sim-testnet: campaign evidence GET transient attempt %d/%d; retrying the same route: %v\n", attempt, evidenceRequestMaximumAttempts, failure)
 		if err := wait(requestCtx, evidenceRequestRetryDelay*time.Duration(attempt)); err != nil {
-			return nil, status, err
+			return nil, status, errors.Join(failure, err, requestCtx.Err())
 		}
 	}
 	return nil, status, failure
