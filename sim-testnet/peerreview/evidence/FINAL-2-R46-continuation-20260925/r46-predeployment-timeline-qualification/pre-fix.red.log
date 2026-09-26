@@ -1,0 +1,11 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:05:02.574896 1092138 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:05:02.575599 1092138 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:05:02.575864 1092138 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:05:02.575916 1092138 env.go:78] [env]settings = map[]
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment
+    final_semantic_chronology_predeployment_test.go:58: authenticated predeployment ancestor was refused: historical coordinator timeline has an unapproved plan
+--- FAIL: TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment (0.01s)
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.090s
+FAIL

@@ -2482,6 +2482,16 @@ census, but neither substitutes for the full canonical/native chain check.
 Before mainnet, exercise this same source path through bounded EVM chronology
 and final artifact verification, retaining changed source, step, signature,
 calldata and duplicate controls.
+The same R46 chronology uncovered four approved predecessor plans that were
+signed before any coordinator proxy existed. Historical readers must retain
+their planned actions and finalized implementation preparation without
+treating the zero address as an emitter or rejecting the whole archive. A
+finalized proxy initialization, ordinary upgrade or signed repair under any
+zero-proxy plan must still fail at every height. Use one authenticated proxy
+census for the timeline, receipt selector, release-contract census and
+baseline capture; keep the original 125-plan replay and exact census bytes as
+a regression. The focused normal/race tests and sealed census replay pass,
+while bounded EVM chronology and final artifacts still need their own proof.
 
 The R46 replay also exposed an operational attestation trap: Go did not stamp
 VCS build information when the diagnostic executable was built from a linked

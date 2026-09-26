@@ -1,0 +1,77 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:13:33.884902 1106301 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:13:33.885139 1106301 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:13:33.885266 1106301 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:13:33.885304 1106301 env.go:78] [env]settings = map[]
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentKeepsPreparatoryReceipts
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentKeepsPreparatoryReceipts (0.01s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unapproved_ancestor
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/missing_approved_ancestor
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/substituted_plan_hash
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_chain
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_subnet
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/current_zero_proxy
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/modern_zero_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_schema
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_emitter_graph
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_implementation_identity
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/deployment_checkpoint
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_identity
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_baseline
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/retired_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/wrong_preparatory_intent
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_preparatory_action
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/native_disguised_transition
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment_transition
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height31
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height31
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height31
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory (0.06s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unapproved_ancestor (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/missing_approved_ancestor (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/substituted_plan_hash (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_chain (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_subnet (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/current_zero_proxy (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/modern_zero_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_schema (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_emitter_graph (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_implementation_identity (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/deployment_checkpoint (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_identity (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_baseline (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/retired_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/wrong_preparatory_intent (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_preparatory_action (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/native_disguised_transition (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment_transition (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height31 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height31 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height31 (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRetainsArtifactAndInitializationChecks
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRetainsArtifactAndInitializationChecks (0.01s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment (0.00s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	0.198s

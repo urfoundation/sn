@@ -1,0 +1,9 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:18:12.815914 1114770 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:18:12.816239 1114770 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:18:12.816434 1114770 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:18:12.816494 1114770 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedPredeploymentCensus
+--- PASS: TestRetainedPredeploymentCensus (475.16s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	475.944s

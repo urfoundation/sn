@@ -519,6 +519,26 @@ acceptance is claimed. Bounded EVM chronology follow-up is separately pending.
 [offline census receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/census-replay-receipt.json),
 [replay custody review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/CENSUS-REPLAY-REVIEW.md),
 [address range](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/replayed-census.json).
+The follow-up historical chronology found a distinct predecessor-plan
+admission error: four approved plans precede deployment and therefore name a
+zero coordinator proxy. They contain only planned proxy work and preparatory
+finalizations; none records a finalized proxy transition. The old timeline
+rejected those plans before examining the actual deployed proxies. The
+corrected readers share one narrow predeployment census and reject any
+finalized proxy initialization, upgrade activation or rounding repair under
+a zero-proxy plan. Its pre-fix regression failed; all **58** selected tests
+passed normally and under race detection, including **32** mutation controls.
+The exact sealed R46 replay passed with **125 plans, 59,979 journal entries,
+1,371 relay requests, two deployed proxies and ten emitters**. Its census
+bytes match the prior qualified result exactly. This is a scoped historical
+admission result, not a reversal of R46's sealed failure or a full semantic
+acceptance result. A separate bounded LAN EVM chronology captured historical
+events and initializer state under the old source and reproduced the old
+timeline refusal; its fixed-source offline replay is pending.
+[Source review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/review.md),
+[normal/race qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/qualification.json),
+[retained replay receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/retained-census-receipt.json),
+[evidence manifest](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-predeployment-timeline-qualification/SHA256SUMS).
 The v3 validator-2 relay readback is unavailable for a separate, genuine
 historical gap: of **66** signed publication members, all **64** closed-census
 slots for epochs 604–635 lack the original relay request, result and journal

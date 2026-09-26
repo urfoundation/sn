@@ -1,0 +1,247 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 09:20:37.650090 1118928 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 09:20:37.650426 1118928 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 09:20:37.650523 1118928 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 09:20:37.650556 1118928 env.go:78] [env]settings = map[]
+=== RUN   TestValidatorEvidenceCarryHistoricalCaptureCensus
+=== PAUSE TestValidatorEvidenceCarryHistoricalCaptureCensus
+=== RUN   TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+=== PAUSE TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+=== RUN   TestEvidenceRelayChronologyNativeHeightKeepsActualTransitions
+--- PASS: TestEvidenceRelayChronologyNativeHeightKeepsActualTransitions (0.00s)
+=== RUN   TestEvidenceRelayChronologyRejectsNativeIntentBeforeHeightClassification
+--- PASS: TestEvidenceRelayChronologyRejectsNativeIntentBeforeHeightClassification (0.00s)
+=== RUN   TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTimeline
+--- PASS: TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTimeline (0.89s)
+=== RUN   TestEvidenceRelayChronologyPredecessorRequestsRemainInFleetArtifact
+--- PASS: TestEvidenceRelayChronologyPredecessorRequestsRemainInFleetArtifact (2.44s)
+=== RUN   TestEvidenceRelayChronologyArchiveCensusRequiresExactRequestNamespace
+--- PASS: TestEvidenceRelayChronologyArchiveCensusRequiresExactRequestNamespace (0.38s)
+=== RUN   TestEvidenceRelayChronologyFoundationRetainsFailedOriginalAndCancellation
+--- PASS: TestEvidenceRelayChronologyFoundationRetainsFailedOriginalAndCancellation (0.63s)
+=== RUN   TestEvidenceRelayHistoricalCaptureAdmitsOriginalSignedJournalRequest
+--- PASS: TestEvidenceRelayHistoricalCaptureAdmitsOriginalSignedJournalRequest (0.39s)
+=== RUN   TestEvidenceRelayHistoricalCaptureKeepsPredecessorOwnershipAndFailedRequests
+--- PASS: TestEvidenceRelayHistoricalCaptureKeepsPredecessorOwnershipAndFailedRequests (0.37s)
+=== RUN   TestEvidenceRelayHistoricalCaptureRejectsPathEscapeBeforeReadAndHonorsCancellation
+--- PASS: TestEvidenceRelayHistoricalCaptureRejectsPathEscapeBeforeReadAndHonorsCancellation (0.35s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets
+--- PASS: TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets (0.01s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets
+--- PASS: TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets (0.01s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations
+--- PASS: TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations (0.07s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection
+--- PASS: TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection (0.00s)
+=== RUN   TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace
+--- PASS: TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace (0.00s)
+=== RUN   TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof
+--- PASS: TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof (0.00s)
+=== RUN   TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments
+--- PASS: TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments (0.00s)
+=== RUN   TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs
+--- PASS: TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs (0.00s)
+=== RUN   TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs
+--- PASS: TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentKeepsPreparatoryReceipts
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentKeepsPreparatoryReceipts (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unapproved_ancestor
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/missing_approved_ancestor
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/substituted_plan_hash
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_chain
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_subnet
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/current_zero_proxy
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/modern_zero_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_schema
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_emitter_graph
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_implementation_identity
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/deployment_checkpoint
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_identity
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_baseline
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/retired_deployment
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/wrong_preparatory_intent
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_preparatory_action
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/native_disguised_transition
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment_transition
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/aliased_transition_plan_hash
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height31
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height31
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height0
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height6
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height30
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height31
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory (0.09s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unapproved_ancestor (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/missing_approved_ancestor (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/substituted_plan_hash (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_chain (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_subnet (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/current_zero_proxy (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/modern_zero_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_schema (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_emitter_graph (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/partial_implementation_identity (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/deployment_checkpoint (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_identity (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/upgrade_baseline (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/retired_deployment (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/wrong_preparatory_intent (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/unknown_preparatory_action (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/native_disguised_transition (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/foreign_deployment_transition (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/aliased_transition_plan_hash (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-proxy/height31 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/evm.coordinator-upgrade-activate/height31 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height0 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height6 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height30 (0.00s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRejectsUnboundHistory/repair.coordinator-rounding.activate/height31 (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc/false
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc/true
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc (0.04s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc/false (0.03s)
+    --- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentBaselineCaptureBindsProxyBeforeRpc/true (0.02s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPredeploymentRetainsArtifactAndInitializationChecks
+--- PASS: TestFinalSemanticHistoricalCoordinatorPredeploymentRetainsArtifactAndInitializationChecks (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions
+--- PASS: TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision
+--- PASS: TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization
+--- PASS: TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges (0.00s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead
+--- PASS: TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead (0.00s)
+=== RUN   TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay
+--- PASS: TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay (1.95s)
+=== RUN   TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes
+--- PASS: TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes (0.00s)
+=== RUN   TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges
+--- PASS: TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges (0.00s)
+=== RUN   TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors
+--- PASS: TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors (0.00s)
+=== RUN   TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries
+=== RUN   TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/binary_sibling
+=== RUN   TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/nested_JSON
+=== RUN   TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/foreign_canonical-looking_JSON
+--- PASS: TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries (4.30s)
+    --- PASS: TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/binary_sibling (1.05s)
+    --- PASS: TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/nested_JSON (1.08s)
+    --- PASS: TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries/foreign_canonical-looking_JSON (0.96s)
+=== RUN   TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary
+--- PASS: TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary (0.00s)
+=== RUN   TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection
+--- PASS: TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection (0.00s)
+=== RUN   TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation
+--- PASS: TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation (0.00s)
+=== RUN   TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock
+--- PASS: TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock (0.00s)
+=== RUN   TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions
+--- PASS: TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions (0.06s)
+=== RUN   TestFinalPrecompileCaptureAcceptsCompletedSignedV2Recovery
+--- PASS: TestFinalPrecompileCaptureAcceptsCompletedSignedV2Recovery (0.30s)
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_evidence
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_completion
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_owner_completion
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_deployer_completion
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_owner_approval
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_deployer_approval
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/signed_approval_from_another_plan
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_current_custody
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_source_chain
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_step
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/uncompleted_step
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_intent
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_transaction
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_block_number
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_block_hash
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_deployment
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/duplicate_finalization
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_finalization
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_budget_checkpoint
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_completion_checkpoint
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unapproved_step
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/finalized_unsigned_v1
+=== RUN   TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/static_action_collision
+--- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority (7.07s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_evidence (0.27s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_completion (0.29s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_owner_completion (0.33s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_deployer_completion (0.33s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_owner_approval (0.27s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unsigned_deployer_approval (0.28s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/signed_approval_from_another_plan (0.27s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_current_custody (0.26s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_source_chain (0.29s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_step (0.28s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/uncompleted_step (0.28s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_intent (0.32s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_transaction (0.37s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_block_number (0.34s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_block_hash (0.32s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/changed_deployment (0.32s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/duplicate_finalization (0.36s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_finalization (0.33s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_budget_checkpoint (0.34s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/missing_completion_checkpoint (0.30s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/unapproved_step (0.29s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/finalized_unsigned_v1 (0.34s)
+    --- PASS: TestFinalPrecompileCaptureRejectsChangedRecoveryAuthority/static_action_collision (0.31s)
+=== RUN   TestFinalPrecompileCaptureStateAndArchiveShareExactProof
+--- PASS: TestFinalPrecompileCaptureStateAndArchiveShareExactProof (0.27s)
+=== RUN   TestFinalPrecompileCaptureTimelineAndArtifactRetainRecoveryProof
+--- PASS: TestFinalPrecompileCaptureTimelineAndArtifactRetainRecoveryProof (0.42s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations
+--- PASS: TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations (0.00s)
+=== RUN   TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy
+--- PASS: TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy (0.00s)
+=== RUN   TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry
+--- PASS: TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry (0.49s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineCarriesSignedRepairAfterUpgrade
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineCarriesSignedRepairAfterUpgrade (0.67s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineRejectsRepairWithoutRetainedUpgrade
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineRejectsRepairWithoutRetainedUpgrade (0.90s)
+=== RUN   TestFinalSemanticHistoricalCoordinatorTimelineRejectsRepairAfterDifferentRetainedRuntime
+--- PASS: TestFinalSemanticHistoricalCoordinatorTimelineRejectsRepairAfterDifferentRetainedRuntime (0.73s)
+=== RUN   TestSyntheticEVMBaselineCapturePreservesRPCIdentity
+--- PASS: TestSyntheticEVMBaselineCapturePreservesRPCIdentity (0.01s)
+=== RUN   TestSyntheticEVMBaselineCaptureRejectsReorg
+--- PASS: TestSyntheticEVMBaselineCaptureRejectsReorg (0.01s)
+=== CONT  TestValidatorEvidenceCarryHistoricalCaptureCensus
+=== CONT  TestValidatorEvidenceCarryHistoricalCoordinatorBaseline
+--- PASS: TestValidatorEvidenceCarryHistoricalCaptureCensus (1.70s)
+--- PASS: TestValidatorEvidenceCarryHistoricalCoordinatorBaseline (2.10s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	25.112s

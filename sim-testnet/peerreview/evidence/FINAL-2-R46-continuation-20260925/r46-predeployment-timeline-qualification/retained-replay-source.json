@@ -1,0 +1,14 @@
+{
+  "base_commit": "1b4751be15a79a5dc905b854f2a5dcc337767792",
+  "production_files": {
+    "sim-testnet/final_semantic_chronology_predeployment.go": "baa10db3eac00b2dd595eaad691069ca88eebc4a3d3e0b5b321627422bbfb4ac",
+    "sim-testnet/final_semantic_chronology_source.go": "7ca4b6dfa5072c49b7d34338d05787c1d4d6183f5c3d9f0d70239afb0498e589",
+    "sim-testnet/final_semantic_chronology_timeline.go": "1b539b39b56a70de399efa5c02ac2b167c54387a54601dafd369f34b40a70d7c",
+    "sim-testnet/final_semantic_historical_capture.go": "360d957702c9198e21ee0f01c2518bb1dbbf503b91c03ecbce73d259e3d4ccda",
+    "sim-testnet/final_semantic_live_chain.go": "30f7f5cb1efe0ef5168f0411ef288dcaf90d804c462a36ace3861f009953e930"
+  },
+  "qualified_source_tree": "1bc4689d42413f097294f9b0bf8e893b5c0c5c43",
+  "input_source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "scope": "The replay receipt source_revision identifies the original input manifest; production_files and qualified_source_tree identify the evaluated fix.",
+  "qualified_source_commit": "1ee38f72e4acd776937eaf8f2fe6d4e66bef1e3a"
+}

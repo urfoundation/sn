@@ -1,0 +1,73 @@
+{
+  "base_commit": "1b4751be15a79a5dc905b854f2a5dcc337767792",
+  "source_tree": "1bc4689d42413f097294f9b0bf8e893b5c0c5c43",
+  "worktree": "/mnt/data/sn-testnet/qualification/r46-predeployment-timeline-20260926",
+  "modfile": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "modfile_sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "environment": {
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp"
+  },
+  "selector": "^(TestFinalSemanticHistorical(Coordinator(Timeline|Predeployment|Baselines|Receipt|Target|Position)|Capture|OracleWindow|ArtifactCensus|PlanHistory)|TestFinalPrecompileCapture|TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry|TestEvidenceRelay(Chronology|HistoricalCapture)|TestSyntheticEVMBaselineCapture|TestValidatorEvidenceCarryHistorical(CaptureCensus|CoordinatorBaseline)|TestFinalFleetGenerationSource)",
+  "selected_top_level_tests": 58,
+  "new_mutation_controls": 32,
+  "pre_fix": {
+    "exit": 1,
+    "log": "pre-fix.red.log",
+    "fixture": "pre-fix.fixture.go",
+    "source_commit": "1b4751be15a79a5dc905b854f2a5dcc337767792",
+    "selector": "^TestFinalSemanticHistoricalCoordinatorTimelineAcceptsAuthenticatedPredeployment$",
+    "duration_seconds": 0.09,
+    "log_sha256": "f0300ca7cda9eca67d84f50b7dcbe67950136816cf9cd08e9c69aafce2884ed5"
+  },
+  "normal": {
+    "status": "passed",
+    "exit": 0,
+    "duration_seconds": 25.112,
+    "log": "focused.normal.log",
+    "top_level_tests_passed": 58,
+    "log_sha256": "cedd08ce33462d4c1c94a2256f8fab825efdad7870ce36c3cad2bc42e177562e"
+  },
+  "race": {
+    "status": "passed",
+    "log": "focused.race.log",
+    "exit": 0,
+    "duration_seconds": 175.925,
+    "top_level_tests_passed": 58,
+    "new_mutation_controls_passed": 32,
+    "race_warnings": 0,
+    "log_sha256": "76a45eec3bb587a39f45e226dbad8550284b9de2f5e73da47f8bcbb7ba773402"
+  },
+  "retained_census": {
+    "status": "passed",
+    "log": "retained-census.log",
+    "input_manifest": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-v3-census/manifest.json",
+    "exit": 0,
+    "duration_seconds": 475.944,
+    "plan_count": 125,
+    "journal_entry_count": 59979,
+    "relay_request_count": 1371,
+    "deployed_proxy_count": 2,
+    "release_address_count": 10,
+    "from_block": 7888670,
+    "identical_prior_census_bytes": true,
+    "census_sha256": "c62fa579d94234b0bf7a8e8cb7569af611337c031770328461c3122b24cb489f",
+    "receipt_sha256": "76e9e53e2348ab9a8e1036e881b2d976972adae575ff1f54fefa766c96940d1c",
+    "log_sha256": "fc3d18448278842d1f57109589f6342cd38a5ae3b1e829e6b7ea42f438f387b9",
+    "input_manifest_sha256": "0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+    "source_custody": "retained-replay-source.json"
+  },
+  "live_rpc_calls": 0,
+  "live_state_writes": 0,
+  "sealed_v3_writes": 0,
+  "validator_recaptures": 0,
+  "superseded_fixture_failure": {
+    "exit": 1,
+    "log": "adjacent.fixture-failure.log",
+    "exit_file": "adjacent.fixture-failure.exit",
+    "only_failure": "TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions"
+  },
+  "go_version": "go version go1.26.6 linux/amd64",
+  "source_commit": "1ee38f72e4acd776937eaf8f2fe6d4e66bef1e3a",
+  "worktree_clean_after_validation": true
+}
