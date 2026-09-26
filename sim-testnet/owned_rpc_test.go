@@ -109,7 +109,7 @@ func TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport(t *testing
 		role.ClientIDHex = fmt.Sprintf("%032x", index+1)
 		roles.Clients[label] = role
 	}
-	actors, err := newLiveAdversaryActors(runtime, t.TempDir(), roles)
+	actors, err := newLiveAdversaryActors(runtime, t.TempDir(), roles, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

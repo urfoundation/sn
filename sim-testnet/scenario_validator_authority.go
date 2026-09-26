@@ -9,7 +9,7 @@ import (
 // Local generation, intent and proof readers authenticate the original plan.
 // The transport derivative remains on the probe for chain reads and never
 // becomes persisted approval or a substitute for the original source files.
-func (self *liveScenarioProbe) inspectValidators(ctx context.Context, operators []OperatorObservation) ([]ValidatorObservation, error) {
+func (self *liveScenarioProbe) validatorSourceConfig(ctx context.Context) (*ResolvedConfig, error) {
 	if ctx == nil || self == nil || self.cfg == nil || self.cfg.Config == nil {
 		return nil, errors.New("scenario validator observation has no configuration owner")
 	}
@@ -20,18 +20,39 @@ func (self *liveScenarioProbe) inspectValidators(ctx context.Context, operators 
 		}
 		authorized = self.authorizedCfg
 	}
+	return authorized, nil
+}
+
+// Every operational reader selects the same approved source generation. A
+// failed V2 observation never falls back to the predecessor's legacy state.
+func (self *liveScenarioProbe) inspectValidatorIntent(ctx context.Context, validatorId int) ValidatorObservation {
+	authorized, err := self.validatorSourceConfig(ctx)
+	if err != nil {
+		return ValidatorObservation{ValidatorID: validatorId, Error: err.Error()}
+	}
+	if validatorId < 1 || validatorId > authorized.Config.Topology.Validators {
+		return ValidatorObservation{ValidatorID: validatorId, Error: "scenario validator identity is outside the configured topology"}
+	}
+	if provisionalResumeEnabled(authorized) {
+		return inspectProvisionalValidatorIntent(ctx, authorized, self.stateDir, validatorId)
+	}
+	if finalUsesEvidenceV2(authorized) {
+		// Campaign routing only changes EVM transport. Strict native reads
+		// keep their identical operational Substrate route.
+		return inspectValidatorIntentV2(ctx, authorized, self.stateDir, validatorId)
+	}
+	return inspectValidatorIntent(self.stateDir, validatorId, authorized.Config.Topology.HeadSlots, authorized.Config.Topology.fleetCandidates())
+}
+
+// Proof observations retain the same original approval as intent observations.
+func (self *liveScenarioProbe) inspectValidators(ctx context.Context, operators []OperatorObservation) ([]ValidatorObservation, error) {
+	authorized, err := self.validatorSourceConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 	observations := make([]ValidatorObservation, 0, authorized.Config.Topology.Validators)
 	for validatorId := 1; validatorId <= authorized.Config.Topology.Validators; validatorId++ {
-		var observation ValidatorObservation
-		if provisionalResumeEnabled(authorized) {
-			observation = inspectProvisionalValidatorIntent(ctx, authorized, self.stateDir, validatorId)
-		} else if finalUsesEvidenceV2(authorized) {
-			// Campaign routing only changes EVM transport. Strict native reads
-			// keep their identical operational Substrate route.
-			observation = inspectValidatorIntentV2(ctx, authorized, self.stateDir, validatorId)
-		} else {
-			observation = inspectValidatorIntent(self.stateDir, validatorId, authorized.Config.Topology.HeadSlots, authorized.Config.Topology.fleetCandidates())
-		}
+		observation := self.inspectValidatorIntent(ctx, validatorId)
 		if self.pathProofs == nil {
 			self.pathProofs = newDurableScenarioPathProofCache(authorized, self.stateDir)
 		}

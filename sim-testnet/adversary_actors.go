@@ -2598,16 +2598,19 @@ func emulateLiquidAlphaCopyAndDropout(sequence uint64) (liquidAlphaSweep, error)
 }
 
 type consensusAdversary struct {
-	stateDir        string
-	headSlots       int
-	candidateFleets int
+	intentProbe *liveScenarioProbe
+	headSlots   int
 }
 
 func (self *consensusAdversary) ID() string { return "consensus-cabal-emulation" }
 
-func honestVectorFromIntent(stateDir string, headSlots, candidateFleets int) (map[uint16]uint64, uint16, error) {
-	observation := inspectValidatorIntent(stateDir, 2, headSlots, candidateFleets)
-	if observation.Error != "" || len(observation.AppliedWeights) == 0 {
+// Normalize one source-authenticated observation without promoting local
+// receipt claims or reading a different generation for the sample's metrics.
+func honestVectorFromObservation(observation ValidatorObservation) (map[uint16]uint64, uint16, error) {
+	if observation.Error != "" {
+		return nil, 0, fmt.Errorf("independent validator intent source: %s", observation.Error)
+	}
+	if observation.ValidatorID != 2 || len(observation.AppliedWeights) == 0 {
 		return nil, 0, errors.New("independent validator has no applied intent yet")
 	}
 	var sum uint64
@@ -2648,8 +2651,10 @@ func equalWeights(left, right map[uint16]uint64) bool {
 	return true
 }
 
-func (self *consensusAdversary) Sample(_ context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
-	honest, cabalUID, err := honestVectorFromIntent(self.stateDir, self.headSlots, self.candidateFleets)
+// Use the scenario's exact approved source and keep its receipt scope intact.
+func (self *consensusAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
+	intent := self.intentProbe.inspectValidatorIntent(ctx, 2)
+	honest, cabalUID, err := honestVectorFromObservation(intent)
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: err.Error()}
 	}
@@ -2657,7 +2662,6 @@ func (self *consensusAdversary) Sample(_ context.Context, phase adversarySampleP
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
-	intent := inspectValidatorIntent(self.stateDir, 2, self.headSlots, self.candidateFleets)
 	pending := uint64(0)
 	if intent.CurrentStatus != "" && intent.CurrentStatus != "applied" && intent.CurrentStatus != "finalized" {
 		pending = 1
@@ -2736,9 +2740,14 @@ func (self *consensusAdversary) Sample(_ context.Context, phase adversarySampleP
 	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("stake_ppm=%d cabal_clipped=true honest_unchanged=true liquid_alpha_bonds_ppm=%d/%d dropout_reentry_ppm=%d continuous_ppm=%d", adversaryStake, liquidAlpha.honestBondPPM, liquidAlpha.copierBondPPM, liquidAlpha.honestReentryBondPPM, liquidAlpha.honestContinuousBondPPM), Metrics: metrics}
 }
 
-func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) ([]adversaryActor, error) {
+// Network actors use the admitted transport derivative; local source readers
+// retain the original approved inputs used by the scenario probe.
+func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, authorizedCfg *ResolvedConfig) ([]adversaryActor, error) {
 	if cfg == nil || cfg.Config == nil || roles == nil {
 		return nil, errors.New("live adversarial actors require resolved config and role identities")
+	}
+	if err := validateCampaignRPCTransport(authorizedCfg, cfg); err != nil {
+		return nil, fmt.Errorf("live adversarial source transport: %w", err)
 	}
 	operatorGate, err := newAdversaryRequestGate(cfg.Config.Scenarios.Adversaries.MaximumOperatorRequestsPerSec)
 	if err != nil {
@@ -2761,7 +2770,7 @@ func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSec
 	}
 	return []adversaryActor{
 		&artifactAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},
-		&consensusAdversary{stateDir: stateDir, headSlots: cfg.Config.Topology.HeadSlots, candidateFleets: cfg.Config.Topology.fleetCandidates()},
+		&consensusAdversary{intentProbe: &liveScenarioProbe{cfg: cfg, authorizedCfg: authorizedCfg, stateDir: stateDir}, headSlots: authorizedCfg.Config.Topology.HeadSlots},
 		&custodyAdversary{cfg: cfg, stateDir: stateDir, operatorHTTP: operatorHTTP, rpcHTTP: rpcHTTP, faults: faultWindow},
 		&identityAdversary{cfg: cfg, stateDir: stateDir},
 		&operatorAPIAdversary{cfg: cfg, stateDir: stateDir, http: operatorHTTP, faults: faultWindow},

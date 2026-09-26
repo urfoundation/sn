@@ -5383,7 +5383,7 @@ func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedCon
 		if matrix.Hash != definition.AdversarialMatrixHash {
 			return errors.New("adversarial matrix changed after scenario definition validation")
 		}
-		actors, actorErr := newLiveAdversaryActors(runtimeCfg, stateDir, roles)
+		actors, actorErr := newLiveAdversaryActors(runtimeCfg, stateDir, roles, cfg)
 		if actorErr != nil {
 			return actorErr
 		}
