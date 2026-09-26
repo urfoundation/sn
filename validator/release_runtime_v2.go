@@ -462,13 +462,18 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		return nil, zero, err
 	}
 	defer release()
-	if steerer == nil || steerer.runtimeV2 != self || nativeBlock == 0 || hotkeys == nil {
+	if steerer == nil || steerer.runtimeV2 != self || nativeBlock == 0 || hotkeys == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
 		return nil, zero, errors.New("release V2 native collector owner differs")
 	}
 	if err := self.reconcileNativeInputsOwned(ctx, snapshot); err != nil {
 		return nil, zero, err
 	}
 	if err := self.cancelExpiredNativeReservationOwned(ctx, current, subnetEpoch, snapshot); err != nil {
+		return nil, zero, err
+	}
+	// Existing custody and unsigned drain cleanup still belong to this owner.
+	// Refuse a known gap before starting another signed native observation.
+	if err := self.admitNativeIntentSuccessorV2(current, subnetEpoch, snapshot.Epoch.Uint64()); err != nil {
 		return nil, zero, err
 	}
 	if err := self.advanceOwned(ctx, snapshot); err != nil {

@@ -411,7 +411,7 @@ func (self *HeadEMAStore) previewForEpochWithGapPolicy(subnetEpoch uint64, raw m
 			return out, append([]HeadEMAMeasurement(nil), self.lastFold...), err
 		}
 		if !allowGap && (*self.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *self.lastSubnetEpoch+1) {
-			return nil, nil, fmt.Errorf("head EMA epoch jumped from %d to %d", *self.lastSubnetEpoch, subnetEpoch)
+			return nil, nil, &nativeEpochGapError{component: "head EMA", previousEpoch: *self.lastSubnetEpoch, currentEpoch: subnetEpoch}
 		}
 	}
 	preview := &HeadEMAStore{values: cloneHeadEMAEntries(self.values)}
@@ -438,7 +438,7 @@ func (s *HeadEMAStore) CommitForEpoch(subnetEpoch uint64, records []HeadEMAMeasu
 			return nil
 		}
 		if *s.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *s.lastSubnetEpoch+1 {
-			return fmt.Errorf("head EMA epoch jumped from %d to %d", *s.lastSubnetEpoch, subnetEpoch)
+			return &nativeEpochGapError{component: "head EMA", previousEpoch: *s.lastSubnetEpoch, currentEpoch: subnetEpoch}
 		}
 	}
 	raw, err := rawHeadEMAInputs(records)

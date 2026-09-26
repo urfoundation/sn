@@ -399,11 +399,14 @@ func validateSteeringIntentSuccessor(previous, current *SteeringIntent) error {
 		}
 		return nil
 	}
-	if previous.SubnetEpoch == ^uint64(0) || current.SubnetEpoch != previous.SubnetEpoch+1 {
+	if previous.SubnetEpoch == ^uint64(0) || current.SubnetEpoch < previous.SubnetEpoch {
 		return errors.New("intent successor is not consecutive by native epoch")
 	}
 	if previous.Status != "applied" && previous.Status != "failed" {
 		return errors.New("next-epoch successor follows an unfinished intent")
+	}
+	if current.SubnetEpoch != previous.SubnetEpoch+1 {
+		return &nativeEpochGapError{component: "steering intent", previousEpoch: previous.SubnetEpoch, currentEpoch: current.SubnetEpoch}
 	}
 	return nil
 }

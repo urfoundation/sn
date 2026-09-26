@@ -192,7 +192,7 @@ func (self *HeadEMAStore) admitHeadEMAStoreV2KnownWithLock(ctx context.Context, 
 				return errors.New("same-epoch head EMA policy changed")
 			}
 		} else if operation != headEMAStoreV2FoldEpoch && !self.allowsHeadEMAEpochGapTo(epoch) && (*self.lastSubnetEpoch == ^uint64(0) || epoch != *self.lastSubnetEpoch+1) {
-			return errors.New("head EMA epoch jumped")
+			return &nativeEpochGapError{component: "head EMA", previousEpoch: *self.lastSubnetEpoch, currentEpoch: epoch}
 		}
 	}
 	return nil
