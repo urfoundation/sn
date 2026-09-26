@@ -76,6 +76,7 @@ type AttemptCutV2ReplayResult struct {
 type attemptCutV2ReplayHooks struct {
 	ScratchCreated     func(string) error
 	ScratchStorageStep func(string, string) error
+	AssignmentVerified func()
 	RecordDecoded      func()
 	RecordChecked      func()
 	RecordIndexed      func()
@@ -95,6 +96,12 @@ func (self AttemptCutV2ReplayBounds) validate(bounds AttemptCutV2Bounds) error {
 // Applies real record, server ASSIGN, FINAL/EXTEND and validator signature
 // verification before any record can contribute to the staged result.
 func decodeAttemptCutV2Record(raw []byte, limit uint64, identity AttemptLedgerIdentity, vpk ed25519.PublicKey, keys map[byte]ed25519.PublicKey, requireServerKeys bool) (AttemptRecord, error) {
+	return decodeAttemptCutV2RecordWithAssignVerifier(raw, limit, identity, vpk, keys, requireServerKeys, connect.VerifyVerifyMessageSignature)
+}
+
+// The stream owner supplies only its bounded exact assignment verifier. Every
+// row still authenticates its canonical context, validator signature and proof.
+func decodeAttemptCutV2RecordWithAssignVerifier(raw []byte, limit uint64, identity AttemptLedgerIdentity, vpk ed25519.PublicKey, keys map[byte]ed25519.PublicKey, requireServerKeys bool, verifyAssign func([]byte, []byte, []byte) bool) (AttemptRecord, error) {
 	var record AttemptRecord
 	if uint64(len(raw)) > limit || len(raw) == 0 || raw[len(raw)-1] != '\n' {
 		return record, errors.New("compact attempt record is oversized or lacks its canonical newline")
@@ -102,7 +109,7 @@ func decodeAttemptCutV2Record(raw []byte, limit uint64, identity AttemptLedgerId
 	if err := attemptStoreDecode(raw[:len(raw)-1], &record); err != nil {
 		return record, err
 	}
-	if err := verifyAttemptRecord(&record, identity, vpk, keys, requireServerKeys); err != nil {
+	if err := verifyAttemptRecordWithAssignVerifier(&record, identity, vpk, keys, requireServerKeys, verifyAssign); err != nil {
 		return record, err
 	}
 	return record, nil
@@ -548,12 +555,23 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 	previousHash := expected.PriorRoot
 	var recordCount uint64
 	expectedProofHash := sha256.New()
+	// Repeated checkpoints carry the same cumulative assignments. Retain at
+	// most 64 exact successes in this one replay; replicas and retries own anew.
+	assignments := attemptAssignVerificationCache{verifySignature: connect.VerifyVerifyMessageSignature}
+	if hooks.AssignmentVerified != nil {
+		assignments.verifySignature = func(key, message, signature []byte) bool {
+			valid := connect.VerifyVerifyMessageSignature(key, message, signature)
+			hooks.AssignmentVerified()
+			return valid
+		}
+	}
+	verifyAssign := assignments.verify
 	result.Records, err = WalkAttemptStreamV2Descriptors(ctx, AttemptStreamV2Records, cut.Records, bounds.Records, options.ReadMetadata, func(chunk AttemptStreamV2Chunk) error {
 		return walkAttemptStreamV2Chunk(ctx, AttemptStreamV2Records, chunk, options.Bounds.MaxRecordBytes, options.OpenData, func(index uint64, raw []byte) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			record, err := decodeAttemptCutV2Record(raw, options.Bounds.MaxRecordBytes, expected.Identity, vpk[:], options.ServerKeys, true)
+			record, err := decodeAttemptCutV2RecordWithAssignVerifier(raw, options.Bounds.MaxRecordBytes, expected.Identity, vpk[:], options.ServerKeys, true, verifyAssign)
 			if err != nil {
 				return err
 			}
