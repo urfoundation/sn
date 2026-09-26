@@ -2358,8 +2358,9 @@ and later success after earlier errors with deterministic regression tests.
 
 R46 retained 18 receive-sequence exit gaps across 10 swarm processes. The
 deployed receive idle rule retires a sequence after 120 seconds while the
-sender retains it for 300 seconds; several observed resumptions fell inside
-that mismatch. Before mainnet, force actual receive-only idle retirement and
+sender retains it for 300 seconds; all 18 matched sender/receiver pairs have
+their next write inside that mismatch. Before mainnet, force actual
+receive-only idle retirement and
 same-sequence resumption through the production sender/receiver path, then
 test lost first acknowledgement, carrier replacement, cancellation and
 foreign session rejection. Preserve exit-gap findings until that causal test

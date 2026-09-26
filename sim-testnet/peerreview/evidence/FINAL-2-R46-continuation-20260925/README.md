@@ -161,6 +161,10 @@ postdate R46 and cannot change its historical result.
 and the native-1674 continuity evidence. Its 120-second receiver versus
 300-second sender idle-rule mismatch is a bounded hypothesis requiring a
 real lifecycle regression, not an established repair.
+`r46-exit-gap-idle-pairs.receipt.json` matches all 18 receive gaps to
+same-peer sender ACK-lifetime exits inside the 120–300-second idle mismatch.
+It strengthens the hypothesis but does not substitute for a causal transport
+test.
 
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and

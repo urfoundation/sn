@@ -302,9 +302,12 @@ root yet.
 A separate exact-log review pins **18 receive-sequence exit-gap events across
 10 swarms**; these are sequence gaps, not process exits. The pinned receive
 idle timeout is **120 seconds**, whereas the sender retains its sequence for
-**300 seconds**. Three paired sender/receiver examples resumed after
-156, 219 and 282 seconds idle, so receiver retirement before sender
-retirement is a strong recovery hypothesis. The retained rows do not identify
+**300 seconds**. A follow-up join found a matching same-peer validator-1
+ACK-lifetime exit for **all 18** receive gaps. Each sender's idle interval
+before the next write was **154.30–295.32 seconds**, inside that mismatch,
+and its first unacknowledged number was one below the queued receiver tail.
+Receiver retirement before sender retirement is therefore a strong recovery
+hypothesis. The retained rows still do not identify
 the missing acknowledgement, full head or route for every event, and they do
 not establish one shared defect for all 18. A real sender/receiver idle
 retirement test is required before changing transport behavior. The same
@@ -312,7 +315,9 @@ review confirms the epoch-1674 native records object on both replicas and
 both durable input cuts, while the applied intent remained at native epoch
 1661; a recovered object does not repair that authenticated continuity gap.
 [Exact gap and native review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-gap-native-root-review.receipt.json)
-(SHA-256 `a5e4a466e3e20a23db821b6bdfe6b9c6c932e6cda09c6616f6d7146811f6aa8d`).
+(SHA-256 `a5e4a466e3e20a23db821b6bdfe6b9c6c932e6cda09c6616f6d7146811f6aa8d`),
+[all 18 sender/receiver pairs](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-exit-gap-idle-pairs.receipt.json)
+(SHA-256 `b93eb1ed494b9a118e91963e781af69663335f4c0325d567c29191ffa330cba6`).
 
 The sealed read-only diagnostic currently reports
 `result-start-and-fault-binding` failed with “lifecycle cleanup completion
