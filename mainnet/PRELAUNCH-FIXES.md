@@ -2606,6 +2606,10 @@ manifest was intentionally left unchanged, so this repair cannot satisfy
 final acceptance. Mainnet cutover must rotate the operator configuration and
 its manifest atomically before validators start, and an end-to-end test must
 assert that generation-2 initial uploads succeed without a restart burst.
+Epoch 648 reached on-chain RootMissed status for both operators while the
+validators were restarting. The next epoch must reconcile the carried value;
+test a failed initial upload through RootMissed, then a repaired upload and
+value-preserving carry, with no duplicate funding or lost capture.
 R47's provisional startup also forecast 34,553 protected publication objects
 per hour against a configured 32,768, and 10,947,548 retry requests per hour
 against 8,388,608, for each of the four validator/operator pairs. The
