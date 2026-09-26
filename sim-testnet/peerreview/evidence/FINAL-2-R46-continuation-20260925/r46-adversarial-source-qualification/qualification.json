@@ -1,0 +1,164 @@
+{
+  "schema": "urnetwork-r46-adversarial-source-qualification-v1",
+  "status": "pass-code-qualification-campaign-remains-failed",
+  "worktree": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-20260926",
+  "branch": "codex/r46-adversarial-source-20260926",
+  "base_commit": "0391c1b004cddecc8d2d68bb80b2290cc474c5fe",
+  "commit": "1098471bc946345b5a7a39d03a53c15c784fc418",
+  "worktree_status": "",
+  "worktree_clean": true,
+  "diff_check_exit_code": 0,
+  "go_version": "go version go1.26.6 linux/amd64",
+  "modfile": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "modfile_sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "source_fence": [
+    {
+      "path": "sim-testnet/adversary_actors.go",
+      "sha256": "41e4ff6e5ffb190e26f53655a0555820c23e61068e4aef791dfb9ec2149b8902",
+      "after_sha256": "41e4ff6e5ffb190e26f53655a0555820c23e61068e4aef791dfb9ec2149b8902"
+    },
+    {
+      "path": "sim-testnet/scenario_validator_authority.go",
+      "sha256": "a8eef5fb7644e2f7643855a9deae8035d47ae14ecdaf7b4480707e67167f1ad0",
+      "after_sha256": "a8eef5fb7644e2f7643855a9deae8035d47ae14ecdaf7b4480707e67167f1ad0"
+    },
+    {
+      "path": "sim-testnet/scenario.go",
+      "sha256": "f10ddfea94fcd0f68d3d05d31abccd13ae7422c22ea57a4940225d74508b45fb",
+      "after_sha256": "f10ddfea94fcd0f68d3d05d31abccd13ae7422c22ea57a4940225d74508b45fb"
+    },
+    {
+      "path": "sim-testnet/owned_rpc_test.go",
+      "sha256": "3f82689868631962b365ec1fc4a8ee3a0a3ab89e07fa6d9958f996c56bfe2da8",
+      "after_sha256": "3f82689868631962b365ec1fc4a8ee3a0a3ab89e07fa6d9958f996c56bfe2da8"
+    },
+    {
+      "path": "sim-testnet/adversary_intent_source_linux_test.go",
+      "sha256": "fb19f9175cee977abd9756422c2021cc12bf6dc324b99f64139cd86b18aa1ba9",
+      "after_sha256": "fb19f9175cee977abd9756422c2021cc12bf6dc324b99f64139cd86b18aa1ba9"
+    }
+  ],
+  "pre_fix_test": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/pre-fix-test.go",
+    "sha256": "4e86390b225afd6cf0f792f0d089c7327d6df79964509354c98a0ab47839b989"
+  },
+  "tests": [
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/pre-fix.log",
+      "sha256": "7cd765ea87a176c603d78e9fc281ea0a4370fe1ecd8e147c301b5f5b33332256",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^TestConsensusAdversaryReadsAppliedGenerationWithoutLegacyIntent$' -count=1 -timeout=15m",
+      "exit_code": 1,
+      "summary": [
+        "FAIL\tgithub.com/urfoundation/sn/sim-testnet\t4.835s"
+      ],
+      "top_level_pass_count": 0,
+      "top_level_fail_count": 1,
+      "race_findings": 0
+    },
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/fixed-focused.log",
+      "sha256": "b961eb873bb9c8627446d24b9a162116683f363339ec7d0b41c887535d93f5a0",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^TestConsensusAdversary' -count=1 -timeout=15m",
+      "exit_code": 0,
+      "summary": [
+        "ok  \tgithub.com/urfoundation/sn/sim-testnet\t14.116s"
+      ],
+      "top_level_pass_count": 3,
+      "top_level_fail_count": 0,
+      "race_findings": 0
+    },
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/fixed-normal.log",
+      "sha256": "440ce84cb3ecb6b2fe2868f0544f0645134646cb63027782eb4d2242081582c9",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^Test(Consensus|ScenarioObserver|ProvisionalIntentProjection|ScenarioNativeObservation|OwnedRPCStrict|AdversaryAssertionsRequireEveryNamedMeasuredMetric)' -count=1 -timeout=15m -v",
+      "exit_code": 0,
+      "summary": [
+        "ok  \tgithub.com/urfoundation/sn/sim-testnet\t26.073s"
+      ],
+      "top_level_pass_count": 16,
+      "top_level_fail_count": 0,
+      "race_findings": 0
+    },
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/fixed-race.log",
+      "sha256": "e97b856641c8acedfbeb8c4ed271fb972a84ec6a12282fb6cab33af819b6a06b",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -race -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^Test(Consensus|ScenarioObserver|ProvisionalIntentProjection|ScenarioNativeObservation|OwnedRPCStrict|AdversaryAssertionsRequireEveryNamedMeasuredMetric)' -count=1 -timeout=20m -v",
+      "exit_code": 0,
+      "summary": [
+        "ok  \tgithub.com/urfoundation/sn/sim-testnet\t159.635s"
+      ],
+      "top_level_pass_count": 16,
+      "top_level_fail_count": 0,
+      "race_findings": 0
+    },
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/signature-normal.log",
+      "sha256": "198f3c1c7fe62870a5e2b4aed291efaba1128d3243275e7ae34bdb1dd436082d",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence$' -count=1 -timeout=5m -v",
+      "exit_code": 0,
+      "summary": [
+        "ok  \tgithub.com/urfoundation/sn/sim-testnet\t0.166s"
+      ],
+      "top_level_pass_count": 1,
+      "top_level_fail_count": 0,
+      "race_findings": 0
+    },
+    {
+      "log": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/signature-race.log",
+      "sha256": "3aa6c9fcd3ca59f46e8d30865c13f57a3867344e89908cfeffb2e3e5bb93a189",
+      "command": "GOMAXPROCS=4 TMPDIR=/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/tmp go test -race -p 2 -modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod ./sim-testnet -run '^TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence$' -count=1 -timeout=5m -v",
+      "exit_code": 0,
+      "summary": [
+        "ok  \tgithub.com/urfoundation/sn/sim-testnet\t1.891s"
+      ],
+      "top_level_pass_count": 1,
+      "top_level_fail_count": 0,
+      "race_findings": 0
+    }
+  ],
+  "qualified_test_count": {
+    "normal_top_level": 17,
+    "race_top_level": 17,
+    "note": "16 combined source/actor/model/route checks plus one signed measurement corruption test; the earlier focused run separately passed 3 new actor tests."
+  },
+  "retained_evidence": {
+    "report": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/report.json",
+    "report_sha256": "bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+    "adversaries_sha256": "3aa5af34fef8598d80c0cfaef0e91199c8c57803ce620faed0c275d6c9499dbc",
+    "terminal_observation_sha256": "b6100b7ddc1075049184604586287be135ac419fad5d39bb28786d6b410299fe",
+    "summary_path": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/retained-evidence-summary.json",
+    "summary_sha256": "896ce9b308a4e8b590c56458219fed0db10d421aa3fa674ed1d4cde41e0545ed",
+    "census_path": "/mnt/data/sn-testnet/qualification/r46-adversarial-source-evidence-20260926/retained-observation-census.json",
+    "census_sha256": "fd81afc17691b08e8a8d4eab7823d54561fe7748516a1945a569608a22cdc790",
+    "observations": 74,
+    "validator_1_absent_observations": 74,
+    "validator_2_observed_old_applied_observations": 70,
+    "validator_2_withheld_transition_observations": 4,
+    "failed_adversary_assertions": 59
+  },
+  "historical_campaign_status": "fail",
+  "final_acceptance": false,
+  "limitations": [
+    "Validator-1 selected local intent store absent in all 74 retained observations.",
+    "Validator-2 local applied epoch 1661 / settlement 614 / application block 8080373 predates signed baseline 8084658.",
+    "Local V2 recorded receipts are not authenticated native application receipts; strict counters stay zero.",
+    "Existing bounded-emulation coverage constants do not replace real mask/cohort/native receipt gates.",
+    "All original campaign failures remain; future acceptance requires a new run and fresh signed-window evidence."
+  ],
+  "adjacent_reader_reachability": {
+    "reader": "validatorDishonestDepositEvidence / readValidatorIntentFile",
+    "release_1_0_required": false,
+    "production_soak_followup": true,
+    "reason": "scenarioDefinitionFor adds productionScenarioChecks only to production-soak; runDishonestDepositPhase is called only for production-soak. In release observation, missing public/dishonest-deposit.json returns before any legacy intent read. Strict release final semantic construction rejects presence of dishonest-deposit evidence.",
+    "source_locations": [
+      "sim-testnet/scenario.go:3512",
+      "sim-testnet/scenario.go:5458",
+      "sim-testnet/dishonest_deposit.go:699",
+      "sim-testnet/final_semantic_source.go:2922"
+    ]
+  },
+  "live_state_mutated": false,
+  "sealed_r46_evidence_mutated": false,
+  "shared_branch_mutated": false,
+  "chain_requests_performed": false
+}

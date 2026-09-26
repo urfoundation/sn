@@ -1,0 +1,14 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:08:11.003959 1003517 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:08:11.004306 1003517 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:08:11.004415 1003517 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:08:11.004453 1003517 env.go:78] [env]settings = map[]
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+--- FAIL: TestConsensusAdversaryReadsAppliedGenerationWithoutLegacyIntent (4.73s)
+    adversary_intent_source_linux_test.go:136: actor lost the selected signed generation or promoted local receipts: {Outcome:skipped Detail:independent validator has no applied intent yet Requests:0 MaxInFlight:0 Metrics:map[]}
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	4.835s
+FAIL

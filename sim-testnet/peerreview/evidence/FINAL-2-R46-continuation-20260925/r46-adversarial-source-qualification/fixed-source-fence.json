@@ -1,0 +1,22 @@
+[
+  {
+    "path": "sim-testnet/adversary_actors.go",
+    "sha256": "41e4ff6e5ffb190e26f53655a0555820c23e61068e4aef791dfb9ec2149b8902"
+  },
+  {
+    "path": "sim-testnet/scenario_validator_authority.go",
+    "sha256": "a8eef5fb7644e2f7643855a9deae8035d47ae14ecdaf7b4480707e67167f1ad0"
+  },
+  {
+    "path": "sim-testnet/scenario.go",
+    "sha256": "f10ddfea94fcd0f68d3d05d31abccd13ae7422c22ea57a4940225d74508b45fb"
+  },
+  {
+    "path": "sim-testnet/owned_rpc_test.go",
+    "sha256": "3f82689868631962b365ec1fc4a8ee3a0a3ab89e07fa6d9958f996c56bfe2da8"
+  },
+  {
+    "path": "sim-testnet/adversary_intent_source_linux_test.go",
+    "sha256": "fb19f9175cee977abd9756422c2021cc12bf6dc324b99f64139cd86b18aa1ba9"
+  }
+]

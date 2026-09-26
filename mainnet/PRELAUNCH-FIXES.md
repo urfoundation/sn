@@ -2471,13 +2471,17 @@ retained runtime, then replay the exact archived timeline before mainnet.
 
 The complete R46 v3 diagnostic found another historical approval seam:
 `repair.precompile-residual.v2.1` is finalized in the journal but absent
-from its source plan's static actions. Its separate recovery documents may
-authorize it, but the chain census must prove exact source-plan binding,
-both required signatures, approved step and intent, signed completion and
-unique finalized journal row before admitting it. A repair-name prefix or
-operator assertion is insufficient. Exercise the valid carried repair and
-changed source, step, signature, calldata and duplicate controls; preserve
-the diagnostic failure until that proof is implemented and replayed.
+from its source plan's static actions. The corrected historical reader now
+authenticates its separate recovery documents with exact source-plan binding,
+both required signatures, approved steps and intents, signed completion,
+journal checkpoints and unique finalized receipt tuples. A repair-name
+prefix or operator assertion remains insufficient. The 73-test normal/race
+suite includes 23 negative controls; an offline replay of sealed R46 v3
+inputs passed the corrected contract
+census, but neither substitutes for the full canonical/native chain check.
+Before mainnet, exercise this same source path through bounded EVM chronology
+and final artifact verification, retaining changed source, step, signature,
+calldata and duplicate controls.
 
 The R46 replay also exposed an operational attestation trap: Go did not stamp
 VCS build information when the diagnostic executable was built from a linked
@@ -2533,3 +2537,16 @@ watermarks monotonic. Test missing predecessor, independently missing
 successor, foreign owner, cutoff replay and strict historical missing-file
 refusal. This prevents future blockage but does not reconstruct missing R46
 custody or satisfy its original acceptance gate.
+
+R46's adversarial consensus sampler read the legacy validator-2 intent file
+while the scenario observer selected its approved provisional/V2 generation.
+Select one authenticated generation for both the attack vector and metrics;
+reject missing or forged selected sources without falling back to legacy
+state. An actor-only emulation success does not prove fresh native application,
+mask coverage, or independent cohort coverage. R46's retained validator-2
+local intent predates its signed baseline, validator-1 still lacks local
+intent, and the original adversarial campaign remains failed. The separate
+production-soak dishonest-deposit helper also reads a legacy intent path.
+Before production soak, bind that helper to strict applied source authority
+and test missing/forged generation controls. It is outside the release
+interval path and must not be used to loosen R46 or R47 acceptance.

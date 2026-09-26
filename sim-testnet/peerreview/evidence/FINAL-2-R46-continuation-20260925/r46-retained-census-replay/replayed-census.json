@@ -1,0 +1,43 @@
+{
+  "campaign_start_head": {
+    "number": 8084596,
+    "hash": "0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192"
+  },
+  "chain_id": 945,
+  "current_release_addresses": [
+    "0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e",
+    "0x2fb7f30facb6a9c69b864fc8050be8be7ecaf2cd",
+    "0x376f98bd7c6b334f7f1cb2685e0970a18bfe7d28",
+    "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8"
+  ],
+  "current_release_from_block": 7973237,
+  "deployment_id": "ur-subnet-testnet-v1",
+  "diagnostic_report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+  "final_acceptance": false,
+  "from_block": 7888670,
+  "full_canonical_native_pass": false,
+  "manifest_sha256": "sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9",
+  "netuid": 521,
+  "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+  "read_only": true,
+  "release_contract_addresses": [
+    "0x07ec4a5b849b0496478343fa316186a5918119f6",
+    "0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e",
+    "0x2fb7f30facb6a9c69b864fc8050be8be7ecaf2cd",
+    "0x376f98bd7c6b334f7f1cb2685e0970a18bfe7d28",
+    "0x509a2c21941411950a000b302e3a7e6a5194a41d",
+    "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+    "0x9795da542cce80f1e587eb3dd165d90616c0332f",
+    "0xa25e2b813486ccd56ce022324fc993b638e5d590",
+    "0xb3d6bbde7245d4e00fc60739a8b27ac499a60d2b",
+    "0xe8d0ad14a9a1ae4ea35a2df8a3eb828652f17755"
+  ],
+  "rpc_reads": 0,
+  "schema": "urnetwork-retained-release-contract-census-v1",
+  "source_revision": "92c14e3f8bdd2419734d831da00cc0483f1bc993",
+  "terminal_evm_head": {
+    "number": 8086545,
+    "hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a"
+  },
+  "validator_recaptures": 0
+}

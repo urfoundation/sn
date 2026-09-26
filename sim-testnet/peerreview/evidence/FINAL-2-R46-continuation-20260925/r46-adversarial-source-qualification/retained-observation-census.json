@@ -1,0 +1,1852 @@
+[
+  {
+    "observed_at": "2026-09-25T17:30:57.549948405Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T17:43:11.388116215Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T17:47:49.046521894Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T17:53:42.822111949Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T17:59:34.299928192Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:05:26.186369897Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": null,
+        "native_epoch": null,
+        "error": "local runtime intents: local intent generation changed during projection",
+        "local_state": "unknown",
+        "local_state_directory": null,
+        "recorded_applied": null,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:10:43.404547878Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:15:44.732288515Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": null,
+        "native_epoch": null,
+        "error": "local runtime intents: local intent generation changed during projection",
+        "local_state": "unknown",
+        "local_state_directory": null,
+        "recorded_applied": null,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:20:06.063694504Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": null,
+        "native_epoch": null,
+        "error": "local runtime intents: local intent observation: local runtime intents: local intent process differs from its manifest",
+        "local_state": "unknown",
+        "local_state_directory": null,
+        "recorded_applied": null,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:24:08.990373938Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": null,
+        "native_epoch": null,
+        "error": "local runtime intents: local intent observation: local runtime intents: local intent process differs from its manifest",
+        "local_state": "unknown",
+        "local_state_directory": null,
+        "recorded_applied": null,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:28:21.697627908Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:34:05.154752351Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:39:53.413527185Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:45:50.719292906Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:51:03.394608115Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T18:56:31.433745368Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:02:20.887925499Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:07:43.870755369Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:12:59.395370974Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:18:03.670411577Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:23:23.655497113Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:30:22.720343876Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:35:39.914126792Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:40:58.889531824Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:46:24.065219155Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:51:38.466508834Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T19:57:00.512658545Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:02:06.098934784Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:07:15.491685709Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:12:41.803532024Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:17:57.433973034Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:23:19.302541076Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:29:22.994576507Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:35:31.78102723Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:40:46.972564181Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:45:58.92140315Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:51:08.774629183Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T20:56:15.607959774Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:01:24.910191214Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:06:29.501575191Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:11:33.979751789Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:16:39.245464044Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:21:42.330990264Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:26:49.233002241Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:31:57.093289837Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:36:56.560854497Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:42:06.603702594Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:47:18.122710197Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:52:35.664918348Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T21:57:48.882751446Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:03:01.110594684Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:08:10.980678586Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:13:28.233717308Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:18:48.150669016Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:24:24.247073314Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:29:54.468693162Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:35:27.502751112Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:40:55.945778266Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:46:25.998792353Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:51:44.047733952Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T22:56:56.521235328Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:02:14.187063318Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:07:23.249515655Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:12:30.730630914Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:17:47.038143921Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:27:57.095983783Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:34:57.019394462Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:40:01.586648242Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:45:09.738725983Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:50:11.951504689Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-25T23:55:25.266789761Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-26T00:00:38.188279629Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-26T00:00:38.188279629Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  },
+  {
+    "observed_at": "2026-09-26T00:00:38.188279629Z",
+    "validators": [
+      {
+        "id": 1,
+        "status": null,
+        "native_epoch": null,
+        "error": "",
+        "local_state": "absent",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 0,
+        "strict_applied": 0
+      },
+      {
+        "id": 2,
+        "status": "applied",
+        "native_epoch": 1661,
+        "error": "",
+        "local_state": "observed",
+        "local_state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "recorded_applied": 1,
+        "strict_applied": 0
+      }
+    ]
+  }
+]

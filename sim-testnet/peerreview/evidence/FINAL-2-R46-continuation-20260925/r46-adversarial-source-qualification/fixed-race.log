@@ -1,0 +1,85 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:17:45.315033 1017897 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:17:45.315694 1017897 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:17:45.316118 1017897 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:17:45.316281 1017897 env.go:78] [env]settings = map[]
+=== RUN   TestConsensusAdversaryReadsAppliedGenerationWithoutLegacyIntent
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+--- PASS: TestConsensusAdversaryReadsAppliedGenerationWithoutLegacyIntent (42.48s)
+=== RUN   TestConsensusAdversaryRejectsMissingAndForgedGenerationSources
+--- PASS: TestConsensusAdversaryRejectsMissingAndForgedGenerationSources (31.59s)
+=== RUN   TestConsensusAdversaryRetainsOriginalSourceAuthority
+--- PASS: TestConsensusAdversaryRetainsOriginalSourceAuthority (10.88s)
+=== RUN   TestAdversaryAssertionsRequireEveryNamedMeasuredMetric
+--- PASS: TestAdversaryAssertionsRequireEveryNamedMeasuredMetric (0.00s)
+=== RUN   TestConsensusCabalModelClipsMinoritySelfWeightAndStaleCopy
+--- PASS: TestConsensusCabalModelClipsMinoritySelfWeightAndStaleCopy (0.00s)
+=== RUN   TestConsensusCabalModelReportsMajorityBoundary
+--- PASS: TestConsensusCabalModelReportsMajorityBoundary (0.00s)
+=== RUN   TestConsensusWeightComparisonIncludesUIDZero
+--- PASS: TestConsensusWeightComparisonIncludesUIDZero (0.00s)
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/public-fallback
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/other-node
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/false-independence
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/pacing
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/other-chain
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/operational_EVM
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/operational_native
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/assurance
+=== RUN   TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/authority
+--- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport (0.41s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/public-fallback (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/other-node (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/false-independence (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/pacing (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/other-chain (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/operational_EVM (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/operational_native (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/assurance (0.00s)
+    --- PASS: TestOwnedRPCStrictRoutePreservesConsentAndUnlimitsOwnedTransport/authority (0.00s)
+=== RUN   TestProvisionalIntentProjectionPreservesOperationalFieldsWithoutPromotion
+=== PAUSE TestProvisionalIntentProjectionPreservesOperationalFieldsWithoutPromotion
+=== RUN   TestProvisionalIntentProjectionRejectsStoreHandoffAndGenerationChanges
+=== PAUSE TestProvisionalIntentProjectionRejectsStoreHandoffAndGenerationChanges
+=== RUN   TestProvisionalIntentProjectionRejectsWrongIdentityAndOrdinaryMode
+=== PAUSE TestProvisionalIntentProjectionRejectsWrongIdentityAndOrdinaryMode
+=== RUN   TestScenarioNativeObservationV2PreservesAppliedRowAndLaterCommit
+--- PASS: TestScenarioNativeObservationV2PreservesAppliedRowAndLaterCommit (0.00s)
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/source
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/validator
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/commit
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/reveal
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/application
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/binding
+=== RUN   TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/vector
+--- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/source (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/validator (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/commit (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/reveal (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/application (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/binding (0.00s)
+    --- PASS: TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress/vector (0.00s)
+=== RUN   TestScenarioObserverSeparatesApprovedInputsFromCampaignTransport
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-1/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-1/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+sim-testnet: path-proof prefix checkpoint; source=runtime/validator-2/evidence-generations/generation-00000000000000000007/state/operators/no-2/proofs.jsonl completed_proofs=1 completed_bytes=1891 scan_cut_bytes=1891 durable=true
+--- PASS: TestScenarioObserverSeparatesApprovedInputsFromCampaignTransport (39.31s)
+=== RUN   TestScenarioObserverRefusesTransportAndApprovalSubstitution
+--- PASS: TestScenarioObserverRefusesTransportAndApprovalSubstitution (15.04s)
+=== RUN   TestScenarioObserverCanonicalInputsKeepGenerationCorruptionBlocking
+--- PASS: TestScenarioObserverCanonicalInputsKeepGenerationCorruptionBlocking (17.91s)
+=== CONT  TestProvisionalIntentProjectionPreservesOperationalFieldsWithoutPromotion
+=== CONT  TestProvisionalIntentProjectionRejectsWrongIdentityAndOrdinaryMode
+=== CONT  TestProvisionalIntentProjectionRejectsStoreHandoffAndGenerationChanges
+--- PASS: TestProvisionalIntentProjectionPreservesOperationalFieldsWithoutPromotion (0.06s)
+--- PASS: TestProvisionalIntentProjectionRejectsWrongIdentityAndOrdinaryMode (0.23s)
+--- PASS: TestProvisionalIntentProjectionRejectsStoreHandoffAndGenerationChanges (0.42s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	159.635s

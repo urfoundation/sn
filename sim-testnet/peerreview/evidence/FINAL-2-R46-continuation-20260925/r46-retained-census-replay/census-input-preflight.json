@@ -1,0 +1,78 @@
+{
+  "schema": "urnetwork-retained-census-input-preflight-v1",
+  "completed_at": "2026-09-26T08:15:05.045124+00:00",
+  "status": "pass",
+  "report_sha256": "sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb",
+  "artifact_count": 11,
+  "artifact_bytes": 1339802170,
+  "artifacts": [
+    {
+      "kind": "scenario-result-candidate",
+      "uri": "final-inputs/scenario-result.json",
+      "content_sha256": "sha256:ecf02e18c0da79315c7e73148db9cbaf3cf0a976d138718aed7cae420c4eb604",
+      "size_bytes": 455048
+    },
+    {
+      "kind": "scenario-terminal-observation",
+      "uri": "final-inputs/terminal-observation.json",
+      "content_sha256": "sha256:b6100b7ddc1075049184604586287be135ac419fad5d39bb28786d6b410299fe",
+      "size_bytes": 1220415
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/launch-foundation.json",
+      "content_sha256": "sha256:456f9ab681e97db093241455a87fa0f8fc6b1bdc24d5b5b0eafdf722d1af54ba",
+      "size_bytes": 140658051
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-001-of-007.json",
+      "content_sha256": "sha256:5cee6ed3aa329499756443d6c9e5c325e741068e30e91d48c562bcc3c2becea8",
+      "size_bytes": 168181094
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-002-of-007.json",
+      "content_sha256": "sha256:bc10c51f175857bfaee34a7723ba6ff5f7d37fcb7ee3a4c0ac838f981305a0e9",
+      "size_bytes": 179909999
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-003-of-007.json",
+      "content_sha256": "sha256:55d6476d9d223e215f9f77984261886405aea899e41ad7c19894d53159899984",
+      "size_bytes": 178983650
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-004-of-007.json",
+      "content_sha256": "sha256:b011a76245b3d47ade1103ea7399824af9ec1cb432aef90d1726b6462c378d32",
+      "size_bytes": 179228135
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-005-of-007.json",
+      "content_sha256": "sha256:e8104845801a66f184cf4bc22af1420abe98a8e90ccae803413b3998288ca262",
+      "size_bytes": 168834684
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-006-of-007.json",
+      "content_sha256": "sha256:4885d84b6cba97b5fe02279cc58a8a7c1c9952ed5dbaba2ed5346180cfd0f6d5",
+      "size_bytes": 179512482
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/plan-history-007-of-007.json",
+      "content_sha256": "sha256:1798933d21b9226897ee873e63df8a26478c0c7f61f1c3d12ca3d258b9d6263b",
+      "size_bytes": 117614648
+    },
+    {
+      "kind": "closed-input-bundle",
+      "uri": "final-inputs/bundles/public.json",
+      "content_sha256": "sha256:f45f57f0fa8e59a6a68c6fb64934308eab96287327bdf9d29e29cae7e912b727",
+      "size_bytes": 25203964
+    }
+  ],
+  "rpc_reads": 0,
+  "replay_executed": false
+}

@@ -1,0 +1,125 @@
+{
+  "sealed_report": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/report.json",
+  "original_adversaries_sha256": "sha256:3aa5af34fef8598d80c0cfaef0e91199c8c57803ce620faed0c275d6c9499dbc",
+  "failed_adversary_assertions": 59,
+  "consensus_actor": {
+    "id": "consensus-cabal-emulation",
+    "vector_ids": [
+      "affiliation-mask-evasion",
+      "consensus-minority-cabal-self-weight",
+      "consensus-reveal-following",
+      "consensus-rival-knifing",
+      "consensus-stale-weight-copy",
+      "consensus-threshold-stake-churn",
+      "liquid-alpha-bond-copy-participation-churn",
+      "mev-shield-finality-era-expiry",
+      "shared-prefix-sybil-rebind",
+      "validator-dropout-disagreement",
+      "weights-withhold-late-invalid-reveal"
+    ],
+    "started_at": "2026-09-25T17:30:18.403968437Z",
+    "stopped_at": "2026-09-26T00:06:41.646762549Z",
+    "first_sample_at": "2026-09-25T17:30:18.404578978Z",
+    "last_sample_at": "2026-09-26T00:06:38.406404413Z",
+    "maximum_sample_gap_milliseconds": 5046,
+    "status": "stopped",
+    "samples": 0,
+    "control_samples": 0,
+    "attack_samples": 0,
+    "successful": 0,
+    "expected_rejections": 0,
+    "errors": 0,
+    "skipped": 4757,
+    "requests": 0,
+    "maximum_in_flight": 0,
+    "error_rate_ppm": 0,
+    "p50_latency_milliseconds": 0,
+    "p95_latency_milliseconds": 0,
+    "p99_latency_milliseconds": 0,
+    "control_p95_latency_milliseconds": 0,
+    "attack_p95_latency_milliseconds": 0,
+    "attack_control_p95_ratio_ppm": 0,
+    "last_detail": "independent validator has no applied intent yet"
+  },
+  "affiliation_vector": {
+    "id": "affiliation-mask-evasion",
+    "class": "validator-strategy",
+    "execution_mode": "bounded-emulation",
+    "concurrent_coverage": "continuous-emulation",
+    "actor_ids": [
+      "consensus-cabal-emulation",
+      "identity-churn-emulation"
+    ],
+    "local_tests": [
+      "sim-testnet/TestReleaseChecksExerciseAffiliatedAndIndependentValidators"
+    ],
+    "required_metrics": [
+      "independent_validator_coverage",
+      "mask_coverage_ppm",
+      "unresolved_affiliations"
+    ],
+    "measured_metrics": [
+      "unresolved_affiliations"
+    ],
+    "oracle": "All explicitly controlled pool/fleet/self UIDs are zero-masked and an independent validator still observes/weights every legitimate cohort; residual off-chain beneficial ownership is documented.",
+    "sample_floor": 0,
+    "errors": 0,
+    "maximum_p99_latency_milliseconds": 1036,
+    "status": "fail"
+  },
+  "validator_sources": [
+    {
+      "validator_id": 1,
+      "current_status": null,
+      "current_epoch": null,
+      "strict_finalized": 0,
+      "strict_applied": 0,
+      "local": {
+        "scope": "local-runtime-observation",
+        "final_acceptance": false,
+        "observed_at": "2026-09-26T00:02:19.963724753Z",
+        "state": "absent",
+        "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+        "recorded_finalized_intents": 0,
+        "recorded_applied_intents": 0
+      }
+    },
+    {
+      "validator_id": 2,
+      "current_status": "applied",
+      "current_epoch": 1661,
+      "strict_finalized": 0,
+      "strict_applied": 0,
+      "local": {
+        "scope": "local-runtime-observation",
+        "final_acceptance": false,
+        "observed_at": "2026-09-26T00:03:52.155759049Z",
+        "state": "observed",
+        "state_directory": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+        "handoff_sha256": "sha256:4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3",
+        "store_sha256": "sha256:2fa2210134393eaff121820a7793fa1e7351cb665618846ac5211f8f1f5989ce",
+        "recorded_finalized_intents": 1,
+        "recorded_applied_intents": 1,
+        "recorded_receipts": [
+          {
+            "status": "applied",
+            "subnet_epoch": 1661,
+            "settlement_epoch": 614,
+            "vector_hash": "0x151411f714136780cc972f0e605b92f72c86bad26e50b767e85f3547b66c270d",
+            "prepared_extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+            "prepared_at_block": 8079810,
+            "prepared_at_block_hash": "0x94cbf9925f8229d29fa2ce1719ead86cfdeca0c6238768920100e341f08678e7",
+            "updated_at": "2026-09-25T03:26:48.7518971Z",
+            "extrinsic_hash": "0xf01124283509e93a6fe70e77b3654f19f1f4958b1b6b47624918e09b1404fa27",
+            "finalized_block": 8079823,
+            "finalized_block_hash": "0x863cc0010364fcd3d3e7695b3a8b595ce80515bd92595ee1458a15ebdeea329b",
+            "reveal_block": 8080091,
+            "application_block": 8080373,
+            "application_block_hash": "0xa89b90325bc23df066e5d35907643102c24504aae3ea98cac4c161004348ae1f"
+          }
+        ]
+      }
+    }
+  ]
+}

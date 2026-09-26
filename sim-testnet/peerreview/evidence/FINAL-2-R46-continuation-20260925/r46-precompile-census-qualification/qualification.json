@@ -1,0 +1,41 @@
+{
+  "source_commit": "670e4272244c00293b4591b4838dacd3a5107ee8",
+  "source_tree": "2c1f21312d3ac04c252ed293d62a4758d77f9f83",
+  "base_commit": "0d5f89b10b002b565f73ce49103f8de3eb5259c6",
+  "go_version": "go version go1.26.6 linux/amd64",
+  "modfile": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "modfile_sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "environment": {
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp"
+  },
+  "selector": "^(TestFinalPrecompileCapture|TestPrecompileRecovery(GasRevision|History)|TestFinalSemanticHistorical|TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry|TestEvidenceRelay(Chronology|HistoricalCapture|RequestRejects)|TestFinalFleetGenerationSource)",
+  "selected_top_level_tests": 73,
+  "new_negative_controls": 23,
+  "pre_fix": {
+    "selector": "^TestFinalPrecompileCaptureAcceptsCompletedSignedV2Recovery$",
+    "exit": 1,
+    "log": "pre-fix.red.log"
+  },
+  "normal": {
+    "exit": 0,
+    "log": "focused.normal.log",
+    "status": "passed",
+    "duration_seconds": 93.63,
+    "selected_top_level_tests": 73
+  },
+  "race": {
+    "status": "passed",
+    "log": "focused.race.log",
+    "exit": 0,
+    "duration_seconds": 725.592,
+    "selected_top_level_tests": 73,
+    "new_negative_controls_passed": 23,
+    "race_warnings": 0,
+    "test_timeout": "15m"
+  },
+  "live_rpc_calls": 0,
+  "retained_state_writes": 0,
+  "sealed_v3_writes": 0,
+  "worktree_clean_after_validation": true
+}

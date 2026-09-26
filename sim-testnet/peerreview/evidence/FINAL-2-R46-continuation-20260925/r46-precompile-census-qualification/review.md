@@ -1,0 +1,15 @@
+# R46 completed precompile recovery census admission
+
+The historical release census rejected `repair.precompile-residual.v2.1` because the retained setup plan predates the supplemental repair. The repair is authorized by the original dual-signed request, its exact v2 gas revision, completed conformance, and a dual-signed completion. These are supplemental historical authority; no new spending is authorized.
+
+Production now loads exactly `public/precompile-conformance.json` and `public/precompile-recovery-complete.json` for a finalized recovery. It validates the retained source plan and current carry scope, owner/deployer signatures, gas revision/refusal history, complete accounting, exact budget/completion journal anchors, rebuilt action intents and one matching finalized transaction/block tuple per step. It rejects missing or duplicated finalizations and any unapproved finalized step. The embedded approval chain is part of the completion-signed conformance hash, so redundant standalone authorization copies are not needed for admission.
+
+The same source object reaches the live census, sealed census replay, coordinator action selector, chronology builder, oracle-window reader, and independent timeline artifact verifier. The existing fleet-lineage artifact retains the exact two proof files. The supplemental proof adds no release contract emitters.
+
+The deterministic pre-fix regression used base `0d5f89b10b002b565f73ce49103f8de3eb5259c6`, a synthetic completed v2 fixture and the original unmodified census call path. `pre-fix.red.log` records the exact missing `repair.precompile-residual.v2.1` error. Synthetic tests include 23 negative controls, including a valid signed approval under another source plan and a freshly signed completion containing an unfinished step. No deployed private identity or RPC is used by these tests.
+
+Adjacent retained action scan found `repair.precompile-residual.1` only as six unsigned intent/refusal rows, two executed v2 steps, and the previously supported coordinator deploy/activate repairs. The v1 refusal remains nonfinal; a forged finalized v1 row is a negative control. Existing gas-revision, history, relay, coordinator timeline and fleet closure tests are included in qualification.
+
+`retained-source-identity.json` records the read-only file SHA256s, canonical authorization/evidence/completion hashes, the two exact finalized journal rows, and postcondition hashes. `selected-tests.json` lists the 73 focused top-level tests and exact selector. The retained state and sealed v3 outputs were not modified. The parent task owns the separate replay of the sealed v3 census.
+
+The committed source is `670e4272244c00293b4591b4838dacd3a5107ee8`. All 73 focused tests passed normally in 93.630 seconds and under the race detector in 725.592 seconds; all 23 recovery negative controls passed. The final existing sealed-range coordinator replay took 296.38 seconds under race and completed within the configured 15-minute timeout. The isolated worktree was clean after validation.

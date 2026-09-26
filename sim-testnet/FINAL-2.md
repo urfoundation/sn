@@ -476,15 +476,14 @@ durable witness ownership and rejects late success after a deadline; its
 isolated normal and race suites passed, with old-behavior controls failing.
 [Capture fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-capture-fix-review.md)
 (SHA-256 `c13b3fd10d9d5e81380b6df79bd0332869c86423df92c2fccc2848b9e93b5f2f`).
-The active independent replay uses that corrected two-origin capture. A
+The completed independent replay used that corrected two-origin capture. A
 read-only [source census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-census.json)
 at 07:10:52 UTC counted **107** immutable cuts, compared with **96** in the
 earlier diagnostic: later retained closures enlarged the archive being
 replayed. It found no additional concrete retry or custody defect. The
 [bounded review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review.md)
 and [normal/race test receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-capture-review-tests.receipt.json)
-do not predict a passing source capture; the active replay's eventual result
-is reported next.
+did not predict a passing source capture; the replay result is reported next.
 
 The independent **v3 replay completed** at 07:46:02 UTC with **39 checks:
 22 pass, eight fail, seven unavailable, one finding and one disclosed
@@ -503,6 +502,23 @@ passing semantic bundle. [Complete v3 report](peerreview/evidence/FINAL-2-R46-co
 (SHA-256 `bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb`),
 [comparison and provenance receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-v3.receipt.json)
 (SHA-256 `cd332db64dfe7fabd8e1e69aa4d5e208304fc4fe735065d79ed91d1a4242e5bd`).
+The supplemental precompile repair is now admitted by a narrow historical
+reader that verifies its source-plan scope, dual-signed v2 authorization and
+completion, journal checkpoints, action intents and exact finalized receipt
+tuples. Its old-code regression reproduced the v3 census rejection; the
+focused suite passed **73** selected tests normally and under race detection,
+including **23** negative repair controls. A separate read-only replay of the sealed v3 inputs then
+**passed the corrected historical contract census**: 125 approved plans,
+59,979 journal entries, 1,371 relay requests and ten release-contract
+addresses from block **7,888,670**. It made **zero RPC reads** and recaptured
+no validator data. This establishes the corrected census only; the original
+v3 chain check remains failed and no complete canonical/native check or final
+acceptance is claimed. Bounded EVM chronology follow-up is separately pending.
+[Precompile source review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-precompile-census-qualification/review.md),
+[normal/race qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-precompile-census-qualification/qualification.json),
+[offline census receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/census-replay-receipt.json),
+[replay custody review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/CENSUS-REPLAY-REVIEW.md),
+[address range](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-retained-census-replay/replayed-census.json).
 The v3 validator-2 relay readback is unavailable for a separate, genuine
 historical gap: of **66** signed publication members, all **64** closed-census
 slots for epochs 604–635 lack the original relay request, result and journal
@@ -517,6 +533,23 @@ cannot create the absent R46 requests or pass its sealed readback.
 [Exact retained census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-census.receipt.json),
 [root-cause review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-review.md),
 [qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-results.json).
+
+The failed adversarial campaign has an additional future-run source-selection
+defect, not an R46 acceptance waiver. Its consensus actor skipped all
+**4,757** attempts while reading a legacy validator-2 intent path, although
+the scenario observer selected the approved provisional/V2 generation. A
+deterministic old-code test reproduced that disagreement. The corrected actor
+uses one authenticated generation for both vector and metrics, with no legacy
+fallback; **17 distinct focused tests passed normally and under race
+detection**, including forged and missing-source controls. The retained R46
+observation census still has validator 1 absent in all **74** rows, while
+validator 2's epoch-1661 local intent predates the signed R46 baseline.
+Neither the actor fix nor its synthetic passing samples supply fresh native
+receipts, real mask coverage, or a passing original campaign. The original
+**59 failed `adversary_*` assertions** and v3 campaign failure remain.
+[Source-selection review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-fix-review.md),
+[sealed qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-qualification/qualification.json),
+[retained source census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-adversarial-source-qualification/retained-observation-census.json).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

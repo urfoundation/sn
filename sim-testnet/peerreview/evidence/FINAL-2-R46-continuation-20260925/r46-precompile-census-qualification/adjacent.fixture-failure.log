@@ -1,0 +1,49 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:07:00.921567 1002049 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:07:00.921794 1002049 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:07:00.921925 1002049 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:07:00.921963 1002049 env.go:78] [env]settings = map[]
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=3 resumed=1 checkpointed=3 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=2 total=0 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=3 resumed=0 checkpointed=3 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=2 total=0 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=851 requested_remaining=7570 requested_end=8421 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=851 requested_remaining=7570 requested_end=8421 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=3 resumed=3 checkpointed=3 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=2 total=0 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=851 requested_remaining=7570 requested_end=8421 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: evidence relay phase-transition transport recovery; attempt=1 maximum=5 outcome=retrying durable=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp/TestEvidenceRelayReadErrorsPhaseTransitionRetainsRequest1939524085/004/state/evidence-relay-retries/incident-2431684913/retry.json final_acceptance=false
+sim-testnet: evidence relay phase-transition transport recovery; attempt=2 maximum=5 outcome=recovered durable=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp/TestEvidenceRelayReadErrorsPhaseTransitionRetainsRequest1939524085/004/state/evidence-relay-retries/incident-2431684913/retry.json final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional evidence relay pending_public_census=true parallel_read_only_audit=true sources=2 final_audit_required=true final_acceptance=false
+sim-testnet: provisional evidence relay phase forecast; observed_block=850 requested_remaining=7570 requested_end=8420 forecast_end=8490 forecast_waived=true final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: evidence relay public-census transport recovery; attempt=1 maximum=5 outcome=retrying durable=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp/TestEvidenceRelayPublicCensusRetriesWithoutMutatingRuntime3405573713/003/evidence-relay-retries/incident-1988999914/retry.json final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=1 total=3 completed=3 resumed=0 checkpointed=3 checkpoint_failures=0 final_acceptance=false
+sim-testnet: provisional relay cold public census; validator_id=2 total=0 completed=0 resumed=0 checkpointed=0 checkpoint_failures=0 final_acceptance=false
+sim-testnet: evidence relay public-census transport recovery; attempt=2 maximum=5 outcome=recovered durable=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp/TestEvidenceRelayPublicCensusRetriesWithoutMutatingRuntime3405573713/003/evidence-relay-retries/incident-1988999914/retry.json final_acceptance=false
+--- FAIL: TestFinalPrecompileCaptureTimelineAndArtifactRetainRecoveryProof (0.21s)
+    final_semantic_precompile_source_test.go:200: plan has no action evm.coordinator-proxy
+sim-testnet: precompile continuation pending; retained checkpoints preserved: precompile move-position recovery remains pending: outstanding_alpha_rao=17
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	128.671s
+FAIL

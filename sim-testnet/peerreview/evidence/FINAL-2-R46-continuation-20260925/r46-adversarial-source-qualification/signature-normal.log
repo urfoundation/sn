@@ -1,0 +1,11 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:20:00.353206 1021523 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:20:00.353502 1021523 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:20:00.353635 1021523 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:20:00.353689 1021523 env.go:78] [env]settings = map[]
+=== RUN   TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence
+=== PAUSE TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence
+=== CONT  TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence
+--- PASS: TestProvisionalIntentMeasurementRejectsNoncanonicalCorruptAndMismatchedEvidence (0.08s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	0.166s

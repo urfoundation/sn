@@ -1,0 +1,8 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:20:23.836788 1021987 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:20:23.836975 1021987 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:20:23.837050 1021987 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:20:23.837076 1021987 env.go:78] [env]settings = map[]
+=== RUN   TestRetainedChainCensus
+--- PASS: TestRetainedChainCensus (470.54s)
+PASS

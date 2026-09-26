@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 08:00:48.961774  992447 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 08:00:48.962207  992447 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 08:00:48.962391  992447 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 08:00:48.962449  992447 env.go:78] [env]settings = map[]
+--- FAIL: TestFinalPrecompileCaptureAcceptsCompletedSignedV2Recovery (0.70s)
+    final_semantic_precompile_capture_test.go:95: completed signed precompile repair was refused: historical release journal action repair.precompile-residual.v2.1 is not approved: plan 0x0200000000000000000000000000000000000000000000000000000000000000 has no action repair.precompile-residual.v2.1
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	0.782s
+FAIL

@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/mnt/data/sn-testnet/qualification/r46-census-replay-92c14e3f-20260926/sim-testnet/retained_census_replay_test.go": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained_census_replay_test.go"
+  }
+}

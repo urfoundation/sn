@@ -1,0 +1,7 @@
+The retained V3 offline census passed with source `92c14e3f8bdd2419734d831da00cc0483f1bc993` in a clean detached checkout. `TestRetainedChainCensus` passed in 470.54 seconds using the pinned r45-final.mod. The source's 73-test normal selector had passed; race qualification was pending when this replay started.
+
+The replay authenticated 125 plans, 59,979 journal entries and 1,371 original relay requests, including the exact completed precompile recovery proof. It derived four current release addresses and ten addresses across the full approved lineage, with Evm capture starting at block 7,888,670. All 11 copied input artifacts (1,339,802,170 bytes) matched V3's sealed locators.
+
+Binary SHA-256: `sha256:6326a4a4525c9fc188b6f48edab476ec15a2ad0c8f3752e8db1136c56b7097b7`. Input manifest SHA-256: `sha256:0a7d2d8535afdae2f1acca21bfb9ca8ccc7bf98b1067b2bb6f97c83c14fb58a9`. Original V3 report SHA-256: `sha256:bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb`. Exact commands, module/source hashes, logs, input locators and output hashes are indexed in `census-replay-qualification.json`.
+
+This is an offline action-admission and capture-census result: zero RPC reads, zero validator captures, no canonical/native-reward pass and no final acceptance. V3's chain capture failure and the original failed R46 result remain unchanged. A separately scoped LAN Evm capture is required to evaluate coordinator chronology.

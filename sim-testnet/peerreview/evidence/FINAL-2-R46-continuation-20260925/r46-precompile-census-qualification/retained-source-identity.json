@@ -1,0 +1,92 @@
+{
+  "files": [
+    {
+      "path": "public/precompile-conformance.json",
+      "size_bytes": 27714,
+      "sha256": "7aede2e5b636d991447c635702dc489bdffd605d4d58901060f55352e7901212"
+    },
+    {
+      "path": "public/precompile-recovery-complete.json",
+      "size_bytes": 1371,
+      "sha256": "edd9bf63fe9c8004086f857363c99ade9beeb05fbfd6e137ae480b35f0f0ad8f"
+    },
+    {
+      "path": "public/precompile-recovery-authorization.json",
+      "size_bytes": 3051,
+      "sha256": "fa6caaf2fbb5f7fdec9758b06f91b6326ff58204bab2792cababda89a1f615ba"
+    },
+    {
+      "path": "public/precompile-recovery-authorization-v2.json",
+      "size_bytes": 15929,
+      "sha256": "4f2e2e3342316e0458b8d35598da541a05dae23f84312fb88777ef4ad96c7240"
+    },
+    {
+      "path": "plans/016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b.json",
+      "size_bytes": 36109171,
+      "sha256": "47044c0d822272ebc0dd1264f214e76379fbafb16dccddc46a71b51c4a10a4ae"
+    }
+  ],
+  "recovery": {
+    "source_plan_hash": "0x016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b",
+    "authorization_hash": "0x38b68543ca014bb84073a727378c0b132a90077a19105b8d854909704d4b2087",
+    "evidence_hash": "0xbe79d17e3a6128cee62c82ac19e36155ef838487920a5a89ff9e6b1b51ccfb0f",
+    "completion_hash": "0xa57be6e04327c63c24ed66d5af71ece6fa32e05790c2748101500fe5fbae107c",
+    "completion_journal_hash": "0x1cff6a71fb68c8e8e539259fbc396e6a8faff15c01e1845f75d0ca5d41615614",
+    "steps": [
+      {
+        "action_id": "repair.precompile-residual.v2.1",
+        "intent_hash": "0x9ed42b0d0ac286291fcd8a549c5efb7d0d8d3c784300eb9fcc823f95cee16e01",
+        "operation": "top-up",
+        "transaction_hash": "0xda38d563a0f84dc18e2545946122a2ead0ff6b08fb182bc4166ae95404979568",
+        "block_number": 8068512,
+        "block_hash": "0xe51728dc2f0dd82502f22b438059087fe7e9d10c316b95e5ff234f124c00ef60"
+      },
+      {
+        "action_id": "repair.precompile-residual.v2.2",
+        "intent_hash": "0x4c5b7d7fc5471b46d4adf31099b4f04383c226a29eebc52cfe383e04c9da5ea2",
+        "operation": "recover-move",
+        "transaction_hash": "0x34d574a9c83e86aaf54d8479ed1c3656d4139eac83a1b564a6c84354ad824d90",
+        "block_number": 8068515,
+        "block_hash": "0x2e3bbf0a326ff64a98aea086ddb5a65e93581d5506bb43114a4926689c7f2b75"
+      }
+    ]
+  },
+  "journal_finalizations": [
+    {
+      "sequence": 52438,
+      "plan_hash": "0x016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b",
+      "action_id": "repair.precompile-residual.v2.1",
+      "intent_hash": "0x9ed42b0d0ac286291fcd8a549c5efb7d0d8d3c784300eb9fcc823f95cee16e01",
+      "stage": "finalized",
+      "transaction_hash": "0xda38d563a0f84dc18e2545946122a2ead0ff6b08fb182bc4166ae95404979568",
+      "block_number": 8068512,
+      "block_hash": "0xe51728dc2f0dd82502f22b438059087fe7e9d10c316b95e5ff234f124c00ef60",
+      "entry_hash": "0x7fbf4c4be433741a3562c172fd20aa14963b1a9c13284a704c4670616c450660"
+    },
+    {
+      "sequence": 52443,
+      "plan_hash": "0x016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b",
+      "action_id": "repair.precompile-residual.v2.2",
+      "intent_hash": "0x4c5b7d7fc5471b46d4adf31099b4f04383c226a29eebc52cfe383e04c9da5ea2",
+      "stage": "finalized",
+      "transaction_hash": "0x34d574a9c83e86aaf54d8479ed1c3656d4139eac83a1b564a6c84354ad824d90",
+      "block_number": 8068515,
+      "block_hash": "0x2e3bbf0a326ff64a98aea086ddb5a65e93581d5506bb43114a4926689c7f2b75",
+      "entry_hash": "0x235188b0a70d9376087fbf9f4090bbc7fcb324af95580be04d128a0fa1dba5c5"
+    }
+  ],
+  "postconditions": [
+    {
+      "path": "receipts/postconditions/016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b/repair.precompile-residual.v2.1.json",
+      "sha256": "983e9b4f277d2035a4d57ae9678b61618bb09a6db2a32534a1e4de129e2b58d4",
+      "postcondition_hash": "0xf069f3e09de25b95bd28269081fd4d3795572ed4ef32ba9153161397b7e95b97",
+      "journal_hash": "0x5b6734089ba28419e4705daa2f70a9ff25dd326bf282eee1555b6cd6b98a7d9c"
+    },
+    {
+      "path": "receipts/postconditions/016027a9eac736eae4db4485eb624011f234eefbd0c6b56d71c94a1cf867ba5b/repair.precompile-residual.v2.2.json",
+      "sha256": "6443718c89fc55b15dff3c1204951b1a32bad6aafef936a6d4b6753a831f43c3",
+      "postcondition_hash": "0x8d5ad9375dddffcac1d97fbba184b4bef3eeae011e6ff9a8a8436c18e858878f",
+      "journal_hash": "0xfd2f304cb67de8fd633c41946ba69cb59304b3cd1b3daca72f23178ef6957684"
+    }
+  ]
+}
