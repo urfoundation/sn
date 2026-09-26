@@ -49,10 +49,21 @@ type PolicyRateUsageShortfall struct {
 
 // Only an explicit provisional release may start traffic with this diagnostic.
 type PolicyRateLowUsageDeferral struct {
-	Scope           string                     `json:"scope"`
-	Provisional     bool                       `json:"provisional"`
-	FinalAcceptance bool                       `json:"final_acceptance"`
-	Shortfalls      []PolicyRateUsageShortfall `json:"shortfalls"`
+	Scope            string                      `json:"scope"`
+	Provisional      bool                        `json:"provisional"`
+	FinalAcceptance  bool                        `json:"final_acceptance"`
+	Shortfalls       []PolicyRateUsageShortfall  `json:"shortfalls"`
+	UnmatchedSources []PolicyRateUnmatchedSource `json:"unmatched_sources,omitempty"`
+}
+
+// A signed usage source is independent of an older on-chain payout. Retain
+// both identities without claiming that the source was committed or funded.
+type PolicyRateUnmatchedSource struct {
+	NoId                      uint64 `json:"no_id"`
+	SourceEpoch               uint64 `json:"source_epoch"`
+	SourceContentHash         string `json:"source_content_hash"`
+	LatestMatchingEpoch       uint64 `json:"latest_matching_epoch"`
+	LatestMatchingContentHash string `json:"latest_matching_content_hash"`
 }
 
 // Source authentication completes before this typed, deferrable failure exists.
@@ -103,8 +114,9 @@ func validatePolicyRateReadiness(cfg *ResolvedConfig, contracts *ContractView, s
 	return nil
 }
 
-// Recheck the signed, chain-matching source census and structural membership.
-// A separate recorded cohort expectation is allowed, never a malformed member.
+// Recheck the complete signed source census and historical payout membership.
+// A newer source may lack a matching payout only as an explicit provisional
+// diagnostic. A same-epoch conflict or malformed member remains an error.
 func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, proof *PolicyRateReadinessObservation, operators []OperatorObservation, lowUsage *policyRateLowUsageError) *PolicyRateLowUsageDeferral {
 	if !provisionalResumeEnabled(cfg) || cfg.readOnlyAudit || cfg.Config == nil || proof == nil || lowUsage == nil || len(lowUsage.shortfalls) == 0 {
 		return nil
@@ -117,10 +129,20 @@ func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, proof *PolicyRateReadine
 	for _, source := range proof.Sources {
 		sourcesKVs[source.NoId] = source
 	}
+	var unmatchedSources []PolicyRateUnmatchedSource
 	for _, operator := range operators {
 		source, ok := sourcesKVs[uint64(operator.NoID)]
-		if !ok || operator.Error != "" || !operator.Healthy || operator.RateSource == nil || *operator.RateSource != source || operator.ValidArtifacts == 0 || operator.MatchingArtifacts == 0 || !slices.Contains(operator.ArtifactHashes, source.ContentHash) || operator.LatestArtifactEpoch != source.Epoch || operator.LatestArtifactHash != source.ContentHash {
+		if !ok || operator.Error != "" || !operator.Healthy || operator.RateSource == nil || *operator.RateSource != source || operator.ValidArtifacts == 0 || operator.MatchingArtifacts == 0 || !slices.Contains(operator.ArtifactHashes, source.ContentHash) {
 			return nil
+		}
+		if operator.LatestArtifactEpoch != source.Epoch || operator.LatestArtifactHash != source.ContentHash {
+			if operator.LatestArtifactEpoch >= source.Epoch || operator.LatestArtifactHash == source.ContentHash || !validSHA256ContentHash(operator.LatestArtifactHash) || !slices.Contains(operator.ArtifactHashes, operator.LatestArtifactHash) {
+				return nil
+			}
+			unmatchedSources = append(unmatchedSources, PolicyRateUnmatchedSource{
+				NoId: source.NoId, SourceEpoch: source.Epoch, SourceContentHash: source.ContentHash,
+				LatestMatchingEpoch: operator.LatestArtifactEpoch, LatestMatchingContentHash: operator.LatestArtifactHash,
+			})
 		}
 		if !operator.TierMembershipValid {
 			cohort := operator.ProvisionalPayoutCohort
@@ -130,7 +152,7 @@ func provisionalPolicyRateLowUsage(cfg *ResolvedConfig, proof *PolicyRateReadine
 		}
 		delete(sourcesKVs, source.NoId)
 	}
-	return &PolicyRateLowUsageDeferral{Scope: "complete-source-native-floor-margin", Provisional: true, FinalAcceptance: false, Shortfalls: slices.Clone(lowUsage.shortfalls)}
+	return &PolicyRateLowUsageDeferral{Scope: "complete-source-native-floor-margin", Provisional: true, FinalAcceptance: false, Shortfalls: slices.Clone(lowUsage.shortfalls), UnmatchedSources: unmatchedSources}
 }
 
 // Both admission gates replay the exact pinned proof. Ready remains false for
@@ -161,7 +183,7 @@ func validateScenarioPolicyRateAdmission(cfg *ResolvedConfig, observation *Scena
 	}
 	want := provisionalPolicyRateLowUsage(cfg, proof, observation.Operators, lowUsage)
 	got := proof.ProvisionalLowUsage
-	if want == nil || got == nil || got.Scope != want.Scope || !got.Provisional || got.FinalAcceptance || !slices.Equal(got.Shortfalls, want.Shortfalls) {
+	if want == nil || got == nil || got.Scope != want.Scope || !got.Provisional || got.FinalAcceptance || !slices.Equal(got.Shortfalls, want.Shortfalls) || !slices.Equal(got.UnmatchedSources, want.UnmatchedSources) {
 		return err
 	}
 	return nil
