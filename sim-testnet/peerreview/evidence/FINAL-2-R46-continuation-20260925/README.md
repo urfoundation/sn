@@ -212,3 +212,7 @@ without proving the exclusive upstream provider eligibility cause.
 and race tests, and pre-fix controls for the replacement validator proof
 readiness and expected zero-leaf payout behavior. `r46-native-steering-rows.receipt.json`
 pins the first and last retained native steering failures to the sealed gate.
+`r46-server-main-payout-test.receipt.json` records the focused normal and
+race qualification of the zero-leaf regression on Server main `db680048`,
+including the sibling source revisions and the SN documentation-only change
+that occurred during the race compile.

@@ -504,6 +504,11 @@ future-run fixes and controls, not retroactive evidence of R46 acceptance.
 (SHA-256 `569b4ff0c0bc55766c0326bbc07bd326ca473858094330da4410cec82107a4ed`),
 [exact native steering rows](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-native-steering-rows.receipt.json)
 (SHA-256 `195a9ce4e4c15a979cb3dfd4773f7d8d3cf3547919a557fde6aa45dfe02e2858`).
+The server zero-leaf regression is now on Server main as `db680048` after
+passing its focused normal and race runs against the recorded current source
+set. [Current-main qualification receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-server-main-payout-test.receipt.json)
+preserves that narrower result; it does not establish the exclusive cause of
+the original operator-2 empty census.
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
 It found **808/808 fleet bindings valid** and current-policy rate readiness

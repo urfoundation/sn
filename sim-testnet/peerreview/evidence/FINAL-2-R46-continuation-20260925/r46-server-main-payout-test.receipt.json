@@ -1,0 +1,25 @@
+{
+  "schema": "urnetwork-r46-server-main-test-integration-v1",
+  "original_test_commit": "6a5c2f7a299690468694312652bb03ada00bb672",
+  "server_main_base": "0a434887",
+  "integrated_commit": "db680048820fefc409a58dcf983561fe3d834c6e",
+  "remote_main_observed": "db680048820fefc409a58dcf983561fe3d834c6e",
+  "test": "TestStBuildReleaseProviderInputsProofStarvationProducesEmptyCensus",
+  "normal": {
+    "exit": 0,
+    "output": "ok  github.com/urnetwork/server/controller 0.079s"
+  },
+  "race": {
+    "exit": 0,
+    "output": "ok  github.com/urnetwork/server/controller 1.400s"
+  },
+  "scope": "zero-leaf census under absent exposure, assignments without confirmations, and restoration after confirmed exposure; no exclusive R46 cause claim",
+  "source_revisions_at_receipt": {
+    "server": "db680048820fefc409a58dcf983561fe3d834c6e",
+    "sn": "ff4a1e34d23bb98b5ccc36efdc409f60cbe15a90",
+    "operator_proxy": "18967d687ec55985f7bea105add8ce6960c77134",
+    "connect": "e1fe2daf4841729599dda77793e215b46fc84899"
+  },
+  "sn_revision_at_test_start": "0c8b3428",
+  "sn_change_during_race_compile": "The later ff4a1e34 change touched only mainnet/PRELAUNCH-FIXES.md; Go dependency source is unchanged."
+}
