@@ -138,6 +138,13 @@ func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *valida
 			return nil, errors.New("generation already has an immutable epoch plan; use a new explicit generation to preserve prior consent history")
 		}
 	}
+	previous, err := readBasePolicyRolloverHandoffV2(ctx, e.cfg, e.stateDir, e.plan)
+	if err != nil {
+		return nil, err
+	}
+	if previous != nil && (generation <= previous.Generation || epoch <= previous.CutoffEpoch) {
+		return nil, errors.New("successor generation and cutoff must advance the active handoff")
+	}
 	resolved, err := runtimeEvidenceV2ResolvedConfig(e.cfg, e.stateDir)
 	if err != nil {
 		return nil, err
@@ -170,6 +177,13 @@ func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *valida
 		Native: ChainHead{Number: uint64(nativeHeader.Number), Hash: nativeHash.Hex()}, EVM: ChainHead{Number: block, Hash: common.Hash(hash).Hex()},
 		Journal: e.plan.ValidatorEvidence.Address, JournalRuntimeHash: e.plan.ValidatorEvidence.RuntimeCodeHash, Keeper: common.HexToAddress(e.roles.EVM["keeper"].Address),
 		MaximumGasUnits: e.cfg.Config.ValidatorEvidenceActivationGasUnits, MaximumFeePerGasWei: e.plan.MaximumEVMFeePerGasWei, MaximumAttempts: 3, AttemptTimeoutSeconds: 90}
+	if previous != nil {
+		reference, err := policyRolloverHandoffReferenceV2(ctx, previous, limit)
+		if err != nil {
+			return nil, err
+		}
+		p.PreviousHandoff = &reference
+	}
 	policyHash, err := decodeHex32("rollover policy", e.cfg.PolicyHash)
 	if err != nil {
 		return nil, err
@@ -177,6 +191,10 @@ func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *valida
 	for index, configured := range resolved.Config.ValidatorEvidenceV2 {
 		id := uint64(index + 1)
 		originalPath := filepath.Join(e.stateDir, "runtime", fmt.Sprintf("validator-%d", id), "validator.yml")
+		if previous != nil {
+			originalPath = previous.Validators[index].Config.Path
+			configured.Evidence = previous.Validators[index].Evidence
+		}
 		configBytes, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, originalPath, limit)
 		if err != nil {
 			return nil, err
@@ -188,6 +206,9 @@ func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *valida
 		checkpoint := policyRolloverValidatorCheckpointV2{ValidatorID: id, Config: policyRolloverFile(savedPath, configBytes), StateDir: filepath.Join(e.stateDir, "runtime", fmt.Sprintf("validator-%d", id), "state")}
 		if e.plan.EvidenceRelayContinuation != nil {
 			checkpoint.StateDir = filepath.Join(e.stateDir, "runtime", fmt.Sprintf("validator-%d", id), "coordinator-state-v2")
+		}
+		if previous != nil {
+			checkpoint.StateDir = previous.Validators[index].StateDir
 		}
 		for _, operator := range configured.Evidence.Operators {
 			raw, err := validatorcomponent.ReadReleaseEvidenceV2File(ctx, operator.Activation, uint64(protocol.ValidatorEvidenceActivationPayloadSize))
@@ -342,6 +363,9 @@ func runPolicyRolloverV2(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	if err := requireApproved(true, o.RolloverPlanHash, plan.PlanHash); err != nil {
 		return err
 	}
+	if err := validatePolicyRolloverActivePredecessorV2(ctx, cfg, stateDir, base, plan); err != nil {
+		return err
+	}
 	if err := validatePolicyRolloverJournalV2(plan, journal.Entries()); err != nil {
 		return err
 	}
@@ -393,7 +417,7 @@ func runPolicyRolloverV2(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	for index := range validators {
 		validators[index].PreviousStateDir = plan.Validators[index].StateDir
 	}
-	handoff := &policyRolloverHandoffV2{Schema: policyRolloverHandoffV2Schema, PlanHash: plan.PlanHash, SourcePlanHash: plan.SourcePlanHash, DeploymentID: plan.DeploymentID, Generation: plan.Generation, CutoffEpoch: plan.Epoch, FirstFullEpoch: plan.Epoch + 1, Native: plan.Native, EVM: plan.EVM, Boundary: boundary, Members: plan.Members, Validators: validators}
+	handoff := &policyRolloverHandoffV2{Schema: policyRolloverHandoffV2Schema, PreviousHandoff: plan.PreviousHandoff, PlanHash: plan.PlanHash, SourcePlanHash: plan.SourcePlanHash, DeploymentID: plan.DeploymentID, Generation: plan.Generation, CutoffEpoch: plan.Epoch, FirstFullEpoch: plan.Epoch + 1, Native: plan.Native, EVM: plan.EVM, Boundary: boundary, Members: plan.Members, Validators: validators}
 	if len(validators) != 2 {
 		return errors.New("rollover staging omitted a validator")
 	}
@@ -409,23 +433,7 @@ func runPolicyRolloverV2(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 			return err
 		}
 	}
-	handoff.Activated = true
-	action, err := policyRolloverHandoffActionV2(plan)
-	if err != nil {
-		return err
-	}
-	_, prior := policyRolloverPriorV2(plan, action, journal.Entries())
-	if prior == nil {
-		if err := journal.Append(JournalEntry{DeploymentID: plan.DeploymentID, PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
-			return err
-		}
-	}
-	// All referenced files and the verified activation journal precede the
-	// pointer. A crash before this immutable final write resumes exactly.
-	if err := persistPolicyRolloverPostconditionV2(ctx, plan, journal, action, handoff, limit); err != nil {
-		return err
-	}
-	if _, err := writeRuntimeEvidenceSetupV2(ctx, filepath.Join(policyRolloverRoot(stateDir), "handoff.json"), handoff, limit); err != nil {
+	if err := activatePolicyRolloverHandoffV2(ctx, cfg, stateDir, base, plan, handoff, journal, limit); err != nil {
 		return err
 	}
 	return printResult(o.Format, handoff, nil)

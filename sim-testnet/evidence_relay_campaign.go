@@ -45,6 +45,10 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		}
 		for _, source := range relay.sources {
 			first := relay.policyGapFirstEpoch[source.validatorId]
+			if source.successor != nil {
+				generations := source.generations()
+				first = generations[len(generations)-1].activations[0].Domain.Epoch + 1
+			}
 			if first == 0 || options.MinimumAcceptanceEpoch != 0 && options.MinimumAcceptanceEpoch != first {
 				return nil, errors.New("release rollover has conflicting first-full-epoch boundaries")
 			}

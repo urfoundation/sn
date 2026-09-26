@@ -200,3 +200,87 @@ func TestEvidencePolicyRolloverReadsBothPublicGenerationsWithFreshSignatures(t *
 		t.Fatal("foreign source namespace admitted authentic successor bytes")
 	}
 }
+
+// A third namespace preserves original and first-generation custody, while
+// the final cutoff controls both public discovery and fixed-budget admission.
+func TestEvidencePolicyRolloverSuccessorRoutesEveryRetainedGeneration(t *testing.T) {
+	runtime, fixture, first, firstSigned := newEvidencePolicyRolloverSourceTest(t)
+	if err := runtime.installPolicyRolloverSource(t.Context(), 1, first, []evidenceRelayPolicyGapActivation{firstSigned}); err != nil {
+		t.Fatal(err)
+	}
+	next := firstSigned.Activation
+	next.Domain.Epoch++
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x92}, 32))
+	next.VPK = [32]byte(key[32:])
+	signed := evidenceRelayPolicyGapActivation{Activation: next}
+	var err error
+	signed.VPKSignature, err = next.SignVPK(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotkey, err := crv4.KeypairFromSeed([32]byte{0x71})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := next.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed.HotkeySignature, err = hotkey.Sign(digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := stabi.STValidatorEvidenceMetaData.ParseABI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := parsed.Methods["activation"].Outputs.Pack(stabi.STValidatorEvidenceActivation{Record: stabi.ValidatorEvidenceActivationRecordFromProtocol(next), PublishedBlock: 1201})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.stateLock.Lock()
+	fixture.responses[fixture.expected.Journal.Hex()+":"+hexutil.Encode(stabi.NewSTValidatorEvidence().PackActivation(digest))] = encoded
+	fixture.stateLock.Unlock()
+	setEvidencePolicyGapTestPolicy(t, fixture, next.Domain.Epoch, next.Domain.PolicyHash)
+	second := evidenceRelaySource{validatorId: 1, stateDir: filepath.Join(fixture.stateDir, "second-source"), bounds: first.bounds, activations: []protocol.ValidatorEvidenceActivation{next}}
+	if err := runtime.installPolicyRolloverSource(t.Context(), 1, second, []evidenceRelayPolicyGapActivation{signed}); err != nil {
+		t.Fatal(err)
+	}
+	source := &runtime.sources[0]
+	generations := source.generations()
+	if len(generations) != 3 || source.forEpoch(8) != generations[0] || source.forEpoch(9) != generations[1] || source.forEpoch(10) != generations[2] {
+		t.Fatal("successor replaced a retained namespace or cutoff")
+	}
+	if runtime.policyGapCutoffs[1][0].Activation != firstSigned.Activation || runtime.policyGapFirstEpoch[1] != 10 {
+		t.Fatal("fresh generation widened historical gap authority")
+	}
+	runtime.through[1], runtime.completed[1] = 12, true
+	if err := runtime.WaitRange(t.Context(), 10, 12); err == nil {
+		t.Fatal("partial second activation epoch accepted")
+	}
+	if err := runtime.WaitRange(t.Context(), 11, 12); err != nil {
+		t.Fatal(err)
+	}
+	old := generations[0].activations[0]
+	horizon := &evidenceRelayHorizon{work: evidenceRelayWork{settlementCadence: 100, nativeCadence: 100}, maximum: 100, anchorBlock: 1000, anchorEpoch: 7, anchorNativeEpoch: 1,
+		sourceKVs: map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation{{hotkey: old.Hotkey, noId: old.NoID}: old}, headerKVs: map[[32]byte]protocol.ValidatorEvidenceHeader{}}
+	runtime.installPolicyRolloverHorizon(horizon)
+	for index, generation := range generations {
+		header := fixture.expected.Evidence.Header
+		activation := generation.activations[0]
+		header.Domain, _ = activation.EvidenceDomain()
+		header.VPK, header.Epoch, header.BoundaryBlock = activation.VPK, []uint64{8, 9, 10}[index], 1209
+		if err := horizon.admit(header, 1210); err != nil {
+			t.Fatalf("generation %d lost funded custody: %v", index, err)
+		}
+		if index < 2 {
+			header.Epoch = generations[index+1].activations[0].Domain.Epoch
+			if err := horizon.admit(header, 1210); err == nil {
+				t.Fatal("predecessor crossed successor cutoff")
+			}
+		}
+	}
+	if fixture.requestCount("eth_sendRawTransaction") != 0 {
+		t.Fatal("source installation spent")
+	}
+}

@@ -17,17 +17,18 @@ import (
 // Discovery keeps the original source and cursor. Only the exact approved
 // cutoff chooses a successor namespace and activation generation.
 func (source *evidenceRelaySource) forEpoch(epoch uint64) *evidenceRelaySource {
-	if source.successor != nil && epoch >= source.successor.activations[0].Domain.Epoch {
-		return source.successor
+	for source.successor != nil && epoch >= source.successor.activations[0].Domain.Epoch {
+		source = source.successor
 	}
 	return source
 }
 
 func (source *evidenceRelaySource) generations() []*evidenceRelaySource {
-	if source.successor == nil {
-		return []*evidenceRelaySource{source}
+	var result []*evidenceRelaySource
+	for next := source; next != nil; next = next.successor {
+		result = append(result, next)
 	}
-	return []*evidenceRelaySource{source, source.successor}
+	return result
 }
 
 // The durable approved handoff reader supplies the namespace/configuration;
@@ -68,6 +69,9 @@ func (self *evidenceRelayRuntime) installPolicyRolloverSource(ctx context.Contex
 	}
 	successor.nextEpoch = signed[0].Activation.Domain.Epoch
 	successor.activations = slices.Clone(successor.activations)
+	if original.successor != nil {
+		return self.installPolicyRolloverSuccessorV2(ctx, original, &successor, signed, block)
+	}
 	return self.installPolicyGapCutoffAndSource(ctx, validatorID, signed, &successor)
 }
 
@@ -127,13 +131,61 @@ func discoverEvidenceRelayAuditGenerations(ctx context.Context, source *evidence
 // A successor changes only the exact accepted signing domain after its cutoff.
 func (self *evidenceRelayRuntime) installPolicyRolloverHorizon(horizon *evidenceRelayHorizon) {
 	for index := range self.sources {
-		if next := self.sources[index].successor; next != nil {
+		for next := self.sources[index].successor; next != nil; next = next.successor {
 			if horizon.successorKVs == nil {
-				horizon.successorKVs = map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation{}
+				horizon.successorKVs = map[evidenceRelayHorizonSource][]protocol.ValidatorEvidenceActivation{}
 			}
 			for _, activation := range next.activations {
-				horizon.successorKVs[evidenceRelayHorizonSource{hotkey: activation.Hotkey, noId: activation.NoID}] = activation
+				key := evidenceRelayHorizonSource{hotkey: activation.Hotkey, noId: activation.NoID}
+				horizon.successorKVs[key] = append(horizon.successorKVs[key], activation)
 			}
 		}
 	}
+}
+
+// A same-policy fresh ledger adds a cutoff without widening the original
+// policy-gap waiver or changing its historical receipt/first-acceptance fields.
+func (self *evidenceRelayRuntime) installPolicyRolloverSuccessorV2(ctx context.Context, original, successor *evidenceRelaySource, signed []evidenceRelayPolicyGapActivation, block uint64) error {
+	previous := original
+	for previous.successor != nil {
+		previous = previous.successor
+	}
+	self.stateLock.Lock()
+	started := self.workerStarted || self.horizon != nil
+	self.stateLock.Unlock()
+	if started || len(previous.activations) != len(signed) {
+		return errors.New("successor source cannot change after startup or alter its census")
+	}
+	for index, member := range signed {
+		old, next := previous.activations[index], member.Activation
+		domain := old.Domain
+		domain.Epoch = next.Domain.Epoch
+		if domain != next.Domain || next.Domain.Epoch <= old.Domain.Epoch || next.VPK == old.VPK || next.Hotkey != old.Hotkey || next.NoID != old.NoID || next.FirstSequence != 1 || next.PriorRoot != ([32]byte{}) || next.EVMBlock < old.EVMBlock || next.EVMBlock > block || index > 0 && next.Domain != signed[0].Activation.Domain {
+			return errors.New("successor source changes its approved same-policy lineage or cutoff")
+		}
+		if err := next.Verify(next, member.VPKSignature, member.HotkeySignature); err != nil {
+			return err
+		}
+		hash, err := self.chain.BlockHashContext(ctx, next.EVMBlock)
+		if err != nil || hash != next.EVMHash {
+			return errors.Join(errors.New("successor activation snapshot is not canonical"), err)
+		}
+		evidenceDomain, err := next.EvidenceDomain()
+		if err != nil {
+			return err
+		}
+		if err := self.chain.ValidateValidatorEvidencePolicyEraV2Context(ctx, protocol.ValidatorEvidenceHeader{Domain: evidenceDomain, Epoch: next.Domain.Epoch}); err != nil {
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.workerStarted || self.horizon != nil || previous.successor != nil {
+		return errors.New("successor owner changed during authentication")
+	}
+	previous.successor = successor
+	return nil
 }

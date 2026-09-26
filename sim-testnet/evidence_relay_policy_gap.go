@@ -279,6 +279,15 @@ func encodeEvidenceRelayPolicyGap(record evidenceRelayPolicyGapRecord, key [32]b
 // stateLock is held by the caller. Old gaps remain explicit even after later
 // epochs publish successfully; a high cursor alone can never cover them.
 func (self *evidenceRelayRuntime) policyGapRangeError(first, last uint64) error {
+	for _, source := range self.sources {
+		if source.successor != nil {
+			generations := source.generations()
+			minimum := generations[len(generations)-1].activations[0].Domain.Epoch + 1
+			if first < minimum {
+				return fmt.Errorf("evidence acceptance starts before validator %d active generation minimum %d", source.validatorId, minimum)
+			}
+		}
+	}
 	for _, gap := range self.policyGaps {
 		if first <= gap.header.Epoch && gap.header.Epoch <= last || gap.header.Kind == protocol.ValidatorEvidenceDepositAudit && first <= gap.header.Subject.ObservationEpoch && gap.header.Subject.ObservationEpoch <= last {
 			return fmt.Errorf("evidence acceptance range [%d,%d] intersects validator %d policy gap at epoch %d", first, last, gap.validatorID, gap.header.Epoch)

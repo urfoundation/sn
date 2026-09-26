@@ -19,7 +19,7 @@ func addPolicyRolloverRuntimeInputsV2(cfg *ResolvedConfig, stateDir string, path
 	pointer := filepath.Join(policyRolloverRoot(stateDir), "handoff.json")
 	_, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, pointer, 1)
 	if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
-		return nil
+		return requirePolicyRolloverInitialAbsenceV2(stateDir)
 	}
 	base, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil {
@@ -39,18 +39,26 @@ func addPolicyRolloverGenerationRuntimeInputsV2(ctx context.Context, cfg *Resolv
 	if handoff == nil {
 		return nil
 	}
-	if _, err := readPolicyRolloverSourceRoleOverlayWithV2(ctx, cfg, stateDir, base, handoff, sourceRoleIo); err != nil {
-		return err
-	}
-	pointer := filepath.Join(policyRolloverRoot(stateDir), "handoff.json")
-	files := []string{pointer, policyRolloverPlanPathV2(stateDir, handoff.Generation, handoff.CutoffEpoch), handoff.Identities.Path}
-	for _, validator := range handoff.Validators {
-		files = append(files, validator.Config.Path, filepath.Join(filepath.Dir(validator.Config.Path), "hotkey.seed"))
-		for _, operator := range validator.Evidence.Operators {
-			for _, file := range operator.Files() {
-				files = append(files, file.Path)
+	var files []string
+	generations := handoff.generations()
+	for index, generation := range generations {
+		if _, err := readPolicyRolloverSourceRoleOverlayWithV2(ctx, cfg, stateDir, base, generation, sourceRoleIo); err != nil {
+			return err
+		}
+		// Successors own a separate immutable receipt; the original sealed
+		// manifest inventory must not grow during retained resume.
+		if index != 0 {
+			continue
+		}
+		files = append(files, generation.sourcePath, policyRolloverPlanPathV2(stateDir, generation.Generation, generation.CutoffEpoch), generation.Identities.Path)
+		for _, validator := range generation.Validators {
+			files = append(files, validator.Config.Path, filepath.Join(filepath.Dir(validator.Config.Path), "hotkey.seed"))
+			for _, operator := range validator.Evidence.Operators {
+				for _, file := range operator.Files() {
+					files = append(files, file.Path)
+				}
+				files = append(files, filepath.Join(validator.ClientStateDir, "operators", fmt.Sprintf("no-%d", operator.NoID), "client.key"))
 			}
-			files = append(files, filepath.Join(validator.ClientStateDir, "operators", fmt.Sprintf("no-%d", operator.NoID), "client.key"))
 		}
 	}
 	for _, path := range files {

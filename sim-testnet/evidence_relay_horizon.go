@@ -333,7 +333,7 @@ type evidenceRelayHorizon struct {
 	minimumEnd        uint64
 	minimumNativeEnd  uint64
 	sourceKVs         map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation
-	successorKVs      map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation
+	successorKVs      map[evidenceRelayHorizonSource][]protocol.ValidatorEvidenceActivation
 	headerKVs         map[[32]byte]protocol.ValidatorEvidenceHeader
 	continuation      *EvidenceRelayContinuation
 	forecastAdvisory  bool
@@ -520,8 +520,10 @@ func (self *evidenceRelayHorizon) admit(header protocol.ValidatorEvidenceHeader,
 	if !found {
 		return errors.New("evidence relay horizon source differs from original activation")
 	}
-	if successor, exists := self.successorKVs[source]; exists && header.Epoch >= successor.Domain.Epoch {
-		activation = successor
+	for _, successor := range self.successorKVs[source] {
+		if header.Epoch >= successor.Domain.Epoch {
+			activation = successor
+		}
 	}
 	domain, err := activation.EvidenceDomain()
 	if err != nil || header.Domain != domain || header.VPK != activation.VPK {

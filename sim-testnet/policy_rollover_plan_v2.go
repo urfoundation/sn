@@ -34,30 +34,31 @@ type policyRolloverValidatorCheckpointV2 struct {
 }
 
 type policyRolloverPlanV2 struct {
-	Schema                  string                                `json:"schema"`
-	PlanHash                string                                `json:"plan_hash"`
-	SourcePlanHash          string                                `json:"source_plan_hash"`
-	SourceJournalHash       string                                `json:"source_journal_hash"`
-	DeploymentID            string                                `json:"deployment_id"`
-	StateDir                string                                `json:"state_dir"`
-	ConfigHash              string                                `json:"config_hash"`
-	PolicyHash              string                                `json:"policy_hash"`
-	Generation              uint64                                `json:"generation"`
-	LedgerContinuityClaimed bool                                  `json:"ledger_continuity_claimed"`
-	Epoch                   uint64                                `json:"epoch"`
-	Native                  ChainHead                             `json:"native"`
-	EVM                     ChainHead                             `json:"evm"`
-	Journal                 common.Address                        `json:"journal"`
-	JournalRuntimeHash      common.Hash                           `json:"journal_runtime_hash"`
-	Keeper                  common.Address                        `json:"keeper"`
-	MaximumGasUnits         uint64                                `json:"maximum_gas_units"`
-	MaximumFeePerGasWei     uint64                                `json:"maximum_fee_per_gas_wei"`
-	MaximumAttempts         uint64                                `json:"maximum_attempts"`
-	AttemptTimeoutSeconds   uint64                                `json:"attempt_timeout_seconds"`
-	MaximumGasWei           DecimalUint                           `json:"maximum_gas_wei"`
-	Validators              []policyRolloverValidatorCheckpointV2 `json:"validators"`
-	Members                 []runtimeEvidenceActivationMemberV2   `json:"members"`
-	Actions                 []Action                              `json:"actions"`
+	Schema                  string                                    `json:"schema"`
+	PlanHash                string                                    `json:"plan_hash"`
+	SourcePlanHash          string                                    `json:"source_plan_hash"`
+	SourceJournalHash       string                                    `json:"source_journal_hash"`
+	PreviousHandoff         *validatorcomponent.ReleaseEvidenceV2File `json:"previous_handoff,omitempty"`
+	DeploymentID            string                                    `json:"deployment_id"`
+	StateDir                string                                    `json:"state_dir"`
+	ConfigHash              string                                    `json:"config_hash"`
+	PolicyHash              string                                    `json:"policy_hash"`
+	Generation              uint64                                    `json:"generation"`
+	LedgerContinuityClaimed bool                                      `json:"ledger_continuity_claimed"`
+	Epoch                   uint64                                    `json:"epoch"`
+	Native                  ChainHead                                 `json:"native"`
+	EVM                     ChainHead                                 `json:"evm"`
+	Journal                 common.Address                            `json:"journal"`
+	JournalRuntimeHash      common.Hash                               `json:"journal_runtime_hash"`
+	Keeper                  common.Address                            `json:"keeper"`
+	MaximumGasUnits         uint64                                    `json:"maximum_gas_units"`
+	MaximumFeePerGasWei     uint64                                    `json:"maximum_fee_per_gas_wei"`
+	MaximumAttempts         uint64                                    `json:"maximum_attempts"`
+	AttemptTimeoutSeconds   uint64                                    `json:"attempt_timeout_seconds"`
+	MaximumGasWei           DecimalUint                               `json:"maximum_gas_wei"`
+	Validators              []policyRolloverValidatorCheckpointV2     `json:"validators"`
+	Members                 []runtimeEvidenceActivationMemberV2       `json:"members"`
+	Actions                 []Action                                  `json:"actions"`
 }
 
 type policyRolloverValidatorHandoffV2 struct {
@@ -80,6 +81,7 @@ type policyRolloverHandoffV2 struct {
 	SourcePlanHash          string                                    `json:"source_plan_hash"`
 	DeploymentID            string                                    `json:"deployment_id"`
 	Activated               bool                                      `json:"activated"`
+	PreviousHandoff         *validatorcomponent.ReleaseEvidenceV2File `json:"previous_handoff,omitempty"`
 	Generation              uint64                                    `json:"generation"`
 	LedgerContinuityClaimed bool                                      `json:"ledger_continuity_claimed"`
 	CutoffEpoch             uint64                                    `json:"cutoff_epoch"`
@@ -92,6 +94,8 @@ type policyRolloverHandoffV2 struct {
 	Identities              validatorcomponent.ReleaseEvidenceV2File  `json:"identities"`
 	SourceRoleOverlay       *validatorcomponent.ReleaseEvidenceV2File `json:"source_role_overlay,omitempty"`
 	sourceSHA256            string
+	sourcePath              string
+	predecessor             *policyRolloverHandoffV2
 }
 
 func policyRolloverRoot(stateDir string) string { return filepath.Join(stateDir, "policy-rollover") }
@@ -161,6 +165,9 @@ func validatePolicyRolloverPlanV2(cfg *ResolvedConfig, base *SetupPlan, stateDir
 		p.MaximumAttempts == 0 || p.MaximumAttempts > 8 || p.AttemptTimeoutSeconds == 0 || p.AttemptTimeoutSeconds > 300 || len(p.Validators) != 2 || len(p.Members) != 4 {
 		return errors.New("rollover checkpoint, census, retry limits or source authority differs")
 	}
+	if err := validatePolicyRolloverPreviousHandoffV2(context.Background(), cfg, stateDir, p); err != nil {
+		return err
+	}
 	policy, err := decodeHex32("rollover policy", p.PolicyHash)
 	if err != nil {
 		return err
@@ -189,7 +196,7 @@ func validatePolicyRolloverPlanV2(cfg *ResolvedConfig, base *SetupPlan, stateDir
 			priorDomain := prior.Domain
 			priorDomain.PolicyHash, priorDomain.Epoch = policy, p.Epoch
 			if priorDomain != wantDomain || prior.NoID != uint64(j+1) || member.ValidatorId != id || member.NoId != uint64(j+1) || member.Activation.VPK == prior.VPK || member.Activation.Hotkey != prior.Hotkey ||
-				member.Activation.FirstSequence != 1 || member.Activation.PriorRoot != ([32]byte{}) || prior.Domain.PolicyHash == policy || prior.Domain.Epoch >= p.Epoch {
+				member.Activation.FirstSequence != 1 || member.Activation.PriorRoot != ([32]byte{}) || p.PreviousHandoff == nil && prior.Domain.PolicyHash == policy || p.PreviousHandoff != nil && prior.Domain.PolicyHash != policy || prior.Domain.Epoch >= p.Epoch {
 				return errors.New("rollover fresh generation changed lineage or claimed ledger continuity")
 			}
 			if member.Activation.Domain != wantDomain || member.Activation.NoID != member.NoId || member.Activation.NativeBlock != p.Native.Number || member.Activation.NativeHash != native || member.Activation.EVMBlock != p.EVM.Number || member.Activation.EVMHash != evm {

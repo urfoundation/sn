@@ -19,7 +19,7 @@ import (
 func readPolicyRolloverObservationV2(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*policyRolloverHandoffV2, error) {
 	_, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(policyRolloverRoot(stateDir), "handoff.json"), 1)
 	if validatorpkg.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
-		return nil, nil
+		return nil, requirePolicyRolloverInitialAbsenceV2(stateDir)
 	}
 	plan, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil {

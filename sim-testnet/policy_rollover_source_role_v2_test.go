@@ -30,6 +30,13 @@ func newPolicyRolloverSourceRoleTestV2(t *testing.T, configure ...func(*policyRo
 	if err != nil {
 		t.Fatal(err)
 	}
+	return g, h, policyRolloverSourceRoleTestIoV2(t, g, h)
+}
+
+// Synthetic native descriptors retain real immutable file and generation
+// ownership; validator tests supply the genuine native verification boundary.
+func policyRolloverSourceRoleTestIoV2(t *testing.T, g *policyRolloverGenerationTestV2, h *policyRolloverHandoffV2) policyRolloverSourceRoleIOV2 {
+	t.Helper()
 	descriptors := map[uint64][]byte{}
 	for _, owner := range h.Validators {
 		measurement, envelope := []byte("retained-measurement"), []byte("retained-signed-envelope")
@@ -77,7 +84,7 @@ func newPolicyRolloverSourceRoleTestV2(t *testing.T, configure ...func(*policyRo
 			return &proof, nil
 		},
 	}
-	return g, h, io
+	return io
 }
 
 func TestPolicyRolloverSourceRoleOptionsRequireExplicitActiveGeneration(t *testing.T) {

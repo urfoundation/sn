@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/urfoundation/sn/crv4"
 	validatorcomponent "github.com/urfoundation/sn/validator"
 )
 
@@ -30,7 +32,7 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 	if cfg == nil || cfg.Config == nil || !cfg.Config.ProvisionValidatorEvidenceV2 {
 		_, err := validatorcomponent.ReadReleaseEvidenceV2SetupFile(ctx, filepath.Join(policyRolloverRoot(stateDir), "handoff.json"), 1)
 		if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
-			return nil, nil
+			return nil, requirePolicyRolloverInitialAbsenceV2(stateDir)
 		}
 		return nil, errors.Join(errors.New("rollover handoff requires explicit configured V2 provisioning"), err)
 	}
@@ -41,8 +43,25 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 	var h policyRolloverHandoffV2
 	raw, err := readRuntimeEvidenceSetupV2(ctx, filepath.Join(policyRolloverRoot(stateDir), "handoff.json"), limit, &h)
 	if validatorcomponent.ReleaseEvidenceV2SetupFileInitiallyMissing(err) {
-		return nil, nil
+		return nil, requirePolicyRolloverInitialAbsenceV2(stateDir)
 	}
+	if err != nil {
+		return nil, err
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return readPolicyRolloverSuccessorsV2(ctx, cfg, stateDir, base, raw, entries)
+}
+
+// Each version keeps the same plan, four finalized consents and immutable inputs.
+func authenticatePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, path string, raw []byte, entries []JournalEntry) (*policyRolloverHandoffV2, error) {
+	var h policyRolloverHandoffV2
+	if err := decodeStrictJSONBytes(raw, &h); err != nil {
+		return nil, err
+	}
+	limit, err := runtimeEvidenceProvisionLimit(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -55,13 +74,9 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 		return nil, err
 	}
 	if h.Schema != policyRolloverHandoffV2Schema || !h.Activated || h.LedgerContinuityClaimed || h.SourceRoleOverlay != nil || h.PlanHash != p.PlanHash || h.SourcePlanHash != p.SourcePlanHash || h.DeploymentID != p.DeploymentID || h.Generation != p.Generation ||
-		h.CutoffEpoch != p.Epoch || h.FirstFullEpoch != p.Epoch+1 || h.Native != p.Native || h.EVM != p.EVM || h.Boundary.Number <= p.EVM.Number || !validCanonicalHashHex(h.Boundary.Hash) ||
+		!reflect.DeepEqual(h.PreviousHandoff, p.PreviousHandoff) || h.CutoffEpoch != p.Epoch || h.FirstFullEpoch != p.Epoch+1 || h.Native != p.Native || h.EVM != p.EVM || h.Boundary.Number <= p.EVM.Number || !validCanonicalHashHex(h.Boundary.Hash) ||
 		!reflect.DeepEqual(h.Members, p.Members) || len(h.Validators) != 2 {
 		return nil, errors.New("activated rollover manifest differs from its exact approved generation")
-	}
-	entries, err := readJournalEntries(stateDir)
-	if err != nil {
-		return nil, err
 	}
 	checkpoint := false
 	for _, entry := range entries {
@@ -132,6 +147,24 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 		if config.ValidatorID != id || config.SourceRolePredecessorV2 != nil || config.DeploymentID != p.DeploymentID || config.StateDir != validator.StateDir || config.PolicyHash != p.PolicyHash || !reflect.DeepEqual(config.Policy, *cfg.Policy) || config.PreviousPolicy != nil || !reflect.DeepEqual(config.EvidenceV2, validator.Evidence) {
 			return nil, errors.New("rollover rendered validator config changed its approved identity or policy")
 		}
+		// Later generations are authenticated independently of the original
+		// sealed runtime manifest, including their unchanged native custody.
+		if h.PreviousHandoff != nil {
+			seed, err := crv4.LoadSeedFile(filepath.Join(root, "hotkey.seed"))
+			if err != nil {
+				return nil, err
+			}
+			key, err := crv4.KeypairFromSeed(seed)
+			if err != nil || key.PublicKey() != h.Members[index*2].Activation.Hotkey {
+				return nil, errors.Join(errors.New("successor native custody differs from its signed hotkey"), err)
+			}
+			for j, operator := range validator.Evidence.Operators {
+				seed, err := crv4.LoadRawSeedFile(filepath.Join(validator.ClientStateDir, "operators", fmt.Sprintf("no-%d", operator.NoID), "client.key"))
+				if err != nil || !bytes.Equal(ed25519.NewKeyFromSeed(seed[:]).Public().(ed25519.PublicKey), h.Members[index*2+j].Activation.VPK[:]) {
+					return nil, errors.Join(errors.New("successor client custody differs from its signed Vpk"), err)
+				}
+			}
+		}
 		for j, operator := range validator.Evidence.Operators {
 			member := h.Members[index*2+j]
 			input := filepath.Join(root, "evidence-v2", fmt.Sprintf("no-%d", j+1))
@@ -170,6 +203,7 @@ func readBasePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfig, s
 		}
 	}
 	h.sourceSHA256 = bytesSHA256(raw)
+	h.sourcePath = path
 	return &h, ctx.Err()
 }
 
