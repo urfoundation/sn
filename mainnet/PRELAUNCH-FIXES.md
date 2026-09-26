@@ -2595,6 +2595,17 @@ not sufficient. Test stopped/retried cutovers, mixed generations, forged
 contexts, changed quotas, and rollback refusal. Cache authenticated runtime
 inputs within one invocation so this check does not repeatedly read the full
 historical journal while the fleet is stopped.
+R47 demonstrated the consequence: both generation-2 validators repeatedly
+received HTTP 403 for initial terminal publication while the operator APIs
+still admitted only generation-1 activation digests. Each validator exhausted
+three five-restart bursts before the mismatch was found. A local diagnostic
+repair replaced only the four context references in each operator `st.yml`,
+retained byte-exact backups and before/after hashes under the R47 qualification
+directory, and restarted only the two API processes. The original runtime
+manifest was intentionally left unchanged, so this repair cannot satisfy
+final acceptance. Mainnet cutover must rotate the operator configuration and
+its manifest atomically before validators start, and an end-to-end test must
+assert that generation-2 initial uploads succeed without a restart burst.
 R47's provisional startup also forecast 34,553 protected publication objects
 per hour against a configured 32,768, and 10,947,548 retry requests per hour
 against 8,388,608, for each of the four validator/operator pairs. The
