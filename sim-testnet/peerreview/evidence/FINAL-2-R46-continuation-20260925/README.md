@@ -171,6 +171,9 @@ cleanup rows with the signed latest checkpoint and binds their request and
 completion observations inside the authenticated prefix. It identifies the
 diagnostic reader's direct start-to-final transition error without changing
 the strict failed R46 result.
+`r46-terminal-completion-fix-review.md` and
+`r46-cleanup-history-fix-review.md` retain exact post-R46 source fences,
+normal/race outcomes and controlled pre-fix failures for those two fixes.
 
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault

@@ -254,6 +254,13 @@ Independent LAN `eth_getBlockByNumber` reads returned signed terminal block
 **8,086,324** and matched the owner's exact end-head hash at **8,086,545**.
 [Terminal chain receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/terminal-chain-heads.receipt.json)
 (SHA-256 `bb9378a8346fb4d2d3c5233360cbba8c0149fe836c251e26fa9f96ac3821f21f`).
+The post-R46 terminal-control fix seals a failed provisional result once an
+immutable in-window failure and complete fault cleanup are authenticated,
+instead of polling for an adversary sample that can never make that interval
+pass. Its real scheduled-fault controller, negative controls and race tests
+passed in an isolated source build; final acceptance rules remain strict.
+[Terminal fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-completion-fix-review.md)
+(SHA-256 `45834e44a5872f9b288a1ea651ddf39a218eb252a95ffe6545ac793d487b5754`).
 
 The sealed **86** failures have been assigned once each to these diagnostic
 groups. Counts are failed assertion rows, not independent root causes:
@@ -333,6 +340,13 @@ It also does not turn the failed R46 acceptance into a pass. The final
 diagnostic inventory is still pending.
 [Sealed checkpoint comparison](peerreview/evidence/FINAL-2-R46-continuation-20260925/sealed-r46-cleanup-history.receipt.json)
 (SHA-256 `97352693576e783b6a81edf42c38341293f20a81b721f2ca47fd0e44403f39ff`).
+The post-R46 reader fix walks the authenticated intermediate checkpoints in
+order, retaining the strict adjacent transition validator on each edge.
+Five focused normal tests, adjacent normal tests and the combined race run
+passed; three controlled old-behavior cases failed as expected. The code
+change cannot revise R46's sealed owner result.
+[Cleanup-reader fix review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-cleanup-history-fix-review.md)
+(SHA-256 `fe8b49807072161d0b60510ece8401f5e6999d6a8765eda5df15f611f718b551`).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3
