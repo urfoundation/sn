@@ -1,0 +1,15 @@
+=== RUN   TestNativeHistoryRecoveryV2MigratedSealedPredecessor
+    native_history_recovery_composed_v2_test.go:25: signed config migration lost the genuine sealed partial predecessor native recovery source is not the exact owner-signed invalidated release
+--- FAIL: TestNativeHistoryRecoveryV2MigratedSealedPredecessor (4.68s)
+=== RUN   TestNativeHistoryRecoveryV2FreshLaunchRejectsBeforeMigration
+    native_history_recovery_composed_v2_test.go:35: unapproved native selection reached the real migration executable <nil>
+--- FAIL: TestNativeHistoryRecoveryV2FreshLaunchRejectsBeforeMigration (0.25s)
+=== RUN   TestNativeHistoryRecoveryV2RetainedLaunchRequiresGeneration
+    native_history_recovery_composed_v2_test.go:56: retained launch ignored missing native generation authority <nil>
+--- FAIL: TestNativeHistoryRecoveryV2RetainedLaunchRequiresGeneration (0.42s)
+=== RUN   TestNativeHistoryRecoveryV2LiveEntryRejectsIgnoredSelection
+    native_history_recovery_composed_v2_test.go:69: live topology adoption ignored explicit native selection <nil>
+--- FAIL: TestNativeHistoryRecoveryV2LiveEntryRejectsIgnoredSelection (5.29s)
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	10.732s
+FAIL

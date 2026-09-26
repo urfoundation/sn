@@ -1,0 +1,184 @@
+{
+  "approval_granted": false,
+  "authenticated_runtime_artifacts": [
+    {
+      "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+      "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1",
+      "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+      "version": {
+        "specName": "node-subtensor",
+        "specVersion": 471,
+        "transactionVersion": 1,
+        "stateVersion": 1
+      }
+    }
+  ],
+  "finalized_head": {
+    "hash": "0xbaae1397cd8a772737e79640718e55f6e7435f7380e5b3f7f0e1ee8a26ead048",
+    "number": 8092041
+  },
+  "observed_at": "2026-09-26T18:19:36.455062376Z",
+  "read_only": true,
+  "schema": "r48-native-current-schedule-v1",
+  "source_exclusively_captured": false,
+  "validators": [
+    {
+      "actual_runtime": {
+        "Version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        },
+        "CodeHash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "MetadataHash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6"
+      },
+      "authenticated": true,
+      "candidate_boundaries": [
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1696,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T19:17:00Z",
+          "estimated_first_block": 8092331,
+          "estimated_minutes_from_observed_head": 58
+        },
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1697,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T20:29:00Z",
+          "estimated_first_block": 8092691,
+          "estimated_minutes_from_observed_head": 130
+        },
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1698,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T21:41:00Z",
+          "estimated_first_block": 8093051,
+          "estimated_minutes_from_observed_head": 202
+        }
+      ],
+      "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1",
+      "config_anchor": {
+        "Version": {
+          "specName": "node-subtensor",
+          "specVersion": 467,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        },
+        "CodeHash": "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2",
+        "MetadataHash": "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf"
+      },
+      "finalized_chain_timestamp": "2026-09-26T18:19:00Z",
+      "hotkey_sha256": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+      "native_epoch": 1695,
+      "new_first_epoch_must_exceed": 1695,
+      "non_self_stake_and_permit": true,
+      "observed_seconds_per_block_100_block_window": 12,
+      "rate_window_start": {
+        "hash": "0x6307b27e1e98277ef6a74be696350f0f882004ad359c817218c50a384ba8af22",
+        "number": 8091941,
+        "timestamp": "2026-09-26T17:59:00Z"
+      },
+      "retained_native_epoch": 1690,
+      "retained_status": "applied",
+      "schedule": {
+        "LastEpochBlock": 8091971,
+        "PendingEpochAt": 0,
+        "SubnetEpochIndex": 1695,
+        "Tempo": 360,
+        "BlocksSinceLastStep": 70,
+        "CurrentBlock": 8092041
+      },
+      "source_bytes_unchanged": true,
+      "source_sha256": {
+        "config": "sha256:8584efe5090f1349bb66ca47fb834e299c9bbb5e1349cbada530ffe605101d88",
+        "ema": "sha256:ae95a09dca35e8b9fcbb91a3c6a2ff579f5df66077ee21fcf5f673671545dd4d",
+        "intent": "sha256:c17241eb9a98de12cc2f3ef64799f89d791d3ff2c9ccca052353d1ae5bfa4ec9"
+      },
+      "uid": 254,
+      "validator": "validator-1"
+    },
+    {
+      "actual_runtime": {
+        "Version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        },
+        "CodeHash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "MetadataHash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6"
+      },
+      "authenticated": true,
+      "candidate_boundaries": [
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1696,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T19:17:00Z",
+          "estimated_first_block": 8092331,
+          "estimated_minutes_from_observed_head": 58
+        },
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1697,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T20:29:00Z",
+          "estimated_first_block": 8092691,
+          "estimated_minutes_from_observed_head": 130
+        },
+        {
+          "approval_granted": false,
+          "candidate_native_epoch": 1698,
+          "estimate_only": true,
+          "estimated_chain_time": "2026-09-26T21:41:00Z",
+          "estimated_first_block": 8093051,
+          "estimated_minutes_from_observed_head": 202
+        }
+      ],
+      "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1",
+      "config_anchor": {
+        "Version": {
+          "specName": "node-subtensor",
+          "specVersion": 467,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        },
+        "CodeHash": "0x2f175dcc64196ec8a6b9235f8d7cfd84efef6c68bb925c4455949591cef9f6d2",
+        "MetadataHash": "0xb0fae6d022b74faf948e3b98463b98b46c4738e87348e24340f91146ededa4bf"
+      },
+      "finalized_chain_timestamp": "2026-09-26T18:19:00Z",
+      "hotkey_sha256": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+      "native_epoch": 1695,
+      "new_first_epoch_must_exceed": 1695,
+      "non_self_stake_and_permit": true,
+      "observed_seconds_per_block_100_block_window": 12,
+      "rate_window_start": {
+        "hash": "0x6307b27e1e98277ef6a74be696350f0f882004ad359c817218c50a384ba8af22",
+        "number": 8091941,
+        "timestamp": "2026-09-26T17:59:00Z"
+      },
+      "retained_native_epoch": 1690,
+      "retained_status": "applied",
+      "schedule": {
+        "LastEpochBlock": 8091971,
+        "PendingEpochAt": 0,
+        "SubnetEpochIndex": 1695,
+        "Tempo": 360,
+        "BlocksSinceLastStep": 70,
+        "CurrentBlock": 8092041
+      },
+      "source_bytes_unchanged": true,
+      "source_sha256": {
+        "config": "sha256:2e3039f8a3bf0e7cbf12d272077264578af4bdaeaa442922fef43cfa3fc57e54",
+        "ema": "sha256:078aa739e6b4d1389c4db0a2de59a043c77368fdcecb914a746cf512b4d0dd4f",
+        "intent": "sha256:8df8b8d7c8090f097ece805957c88b10be6c4b9ea93b96bb0f69e3a2b0d1a1ef"
+      },
+      "uid": 255,
+      "validator": "validator-2"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+=== RUN   TestCampaignConfigMigrationRestoresExactHistoricalContext
+--- PASS: TestCampaignConfigMigrationRestoresExactHistoricalContext (6.03s)
+=== RUN   TestCampaignConfigMigrationRetainsOriginalRuntimeManifest
+--- PASS: TestCampaignConfigMigrationRetainsOriginalRuntimeManifest (88.27s)
+=== RUN   TestCampaignConfigMigrationRetainedStartupKeepsTopologyReceipt
+--- PASS: TestCampaignConfigMigrationRetainedStartupKeepsTopologyReceipt (4.17s)
+=== RUN   TestCampaignConfigMigrationRejectsAdjacentConfigAndReceiptChanges
+--- PASS: TestCampaignConfigMigrationRejectsAdjacentConfigAndReceiptChanges (2.15s)
+=== RUN   TestCampaignConfigMigrationReceiptBeforePointerRetry
+--- PASS: TestCampaignConfigMigrationReceiptBeforePointerRetry (4.75s)
+=== RUN   TestCampaignConfigMigrationCliRequiresExactReview
+--- PASS: TestCampaignConfigMigrationCliRequiresExactReview (0.00s)
+=== RUN   TestCampaignConfigMigrationRetainsGenerationAndSourceRole
+--- PASS: TestCampaignConfigMigrationRetainsGenerationAndSourceRole (14.51s)
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/sealed-partial-interval
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/no-invalidation
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/unfinished-result
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/unprepared-source
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/false-coverage
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/failure-inventory
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/changed-faults
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/changed-boundary
+=== RUN   TestNativeHistoryRecoveryV2SealedEarlyFailure/wrong-start
+--- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure (1.95s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/sealed-partial-interval (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/no-invalidation (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/unfinished-result (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/unprepared-source (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/false-coverage (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/failure-inventory (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/changed-faults (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/changed-boundary (0.00s)
+    --- PASS: TestNativeHistoryRecoveryV2SealedEarlyFailure/wrong-start (0.00s)
+=== RUN   TestNativeHistoryRecoveryV2RejectsSelectionWithoutGeneration
+--- PASS: TestNativeHistoryRecoveryV2RejectsSelectionWithoutGeneration (0.39s)
+=== RUN   TestNativeHistoryRecoveryV2ApplyPreparationDoesNotWrite
+--- PASS: TestNativeHistoryRecoveryV2ApplyPreparationDoesNotWrite (1.97s)
+=== RUN   TestNativeHistoryRecoveryV2MigratedSealedPredecessor
+--- PASS: TestNativeHistoryRecoveryV2MigratedSealedPredecessor (11.22s)
+=== RUN   TestNativeHistoryRecoveryV2FreshLaunchRejectsBeforeMigration
+--- PASS: TestNativeHistoryRecoveryV2FreshLaunchRejectsBeforeMigration (0.14s)
+=== RUN   TestNativeHistoryRecoveryV2RetainedLaunchRequiresGeneration
+--- PASS: TestNativeHistoryRecoveryV2RetainedLaunchRequiresGeneration (0.79s)
+=== RUN   TestNativeHistoryRecoveryV2LiveEntryRejectsIgnoredSelection
+--- PASS: TestNativeHistoryRecoveryV2LiveEntryRejectsIgnoredSelection (4.48s)
+=== RUN   TestNativeHistoryRecoveryV2LiveArgumentsRequireExactRetainedSelection
+--- PASS: TestNativeHistoryRecoveryV2LiveArgumentsRequireExactRetainedSelection (2.67s)
+=== RUN   TestNativeHistoryRecoveryV2RejectsUnapprovedLauncherArguments
+--- PASS: TestNativeHistoryRecoveryV2RejectsUnapprovedLauncherArguments (3.37s)
+=== RUN   TestNativeHistoryRecoveryV2SignsAndRestartsExactSelection
+--- PASS: TestNativeHistoryRecoveryV2SignsAndRestartsExactSelection (2.11s)
+=== RUN   TestNativeHistoryRecoveryV2RejectsRehashedAuthority
+--- PASS: TestNativeHistoryRecoveryV2RejectsRehashedAuthority (1.67s)
+=== RUN   TestNativeHistoryRecoveryV2RejectsWrongSignerAndLateSourceChange
+--- PASS: TestNativeHistoryRecoveryV2RejectsWrongSignerAndLateSourceChange (2.10s)
+=== RUN   TestNativeHistoryRecoveryV2CliAuthority
+--- PASS: TestNativeHistoryRecoveryV2CliAuthority (0.00s)
+=== RUN   TestNativeHistoryRecoveryV2DryRunAuthorityDoesNotWrite
+--- PASS: TestNativeHistoryRecoveryV2DryRunAuthorityDoesNotWrite (1.86s)
+=== RUN   TestNativeHistoryRecoveryV2AuthenticatesRealSealedPredecessor
+--- PASS: TestNativeHistoryRecoveryV2AuthenticatesRealSealedPredecessor (4.16s)
+=== RUN   TestNativeHistoryRecoveryV2ReadOnlyLockRequiresExistingCustody
+--- PASS: TestNativeHistoryRecoveryV2ReadOnlyLockRequiresExistingCustody (0.00s)
+=== RUN   TestNativeHistoryRecoveryV2CannotRetargetApprovalDuringVerification
+--- PASS: TestNativeHistoryRecoveryV2CannotRetargetApprovalDuringVerification (2.07s)
+=== RUN   TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext
+--- PASS: TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext (3.72s)
+=== RUN   TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay
+--- PASS: TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay (4.79s)
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/generation
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/handoff
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/plan
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/policy
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/state_import
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/strict_acceptance
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/provisional_marker
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/ledger_continuity
+=== RUN   TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/previous_namespace
+--- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles (3.59s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/generation (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/handoff (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/plan (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/policy (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/state_import (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/strict_acceptance (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/provisional_marker (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/ledger_continuity (0.00s)
+    --- PASS: TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles/previous_namespace (0.00s)
+=== RUN   TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof
+--- PASS: TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof (4.14s)
+=== RUN   TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration
+--- PASS: TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration (6.93s)
+=== RUN   TestProvisionalStartupRetainsAuthenticatedRecoveringSupervisor
+--- PASS: TestProvisionalStartupRetainsAuthenticatedRecoveringSupervisor (9.69s)
+=== RUN   TestStrictHistoryAdoptionInvocationCancellationStopsBackgroundPreflight
+=== PAUSE TestStrictHistoryAdoptionInvocationCancellationStopsBackgroundPreflight
+=== RUN   TestStrictHistoryAdoptionPreflightCancellationKeepsOwnersIndependent
+=== PAUSE TestStrictHistoryAdoptionPreflightCancellationKeepsOwnersIndependent
+=== RUN   TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate
+=== PAUSE TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate
+=== RUN   TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch
+=== PAUSE TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch
+=== RUN   TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites
+--- PASS: TestStrictHistoryAdoptionCampaignOptionsPrecedeWrites (0.01s)
+=== RUN   TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation
+--- PASS: TestStrictHistoryAdoptionCampaignDefinitionsPrecedePreparation (0.02s)
+=== RUN   TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete
+--- PASS: TestStrictHistoryAdoptionCampaignReusesPreparedWriterUntilComplete (0.00s)
+=== RUN   TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation
+--- PASS: TestStrictHistoryAdoptionCampaignStopsOnFailureOrCancellation (0.02s)
+=== RUN   TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner
+--- PASS: TestStrictHistoryAdoptionCampaignRefusesChangedPreparedOwner (0.06s)
+=== RUN   TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates
+--- PASS: TestStrictHistoryAdoptionCampaignPreservesFullCampaignGates (2.47s)
+=== RUN   TestValidatorStateNamespaceLaunchRejectsBeforeDatabaseMigration
+--- PASS: TestValidatorStateNamespaceLaunchRejectsBeforeDatabaseMigration (0.19s)
+=== RUN   TestValidatorStateNamespaceLaunchPreflightPreservesUnsignedStartup
+--- PASS: TestValidatorStateNamespaceLaunchPreflightPreservesUnsignedStartup (0.33s)
+=== CONT  TestStrictHistoryAdoptionInvocationCancellationStopsBackgroundPreflight
+=== CONT  TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate
+--- PASS: TestStrictHistoryAdoptionInvocationCancellationStopsBackgroundPreflight (0.00s)
+=== CONT  TestStrictHistoryAdoptionPreflightCancellationKeepsOwnersIndependent
+--- PASS: TestStrictHistoryAdoptionPreflightCancellationKeepsOwnersIndependent (0.00s)
+=== CONT  TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch
+--- PASS: TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate (0.00s)
+--- PASS: TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch (11.37s)
+PASS
+ok  	github.com/urfoundation/sn/sim-testnet	208.283s

@@ -1,0 +1,105 @@
+{
+  "composed_commits": [
+    "288e78d7",
+    "cfb2eadc",
+    "d6ea0d0ccfde355b11eda0212bfd0e9e959776ae"
+  ],
+  "config_migration_commit": "d332990b",
+  "final_acceptance": false,
+  "integration_base": "1e1aca24",
+  "isolated_native_commit": "ca8e4071066ca1cf416057b1f50b382200d28f93",
+  "limits": [
+    "Synthetic signatures and inert intent values test local admission; they are not new native application proof.",
+    "The real atomic pending-N/EMA tests establish custody and idempotent fold behavior; full normal semantic replay remains required.",
+    "Unresolved native publication markers remain fail-closed; no automatic cleanup or reconciliation authority was added.",
+    "Strict historical runtime/archive, fresh completed trails and positive pool weight/emission/capture remain separate gates.",
+    "R48 is the final testnet run; no R49."
+  ],
+  "live_mutation": false,
+  "logs": {
+    "composition-normal.log": {
+      "package_seconds": 208.283,
+      "portable_sha256": "be29cf45a7c3d8bc85c05763b26e17e584f89e4782f11e68ad69d539640ff80a",
+      "raw_sha256": "54dc331c2717d18b79c0373ace91358b97bd0a4f68388b4937d22efc8a8ec3ba",
+      "result": "pass"
+    },
+    "composition-race.log": {
+      "package_seconds": 822.049,
+      "portable_sha256": "9e4b1ba95e3367217428d61e9960324b864b145a24caba7d6b10b9c6ccf19785",
+      "raw_sha256": "cc0d7a854c69aa562f83595289202195321c23d0907614940a7661a6d8072fe3",
+      "result": "pass"
+    },
+    "composition-red.log": {
+      "portable_sha256": "73e44439ad5484e11796aa55c667dc72a57e395d44ba4b3ba174890c33d14744",
+      "raw_sha256": "39c2b57450ce1813f7b594735ba238cff56a1253128d25793d79c380fd7f923d",
+      "result": "expected-red"
+    },
+    "validator-normal.log": {
+      "package_seconds": 18.699,
+      "portable_sha256": "d590f661a91317d730bf552d03e7946227b5d7fd383d7899234708dcf2441eb8",
+      "raw_sha256": "d590f661a91317d730bf552d03e7946227b5d7fd383d7899234708dcf2441eb8",
+      "result": "pass"
+    },
+    "validator-race.log": {
+      "package_seconds": 76.584,
+      "portable_sha256": "d757454c9756f930e2fb67a3992f7808af45428d1db869e9107e35564492a506",
+      "raw_sha256": "d757454c9756f930e2fb67a3992f7808af45428d1db869e9107e35564492a506",
+      "result": "pass"
+    }
+  },
+  "native_epoch_selected": null,
+  "read_only_candidate_schedule_sha256": "e7007fac898b0324c2ec36e628f502bfb51b9e23120dbf9dfe13f8eb84be569f",
+  "schema": "urnetwork-r48-offline-recovery-composition-qualification-v1",
+  "selectors": {
+    "sim-testnet": "^(TestNativeHistoryRecoveryV2|TestCampaignConfigMigration|TestStrictHistoryAdoption|TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext|TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles|TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof|TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay|TestProvisionalStartupRetainsAuthenticatedRecoveringSupervisor|TestProvisionalStarted|TestValidatorStateNamespaceLaunch)",
+    "validator": "^(TestReleaseNativeHistoryRecoveryV2|TestReleaseHistoryAdoptionV2|TestReleaseProvisionalRuntime|TestReleaseNativeObservationV2|TestHeadEmaNativeEpochGap|TestSteeringIntentNativeEpochGap|TestReleaseNativeEpochPreflight|TestReleaseRuntimeNativeEpochGap|TestHeadEMAProvisionalGapV2|TestIntentV2NativePublicationCreatesThenExchangesExactBytes|TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence)"
+  },
+  "source_commit": "d6ea0d0ccfde355b11eda0212bfd0e9e959776ae",
+  "source_files_sha256": {
+    "sim-testnet/campaign_config_migration.go": "b344117c4cbcaf9c8d2617b8625d4c943f403b8896fc5f96531923613da15b41",
+    "sim-testnet/campaign_config_migration_command.go": "8be570c42ce2cd01780b58a76ce80bf080ca198d0f8bc831753b4a8d61a1975f",
+    "sim-testnet/campaign_config_migration_test.go": "de0224f769151c0461d8e6a4699266badcad95c5eebb33df58c39043897b376d",
+    "sim-testnet/config.go": "8c3618876b9f7fe88452625282927862b27b9e9e97d0396c3faa67f6f1d275a1",
+    "sim-testnet/executor.go": "c5ed3f5aee9e2a559008a1cad3a3facef6f238a935d794e9f917ab0934052348",
+    "sim-testnet/final_semantic_adoption_v2.go": "9e1e42189ce1bdfc174176efae77b944840c483778ee93e48f4ec19559428a03",
+    "sim-testnet/main.go": "48a6f84dcefb9fe36c15e263d8e103285af59140e8c6210a75ba022aa7c7c2cf",
+    "sim-testnet/native_history_recovery_boundary_v2_test.go": "e4d5dbaf40d7f648c274dfb8eb11fbfc4df506d600daf7e96d7545095a99b739",
+    "sim-testnet/native_history_recovery_command_v2.go": "914924d73ad3201616e87389840170debee0d03390b4d33eaae79a98a089f02b",
+    "sim-testnet/native_history_recovery_composed_v2_test.go": "5177ea72e136dbb1107e03a3627e6551c2e094c5e341c52e869985c6339ed6db",
+    "sim-testnet/native_history_recovery_v2.go": "ddff7785ab3d7680887138e61f39bbf2567995549a3bb00f3fe6ca41dd4f892a",
+    "sim-testnet/native_history_recovery_v2_test.go": "80143daaacecebe824941b1ee631043abc7356ae8712a903e231c490e0285e27",
+    "sim-testnet/owned_rpc.go": "03bbb52bfe7c43add9aa59b4c69f69095939313cc1a9c937908831227c6ccba9",
+    "sim-testnet/plan.go": "af8a43d709199e858dc66ab521eabfbb81eb4cbb741b1de2e71cb8ea49e3d3ed",
+    "sim-testnet/policy_rollover_generation_v2_test.go": "eae5334bbb8cafdd191bfca8233de4893ebcb032b9448ad4a86396c1c513ab5d",
+    "sim-testnet/policy_rollover_handoff_v2.go": "6cfde27d4d277c8b46237c34eb73c8dccfcfcb0c927cf47653954cf81852606c",
+    "sim-testnet/policy_rollover_handoff_v2_test.go": "2d5dc5b3b2cf6e630978f679bd206e10e9189b409fb3c35e838bc6e67486e7c0",
+    "sim-testnet/policy_rollover_retained_source_v2.go": "119c9164f5d3290b88f69b02c72f302b756afd9a03ffab82a1ea9ee61474ad7f",
+    "sim-testnet/policy_rollover_source_role_v2.go": "d448395d5c61fe8c768ab3699aef18569f95aa3ecdafa46072d0e2200ecc66e3",
+    "sim-testnet/process.go": "bb6275e314711d83046f2e44ced5e237d9eaa0e909456c459d3e1fef1a88e283",
+    "sim-testnet/provisional_allowance_adoption.go": "b555c7497f3321edbd003f95c9c9279b27fee86d2d807f16fdb018226b70737e",
+    "sim-testnet/provisional_continuation.go": "cf9f7755c5f2ad66edda5e70848e022eb3ef5db317a75f82987538ca78081093",
+    "sim-testnet/provisional_live_resume.go": "ec1d9a06be29db2e1b53adc5d6093647799a5559da5d2064cd98d9b4af3eac6f",
+    "sim-testnet/provisional_resume.go": "96e7ed888b72752ce323a524358bced38ef0cd159022422feb0784fdb927e484",
+    "sim-testnet/provisional_retained_startup.go": "e4d5f37f44e1cdcf5a86f45cda7199478ada1ef4e5c10fcbc4e5dbb58d8f8002",
+    "sim-testnet/provisional_runtime_plan.go": "0303cbd114a4e5781ab2e0d6bb9d6c8faf612af7e1dfe97053292ec06e6f346f",
+    "sim-testnet/provisional_started_topology_test.go": "b00c85eca59036293e1f5fc08378ff48057700ed8d2cf3b69165238f58cf34c7",
+    "sim-testnet/provisional_startup_retention_test.go": "1a80b57b787b5ff911bfc76d856ea39bea102cb4da511b43f4e4e458b2044b23",
+    "sim-testnet/runtime_config_manifest.go": "45643fcb223db60c5e57a6e5d88aacb29b6295c0c45805faa6990ef926440aeb",
+    "sim-testnet/runtime_config_retained_source.go": "7373cc1fa030b6175b2101c29c182615cce64f64118e1ef8b56881b30f9a4cdb",
+    "sim-testnet/strict_history_adoption.go": "3b02f12a3f870128eabd26ee054430069556b9656b0993c06ba6a0b01fc33ded",
+    "validator/config.go": "cf4299019814ef9bab76a4cf34f1574cf7509d82cecbef190991d73c45902466",
+    "validator/release_native_history_recovery_restart_v2_test.go": "14d01cb4a19f4becfc9b10196db09c2ae60bb49f8cce73e64bf016d9c585c342",
+    "validator/release_native_history_recovery_v2.go": "02f866cb27f6fe264af86c0da7e1890e14bc9f930b3215481c5990067afb2f6a",
+    "validator/release_native_history_recovery_v2_test.go": "d5233711c9b49cb3c05eb63a7e516c7090b13e11d7adb35734204d63a2cf6b3a",
+    "validator/release_run.go": "edd82eb4567597ac9107921b64133e6318183d6b919bbefef73a63588da416a8",
+    "validator/runtime_identity.go": "d70f85a2e4f3aa7293803135e5f35a5f971bffc949f1352e3e85b7e6961b1f43"
+  },
+  "test_environment": {
+    "GOMAXPROCS": 2,
+    "count": 1,
+    "nice": 15,
+    "parallel_packages": 2,
+    "race_timeout": "20m"
+  },
+  "toolchain": "go version go1.26.6 linux/amd64"
+}

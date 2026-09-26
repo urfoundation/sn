@@ -1,0 +1,150 @@
+=== RUN   TestHeadEMAProvisionalGapV2MatchesActualFoldAndRestart
+=== PAUSE TestHeadEMAProvisionalGapV2MatchesActualFoldAndRestart
+=== RUN   TestHeadEMAProvisionalGapV2RetainsFileCustody
+=== PAUSE TestHeadEMAProvisionalGapV2RetainsFileCustody
+=== RUN   TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence
+=== PAUSE TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence
+=== RUN   TestIntentV2NativePublicationCreatesThenExchangesExactBytes
+--- PASS: TestIntentV2NativePublicationCreatesThenExchangesExactBytes (0.19s)
+=== RUN   TestReleaseRuntimeNativeEpochGapReleasesExpiredUnsignedReservation
+release steer: provisional native epoch 41 cancelled drained unsigned reservation no_id 2 settlement 7; active settlement 8; no native submission
+--- PASS: TestReleaseRuntimeNativeEpochGapReleasesExpiredUnsignedReservation (1.51s)
+=== RUN   TestReleaseRuntimeNativeEpochGapReconcilesPublishedInput
+--- PASS: TestReleaseRuntimeNativeEpochGapReconcilesPublishedInput (2.88s)
+=== RUN   TestHeadEmaNativeEpochGapRetainsActualObservations
+=== PAUSE TestHeadEmaNativeEpochGapRetainsActualObservations
+=== RUN   TestHeadEmaNativeEpochGapKeepsIntegrityFailuresDistinct
+=== PAUSE TestHeadEmaNativeEpochGapKeepsIntegrityFailuresDistinct
+=== RUN   TestSteeringIntentNativeEpochGapRetainsLifecycleAndAuthority
+=== PAUSE TestSteeringIntentNativeEpochGapRetainsLifecycleAndAuthority
+=== RUN   TestReleaseRuntimeNativeEpochGapRefusesBeforeInputPublication
+--- PASS: TestReleaseRuntimeNativeEpochGapRefusesBeforeInputPublication (0.95s)
+=== RUN   TestReleaseNativeEpochPreflightKeepsExistingGapAuthority
+=== PAUSE TestReleaseNativeEpochPreflightKeepsExistingGapAuthority
+=== RUN   TestHeadEmaNativeEpochGapLegacyRangeDoesNotOverflow
+=== PAUSE TestHeadEmaNativeEpochGapLegacyRangeDoesNotOverflow
+=== RUN   TestReleaseProvisionalRuntimeConfigRequiresSeparateExactAuthority
+--- PASS: TestReleaseProvisionalRuntimeConfigRequiresSeparateExactAuthority (0.06s)
+=== RUN   TestReleaseProvisionalRuntimeBindsObservedVersionWithoutRelabelingConfig
+--- PASS: TestReleaseProvisionalRuntimeBindsObservedVersionWithoutRelabelingConfig (0.67s)
+=== RUN   TestReleaseProvisionalRuntimeRejectsWrongGenesisAndObservationFailure
+--- PASS: TestReleaseProvisionalRuntimeRejectsWrongGenesisAndObservationFailure (1.03s)
+=== RUN   TestReleaseProvisionalRuntimeSourceUsesActualSuccessorSignedDomain
+--- PASS: TestReleaseProvisionalRuntimeSourceUsesActualSuccessorSignedDomain (0.64s)
+=== RUN   TestReleaseProvisionalRuntimePendingReviewedRefusesReplayInBothIntentOwners
+--- PASS: TestReleaseProvisionalRuntimePendingReviewedRefusesReplayInBothIntentOwners (1.84s)
+=== RUN   TestReleaseProvisionalRuntimeFreshSubmissionRejectsUpgradeBeforeBroadcast
+--- PASS: TestReleaseProvisionalRuntimeFreshSubmissionRejectsUpgradeBeforeBroadcast (1.72s)
+=== RUN   TestReleaseProvisionalRuntimeFreshCurrentSourceReachesSubmissionBoundary
+--- PASS: TestReleaseProvisionalRuntimeFreshCurrentSourceReachesSubmissionBoundary (0.70s)
+=== RUN   TestReleaseHistoryAdoptionV2CapturePreservesActualAbsence
+=== PAUSE TestReleaseHistoryAdoptionV2CapturePreservesActualAbsence
+=== RUN   TestReleaseHistoryAdoptionV2BridgesHeadEMAOnceWithoutReset
+=== PAUSE TestReleaseHistoryAdoptionV2BridgesHeadEMAOnceWithoutReset
+=== RUN   TestReleaseHistoryAdoptionV2ReplaysEveryInteriorTerminal
+=== PAUSE TestReleaseHistoryAdoptionV2ReplaysEveryInteriorTerminal
+=== RUN   TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions
+=== PAUSE TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions
+=== RUN   TestReleaseHistoryAdoptionV2RetainsExactPrefixAndOneFreshBridge
+=== PAUSE TestReleaseHistoryAdoptionV2RetainsExactPrefixAndOneFreshBridge
+=== RUN   TestReleaseHistoryAdoptionV2KeepsStrictStartupAuthentication
+=== PAUSE TestReleaseHistoryAdoptionV2KeepsStrictStartupAuthentication
+=== RUN   TestReleaseHistoryAdoptionV2RequiresCompleteActualApplicationRow
+=== PAUSE TestReleaseHistoryAdoptionV2RequiresCompleteActualApplicationRow
+=== RUN   TestReleaseNativeHistoryRecoveryV2DurablePendingRestart
+--- PASS: TestReleaseNativeHistoryRecoveryV2DurablePendingRestart (0.30s)
+=== RUN   TestReleaseNativeHistoryRecoveryV2InterruptedPublicationStaysUnresolved
+--- PASS: TestReleaseNativeHistoryRecoveryV2InterruptedPublicationStaysUnresolved (0.20s)
+=== RUN   TestReleaseNativeHistoryRecoveryV2PreservesOverlayAndOneEdge
+=== PAUSE TestReleaseNativeHistoryRecoveryV2PreservesOverlayAndOneEdge
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedScope
+=== PAUSE TestReleaseNativeHistoryRecoveryV2RejectsChangedScope
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource
+=== PAUSE TestReleaseNativeHistoryRecoveryV2RejectsChangedSource
+=== RUN   TestReleaseNativeHistoryRecoveryV2PinsActualRuntime
+--- PASS: TestReleaseNativeHistoryRecoveryV2PinsActualRuntime (0.47s)
+=== RUN   TestReleaseNativeHistoryRecoveryV2RetainsAppendOnlyRestart
+=== PAUSE TestReleaseNativeHistoryRecoveryV2RetainsAppendOnlyRestart
+=== RUN   TestReleaseNativeObservationV2PreservesAbsenceAndUnresolvedPublication
+--- PASS: TestReleaseNativeObservationV2PreservesAbsenceAndUnresolvedPublication (0.00s)
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/source-hash
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/prepared-hash
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/hotkey
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/deployment
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/snapshot
+=== RUN   TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/values
+--- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity (2.80s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/source-hash (0.00s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/prepared-hash (0.00s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/hotkey (0.00s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/deployment (0.00s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/snapshot (0.00s)
+    --- PASS: TestReleaseNativeObservationV2BindsRealSignedSourceIdentity/values (0.00s)
+=== RUN   TestReleaseNativeObservationV2RejectsUnapprovedNamespaceBeforeProgress
+--- PASS: TestReleaseNativeObservationV2RejectsUnapprovedNamespaceBeforeProgress (0.00s)
+=== CONT  TestHeadEMAProvisionalGapV2MatchesActualFoldAndRestart
+=== CONT  TestReleaseHistoryAdoptionV2ReplaysEveryInteriorTerminal
+--- PASS: TestHeadEMAProvisionalGapV2MatchesActualFoldAndRestart (0.44s)
+=== CONT  TestReleaseHistoryAdoptionV2BridgesHeadEMAOnceWithoutReset
+--- PASS: TestReleaseHistoryAdoptionV2BridgesHeadEMAOnceWithoutReset (0.23s)
+=== CONT  TestReleaseHistoryAdoptionV2CapturePreservesActualAbsence
+--- PASS: TestReleaseHistoryAdoptionV2CapturePreservesActualAbsence (0.02s)
+=== CONT  TestHeadEmaNativeEpochGapLegacyRangeDoesNotOverflow
+--- PASS: TestHeadEmaNativeEpochGapLegacyRangeDoesNotOverflow (0.17s)
+=== CONT  TestReleaseNativeEpochPreflightKeepsExistingGapAuthority
+--- PASS: TestReleaseNativeEpochPreflightKeepsExistingGapAuthority (0.00s)
+=== CONT  TestSteeringIntentNativeEpochGapRetainsLifecycleAndAuthority
+--- PASS: TestSteeringIntentNativeEpochGapRetainsLifecycleAndAuthority (0.00s)
+=== CONT  TestHeadEmaNativeEpochGapKeepsIntegrityFailuresDistinct
+--- PASS: TestHeadEmaNativeEpochGapKeepsIntegrityFailuresDistinct (0.04s)
+=== CONT  TestHeadEmaNativeEpochGapRetainsActualObservations
+--- PASS: TestHeadEmaNativeEpochGapRetainsActualObservations (0.08s)
+=== CONT  TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence
+    head_ema_v2_write_test.go:410: ema_runtime_control_completed: TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence
+--- PASS: TestHeadEMAStoreV2RuntimeCancellationAfterMarkerRetainsEvidence (0.05s)
+=== CONT  TestHeadEMAProvisionalGapV2RetainsFileCustody
+--- PASS: TestReleaseHistoryAdoptionV2ReplaysEveryInteriorTerminal (1.04s)
+=== CONT  TestReleaseNativeHistoryRecoveryV2PreservesOverlayAndOneEdge
+--- PASS: TestHeadEMAProvisionalGapV2RetainsFileCustody (0.04s)
+=== CONT  TestReleaseNativeHistoryRecoveryV2RetainsAppendOnlyRestart
+--- PASS: TestReleaseNativeHistoryRecoveryV2PreservesOverlayAndOneEdge (0.14s)
+=== CONT  TestReleaseNativeHistoryRecoveryV2RejectsChangedSource
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/config
+--- PASS: TestReleaseNativeHistoryRecoveryV2RetainsAppendOnlyRestart (0.17s)
+=== CONT  TestReleaseNativeHistoryRecoveryV2RejectsChangedScope
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/ema
+--- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedScope (0.13s)
+=== CONT  TestReleaseHistoryAdoptionV2KeepsStrictStartupAuthentication
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/pending
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/mode
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.steering-intents-v2-pending
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.steering-intents-v2-next
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.head-ema-v2-commit
+=== RUN   TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.head-ema-v2-next
+--- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource (1.11s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/config (0.13s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/ema (0.14s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/pending (0.16s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/mode (0.15s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.steering-intents-v2-pending (0.13s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.steering-intents-v2-next (0.12s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.head-ema-v2-commit (0.13s)
+    --- PASS: TestReleaseNativeHistoryRecoveryV2RejectsChangedSource/.head-ema-v2-next (0.14s)
+=== CONT  TestReleaseHistoryAdoptionV2RequiresCompleteActualApplicationRow
+--- PASS: TestReleaseHistoryAdoptionV2RequiresCompleteActualApplicationRow (0.00s)
+=== CONT  TestReleaseHistoryAdoptionV2RetainsExactPrefixAndOneFreshBridge
+--- PASS: TestReleaseHistoryAdoptionV2RetainsExactPrefixAndOneFreshBridge (0.01s)
+=== CONT  TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions
+=== RUN   TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/config
+=== RUN   TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/namespace
+=== RUN   TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/provisional
+=== RUN   TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/mode
+--- PASS: TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions (0.08s)
+    --- PASS: TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/config (0.02s)
+    --- PASS: TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/namespace (0.01s)
+    --- PASS: TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/provisional (0.01s)
+    --- PASS: TestReleaseHistoryAdoptionV2PinsConfigNamespaceAndOptions/mode (0.02s)
+--- PASS: TestReleaseHistoryAdoptionV2KeepsStrictStartupAuthentication (1.32s)
+PASS
+ok  	github.com/urfoundation/sn/validator	18.699s
