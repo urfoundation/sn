@@ -2671,6 +2671,16 @@ its durable object and retry after Redis returns, and the final gate must
 distinguish a recovered, fault-scoped attempt from a permanently skipped native
 epoch. Keep the missed-epoch and custody checks strict even if an individual
 attempt is classified as expected during the signed fault window.
+The R47 steering restart exposed a narrower code defect: the upload client
+already marks 5xx and transport failures as retryable, but the native steering
+loop counted them against its ten consecutive semantic-failure attempts when
+the broader provisional deferral permission was absent. Two validators then
+restarted despite the owner remaining live. A zero-byte upload acknowledgement
+timeout was also joined to an invented unexpected-byte error, erasing its
+retryable type. Preserve the exact semantic-failure budget and strict
+incomplete-epoch boundary, but let typed transport/service failures retry in
+the same process without consuming that budget; test the outage, recovery,
+malformed nonempty acknowledgement, and persistent semantic failure cases.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
