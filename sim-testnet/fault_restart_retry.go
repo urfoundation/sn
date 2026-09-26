@@ -31,20 +31,21 @@ func processRestartPending(spec scenarioFaultSpec, err error) bool {
 
 // One synchronous observation keeps the heartbeat responsive. Repeated calls
 // never resend termination; the supervisor owns replacement. All original role
-// and identity checks precede interpreting missing health as pending work.
-func (self *liveScenarioFaultDriver) observeRestartTargets(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+// and identity checks precede interpreting missing health as pending work. The
+// returned validator states bind the final check after the completion head read.
+func (self *liveScenarioFaultDriver) observeRestartTargets(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, []ProcessState, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	active, err := readActiveFaultFile(self.activePath())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if spec.Kind != "process-restart" {
-		return nil, errors.New("restart readiness requires an exact process-restart fault")
+		return nil, nil, errors.New("restart readiness requires an exact process-restart fault")
 	}
 	if _, err := activeFaultIndex(active, spec); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	prior := make(map[string]FaultProcessEvidence, len(active.Processes))
 	for _, process := range active.Processes {
@@ -52,15 +53,16 @@ func (self *liveScenarioFaultDriver) observeRestartTargets(ctx context.Context, 
 	}
 	states, specs, err := self.processSnapshot()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ready := make([]FaultProcessEvidence, 0, len(spec.Targets))
+	var validators []ProcessState
 	for _, id := range spec.Targets {
 		state, stateOk := states[id]
 		processSpec, specOk := specs[id]
 		original, priorOk := prior[id]
 		if !stateOk || !specOk || !priorOk || processSpec.Role == "" || processSpec.Identity == "" || state.Role != processSpec.Role || state.Identity != processSpec.Identity || original.Role != processSpec.Role || original.Identity != processSpec.Identity || state.PID < 0 || state.PID == 1 {
-			return nil, fmt.Errorf("restart target %s identity differs from its retained owner", id)
+			return nil, nil, fmt.Errorf("restart target %s identity differs from its retained owner", id)
 		}
 		if state.PID == 0 || state.PID == original.PID || !state.Healthy {
 			continue
@@ -68,28 +70,29 @@ func (self *liveScenarioFaultDriver) observeRestartTargets(ctx context.Context, 
 		if err := syscall.Kill(state.PID, syscall.Signal(0)); errors.Is(err, syscall.ESRCH) {
 			continue
 		} else if err != nil {
-			return nil, fmt.Errorf("observe restart target %s process: %w", id, err)
+			return nil, nil, fmt.Errorf("observe restart target %s process: %w", id, err)
 		}
 		process := FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID}
 		if processSpec.Role == "validator" {
 			producing, err := self.validatorRestartProducing(ctx, state)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !producing {
 				continue
 			}
 			process.StartTimeTicks = state.StartTimeTicks
+			validators = append(validators, state)
 		}
 		ready = append(ready, process)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(ready) != len(spec.Targets) {
-		return nil, &processRestartPendingError{faultId: spec.ID, targets: slices.Clone(spec.Targets)}
+		return nil, nil, &processRestartPendingError{faultId: spec.ID, targets: slices.Clone(spec.Targets)}
 	}
-	return ready, nil
+	return ready, validators, nil
 }
 
 // Cleanup owns its existing finite context; the live controller owns block

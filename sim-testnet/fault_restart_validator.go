@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
@@ -36,17 +37,7 @@ func (self *liveScenarioFaultDriver) validatorRestartProducing(ctx context.Conte
 	// Supervisor timestamps historically have whole-second resolution. Require
 	// the first signed hop after that entire second, not just a late old trail.
 	minimumTimeMs := uint64(started.UnixMilli()) + 1000
-	checkGeneration := func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		ticks, err := processStartTimeTicks(state.PID)
-		if err != nil || ticks != state.StartTimeTicks {
-			return errors.Join(errors.New("validator replacement kernel generation changed"), err)
-		}
-		return nil
-	}
-	if err := checkGeneration(); err != nil {
+	if current, err := self.validatorRestartGenerationCurrent(ctx, state); err != nil || !current {
 		return false, err
 	}
 	authority, generation, err := loadScenarioPathAuthorityV2(ctx, self.cfg, self.stateDir, validatorId)
@@ -69,6 +60,9 @@ func (self *liveScenarioFaultDriver) validatorRestartProducing(ctx context.Conte
 		record, err := readRestartProofTail(ctx, path, limits)
 		if err != nil {
 			return false, fmt.Errorf("validator %d operator %d restart proof: %w", validatorId, noId, err)
+		}
+		if self.afterRestartProofReadForTest != nil {
+			self.afterRestartProofReadForTest()
 		}
 		if record == nil {
 			producing = false
@@ -95,18 +89,59 @@ func (self *liveScenarioFaultDriver) validatorRestartProducing(ctx context.Conte
 			producing = false
 		}
 	}
-	if err := checkGeneration(); err != nil {
+	current, err := self.validatorRestartGenerationCurrent(ctx, state)
+	return producing && current, err
+}
+
+// The supervisor can observe exit or launch its next child during proof reads.
+// Those exact monotonic transitions only keep restoration pending. A different
+// live generation never inherits the preceding child's proof-freshness check.
+func (self *liveScenarioFaultDriver) validatorRestartGenerationCurrent(ctx context.Context, prior ProcessState) (bool, error) {
+	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	states, _, err := self.processSnapshot()
+	if prior.PID <= 1 || prior.StartTimeTicks == 0 || prior.Restarts < 0 {
+		return false, errors.New("validator replacement prior generation is incomplete")
+	}
+	states, specs, err := self.processSnapshot()
 	if err != nil {
 		return false, err
 	}
-	current, ok := states[state.ID]
-	if !ok || current.PID != state.PID || current.StartTimeTicks != state.StartTimeTicks || current.StartedAt != state.StartedAt || current.Role != state.Role || current.Identity != state.Identity {
-		return false, errors.New("validator replacement changed during proof readiness")
+	current, present := states[prior.ID]
+	spec, approved := specs[prior.ID]
+	if !present || !approved || current.ID != prior.ID || current.Role != prior.Role || current.Identity != prior.Identity || spec.Role != prior.Role || spec.Identity != prior.Identity || current.Restarts < prior.Restarts || current.PID < 0 || current.PID == 1 {
+		return false, errors.New("validator replacement changed its approved identity or restart history")
 	}
-	return producing && current.Healthy, ctx.Err()
+	started, startErr := time.Parse(time.RFC3339Nano, current.StartedAt)
+	priorStarted, priorStartErr := time.Parse(time.RFC3339Nano, prior.StartedAt)
+	if startErr != nil || priorStartErr != nil || started.UnixMilli() <= 0 || started.Before(priorStarted) {
+		return false, errors.New("validator replacement start history is invalid")
+	}
+	if current.PID == 0 {
+		if current.StartTimeTicks != 0 || current.Healthy {
+			return false, errors.New("stopped validator replacement retains live generation evidence")
+		}
+		return false, ctx.Err()
+	}
+	if current.StartTimeTicks == 0 {
+		return false, errors.New("validator replacement kernel generation proof is absent")
+	}
+	same := current.PID == prior.PID && current.StartTimeTicks == prior.StartTimeTicks
+	if same && (current.StartedAt != prior.StartedAt || current.Restarts != prior.Restarts) || !same && current.Restarts <= prior.Restarts {
+		return false, errors.New("validator replacement generation and restart history disagree")
+	}
+	ticks, err := processStartTimeTicks(current.PID)
+	if ownerErr := ctx.Err(); ownerErr != nil {
+		return false, ownerErr
+	}
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		// A checksum-bound healthy snapshot may precede its child's exit notice.
+		return false, nil
+	}
+	if err != nil || ticks != current.StartTimeTicks {
+		return false, errors.Join(errors.New("validator replacement kernel generation changed"), err)
+	}
+	return same && current.Healthy, nil
 }
 
 // Read at most two bounded rows to select the last complete proof. A concurrent
