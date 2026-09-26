@@ -371,8 +371,8 @@ func runTerminalDiagnostics(ctx context.Context, cfg *ResolvedConfig, stateDir s
 		_, complete, err := loadCompletedScenarioCampaignByRunIdContext(ctx, reader, stateDir, roles, options.Name, options.RunID)
 		return complete, err
 	})
-	collector.check("result-start-and-fault-binding", prerequisite(resultOk && startOk, "original result or signed start unavailable"), time.Minute, func(context.Context) (any, error) {
-		return nil, validateScenarioCampaignStartMarkerBytes(reader, result, options.Name, roles.EVM["testnet-owner"].Address, startRaw)
+	collector.check("result-start-and-fault-binding", prerequisite(resultOk && startOk && attemptOk && historyOk, "original result, signed start/checkpoint or authenticated history unavailable"), time.Minute, func(context.Context) (any, error) {
+		return nil, validateScenarioCampaignStartMarkerHistory(reader, result, options.Name, roles.EVM["testnet-owner"].Address, startRaw, attemptRaw, history)
 	})
 	definition, definitionErr := scenarioDefinitionFor(reader, options.Name)
 	collectTerminalDiagnosticEpochObservationFields(collector, terminal, prerequisite(terminalOk, "authenticated terminal observation unavailable"))

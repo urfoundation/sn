@@ -976,12 +976,19 @@ func scenarioFaultStatusRank(status string) int {
 }
 
 func validateScenarioFaultProgress(previous, next []ScenarioFaultRecord) error {
+	return validateScenarioFaultProgressWithMode(previous, next, true)
+}
+
+// Adjacent owner writes must first persist a request-only checkpoint. A
+// separately authenticated cumulative history may span those intermediate
+// writes, but can never add cleanup authority after an already restored fault.
+func validateScenarioFaultProgressWithMode(previous, next []ScenarioFaultRecord, adjacent bool) error {
 	if len(previous) != len(next) {
 		return errors.New("scenario campaign fault ledger changed length")
 	}
 	for index := range previous {
 		before, after := previous[index], next[index]
-		if before.LifecycleCleanup == nil && after.LifecycleCleanup != nil && after.Status != "active" {
+		if before.LifecycleCleanup == nil && after.LifecycleCleanup != nil && after.Status != "active" && (adjacent || before.Status == "restored") {
 			return errors.New("lifecycle cleanup completion appeared without its prior signed request")
 		}
 		if err := validateScenarioLifecycleCleanupProgress(before.LifecycleCleanup, after.LifecycleCleanup); err != nil {
@@ -1486,6 +1493,14 @@ func validateScenarioCampaignStartMarker(cfg *ResolvedConfig, roles *RoleSecrets
 // validateScenarioCampaignStartMarkerBytes authenticates the owner-signed
 // acceptance boundary directly from an already closed archive byte graph.
 func validateScenarioCampaignStartMarkerBytes(cfg *ResolvedConfig, result *ScenarioResult, name, expectedOwner string, raw []byte) error {
+	return validateScenarioCampaignStartMarkerWithProgress(cfg, result, name, expectedOwner, raw, func(payload *scenarioCampaignAttemptPayload, faults []ScenarioFaultRecord) error {
+		return validateScenarioFaultProgress(payload.AcceptanceBoundary.Faults, faults)
+	})
+}
+
+// Keep the normal archived completion verifier unchanged. Failed provisional
+// diagnostics supply a separately authenticated cumulative-history verifier.
+func validateScenarioCampaignStartMarkerWithProgress(cfg *ResolvedConfig, result *ScenarioResult, name, expectedOwner string, raw []byte, progress func(*scenarioCampaignAttemptPayload, []ScenarioFaultRecord) error) error {
 	if cfg == nil || cfg.Config == nil || result == nil || !common.IsHexAddress(expectedOwner) || common.HexToAddress(expectedOwner) == (common.Address{}) || len(raw) == 0 {
 		return errors.New("scenario campaign start marker context is incomplete")
 	}
@@ -1520,7 +1535,7 @@ func validateScenarioCampaignStartMarkerBytes(cfg *ResolvedConfig, result *Scena
 	if _, err := validateScenarioAttemptFaultRecords(definition, result.AcceptanceWindow, result.Faults); err != nil {
 		return err
 	}
-	if err := validateScenarioFaultProgress(boundary.Faults, result.Faults); err != nil {
+	if err := progress(&payload, result.Faults); err != nil {
 		return fmt.Errorf("scenario campaign result fault ledger: %w", err)
 	}
 	started, startErr := time.Parse(time.RFC3339Nano, result.StartedAt)
