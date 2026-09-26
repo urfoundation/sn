@@ -2393,6 +2393,16 @@ workers actually start. A restart that cannot recover within the signed
 interval must fail that interval explicitly instead of being counted healthy
 from a PID alone.
 
+The R46 restart recovery review also found two generation races in the
+readiness controller. A proof-read failure from an old restart could be
+mistaken for evidence about its replacement, and a generation change after
+the completion-head read could leave a stale PID or remove the newer intent.
+The mainnet controller must bind each readiness read and completion decision
+to the current signed generation, retry only with that generation's fresh
+trails and head, and retain the newer intent until its own completion. Use
+barrier-driven regressions for both orderings; a prior generation's apparent
+success must never satisfy the replacement's readiness gate.
+
 R46 operator 2 epoch 634 has on-chain `RootMissed` with no committed root,
 and the terminal payout census lacks that epoch's authenticated tier. The
 pinned taskworker closed with zero payout leaves and the server deliberately
