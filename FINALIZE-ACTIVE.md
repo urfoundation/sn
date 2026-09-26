@@ -17,8 +17,11 @@ The immediate exit was a provisional heartbeat process-log gate that treated
 two operator-1 MinIO records-stream connection-reset warnings (and related
 operator-2 warnings) as grounds to stop before terminal. The strict final
 gate must still see those findings, but provisional observation should retain
-and continue. An isolated candidate fix with deterministic tests is in
-progress; it is not part of R47's signed executable. The epoch-652 complete
+and continue. The post-R47 typed transport-reset continuation fix is
+integrated as `114f6535`: its deterministic regression reproduced the early
+stop before the fix, then focused normal and race suites passed; the composed
+branch's focused normal suite passed too. It is not part of R47's signed
+executable. The epoch-652 complete
 source also fell below rate margin on both operators, and zero-funded claims
 and missing pool weights remain independent strict findings.
 
