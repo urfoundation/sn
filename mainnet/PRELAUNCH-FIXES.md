@@ -2578,6 +2578,23 @@ record this as durable staged progress, reapply the **same** immutable plan
 after the exact finalized boundary, and reconcile the four old receipts
 without rebroadcast. It must not interpret the nonzero waiting exit as a
 reason to replan, abandon the generation or stop the serving supervisor.
+The live generation-2 resume exposed a second boundary: both sealed operator
+`st.yml` files still pin the generation-1 reserved-upload activation contexts,
+while the selected validator handoff uses four new contexts. The original
+runtime manifest correctly preserves those old bytes, so a normal fresh
+startup refused the mismatch before starting any worker. The provisional
+R47 continuation recognizes only the exact authenticated predecessor context
+census, leaving every other capacity and authority field unchanged. It is a
+diagnostic exception with `final_acceptance=false`: the old operator admission
+cannot establish new-generation upload acceptance. Before mainnet, implement
+an append-only, generation-specific operator staging configuration and runtime
+manifest, authenticate the exact successor context files and budgets, switch
+the API process to that config during the stopped-topology cutover, and prove
+all four fresh uploads end to end. A source-role or validator-only rotation is
+not sufficient. Test stopped/retried cutovers, mixed generations, forged
+contexts, changed quotas, and rollback refusal. Cache authenticated runtime
+inputs within one invocation so this check does not repeatedly read the full
+historical journal while the fleet is stopped.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
