@@ -235,6 +235,18 @@ findings in the sealed terminal result.
 (SHA-256 `17581a1b35340a4fa1ea2516bf0d7b6518ceaabe9689de4c4d44c1c257e65ed4`),
 [validator-1 startup receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/validator1-startup-phase-2233.receipt.json)
 (SHA-256 `8aacf6e26f77e3bd61515e9c06dc146d94eced99f98d2b12ffec48ab0801d8d1`).
+The post-R46 restart-controller review reproduced two adjacent generation
+races: an old proof read could be used for a replacement, and a replacement
+arriving after the completion-head read could lose its pending intent. The
+fix rechecks the exact signed generation around both reads, keeps a newer
+intent pending, and requires that generation's fresh trails and head. Both
+pre-fix controls failed deterministically; the focused and adjacent tests
+passed normally and with race detection. This is qualified future hardening,
+not evidence that R46's missing proofs were restored.
+[Review and causal controls](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-restart-generation-fix-review.md)
+(SHA-256 `f219d3dafc81c7c6e3b026f6d4934a87b53cedb12c2e80335ebb762be4c8a1c9`),
+[qualification receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-restart-generation-fix.receipt.json)
+(SHA-256 `9d0d9936fcf2c73a033588fe8ef29fb202a26871d5feeea4d3720d649f7acec2`).
 After the fifth epoch and signed terminal block were crossed, the owner kept
 polling failed strict assertions. All **42** scheduled faults had been
 restored, but the accepted epoch usage and retained process findings could

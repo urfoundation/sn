@@ -1,0 +1,6 @@
+4d5ae8b0eb2f95592804f6e15c1fa77201efa46fc8b82021683031e521c25e07  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/faults.go
+082ec76959949cccdc3eb254a48d36a9381f3a42248fba91f21f9ad711ffbe33  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/fault_restart_retry.go
+9b8478bb0453ceb0996df37a7be6f14b0d058d4365d315811b3f49a33b46366a  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/fault_restart_validator.go
+5c8218247c2ab8e3b7e116ba6cef950833109ea7f76c1b6bcc7e8b9744db0095  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/fault_restart_validator_generation_test.go
+575f5e849a90a1b1a79b2c37335a684b992794f39ab381063117795137e011b6  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/fault_restart_validator_generation_guard_test.go
+b602df27dd7c9a729fcceaabbd3cea031a7dda82f32753c18bc7045fa4070103  /mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926/sim-testnet/fault_restart_validator_completion_test.go

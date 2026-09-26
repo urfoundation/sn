@@ -1,0 +1,94 @@
+{
+  "base_commit": "128884072562462db56f8f0eaa04330a1c1080ac",
+  "branch": "codex/astra-r46-validator-readiness-replacement-20260926",
+  "commit": "32e3e8d1a5a6bed31e445fcf31ff8c7c376c4ddf",
+  "worktree": "/mnt/data/sn-testnet/worktrees/astra-r46-validator-readiness-replacement-20260926",
+  "source_fence": "source-final.sha256",
+  "source_fence_sha256": "2a2741fff75c0db34a2e7150c8ef97348b43b4ac2ac1beba6e5abbe4b9c82a83",
+  "go_version": "go version go1.26.6 linux/amd64",
+  "modfile": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "modfile_sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "environment": {
+    "TMPDIR": "/mnt/data/sn-testnet/qualification/r46-validator-readiness-replacement-20260926/tmp"
+  },
+  "normal": {
+    "command": [
+      "go",
+      "test",
+      "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+      "./sim-testnet",
+      "-run",
+      "^(TestValidatorRestart|TestProcessRestartRestore|TestFaultCompletion(ProcessRestore|RestoreExpiry)|TestScenarioFailedTerminalRejectsIncomplete)",
+      "-count=1",
+      "-timeout=15m"
+    ],
+    "exit_code": 0,
+    "package_seconds": 43.433,
+    "log": "final-focused-adjacent-normal.log"
+  },
+  "race": {
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+      "./sim-testnet",
+      "-run",
+      "^(TestValidatorRestart|TestProcessRestartRestore|TestFaultCompletion(ProcessRestore|RestoreExpiry)|TestScenarioFailedTerminalRejectsIncomplete)",
+      "-count=1",
+      "-timeout=25m"
+    ],
+    "log": "final-focused-adjacent-race.log",
+    "exit_code": 0,
+    "package_seconds": 223.43,
+    "race_findings": false
+  },
+  "causal_controls": [
+    {
+      "name": "old-proof-read-final",
+      "exit_code": 1,
+      "result": "expected behavioral failure",
+      "package_seconds": 7.539,
+      "log": "causal-final-old-proof-read.log",
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "-overlay=/mnt/data/sn-testnet/qualification/r46-validator-readiness-replacement-20260926/old-proof-read-final.overlay.json",
+        "./sim-testnet",
+        "-run",
+        "^TestValidatorRestartReplacement(ExitDuringProofRead|DuringProofRead)",
+        "-count=1",
+        "-timeout=15m"
+      ]
+    },
+    {
+      "name": "old-completion-read-final",
+      "exit_code": 1,
+      "result": "expected behavioral failure",
+      "package_seconds": 3.075,
+      "log": "causal-final-old-completion-read.log",
+      "command": [
+        "go",
+        "test",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "-overlay=/mnt/data/sn-testnet/qualification/r46-validator-readiness-replacement-20260926/old-completion-read-final.overlay.json",
+        "./sim-testnet",
+        "-run",
+        "^TestValidatorRestartReplacementDuringCompletionRead",
+        "-count=1",
+        "-timeout=15m"
+      ]
+    }
+  ],
+  "source_changes": {
+    "production_files": 3,
+    "test_files": 3
+  },
+  "live_mutations": false,
+  "integration_mutations": false,
+  "review": "REVIEW.md",
+  "source_fence_verified_after_tests": true,
+  "diff_check": "pass",
+  "worktree_clean_after_commit": true
+}
