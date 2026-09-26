@@ -14,6 +14,23 @@ func finalHistoricalJournalActions(current *SetupPlan, plans map[string]*SetupPl
 	if err != nil {
 		return nil, err
 	}
+	repairs, err := finalCoordinatorRepairCarriedActions(current, plans, entries)
+	if err != nil {
+		return nil, err
+	}
+	for key, action := range repairs {
+		if _, found := actions[key]; found {
+			return nil, fmt.Errorf("historical corrective action %s conflicts with a relay request", action.ID)
+		}
+		actions[key] = action
+	}
+	return actions, nil
+}
+
+// The offline verifier can authenticate a repair independently of unrelated
+// relay requests, whose original bytes are checked by their own reader.
+func finalCoordinatorRepairCarriedActions(current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry) (map[evidenceRelayRequestKey]Action, error) {
+	actions := make(map[evidenceRelayRequestKey]Action)
 	if current == nil || current.CoordinatorRepairCarry == nil {
 		return actions, nil
 	}
@@ -49,9 +66,6 @@ func finalHistoricalJournalActions(current *SetupPlan, plans map[string]*SetupPl
 			return nil, fmt.Errorf("historical corrective action %s has %d exact finalizations", pair.action.ID, matches)
 		}
 		key := evidenceRelayRequestKey{planHash: source.PlanHash, actionId: pair.action.ID}
-		if _, found := actions[key]; found {
-			return nil, fmt.Errorf("historical corrective action %s conflicts with a relay request", pair.action.ID)
-		}
 		actions[key] = pair.action
 	}
 	return actions, nil

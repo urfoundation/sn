@@ -429,13 +429,16 @@ carry the owner's signed repair request and result, whose two finalization
 rows match the retained journal. A post-R46 reader change now admits those
 actions only through that exact carry, with a deterministic old-source refusal
 and controls for changed intent, absent carry and duplicate finalization.
-The full historical chronology still expects an ordinary `StageVerified`
-postcondition for every action; this corrective operation instead has a
-distinct signed result. That schema gap remains a strict follow-up, and the
-R46 diagnostic's original census failure remains part of its sealed result.
+The subsequent post-R46 chronology change adds a separate signed-result proof
+for that corrective activation while preserving ordinary postconditions for
+ordinary actions. Its deterministic old-source refusal, normal and race tests
+passed; the complete R46 archive has not yet been rechecked with this change.
+The R46 diagnostic's original census failure remains part of its sealed result.
 The post-R46 reader's exact old-source failure, normal and race commands,
-negative controls and remaining boundary are in the
+negative controls and initial schema boundary are in the
 [repair reader review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-repair-history-reader-review.md).
+The separate [signed-result proof review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-repair-result-proof-review.md)
+records the follow-up fix and its remaining live-archive qualification limit.
 
 The independent sealed diagnostic advanced after its validator-2 source
 capture deadline. That capture failed at cut **70/96**, operator 2, while

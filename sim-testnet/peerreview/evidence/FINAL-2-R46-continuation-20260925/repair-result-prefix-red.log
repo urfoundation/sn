@@ -1,0 +1,10 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 06:03:22.208113  825045 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 06:03:22.208375  825045 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 06:03:22.208472  825045 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 06:03:22.208506  825045 env.go:78] [env]settings = map[]
+--- FAIL: TestFinalHistoricalCoordinatorJournalArtifactAcceptsSignedRepairResult (1.47s)
+    final_semantic_repair_result_test.go:30: signed corrective finalization was refused or turned into a verified row: finalized historical coordinator action is not approved: plan 0x48889b1adaf525bdbeae9753c00d12bdb61b87d05a7849a813036702ec181190 has no action repair.coordinator-rounding.activate
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	1.548s
+FAIL

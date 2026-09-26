@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
@@ -846,11 +847,21 @@ func (self *finalHistoricalCoordinatorSource) row(receipt FinalEVMReceipt, journ
 	if err != nil {
 		return FinalHistoricalCoordinatorReceiptEvidence{}, err
 	}
-	if postcondition == nil || postcondition.PlanHash != finalized.PlanHash || postcondition.ActionID != finalized.ActionID || postcondition.IntentHash != finalized.IntentHash {
-		return FinalHistoricalCoordinatorReceiptEvidence{}, errors.New("historical coordinator postcondition differs from finalized journal")
-	}
-	if err := verifyFinalHistoricalCoordinatorActionWithPostcondition(self.evidence, self.policy, postcondition, plan, action, receipt, transaction, logs, emitters); err != nil {
-		return FinalHistoricalCoordinatorReceiptEvidence{}, err
+	repair := action.ID == "repair.coordinator-rounding.activate"
+	if repair {
+		if self.current.CoordinatorRepairCarry == nil || finalized != self.current.CoordinatorRepairCarry.Result.Result.Activate || verified != (JournalEntry{}) || postcondition != nil || len(postconditionBytes) != 0 {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, errors.New("historical corrective activation has no exact signed-result proof")
+		}
+		if err := verifyFinalHistoricalCoordinatorActionWithRepair(self.evidence, self.policy, plan, action, receipt, transaction, logs, emitters, self.current.CoordinatorRepairCarry); err != nil {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, err
+		}
+	} else {
+		if postcondition == nil || postcondition.PlanHash != finalized.PlanHash || postcondition.ActionID != finalized.ActionID || postcondition.IntentHash != finalized.IntentHash {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, errors.New("historical coordinator postcondition differs from finalized journal")
+		}
+		if err := verifyFinalHistoricalCoordinatorActionWithPostcondition(self.evidence, self.policy, postcondition, plan, action, receipt, transaction, logs, emitters); err != nil {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, err
+		}
 	}
 	receiptArtifact, err := self.receiptArtifact(receipt, transaction, logs)
 	if err != nil {
@@ -860,16 +871,26 @@ func (self *finalHistoricalCoordinatorSource) row(receipt FinalEVMReceipt, journ
 	if err != nil {
 		return FinalHistoricalCoordinatorReceiptEvidence{}, err
 	}
-	postconditionArtifact, err := self.postconditionArtifact(verified, postconditionBytes)
-	if err != nil {
-		return FinalHistoricalCoordinatorReceiptEvidence{}, err
+	var postconditionArtifact FinalArtifactLocator
+	var repairResultArtifact *FinalArtifactLocator
+	if repair {
+		locator, artifactErr := self.archive.derived("historical-coordinator-repair-result", filepath.ToSlash(filepath.Join("historical-coordinator", "repair-results", stringsTrim0x(finalized.TransactionHash)+".json")), self.current.CoordinatorRepairCarry.Result)
+		if artifactErr != nil {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, artifactErr
+		}
+		repairResultArtifact = &locator
+	} else {
+		postconditionArtifact, err = self.postconditionArtifact(verified, postconditionBytes)
+		if err != nil {
+			return FinalHistoricalCoordinatorReceiptEvidence{}, err
+		}
 	}
 	runtime, err := timeline.receiptRuntime(plan, action, finalized, logs)
 	if err != nil {
 		return FinalHistoricalCoordinatorReceiptEvidence{}, err
 	}
 	return FinalHistoricalCoordinatorReceiptEvidence{
-		Receipt: receipt, ReceiptArtifact: receiptArtifact, PlanHash: strings.ToLower(plan.PlanHash), PlanArtifact: planArtifact, JournalArtifact: journalArtifact, PostconditionArtifact: postconditionArtifact,
+		Receipt: receipt, ReceiptArtifact: receiptArtifact, PlanHash: strings.ToLower(plan.PlanHash), PlanArtifact: planArtifact, JournalArtifact: journalArtifact, PostconditionArtifact: postconditionArtifact, RepairResultArtifact: repairResultArtifact,
 		ActionID: action.ID, IntentHash: strings.ToLower(finalized.IntentHash), TransactionFrom: transaction.From, TransactionTo: transaction.To,
 		TransactionInput: transaction.Input, TransactionValueWei: transaction.ValueWei, TransactionIndex: runtime.transactionIndex, Emitters: emitters,
 		CoordinatorProxy: strings.ToLower(plan.Deployment.CoordinatorProxy.Hex()), ExecutionHead: runtime.executionHead, ExecutionImplementation: runtime.execution.Implementation, ExecutionImplementationRuntimeHash: runtime.execution.RuntimeHash,
@@ -917,6 +938,26 @@ func (self *finalHistoricalCoordinatorSource) journalMutation(receipt FinalEVMRe
 	plan := self.plans[finalized.PlanHash]
 	if plan == nil {
 		return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, errors.New("historical coordinator finalized plan is absent")
+	}
+	if finalized.ActionID == "repair.coordinator-rounding.activate" {
+		requests, err := self.relayRequests()
+		if err != nil {
+			return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, err
+		}
+		actions, err := finalHistoricalJournalActions(self.current, self.plans, self.entries, requests)
+		if err != nil {
+			return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, err
+		}
+		action, found := actions[evidenceRelayRequestKey{planHash: plan.PlanHash, actionId: finalized.ActionID}]
+		if !found || self.current.CoordinatorRepairCarry == nil || *finalized != self.current.CoordinatorRepairCarry.Result.Result.Activate || action.Kind != "evm-transaction" || !actionAcceptsIntent(action, finalized.IntentHash) {
+			return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, errors.New("historical corrective activation differs from signed result")
+		}
+		for _, entry := range self.entries {
+			if entry.Stage == StageVerified && entry.PlanHash == finalized.PlanHash && entry.ActionID == finalized.ActionID {
+				return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, errors.New("historical corrective activation has an unexpected ordinary postcondition")
+			}
+		}
+		return *finalized, plan, action, JournalEntry{}, nil, nil, nil
 	}
 	action, err := exactPlanActionByID(plan, finalized.ActionID)
 	if err != nil || action.Kind != "evm-transaction" || !actionAcceptsIntent(action, finalized.IntentHash) {
@@ -1044,6 +1085,18 @@ func verifyFinalHistoricalCoordinatorActionWithPolicy(evidence *FinalSemanticEvi
 // while the nil-capable wrapper keeps isolated ABI unit tests focused on the
 // event and calldata surface they construct.
 func verifyFinalHistoricalCoordinatorActionWithPostcondition(evidence *FinalSemanticEvidence, policy *protocol.Policy, postcondition *ActionPostcondition, plan *SetupPlan, action Action, receipt FinalEVMReceipt, transaction FinalCollectedEVMTransaction, logs []finalCanonicalEVMLog, emitters []string) error {
+	return verifyFinalHistoricalCoordinatorActionWithProof(evidence, policy, postcondition, plan, action, receipt, transaction, logs, emitters, nil)
+}
+
+// Replays a corrective activation against its owner-signed request/result
+// rather than accepting an invented ordinary postcondition.
+func verifyFinalHistoricalCoordinatorActionWithRepair(evidence *FinalSemanticEvidence, policy *protocol.Policy, plan *SetupPlan, action Action, receipt FinalEVMReceipt, transaction FinalCollectedEVMTransaction, logs []finalCanonicalEVMLog, emitters []string, repair *CoordinatorRepairCarry) error {
+	return verifyFinalHistoricalCoordinatorActionWithProof(evidence, policy, nil, plan, action, receipt, transaction, logs, emitters, repair)
+}
+
+// Shares the canonical transaction, ABI and complete-log checks between the
+// ordinary and corrective proof formats.
+func verifyFinalHistoricalCoordinatorActionWithProof(evidence *FinalSemanticEvidence, policy *protocol.Policy, postcondition *ActionPostcondition, plan *SetupPlan, action Action, receipt FinalEVMReceipt, transaction FinalCollectedEVMTransaction, logs []finalCanonicalEVMLog, emitters []string, repair *CoordinatorRepairCarry) error {
 	if evidence == nil || plan == nil || action.Kind != "evm-transaction" || receipt.Status != "success" || transaction.Block != receipt.Block || transaction.To != strings.ToLower(plan.Deployment.CoordinatorProxy.Hex()) {
 		return errors.New("historical coordinator action target differs from archived plan")
 	}
@@ -1097,7 +1150,11 @@ func verifyFinalHistoricalCoordinatorActionWithPostcondition(evidence *FinalSema
 	case "deposit":
 		expectedEmitters, err = verifyFinalHistoricalDeposit(evidence, plan, action, receipt, transaction, values, canonicalLogs)
 	case "upgradeToAndCall":
-		expectedEmitters, err = verifyFinalHistoricalUpgrade(plan, action, receipt, transaction, values, canonicalLogs)
+		if repair != nil {
+			expectedEmitters, err = verifyFinalHistoricalRepairUpgrade(plan, action, receipt, transaction, values, canonicalLogs, repair)
+		} else {
+			expectedEmitters, err = verifyFinalHistoricalUpgrade(plan, action, receipt, transaction, values, canonicalLogs)
+		}
 	case "scheduleCommitmentOracle":
 		expectedEmitters, err = verifyFinalHistoricalCommitmentOracleSchedule(postcondition, plan, action, receipt, transaction, values, canonicalLogs)
 	case "schedulePolicy":
@@ -1276,6 +1333,37 @@ func verifyFinalHistoricalUpgrade(plan *SetupPlan, action Action, receipt FinalE
 		return nil, errors.New("historical coordinator Upgraded event differs from activation")
 	}
 	return finalHistoricalCoordinatorEmitterSet(plan.Deployment.CoordinatorProxy), nil
+}
+
+// Binds the corrective calldata and Upgraded log to the exact signed request.
+// The ordinary upgrade verifier then checks the same ABI and event graph with
+// the carried implementation as its approved post-state.
+func verifyFinalHistoricalRepairUpgrade(plan *SetupPlan, action Action, receipt FinalEVMReceipt, transaction FinalCollectedEVMTransaction, values []any, logs []finalCanonicalEVMLog, repair *CoordinatorRepairCarry) ([]string, error) {
+	if plan == nil || repair == nil || action.ID != "repair.coordinator-rounding.activate" {
+		return nil, errors.New("historical corrective upgrade proof is absent")
+	}
+	if err := validateCoordinatorRepairRequest(plan, &repair.Request); err != nil {
+		return nil, err
+	}
+	if err := validateCoordinatorRepairCarryResult(repair); err != nil {
+		return nil, err
+	}
+	if !finalJSONEqual(action, repair.Request.Request.Activate) || receipt.TransactionHash != repair.Result.Result.Activate.TransactionHash || receipt.Block.Number != repair.Result.Result.Activate.BlockNumber || receipt.Block.Hash != repair.Result.Result.Activate.BlockHash {
+		return nil, errors.New("historical corrective upgrade differs from signed finalization")
+	}
+	input, err := hexutil.Decode(transaction.Input)
+	if err != nil || crypto.Keccak256Hash(input).Hex() != action.Parameters["expected_data_keccak256"] {
+		return nil, stateMismatchError(err, "historical corrective calldata differs from signed action")
+	}
+	approved := *plan
+	approved.CoordinatorUpgrade = repair.Request.Request.Upgrade
+	ordinary := action
+	ordinary.ID = "evm.coordinator-upgrade-activate"
+	ordinary.Parameters = map[string]string{
+		"implementation":    approved.CoordinatorUpgrade.Implementation.Hex(),
+		"runtime_code_hash": approved.CoordinatorUpgrade.RuntimeCodeHash,
+	}
+	return verifyFinalHistoricalUpgrade(&approved, ordinary, receipt, transaction, values, logs)
 }
 
 // Replays the temporary fleet-oracle handoff byte-for-byte. A terminal oracle

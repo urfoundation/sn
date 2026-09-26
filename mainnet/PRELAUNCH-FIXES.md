@@ -2453,6 +2453,13 @@ the signed activation as an upgrade transition and verify its distinct
 repair-result postcondition rather than inventing an ordinary `StageVerified`
 row. Test capture, receipts and chronology against a valid carried repair,
 changed intent, missing carry and duplicate finalization.
+The testnet follow-up introduced an explicit signed-result artifact for this
+one corrective activation, with ordinary postconditions unchanged. Before
+mainnet, exercise the same branch against the complete archived R46 evidence,
+including exact transaction calldata, emitted implementation, source-plan
+signatures, unique journal finalization, altered result bytes and an invented
+verified row. Keep a failed archive check strict even if synthetic unit tests
+pass.
 
 R46's operator stats and proof reads hit their 100,000-row and 10,000-row
 caps while the APIs returned oldest-first history. A healthy response could

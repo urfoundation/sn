@@ -499,7 +499,7 @@ func verifyFinalHistoricalCoordinatorTimeline(values []FinalHistoricalCoordinato
 // Checks the signed fields for one activation transition independently from
 // timeline linkage. Its action and intent later bind the same journal row.
 func finalVerifyHistoricalCoordinatorUpgradeEvidence(value FinalHistoricalCoordinatorUpgradeEvidence) error {
-	if err := requireFinalHex32("historical coordinator upgrade plan", value.PlanHash); err != nil || value.ActionID != "evm.coordinator-upgrade-activate" || value.IntentHash == "" || value.TransactionHash == "" {
+	if err := requireFinalHex32("historical coordinator upgrade plan", value.PlanHash); err != nil || (value.ActionID != "evm.coordinator-upgrade-activate" && value.ActionID != "repair.coordinator-rounding.activate") || value.IntentHash == "" || value.TransactionHash == "" {
 		return stateMismatchError(err, "historical coordinator upgrade identity is incomplete")
 	}
 	if err := requireFinalHex32("historical coordinator upgrade intent", value.IntentHash); err != nil {

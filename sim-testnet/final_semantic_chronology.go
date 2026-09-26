@@ -183,8 +183,20 @@ func verifyFinalHistoricalCoordinatorReceipts(evidence *FinalSemanticEvidence) e
 		if err := verifyFinalArtifact("historical coordinator journal", row.JournalArtifact, "historical-journal"); err != nil {
 			return err
 		}
-		if err := verifyFinalArtifact("historical coordinator postcondition", row.PostconditionArtifact, "historical-action-postcondition"); err != nil {
-			return err
+		if row.ActionID == "repair.coordinator-rounding.activate" {
+			if row.RepairResultArtifact == nil || row.PostconditionArtifact != (FinalArtifactLocator{}) {
+				return errors.New("historical corrective activation has no exclusive signed-result proof")
+			}
+			if err := verifyFinalArtifact("historical coordinator repair result", *row.RepairResultArtifact, "historical-coordinator-repair-result"); err != nil {
+				return err
+			}
+		} else {
+			if row.RepairResultArtifact != nil {
+				return errors.New("ordinary historical action claims a corrective result")
+			}
+			if err := verifyFinalArtifact("historical coordinator postcondition", row.PostconditionArtifact, "historical-action-postcondition"); err != nil {
+				return err
+			}
 		}
 		for label, value := range map[string]string{
 			"historical coordinator transaction sender": row.TransactionFrom,

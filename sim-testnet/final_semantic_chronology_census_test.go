@@ -57,6 +57,15 @@ func finalHistoricalArtifactCensusTestFixture() *finalHistoricalArtifactCensusFi
 			PostconditionArtifact: value.artifact("historical-action-postcondition", actionID+"-postcondition.json"),
 		})
 	}
+	repairResult := value.artifact("historical-coordinator-repair-result", "signed-repair-result.json")
+	evidence.HistoricalCoordinatorReceipts = append(evidence.HistoricalCoordinatorReceipts, FinalHistoricalCoordinatorReceiptEvidence{
+		ActionID:             "repair.coordinator-rounding.activate",
+		Receipt:              FinalEVMReceipt{Proof: value.artifact("evm-receipt", "repair-captured.json")},
+		ReceiptArtifact:      value.artifact("historical-coordinator-receipt", "repair-envelope.json"),
+		PlanArtifact:         value.artifact("historical-setup-plan", "shared-predecessor-plan.json"),
+		JournalArtifact:      value.artifact("historical-journal", "shared-journal.jsonl"),
+		RepairResultArtifact: &repairResult,
+	})
 	return value
 }
 

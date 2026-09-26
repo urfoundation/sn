@@ -158,28 +158,29 @@ type FinalHistoricalCoordinatorProxyTimelineEvidence struct {
 // post-state are distinct for UUPS upgrades, whose call runs old code before
 // the proxy slot becomes the new implementation.
 type FinalHistoricalCoordinatorReceiptEvidence struct {
-	Receipt                              FinalEVMReceipt      `json:"receipt"`
-	ReceiptArtifact                      FinalArtifactLocator `json:"receipt_artifact"`
-	PlanHash                             string               `json:"plan_hash"`
-	PlanArtifact                         FinalArtifactLocator `json:"plan_artifact"`
-	JournalArtifact                      FinalArtifactLocator `json:"journal_artifact"`
-	PostconditionArtifact                FinalArtifactLocator `json:"postcondition_artifact"`
-	ActionID                             string               `json:"action_id"`
-	IntentHash                           string               `json:"intent_hash"`
-	TransactionFrom                      string               `json:"transaction_from"`
-	TransactionTo                        string               `json:"transaction_to"`
-	TransactionInput                     string               `json:"transaction_input"`
-	TransactionValueWei                  string               `json:"transaction_value_wei"`
-	TransactionIndex                     uint64               `json:"transaction_index"`
-	Emitters                             []string             `json:"emitters"`
-	CoordinatorProxy                     string               `json:"coordinator_proxy"`
-	ExecutionHead                        ChainHead            `json:"execution_head"`
-	ExecutionImplementation              string               `json:"execution_implementation"`
-	ExecutionImplementationRuntimeHash   string               `json:"execution_implementation_runtime_hash"`
-	CoordinatorImplementation            string               `json:"coordinator_implementation"`
-	CoordinatorImplementationSlot        string               `json:"coordinator_implementation_slot"`
-	CoordinatorProxyRuntimeHash          string               `json:"coordinator_proxy_runtime_hash"`
-	CoordinatorImplementationRuntimeHash string               `json:"coordinator_implementation_runtime_hash"`
+	Receipt                              FinalEVMReceipt       `json:"receipt"`
+	ReceiptArtifact                      FinalArtifactLocator  `json:"receipt_artifact"`
+	PlanHash                             string                `json:"plan_hash"`
+	PlanArtifact                         FinalArtifactLocator  `json:"plan_artifact"`
+	JournalArtifact                      FinalArtifactLocator  `json:"journal_artifact"`
+	PostconditionArtifact                FinalArtifactLocator  `json:"postcondition_artifact"`
+	RepairResultArtifact                 *FinalArtifactLocator `json:"repair_result_artifact,omitempty"`
+	ActionID                             string                `json:"action_id"`
+	IntentHash                           string                `json:"intent_hash"`
+	TransactionFrom                      string                `json:"transaction_from"`
+	TransactionTo                        string                `json:"transaction_to"`
+	TransactionInput                     string                `json:"transaction_input"`
+	TransactionValueWei                  string                `json:"transaction_value_wei"`
+	TransactionIndex                     uint64                `json:"transaction_index"`
+	Emitters                             []string              `json:"emitters"`
+	CoordinatorProxy                     string                `json:"coordinator_proxy"`
+	ExecutionHead                        ChainHead             `json:"execution_head"`
+	ExecutionImplementation              string                `json:"execution_implementation"`
+	ExecutionImplementationRuntimeHash   string                `json:"execution_implementation_runtime_hash"`
+	CoordinatorImplementation            string                `json:"coordinator_implementation"`
+	CoordinatorImplementationSlot        string                `json:"coordinator_implementation_slot"`
+	CoordinatorProxyRuntimeHash          string                `json:"coordinator_proxy_runtime_hash"`
+	CoordinatorImplementationRuntimeHash string                `json:"coordinator_implementation_runtime_hash"`
 }
 
 // Binds the EVM registration transaction to terminal native UID ownership.
@@ -3314,7 +3315,11 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 		add(receipt.ReceiptArtifact)
 		add(receipt.PlanArtifact)
 		add(receipt.JournalArtifact)
-		add(receipt.PostconditionArtifact)
+		if receipt.RepairResultArtifact != nil {
+			add(*receipt.RepairResultArtifact)
+		} else {
+			add(receipt.PostconditionArtifact)
+		}
 	}
 	add(evidence.FleetRefreshOracleWindow.Artifact)
 	for _, criterion := range evidence.ExitCriteria {

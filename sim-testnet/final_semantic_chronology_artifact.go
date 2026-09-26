@@ -511,17 +511,32 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		if err != nil {
 			return fmt.Errorf("historical coordinator journal artifact %d: %w", index, err)
 		}
-		postconditionData, found := cache[row.PostconditionArtifact.URI]
-		if !found {
-			return fmt.Errorf("historical coordinator postcondition artifact %d is not loaded", index)
-		}
-		postcondition, err := decodeFinalActionPostconditionV4(postconditionData)
-		if err != nil || postcondition.DeploymentID != evidence.DeploymentID || postcondition.PlanHash != finalized.PlanHash || postcondition.ActionID != finalized.ActionID || postcondition.IntentHash != finalized.IntentHash {
-			return stateMismatchError(err, "historical coordinator postcondition artifact %d differs from its journal", index)
-		}
-		postconditionHash, err := canonicalHashHex(postcondition)
-		if err != nil || !strings.EqualFold(postconditionHash, verified.PostconditionHash) {
-			return stateMismatchError(err, "historical coordinator postcondition artifact %d hash differs from its journal", index)
+		var postcondition *ActionPostcondition
+		repair := row.ActionID == "repair.coordinator-rounding.activate"
+		if repair {
+			if row.RepairResultArtifact == nil || verified != (JournalEntry{}) || current.CoordinatorRepairCarry == nil {
+				return fmt.Errorf("historical coordinator corrective result %d is not authenticated", index)
+			}
+			resultData, loaded := cache[row.RepairResultArtifact.URI]
+			if !loaded {
+				return fmt.Errorf("historical coordinator corrective result %d is not loaded", index)
+			}
+			if err := verifyFinalHistoricalCoordinatorRepairResultArtifact(current, resultData); err != nil {
+				return err
+			}
+		} else {
+			postconditionData, loaded := cache[row.PostconditionArtifact.URI]
+			if !loaded {
+				return fmt.Errorf("historical coordinator postcondition artifact %d is not loaded", index)
+			}
+			postcondition, err = decodeFinalActionPostconditionV4(postconditionData)
+			if err != nil || postcondition.DeploymentID != evidence.DeploymentID || postcondition.PlanHash != finalized.PlanHash || postcondition.ActionID != finalized.ActionID || postcondition.IntentHash != finalized.IntentHash {
+				return stateMismatchError(err, "historical coordinator postcondition artifact %d differs from its journal", index)
+			}
+			postconditionHash, hashErr := canonicalHashHex(postcondition)
+			if hashErr != nil || !strings.EqualFold(postconditionHash, verified.PostconditionHash) {
+				return stateMismatchError(hashErr, "historical coordinator postcondition artifact %d hash differs from its journal", index)
+			}
 		}
 		receiptData, found := cache[row.ReceiptArtifact.URI]
 		if !found {
@@ -542,8 +557,14 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		if err := verifyFinalHistoricalCoordinatorReceiptProof(row, proofData, logs); err != nil {
 			return fmt.Errorf("historical coordinator captured receipt proof %d: %w", index, err)
 		}
-		if err := verifyFinalHistoricalCoordinatorActionWithPostcondition(evidence, policy, postcondition, plan, action, row.Receipt, transaction, logs, emitters); err != nil {
-			return fmt.Errorf("historical coordinator receipt artifact %d action binding: %w", index, err)
+		var actionErr error
+		if repair {
+			actionErr = verifyFinalHistoricalCoordinatorActionWithRepair(evidence, policy, plan, action, row.Receipt, transaction, logs, emitters, current.CoordinatorRepairCarry)
+		} else {
+			actionErr = verifyFinalHistoricalCoordinatorActionWithPostcondition(evidence, policy, postcondition, plan, action, row.Receipt, transaction, logs, emitters)
+		}
+		if actionErr != nil {
+			return fmt.Errorf("historical coordinator receipt artifact %d action binding: %w", index, actionErr)
 		}
 		if !strings.EqualFold(plan.Deployment.CoordinatorProxy.Hex(), row.CoordinatorProxy) {
 			return errors.New("historical coordinator artifact proxy differs from archived plan")
@@ -553,6 +574,22 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		}
 	}
 	return nil
+}
+
+// Accepts only the owner's signed result already embedded in the approved
+// descendant plan. Artifact bytes alone cannot introduce a new correction.
+func verifyFinalHistoricalCoordinatorRepairResultArtifact(current *SetupPlan, data []byte) error {
+	if current == nil || current.CoordinatorRepairCarry == nil || len(data) == 0 {
+		return errors.New("historical corrective result authority is absent")
+	}
+	var result signedCoordinatorRepairResult
+	if err := decodeStrictJSONBytes(data, &result); err != nil {
+		return err
+	}
+	if !finalJSONEqual(result, current.CoordinatorRepairCarry.Result) {
+		return errors.New("historical corrective result differs from approved carry")
+	}
+	return validateCoordinatorRepairCarryPlan(current)
 }
 
 // Enforces byte-for-byte semantic equality between the snapshot's original
@@ -604,6 +641,22 @@ func finalHistoricalCoordinatorJournalArtifactAction(evidence *FinalSemanticEvid
 	}
 	if finalized == nil || !current.allowedPlanHashes()[finalized.PlanHash] || !strings.EqualFold(plan.PlanHash, finalized.PlanHash) {
 		return Action{}, JournalEntry{}, JournalEntry{}, errors.New("receipt has no finalized action in the approved plan lineage")
+	}
+	if finalized.ActionID == "repair.coordinator-rounding.activate" {
+		actions, err := finalCoordinatorRepairCarriedActions(current, map[string]*SetupPlan{current.PlanHash: current, plan.PlanHash: plan}, entries)
+		if err != nil {
+			return Action{}, JournalEntry{}, JournalEntry{}, err
+		}
+		action, found := actions[evidenceRelayRequestKey{planHash: plan.PlanHash, actionId: finalized.ActionID}]
+		if !found || current.CoordinatorRepairCarry == nil || *finalized != current.CoordinatorRepairCarry.Result.Result.Activate || action.Kind != "evm-transaction" || !actionAcceptsIntent(action, finalized.IntentHash) {
+			return Action{}, JournalEntry{}, JournalEntry{}, errors.New("historical corrective activation differs from signed result")
+		}
+		for _, entry := range entries {
+			if entry.Stage == StageVerified && entry.PlanHash == finalized.PlanHash && entry.ActionID == finalized.ActionID {
+				return Action{}, JournalEntry{}, JournalEntry{}, errors.New("historical corrective activation has an unexpected ordinary postcondition")
+			}
+		}
+		return action, *finalized, JournalEntry{}, nil
 	}
 	action, err := exactPlanActionByID(plan, finalized.ActionID)
 	if err != nil || action.Kind != "evm-transaction" || !actionAcceptsIntent(action, finalized.IntentHash) {
