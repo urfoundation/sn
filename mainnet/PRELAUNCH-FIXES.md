@@ -2631,6 +2631,19 @@ separate availability recovery from the latency measurement, count every
 actual retry request in adversary evidence, and test deterministic timeout,
 recovery and exhausted-deadline cases. A single transient read timeout must
 not silently turn an otherwise complete multi-hour interval into a hard stop.
+The post-R47 candidate raises the configured whole-sample budget to 60 seconds
+and retries typed transport failures and transient HTTP responses on direct
+idempotent RPC reads while counting recovered wire attempts. This candidate is
+not the signed R47 executable. The separate native-runtime metadata probe still
+requires equivalent bounded retry and exact request accounting before mainnet
+acceptance; its R47 timeout was the first observed RPC error.
+The post-R47 package test also exposed two maintenance risks: an isolated
+checkout lacked the sibling vault/config repositories required by discovery,
+and source-capacity tests pinned old exact byte totals after the approved
+census geometry changed. Keep the full module workspace reproducible and
+assert the finite document boundary and aggregate safety property directly.
+The large evidence-census suite needs an explicit duration budget; Go's
+default ten-minute timeout interrupted it while tests were still active.
 At 2026-09-26 11:42:09 UTC, the R47 verify adversary recorded one HTTP 400
 at EXTEND depth 7. The operator-1 API log identifies the rejection as
 `source-egress-unresolved` for the assigned pending hop. The owner continued

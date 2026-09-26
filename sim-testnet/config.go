@@ -599,8 +599,8 @@ func (c *HarnessConfig) Validate() error {
 	if !adversaries.Enabled || adversaries.Matrix != "docs/spec/adversarial-matrix-v1.json" || adversaries.Seed == 0 {
 		return errors.New("release scenario requires the pinned continuous adversarial campaign")
 	}
-	if adversaries.SampleIntervalMilliseconds < 250 || adversaries.SampleIntervalMilliseconds > 60_000 || adversaries.RequestTimeoutMilliseconds < 250 || adversaries.RequestTimeoutMilliseconds > 60_000 {
-		return errors.New("adversarial sample interval and request timeout must be in [250,60000] milliseconds")
+	if adversaries.SampleIntervalMilliseconds < 250 || adversaries.SampleIntervalMilliseconds > 60_000 || adversaries.RequestTimeoutMilliseconds < 60_000 || adversaries.RequestTimeoutMilliseconds > 300_000 {
+		return errors.New("adversarial sample interval must be in [250,60000] milliseconds and request timeout in [60000,300000] milliseconds")
 	}
 	if adversaries.MinimumSamplesPerActor < 100 || adversaries.MaximumActorErrorRatePPM != 0 || adversaries.MaximumP99LatencyMilliseconds < adversaries.RequestTimeoutMilliseconds {
 		return errors.New("adversarial evidence thresholds are incomplete or unsafe")

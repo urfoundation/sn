@@ -426,6 +426,8 @@ type rpcHeader struct {
 	Number string `json:"number"`
 }
 
+// One campaign worker owns samples and their retry counters; no cross-actor
+// state is shared. Read retries preserve the exact RPC method, parameters and id.
 type rpcAdversary struct {
 	cfg                     *ResolvedConfig
 	http                    *adversaryHTTP
@@ -437,6 +439,7 @@ type rpcAdversary struct {
 	commitRevealRight       adversaryCommitRevealObservation
 	commitRevealDelay       uint64
 	latency                 adversaryLatencyWindow
+	retryRequests           uint64
 }
 
 func (self *rpcAdversary) ID() string { return "rpc-consistency-pressure" }
@@ -472,23 +475,66 @@ func (self *rpcAdversary) observeCommitReveal(ctx context.Context) (adversaryCom
 	return left, right, delay, nil
 }
 
+// Retry only transport absence and transient gateways within the sample budget.
+// A responsive semantic or malformed reply is evidence, never retry authority.
 func (self *rpcAdversary) call(ctx context.Context, endpoint, method string, parameters any, id uint64) (rpcResponse, error) {
 	payload, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": parameters})
 	if err != nil {
 		return rpcResponse{}, err
 	}
-	status, body, err := self.http.do(ctx, http.MethodPost, endpoint, "", payload, 4*1024*1024)
-	if err != nil {
-		return rpcResponse{}, err
+	wait := self.http.retryWait
+	if wait == nil {
+		wait = waitAdversaryDelay
 	}
-	if status/100 != 2 {
-		return rpcResponse{}, fmt.Errorf("rpc %s returned HTTP %d", method, status)
+	for attempt := 0; attempt < adversaryGetMaximumAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return rpcResponse{}, err
+		}
+		if attempt != 0 {
+			if err := wait(ctx, adversaryGetRetryDelay*time.Duration(attempt)); err != nil {
+				return rpcResponse{}, err
+			}
+		}
+		remaining := time.Duration(0)
+		if deadline, ok := ctx.Deadline(); ok {
+			remaining = time.Until(deadline)
+			if remaining <= 0 {
+				return rpcResponse{}, context.DeadlineExceeded
+			}
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, adversaryGetAttemptTimeout(self.http.timeout, remaining, attempt))
+		if err := self.http.gate.WaitSlots(attemptCtx, 1); err != nil {
+			cancel()
+			return rpcResponse{}, err
+		}
+		if attempt != 0 {
+			self.retryRequests++
+		}
+		status, body, err := self.http.doReserved(attemptCtx, http.MethodPost, endpoint, "", payload, 4*1024*1024)
+		cancel()
+		if err != nil && !scenarioSnapshotTransportError(err, true) {
+			return rpcResponse{}, err
+		}
+		if err == nil {
+			switch status {
+			case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+				err = fmt.Errorf("rpc %s transient HTTP %d", method, status)
+			default:
+				if status/100 != 2 {
+					return rpcResponse{}, fmt.Errorf("rpc %s returned HTTP %d", method, status)
+				}
+				var response rpcResponse
+				if json.Unmarshal(body, &response) != nil || response.JSONRPC != "2.0" || response.ID != id {
+					return rpcResponse{}, fmt.Errorf("rpc %s returned malformed envelope", method)
+				}
+				return response, nil
+			}
+		}
+		if attempt == adversaryGetMaximumAttempts-1 {
+			return rpcResponse{}, err
+		}
 	}
-	var response rpcResponse
-	if json.Unmarshal(body, &response) != nil || response.JSONRPC != "2.0" || response.ID != id {
-		return rpcResponse{}, fmt.Errorf("rpc %s returned malformed envelope", method)
-	}
-	return response, nil
+	return rpcResponse{}, errors.New("rpc retry loop exhausted without result")
 }
 
 // Exact-width hexadecimal hashes protect every block reader; equal malformed
@@ -639,7 +685,10 @@ func mevShieldFinalityEraExpiryModel(finalized, best, period uint64) (lag uint64
 	return lag, lag >= period, nil
 }
 
-func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
+// Add recovered wire attempts to the logical read count before evidence emits.
+func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) (result adversarySampleResult) {
+	self.retryRequests = 0
+	defer func() { result.Requests += self.retryRequests }()
 	started := time.Now()
 	privateEndpoint := self.cfg.OperationalEVM
 	publicEndpoint := verificationEVMEndpoint(self.cfg)

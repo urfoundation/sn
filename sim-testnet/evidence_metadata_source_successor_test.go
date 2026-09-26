@@ -46,7 +46,7 @@ func TestCampaignMetadataSourceSuccessorFitsApprovedLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if limits.maximumObjects != 1323008 || limits.metadata.retainedBytes != 4490199040 || limits.metadata.indexBytes != 1754787840 || limits.metadata.retainedBytes <= 4*1024*1024*1024 {
+	if limits.maximumObjects != 1323008 || limits.metadata.retainedBytes <= 4*1024*1024*1024 || limits.metadata.indexBytes > maximumCampaignMetadataDocumentV2 {
 		t.Fatalf("approved source census no longer reproduces the old aggregate rejection: objects=%d metadata=%+v", limits.maximumObjects, limits.metadata)
 	}
 	if limits.rawFileBytes("ordinary.bin") != maximumCampaignEvidenceRawFileBytes || defaultCampaignEvidenceLimits().maximumBytes != maximumCampaignEvidenceAggregateBytes {
@@ -59,16 +59,27 @@ func TestCampaignMetadataSourceSuccessorFitsApprovedLifetime(t *testing.T) {
 // ceiling, including a larger template distinct from funded continuation slots.
 func TestCampaignMetadataSourceSuccessorPreservesDocumentSlotBoundary(t *testing.T) {
 	cfg := campaignMetadataSourceSuccessorTest(t, campaignMetadataConfigTestV2(t))
-	for _, slots := range []uint64{329, 330, 2048} {
+	var lastFitting uint64
+	for slots := uint64(256); slots <= 2048; slots++ {
 		cfg.Config.ValidatorEvidenceRelay.MaxSlots = slots
 		limits, err := campaignEvidenceLimitsForConfig(cfg)
-		if slots == 329 {
-			if err != nil || limits.metadata.indexBytes != 2143797248 {
-				t.Fatalf("last fitting slot census: limits=%+v error=%v", limits, err)
+		if err != nil {
+			if !strings.Contains(err.Error(), "index_bytes=") || !strings.Contains(err.Error(), "1..2147483648") || lastFitting == 0 {
+				t.Fatalf("slot %d failed outside its finite document boundary: %v", slots, err)
 			}
-		} else if err == nil || !strings.Contains(err.Error(), "index_bytes=") || !strings.Contains(err.Error(), "1..2147483648") {
-			t.Fatalf("%d slots escaped the unchanged document ceiling: %v", slots, err)
+			break
 		}
+		if limits.metadata.indexBytes > maximumCampaignMetadataDocumentV2 {
+			t.Fatalf("slot %d exceeded the admitted document ceiling: %d", slots, limits.metadata.indexBytes)
+		}
+		lastFitting = slots
+	}
+	if lastFitting <= 256 || lastFitting >= 2048 {
+		t.Fatalf("expanded census lost a finite slot boundary: %d", lastFitting)
+	}
+	cfg.Config.ValidatorEvidenceRelay.MaxSlots = 2048
+	if _, err := campaignEvidenceLimitsForConfig(cfg); err == nil || !strings.Contains(err.Error(), "index_bytes=") {
+		t.Fatalf("oversized relay template escaped the document ceiling: %v", err)
 	}
 }
 

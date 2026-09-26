@@ -93,6 +93,24 @@ func TestReleaseLockRejectsUnknownRuntimeField(t *testing.T) {
 	}
 }
 
+// The continuous multi-read RPC sample needs a recovery budget that survives
+// expected transient latency without weakening semantic failure checks.
+func TestHarnessConfigRequiresMinuteAdversarySampleBudget(t *testing.T) {
+	cfg := testResolvedConfig(t).Config
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Scenarios.Adversaries.RequestTimeoutMilliseconds = 59_999
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "request timeout") {
+		t.Fatalf("short adversary sample budget accepted: %v", err)
+	}
+	cfg.Scenarios.Adversaries.RequestTimeoutMilliseconds = 300_001
+	cfg.Scenarios.Adversaries.MaximumP99LatencyMilliseconds = 300_001
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "request timeout") {
+		t.Fatalf("unbounded adversary sample budget accepted: %v", err)
+	}
+}
+
 func TestHarnessConfigRequiresTestnetOnlyReferences(t *testing.T) {
 	r := testResolvedConfig(t)
 	if err := r.Config.Validate(); err != nil {

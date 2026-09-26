@@ -48,9 +48,9 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			QualityFaultStartBlocks: 5, QualityFaultDurationBlocks: 20,
 			Adversaries: AdversaryConfig{
 				Enabled: true, Matrix: "docs/spec/adversarial-matrix-v1.json", Seed: 52120260820,
-				SampleIntervalMilliseconds: 5000, RequestTimeoutMilliseconds: 10000,
+				SampleIntervalMilliseconds: 5000, RequestTimeoutMilliseconds: 60000,
 				MinimumSamplesPerActor: 100, MaximumActorErrorRatePPM: 0,
-				MaximumP99LatencyMilliseconds: 15000, MaximumAttackControlP95Ratio: 20_000_000, MaximumOperatorRequestsPerSec: 8,
+				MaximumP99LatencyMilliseconds: 60000, MaximumAttackControlP95Ratio: 20_000_000, MaximumOperatorRequestsPerSec: 8,
 				MaximumRPCRequestsPerSec: 2,
 			},
 		},
