@@ -70,7 +70,18 @@ func (self *liveScenarioFaultDriver) observeRestartTargets(ctx context.Context, 
 		} else if err != nil {
 			return nil, fmt.Errorf("observe restart target %s process: %w", id, err)
 		}
-		ready = append(ready, FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID})
+		process := FaultProcessEvidence{ID: id, Role: processSpec.Role, Identity: processSpec.Identity, PID: state.PID}
+		if processSpec.Role == "validator" {
+			producing, err := self.validatorRestartProducing(ctx, state)
+			if err != nil {
+				return nil, err
+			}
+			if !producing {
+				continue
+			}
+			process.StartTimeTicks = state.StartTimeTicks
+		}
+		ready = append(ready, process)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

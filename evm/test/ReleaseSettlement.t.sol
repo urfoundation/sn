@@ -258,6 +258,47 @@ contract ReleaseSettlementTest is ReleaseBase {
         assertTrue(vault.conservationHolds());
     }
 
+    /// @dev An empty eligible census has no committable root. Its funded amount
+    /// stays with that operator and can be claimed only through a later epoch.
+    function test_emptyPayoutCensusCarriesToNextRealRootWithoutFabricatedLeaf() public {
+        _accrue(NO1, 333);
+        _accrue(NO2, 222);
+        _close(0, NO1);
+        _close(0, NO2);
+        vm.prank(rootSigner1);
+        vm.expectRevert(STCoordinator.InvalidConfiguration.selector);
+        coordinator.commitOperatorRoot(0, NO1, bytes32(0), keccak256("empty-census-artifact"));
+
+        (bytes32 otherRoot,) = _singleLeaf(PROVIDER2, 10_000);
+        vm.prank(rootSigner2);
+        coordinator.commitOperatorRoot(0, NO2, otherRoot, keccak256("other-operator-artifact"));
+        vm.roll(_end(0) + FINALIZE_OFFSET);
+        coordinator.finalizeOperatorEpoch(0, NO1);
+        coordinator.finalizeOperatorEpoch(0, NO2);
+        STSettlementVault.Entitlement memory empty = vault.entitlement(0, NO1);
+        assertEq(uint256(empty.status), uint256(STSettlementVault.EpochStatus.RootMissed));
+        assertEq(empty.payoutRoot, bytes32(0));
+        assertEq(empty.artifactHash, bytes32(0));
+        assertEq(empty.total, 333);
+        assertEq(vault.carry(NO1), 333);
+        assertEq(vault.carry(NO2), 0);
+        assertEq(uint256(vault.entitlement(0, NO2).status), uint256(STSettlementVault.EpochStatus.Finalized));
+
+        _accrue(NO1, 67);
+        _close(1, NO1);
+        (bytes32 recoveredRoot, bytes32[] memory proof) = _singleLeaf(PROVIDER1, 10_000);
+        vm.prank(rootSigner1);
+        coordinator.commitOperatorRoot(1, NO1, recoveredRoot, keccak256("recovered-census-artifact"));
+        vm.roll(_end(1) + FINALIZE_OFFSET);
+        coordinator.finalizeOperatorEpoch(1, NO1);
+        assertEq(vault.entitlement(1, NO1).total, 400);
+        assertEq(vault.carry(NO1), 0);
+        vault.claim(1, NO1, PROVIDER1, 10_000, proof);
+        assertEq(vault.entitlement(1, NO1).claimed, 400);
+        assertEq(uint256(vault.entitlement(0, NO1).status), uint256(STSettlementVault.EpochStatus.RootMissed));
+        assertTrue(vault.conservationHolds());
+    }
+
     function test_lateKeeperNeverAttributesMultiEpochDeltaToFirstMissedEpoch() public {
         _accrue(NO1, 500);
         vm.roll(_end(0) + CLOSE_GRACE + 1);
