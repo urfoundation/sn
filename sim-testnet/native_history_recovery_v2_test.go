@@ -215,6 +215,30 @@ func TestNativeHistoryRecoveryV2SignsAndRestartsExactSelection(t *testing.T) {
 	}
 }
 
+// A new scenario controller may inspect an already running, authenticated
+// supervisor without pretending its signed child request used the new binary.
+func TestNativeHistoryRecoveryV2LiveScenarioUsesRetainedDriver(t *testing.T) {
+	x := newNativeHistoryRecoveryTestV2(t)
+	f := x.f
+	receipt, err := publishNativeHistoryRecoveryV2(t.Context(), f.cfg, f.stateDir, f.plan, f.roles, x.h, x.p, func(context.Context, *nativeHistoryRecoveryPlanV2) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	retainedDriverSha256 := x.p.Driver.ExecutableSHA256
+	f.cfg.provisionalResume.Driver.ExecutableSHA256 = "sha256:" + strings.Repeat("91", 32)
+	if _, err := readNativeHistoryRecoveryHandoffV2(t.Context(), f.cfg, f.stateDir, f.plan, x.h, receipt.Path, receipt.SHA256); err == nil {
+		t.Fatal("new driver silently replaced signed retained approval")
+	}
+	f.cfg.nativeHistoryRecoveryLiveDriverSha256 = "sha256:" + strings.Repeat("92", 32)
+	if _, err := readNativeHistoryRecoveryHandoffV2(t.Context(), f.cfg, f.stateDir, f.plan, x.h, receipt.Path, receipt.SHA256); err == nil {
+		t.Fatal("unrelated supervisor binary admitted retained approval")
+	}
+	f.cfg.nativeHistoryRecoveryLiveDriverSha256 = retainedDriverSha256
+	if _, err := readNativeHistoryRecoveryHandoffV2(t.Context(), f.cfg, f.stateDir, f.plan, x.h, receipt.Path, receipt.SHA256); err != nil {
+		t.Fatal("authenticated retained supervisor lost its signed child request", err)
+	}
+}
+
 // TestNativeHistoryRecoveryV2RejectsRehashedAuthority checks the parent approval
 // against independently retained source, generation, runtime and driver owners.
 func TestNativeHistoryRecoveryV2RejectsRehashedAuthority(t *testing.T) {

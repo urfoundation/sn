@@ -125,7 +125,11 @@ func prepareProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, st
 	if err := validateSupervisorGeneration(*live); err != nil {
 		return nil, err
 	}
-	if err := preflightNativeHistoryRecoveryLiveV2(ctx, cfg, stateDir, plan, manifest.Specs); err != nil {
+	nativeRecoveryConfig := *cfg
+	if command == "scenario" {
+		nativeRecoveryConfig.nativeHistoryRecoveryLiveDriverSha256 = binaryHash
+	}
+	if err := preflightNativeHistoryRecoveryLiveV2(ctx, &nativeRecoveryConfig, stateDir, plan, manifest.Specs); err != nil {
 		return nil, err
 	}
 	// Provisional admission records this as an explicitly unverified baseline.

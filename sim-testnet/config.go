@@ -369,7 +369,10 @@ type ResolvedConfig struct {
 	provisionalProductionSourceRunID string
 	strictHistoryAdoption            *strictHistoryAdoptionState
 	nativeHistoryRecoveryV2          *nativeHistoryRecoverySelectionV2
-	provisionalRPCAuthority          string
+	// Only a live scenario may carry the authenticated supervisor executable
+	// into native recovery readback after the controller binary changes.
+	nativeHistoryRecoveryLiveDriverSha256 string
+	provisionalRPCAuthority               string
 	// This strict invocation route is separately bound into SetupPlan and
 	// ResolvedInputsHash, preserving the original activation ConfigHash.
 	ownedRPCAuthority    string

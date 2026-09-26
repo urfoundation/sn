@@ -217,7 +217,8 @@ func validateNativeHistoryRecoveryPlanV2(ctx context.Context, cfg *ResolvedConfi
 		return errors.New("native recovery requires the selected provisional generation and source-role overlay")
 	}
 	hash, err := p.hash()
-	if err != nil || p.Schema != nativeHistoryRecoverySchemaV2 || p.PlanHash != hash || p.BasePlanHash != base.PlanHash || p.StateDir != stateDir || p.DeploymentId != base.DeploymentID || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Generation != 2 || p.Generation != h.Generation || p.RolloverPlanHash != h.PlanHash || p.RolloverHandoffSha256 != h.sourceSHA256 || p.SourceRole != *h.SourceRoleOverlay || !p.Provisional || p.FinalAcceptance || p.StateImported || len(p.Validators) != 2 || len(h.Validators) != 2 || p.FirstNativeEpoch <= p.NativeEpoch || p.Native.Number == 0 || !validCanonicalHashHex(p.Native.Hash) || p.Driver != cfg.provisionalResume.Driver {
+	retainedDriver := cfg.nativeHistoryRecoveryLiveDriverSha256 != "" && p.Driver.ExecutableSHA256 == cfg.nativeHistoryRecoveryLiveDriverSha256
+	if err != nil || p.Schema != nativeHistoryRecoverySchemaV2 || p.PlanHash != hash || p.BasePlanHash != base.PlanHash || p.StateDir != stateDir || p.DeploymentId != base.DeploymentID || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Generation != 2 || p.Generation != h.Generation || p.RolloverPlanHash != h.PlanHash || p.RolloverHandoffSha256 != h.sourceSHA256 || p.SourceRole != *h.SourceRoleOverlay || !p.Provisional || p.FinalAcceptance || p.StateImported || len(p.Validators) != 2 || len(h.Validators) != 2 || p.FirstNativeEpoch <= p.NativeEpoch || p.Native.Number == 0 || !validCanonicalHashHex(p.Native.Hash) || (p.Driver != cfg.provisionalResume.Driver && !retainedDriver) {
 		return errors.Join(errors.New("native recovery plan changes its approval, runtime driver, generation or scope"), err)
 	}
 	_, _, migration, err := nativeRecoveryPredecessorScopeV2(ctx, cfg, stateDir, base)
