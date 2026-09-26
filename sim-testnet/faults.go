@@ -118,6 +118,9 @@ type liveScenarioFaultDriver struct {
 	minerControlReconciled     map[string]map[string]minerControlGeneration
 	restartPersist             func(string, activeFaultFile, scenarioFaultSpec, []FaultProcessEvidence) error
 	restartSignal              func(supervisedCommand, syscall.Signal) bool
+
+	// Tests can park after real proof bytes are read; live drivers leave nil.
+	afterRestartProofReadForTest func()
 }
 
 // Bound once to the checksum-locked supervisor generation. Tests inject only
@@ -671,6 +674,7 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 		return nil, err
 	}
 	var processes []FaultProcessEvidence
+	var restartValidators []ProcessState
 	var restoreErr error
 	if spec.Kind == "container-restart" {
 		processes, restoreErr = d.restoreContainerFault(ctx, spec)
@@ -679,7 +683,7 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	} else if spec.Kind == "validator-view-filter" {
 		processes, restoreErr = d.restoreValidatorViewFilter(ctx, spec)
 	} else if spec.Kind == "process-restart" {
-		processes, restoreErr = d.observeRestartTargets(ctx, spec)
+		processes, restartValidators, restoreErr = d.observeRestartTargets(ctx, spec)
 	} else {
 		processes, restoreErr = d.signal(ctx, spec, syscall.SIGCONT)
 	}
@@ -689,6 +693,18 @@ func (d *liveScenarioFaultDriver) restore(ctx context.Context, spec scenarioFaul
 	if spec.Kind != "miner-control" {
 		if err := d.captureFaultCompletion(ctx, spec, "enable"); err != nil {
 			return processes, err
+		}
+	}
+	// The bounded head read may outlive a proven validator. Retain the original
+	// intent until this exact generation remains healthy at the completion cut.
+	for _, state := range restartValidators {
+		current, err := d.validatorRestartGenerationCurrent(ctx, state)
+		if err != nil || !current {
+			d.faultCompleted = faultCompletedTransition{}
+			if err != nil {
+				return nil, err
+			}
+			return nil, &processRestartPendingError{faultId: spec.ID, targets: append([]string(nil), spec.Targets...)}
 		}
 	}
 	if spec.Kind == "miner-control" {
