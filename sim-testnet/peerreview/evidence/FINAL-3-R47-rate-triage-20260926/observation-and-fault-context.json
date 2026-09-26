@@ -1,0 +1,640 @@
+{
+  "schema": "r47-rate-observation-and-fault-context-v1",
+  "provisional": true,
+  "final_acceptance": false,
+  "observations_sha256": "2f3ef3589c353a82e1abcd2a7a4186907d14ab4f2648a5aa2d1725b69864b22c",
+  "faults_sha256": "47331064f81f6bf79b4dad36acd4384740d6f1abfef5bef63a3f0397c97431d1",
+  "source_epochs": [
+    650,
+    651,
+    652
+  ],
+  "boundary_blocks": [
+    8090374,
+    8090674,
+    8090974,
+    8091274
+  ],
+  "snapshots": [
+    {
+      "observation_line": 36,
+      "observed_at": "2026-09-26T13:47:17.103694016Z",
+      "observation_hash": "0x64d3bc86dfa32a74d3b10ad11c151d6144659991a1ccaf17401d86ec6c8f64d7",
+      "operators": [
+        {
+          "no_id": 1,
+          "assignments": 28128,
+          "confirmations": 28125,
+          "stats_rows": 3933,
+          "proof_rows": 705,
+          "reliability_ppm": 999686,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T13:47:56.542109795Z",
+          "proofs_from": "2026-09-26T13:32:56.542109795Z",
+          "proofs_to": "2026-09-26T13:47:56.542109795Z",
+          "rate_source": {
+            "no_id": 1,
+            "epoch": 650,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:97321c15c64df89f287a643f4aef0773f405c9dba6c1b4e5cb615ea8bf88cf94",
+            "total_usage_bytes": 52450233
+          }
+        },
+        {
+          "no_id": 2,
+          "assignments": 28035,
+          "confirmations": 28035,
+          "stats_rows": 3966,
+          "proof_rows": 698,
+          "reliability_ppm": 999862,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T13:47:56.542109795Z",
+          "proofs_from": "2026-09-26T13:32:56.542109795Z",
+          "proofs_to": "2026-09-26T13:47:56.542109795Z",
+          "rate_source": {
+            "no_id": 2,
+            "epoch": 650,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:9f20f608ba1b00cfdc8d949567d25de75d51614638aadb7a9d3ac07f78dae180",
+            "total_usage_bytes": 50903383
+          }
+        }
+      ]
+    },
+    {
+      "observation_line": 48,
+      "observed_at": "2026-09-26T14:46:41.343056228Z",
+      "observation_hash": "0xce097301f3b4bcf940bbccdefd6bf4c1c4b47af572664cac20b4504a39dc665a",
+      "operators": [
+        {
+          "no_id": 1,
+          "assignments": 30340,
+          "confirmations": 30335,
+          "stats_rows": 5004,
+          "proof_rows": 202,
+          "reliability_ppm": 999614,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T14:47:09.758802343Z",
+          "proofs_from": "2026-09-26T14:32:09.758802343Z",
+          "proofs_to": "2026-09-26T14:47:09.758802343Z",
+          "rate_source": {
+            "no_id": 1,
+            "epoch": 651,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:42c4491aecc28e6dd791a3ce9b912ed556d9d84bc7949b26298c4c3792a49388",
+            "total_usage_bytes": 19396509
+          }
+        },
+        {
+          "no_id": 2,
+          "assignments": 30238,
+          "confirmations": 30235,
+          "stats_rows": 4958,
+          "proof_rows": 202,
+          "reliability_ppm": 999708,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T14:47:09.758802343Z",
+          "proofs_from": "2026-09-26T14:32:09.758802343Z",
+          "proofs_to": "2026-09-26T14:47:09.758802343Z",
+          "rate_source": {
+            "no_id": 2,
+            "epoch": 651,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:60308506607eeb63106f0c42d93a99d116ae4202ca5efe7c3dead95ebbabf2ff",
+            "total_usage_bytes": 18756754
+          }
+        }
+      ]
+    },
+    {
+      "observation_line": 60,
+      "observed_at": "2026-09-26T15:46:24.587623066Z",
+      "observation_hash": "0x021deca5a4c524ece60cbe3e099fe350e4c0a1cbf65db63b4970850ebcde17b0",
+      "operators": [
+        {
+          "no_id": 1,
+          "assignments": 34820,
+          "confirmations": 34790,
+          "stats_rows": 6683,
+          "proof_rows": 218,
+          "reliability_ppm": 998770,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T15:46:53.272087797Z",
+          "proofs_from": "2026-09-26T15:31:53.272087797Z",
+          "proofs_to": "2026-09-26T15:46:53.272087797Z",
+          "rate_source": {
+            "no_id": 1,
+            "epoch": 652,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:e637f07e924ce80311550ef315f8dfe17e832b48420703675f55339acdc811cc",
+            "total_usage_bytes": 5737506
+          }
+        },
+        {
+          "no_id": 2,
+          "assignments": 34654,
+          "confirmations": 34624,
+          "stats_rows": 6646,
+          "proof_rows": 218,
+          "reliability_ppm": 998764,
+          "stats_from": "2026-09-26T11:15:00Z",
+          "stats_to": "2026-09-26T15:46:53.272087797Z",
+          "proofs_from": "2026-09-26T15:31:53.272087797Z",
+          "proofs_to": "2026-09-26T15:46:53.272087797Z",
+          "rate_source": {
+            "no_id": 2,
+            "epoch": 652,
+            "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+            "content_hash": "sha256:29436b62ae9be053788e39cb457967e067ae293d99f105a4205571786b5f45ca",
+            "total_usage_bytes": 5299429
+          }
+        }
+      ]
+    }
+  ],
+  "faults_applied_during_651_and_652": [
+    {
+      "id": "quality-cohort",
+      "kind": "miner-control",
+      "targets": [
+        "miner-810",
+        "miner-812",
+        "miner-814",
+        "miner-816",
+        "miner-818",
+        "miner-820",
+        "miner-822",
+        "miner-824",
+        "miner-826",
+        "miner-828",
+        "miner-830",
+        "miner-832",
+        "miner-834",
+        "miner-836",
+        "miner-838",
+        "miner-840",
+        "miner-842",
+        "miner-844",
+        "miner-846",
+        "miner-848",
+        "miner-850",
+        "miner-852",
+        "miner-854",
+        "miner-856",
+        "miner-858",
+        "miner-860",
+        "miner-862",
+        "miner-864",
+        "miner-866",
+        "miner-868",
+        "miner-870",
+        "miner-872",
+        "miner-874",
+        "miner-876",
+        "miner-878",
+        "miner-880",
+        "miner-882",
+        "miner-884",
+        "miner-886",
+        "miner-888",
+        "miner-890",
+        "miner-892",
+        "miner-894",
+        "miner-896",
+        "miner-898",
+        "miner-900",
+        "miner-902",
+        "miner-904",
+        "miner-906",
+        "miner-908",
+        "miner-910",
+        "miner-912",
+        "miner-914",
+        "miner-916",
+        "miner-918",
+        "miner-920",
+        "miner-922",
+        "miner-924",
+        "miner-926",
+        "miner-928",
+        "miner-930",
+        "miner-932",
+        "miner-934",
+        "miner-936",
+        "miner-938",
+        "miner-940",
+        "miner-942",
+        "miner-944",
+        "miner-946",
+        "miner-948",
+        "miner-950",
+        "miner-952",
+        "miner-954",
+        "miner-956",
+        "miner-958",
+        "miner-960",
+        "miner-962",
+        "miner-964",
+        "miner-966",
+        "miner-968",
+        "miner-970",
+        "miner-972",
+        "miner-974",
+        "miner-976",
+        "miner-978",
+        "miner-980",
+        "miner-982",
+        "miner-984",
+        "miner-986",
+        "miner-988",
+        "miner-990",
+        "miner-992",
+        "miner-994",
+        "miner-996",
+        "miner-998",
+        "miner-1000"
+      ],
+      "trigger_block": 8090679,
+      "restore_block": 8090699,
+      "applied_block": 8090679,
+      "applied_block_hash": "0xd9992fe031a334dd4b8416c9d027098dab9c38e0fdc72b98cef19163982e0803",
+      "restored_block": 8090703,
+      "restored_block_hash": "0x19afd0371808238dba250efb1a24132243860a3a07374eb889c384f57e17b944",
+      "status": "restored"
+    },
+    {
+      "id": "validator-local-head-boundary",
+      "kind": "validator-view-filter",
+      "targets": [
+        "operator-2-validator-1-head-view"
+      ],
+      "trigger_block": 8090703,
+      "restore_block": 8091445,
+      "applied_block": 8090708,
+      "applied_block_hash": "0xb1b87af49fc0f6692433b7bd13f5863b7c8d41d024d36ceaea447637bc07e79e",
+      "status": "active"
+    },
+    {
+      "id": "head-boundary",
+      "kind": "miner-control",
+      "targets": [
+        "miner-9",
+        "miner-10",
+        "miner-11",
+        "miner-12"
+      ],
+      "trigger_block": 8090704,
+      "restore_block": 8091444,
+      "applied_block": 8090708,
+      "applied_block_hash": "0xb1b87af49fc0f6692433b7bd13f5863b7c8d41d024d36ceaea447637bc07e79e",
+      "status": "active"
+    },
+    {
+      "id": "fleet-lifecycle-target-prune",
+      "kind": "validator-view-filter",
+      "targets": [
+        "operator-1-all-validators-fleet-lifecycle-view"
+      ],
+      "trigger_block": 8090675,
+      "restore_block": 8093134,
+      "applied_block": 8090679,
+      "applied_block_hash": "0xd9992fe031a334dd4b8416c9d027098dab9c38e0fdc72b98cef19163982e0803",
+      "status": "active"
+    },
+    {
+      "id": "fleet-lifecycle-companion-prune",
+      "kind": "validator-view-filter",
+      "targets": [
+        "operator-2-all-validators-fleet-lifecycle-view"
+      ],
+      "trigger_block": 8090675,
+      "restore_block": 8093134,
+      "applied_block": 8090679,
+      "applied_block_hash": "0xd9992fe031a334dd4b8416c9d027098dab9c38e0fdc72b98cef19163982e0803",
+      "status": "active"
+    },
+    {
+      "id": "release-dependency-postgres-1",
+      "kind": "container-restart",
+      "targets": [
+        "operator-1-postgres"
+      ],
+      "trigger_block": 8090709,
+      "restore_block": 8090729,
+      "applied_block": 8090714,
+      "applied_block_hash": "0xf1e15473c0069a0469a06ee0b1d60a15a95b5fca578bdfeb3972f199d8a3276a",
+      "restored_block": 8090734,
+      "restored_block_hash": "0x5645e069f994498ac8e32372cfcec3ac99159665a165a0ae1c65a998e360571e",
+      "status": "restored"
+    },
+    {
+      "id": "release-dependency-redis-1",
+      "kind": "container-restart",
+      "targets": [
+        "operator-1-redis"
+      ],
+      "trigger_block": 8090734,
+      "restore_block": 8090754,
+      "applied_block": 8090734,
+      "applied_block_hash": "0x5645e069f994498ac8e32372cfcec3ac99159665a165a0ae1c65a998e360571e",
+      "restored_block": 8090755,
+      "restored_block_hash": "0x03b7798bd3b34a4a6776f1ab0221ec7bf631cb4dcfa6e7edae9b68b4d2e3efae",
+      "status": "restored"
+    },
+    {
+      "id": "release-dependency-postgres-2",
+      "kind": "container-restart",
+      "targets": [
+        "operator-2-postgres"
+      ],
+      "trigger_block": 8090759,
+      "restore_block": 8090779,
+      "applied_block": 8090761,
+      "applied_block_hash": "0xf223054940d6a812ddf1f56ea9b39d5fa78f2c1e6574e4f01c963d301f80abab",
+      "restored_block": 8090781,
+      "restored_block_hash": "0xcb996d9e3ecaa25178a79548dbf5fa89bd3265abee705710c415f617a36493b7",
+      "status": "restored"
+    },
+    {
+      "id": "release-dependency-redis-2",
+      "kind": "container-restart",
+      "targets": [
+        "operator-2-redis"
+      ],
+      "trigger_block": 8090784,
+      "restore_block": 8090804,
+      "applied_block": 8090786,
+      "applied_block_hash": "0xb8827cff78afb22164ebc33f15740d8d499ac895d70a60fb4c603f7c08fa7865",
+      "restored_block": 8090807,
+      "restored_block_hash": "0xfb3a6b7b28c3bda0bf388ef866cae5cb4a46251168af51f61e775c77ce619abe",
+      "status": "restored"
+    },
+    {
+      "id": "release-dependency-rpc-path",
+      "kind": "process-pause",
+      "targets": [
+        "subtensor-rpc-proxy",
+        "subtensor-substrate-rpc-proxy"
+      ],
+      "trigger_block": 8090809,
+      "restore_block": 8090829,
+      "applied_block": 8090812,
+      "applied_block_hash": "0xedb27cf3fbf1bc3dbabe7543c228a0a491086289cce609086a693c2c3292397c",
+      "restored_block": 8090832,
+      "restored_block_hash": "0x604cd1e61d179326630e5d77da07f98958f4e9e42209ff111b91c8a6a3725656",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-01",
+      "kind": "process-restart",
+      "targets": [
+        "subtensor-rpc-proxy"
+      ],
+      "trigger_block": 8090834,
+      "restore_block": 8090854,
+      "applied_block": 8090837,
+      "applied_block_hash": "0x214b3e6369f3e1e95075cd8cb4953f070a723507d5b3fac4bb2290b38f373635",
+      "restored_block": 8090857,
+      "restored_block_hash": "0x6d13eab2cc0b10826855e49cfa960404479bbd5d4d121d7c37a48918099da546",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-02",
+      "kind": "process-restart",
+      "targets": [
+        "subtensor-substrate-rpc-proxy"
+      ],
+      "trigger_block": 8090859,
+      "restore_block": 8090879,
+      "applied_block": 8090862,
+      "applied_block_hash": "0x923a776553f508d9f5b28c72c7bba5399eb29667497e8cf5bdc291bccfdec0e6",
+      "restored_block": 8090882,
+      "restored_block_hash": "0x5ee3272252ce2d6f5da6636c9d9260a5cf7b20c1d077f0b3dc7100871fbf0578",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-03",
+      "kind": "process-restart",
+      "targets": [
+        "operator-1-api"
+      ],
+      "trigger_block": 8090884,
+      "restore_block": 8090904,
+      "applied_block": 8090887,
+      "applied_block_hash": "0xae73cf108b297fad0fd13413455ccbb5352873e96224b5cad97ee7e8a349a9b6",
+      "restored_block": 8090907,
+      "restored_block_hash": "0xf78016bf7a525a4f875e5d54864623c9b8a81b8db6508b95f97ae2778fbcc534",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-04",
+      "kind": "process-restart",
+      "targets": [
+        "operator-1-connect"
+      ],
+      "trigger_block": 8090909,
+      "restore_block": 8090929,
+      "applied_block": 8090912,
+      "applied_block_hash": "0x4dd8c28a9b982173d114ef171162859807a094a492d258329f2c8263a5a8f026",
+      "restored_block": 8090932,
+      "restored_block_hash": "0x55815021c50950dd460eb9d8201dc68f77bce4bdf7eddba432fdda1e9d7132d7",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-05",
+      "kind": "process-restart",
+      "targets": [
+        "operator-1-taskworker"
+      ],
+      "trigger_block": 8090934,
+      "restore_block": 8090954,
+      "applied_block": 8090938,
+      "applied_block_hash": "0x354dcec0e71f8be8a12424cbc5291a05190ce0414763263fbaab19e58a5dff72",
+      "restored_block": 8090958,
+      "restored_block_hash": "0x1f83dd515ba353fad0eefc6d990b7b7c624836c73bad40d722e1a070552f1bd4",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-06",
+      "kind": "process-restart",
+      "targets": [
+        "operator-2-api"
+      ],
+      "trigger_block": 8090959,
+      "restore_block": 8090979,
+      "applied_block": 8090963,
+      "applied_block_hash": "0xc034cfbcd30a954b7a0594f93c1038108f16b87515e1bfcd803aa326e870d3b1",
+      "restored_block": 8090983,
+      "restored_block_hash": "0x34d9b36cc0fb768f9573483da81015c7d061435281a97466f8ce54c793589fce",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-07",
+      "kind": "process-restart",
+      "targets": [
+        "operator-2-connect"
+      ],
+      "trigger_block": 8090984,
+      "restore_block": 8091004,
+      "applied_block": 8090988,
+      "applied_block_hash": "0x47e96f81796de759bcc823d9bea2b7652e5e8bf37c7aba3a6b856ce4e178cc77",
+      "restored_block": 8091008,
+      "restored_block_hash": "0x8b55d37b9bfbe80174ce4c9da5b87b00300b3d3ce8ba449fd06370bd5caf4efa",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-08",
+      "kind": "process-restart",
+      "targets": [
+        "operator-2-taskworker"
+      ],
+      "trigger_block": 8091009,
+      "restore_block": 8091029,
+      "applied_block": 8091014,
+      "applied_block_hash": "0xa1fc73e83bea9b183b627fea32c5088be13ce3f51097b8ffcf7fc62446d19b4e",
+      "restored_block": 8091034,
+      "restored_block_hash": "0x8984684279c42f281dc702727da808254a86e8f8e56df4e27d05da85532053b7",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-09",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-2"
+      ],
+      "trigger_block": 8091034,
+      "restore_block": 8091054,
+      "applied_block": 8091034,
+      "applied_block_hash": "0x8984684279c42f281dc702727da808254a86e8f8e56df4e27d05da85532053b7",
+      "restored_block": 8091054,
+      "restored_block_hash": "0xc6828b0a5ff31310a358f1b122bafa4f81f311b8451cab30f1bec18af9230b03",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-10",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-3"
+      ],
+      "trigger_block": 8091059,
+      "restore_block": 8091079,
+      "applied_block": 8091060,
+      "applied_block_hash": "0xf015186d695620a661fb036e710fd1c807345ed479bf3cbf5dc159557d69e5a3",
+      "restored_block": 8091080,
+      "restored_block_hash": "0xa276e700d2c4590d21c82ea086fc77188b9c60206d37a6312a6ad7c3df958c1c",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-11",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-4"
+      ],
+      "trigger_block": 8091084,
+      "restore_block": 8091104,
+      "applied_block": 8091086,
+      "applied_block_hash": "0xddd24d44d1fb264fcef3e3bbabfc3a7ecb14b93acd43bf99182bd0a3c39eed2c",
+      "restored_block": 8091106,
+      "restored_block_hash": "0x577100d158e3daa64acb9812468625518d815002a8c572022caaa005b136900e",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-12",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-5"
+      ],
+      "trigger_block": 8091109,
+      "restore_block": 8091129,
+      "applied_block": 8091112,
+      "applied_block_hash": "0x115ecb4c98c04f509054462f2ed179983a632dbcb4496357f750204acd0d191f",
+      "restored_block": 8091132,
+      "restored_block_hash": "0x13d5570c665a18f14cd90c977c3db43463d53116bc1e23286cb11ab17e2a83cf",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-13",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-6"
+      ],
+      "trigger_block": 8091134,
+      "restore_block": 8091154,
+      "applied_block": 8091137,
+      "applied_block_hash": "0xf654e1746f5a873ae6c274e9202a722309040201c4c1f7138f3292d810137c8d",
+      "restored_block": 8091157,
+      "restored_block_hash": "0xddc7b016d964d09ea4413daeba7a810cd322d159f7fe04d45a2928ea1cd753e3",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-14",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-7"
+      ],
+      "trigger_block": 8091159,
+      "restore_block": 8091179,
+      "applied_block": 8091163,
+      "applied_block_hash": "0x5f0cbba5dfe77e1f913cfb7c6ca67383947efea1841e3169607ed061713c56ce",
+      "restored_block": 8091183,
+      "restored_block_hash": "0xbe8990b1c8cd13c0fe88cf3af5d976a21c3974fd615be4dbd1257c16166e8453",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-15",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-8"
+      ],
+      "trigger_block": 8091184,
+      "restore_block": 8091204,
+      "applied_block": 8091189,
+      "applied_block_hash": "0xf24f18d3eac7def638f6d43f9deef6bc95f713e27278d91e7c759866f3cdd78f",
+      "restored_block": 8091209,
+      "restored_block_hash": "0x5eb23f96eaaaefea4110c13e40f4a3e244bc8a01f73040a1a9d43ddf7fbc66a2",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-16",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-9"
+      ],
+      "trigger_block": 8091209,
+      "restore_block": 8091229,
+      "applied_block": 8091209,
+      "applied_block_hash": "0x5eb23f96eaaaefea4110c13e40f4a3e244bc8a01f73040a1a9d43ddf7fbc66a2",
+      "restored_block": 8091229,
+      "restored_block_hash": "0xf72d5645208dc1ad4384a3c07f7933ed8bc5dd17de8db8584db99e00798dcd73",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-17",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-10"
+      ],
+      "trigger_block": 8091234,
+      "restore_block": 8091254,
+      "applied_block": 8091235,
+      "applied_block_hash": "0x1ec1adc5549836599b687839c5205da595aaee9bcf0964482e1811db30a72387",
+      "restored_block": 8091255,
+      "restored_block_hash": "0x4ec0c72f6350e158e13138e9b8f302bf3494cbe259e5da79b066ddc832521f73",
+      "status": "restored"
+    },
+    {
+      "id": "release-rolling-18",
+      "kind": "process-restart",
+      "targets": [
+        "miner-swarm-11"
+      ],
+      "trigger_block": 8091259,
+      "restore_block": 8091279,
+      "applied_block": 8091261,
+      "applied_block_hash": "0x2fe216ce8f75b0ba7d521553bb8ea723db3450e09070fb36a51c4e3618dc59bb",
+      "restored_block": 8091281,
+      "restored_block_hash": "0x3f7c8f8d6879682a5d2fadc76e39f4828864f7f0224d746641250f5de4421319",
+      "status": "restored"
+    }
+  ]
+}

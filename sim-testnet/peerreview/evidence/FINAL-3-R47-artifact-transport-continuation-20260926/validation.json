@@ -1,0 +1,56 @@
+{
+  "schema": "r47-artifact-transport-continuation-validation-v1",
+  "provisional": true,
+  "final_acceptance": false,
+  "base_revision": "7a4a26bba67bff78128cf2df5d696399735fbf6c",
+  "implementation_revision": "d2dc2d0b70d3c4e91f1e487f5739c56228c2f105",
+  "dependency_source_root": "/mnt/data/sn-testnet/qualification/r45-connect-successor-20260925/source",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOWORK": "off"
+  },
+  "modfile": "/mnt/data/sn-testnet/qualification/r47-artifact-stream-continuation-20260926/r47.mod",
+  "modfile_sha256": "4a08a8dda4b3bb883accc4562a84ed317b7cb631935cf7931e1f568c63afacc3",
+  "commands": {
+    "red": "go test -modfile=$R47_MODFILE -p 1 ./sim-testnet -run 'Test(ProcessLogArtifactTransport|ScenarioArtifactTransportHeartbeat)' -count=1 -timeout=3m",
+    "normal": "go test -modfile=$R47_MODFILE -p 1 ./sim-testnet -run 'Test(ProcessLog|ProvisionalProcessLog|ScenarioArtifactTransport|ScenarioProvisionalProcessFindings|ScenarioProvisionalArtifact|ScenarioProvisionalStaleContract|ScenarioInterval|WaitScenarioSnapshot)' -count=1 -timeout=5m",
+    "race": "go test -race -modfile=$R47_MODFILE -p 1 ./sim-testnet -run 'Test(ProcessLog|ProvisionalProcessLog|ScenarioArtifactTransport|ScenarioProvisionalProcessFindings|ScenarioProvisionalArtifact|ScenarioProvisionalStaleContract|ScenarioInterval|WaitScenarioSnapshot)' -count=1 -timeout=5m"
+  },
+  "results": {
+    "red": {
+      "status": "fail",
+      "failed_tests": 4,
+      "premature_observed_block": 3200,
+      "required_terminal_block": 5050,
+      "runtime_seconds": 0.861
+    },
+    "normal": {
+      "status": "pass",
+      "runtime_seconds": 18.082
+    },
+    "race": {
+      "status": "pass",
+      "runtime_seconds": 19.174
+    }
+  },
+  "logs": {
+    "red.log": {
+      "sha256": "9ae5e023c42c2eef0d300fd0b5fdda294e4332652d4448adcf7b0daa53317707",
+      "bytes": 6081
+    },
+    "normal.log": {
+      "sha256": "437a3a6e8431262090f99a0f10abba38bb10b9e8e1073edb184914d3c106a49c",
+      "bytes": 52
+    },
+    "race.log": {
+      "sha256": "faa2b28d76f5cffa6ac476c67368dd1b984c88fae96623aa1582051e3fec0683",
+      "bytes": 52
+    }
+  },
+  "source_files": {
+    "sim-testnet/process_log_artifact_transport.go": "6a69cbb958f42bdb3f9ffc60d4f4160d96b8959d4b0a57daa741761ee8c6df4f",
+    "sim-testnet/process_log_artifact_transport_test.go": "ad42435d6435b0ec0180c066990a1eb30077964833efff3ab93d8d0b759bf370",
+    "sim-testnet/process_log_gate.go": "8c9ec2af739875a1683a54f3f6f90cd35dfce6a589860a225079ad7b34f7d20b",
+    "sim-testnet/scenario_process_log_continuation.go": "ca940f40f63c0f7c6a4cb61dc1f655ed871c27d96ef243fdad9e68957b8551ac"
+  }
+}

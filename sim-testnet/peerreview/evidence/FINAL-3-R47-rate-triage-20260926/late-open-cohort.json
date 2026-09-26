@@ -1,0 +1,24 @@
+{
+  "schema": "r47-rate-late-open-cohort-v1",
+  "captured_at": "2026-09-26T16:39:41.991316+00:00",
+  "provisional": true,
+  "final_acceptance": false,
+  "sql": [
+    {
+      "operator": 1,
+      "read_only": true,
+      "query": "SELECT CASE WHEN create_time<'2026-09-26 14:45:36' THEN 'created_before_652' ELSE 'created_during_652' END AS cohort,count(*),coalesce(sum((provider_usage->>'byte_count')::bigint),0),min(create_time),max(close_time),count(*) FILTER(WHERE outcome IS NULL) FROM transfer_contract WHERE create_time<'2026-09-26 15:45:36' AND (close_time>='2026-09-26 15:45:36' OR outcome IS NULL) GROUP BY 1 ORDER BY 1;",
+      "query_sha256": "03963b35958a9fc38100c391d82f8bfc8875d8e9e0537792435f8327bf21c289",
+      "output": "created_during_652|4963|1211287|2026-09-26 15:21:25.261394|2026-09-26 16:04:56.658539|0\n",
+      "output_sha256": "464df43126473870283bc52ed3f46851cf9e9dacf5ed5e73a2456539395de7d1"
+    },
+    {
+      "operator": 2,
+      "read_only": true,
+      "query": "SELECT CASE WHEN create_time<'2026-09-26 14:45:36' THEN 'created_before_652' ELSE 'created_during_652' END AS cohort,count(*),coalesce(sum((provider_usage->>'byte_count')::bigint),0),min(create_time),max(close_time),count(*) FILTER(WHERE outcome IS NULL) FROM transfer_contract WHERE create_time<'2026-09-26 15:45:36' AND (close_time>='2026-09-26 15:45:36' OR outcome IS NULL) GROUP BY 1 ORDER BY 1;",
+      "query_sha256": "03963b35958a9fc38100c391d82f8bfc8875d8e9e0537792435f8327bf21c289",
+      "output": "created_during_652|5071|1309553|2026-09-26 15:13:08.573148|2026-09-26 16:05:41.355476|0\n",
+      "output_sha256": "94708435e9f2d5758be8d1aea79891a4fd12f5905011e9bb1087d7c072df60b2"
+    }
+  ]
+}

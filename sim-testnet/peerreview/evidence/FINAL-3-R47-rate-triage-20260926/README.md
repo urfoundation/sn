@@ -1,0 +1,23 @@
+# R47 completed-source usage triage
+
+Read-only evidence for R47 (`20260926T112551.425107945Z-release-1.0`). No process, live configuration, contract state, signed source, or chain transaction was changed. The capture contains only aggregate query output and public artifact identities. `rate-triage.json` records exact SQL and output SHA-256 values, the sealed observation-log SHA-256, and six independently fetched artifact totals. `observation-and-fault-context.json` retains the aggregate assignment, confirmation and proof snapshots and the matching fault timeline, with hashes of their sealed source files. `late-open-cohort.json` checks every contract predating the source boundary, including older contracts.
+
+| Source epoch | Operator 1 bytes | Operator 2 bytes | Ready |
+| --- | ---: | ---: | --- |
+| 650 | 52,450,233 | 50,903,383 | true |
+| 651 | 19,396,509 | 18,756,754 | true |
+| 652 | 5,737,506 | 5,299,429 | false |
+
+The live executable identifies server source at `qualification/r45-connect-successor-20260925/source/server`; its `model/st_provider_usage.go` reads immutable `transfer_contract.provider_usage` in the half-open `close_time` window. Its accounting is independent of escrow payments and sweeps. Recent escrow sweep counts were zero. The immutable provider snapshot sums, artifact provider sums, signed artifact totals, and retained observation source totals match for both operators in all three epochs.
+
+Credited completed-contract counts fall from 8,602/8,285 in epoch 650, to 4,191/4,307 in 651, to 2,343/2,251 in 652. Epoch 652 also contains 12,838/13,164 `expired_unconfirmed` contracts with zero credited bytes. The implementation intentionally requires completed reports or an authenticated expiry lower bound; an unused capacity reservation earns no usage. Average credited bytes per completed contract also fell. Verification assignments and confirmations continued throughout 652, so their counters alone do not prove a sufficient completed-work load.
+
+The signed dependency restarts run during 651; operator-2 connect/taskworker and miner-swarm rolling restarts continue through 652. The observed workload reduction is consistent with that fault and closure activity. No accounting implementation defect was demonstrated. This is not proof that every lost byte was caused by a specific fault, nor proof of a purely stochastic cause.
+
+Contracts created during 652 and closed after its boundary contribute only 1,211,287/1,309,553 later bytes; those cohorts have no unresolved outcomes as of the capture (last closes 16:04:56/16:05:41 UTC). The wider check found no older contracts still open across that boundary. Ordinary closure lag therefore cannot account for the full shortfall. Later closures belong to their own immutable source window and never repair epoch 652 readiness.
+
+At the observed pinned price 539,777,000,000,000 and the unchanged 200,000 tao-rao readiness requirement, exact minimum complete-source bytes are 9,946,162 at the 40B rate, 12,432,702 at 32B, and 16,576,936 at 24B. The all-tier gate requires at least 16,576,936 bytes per operator, 3.1281 times the lower observed epoch-652 load. These minima must be recomputed at the next pinned price.
+
+For the next run, qualify the actual completed-work load through representative signed faults and closure cycles, and require fresh authenticated latest closed sources to clear the existing all-tier gate. A 32 MiB per-operator closed-source operating target is a recommendation, not an acceptance proof or a changed policy threshold. A clean 52 MiB pre-fault epoch did not establish that margin under faults.
+
+Walker concurrency is currently generated as 4 per operator in each validator (`sim-testnet/executor.go`). More real measurement traffic may improve load, but scaling must be measured. Existing policy permits 40 seeds/minute/source; `validator/release_run.go` paces at 30, or 2 seconds per seed. The strict 30-second initial-wait bound in `validator/config.go` limits concurrency to 15, even though active-trail capacity is 32. This is currently a generated constant, not an exposed launch flag. Increasing it requires a reviewed generator/configuration change and an authenticated next-run configuration, retaining those limits. Once seed pacing is saturated, concurrency alone cannot increase its rate. It cannot guarantee linear usage growth or authorize backfilling/inflating signed bytes. No rate waiver or arithmetic patch is indicated by these observations. A deterministic accounting test is warranted only if a mismatch or reproducible lifecycle defect is isolated; the immediate missing evidence is representative workload qualification.

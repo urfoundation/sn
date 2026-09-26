@@ -1,0 +1,235 @@
+{
+  "schema": "r47-rate-triage-v1",
+  "captured_at": "2026-09-26T16:28:08.536616+00:00",
+  "provisional": true,
+  "final_acceptance": false,
+  "run_id": "20260926T112551.425107945Z-release-1.0",
+  "source_observation_sha256": "2f3ef3589c353a82e1abcd2a7a4186907d14ab4f2648a5aa2d1725b69864b22c",
+  "source_observation_bytes": 76069209,
+  "sql": [
+    {
+      "operator": 1,
+      "read_only": true,
+      "queries": {
+        "completed_usage": {
+          "query": "SELECT 650+floor(extract(epoch FROM close_time-timestamp '2026-09-26 12:45:36')/3600)::int AS epoch, COALESCE(provider_usage->>'excluded_reason','completed') AS disposition,count(*),sum((provider_usage->>'byte_count')::bigint) FROM transfer_contract WHERE close_time >= '2026-09-26 12:45:36' AND close_time < '2026-09-26 15:45:36' AND outcome IN ('settled','dispute_resolved_to_source','dispute_resolved_to_destination') GROUP BY 1,2 ORDER BY 1,2;",
+          "query_sha256": "44c007fd23ae7cfcbcde0f7880d828f590a9b7ebbee83e983fec151f73283551",
+          "output": "650|completed|8602|52450233\n650|expired_unconfirmed|15975|0\n651|completed|4191|19396509\n651|expired_unconfirmed|6504|0\n652|completed|2343|5737506\n652|expired_unconfirmed|12838|0\n",
+          "output_sha256": "a18450a8fe0973222afa05b4c915b8c3bbf477e55ed0379c67ced70058e347fa"
+        },
+        "late_created_652": {
+          "query": "SELECT count(*),sum((provider_usage->>'byte_count')::bigint),max(close_time),count(*) FILTER(WHERE outcome IS NULL) FROM transfer_contract WHERE create_time>='2026-09-26 14:45:36' AND create_time<'2026-09-26 15:45:36' AND (close_time>='2026-09-26 15:45:36' OR outcome IS NULL);",
+          "query_sha256": "553d4bebcbec3da67e3f4cf834343d21acee1aafca47cdb3436a4483e8142117",
+          "output": "4963|1211287|2026-09-26 16:04:56.658539|0\n",
+          "output_sha256": "314be7440a9331aaf487f7f178d0bb7b23cc3a8ef5224ed4e3076ec3f2f6c58f"
+        },
+        "recent_sweeps": {
+          "query": "SELECT count(*) FROM transfer_escrow_sweep WHERE sweep_time>='2026-09-26 12:45:36' AND sweep_time<'2026-09-26 15:45:36';",
+          "query_sha256": "274d9bb4c32b1ecb420ecba83d0390000733ae706f850b0f124ffea6d77b28ec",
+          "output": "0\n",
+          "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    },
+    {
+      "operator": 2,
+      "read_only": true,
+      "queries": {
+        "completed_usage": {
+          "query": "SELECT 650+floor(extract(epoch FROM close_time-timestamp '2026-09-26 12:45:36')/3600)::int AS epoch, COALESCE(provider_usage->>'excluded_reason','completed') AS disposition,count(*),sum((provider_usage->>'byte_count')::bigint) FROM transfer_contract WHERE close_time >= '2026-09-26 12:45:36' AND close_time < '2026-09-26 15:45:36' AND outcome IN ('settled','dispute_resolved_to_source','dispute_resolved_to_destination') GROUP BY 1,2 ORDER BY 1,2;",
+          "query_sha256": "44c007fd23ae7cfcbcde0f7880d828f590a9b7ebbee83e983fec151f73283551",
+          "output": "650|completed|8285|50903383\n650|expired_unconfirmed|14375|0\n651|completed|4307|18756754\n651|expired_unconfirmed|8497|0\n652|completed|2251|5299429\n652|expired_unconfirmed|13164|0\n",
+          "output_sha256": "57806ee20011a1c5039c9ed8ded38ec772db26dd4040da30f0744980969c76d4"
+        },
+        "late_created_652": {
+          "query": "SELECT count(*),sum((provider_usage->>'byte_count')::bigint),max(close_time),count(*) FILTER(WHERE outcome IS NULL) FROM transfer_contract WHERE create_time>='2026-09-26 14:45:36' AND create_time<'2026-09-26 15:45:36' AND (close_time>='2026-09-26 15:45:36' OR outcome IS NULL);",
+          "query_sha256": "553d4bebcbec3da67e3f4cf834343d21acee1aafca47cdb3436a4483e8142117",
+          "output": "5071|1309553|2026-09-26 16:05:41.355476|0\n",
+          "output_sha256": "179beda6024c5af62dbe674be5657eda20f67ee809cd764dbe77cb3baa36447f"
+        },
+        "recent_sweeps": {
+          "query": "SELECT count(*) FROM transfer_escrow_sweep WHERE sweep_time>='2026-09-26 12:45:36' AND sweep_time<'2026-09-26 15:45:36';",
+          "query_sha256": "274d9bb4c32b1ecb420ecba83d0390000733ae706f850b0f124ffea6d77b28ec",
+          "output": "0\n",
+          "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "observation_line": 36,
+      "observed_at": "2026-09-26T13:47:17.103694016Z",
+      "readiness": true,
+      "price_wei": "539777000000000",
+      "no_id": 1,
+      "epoch": 650,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:97321c15c64df89f287a643f4aef0773f405c9dba6c1b4e5cb615ea8bf88cf94",
+      "total_usage_bytes": 52450233,
+      "fetched_artifact": {
+        "epoch": 650,
+        "no_id": 1,
+        "start": {
+          "number": 8090374,
+          "hash": "0x2ae2477fbeefe355cfcc75b63a3fe9e58dd00b31db75cafc181534ff960e9bab"
+        },
+        "end": {
+          "number": 8090674,
+          "hash": "0x78a1e859723f3d56a4fd9e6a00e47d23f32a126cb7b53e031c428cdcecc06b2e"
+        },
+        "total_usage_bytes": 52450233,
+        "eligible_usage_bytes": 6039091,
+        "excluded_usage_bytes": 46411142,
+        "content_hash": "sha256:97321c15c64df89f287a643f4aef0773f405c9dba6c1b4e5cb615ea8bf88cf94"
+      },
+      "provider_byte_sum": 52450233
+    },
+    {
+      "observation_line": 36,
+      "observed_at": "2026-09-26T13:47:17.103694016Z",
+      "readiness": true,
+      "price_wei": "539777000000000",
+      "no_id": 2,
+      "epoch": 650,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:9f20f608ba1b00cfdc8d949567d25de75d51614638aadb7a9d3ac07f78dae180",
+      "total_usage_bytes": 50903383,
+      "fetched_artifact": {
+        "epoch": 650,
+        "no_id": 2,
+        "start": {
+          "number": 8090374,
+          "hash": "0x2ae2477fbeefe355cfcc75b63a3fe9e58dd00b31db75cafc181534ff960e9bab"
+        },
+        "end": {
+          "number": 8090674,
+          "hash": "0x78a1e859723f3d56a4fd9e6a00e47d23f32a126cb7b53e031c428cdcecc06b2e"
+        },
+        "total_usage_bytes": 50903383,
+        "eligible_usage_bytes": 5642795,
+        "excluded_usage_bytes": 45260588,
+        "content_hash": "sha256:9f20f608ba1b00cfdc8d949567d25de75d51614638aadb7a9d3ac07f78dae180"
+      },
+      "provider_byte_sum": 50903383
+    },
+    {
+      "observation_line": 48,
+      "observed_at": "2026-09-26T14:46:41.343056228Z",
+      "readiness": true,
+      "price_wei": "539777000000000",
+      "no_id": 1,
+      "epoch": 651,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:42c4491aecc28e6dd791a3ce9b912ed556d9d84bc7949b26298c4c3792a49388",
+      "total_usage_bytes": 19396509,
+      "fetched_artifact": {
+        "epoch": 651,
+        "no_id": 1,
+        "start": {
+          "number": 8090674,
+          "hash": "0x78a1e859723f3d56a4fd9e6a00e47d23f32a126cb7b53e031c428cdcecc06b2e"
+        },
+        "end": {
+          "number": 8090974,
+          "hash": "0xfaa8bc798806fc37847ab8856ce2df474b11963895daa63dae9527ad01bac97a"
+        },
+        "total_usage_bytes": 19396509,
+        "eligible_usage_bytes": 311007,
+        "excluded_usage_bytes": 19085502,
+        "content_hash": "sha256:42c4491aecc28e6dd791a3ce9b912ed556d9d84bc7949b26298c4c3792a49388"
+      },
+      "provider_byte_sum": 19396509
+    },
+    {
+      "observation_line": 48,
+      "observed_at": "2026-09-26T14:46:41.343056228Z",
+      "readiness": true,
+      "price_wei": "539777000000000",
+      "no_id": 2,
+      "epoch": 651,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:60308506607eeb63106f0c42d93a99d116ae4202ca5efe7c3dead95ebbabf2ff",
+      "total_usage_bytes": 18756754,
+      "fetched_artifact": {
+        "epoch": 651,
+        "no_id": 2,
+        "start": {
+          "number": 8090674,
+          "hash": "0x78a1e859723f3d56a4fd9e6a00e47d23f32a126cb7b53e031c428cdcecc06b2e"
+        },
+        "end": {
+          "number": 8090974,
+          "hash": "0xfaa8bc798806fc37847ab8856ce2df474b11963895daa63dae9527ad01bac97a"
+        },
+        "total_usage_bytes": 18756754,
+        "eligible_usage_bytes": 338300,
+        "excluded_usage_bytes": 18418454,
+        "content_hash": "sha256:60308506607eeb63106f0c42d93a99d116ae4202ca5efe7c3dead95ebbabf2ff"
+      },
+      "provider_byte_sum": 18756754
+    },
+    {
+      "observation_line": 60,
+      "observed_at": "2026-09-26T15:46:24.587623066Z",
+      "readiness": false,
+      "price_wei": "539777000000000",
+      "no_id": 1,
+      "epoch": 652,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:e637f07e924ce80311550ef315f8dfe17e832b48420703675f55339acdc811cc",
+      "total_usage_bytes": 5737506,
+      "fetched_artifact": {
+        "epoch": 652,
+        "no_id": 1,
+        "start": {
+          "number": 8090974,
+          "hash": "0xfaa8bc798806fc37847ab8856ce2df474b11963895daa63dae9527ad01bac97a"
+        },
+        "end": {
+          "number": 8091274,
+          "hash": "0x1c650caa7d2a7df22daf8540370d317a53f86020b5781b1262e37fedd4525b45"
+        },
+        "total_usage_bytes": 5737506,
+        "eligible_usage_bytes": 533814,
+        "excluded_usage_bytes": 5203692,
+        "content_hash": "sha256:e637f07e924ce80311550ef315f8dfe17e832b48420703675f55339acdc811cc"
+      },
+      "provider_byte_sum": 5737506
+    },
+    {
+      "observation_line": 60,
+      "observed_at": "2026-09-26T15:46:24.587623066Z",
+      "readiness": false,
+      "price_wei": "539777000000000",
+      "no_id": 2,
+      "epoch": 652,
+      "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+      "content_hash": "sha256:29436b62ae9be053788e39cb457967e067ae293d99f105a4205571786b5f45ca",
+      "total_usage_bytes": 5299429,
+      "fetched_artifact": {
+        "epoch": 652,
+        "no_id": 2,
+        "start": {
+          "number": 8090974,
+          "hash": "0xfaa8bc798806fc37847ab8856ce2df474b11963895daa63dae9527ad01bac97a"
+        },
+        "end": {
+          "number": 8091274,
+          "hash": "0x1c650caa7d2a7df22daf8540370d317a53f86020b5781b1262e37fedd4525b45"
+        },
+        "total_usage_bytes": 5299429,
+        "eligible_usage_bytes": 541956,
+        "excluded_usage_bytes": 4757473,
+        "content_hash": "sha256:29436b62ae9be053788e39cb457967e067ae293d99f105a4205571786b5f45ca"
+      },
+      "provider_byte_sum": 5299429
+    }
+  ],
+  "minimum_transfer_tao_rao": 100000,
+  "required_readiness_tao_rao": 200000,
+  "price_wei": 539777000000000,
+  "minimum_all_tier_source_bytes": 16576936,
+  "recommended_operating_target_bytes": 33554432,
+  "operating_target_is_acceptance_proof": false
+}
