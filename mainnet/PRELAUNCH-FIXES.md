@@ -2327,3 +2327,14 @@ while they can still satisfy acceptance. Test both paths, including an actor
 whose prerequisite never appears. Diagnostic readers must run against the
 sealed result: an earlier read-only inventory that timed out waiting for the
 result is historical, not a substitute for a fresh final check.
+
+The sealed R46 diagnostic also rejected legitimate lifecycle cleanup because
+its final-result reader compared the original start fault record directly to
+the completed record using a validator meant for adjacent checkpoints. The
+live owner had signed the intermediate request before cleanup. Mainnet
+history verification must replay each authenticated checkpoint in order,
+applying the strict adjacent transition validator at every edge, and then
+bind the final result to the last checkpoint. It must still reject a
+completed cleanup that lacks the signed request in that history. Test both
+the valid multi-step path and a forged start-to-complete jump through
+recovery and terminal diagnostics.
