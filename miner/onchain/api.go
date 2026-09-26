@@ -1,11 +1,11 @@
 package onchain
 
-// api.go — the miner-facing submission API. The stdlib-built `provider claim` /
-// `provider bind-head` / `provider unbind-head` commands (package miner) pack
-// their calldata with sn/stabi + sn/merkle and, when handed an EVM key, sign and
-// broadcast it through these exported wrappers instead of shelling out to the
-// snclaim binary. The snclaim CLI handlers (cmdSubmit/cmdUnbindHead) route
-// through the same funcs, so there is a single packing + submission path.
+// api.go — the miner-facing submission API. The stdlib-built `provider claim`
+// and `provider fleet bind/revoke` commands (package miner) pack their calldata
+// with sn/stabi + sn/merkle and, when handed an EVM key, sign and broadcast it
+// through these exported wrappers instead of shelling out to the snclaim
+// binary. The snclaim CLI handler (cmdSubmit) routes through the same funcs,
+// so there is a single packing + submission path.
 
 import (
 	"bytes"
@@ -50,18 +50,6 @@ func DecodeClaimCalldata(data []byte) (*ClaimIntent, error) {
 		return nil, fmt.Errorf("claim calldata is not canonical")
 	}
 	return intent, nil
-}
-
-// BuildBindHeadCalldata ABI-packs bindHead(hotkey, clientId, clientIdSig) via
-// the stabi bindings. sig is the provider's 64-byte Ed25519 R‖S over the
-// on-chain headBindDigest.
-func BuildBindHeadCalldata(hotkey, clientID [32]byte, sig []byte) ([]byte, error) {
-	return legacySTSubnet.TryPackBindHead(hotkey, clientID, sig)
-}
-
-// BuildUnbindHeadCalldata ABI-packs unbindHead(hotkey) via the stabi bindings.
-func BuildUnbindHeadCalldata(hotkey [32]byte) ([]byte, error) {
-	return legacySTSubnet.TryPackUnbindHead(hotkey)
 }
 
 // BuildFleetBindingCalldata packs the release-1.0 many-to-one dual-signed

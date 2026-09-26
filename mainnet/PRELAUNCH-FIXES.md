@@ -15,7 +15,7 @@ root/hash. The testnet repair is SN `f673ca9a`; composed release qualification
 and deployment evidence are still required before this item is Done.
 
 Updated 2026-09-22. This is the canonical tracker for fixes to complete before
-mainnet launch. The initial workstream is automatic handling of compatible
+the mainnet launch of the UR subnet (Bittensor SN25, netuid 25). The initial workstream is automatic handling of compatible
 Subtensor runtime upgrades. The [production hardening plan](#production-hardening-from-sim-testnet)
 adds the lessons from the wider testnet finalization. Implementation and
 qualification remain incomplete; no completed production fix is claimed.

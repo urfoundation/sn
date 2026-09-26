@@ -78,7 +78,7 @@ type ReleaseConfig struct {
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
-	return loadReleaseConfig(path, false)
+	return loadReleaseConfig(path, releaseConfigLoadMode{})
 }
 
 // LoadProvisionalActivationObservationConfig admits a retained testnet config
@@ -86,10 +86,25 @@ func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
 // exact reviewed predecessor runtime, but never grants producer or archive
 // authority.
 func LoadProvisionalActivationObservationConfig(path string) (*ReleaseConfig, error) {
-	return loadReleaseConfig(path, true)
+	return loadReleaseConfig(path, releaseConfigLoadMode{provisionalActivationObservation: true})
 }
 
-func loadReleaseConfig(path string, provisionalActivationObservation bool) (*ReleaseConfig, error) {
+// LoadReleaseConfigPreActivation admits a complete production configuration
+// whose evidence_v2 operator entries are not rendered yet (each names only its
+// no_id, optionally with the paths it wants). Every other rule is the strict
+// one. It serves the bootstrap commands (init, register, stake, activate,
+// status); RunRelease never uses it.
+func LoadReleaseConfigPreActivation(path string) (*ReleaseConfig, error) {
+	return loadReleaseConfig(path, releaseConfigLoadMode{preActivation: true})
+}
+
+// releaseConfigLoadMode selects which non-default admissions a loader grants.
+type releaseConfigLoadMode struct {
+	provisionalActivationObservation bool
+	preActivation                    bool
+}
+
+func loadReleaseConfig(path string, mode releaseConfigLoadMode) (*ReleaseConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("validator config path is empty")
 	}
@@ -101,16 +116,17 @@ func loadReleaseConfig(path string, provisionalActivationObservation bool) (*Rel
 	if err != nil {
 		return nil, err
 	}
-	return decodeReleaseConfigBytesMode(abs, b, provisionalActivationObservation)
+	return decodeReleaseConfigBytesMode(abs, b, mode)
 }
 
 // The adoption caller must parse the same immutable bytes that its request
 // pins, rather than pair a prior parse with a later pathname read.
 func decodeReleaseConfigBytes(abs string, b []byte) (*ReleaseConfig, error) {
-	return decodeReleaseConfigBytesMode(abs, b, false)
+	return decodeReleaseConfigBytesMode(abs, b, releaseConfigLoadMode{})
 }
 
-func decodeReleaseConfigBytesMode(abs string, b []byte, provisionalActivationObservation bool) (*ReleaseConfig, error) {
+func decodeReleaseConfigBytesMode(abs string, b []byte, mode releaseConfigLoadMode) (*ReleaseConfig, error) {
+	provisionalActivationObservation := mode.provisionalActivationObservation
 	var cfg ReleaseConfig
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -132,6 +148,10 @@ func decodeReleaseConfigBytesMode(abs string, b []byte, provisionalActivationObs
 	}
 	if provisionalActivationObservation {
 		if err := cfg.validateProvisionalActivationObservation(); err != nil {
+			return nil, fmt.Errorf("validator config %s: %w", abs, err)
+		}
+	} else if mode.preActivation {
+		if err := cfg.validateWithMode(false, false, true); err != nil {
 			return nil, fmt.Errorf("validator config %s: %w", abs, err)
 		}
 	} else if err := cfg.Validate(); err != nil {
@@ -263,16 +283,18 @@ func (self ReleaseConfig) ValidateHistorical() error {
 // predecessor. Its compatibility profile is permitted only for this read-only
 // observer, whose caller has already verified the immutable handoff.
 func (c ReleaseConfig) validateProvisionalActivationObservation() error {
-	return c.validateWithMode(true, true)
+	return c.validateWithMode(true, true, false)
 }
 
 // Public archive replay authenticates an original configuration without
 // authorizing it as a current producer or changing its serialized identity.
 func (c ReleaseConfig) validate(historical bool) error {
-	return c.validateWithMode(historical, false)
+	return c.validateWithMode(historical, false, false)
 }
 
-func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObservation bool) error {
+// preActivation admits unrendered evidence_v2 operator entries only; it grants
+// no runtime, history or producer authority.
+func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObservation, preActivation bool) error {
 	if c.SchemaVersion != ReleaseValidatorSchemaVersion || c.Release != "1.0" {
 		return errors.New("schema_version must be 1 and release must be 1.0")
 	}
@@ -433,6 +455,9 @@ func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObserva
 		if err := c.SourceRolePredecessorV2.Validate(ReleaseSourceRolePredecessorV2MaximumBytes); err != nil {
 			return fmt.Errorf("source role predecessor: %w", err)
 		}
+	}
+	if preActivation {
+		return c.EvidenceV2.ValidatePreActivation(c.Operators, c.StateDir, c.HotkeySeedFile)
 	}
 	return c.EvidenceV2.Validate(c.Operators, c.StateDir, c.HotkeySeedFile)
 }

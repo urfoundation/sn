@@ -707,6 +707,16 @@ func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSet
 		return err
 	}
 	cfg, err := LoadReleaseConfig(configPath)
+	if errors.Is(err, ErrReleaseEvidenceV2ActivationPending) && retainedSetup == nil && adoption == nil {
+		// The inputs are missing. The lifecycle allows run to finish an
+		// activation that was prepared and published earlier once its epoch
+		// has begun; it never signs, publishes or invents one.
+		fmt.Fprintf(os.Stderr, "validator: evidence_v2 inputs are not rendered; completing the pending activation\n")
+		if completeErr := CompletePendingReleaseActivation(ctx, configPath, os.Stderr); completeErr != nil {
+			return errors.Join(err, completeErr)
+		}
+		cfg, err = LoadReleaseConfig(configPath)
+	}
 	if err != nil {
 		return err
 	}

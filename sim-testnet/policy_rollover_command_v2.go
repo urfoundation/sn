@@ -207,17 +207,13 @@ func capturePolicyRolloverPlanV2(ctx context.Context, e *Executor, chain *valida
 			if err != nil || !observation.Stake.MeetsNonSelfStakeAndPermit() {
 				return nil, errors.Join(errors.New("rollover validator lacks native eligibility"), err)
 			}
-			activation := protocol.ValidatorEvidenceActivation{Domain: protocol.ValidatorEvidenceActivationDomain{ChainID: testnetChainID, GenesisHash: [32]byte(e.plan.ValidatorEvidence.GenesisHash), Netuid: e.cfg.Netuid, Coordinator: [20]byte(e.plan.ValidatorEvidence.Coordinator), SettlementVault: [20]byte(e.plan.ValidatorEvidence.SettlementVault), DeploymentIDHash: [32]byte(e.plan.ValidatorEvidence.DeploymentIDHash), PolicyHash: policyHash, Epoch: epoch},
-				Hotkey: hotkey.PublicKey(), VPK: [32]byte(key[ed25519.SeedSize:]), NoID: operator.NoID, FirstSequence: 1, NativeBlock: p.Native.Number, NativeHash: [32]byte(nativeHash), EVMBlock: block, EVMHash: hash}
-			vpkSignature, err := activation.SignVPK(key)
+			activation, err := validatorcomponent.BuildFreshReleaseActivationV2(e.runtimeEvidenceDeploymentV2(policyHash),
+				validatorcomponent.ReleaseActivationSnapshotV2{Epoch: epoch, NativeBlock: p.Native.Number, NativeHash: [32]byte(nativeHash), EVMBlock: block, EVMHash: hash},
+				hotkey.PublicKey(), operator.NoID, [32]byte(key[ed25519.SeedSize:]))
 			if err != nil {
 				return nil, err
 			}
-			digest, err := activation.Digest()
-			if err != nil {
-				return nil, err
-			}
-			hotkeySignature, err := hotkey.Sign(digest[:])
+			vpkSignature, hotkeySignature, err := validatorcomponent.SignReleaseActivationV2(activation, hotkey, key)
 			if err != nil {
 				return nil, err
 			}

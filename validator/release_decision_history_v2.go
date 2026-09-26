@@ -315,7 +315,9 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 func (self *releaseEvidenceV2StartupHistory) historicalDepositAudit(ctx context.Context, observed *releaseDecisionChainV2Observation, operator releaseDecisionChainV2Operator, status string) (DepositAudit, error) {
 	epoch := observed.boundary.SettlementEpoch
 	var audit DepositAudit
-	if epoch < self.cfg.Policy.Deposit.UsageLagEpochs {
+	if self.cfg.Policy.IsZeroPrice() {
+		audit = ZeroPriceDepositAudit(epoch, depositAuditSourceEpoch(epoch, self.cfg.Policy.Deposit), operator.noID, operator.deposit, operator.convictionBefore)
+	} else if epoch < self.cfg.Policy.Deposit.UsageLagEpochs {
 		audit = baseDepositAudit(epoch, 0, operator.noID, operator.deposit, operator.convictionBefore)
 		audit.Status, audit.Disposition = DepositAuditBootstrap, "zero_pool_weight_bootstrap"
 		if operator.deposit.Sign() == 0 {

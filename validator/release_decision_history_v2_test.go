@@ -352,7 +352,7 @@ func TestReleaseEvidenceV2DecisionHistoricalCommittedAuditReconstructsExactDepos
 	if err != nil {
 		t.Fatal(err)
 	}
-	required, _, err := protocol.RequiredDepositRao(artifact.TotalUsageBytes, fixture.bigConviction, cfg.Policy.Deposit)
+	required, _, err := protocol.RequiredDepositRao(artifact.TotalUsageBytes, artifact.TotalUsers, fixture.bigConviction, cfg.Policy.Deposit)
 	if err != nil || required.Sign() <= 0 {
 		t.Fatalf("genuine artifact requires no positive deposit: %v", err)
 	}

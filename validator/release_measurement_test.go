@@ -39,7 +39,7 @@ func releaseMeasurementDepositAudit(t *testing.T, policy protocol.Policy, noID u
 	t.Helper()
 	conviction := big.NewInt(0)
 	usage := uint64(1 << 30)
-	required, tier, err := protocol.RequiredDepositRao(usage, conviction, policy.Deposit)
+	required, tier, err := protocol.RequiredDepositRao(usage, 0, conviction, policy.Deposit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,11 +413,7 @@ func TestReleaseMeasurementReconstructsTop200AndPoolClamp(t *testing.T) {
 		if pool.QualityPPM != 500_000 || !pool.Eligible {
 			t.Fatalf("pool no_id %d quality/eligibility = %d/%v", pool.NoID, pool.QualityPPM, pool.Eligible)
 		}
-		deposit, ok := new(big.Int).SetString(pool.Audit.ObservedDepositRao, 10)
-		if !ok {
-			t.Fatal("fixture deposit is invalid")
-		}
-		want, scoreErr := impliedUsageQuality(deposit, big.NewInt(0), 500_000, artifact.Policy)
+		want, scoreErr := impliedUsageQuality(pool.Audit.UsageBytes, pool.Audit.Users, big.NewInt(0), 500_000, artifact.Policy)
 		if scoreErr != nil {
 			t.Fatal(scoreErr)
 		}
@@ -435,6 +431,84 @@ func TestReleaseMeasurementReconstructsTop200AndPoolClamp(t *testing.T) {
 	decoded, replayed, err := DecodeReleaseMeasurementArtifact(encoded)
 	if err != nil || decoded.SubnetEpoch != artifact.SubnetEpoch || len(replayed.SelectedHead) != 200 {
 		t.Fatalf("canonical replay failed: decoded=%+v selected=%d err=%v", decoded, len(replayed.SelectedHead), err)
+	}
+}
+
+// releaseMeasurementZeroPriceFixture is the top fixture under the zero-price
+// policy: every audit is the chain-state-only zero-price audit, with different
+// voluntary deposits and conviction per operator.
+func releaseMeasurementZeroPriceFixture(t *testing.T, headCount int) *ReleaseMeasurementArtifact {
+	t.Helper()
+	artifact := releaseMeasurementTopFixture(t, headCount)
+	artifact.Policy = zeroPricePolicy(t)
+	policyHash, err := artifact.Policy.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact.PolicyHash = fmt.Sprintf("0x%x", policyHash)
+	for index := range artifact.DepositAudits {
+		prior := artifact.DepositAudits[index]
+		audit := ZeroPriceDepositAudit(prior.Epoch, prior.SourceEpoch, prior.NoID, big.NewInt(int64(index)*5_000_000_000), big.NewInt(int64(index)*1_000_000_000))
+		audit.ObservedAtBlock, audit.ArtifactDeadlineBlock = prior.ObservedAtBlock, prior.ArtifactDeadlineBlock
+		artifact.DepositAudits[index] = audit
+	}
+	return artifact
+}
+
+// TestReleaseMeasurementZeroPriceWeightsPoolsByQualityAlone proves that under
+// the zero-price policy every pool is eligible from chain state alone with
+// score 1 × clamped quality, that a voluntary deposit or conviction changes
+// nothing, and that the status is bound to the signed policy's price both ways.
+func TestReleaseMeasurementZeroPriceWeightsPoolsByQualityAlone(t *testing.T) {
+	artifact := releaseMeasurementZeroPriceFixture(t, 2)
+	encoded, _, verified, err := SealReleaseMeasurementArtifact(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clamped := new(big.Rat).SetFrac(new(big.Int).SetUint64(uint64(artifact.Policy.Steering.QualityTransform.MinimumPPM)), big.NewInt(1_000_000))
+	if len(verified.Pools) != 2 {
+		t.Fatalf("pools = %d", len(verified.Pools))
+	}
+	for _, pool := range verified.Pools {
+		if !pool.Eligible || pool.Audit.Status != DepositAuditZeroPrice || pool.Score.Cmp(clamped) != 0 {
+			t.Fatalf("zero-price pool no_id %d = eligible %t status %q score %s, want 1 × clamped quality %s", pool.NoID, pool.Eligible, pool.Audit.Status, pool.Score, clamped)
+		}
+	}
+	if verified.Pools[0].Audit.ObservedDepositRao != "0" || verified.Pools[1].Audit.ObservedDepositRao != "5000000000" || verified.Pools[0].Score.Cmp(verified.Pools[1].Score) != 0 {
+		t.Fatalf("a voluntary deposit moved a zero-price pool: %+v %+v", verified.Pools[0], verified.Pools[1])
+	}
+	finalUIDs := map[uint16]bool{}
+	for _, uid := range verified.UIDs {
+		finalUIDs[uid] = true
+	}
+	if !finalUIDs[1] || !finalUIDs[2] || !finalUIDs[10] || !finalUIDs[11] {
+		t.Fatalf("zero-price vector lost a pool or head UID: %v", verified.UIDs)
+	}
+	if _, replayed, err := DecodeReleaseMeasurementArtifact(encoded); err != nil || replayed.Pools[1].Score.Cmp(clamped) != 0 {
+		t.Fatalf("canonical zero-price replay failed: %v", err)
+	}
+
+	// A compliant/mismatch/bootstrap audit cannot be claimed under zero price.
+	relabeled := cloneReleaseMeasurementArtifact(t, releaseMeasurementZeroPriceFixture(t, 2))
+	relabeled.DepositAudits[0] = releaseMeasurementDepositAudit(t, relabeled.Policy, 1)
+	relabeled.DepositAudits[0].RequiredDepositRao, relabeled.DepositAudits[0].ObservedDepositRao = "0", "0"
+	if _, err := VerifyReleaseMeasurementArtifact(relabeled); err == nil {
+		t.Fatal("a priced-style audit was accepted under the zero-price policy")
+	}
+	zeroed := cloneReleaseMeasurementArtifact(t, releaseMeasurementZeroPriceFixture(t, 2))
+	zeroed.DepositAudits[1].Compliant = false
+	zeroed.DepositAudits[1].Disposition = "zero_pool_weight"
+	zeroed.DepositAudits[1].Error = "voluntary deposit"
+	if _, err := VerifyReleaseMeasurementArtifact(zeroed); err == nil {
+		t.Fatal("a zero-price audit that zeroed a pool was accepted")
+	}
+	// And a zero-price audit cannot be claimed under a priced policy.
+	priced := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
+	prior := priced.DepositAudits[0]
+	priced.DepositAudits[0] = ZeroPriceDepositAudit(prior.Epoch, prior.SourceEpoch, prior.NoID, big.NewInt(0), big.NewInt(0))
+	priced.DepositAudits[0].ObservedAtBlock, priced.DepositAudits[0].ArtifactDeadlineBlock = prior.ObservedAtBlock, prior.ArtifactDeadlineBlock
+	if _, err := VerifyReleaseMeasurementArtifact(priced); err == nil {
+		t.Fatal("a zero-price audit was accepted under a priced policy")
 	}
 }
 

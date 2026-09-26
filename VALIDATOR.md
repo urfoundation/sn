@@ -10,8 +10,8 @@ This document specifies the three things needed to implement the route correctly
 the **signature mechanism**, the **probabilities / trail selection**, and the
 **statistics**. It also fixes the wire format, the server state model, and the
 security scope. **§0.5** then frames the validator's *second* job — turning these
-statistics into the per-tempo CRv4 weight vector that steers the release-1.0 two-tier subnet
-(detailed in **§11**).
+statistics into the per-tempo CRv4 weight vector that steers the release-1.0 two-tier UR subnet
+(Bittensor SN25, netuid 25; detailed in **§11**).
 
 ---
 
@@ -832,10 +832,12 @@ for each top-level-miner UID u (fleet — bound, verified client_ids C_u, §11.2
     head[u] = score(u)                     # §11.1; = 0 for the validator's own UID (self-mask)
 normalize head so Σ head = θ
 
-# TAIL — NO pools, implied-usage × quality (D25)
+# TAIL — NO pools, implied-demand × quality (D25)
 for each NO-pool UID n:
-    implied_usage_n = epoch_deposit_n / rate(tier_n)   # finalized Deposit events; rate from the signed policy
-    pool[n] = implied_usage_n × Q_n        # §11.1; = 0 if this validator operates NO n (self-mask)
+    audit  deposit_n == floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n)), capped   # signed payout artifact; else pool[n] = 0
+    implied_demand_n = (bytes_n × rate_gib(0) / GiB + users_n × rate_user(0)) × min(1, cap / owed_n)  # audited usage at the conviction-zero tier
+    implied_demand_n = 1                                                                         # while the signed policy's price is zero
+    pool[n] = implied_demand_n × Q_n       # §11.1; = 0 if this validator operates NO n (self-mask)
 normalize pool so Σ pool = 1 − θ
 
 w = head ⊕ pool                            # ONE vector over all miner UIDs
@@ -859,10 +861,16 @@ non-conforming validator by itself.
 
 **Where the pool inputs come from (D25).** The validator reads each NO's `epoch_deposit_n`
 and cumulative conviction by **summing finalized `Deposit` and `ConvictionAdded` events**
-(`WHITEPAPER.md` §7.5) — coordinator counters enforce caps but compute no weight — and reads
-`rate(tier_n)` from the **published tier→rate schedule** (`WHITEPAPER.md` §7.3, loaded
-from validator config). `implied_usage = deposit / rate` so a NO that staked into a lower
-tier posts less α for the same usage and earns the same weight (the stake is a discount).
+(`WHITEPAPER.md` §7.5) — coordinator counters enforce caps but compute no weight — reads the
+NO's signed payout artifact for the previous epoch (`total_usage_bytes`, `total_users`), and
+reads the two‑component `rate(tier_n)` from the **signed policy's tier→rate schedule**
+(`WHITEPAPER.md` §7.3). The deposit must equal the artifact's usage priced at the NO's own
+tier; the weight prices the same usage at the conviction‑zero tier, so a NO that staked into
+a lower tier posts less α for the same usage and earns the same weight (the stake is a
+discount). Under the zero‑price launch mode (`zero_rate_action: equal_demand`, every rate 0)
+no deposit is required or audited: each active NO's audit is recorded as `zero_price` /
+`zero_price_no_deposit_required` from chain state alone, every pool's implied demand is
+exactly 1, and `Q_n` alone steers the tail; the head, θ and the cede rule are unchanged.
 
 Because Yuma clips each validator to the κ-stake-weighted median, **θ, the rate schedule,
 and the scoring rules are a validator-software convention a stake-majority must run in

@@ -11,7 +11,9 @@
     "coordinator": {"$ref": "#/$defs/address"}, "epoch": {"type": "integer", "minimum": 0}, "no_id": {"type": "integer", "minimum": 1},
     "policy_hash": {"$ref": "#/$defs/hash"}, "start_block": {"$ref": "#/$defs/block"}, "end_block": {"$ref": "#/$defs/block"}, "snapshot_hash": {"$ref": "#/$defs/hash"},
     "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
-    "root": {"$ref": "#/$defs/hash"}, "total_usage_bytes": {"type": "integer", "minimum": 0}, "excluded_usage_bytes": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}, "share_bps_sum": {"const": 10000},
+    "root": {"$ref": "#/$defs/hash"}, "total_usage_bytes": {"type": "integer", "minimum": 0},
+    "total_users": {"type": "integer", "minimum": 0, "description": "Optional; absent reads as 0. The operator's attested count of distinct top-level client identities (users) with contract usage in the epoch window, the same figure the stats feed publishes as a block's users. With total_usage_bytes it sizes the next demand deposit under the policy's per-GiB and per-user rates. Omitted when zero so earlier signed artifacts keep their exact bytes."},
+    "excluded_usage_bytes": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}, "share_bps_sum": {"const": 10000},
     "created_at": {"type": "string", "format": "date-time"}, "operator_key": {"type": "string", "pattern": "^0x[0-9a-f]{64}$"}, "operator_signature": {"type": "string", "pattern": "^0x[0-9a-f]{128}$"},
     "commit_tx": {"type": ["string", "null"], "pattern": "^0x[0-9a-f]{64}$"}
   },

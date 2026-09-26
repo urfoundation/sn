@@ -182,6 +182,15 @@ func (self *Executor) runtimeEvidenceActivationChainV2(ctx context.Context) (*va
 	return validatorcomponent.DialReleaseChainContext(ctx, []string{endpoint}, self.plan.ValidatorEvidence.Coordinator)
 }
 
+// The approved deployment identity every harness activation binds, in the
+// shape the shared validator builder consumes.
+func (self *Executor) runtimeEvidenceDeploymentV2(policyHash [32]byte) validatorcomponent.ReleaseActivationDeploymentV2 {
+	return validatorcomponent.ReleaseActivationDeploymentV2{
+		DeploymentID: self.cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: [32]byte(self.plan.ValidatorEvidence.GenesisHash), Netuid: self.cfg.Netuid,
+		Coordinator: [20]byte(self.plan.ValidatorEvidence.Coordinator), SettlementVault: [20]byte(self.plan.ValidatorEvidence.SettlementVault), PolicyHash: policyHash,
+	}
+}
+
 func (self *Executor) runtimeEvidenceNativeIdentityV2() crv4.RuntimeArtifactIdentity {
 	return crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: self.cfg.Public.Chain.ExpectedRuntimeSpec,
 		TransactionVersion: self.cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: self.cfg.Public.Chain.ExpectedStateVersion},
@@ -330,18 +339,15 @@ func (self *Executor) prepareRuntimeEvidenceActivationsV2(ctx context.Context, c
 			if err != nil || !observation.Stake.MeetsNonSelfStakeAndPermit() {
 				return nil, nil, errors.Join(errors.New("activation preparation lacks native stake or permit"), err)
 			}
-			activation := protocol.ValidatorEvidenceActivation{Domain: protocol.ValidatorEvidenceActivationDomain{ChainID: testnetChainID, GenesisHash: [32]byte(self.plan.ValidatorEvidence.GenesisHash), Netuid: self.cfg.Netuid,
-				Coordinator: [20]byte(self.plan.ValidatorEvidence.Coordinator), SettlementVault: [20]byte(self.plan.ValidatorEvidence.SettlementVault), DeploymentIDHash: [32]byte(self.plan.ValidatorEvidence.DeploymentIDHash), PolicyHash: policyHash, Epoch: prepared.Epoch},
-				Hotkey: hotkey.PublicKey(), NoID: uint64(noId), VPK: [32]byte(key[ed25519.SeedSize:]), FirstSequence: 1, NativeBlock: prepared.Native.Number, NativeHash: [32]byte(nativeHash), EVMBlock: block, EVMHash: hash}
-			vpkSignature, err := activation.SignVPK(key)
+			// The validator binary builds and signs its own activations through
+			// these same shared helpers; only the identities and snapshots differ.
+			activation, err := validatorcomponent.BuildFreshReleaseActivationV2(self.runtimeEvidenceDeploymentV2(policyHash),
+				validatorcomponent.ReleaseActivationSnapshotV2{Epoch: prepared.Epoch, NativeBlock: prepared.Native.Number, NativeHash: [32]byte(nativeHash), EVMBlock: block, EVMHash: hash},
+				hotkey.PublicKey(), uint64(noId), [32]byte(key[ed25519.SeedSize:]))
 			if err != nil {
 				return nil, nil, err
 			}
-			digest, err := activation.Digest()
-			if err != nil {
-				return nil, nil, err
-			}
-			hotkeySignature, err := hotkey.Sign(digest[:])
+			vpkSignature, hotkeySignature, err := validatorcomponent.SignReleaseActivationV2(activation, hotkey, key)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -517,16 +523,17 @@ func (self *Executor) runtimeEvidenceActivationBoundaryV2(ctx context.Context, c
 	if err != nil || start == 0 || end <= start {
 		return nil, errors.Join(errors.New("activation epoch geometry is invalid"), err)
 	}
-	boundary := start
+	published := make([]uint64, 0, len(prepared.Members))
 	for _, member := range prepared.Members {
 		observed, err := chain.ValidatorEvidenceActivationAtHashContext(ctx, self.plan.ValidatorEvidence.Address, [32]byte(self.plan.ValidatorEvidence.RuntimeCodeHash), member.Activation, block, hash)
 		if err != nil {
 			return nil, err
 		}
-		boundary = max(boundary, observed.PublishedBlock)
+		published = append(published, observed.PublishedBlock)
 	}
-	if boundary >= end || boundary > block || boundary <= prepared.Evm.Number {
-		return nil, errors.New("all activations must be finalized before their common initial epoch boundary")
+	boundary, err := validatorcomponent.ReleaseActivationBoundaryBlockV2(start, end, prepared.Evm.Number, block, published)
+	if err != nil {
+		return nil, err
 	}
 	boundaryHash, err := chain.BlockHashContext(ctx, boundary)
 	if err != nil {

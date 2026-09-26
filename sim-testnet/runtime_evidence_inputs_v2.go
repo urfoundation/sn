@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/urfoundation/sn/protocol"
 	validatorcomponent "github.com/urfoundation/sn/validator"
 )
@@ -147,40 +146,24 @@ func runtimeEvidenceFixedPublicInputsV2(cfg *ResolvedConfig, plan *SetupPlan, st
 	}
 	result := runtimeEvidenceTemplateV2(cfg.Config.ValidatorEvidenceV2)
 	inputs := map[string][]byte{}
+	boundary := validatorcomponent.ReleaseActivationBoundaryV2{Block: completed.Boundary.Number, Hash: hash}
 	for _, member := range prepared.Members {
-		domain, err := member.Activation.EvidenceDomain()
-		if err != nil {
-			return nil, nil, err
-		}
-		value := validatorcomponent.ReleaseEvidenceV2ActivationContext{Schema: validatorcomponent.ReleaseEvidenceV2ActivationContextSchema, Activation: member.Activation,
-			InitialCut: validatorcomponent.AttemptCutV2Context{Identity: validatorcomponent.AttemptLedgerIdentity{DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ValidatorID: member.ValidatorId, ValidatorUID: member.ValidatorUid, NoID: member.NoId, ValidatorVPK: fmt.Sprintf("0x%x", member.Activation.VPK)},
-				Activation:    validatorcomponent.AttemptCutV2Activation{Domain: domain, Hotkey: member.Activation.Hotkey, FirstSequence: 1, PriorRoot: fmt.Sprintf("0x%x", [32]byte{})},
-				Boundary:      validatorcomponent.AttemptBoundary{SettlementEpoch: prepared.Epoch, EVMBlock: completed.Boundary.Number, EVMBlockHash: common.Hash(hash).Hex()},
-				FirstSequence: 1, EgressFirstSequence: 1, EgressGeneration: 1, PriorRoot: fmt.Sprintf("0x%x", [32]byte{})},
-			ValidatorUID: member.ValidatorUid, Journal: [20]byte(plan.ValidatorEvidence.Address), RuntimeHash: [32]byte(plan.ValidatorEvidence.RuntimeCodeHash), ObservedEVMBlock: completed.Boundary.Number, ObservedEVMHash: hash}
-		configured := &result[member.ValidatorId-1].Evidence
-		contextBytes, err := value.CanonicalJSON(configured.Bounds.Cut.MaxHeaderBytes)
-		if err != nil {
-			return nil, nil, err
-		}
-		historyBytes, err := (validatorcomponent.ReleaseEvidenceV2ActivationHistory{Schema: validatorcomponent.ReleaseEvidenceV2ActivationHistorySchema, LegacyClosures: [][]byte{}}).CanonicalJSON(configured.Bounds.MaxHistoryBytes)
-		if err != nil {
-			return nil, nil, err
-		}
-		activationBytes, err := member.Activation.Payload()
-		if err != nil {
-			return nil, nil, err
-		}
+		// The validator binary renders the same five files through this exact
+		// shared renderer; the harness only supplies its own identities and paths.
 		paths, replay, seal := runtimeEvidenceV2Paths(stateDir, int(member.ValidatorId), member.NoId)
-		files := make([]validatorcomponent.ReleaseEvidenceV2File, len(paths))
-		for index, data := range [][]byte{activationBytes, member.VpkSignature, member.HotkeySignature, contextBytes, historyBytes} {
-			if uint64(len(data)) > runtimeEvidenceV2ReferenceLimit(configured.Bounds, index) {
-				return nil, nil, errors.New("evidence setup fixed input exceeds its explicit bound")
-			}
-			inputs[paths[index]] = slices.Clone(data)
-			files[index] = validatorcomponent.ReleaseEvidenceV2File{Path: paths[index], Bytes: uint64(len(data)), SHA256: fmt.Sprintf("0x%x", sha256.Sum256(data))}
+		configured := &result[member.ValidatorId-1].Evidence
+		rendered, files, err := validatorcomponent.RenderReleaseActivationInputsV2(
+			validatorcomponent.ReleaseActivationLedgerV2{DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ValidatorID: member.ValidatorId},
+			validatorcomponent.ReleaseActivationMemberV2{NoID: member.NoId, ValidatorUID: member.ValidatorUid, Activation: member.Activation, VPKSignature: member.VpkSignature, HotkeySignature: member.HotkeySignature},
+			[20]byte(plan.ValidatorEvidence.Address), [32]byte(plan.ValidatorEvidence.RuntimeCodeHash), boundary, configured.Bounds,
+			validatorcomponent.ReleaseEvidenceV2OperatorPaths{Files: [5]string(paths), ReplayScratchRoot: replay, SealScratchRoot: seal})
+		if err != nil {
+			return nil, nil, err
 		}
-		configured.Operators[member.NoId-1] = validatorcomponent.ReleaseEvidenceV2OperatorConfig{NoID: member.NoId, Activation: files[0], VPKSignature: files[1], HotkeySignature: files[2], Context: files[3], History: files[4], ReplayScratchRoot: replay, SealScratchRoot: seal}
+		for path, data := range files {
+			inputs[path] = data
+		}
+		configured.Operators[member.NoId-1] = rendered
 	}
 	return result, inputs, nil
 }

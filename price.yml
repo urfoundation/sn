@@ -1,9 +1,14 @@
-sn: 1
+sn: 25
 # the alpha must be deposited as demand deposits per block (7 days)
+#
+# Initial period: no operator demand deposits are collected, so every rate is
+# 0 alpha per GiB and 0 alpha per user. The tiers are kept for the shape of the
+# schedule (an operator pays the best tier whose staked-alpha threshold it meets;
+# the 0 tier applies to everyone) and will be filled in when deposits start.
 tiered_per_block_demand_deposits:
   0:
-    alpha_per_gib: 1
-    alpha_per_user: 1
+    alpha_per_gib: 0
+    alpha_per_user: 0
   1000:
-    alpha_per_gib: 0.1
-    alpha_per_user: 0.1
+    alpha_per_gib: 0
+    alpha_per_user: 0

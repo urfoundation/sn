@@ -81,6 +81,16 @@ Usage:
     validator auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
         [--api_url=<api_url>]
         [-v...]
+    validator init (--config=<path> | --state_dir=<path> [--hotkey_seed_file=<path>] [--no_id=<id>]...)
+        [-v...]
+    validator register --config=<path> --coldkey_seed_file=<path>
+        [--burn_limit_rao=<n>] [--fee_limit_rao=<n>] [--apply | --dry-run]
+        [-v...]
+    validator stake add --amount_rao=<n> --config=<path> --coldkey_seed_file=<path>
+        [--limit_price_rao=<n>] [--allow_partial] [--fee_limit_rao=<n>] [--apply | --dry-run]
+        [-v...]
+    validator activate --config=<path> [--relayer_key_file=<path>] [--apply | --dry-run]
+        [-v...]
     validator run --config=<path>
         [-v...]
     validator run [--api_url=<api_url>] [--connect_url=<connect_url>]
@@ -99,6 +109,27 @@ Options:
     -f                           Force overwrite the JWT token store file, if exists.
     --api_url=<api_url>          Custom API URL.
 	--config=<path>                Strict release-1.0 production configuration; the only weight-writing mode.
+                                 init/register/stake/activate/status accept it before its evidence_v2
+                                 inputs are rendered; run does not.
+    --coldkey_seed_file=<path>   sr25519 coldkey seed (64 hex chars or 32 raw bytes) that signs
+                                 register_limit / add_stake. The release config carries no coldkey and
+                                 the EVM key's mirror account cannot sign a native extrinsic, so the
+                                 seed file is required; keep it off the validator host afterwards.
+    --burn_limit_rao=<n>         Maximum registration burn in rao passed to register_limit; the runtime
+                                 rejects a higher live burn. Omitted: the burn observed at the read.
+    --fee_limit_rao=<n>          Maximum native transaction fee in rao (payment_queryInfo is checked
+                                 before broadcast) [default: 10000000].
+    --amount_rao=<n>             TAO to stake, in rao (1 TAO = 1e9 rao); the pool converts it to alpha.
+    --limit_price_rao=<n>        Use add_stake_limit with this maximum pool price in TAO rao per alpha
+                                 instead of add_stake at the pool price.
+    --allow_partial              With --limit_price_rao, allow a partial fill instead of fill-or-kill.
+    --relayer_key_file=<path>    Hex secp256k1 EVM key that pays gas to publish the activations through
+                                 the evidence journal; it receives no authority.
+    --apply                      Sign, journal and broadcast. Without it every mutating command is a
+                                 dry run that reads the live economics and reports what it would do.
+    --dry-run                    Explicit dry run (the default).
+    --no_id=<id>                 With init --state_dir, create <state_dir>/no-<id>/client.key for each
+                                 operator; without any, create the flag-mode <state_dir>/.validator.key.
     --connect_url=<connect_url>  Custom connect (platform transport) URL.
     --user_auth=<user_auth>      Login with a username.
     --password=<password>        Login with a password (prompted when omitted).
@@ -129,6 +160,14 @@ func Run(args []string) {
 
 	if authCmd, _ := opts.Bool("auth"); authCmd {
 		auth(opts)
+	} else if initCmd, _ := opts.Bool("init"); initCmd {
+		initCommand(opts)
+	} else if registerCmd, _ := opts.Bool("register"); registerCmd {
+		registerCommand(opts)
+	} else if stakeCmd, _ := opts.Bool("stake"); stakeCmd {
+		stakeAddCommand(opts)
+	} else if activateCmd, _ := opts.Bool("activate"); activateCmd {
+		activateCommand(opts)
 	} else if runCmd, _ := opts.Bool("run"); runCmd {
 		run(opts)
 	} else if statusCmd, _ := opts.Bool("status"); statusCmd {
@@ -514,20 +553,16 @@ func rejectLegacySteeringOptions(opts docopt.Opts) error {
 	return nil
 }
 
-// The register / submit-trails / claim commands (the effort-bounty flow) are
-// deferred to the bounty phase (WHITEPAPER §9.3, D23); implementation parked
-// at docs/parked/.
+// The submit-trails / claim commands (the effort-bounty flow) are deferred to
+// the bounty phase (WHITEPAPER §9.3, D23); implementation parked at
+// docs/parked/. Registration, staking and activation live in
+// native_commands.go.
 
 // --- status ---
 
 func status(opts docopt.Opts) {
 	if configPath := optString(opts, "--config", ""); configPath != "" {
-		cfg, err := LoadReleaseConfig(configPath)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("release: %s production=%t validator=%d netuid=%d operators=%d\n", cfg.Release, cfg.Production, cfg.ValidatorID, cfg.Netuid, len(cfg.Operators))
-		fmt.Printf("coordinator: %s\npolicy: %s\nstate_dir: %s\n", cfg.Coordinator, cfg.PolicyHash, cfg.StateDir)
+		statusRelease(configPath)
 		return
 	}
 	identityOpts := identityOptionsFromOpts(opts)

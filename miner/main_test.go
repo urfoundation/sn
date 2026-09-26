@@ -9,6 +9,7 @@ import (
 	"context"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,6 +226,27 @@ func TestMainUsageFleetLifecycle(t *testing.T) {
 	if got := publish["--substrate"].([]string); len(got) != 2 {
 		t.Fatalf("substrate failover = %v", got)
 	}
+	register := parseArgsForTest(t, []string{"fleet", "register", "--manifest=fleet.json", "--hotkey_seed_file=hot.seed", "--coldkey_seed_file=cold.seed", "--substrate=ws://one", "--burn_limit_rao=1500000000", "--apply"})
+	if ok, _ := register.Bool("register"); !ok {
+		t.Fatal("register command not parsed")
+	}
+	if apply, _ := register.Bool("--apply"); !apply || fleetOpt(register, "--burn_limit_rao") != "1500000000" || fleetOpt(register, "--coldkey_seed_file") != "cold.seed" {
+		t.Fatalf("register options = %v", register)
+	}
+	if limit, err := fleetUint64Opt(register, "--fee_limit_rao", 1); err != nil || limit != fleetDefaultFeeLimitRao {
+		t.Fatalf("register fee limit default = %d, %v", limit, err)
+	}
+	dry := parseArgsForTest(t, []string{"fleet", "register", "--manifest=fleet.json", "--hotkey_seed_file=hot.seed", "--coldkey_seed_file=cold.seed", "--substrate=ws://one"})
+	if apply, _ := dry.Bool("--apply"); apply {
+		t.Fatal("register is not a dry run by default")
+	}
+	parser := &docopt.Parser{HelpHandler: docopt.NoHelpHandler}
+	if _, err := parser.ParseArgs(mainUsage(), []string{"fleet", "register", "--manifest=fleet.json", "--hotkey_seed_file=hot.seed", "--substrate=ws://one"}, "test"); err == nil {
+		t.Fatal("register parsed without its coldkey seed")
+	}
+	if _, err := parser.ParseArgs(mainUsage(), []string{"fleet", "register", "--manifest=fleet.json", "--hotkey_seed_file=hot.seed", "--coldkey_seed_file=cold.seed", "--substrate=ws://one", "--apply", "--dry-run"}, "test"); err == nil {
+		t.Fatal("register accepted --apply together with --dry-run")
+	}
 	bind := parseArgsForTest(t, []string{"fleet", "bind", "--manifest=fleet.json", "--client_id=0x01", "--client_seed_file=client.seed", "--hotkey_seed_file=hot.seed", "--valid_from_epoch=2", "--valid_to_epoch=10", "--rpc=http://one", "--relayer_key_file=relay.key", "--dry-run"})
 	if ok, _ := bind.Bool("bind"); !ok {
 		t.Fatal("bind command not parsed")
@@ -297,5 +319,81 @@ func TestMainUsageChooseNetworkRejectsBadForms(t *testing.T) {
 		if _, err := parser.ParseArgs(mainUsage(), argv, "test"); err == nil {
 			t.Errorf("parse %v: expected an error, got nil", argv)
 		}
+	}
+}
+
+func TestMainUsageWalletSetProof(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"wallet", "set", "5Grw", "--coldkey_seed_file=/keys/coldkey.seed"})
+	if seedFile, err := opts.String("--coldkey_seed_file"); err != nil || seedFile != "/keys/coldkey.seed" {
+		t.Fatalf("--coldkey_seed_file %q err %v", seedFile, err)
+	}
+	if _, err := opts.String("--message"); err == nil {
+		t.Fatalf("--message unexpectedly set")
+	}
+
+	opts = parseArgsForTest(t, []string{"wallet", "set", "5Grw", "--message=Sign in\\nChallenge: x", "--signature=0xab"})
+	if message, err := opts.String("--message"); err != nil || message != "Sign in\\nChallenge: x" {
+		t.Fatalf("--message %q err %v", message, err)
+	}
+	if signature, err := opts.String("--signature"); err != nil || signature != "0xab" {
+		t.Fatalf("--signature %q err %v", signature, err)
+	}
+
+	// the two proofs are alternatives, and --message needs --signature
+	parser := &docopt.Parser{HelpHandler: docopt.NoHelpHandler}
+	for _, argv := range [][]string{
+		{"wallet", "set", "5Grw", "--message=m"},
+		{"wallet", "set", "5Grw", "--signature=s"},
+		{"wallet", "set", "5Grw", "--coldkey_seed_file=/k", "--message=m", "--signature=s"},
+	} {
+		if _, err := parser.ParseArgs(mainUsage(), argv, "test"); err == nil {
+			t.Fatalf("parse %v: no error", argv)
+		}
+	}
+}
+
+func TestMainUsageWalletChallenge(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"wallet", "challenge", "5Grw"})
+	if wallet, _ := opts.Bool("wallet"); !wallet {
+		t.Fatalf("wallet not set")
+	}
+	if challenge, _ := opts.Bool("challenge"); !challenge {
+		t.Fatalf("challenge not set")
+	}
+	if set, _ := opts.Bool("set"); set {
+		t.Fatalf("set set")
+	}
+	if coldkeySs58, err := opts.String("<coldkey_ss58>"); err != nil || coldkeySs58 != "5Grw" {
+		t.Fatalf("<coldkey_ss58> %q err %v", coldkeySs58, err)
+	}
+}
+
+func TestMainUsageProvideWalletProof(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"provide", "--wallet=5Grw", "--coldkey_seed_file=/keys/coldkey.seed"})
+	if coldkeySs58, err := opts.String("--wallet"); err != nil || coldkeySs58 != "5Grw" {
+		t.Fatalf("--wallet %q err %v", coldkeySs58, err)
+	}
+	if seedFile, err := opts.String("--coldkey_seed_file"); err != nil || seedFile != "/keys/coldkey.seed" {
+		t.Fatalf("--coldkey_seed_file %q err %v", seedFile, err)
+	}
+	opts = parseArgsForTest(t, []string{"auth-provide", "code", "--wallet=5Grw", "--message=m", "--signature=s"})
+	if signature, err := opts.String("--signature"); err != nil || signature != "s" {
+		t.Fatalf("--signature %q err %v", signature, err)
+	}
+	// the option grammar cannot tie the proof options to --wallet (docopt
+	// options are position free); provide names the misuse instead
+	opts = parseArgsForTest(t, []string{"provide", "--coldkey_seed_file=/k"})
+	if misuse := snProvideWalletMisuse(opts); !strings.Contains(misuse, "--coldkey_seed_file given without --wallet") {
+		t.Fatalf("misuse %q", misuse)
+	}
+	opts = parseArgsForTest(t, []string{"provide", "--message=m", "--signature=s"})
+	if misuse := snProvideWalletMisuse(opts); !strings.Contains(misuse, "--message, --signature given without --wallet") {
+		t.Fatalf("misuse %q", misuse)
+	}
+	if misuse := snProvideWalletMisuse(parseArgsForTest(t, []string{"provide", "--wallet=5Grw", "--coldkey_seed_file=/k"})); misuse != "" {
+		t.Fatalf("misuse with --wallet: %q", misuse)
+	}
+	if misuse := snProvideWalletMisuse(parseArgsForTest(t, []string{"provide"})); misuse != "" {
+		t.Fatalf("misuse without options: %q", misuse)
 	}
 }

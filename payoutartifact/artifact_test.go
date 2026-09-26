@@ -62,6 +62,49 @@ func TestDecodeAcceptsOnlyCanonicalReconstructableArtifact(t *testing.T) {
 	}
 }
 
+// total_users is optional on the wire: an artifact built without it has the
+// exact bytes it had before the per-user rate existed and reads as 0 users,
+// while a nonzero count is signed content.
+func TestTotalUsersIsOptionalSignedContent(t *testing.T) {
+	legacy := testArtifact(t)
+	legacyBytes, err := Bytes(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(legacyBytes, []byte("total_users")) {
+		t.Fatal("zero total_users was serialized; pre-existing signed artifacts would no longer reconstruct")
+	}
+	decoded, err := Decode(legacyBytes)
+	if err != nil || decoded.TotalUsers != 0 {
+		t.Fatalf("legacy artifact decode = %+v, %v", decoded, err)
+	}
+
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withUsers := testArtifact(t)
+	withUsers.TotalUsers = 125_000
+	if err := Sign(withUsers, key); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := Bytes(withUsers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"total_users":125000`)) || withUsers.ContentHash == legacy.ContentHash {
+		t.Fatalf("attested users are not signed content: %s", encoded)
+	}
+	decoded, err = Decode(encoded)
+	if err != nil || decoded.TotalUsers != 125_000 || decoded.TotalUsageBytes != 200 {
+		t.Fatalf("decode with users = %+v, %v", decoded, err)
+	}
+	decoded.TotalUsers++
+	if err := Verify(decoded); err == nil {
+		t.Fatal("a changed user count verified under the original signature")
+	}
+}
+
 func TestVerifyRejectsResignedFalseUsageSummary(t *testing.T) {
 	artifact := testArtifact(t)
 	artifact.TotalUsageBytes++

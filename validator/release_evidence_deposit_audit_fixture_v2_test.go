@@ -143,7 +143,7 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 	if err != nil {
 		t.Fatal(err)
 	}
-	required, _, err := protocol.RequiredDepositRao(self.payout.TotalUsageBytes, chain.bigConviction, cfg.Policy.Deposit)
+	required, _, err := protocol.RequiredDepositRao(self.payout.TotalUsageBytes, self.payout.TotalUsers, chain.bigConviction, cfg.Policy.Deposit)
 	if err != nil || required.Sign() <= 0 {
 		t.Fatalf("actual payout deposit: %v", err)
 	}

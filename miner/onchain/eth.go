@@ -69,7 +69,7 @@ func ethCall(ctx context.Context, client *ethclient.Client, contract common.Addr
 
 // revertError augments an eth_call/eth_estimateGas error with the decoded
 // revert payload when the endpoint returned one: Error(string) require
-// reasons, Panic(uint256), or a custom error known to the STSubnet ABI.
+// reasons, Panic(uint256), or a custom error known to the settlement-vault ABI.
 func revertError(err error) error {
 	var de rpc.DataError
 	if !errors.As(err, &de) {
@@ -128,7 +128,7 @@ type txRequest struct {
 	broadcast  func(common.Hash) error
 }
 
-// runTx runs the submit lifecycle shared by submit/bind-head/unbind-head: an
+// runTx runs the submit lifecycle shared by every relayed transaction: an
 // eth_call preflight (surfacing revert reasons before spending gas), a gas
 // estimate, the caller's intent block via printIntent, a stop on --dry-run,
 // and otherwise sign + send + wait-mined. It returns the mined receipt (nil on

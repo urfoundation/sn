@@ -297,6 +297,57 @@ func TestRateScheduleTiers(t *testing.T) {
 	}
 }
 
+// TestRateScheduleZeroPriceGivesEveryPoolUnitDemand pins the legacy flag-mode
+// launch rule: a schedule with both components zero in every tier is the
+// zero-price mode, every pool carries implied usage exactly 1 whatever it
+// deposited or locked, quality alone steers, and the head split is untouched.
+// A priced or partially zero schedule keeps deposit / rate.
+func TestRateScheduleZeroPriceGivesEveryPoolUnitDemand(t *testing.T) {
+	zero := RateSchedule{Tiers: []RateTier{{MinConviction: big.NewInt(0)}, {MinConviction: big.NewInt(alphaRao)}}}
+	if !zero.IsZeroPrice() || DefaultRateSchedule().IsZeroPrice() || (RateSchedule{}).IsZeroPrice() {
+		t.Fatal("zero-price detection is wrong")
+	}
+	partial := RateSchedule{Tiers: []RateTier{{MinConviction: big.NewInt(0), Rate: 1}, {MinConviction: big.NewInt(alphaRao), Rate: 0}}}
+	usersOnly := RateSchedule{Tiers: []RateTier{{MinConviction: big.NewInt(0), UserRate: 1}}}
+	if partial.IsZeroPrice() || usersOnly.IsZeroPrice() {
+		t.Fatal("a partially priced schedule was treated as zero price")
+	}
+	for _, testCase := range [][2]int64{{0, 0}, {1_000, 0}, {0, 5 * alphaRao}, {2_500, 10 * alphaRao}} {
+		if got := legacyImpliedUsage(zero, big.NewInt(testCase[0]), big.NewInt(testCase[1])); got != 1 {
+			t.Fatalf("zero price implied usage for deposit %d conviction %d = %g, want 1", testCase[0], testCase[1], got)
+		}
+	}
+	priced := DefaultRateSchedule().sortTiers()
+	if got := legacyImpliedUsage(priced, big.NewInt(0), big.NewInt(0)); got != 0 {
+		t.Fatalf("priced schedule gave a pool with no deposit %g", got)
+	}
+	if got := legacyImpliedUsage(priced, big.NewInt(1000), big.NewInt(0)); math.Abs(got-1000) > 1e-9 {
+		t.Fatalf("priced schedule implied usage = %g, want 1000", got)
+	}
+	if got := legacyImpliedUsage(partial, big.NewInt(1), big.NewInt(alphaRao)); math.Abs(got-1/rateFloor) > 1e-3 {
+		t.Fatalf("partially zero schedule was not floored: %g", got)
+	}
+
+	pools := []PoolWeightInput{
+		{NoId: big.NewInt(1), Uid: 10, ImpliedUsage: legacyImpliedUsage(zero, big.NewInt(0), big.NewInt(0)), Quality: 0.5},
+		{NoId: big.NewInt(2), Uid: 11, ImpliedUsage: legacyImpliedUsage(zero, big.NewInt(1_000_000), big.NewInt(alphaRao)), Quality: 1.0},
+	}
+	uids, scores, err := BuildWeightVector(pools, []HeadWeightInput{{Uid: 20, Score: 2}}, 0.3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint16]float64{}
+	for i, uid := range uids {
+		got[uid] = scores[i]
+	}
+	want := map[uint16]float64{10: 0.7 * 0.5 / 1.5, 11: 0.7 * 1.0 / 1.5, 20: 0.3}
+	for uid, w := range want {
+		if math.Abs(got[uid]-w) > 1e-12 {
+			t.Fatalf("uid %d: %f, want %f (quality alone should steer the pools)", uid, got[uid], w)
+		}
+	}
+}
+
 // TestHeadScoresSplit pins the D27 split: claim(h) = #fleets sharing hash h, and
 // score(u) = Σ_{h ∈ IPs(u)} 1/claim(h). Two fleets sharing ONE hash each get
 // exactly 0.5; a unique hash is worth the full 1.0.

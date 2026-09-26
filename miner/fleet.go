@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/docopt/docopt-go"
 	"github.com/ethereum/go-ethereum/common"
 
+	snchain "github.com/urfoundation/sn/chain"
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/miner/onchain"
 	"github.com/urfoundation/sn/protocol"
@@ -176,6 +178,8 @@ func fleetCommand(opts docopt.Opts) error {
 		hash, _ := manifest.CommitmentHash()
 		fmt.Printf("%s\ncommitment_sha256: 0x%x\nmembers: %d\n", canonical, hash, len(manifest.Members))
 		return nil
+	case mustBoolOpt(opts, "register"):
+		return fleetRegister(opts, manifest)
 	case mustBoolOpt(opts, "publish"):
 		return fleetPublish(opts, manifest)
 	case mustBoolOpt(opts, "bind"):
@@ -192,6 +196,79 @@ func fleetCommand(opts docopt.Opts) error {
 func mustBoolOpt(opts docopt.Opts, name string) bool {
 	v, _ := opts.Bool(name)
 	return v
+}
+
+// fleetUint64Opt parses an optional numeric option, keeping fallback when the
+// option is absent.
+func fleetUint64Opt(opts docopt.Opts, name string, fallback uint64) (uint64, error) {
+	value := fleetOpt(opts, name)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", name, err)
+	}
+	return parsed, nil
+}
+
+// The observed netuid-521 registration fee was 2,131,733 rao; the default
+// ceiling leaves headroom without letting a runtime multiplier drain a key.
+const fleetDefaultFeeLimitRao = uint64(10_000_000)
+
+// fleetRegister implements `provider fleet register`: the head-tier fleet's
+// own burned registration of the manifest hotkey on the manifest netuid
+// (WHITEPAPER §16.1: top-level miners self-register_limit their UIDs), signed
+// by the fleet coldkey through the shared sn/chain flow. It authenticates the
+// finalized runtime against the reviewed pin, reads and prints the live burn
+// economics, refuses a burn above the ceiling, and is a dry run unless
+// --apply is given. Every broadcast is journaled under the provider state.
+func fleetRegister(opts docopt.Opts, manifest *protocol.FleetManifest) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	hotkeySeed, err := crv4.LoadSeedFile(fleetOpt(opts, "--hotkey_seed_file"))
+	if err != nil {
+		return err
+	}
+	hotkey, err := crv4.KeypairFromSeed(hotkeySeed)
+	if err != nil {
+		return err
+	}
+	if hotkey.PublicKey() != manifest.Hotkey {
+		return errors.New("hotkey seed does not match manifest hotkey")
+	}
+	coldkey, err := snchain.LoadKeypairFile(fleetOpt(opts, "--coldkey_seed_file"))
+	if err != nil {
+		return fmt.Errorf("coldkey seed: %w", err)
+	}
+	burnLimit, err := fleetUint64Opt(opts, "--burn_limit_rao", 0)
+	if err != nil {
+		return err
+	}
+	feeLimit, err := fleetUint64Opt(opts, "--fee_limit_rao", fleetDefaultFeeLimitRao)
+	if err != nil {
+		return err
+	}
+	stateDir, err := providerStateDir()
+	if err != nil {
+		return err
+	}
+	journal, err := snchain.OpenJournal(filepath.Join(stateDir, "fleet-native"))
+	if err != nil {
+		return err
+	}
+	chain, endpoint, err := dialFleetNativeOptionsContext(ctx, opts, manifest)
+	if err != nil {
+		return err
+	}
+	defer chain.API.Client.Close()
+	fmt.Printf("fleet register: netuid %d hotkey 0x%x via %s\n", manifest.Netuid, manifest.Hotkey, endpoint)
+	_, err = snchain.RegisterHotkey(ctx, chain, snchain.RegisterRequest{
+		Command: "provider fleet register", Netuid: manifest.Netuid, Hotkey: manifest.Hotkey, Coldkey: coldkey,
+		BurnLimitRao: burnLimit, FeeLimitRao: feeLimit, Allowed: []crv4.RuntimeArtifactIdentity{fleetReleaseRuntimeArtifact()},
+		Journal: journal, Apply: mustBoolOpt(opts, "--apply"), Output: os.Stdout,
+	})
+	return err
 }
 
 func fleetPublish(opts docopt.Opts, manifest *protocol.FleetManifest) error {

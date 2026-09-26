@@ -1,7 +1,7 @@
 # Runtime461 compatibility review
 
 Runtime461 is admitted as the exact testnet artifact below. This is a source and
-artifact compatibility review for the subnet's consumed interfaces, not a claim
+artifact compatibility review for the consumed interfaces of the UR subnet (Bittensor SN25, netuid 25; this testnet campaign runs on netuid 521), not a claim
 that all upstream economic behavior is unchanged. Earlier artifact identities
 and signed approvals remain separate historical authorities.
 

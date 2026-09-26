@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -18,13 +17,12 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
-	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic"
-	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic/extensions"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/blake2b"
 
+	snchain "github.com/urfoundation/sn/chain"
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
 )
@@ -37,86 +35,24 @@ type SubstrateManager struct {
 	cfg      *ResolvedConfig
 }
 
-// Retains the provider's integer token so parsing never passes through float64.
-type nativeTransactionFeeResponse struct {
-	PartialFee json.RawMessage `json:"partialFee"`
-}
-
-// Parse the standard payment_queryInfo fee without accepting JSON floats,
-// signs, overflow, or provider-specific loss of integer precision.
-func parseNativeTransactionFee(raw json.RawMessage) (uint64, error) {
-	value := strings.TrimSpace(string(raw))
-	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-		var decoded string
-		if err := json.Unmarshal(raw, &decoded); err != nil {
-			return 0, fmt.Errorf("decode native transaction fee: %w", err)
-		}
-		value = strings.TrimSpace(decoded)
-	}
-	base := 10
-	if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
-		base = 16
-		value = value[2:]
-	}
-	if value == "" {
-		return 0, errors.New("native transaction fee is empty")
-	}
-	fee, err := strconv.ParseUint(value, base, 64)
-	if err != nil {
-		return 0, fmt.Errorf("native transaction fee %q is not an unsigned uint64: %w", value, err)
-	}
-	return fee, nil
-}
-
-// Enforce the approval-bound per-extrinsic ceiling.
-func validateNativeTransactionFee(estimated, limit uint64) error {
-	if limit == 0 {
-		return errors.New("native transaction fee limit is zero")
-	}
-	if estimated > limit {
-		return fmt.Errorf("estimated native transaction fee %d rao exceeds approved limit %d rao", estimated, limit)
-	}
-	return nil
-}
-
-// Quote the exact signed bytes immediately before broadcast. The funded role
-// balance remains the hard loss boundary if the runtime multiplier changes
-// between this read and inclusion.
+// Quote the exact signed bytes immediately before broadcast through the shared
+// sn/chain fee rule. The funded role balance remains the hard loss boundary if
+// the runtime multiplier changes between this read and inclusion.
 func (self *SubstrateManager) approveNativeTransactionFee(ctx context.Context, raw []byte) (uint64, uint64, error) {
 	if self == nil || self.chain == nil || self.chain.API == nil || self.chain.API.Client == nil || self.cfg == nil || self.cfg.Config == nil {
 		return 0, 0, errors.New("native transaction fee quote dependencies are unavailable")
 	}
-	var response nativeTransactionFeeResponse
-	if err := self.chain.API.Client.CallContext(ctx, &response, "payment_queryInfo", codec.HexEncodeToString(raw)); err != nil {
-		return 0, 0, fmt.Errorf("quote native transaction fee: %w", err)
-	}
-	estimated, err := parseNativeTransactionFee(response.PartialFee)
-	if err != nil {
-		return 0, 0, err
-	}
 	limit := self.cfg.Config.Budgets.MaximumNativeTransactionFeeRao
-	if err := validateNativeTransactionFee(estimated, limit); err != nil {
+	estimated, err := snchain.ApproveNativeTransactionFee(ctx, self.chain, raw, limit)
+	if err != nil {
 		return estimated, limit, err
 	}
 	return estimated, limit, nil
 }
 
-// subtensorAccountInfo matches runtime 453's System.Account value. Runtime 453
-// retains the fixed-width balance shape audited under runtime 452; Subtensor's
-// Balance is u64 (rao), while the generic GSRPC AccountInfo assumes u128 and
-// therefore cannot decode this runtime's AccountData.
-type subtensorAccountInfo struct {
-	Nonce       types.U32
-	Consumers   types.U32
-	Providers   types.U32
-	Sufficients types.U32
-	Data        struct {
-		Free     types.U64
-		Reserved types.U64
-		Frozen   types.U64
-		Flags    types.U128
-	}
-}
+// subtensorAccountInfo is the reviewed runtime's System.Account value with
+// Subtensor's fixed-width u64 (rao) balances; the shape lives in sn/chain.
+type subtensorAccountInfo = snchain.AccountInfo
 
 // SetupFacts are finalized, read-only inputs which make the setup plan exact.
 // In particular, alpha is transferred from an existing wallet-owned position;
@@ -166,14 +102,9 @@ type ExistingUIDFact struct {
 	TotalHotkeyAlphaRao uint64 `json:"total_hotkey_alpha_rao,omitempty"`
 }
 
-// Captures the runtime auction state needed to prove a bounded bootstrap.
-type registrationEconomics struct {
-	BurnRao             uint64
-	MinBurnRao          uint64
-	MaxBurnRao          uint64
-	BurnHalfLifeBlocks  uint16
-	BurnIncreaseMultQ64 string
-}
+// Captures the runtime auction state needed to prove a bounded bootstrap; the
+// read and its shape are shared with the release binaries through sn/chain.
+type registrationEconomics = snchain.RegistrationEconomics
 
 type SubnetTopologyFacts struct {
 	UIDCount    uint16
@@ -211,62 +142,9 @@ type runtime453PruneNeuron struct {
 	Immortal          bool
 }
 
-// Read every auction parameter from one finalized state root.
+// Read every auction parameter from one finalized state root (sn/chain).
 func readRegistrationEconomicsAt(chain *crv4.Chain, netuid uint16, finalized types.Hash) (registrationEconomics, error) {
-	var result registrationEconomics
-	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.State == nil || chain.Meta == nil {
-		return result, errors.New("registration economics chain dependencies are unavailable")
-	}
-	readU64 := func(storage string) (uint64, error) {
-		key, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, storage, netuidArg(netuid))
-		if err != nil {
-			return 0, err
-		}
-		var value types.U64
-		if err := readRequiredStorageAt(chain, key, crv4.PalletName, storage, &value, finalized); err != nil {
-			return 0, err
-		}
-		return uint64(value), nil
-	}
-	var err error
-	if result.BurnRao, err = readU64("Burn"); err != nil {
-		return result, fmt.Errorf("read Burn: %w", err)
-	} else if result.BurnRao == 0 {
-		return result, errors.New("Burn is zero")
-	}
-	if result.MinBurnRao, err = readU64("MinBurn"); err != nil {
-		return result, fmt.Errorf("read MinBurn: %w", err)
-	} else if result.MinBurnRao == 0 {
-		return result, errors.New("MinBurn is zero")
-	}
-	if result.MaxBurnRao, err = readU64("MaxBurn"); err != nil {
-		return result, fmt.Errorf("read MaxBurn: %w", err)
-	} else if result.MaxBurnRao == 0 {
-		return result, errors.New("MaxBurn is zero")
-	}
-	halfLifeKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BurnHalfLife", netuidArg(netuid))
-	if err != nil {
-		return result, err
-	}
-	var halfLife types.U16
-	if err := readRequiredStorageAt(chain, halfLifeKey, crv4.PalletName, "BurnHalfLife", &halfLife, finalized); err != nil {
-		return result, fmt.Errorf("read BurnHalfLife: %w", err)
-	} else if halfLife == 0 {
-		return result, errors.New("BurnHalfLife is zero")
-	}
-	result.BurnHalfLifeBlocks = uint16(halfLife)
-	multiplierKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BurnIncreaseMult", netuidArg(netuid))
-	if err != nil {
-		return result, err
-	}
-	var multiplier types.U128
-	if err := readRequiredStorageAt(chain, multiplierKey, crv4.PalletName, "BurnIncreaseMult", &multiplier, finalized); err != nil {
-		return result, fmt.Errorf("read BurnIncreaseMult: %w", err)
-	} else if multiplier.Int == nil || multiplier.Sign() <= 0 {
-		return result, errors.New("BurnIncreaseMult is zero")
-	}
-	result.BurnIncreaseMultQ64 = multiplier.String()
-	return result, nil
+	return snchain.ReadRegistrationEconomicsAt(chain, netuid, finalized)
 }
 
 func runtime453PruneCandidate(neurons []runtime453PruneNeuron, minimumNonImmune uint16) (uint16, error) {
@@ -742,51 +620,23 @@ var hyperShapes = map[string]hyperShape{
 	"transfer_enabled":              {Storage: "TransferToggle", Call: "sudo_set_toggle_transfer", Kind: "bool"},
 }
 
-func netuidArg(n uint16) []byte { var b [2]byte; binary.LittleEndian.PutUint16(b[:], n); return b[:] }
+func netuidArg(n uint16) []byte { return snchain.NetuidArg(n) }
 
-// Decode a runtime-declared ValueQuery fallback when no raw key exists. A
-// missing OptionalQuery remains absent; inventing a zero value there would
-// hide missing identities and subnet state.
+// Decode a runtime-declared ValueQuery fallback when no raw key exists; the
+// rule is shared with the release binaries through sn/chain.
 func decodeStorageFallback(entry types.StorageEntryMetadata, value any) (bool, error) {
-	entryV14, ok := entry.(types.StorageEntryMetadataV14)
-	if !ok {
-		return false, fmt.Errorf("runtime storage entry is not metadata v14")
-	}
-	if !entryV14.Modifier.IsDefault {
-		return false, nil
-	}
-	if err := codec.Decode(entryV14.Fallback, value); err != nil {
-		return false, fmt.Errorf("decode runtime storage fallback: %w", err)
-	}
-	return true, nil
+	return snchain.DecodeStorageFallback(entry, value)
 }
 
 // Read one finalized value with the same absent-key semantics the runtime
-// applies. GSRPC reports only raw key presence and otherwise leaves zeroes.
+// applies (sn/chain).
 func readStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, storage string, value any, blockHash types.Hash) (bool, error) {
-	present, err := chain.API.RPC.State.GetStorage(key, value, blockHash)
-	if err != nil || present {
-		return present, err
-	}
-	entry, err := chain.Meta.FindStorageEntryMetadata(pallet, storage)
-	if err != nil {
-		return false, err
-	}
-	return decodeStorageFallback(entry, value)
+	return snchain.ReadStorageAt(chain, key, pallet, storage, value, blockHash)
 }
 
-// Require a concrete value or a runtime-declared ValueQuery fallback. Owner
-// settings and activation prerequisites must never interpret absent optional
-// storage as a real zero/false value.
+// Require a concrete value or a runtime-declared ValueQuery fallback (sn/chain).
 func readRequiredStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, storage string, value any, blockHash types.Hash) error {
-	present, err := readStorageAt(chain, key, pallet, storage, value, blockHash)
-	if err != nil {
-		return err
-	}
-	if !present {
-		return fmt.Errorf("%s.%s storage is absent", pallet, storage)
-	}
-	return nil
+	return snchain.ReadRequiredStorageAt(chain, key, pallet, storage, value, blockHash)
 }
 
 const storageQueryChunkSize = 128
@@ -1739,18 +1589,11 @@ func (m *SubstrateManager) Send(ctx context.Context, planHash string, a Action, 
 }
 
 // Encode the exact metadata-driven signed transaction used by both first
-// broadcast and interrupted-funding recovery. Keeping one encoder prevents a
-// recovery verifier from drifting from the executor's wire representation.
+// broadcast and interrupted-funding recovery. The one encoder lives in
+// sn/chain so the release binaries, this executor and its recovery verifier
+// share a single wire representation.
 func encodeSignedSubstrateCall(chain *crv4.Chain, signer signature.KeyringPair, call types.Call, nonce uint32) ([]byte, error) {
-	if chain == nil || chain.Meta == nil || chain.Runtime == nil {
-		return nil, errors.New("substrate signing context is unavailable")
-	}
-	ext := extrinsic.NewExtrinsic(call)
-	err := ext.Sign(signer, chain.Meta, extrinsic.WithEra(types.ExtrinsicEra{IsImmortalEra: true}, chain.GenesisHash), extrinsic.WithNonce(types.NewUCompactFromUInt(uint64(nonce))), extrinsic.WithTip(types.NewUCompactFromUInt(0)), extrinsic.WithSpecVersion(chain.Runtime.SpecVersion), extrinsic.WithTransactionVersion(chain.Runtime.TransactionVersion), extrinsic.WithGenesisHash(chain.GenesisHash), extrinsic.WithMetadataMode(extensions.CheckMetadataModeDisabled, extensions.CheckMetadataHash{Hash: types.NewEmptyOption[types.H256]()}))
-	if err != nil {
-		return nil, err
-	}
-	return codec.Encode(ext)
+	return snchain.EncodeSignedCall(chain, signer, call, nonce)
 }
 
 func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair) (types.Hash, uint64, error) {
@@ -1859,29 +1702,15 @@ func (m *SubstrateManager) RoleSigner(roles *RoleSecrets, label string) (signatu
 
 // Build a runtime-enforced registration limit so a moving burn auction cannot
 // charge more than the approved action ceiling between observation and block.
+// The calldata rule is the shared sn/chain one used by the release binaries.
 func (m *SubstrateManager) BurnRegisterLimitCall(hotkey [32]byte, limitPrice uint64) (types.Call, error) {
-	account, err := types.NewAccountID(hotkey[:])
-	if err != nil {
-		return types.Call{}, err
-	}
-	return types.NewCall(m.chain.Meta, crv4.PalletName+".register_limit", types.NewU16(m.cfg.Netuid), *account, types.NewU64(limitPrice))
+	return snchain.BurnRegisterLimitCall(m.chain.Meta, m.cfg.Netuid, hotkey, limitPrice)
 }
 
-// Build a fill-or-kill Dynamic TAO purchase with an explicit maximum price.
+// Build a fill-or-kill Dynamic TAO purchase with an explicit maximum price
+// (sn/chain).
 func (self *SubstrateManager) AddStakeLimitCall(hotkey [32]byte, amount, limitPrice uint64, allowPartial bool) (types.Call, error) {
-	account, err := types.NewAccountID(hotkey[:])
-	if err != nil {
-		return types.Call{}, err
-	}
-	return types.NewCall(
-		self.chain.Meta,
-		crv4.PalletName+".add_stake_limit",
-		*account,
-		types.NewU16(self.cfg.Netuid),
-		types.NewU64(amount),
-		types.NewU64(limitPrice),
-		types.NewBool(allowPartial),
-	)
+	return snchain.AddStakeLimitCall(self.chain.Meta, self.cfg.Netuid, hotkey, amount, limitPrice, allowPartial)
 }
 
 // Read all activation prerequisites and results from one finalized head.

@@ -23,6 +23,7 @@ type PolicyRateSourceObservation struct {
 	PolicyHash      string `json:"policy_hash"`
 	ContentHash     string `json:"content_hash"`
 	TotalUsageBytes uint64 `json:"total_usage_bytes"`
+	TotalUsers      uint64 `json:"total_users,omitempty"`
 }
 
 // The same finalized EVM head pins the active policy, native floor and price.
@@ -42,6 +43,7 @@ type PolicyRateUsageShortfall struct {
 	NoId             uint64 `json:"no_id"`
 	Epoch            uint64 `json:"epoch"`
 	TotalUsageBytes  uint64 `json:"total_usage_bytes"`
+	TotalUsers       uint64 `json:"total_users,omitempty"`
 	MinConvictionRao uint64 `json:"min_conviction_rao"`
 	EquivalentTaoRao string `json:"equivalent_tao_rao"`
 	RequiredTaoRao   string `json:"required_tao_rao"`
@@ -63,7 +65,7 @@ type policyRateLowUsageError struct {
 // Preserve the first precise margin diagnostic, with every tier retained above.
 func (self *policyRateLowUsageError) Error() string {
 	first := self.shortfalls[0]
-	return fmt.Sprintf("operator %d complete epoch %d bytes=%d gives %s tao rao at tier %d; require twice native minimum %s", first.NoId, first.Epoch, first.TotalUsageBytes, first.EquivalentTaoRao, first.MinConvictionRao, first.RequiredTaoRao)
+	return fmt.Sprintf("operator %d complete epoch %d bytes=%d users=%d gives %s tao rao at tier %d; require twice native minimum %s", first.NoId, first.Epoch, first.TotalUsageBytes, first.TotalUsers, first.EquivalentTaoRao, first.MinConvictionRao, first.RequiredTaoRao)
 }
 
 // Require the last complete epoch under the successor policy, covering every
@@ -86,14 +88,14 @@ func validatePolicyRateReadiness(cfg *ResolvedConfig, contracts *ContractView, s
 	var shortfalls []PolicyRateUsageShortfall
 	for _, source := range sources {
 		for _, tier := range cfg.Policy.Deposit.Tiers {
-			deposit, _, err := protocol.RequiredDepositRao(source.TotalUsageBytes, new(big.Int).SetUint64(tier.MinConvictionRao), cfg.Policy.Deposit)
+			deposit, _, err := protocol.RequiredDepositRao(source.TotalUsageBytes, source.TotalUsers, new(big.Int).SetUint64(tier.MinConvictionRao), cfg.Policy.Deposit)
 			if err != nil {
 				return err
 			}
 			// Ignoring the two-rao reserve rounding allowance is conservative.
 			equivalent := new(big.Int).Quo(new(big.Int).Mul(deposit, price), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 			if equivalent.Cmp(minimum) < 0 {
-				shortfalls = append(shortfalls, PolicyRateUsageShortfall{NoId: source.NoId, Epoch: source.Epoch, TotalUsageBytes: source.TotalUsageBytes, MinConvictionRao: tier.MinConvictionRao, EquivalentTaoRao: equivalent.String(), RequiredTaoRao: minimum.String()})
+				shortfalls = append(shortfalls, PolicyRateUsageShortfall{NoId: source.NoId, Epoch: source.Epoch, TotalUsageBytes: source.TotalUsageBytes, TotalUsers: source.TotalUsers, MinConvictionRao: tier.MinConvictionRao, EquivalentTaoRao: equivalent.String(), RequiredTaoRao: minimum.String()})
 			}
 		}
 	}

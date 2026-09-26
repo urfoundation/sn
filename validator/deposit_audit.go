@@ -25,38 +25,49 @@ const (
 	DepositAuditUnavailable        = "artifact_unavailable"
 	DepositAuditInvalid            = "artifact_invalid"
 	DepositAuditEquivocation       = "artifact_equivocation"
+	// DepositAuditZeroPrice is the only status under a zero-price policy: no
+	// deposit is required or audited, so the pool is eligible from pinned chain
+	// state alone (no payout artifact is fetched) in every epoch, including the
+	// bootstrap epoch, whatever the operator voluntarily deposited.
+	DepositAuditZeroPrice = "zero_price"
+
+	DepositDispositionZeroPrice = "zero_price_no_deposit_required"
 )
 
 // DepositAudit is the exact validator evidence for one operator's demand
-// signal. Decimal strings preserve uint256 conviction/deposit values.
+// signal. Decimal strings preserve uint256 conviction/deposit values. Users
+// and the per-user rate are omitted when zero so audits made before the
+// per-user rate existed keep their exact bytes.
 type DepositAudit struct {
-	HttpObservationHash    string `json:"http_observation_hash,omitempty"`
-	NoID                   uint64 `json:"no_id"`
-	Epoch                  uint64 `json:"epoch"`
-	SourceEpoch            uint64 `json:"source_epoch"`
-	ArtifactHash           string `json:"artifact_hash,omitempty"`
-	CommittedArtifactHash  string `json:"committed_artifact_hash,omitempty"`
-	PayoutRoot             string `json:"payout_root,omitempty"`
-	ArtifactSigner         string `json:"artifact_signer,omitempty"`
-	RootCommitter          string `json:"root_committer,omitempty"`
-	RootSigner             string `json:"root_signer,omitempty"`
-	SourceStartBlock       uint64 `json:"source_start_block,omitempty"`
-	SourceStartHash        string `json:"source_start_hash,omitempty"`
-	SourceEndBlock         uint64 `json:"source_end_block,omitempty"`
-	SourceEndHash          string `json:"source_end_hash,omitempty"`
-	RootCommitBlock        uint64 `json:"root_commit_block,omitempty"`
-	ObservedAtBlock        uint64 `json:"observed_at_block"`
-	ArtifactDeadlineBlock  uint64 `json:"artifact_deadline_block"`
-	UsageBytes             uint64 `json:"usage_bytes"`
-	ConvictionBeforeRao    string `json:"conviction_before_rao"`
-	RateNumeratorRaoPerGiB uint64 `json:"rate_numerator_rao_per_gib"`
-	RateDenominator        uint64 `json:"rate_denominator"`
-	RequiredDepositRao     string `json:"required_deposit_rao"`
-	ObservedDepositRao     string `json:"observed_deposit_rao"`
-	Status                 string `json:"status"`
-	Compliant              bool   `json:"compliant"`
-	Disposition            string `json:"disposition"`
-	Error                  string `json:"error,omitempty"`
+	HttpObservationHash     string `json:"http_observation_hash,omitempty"`
+	NoID                    uint64 `json:"no_id"`
+	Epoch                   uint64 `json:"epoch"`
+	SourceEpoch             uint64 `json:"source_epoch"`
+	ArtifactHash            string `json:"artifact_hash,omitempty"`
+	CommittedArtifactHash   string `json:"committed_artifact_hash,omitempty"`
+	PayoutRoot              string `json:"payout_root,omitempty"`
+	ArtifactSigner          string `json:"artifact_signer,omitempty"`
+	RootCommitter           string `json:"root_committer,omitempty"`
+	RootSigner              string `json:"root_signer,omitempty"`
+	SourceStartBlock        uint64 `json:"source_start_block,omitempty"`
+	SourceStartHash         string `json:"source_start_hash,omitempty"`
+	SourceEndBlock          uint64 `json:"source_end_block,omitempty"`
+	SourceEndHash           string `json:"source_end_hash,omitempty"`
+	RootCommitBlock         uint64 `json:"root_commit_block,omitempty"`
+	ObservedAtBlock         uint64 `json:"observed_at_block"`
+	ArtifactDeadlineBlock   uint64 `json:"artifact_deadline_block"`
+	UsageBytes              uint64 `json:"usage_bytes"`
+	Users                   uint64 `json:"users,omitempty"`
+	ConvictionBeforeRao     string `json:"conviction_before_rao"`
+	RateNumeratorRaoPerGiB  uint64 `json:"rate_numerator_rao_per_gib"`
+	RateNumeratorRaoPerUser uint64 `json:"rate_numerator_rao_per_user,omitempty"`
+	RateDenominator         uint64 `json:"rate_denominator"`
+	RequiredDepositRao      string `json:"required_deposit_rao"`
+	ObservedDepositRao      string `json:"observed_deposit_rao"`
+	Status                  string `json:"status"`
+	Compliant               bool   `json:"compliant"`
+	Disposition             string `json:"disposition"`
+	Error                   string `json:"error,omitempty"`
 }
 
 // DepositArtifactExpectation pins every artifact field that does not come from
@@ -105,6 +116,28 @@ func FailedDepositAudit(epoch, sourceEpoch, noID uint64, observed, conviction *b
 		audit.Error = failure.Error()
 	}
 	return audit
+}
+
+// ZeroPriceDepositAudit is the audit every active operator receives while the
+// policy's published price is zero: required deposit 0, pool weight eligible,
+// the observed deposit and conviction recorded but not judged. sourceEpoch is
+// the usage epoch the policy lag points at (0 in the bootstrap epoch), which
+// keeps the audit reproducible from pinned chain state by any replay.
+func ZeroPriceDepositAudit(epoch, sourceEpoch, noID uint64, observed, conviction *big.Int) DepositAudit {
+	audit := baseDepositAudit(epoch, sourceEpoch, noID, observed, conviction)
+	audit.Status = DepositAuditZeroPrice
+	audit.Compliant = true
+	audit.Disposition = DepositDispositionZeroPrice
+	return audit
+}
+
+// depositAuditSourceEpoch is the usage epoch a deposit audit for epoch refers
+// to under the policy lag, or 0 in the bootstrap epochs before one exists.
+func depositAuditSourceEpoch(epoch uint64, policy protocol.DepositPolicy) uint64 {
+	if epoch < policy.UsageLagEpochs {
+		return 0
+	}
+	return epoch - policy.UsageLagEpochs
 }
 
 // EvaluateDepositArtifact reconstructs and validates an operator statement,
@@ -157,13 +190,15 @@ func EvaluateDepositArtifact(
 		audit.Error = "payout artifact does not match its on-chain root commitment"
 		return audit
 	}
-	required, tier, err := protocol.RequiredDepositRao(artifact.TotalUsageBytes, convictionBefore, depositPolicy)
+	required, tier, err := protocol.RequiredDepositRao(artifact.TotalUsageBytes, artifact.TotalUsers, convictionBefore, depositPolicy)
 	if err != nil {
 		audit.Error = fmt.Sprintf("canonical deposit formula: %v", err)
 		return audit
 	}
 	audit.UsageBytes = artifact.TotalUsageBytes
+	audit.Users = artifact.TotalUsers
 	audit.RateNumeratorRaoPerGiB = tier.RateNumeratorRaoPerGiB
+	audit.RateNumeratorRaoPerUser = tier.RateNumeratorRaoPerUser
 	audit.RateDenominator = tier.RateDenominator
 	audit.RequiredDepositRao = required.String()
 	if observedDeposit.Cmp(required) != 0 {

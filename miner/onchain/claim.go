@@ -11,6 +11,21 @@ import (
 	docopt "github.com/docopt/docopt-go"
 )
 
+// parseChainAndGas parses the shared optional --chain_id and --gas_limit flags.
+func parseChainAndGas(opts docopt.Opts) (wantChainID *big.Int, gasLimit uint64, err error) {
+	if s := strOpt(opts, "--chain_id"); s != "" {
+		if wantChainID, err = parseBig("--chain_id", s); err != nil {
+			return nil, 0, err
+		}
+	}
+	if s := strOpt(opts, "--gas_limit"); s != "" {
+		if gasLimit, err = strconv.ParseUint(s, 0, 64); err != nil {
+			return nil, 0, fmt.Errorf("--gas_limit: %w", err)
+		}
+	}
+	return wantChainID, gasLimit, nil
+}
+
 // cmdSubmit implements `snclaim submit`, in either raw-calldata mode
 // (--calldata from `provider claim`, sent byte-for-byte) or structured mode
 // (--epoch/--no_id/--coldkey/--share_bps/--proof packed via stabi).
@@ -24,19 +39,9 @@ func cmdSubmit(opts docopt.Opts) error {
 		return fmt.Errorf("--rpc: at least one endpoint required")
 	}
 
-	var wantChainID *big.Int
-	if s := strOpt(opts, "--chain_id"); s != "" {
-		wantChainID, err = parseBig("--chain_id", s)
-		if err != nil {
-			return err
-		}
-	}
-	var gasLimit uint64
-	if s := strOpt(opts, "--gas_limit"); s != "" {
-		gasLimit, err = strconv.ParseUint(s, 0, 64)
-		if err != nil {
-			return fmt.Errorf("--gas_limit: %w", err)
-		}
+	wantChainID, gasLimit, err := parseChainAndGas(opts)
+	if err != nil {
+		return err
 	}
 
 	// Build or validate the calldata.
@@ -176,7 +181,7 @@ func cmdStatus(opts docopt.Opts) error {
 		return fmt.Errorf("entitlement(%s,%s): %w", e, noID, err)
 	}
 
-	fmt.Printf("STSubnet claim status — contract %s (chain id %s, rpc %s)\n", contract.Hex(), chainID, rpcURL)
+	fmt.Printf("settlement-vault claim status — vault %s (chain id %s, rpc %s)\n", contract.Hex(), chainID, rpcURL)
 	status := entitlement.Status
 	fmt.Printf("  epoch:        %s (vault status %d; 2 = finalized/claimable)\n", e, status)
 	fmt.Printf("  pool (noId):  %s\n", noID)
@@ -195,11 +200,11 @@ func cmdStatus(opts docopt.Opts) error {
 		key := leafClaimKey(noID, *coldkey)
 		ret, err := ethCall(ctx, client, contract, stSettlementVault.PackLeafClaimed(e, key))
 		if err != nil {
-			return fmt.Errorf("minerClaimedBy(%s,0x%x): %w", e, key, err)
+			return fmt.Errorf("leafClaimed(%s,0x%x): %w", e, key, err)
 		}
 		done, err := stSettlementVault.UnpackLeafClaimed(ret)
 		if err != nil {
-			return fmt.Errorf("minerClaimedBy(%s,0x%x): %w", e, key, err)
+			return fmt.Errorf("leafClaimed(%s,0x%x): %w", e, key, err)
 		}
 		fmt.Printf("  coldkey:      %s\n", renderColdkey(*coldkey))
 		if done {

@@ -1,6 +1,6 @@
 # UR Subnet
 
-**A Bittensor subnet for a decentralized privacy network.**
+**Bittensor SN25 (netuid 25): a subnet for a decentralized privacy network.**
 
 This repository (`sn`) is the reference implementation of the UR Subnet — the EVM
 contract suite, miner and validator software, chain tooling, and the real-testnet
@@ -27,13 +27,17 @@ the rest of the Bittensor field is in [`COMPARISON.md`](COMPARISON.md).
 Money flows in three coupled channels, all in α:
 
 1. **Deposits — the demand signal, conviction stake, and a buyback.** Each NO deposits α
-   through the coordinator, sized to its real usage at an **off‑chain published rate**
-   (no on‑chain oracle). Deposits are the costly signal of real demand — and they are
+   through the coordinator, sized to its real usage — bytes **and** distinct users, from its
+   signed payout artifact — at an **off‑chain published rate** (no on‑chain oracle). Deposits
+   are the costly signal of real demand — and they are
    **never distributed**: every exact deposit is transferred into the immutable
    `STReserveSink` and staked on the fixed reserve hotkey (compounding dividends, with
    no outbound bytecode). A NO's cumulative locked α (its **conviction**) sets its **tier → rate**:
    zero conviction pays the baseline rate; more conviction lowers it — the onboarding and
-   alignment lever.
+   alignment lever. While the published price is zero (the launch mode, declared explicitly
+   in the signed policy as `zero_rate_action: equal_demand`) no deposits are required or
+   audited and every pool carries the same implied demand, so measured quality alone steers
+   the pool channel.
 
 2. **Emission (Yuma Consensus).** The Bittensor coinbase pays the standard
    **18% owner / 41% miner / 41% validator** α split. Each tempo (~72 min), independent
@@ -53,7 +57,9 @@ miner side runs two tiers inside **one** mechanism, divided by a governance shar
 
 - **Pool tier (tail, `1−θ`)** — the **on‑ramp**. Each NO is a single vault‑owned
   **pool UID**; validators weight it `implied_usage × quality` (implied usage = the NO's
-  deposit ÷ its tier rate). Its providers are *not* UIDs — they are paid *inside* the pool
+  audited usage — bytes and users from its signed payout artifact — priced at the baseline
+  rate; exactly 1 for every pool while the published price is zero). Its providers are *not*
+  UIDs — they are paid *inside* the pool
   by **Merkle claim**. Low provider barrier (join a NO; the provider needs no UID or burn because the
   immutable vault owns one shared, burn-registered pool UID per NO), baseline reward.
 - **Top‑level miners (head, `θ`)** — the **supply apex**. The **top ~200 fleets by
@@ -112,16 +118,20 @@ providers. It directs the split; the immutable vault holds and pays.
 ### Register a provider (ingress or egress)
 
 Follow the provider documentation at <https://ur.xyz>. Providers work with network
-operators — the default list of operators in the code is a good place to start, and you can
-add more with `-no <domain>` (repeatable) or `-nofile <path>` (one operator domain per line).
+operators — the miner defaults to the reference operator, and you can point it at another
+operator with `provider choose_network <api_url> <connect_url>` (`--show` prints the network in
+effect, `--reset` returns to the default).
 
 Providers register a `client_id` with the subnet, and are paid *inside* their NO's pool by
-**Merkle claim** against that NO's payout root. A provider whose **routable‑IP breadth**
-ranks among the network's **top ~200 fleets** can claim its own **top‑level miner UID** and
-be paid **directly** by validator emission steering — no pool, no operator in the payout
-path. It links its `client_id`s to its wallet/hotkey with a **dual‑signed binding** so
-validators can attribute its measured breadth to that slot. See
-[`WHITEPAPER.md`](WHITEPAPER.md) §8.4 and §11.4.
+**Merkle claim** against that NO's payout root (`provider claim`, or `snclaim submit` for an
+air‑gapped key). A provider whose **routable‑IP breadth** ranks among the network's
+**top ~200 fleets** can claim its own **top‑level miner UID** and be paid **directly** by
+validator emission steering — no pool, no operator in the payout path. The fleet registers
+that UID itself (`provider fleet register`: a burned `register_limit` signed by the fleet
+coldkey, dry run until `--apply`), publishes its manifest commitment (`provider fleet
+publish`) and links its `client_id`s to the hotkey with a **dual‑signed binding**
+(`provider fleet bind`) so validators can attribute its measured breadth to that slot. See
+[`WHITEPAPER.md`](WHITEPAPER.md) §8.4, §11.4 and §16.1.
 
 ### Register a validator
 
@@ -131,6 +141,14 @@ breadth), and each tempo score **both** miner tiers under commit‑reveal — th
 `implied_usage × quality` and the head by routable‑IP breadth. Validators earn
 Bittensor‑native **dividends** (∝ stake × scoring accuracy) — v1's only validator reward.
 No NO owns a validator; the set is permissionless and Bittensor‑native.
+
+The `validator` binary carries the whole bootstrap: `validator init` creates the hotkey and
+per‑operator client key seeds, `validator register` and `validator stake add` sign
+`register_limit` / `add_stake` with a coldkey seed file against the runtime the release
+configuration pins (dry runs until `--apply`, every extrinsic journaled), `validator
+activate` renders and publishes the `evidence_v2` activation inputs, and `validator status
+--config` shows the UID, permit, stake and activation state. Only the coldkey wallet itself
+and TAO transfers stay with `btcli`.
 
 The epoch lifecycle (a *block* is the 7‑day settlement epoch, ≈ 50 400 chain blocks):
 
@@ -166,7 +184,7 @@ the finite UID budget and undermine the intended ~200-member head.
 | `validator/` | The validator binary. |
 | `miner/`, `cli/` | Release miner/operator tooling. |
 | `stctl/` | Explicitly quarantined pre-1.0 monolith diagnostic; not a release write path. |
-| `crv4/`, `merkle/`, `ss58/`, `stabi/` | Supporting libraries (commit‑reveal v4, Merkle trees, address encoding, contract bindings). |
+| `chain/`, `crv4/`, `merkle/`, `ss58/`, `stabi/` | Supporting libraries (native registration/staking toolkit shared with the harness, commit‑reveal v4, Merkle trees, address encoding, contract bindings). |
 | `sim-testnet/` | Spend-capped Go harness for testnet setup, launch, scenarios, evidence, and analysis. |
 
 The release workspace also requires sibling `server` and `operator-proxy`

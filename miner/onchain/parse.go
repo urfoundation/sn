@@ -19,7 +19,7 @@ import (
 )
 
 // claimSelector is the release-1.0 immutable-vault claim selector:
-// claim(uint256,uint256,bytes32,uint256,bytes32[]).
+// claim(uint256,uint256,bytes32,uint256,bytes32[]) = 0xce479a1b.
 var claimSelector = func() [4]byte {
 	data := stSettlementVault.PackClaim(big.NewInt(0), big.NewInt(0), [32]byte{}, big.NewInt(0), nil)
 	var out [4]byte
@@ -35,17 +35,14 @@ const raoPerAlpha = 1_000_000_000
 var stSettlementVault = stabi.NewSTSettlementVault()
 var stCoordinator = stabi.NewSTCoordinator()
 
-// legacySTSubnet remains only for decoding an explicitly legacy command. New
-// release configuration and the sim-testnet harness never select it.
-var legacySTSubnet = stabi.NewSTSubnet()
-
 // parsedABI lazily parses the embedded settlement-vault ABI (for raw-calldata
 // decoding and custom-error rendering).
 var parsedABI = sync.OnceValues(func() (*abi.ABI, error) {
 	return stabi.STSettlementVaultMetaData.ParseABI()
 })
 
-// claimIntent is a decoded claimMiner(e, noId, coldkey, shareBps, proof) call.
+// claimIntent is a decoded STSettlementVault.claim(e, noId, coldkey, shareBps,
+// proof) call.
 type claimIntent struct {
 	E        *big.Int
 	NoID     *big.Int
@@ -60,9 +57,9 @@ func buildClaimCalldata(in *claimIntent) ([]byte, error) {
 }
 
 // parseClaimCalldata validates user-supplied raw calldata: even-length hex,
-// at least a selector, and the selector must be claimMiner — anything else is
-// rejected (no --force escape hatch yet). The returned bytes are exactly the
-// input bytes; the decoded intent is for display only.
+// at least a selector, and the selector must be the settlement vault's claim —
+// anything else is rejected (no --force escape hatch). The returned bytes are
+// exactly the input bytes; the decoded intent is for display only.
 func parseClaimCalldata(s string) ([]byte, *claimIntent, error) {
 	h := strings.TrimSpace(s)
 	h = strings.TrimPrefix(strings.TrimPrefix(h, "0x"), "0X")
@@ -87,7 +84,8 @@ func parseClaimCalldata(s string) ([]byte, *claimIntent, error) {
 	return data, intent, nil
 }
 
-// decodeClaimCalldata decodes claimMiner calldata into its arguments.
+// decodeClaimCalldata decodes settlement-vault claim calldata into its
+// arguments.
 func decodeClaimCalldata(data []byte) (*claimIntent, error) {
 	pabi, err := parsedABI()
 	if err != nil {
@@ -152,79 +150,6 @@ func parseColdkey(s string) ([32]byte, error) {
 		return ck, errors.New("coldkey: zero coldkey is not claimable")
 	}
 	return ck, nil
-}
-
-// parseHotkey accepts a 32-byte head-tier hotkey as an ss58 address (Bittensor
-// network prefix 42) or a 32-byte hex account id (0x-optional). The zero hotkey
-// is rejected (the contract requires hotkey != 0).
-func parseHotkey(s string) ([32]byte, error) {
-	var hk [32]byte
-	v := strings.TrimSpace(s)
-	if v == "" {
-		return hk, errors.New("--hotkey: empty")
-	}
-	hexish := strings.HasPrefix(v, "0x") || strings.HasPrefix(v, "0X")
-	if !hexish && len(v) == 64 {
-		if _, err := hex.DecodeString(v); err == nil {
-			hexish = true // bare hex32; cannot be ss58 (wrong decoded length)
-		}
-	}
-	if hexish {
-		h := strings.TrimPrefix(strings.TrimPrefix(v, "0x"), "0X")
-		b, err := hex.DecodeString(h)
-		if err != nil {
-			return hk, fmt.Errorf("--hotkey: %w", err)
-		}
-		if len(b) != 32 {
-			return hk, fmt.Errorf("--hotkey: %d hex bytes, want 32", len(b))
-		}
-		copy(hk[:], b)
-	} else {
-		pk, err := ss58.DecodeWithPrefix(v, ss58.BittensorPrefix)
-		if err != nil {
-			return hk, fmt.Errorf("--hotkey: %w", err)
-		}
-		hk = pk
-	}
-	if hk == ([32]byte{}) {
-		return hk, errors.New("--hotkey: zero hotkey")
-	}
-	return hk, nil
-}
-
-// parseHex32 parses a 0x-optional 32-byte hex value (e.g. --client_id, the
-// provider's client Ed25519 public key). The zero value is rejected (the
-// contract requires clientId != 0).
-func parseHex32(flag, s string) ([32]byte, error) {
-	var out [32]byte
-	h := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(s), "0x"), "0X")
-	b, err := hex.DecodeString(h)
-	if err != nil {
-		return out, fmt.Errorf("%s: %w", flag, err)
-	}
-	if len(b) != 32 {
-		return out, fmt.Errorf("%s: %d hex bytes, want 32", flag, len(b))
-	}
-	copy(out[:], b)
-	if out == ([32]byte{}) {
-		return out, fmt.Errorf("%s: zero key", flag)
-	}
-	return out, nil
-}
-
-// parseSig parses the 0x-optional 64-byte Ed25519 client_id signature (R‖S) as
-// printed by `provider bind-head`. The contract splits it r=sig[0:32],
-// s=sig[32:64] for the 0x402 precompile, so 64 bytes are required exactly.
-func parseSig(s string) ([]byte, error) {
-	h := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(s), "0x"), "0X")
-	b, err := hex.DecodeString(h)
-	if err != nil {
-		return nil, fmt.Errorf("--sig: %w", err)
-	}
-	if len(b) != 64 {
-		return nil, fmt.Errorf("--sig: %d bytes, want 64 (Ed25519 R‖S)", len(b))
-	}
-	return b, nil
 }
 
 // parseProof parses a comma-separated list of 32-byte hex Merkle nodes.

@@ -312,41 +312,43 @@ type finalValidatorViewTransitionArtifact struct {
 }
 
 type FinalPoolWeightEvidence struct {
-	NoID                   uint64               `json:"no_id"`
-	UID                    uint16               `json:"uid"`
-	SourceEpoch            uint64               `json:"source_epoch"`
-	UsageBytes             uint64               `json:"usage_bytes"`
-	ConvictionBeforeRao    string               `json:"conviction_before_rao"`
-	RateNumeratorRaoPerGiB uint64               `json:"rate_numerator_rao_per_gib"`
-	RateDenominator        uint64               `json:"rate_denominator"`
-	EpochDepositCapRao     string               `json:"epoch_deposit_cap_rao"`
-	RequiredDepositRao     string               `json:"required_deposit_rao"`
-	ObservedDepositRao     string               `json:"observed_deposit_rao"`
-	QualityPPM             uint32               `json:"quality_ppm"`
-	QualityFactor          FinalRational        `json:"q"`
-	ImpliedUsageGiB        FinalRational        `json:"implied_usage_gib"`
-	RawScore               FinalRational        `json:"raw_score"`
-	Formula                string               `json:"formula"`
-	AuditStatus            string               `json:"audit_status"`
-	AuditCompliant         bool                 `json:"audit_compliant"`
-	AuditDisposition       string               `json:"audit_disposition"`
-	AuditError             string               `json:"audit_error,omitempty"`
-	ArtifactContentHash    string               `json:"artifact_content_hash"`
-	ArtifactHash           string               `json:"artifact_hash"`
-	PayoutRoot             string               `json:"payout_root"`
-	ArtifactSigner         string               `json:"artifact_signer"`
-	RootCommitter          string               `json:"root_committer"`
-	RootSigner             string               `json:"root_signer"`
-	SourceStartBlock       uint64               `json:"source_start_block"`
-	SourceStartHash        string               `json:"source_start_hash"`
-	SourceEndBlock         uint64               `json:"source_end_block"`
-	SourceEndHash          string               `json:"source_end_hash"`
-	RootCommitBlock        uint64               `json:"root_commit_block"`
-	ObservedAtBlock        uint64               `json:"observed_at_block"`
-	ArtifactDeadlineBlock  uint64               `json:"artifact_deadline_block"`
-	PayoutArtifact         FinalArtifactLocator `json:"payout_artifact"`
-	DepositReceipt         FinalEVMReceipt      `json:"deposit_receipt"`
-	AppliedWeight          uint16               `json:"applied_weight"`
+	NoID                    uint64               `json:"no_id"`
+	UID                     uint16               `json:"uid"`
+	SourceEpoch             uint64               `json:"source_epoch"`
+	UsageBytes              uint64               `json:"usage_bytes"`
+	Users                   uint64               `json:"users,omitempty"`
+	ConvictionBeforeRao     string               `json:"conviction_before_rao"`
+	RateNumeratorRaoPerGiB  uint64               `json:"rate_numerator_rao_per_gib"`
+	RateNumeratorRaoPerUser uint64               `json:"rate_numerator_rao_per_user,omitempty"`
+	RateDenominator         uint64               `json:"rate_denominator"`
+	EpochDepositCapRao      string               `json:"epoch_deposit_cap_rao"`
+	RequiredDepositRao      string               `json:"required_deposit_rao"`
+	ObservedDepositRao      string               `json:"observed_deposit_rao"`
+	QualityPPM              uint32               `json:"quality_ppm"`
+	QualityFactor           FinalRational        `json:"q"`
+	ImpliedUsageGiB         FinalRational        `json:"implied_usage_gib"`
+	RawScore                FinalRational        `json:"raw_score"`
+	Formula                 string               `json:"formula"`
+	AuditStatus             string               `json:"audit_status"`
+	AuditCompliant          bool                 `json:"audit_compliant"`
+	AuditDisposition        string               `json:"audit_disposition"`
+	AuditError              string               `json:"audit_error,omitempty"`
+	ArtifactContentHash     string               `json:"artifact_content_hash"`
+	ArtifactHash            string               `json:"artifact_hash"`
+	PayoutRoot              string               `json:"payout_root"`
+	ArtifactSigner          string               `json:"artifact_signer"`
+	RootCommitter           string               `json:"root_committer"`
+	RootSigner              string               `json:"root_signer"`
+	SourceStartBlock        uint64               `json:"source_start_block"`
+	SourceStartHash         string               `json:"source_start_hash"`
+	SourceEndBlock          uint64               `json:"source_end_block"`
+	SourceEndHash           string               `json:"source_end_hash"`
+	RootCommitBlock         uint64               `json:"root_commit_block"`
+	ObservedAtBlock         uint64               `json:"observed_at_block"`
+	ArtifactDeadlineBlock   uint64               `json:"artifact_deadline_block"`
+	PayoutArtifact          FinalArtifactLocator `json:"payout_artifact"`
+	DepositReceipt          FinalEVMReceipt      `json:"deposit_receipt"`
+	AppliedWeight           uint16               `json:"applied_weight"`
 }
 
 type FinalSubmittedWeight struct {
@@ -3351,7 +3353,7 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 			}
 			for _, pool := range cycle.Pools {
 				uses = append(uses, finalSemanticArtifactUse{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{
-					NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes,
+					NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes, Users: pool.Users,
 					PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash,
 					SourceStartBlock: pool.SourceStartBlock, SourceStartHash: pool.SourceStartHash,
 					SourceEndBlock: pool.SourceEndBlock, SourceEndHash: pool.SourceEndHash,
@@ -3374,7 +3376,7 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 				}
 				for _, pool := range cycle.Pools {
 					uses = append(uses, finalSemanticArtifactUse{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{
-						NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes,
+						NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes, Users: pool.Users,
 						PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash,
 						SourceStartBlock: pool.SourceStartBlock, SourceStartHash: pool.SourceStartHash,
 						SourceEndBlock: pool.SourceEndBlock, SourceEndHash: pool.SourceEndHash,
@@ -4734,8 +4736,8 @@ func finalDepositAuditFromPool(settlementEpoch uint64, pool *FinalPoolWeightEvid
 		SourceStartBlock: pool.SourceStartBlock, SourceStartHash: pool.SourceStartHash,
 		SourceEndBlock: pool.SourceEndBlock, SourceEndHash: pool.SourceEndHash,
 		RootCommitBlock: pool.RootCommitBlock, ObservedAtBlock: pool.ObservedAtBlock, ArtifactDeadlineBlock: pool.ArtifactDeadlineBlock,
-		UsageBytes: pool.UsageBytes, ConvictionBeforeRao: pool.ConvictionBeforeRao,
-		RateNumeratorRaoPerGiB: pool.RateNumeratorRaoPerGiB, RateDenominator: pool.RateDenominator,
+		UsageBytes: pool.UsageBytes, Users: pool.Users, ConvictionBeforeRao: pool.ConvictionBeforeRao,
+		RateNumeratorRaoPerGiB: pool.RateNumeratorRaoPerGiB, RateNumeratorRaoPerUser: pool.RateNumeratorRaoPerUser, RateDenominator: pool.RateDenominator,
 		RequiredDepositRao: pool.RequiredDepositRao, ObservedDepositRao: pool.ObservedDepositRao,
 		Status: pool.AuditStatus, Compliant: pool.AuditCompliant, Disposition: pool.AuditDisposition, Error: pool.AuditError,
 	}
@@ -4872,6 +4874,7 @@ type finalPayoutArtifactExpectation struct {
 	NoID             uint64
 	Epoch            uint64
 	UsageBytes       uint64
+	Users            uint64
 	PayoutRoot       string
 	ArtifactHash     string
 	SourceStartBlock uint64
@@ -5170,7 +5173,7 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 	if !strings.EqualFold("0x"+strings.TrimPrefix(artifact.ContentHash, "sha256:"), expected.ArtifactHash) {
 		return fmt.Errorf("payout artifact content hash %s is not the committed artifact hash %s for epoch %d operator %d", artifact.ContentHash, expected.ArtifactHash, expected.Epoch, expected.NoID)
 	}
-	if expected.UsageBytes != 0 && artifact.TotalUsageBytes != expected.UsageBytes {
+	if (expected.UsageBytes != 0 && artifact.TotalUsageBytes != expected.UsageBytes) || (expected.Users != 0 && artifact.TotalUsers != expected.Users) {
 		return errors.New("payout artifact usage does not match deposit audit")
 	}
 	if expected.PayoutRoot != "" && !strings.EqualFold("0x"+hex.EncodeToString(artifact.PayoutRoot[:]), expected.PayoutRoot) {
@@ -5484,8 +5487,8 @@ func verifyFinalPolicyInputs(evidence *FinalSemanticEvidence, policy *protocol.P
 				if err != nil {
 					return err
 				}
-				amount, tier, err := protocol.RequiredDepositRao(pool.UsageBytes, conviction, policy.Deposit)
-				if err != nil || amount.String() != pool.RequiredDepositRao || tier.RateNumeratorRaoPerGiB != pool.RateNumeratorRaoPerGiB || tier.RateDenominator != pool.RateDenominator || strconv.FormatUint(policy.Deposit.EpochCapRaoPerOperator, 10) != pool.EpochDepositCapRao {
+				amount, tier, err := protocol.RequiredDepositRao(pool.UsageBytes, pool.Users, conviction, policy.Deposit)
+				if err != nil || amount.String() != pool.RequiredDepositRao || tier.RateNumeratorRaoPerGiB != pool.RateNumeratorRaoPerGiB || tier.RateNumeratorRaoPerUser != pool.RateNumeratorRaoPerUser || tier.RateDenominator != pool.RateDenominator || strconv.FormatUint(policy.Deposit.EpochCapRaoPerOperator, 10) != pool.EpochDepositCapRao {
 					return fmt.Errorf("validator %d epoch %d pool %d deposit inputs do not match canonical policy", validator.ValidatorID, cycle.SettlementEpoch, pool.NoID)
 				}
 			}

@@ -1,6 +1,6 @@
 # UR Subnet vs. the Bittensor field — a macro design comparison
 
-**What this is.** A neutral, first-principles comparison of the UR Subnet design (this repo's
+**What this is.** A neutral, first-principles comparison of the UR Subnet (Bittensor SN25, netuid 25) design (this repo's
 `WHITEPAPER.md` / `seed/INCENTIVES.md` / `VALIDATOR.md`) against ~12 well-respected or instructive Bittensor
 subnets, at the level of **macro mechanism-design themes** — not implementation detail. The goal is to
 see **where we follow Bittensor best practice** and **where we diverge in direction**. Divergence here is

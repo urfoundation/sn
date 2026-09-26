@@ -1,6 +1,6 @@
 # Adversarial review findings (2026-07-02)
 
-Two read-only adversarial reviews run during the parallel build. **Contract fixes are
+Two read-only adversarial reviews of the UR subnet (Bittensor SN25, netuid 25) implementation run during the parallel build. **Contract fixes are
 deferred to a consolidated fix round** because they change the ABI → force `sn/stabi`
 regen → rebuild of every binder (stctl, snclaim, server st_controller, validator). Do the
 fix round only after the validator + server-chain agents land, then regen stabi and rebuild.

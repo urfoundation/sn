@@ -347,6 +347,23 @@ func (self ReleaseEvidenceV2OperatorConfig) Files() []ReleaseEvidenceV2File {
 	return []ReleaseEvidenceV2File{self.Activation, self.VPKSignature, self.HotkeySignature, self.Context, self.History}
 }
 
+// ErrReleaseEvidenceV2ActivationPending names a production configuration whose
+// evidence_v2 operator entries carry no rendered references yet. Only the
+// activation flow (`validator activate`, or `validator run` completing an
+// already published activation) may turn such an entry into an accepted one.
+var ErrReleaseEvidenceV2ActivationPending = errors.New("evidence_v2 activation inputs are not rendered for every operator; run `validator activate --config=<path>`")
+
+// Unrendered reports an entry that names only its no_id and, optionally, the
+// paths it wants: no byte length and no digest has been pinned for any role.
+func (self ReleaseEvidenceV2OperatorConfig) Unrendered() bool {
+	for _, file := range self.Files() {
+		if file.Bytes != 0 || file.SHA256 != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // This is a content reference check only; callers still authenticate decoded
 // activation, both signatures, historical eligibility and inclusion/finality.
 func (self ReleaseEvidenceV2File) Validate(maxBytes uint64) error {
@@ -367,6 +384,17 @@ func (self ReleaseEvidenceV2File) Validate(maxBytes uint64) error {
 // roots may descend from the coordinator, but scratch and reference inputs may
 // not overlap any durable root, credential, each other or another operator.
 func (self ReleaseEvidenceV2Config) Validate(operators []OperatorConfig, coordinator, hotkey string) error {
+	return self.validate(operators, coordinator, hotkey, false)
+}
+
+// ValidatePreActivation applies every rule of Validate except that an
+// operator entry may still be unrendered. Named paths and scratch roots of an
+// unrendered entry keep the full overlap and ownership checks.
+func (self ReleaseEvidenceV2Config) ValidatePreActivation(operators []OperatorConfig, coordinator, hotkey string) error {
+	return self.validate(operators, coordinator, hotkey, true)
+}
+
+func (self ReleaseEvidenceV2Config) validate(operators []OperatorConfig, coordinator, hotkey string, allowUnrendered bool) error {
 	if self.Schema != ReleaseEvidenceV2ConfigSchema {
 		return errors.New("production requires explicit evidence_v2 configuration")
 	}
@@ -443,6 +471,30 @@ func (self ReleaseEvidenceV2Config) Validate(operators []OperatorConfig, coordin
 			return errors.New("evidence_v2 operator census must be exact, unique and sorted")
 		}
 		priorNO = operator.NoID
+		if operator.Unrendered() {
+			if !allowUnrendered {
+				return ErrReleaseEvidenceV2ActivationPending
+			}
+			// Paths and scratch roots an operator pre-declares are checked for
+			// shape, privacy and overlap exactly as rendered ones would be.
+			for _, file := range operator.Files() {
+				if file.Path != "" {
+					if err := ValidateReleaseEvidenceV2Path(file.Path); err != nil {
+						return err
+					}
+					owned = append(owned, file.Path)
+				}
+			}
+			for _, path := range []string{operator.ReplayScratchRoot, operator.SealScratchRoot} {
+				if path != "" {
+					if err := validateReleaseEvidenceV2Directory(path); err != nil {
+						return err
+					}
+					owned = append(owned, path)
+				}
+			}
+			continue
+		}
 		if operator.Activation.Bytes != uint64(protocol.ValidatorEvidenceActivationPayloadSize) || operator.VPKSignature.Bytes != 64 || operator.HotkeySignature.Bytes != 64 {
 			return errors.New("evidence_v2 activation or signature reference has the wrong exact width")
 		}

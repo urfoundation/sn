@@ -74,7 +74,7 @@ Usage:
     provider provide [--port=<port>]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
-        [--wallet=<coldkey_ss58>]
+        [--wallet=<coldkey_ss58> [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
         [-v...]
@@ -82,11 +82,14 @@ Usage:
     	[--port=<port>]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
-        [--wallet=<coldkey_ss58>]
+        [--wallet=<coldkey_ss58> [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
         [-v...]
-    provider wallet set <coldkey_ss58>
+    provider wallet set <coldkey_ss58> [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
+        [--api_url=<api_url>]
+        [-v...]
+    provider wallet challenge <coldkey_ss58>
         [--api_url=<api_url>]
         [-v...]
     provider claim [--epoch=<epoch>] [--rpc=<rpc_url>]... [--key_file=<key_file>] [--dry-run]
@@ -95,6 +98,10 @@ Usage:
     provider claim-daemon --config=<path>
         [-v...]
     provider fleet manifest --manifest=<path>
+        [-v...]
+    provider fleet register --manifest=<path> --hotkey_seed_file=<path> --coldkey_seed_file=<path> --substrate=<ws_url>...
+        [--burn_limit_rao=<n>] [--fee_limit_rao=<n>] [--apply | --dry-run]
+        [--provisional-runtime-compatibility=<profile> --runtime-observation-dir=<path>]
         [-v...]
     provider fleet publish --manifest=<path> --substrate=<ws_url>... --hotkey_seed_file=<path>
         [--provisional-runtime-compatibility=<profile> --runtime-observation-dir=<path>]
@@ -135,6 +142,25 @@ Options:
     --max-memory=<mem>               Set the maximum amount of memory in bytes, or the suffixes b, kib, mib, gib may be used [This is a soft limit].
     --wallet=<coldkey_ss58>          Also set the subnet claim wallet at startup, same as provider wallet set.
                                      A failure is logged and does not block providing.
+    --coldkey_seed_file=<path>       With --wallet / wallet set: the coldkey's 32-byte sr25519 seed (raw, or 64 hex
+                                     chars with an optional 0x prefix) in a private file that is never created here.
+                                     The CLI fetches the wallet challenge and signs it, proving the coldkey; refused
+                                     unless the seed derives <coldkey_ss58>. The seed never leaves the host.
+    --message=<text>                 With --wallet / wallet set: the challenge printed by "provider wallet challenge",
+                                     signed elsewhere (a literal \n stands for a newline). Needs --signature.
+    --signature=<hex>                The coldkey's 64-byte sr25519 signature over --message, hex (0x optional), made
+                                     in the "substrate" signing context over the exact UTF-8 text (LF line endings,
+                                     no trailing newline) or over that text wrapped in <Bytes>...</Bytes> (what a
+                                     Polkadot extension signRaw of type "bytes" signs). Without --coldkey_seed_file
+                                     or --message/--signature the set is sent unsigned, which the main network refuses.
+                                     With fleet register: the same seed grammar for the fleet coldkey that signs
+                                     register_limit (the hotkey's owner); keep it off the mining hosts.
+    --burn_limit_rao=<n>             fleet register: maximum registration burn in rao passed to register_limit;
+                                     the runtime rejects a higher live burn. Omitted: the burn observed at the read.
+    --fee_limit_rao=<n>              fleet register: maximum native transaction fee in rao, checked with
+                                     payment_queryInfo before broadcast [default: 10000000].
+    --apply                          fleet register: sign, journal and broadcast. Without it the command is a dry
+                                     run that reads the live burn economics and quotes the signed extrinsic.
 	--test-egress-source-ip=<source_ip>  Integration-harness-only IPv4 loopback source bound to both
 	                                     platform control and provider exit sockets.
     <coldkey_ss58>                   Subnet claim wallet: an ss58 coldkey address (prefix 42).
@@ -154,15 +180,11 @@ Options:
 	--effective_epoch=<e>              Future epoch at which a fleet revocation takes effect.
 	--relayer_key_file=<path>          EVM transaction relayer key; it receives no binding ownership.
     --key_file=<key_file>            Path to a hex-encoded 32-byte secp256k1 EVM private key. When given,
-                                     claim / bind-head / unbind-head sign and submit the transaction (via
-                                     the sn/miner/onchain path) instead of only printing the calldata.
-    --dry-run                        With --key_file, stop at the eth_call preflight and send nothing.
-                                     Without --key_file the command only verifies, so it has no effect.
-    --hotkey=<hex>                   Head-tier miner hotkey as a 0x-optional 32-byte hex account id.
-    --registrant=<registrant>        The EVM address that will submit bindHead via snclaim (0x, 20 bytes).
-                                     The head-bind digest is bound to this address, so it MUST equal the
-                                     snclaim sender, whose mirror must be the hotkey's on-chain coldkey.
-    --contract=<contract>            STSubnet proxy contract address (0x, 20 bytes).
+                                     claim signs and submits the settlement-vault claim (via the
+                                     sn/miner/onchain path) instead of only printing the calldata.
+    --dry-run                        With --key_file / --relayer_key_file, stop at the eth_call preflight and
+                                     send nothing; for fleet register the explicit dry run (the default).
+                                     Without a key the claim command only verifies, so it has no effect.
     <key>                            Authentication key
     <proxy_user>                     SOCKS5 user
     <proxy_password>                 SOCKS5 password
@@ -176,7 +198,7 @@ Options:
 // Run is the miner CLI entry point (the executable lives at cli/miner). It takes
 // the argument slice (os.Args[1:]) so it can be driven from tests. The miner is
 // the subnet's provider: it runs the provide/proxy/auth flows plus the on-chain
-// wallet / claim / bind-head actions (formerly connect/provider).
+// wallet / claim / fleet actions (formerly connect/provider).
 func Run(args []string) {
 	opts, err := docopt.ParseArgs(mainUsage(), args, RequireVersion())
 
@@ -199,6 +221,8 @@ func Run(args []string) {
 	} else if wallet, _ := opts.Bool("wallet"); wallet {
 		if set, _ := opts.Bool("set"); set {
 			walletSet(opts)
+		} else if challenge, _ := opts.Bool("challenge"); challenge {
+			walletChallenge(opts)
 		}
 	} else if claim_, _ := opts.Bool("claim"); claim_ {
 		claim(opts)
@@ -394,18 +418,10 @@ func provide(opts docopt.Opts) {
 	defer cancel()
 
 	// subnet claim wallet (sn/PLAN.md 7.3, decision D-2): validate the
-	// ss58 coldkey locally and idempotently register it with the platform
-	// before providing starts. A failure warns and does not block
-	// providing — the wallet may already be set from a previous run, and
-	// the call can be retried any time with `provider wallet set`.
-	if coldkeySs58, walletErr := opts.String("--wallet"); walletErr == nil && coldkeySs58 != "" {
-		walletClientStrategy := connect.NewClientStrategyWithDefaults(ctx)
-		if err := snSetWallet(ctx, walletClientStrategy, apiUrl, coldkeySs58); err != nil {
-			fmt.Printf("subnet wallet not set: %s\n", err)
-			fmt.Printf("continuing to provide. Retry with: provider wallet set <coldkey_ss58>\n")
-		}
-		walletClientStrategy.Close()
-	}
+	// ss58 coldkey locally, prove it with --coldkey_seed_file or
+	// --message/--signature (sn_wallet.go) and idempotently register it
+	// with the platform before providing starts.
+	provideSetWallet(ctx, apiUrl, opts)
 
 	allProxySettings := readProxySettings()
 	providerCount := len(allProxySettings)

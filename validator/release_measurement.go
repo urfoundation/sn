@@ -590,11 +590,11 @@ func verifyDepositCommitmentEvidence(audit DepositAudit, conviction, required *b
 	if _, err := parseReleaseHex32("payout source end hash", audit.SourceEndHash, false); err != nil {
 		return err
 	}
-	want, tier, err := protocol.RequiredDepositRao(audit.UsageBytes, conviction, artifact.Policy.Deposit)
+	want, tier, err := protocol.RequiredDepositRao(audit.UsageBytes, audit.Users, conviction, artifact.Policy.Deposit)
 	if err != nil {
 		return fmt.Errorf("reconstruct required deposit: %w", err)
 	}
-	if want.Cmp(required) != 0 || audit.RateNumeratorRaoPerGiB != tier.RateNumeratorRaoPerGiB || audit.RateDenominator != tier.RateDenominator {
+	if want.Cmp(required) != 0 || audit.RateNumeratorRaoPerGiB != tier.RateNumeratorRaoPerGiB || audit.RateNumeratorRaoPerUser != tier.RateNumeratorRaoPerUser || audit.RateDenominator != tier.RateDenominator {
 		return errors.New("deposit requirement or conviction tier was not reconstructed exactly")
 	}
 	return nil
@@ -627,7 +627,16 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 	if audit.SourceEpoch != wantSource {
 		return errors.New("deposit audit source epoch does not match policy lag")
 	}
+	// A zero-price policy admits only zero-price audits, and a priced policy
+	// never admits one: the status is a function of the signed policy.
+	if artifact.Policy.IsZeroPrice() != (audit.Status == DepositAuditZeroPrice) {
+		return fmt.Errorf("deposit audit status %q does not match the policy price", audit.Status)
+	}
 	switch audit.Status {
+	case DepositAuditZeroPrice:
+		if !audit.Compliant || audit.Disposition != DepositDispositionZeroPrice || audit.Error != "" || required.Sign() != 0 || audit.UsageBytes != 0 || audit.Users != 0 || audit.RateNumeratorRaoPerGiB != 0 || audit.RateNumeratorRaoPerUser != 0 || audit.RateDenominator != 0 || audit.ArtifactHash != "" || audit.CommittedArtifactHash != "" || audit.PayoutRoot != "" || audit.RootCommitBlock != 0 {
+			return errors.New("zero-price deposit audit is inconsistent")
+		}
 	case DepositAuditCompliant:
 		if bootstrap || !audit.Compliant || audit.Disposition != "pool_weight_eligible" || audit.Error != "" || observed.Cmp(required) != 0 {
 			return errors.New("compliant deposit audit is inconsistent")
@@ -715,9 +724,8 @@ func releaseMeasurementPools(artifact *ReleaseMeasurementArtifact, statsByNO map
 		if decision.Controlled {
 			masked[pool.UID] = true
 		} else if audit.Compliant && audit.Status != DepositAuditBootstrap {
-			deposit, _ := new(big.Int).SetString(audit.ObservedDepositRao, 10)
 			conviction, _ := new(big.Int).SetString(audit.ConvictionBeforeRao, 10)
-			score, err := impliedUsageQuality(deposit, conviction, qualityPPM, artifact.Policy)
+			score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, conviction, qualityPPM, artifact.Policy)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("pool no_id %d score: %w", pool.NoID, err)
 			}

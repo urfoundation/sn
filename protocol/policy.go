@@ -10,7 +10,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -77,14 +76,48 @@ type SteeringPolicy struct {
 	Arithmetic        string           `json:"arithmetic" yaml:"arithmetic"`
 }
 
+// Deposit schedule units. rao_per_gib is the original single-component
+// schedule: every tier prices bytes only and the per-user numerator must be
+// absent (zero). rao_per_gib_and_user prices both components.
+const (
+	DepositUnitRaoPerGiB        = "rao_per_gib"
+	DepositUnitRaoPerGiBAndUser = "rao_per_gib_and_user"
+)
+
+// Deposit zero-rate actions. A schedule whose rates are zero in every tier is
+// the zero-price launch mode: no demand deposit is required or audited and
+// every registered pool carries the same implied demand, so validators'
+// measured quality alone steers the pool channel. That mode must be declared
+// with zero_rate_action: equal_demand; the default (absent or halt) rejects an
+// all-zero schedule so a zero price can never happen by accident.
+const (
+	DepositZeroRateHalt        = "halt"
+	DepositZeroRateEqualDemand = "equal_demand"
+)
+
+// DepositTier prices one conviction tier with two components over a shared
+// denominator: rate_numerator_rao_per_gib per GiB of usage and
+// rate_numerator_rao_per_user per distinct user. The per-user numerator is
+// optional and reads as zero when absent, which keeps the canonical bytes of
+// per-GiB-only schedules unchanged.
 type DepositTier struct {
-	MinConvictionRao       uint64 `json:"min_conviction_rao" yaml:"min_conviction_rao"`
-	RateNumeratorRaoPerGiB uint64 `json:"rate_numerator_rao_per_gib" yaml:"rate_numerator_rao_per_gib"`
-	RateDenominator        uint64 `json:"rate_denominator" yaml:"rate_denominator"`
+	MinConvictionRao        uint64 `json:"min_conviction_rao" yaml:"min_conviction_rao"`
+	RateNumeratorRaoPerGiB  uint64 `json:"rate_numerator_rao_per_gib" yaml:"rate_numerator_rao_per_gib"`
+	RateNumeratorRaoPerUser uint64 `json:"rate_numerator_rao_per_user,omitempty" yaml:"rate_numerator_rao_per_user,omitempty"`
+	RateDenominator         uint64 `json:"rate_denominator" yaml:"rate_denominator"`
 }
 
 func (t DepositTier) rate() Rational {
 	return Rational{Numerator: t.RateNumeratorRaoPerGiB, Denominator: t.RateDenominator}
+}
+
+func (t DepositTier) userRate() Rational {
+	return Rational{Numerator: t.RateNumeratorRaoPerUser, Denominator: t.RateDenominator}
+}
+
+// IsZeroRate reports whether both components of the tier are zero.
+func (t DepositTier) IsZeroRate() bool {
+	return t.RateNumeratorRaoPerGiB == 0 && t.RateNumeratorRaoPerUser == 0
 }
 
 type DepositPolicy struct {
@@ -98,22 +131,80 @@ type DepositPolicy struct {
 	UnavailableAction       string        `json:"unavailable_action" yaml:"unavailable_action"`
 	Tiers                   []DepositTier `json:"tiers" yaml:"tiers"`
 	ZeroOrInvalidRate       string        `json:"zero_or_invalid_rate" yaml:"zero_or_invalid_rate"`
+	// ZeroRateAction is optional; absent means halt. See DepositZeroRate*.
+	ZeroRateAction string `json:"zero_rate_action,omitempty" yaml:"zero_rate_action,omitempty"`
+}
+
+// ValidateDepositTiers checks the shape of a conviction-tier schedule, shared
+// by operators sizing deposits, validators auditing them, and policy
+// validation. It reports whether the schedule is zero-price. The rules:
+//
+//   - the schedule is non-empty, begins at conviction zero, and thresholds are
+//     strictly increasing in the declared order;
+//   - every denominator is nonzero;
+//   - each component (per GiB, per user) is priced in every tier or in none,
+//     so a tier with a zero component while another tier prices it is invalid;
+//   - neither component's rate increases with conviction;
+//   - zero-price means both components are unpriced in every tier.
+//
+// Whether a zero-price schedule is acceptable is the policy's decision
+// (zero_rate_action), not the schedule's.
+func ValidateDepositTiers(tiers []DepositTier) (zeroPrice bool, err error) {
+	if len(tiers) == 0 || tiers[0].MinConvictionRao != 0 {
+		return false, errors.New("deposit tiers must begin at conviction zero")
+	}
+	gibPriced := tiers[0].RateNumeratorRaoPerGiB != 0
+	userPriced := tiers[0].RateNumeratorRaoPerUser != 0
+	for i, tier := range tiers {
+		if tier.RateDenominator == 0 {
+			return false, fmt.Errorf("deposit tier %d has zero rate denominator", i)
+		}
+		if (tier.RateNumeratorRaoPerGiB != 0) != gibPriced {
+			return false, fmt.Errorf("deposit tier %d per-GiB rate is zero in some tiers only", i)
+		}
+		if (tier.RateNumeratorRaoPerUser != 0) != userPriced {
+			return false, fmt.Errorf("deposit tier %d per-user rate is zero in some tiers only", i)
+		}
+		if i > 0 {
+			if tier.MinConvictionRao <= tiers[i-1].MinConvictionRao {
+				return false, errors.New("deposit conviction tiers are not strictly increasing")
+			}
+			if tier.rate().cmp(tiers[i-1].rate()) > 0 {
+				return false, errors.New("deposit rate increases with conviction")
+			}
+			if tier.userRate().cmp(tiers[i-1].userRate()) > 0 {
+				return false, errors.New("deposit per-user rate increases with conviction")
+			}
+		}
+	}
+	return !gibPriced && !userPriced, nil
+}
+
+// IsZeroPrice reports whether the schedule is well formed and prices nothing:
+// every component of every tier is zero. It is a property of the published
+// price, so it does not look at zero_rate_action.
+func (p DepositPolicy) IsZeroPrice() bool {
+	zeroPrice, err := ValidateDepositTiers(p.Tiers)
+	return err == nil && zeroPrice
+}
+
+// IsZeroPrice reports whether the policy runs in the zero-price mode.
+func (p Policy) IsZeroPrice() bool {
+	return p.Deposit.IsZeroPrice()
 }
 
 // DepositTierAt returns the exact conviction snapshot tier used by both an
-// operator sizing its demand deposit and validators auditing that deposit.
+// operator sizing its demand deposit and validators auditing that deposit. A
+// zero-price schedule returns its (zero-rate) tier without error.
 func DepositTierAt(policy DepositPolicy, conviction *big.Int) (DepositTier, error) {
-	if conviction == nil || conviction.Sign() < 0 || len(policy.Tiers) == 0 {
+	if conviction == nil || conviction.Sign() < 0 {
 		return DepositTier{}, errors.New("invalid conviction tier input")
 	}
-	selected := policy.Tiers[0]
-	if selected.MinConvictionRao != 0 || selected.RateNumeratorRaoPerGiB == 0 || selected.RateDenominator == 0 {
-		return DepositTier{}, errors.New("invalid conviction tier zero")
+	if _, err := ValidateDepositTiers(policy.Tiers); err != nil {
+		return DepositTier{}, fmt.Errorf("invalid conviction tier schedule: %w", err)
 	}
-	for index, tier := range policy.Tiers {
-		if tier.RateNumeratorRaoPerGiB == 0 || tier.RateDenominator == 0 || (index > 0 && tier.MinConvictionRao <= policy.Tiers[index-1].MinConvictionRao) {
-			return DepositTier{}, errors.New("invalid conviction tier schedule")
-		}
+	selected := policy.Tiers[0]
+	for _, tier := range policy.Tiers {
 		if conviction.Cmp(new(big.Int).SetUint64(tier.MinConvictionRao)) >= 0 {
 			selected = tier
 		}
@@ -121,14 +212,41 @@ func DepositTierAt(policy DepositPolicy, conviction *big.Int) (DepositTier, erro
 	return selected, nil
 }
 
+// DepositDemandRao is the exact, uncapped demand priced at one tier:
+//
+//	usage_bytes * rate_numerator_rao_per_gib / (GiB * rate_denominator)
+//	  + users * rate_numerator_rao_per_user / rate_denominator
+//
+// as an exact rational in rao. It is the quantity RequiredDepositRao floors
+// and caps, and the quantity validators price at the conviction-zero tier for
+// a pool's implied demand. A zero denominator yields nil.
+func DepositDemandRao(usageBytes, users uint64, tier DepositTier) *big.Rat {
+	if tier.RateDenominator == 0 {
+		return nil
+	}
+	gib := new(big.Int).SetUint64(1 << 30)
+	bytesPart := new(big.Rat).SetFrac(
+		new(big.Int).Mul(new(big.Int).SetUint64(usageBytes), new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB)),
+		new(big.Int).Mul(new(big.Int).SetUint64(tier.RateDenominator), gib),
+	)
+	usersPart := new(big.Rat).SetFrac(
+		new(big.Int).Mul(new(big.Int).SetUint64(users), new(big.Int).SetUint64(tier.RateNumeratorRaoPerUser)),
+		new(big.Int).SetUint64(tier.RateDenominator),
+	)
+	return bytesPart.Add(bytesPart, usersPart)
+}
+
 // RequiredDepositRao evaluates the canonical floor-and-cap formula without
 // machine-word intermediate arithmetic:
 //
-//	floor(usage_bytes * rate_numerator / (GiB * rate_denominator))
+//	floor(usage_bytes * rate_gib / (GiB * d) + users * rate_user / d)
 //
-// The result is capped by the per-operator epoch cap. A zero usage value is a
-// valid zero deposit; malformed rates or conviction fail closed.
-func RequiredDepositRao(usageBytes uint64, conviction *big.Int, policy DepositPolicy) (*big.Int, DepositTier, error) {
+// with one floor over the exact two-component sum (so with d = 1 it equals
+// floor(usage_bytes * rate_gib / GiB) + users * rate_user), then capped by the
+// per-operator epoch cap. Zero usage and zero users are a valid zero deposit;
+// a zero-price schedule requires zero for any usage; malformed schedules or
+// conviction fail closed.
+func RequiredDepositRao(usageBytes, users uint64, conviction *big.Int, policy DepositPolicy) (*big.Int, DepositTier, error) {
 	tier, err := DepositTierAt(policy, conviction)
 	if err != nil {
 		return nil, DepositTier{}, err
@@ -136,12 +254,11 @@ func RequiredDepositRao(usageBytes uint64, conviction *big.Int, policy DepositPo
 	if policy.EpochCapRaoPerOperator == 0 {
 		return nil, DepositTier{}, errors.New("deposit epoch cap is zero")
 	}
-	amount := new(big.Int).Mul(new(big.Int).SetUint64(usageBytes), new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB))
-	divisor := new(big.Int).Mul(new(big.Int).SetUint64(tier.RateDenominator), new(big.Int).SetUint64(1<<30))
-	if divisor.Sign() == 0 {
+	demand := DepositDemandRao(usageBytes, users, tier)
+	if demand == nil {
 		return nil, DepositTier{}, errors.New("deposit rate divisor is zero")
 	}
-	amount.Quo(amount, divisor)
+	amount := new(big.Int).Quo(demand.Num(), demand.Denom())
 	capRao := new(big.Int).SetUint64(policy.EpochCapRaoPerOperator)
 	if amount.Cmp(capRao) > 0 {
 		amount.Set(capRao)
@@ -309,27 +426,26 @@ func (p Policy) Validate() error {
 		return errors.New("unsupported steering semantics")
 	}
 	d := p.Deposit
-	if d.Unit != "rao_per_gib" || d.EpochCapRaoPerOperator == 0 || d.TotalTestCampaignCapRao == 0 {
+	if (d.Unit != DepositUnitRaoPerGiB && d.Unit != DepositUnitRaoPerGiBAndUser) || d.EpochCapRaoPerOperator == 0 || d.TotalTestCampaignCapRao == 0 {
 		return errors.New("invalid deposit unit or cap")
 	}
 	if d.TierSnapshot != "conviction_before_epoch" || d.UsageLagEpochs != 1 || d.UsageArtifact != "signed_payout_artifact_total_usage_bytes" || d.MismatchAction != "zero_pool_weight" || d.UnavailableAction != "zero_pool_weight_after_root_window" || d.ZeroOrInvalidRate != "halt" {
 		return errors.New("unsupported deposit snapshot/failure policy")
 	}
-	if len(d.Tiers) == 0 || d.Tiers[0].MinConvictionRao != 0 {
-		return errors.New("deposit tiers must begin at conviction zero")
+	if d.ZeroRateAction != "" && d.ZeroRateAction != DepositZeroRateHalt && d.ZeroRateAction != DepositZeroRateEqualDemand {
+		return fmt.Errorf("unsupported deposit zero_rate_action %q", d.ZeroRateAction)
 	}
-	tiers := append([]DepositTier(nil), d.Tiers...)
-	sort.SliceStable(tiers, func(i, j int) bool { return tiers[i].MinConvictionRao < tiers[j].MinConvictionRao })
-	for i, tier := range tiers {
-		if tier.RateNumeratorRaoPerGiB == 0 || tier.RateDenominator == 0 {
-			return fmt.Errorf("deposit tier %d has zero rate", i)
-		}
-		if i > 0 {
-			if tier.MinConvictionRao <= tiers[i-1].MinConvictionRao {
-				return errors.New("deposit conviction tiers are not strictly increasing")
-			}
-			if tier.rate().cmp(tiers[i-1].rate()) > 0 {
-				return errors.New("deposit rate increases with conviction")
+	zeroPrice, err := ValidateDepositTiers(d.Tiers)
+	if err != nil {
+		return err
+	}
+	if zeroPrice && d.ZeroRateAction != DepositZeroRateEqualDemand {
+		return errors.New("deposit tiers have a zero rate in every tier; zero_rate_action must be equal_demand to publish a zero price")
+	}
+	if d.Unit == DepositUnitRaoPerGiB {
+		for i, tier := range d.Tiers {
+			if tier.RateNumeratorRaoPerUser != 0 {
+				return fmt.Errorf("deposit tier %d prices users but unit is %s", i, DepositUnitRaoPerGiB)
 			}
 		}
 	}

@@ -81,13 +81,20 @@ type Artifact struct {
 	Leaves               []Leaf          `json:"leaves"`
 	PayoutRoot           [32]byte        `json:"payout_root"`
 	TotalUsageBytes      uint64          `json:"total_usage_bytes"`
-	EligibleUsageBytes   uint64          `json:"eligible_usage_bytes"`
-	ExcludedUsageBytes   uint64          `json:"excluded_usage_bytes"`
-	SharesTotalBPS       uint64          `json:"shares_total_bps"`
-	CreatedAt            string          `json:"created_at"`
-	Signer               common.Address  `json:"signer"`
-	ContentHash          string          `json:"content_hash"`
-	Signature            string          `json:"signature"`
+	// TotalUsers is the operator's attested count of distinct top-level client
+	// identities (users) with contract usage in the epoch window: the same
+	// figure the operator stats feed publishes as a block's `users`. Together
+	// with TotalUsageBytes it sizes the next demand deposit (the policy's
+	// per-GiB and per-user rates). It is omitted when zero, so artifacts built
+	// before the per-user rate existed keep their bytes and read as 0 users.
+	TotalUsers         uint64         `json:"total_users,omitempty"`
+	EligibleUsageBytes uint64         `json:"eligible_usage_bytes"`
+	ExcludedUsageBytes uint64         `json:"excluded_usage_bytes"`
+	SharesTotalBPS     uint64         `json:"shares_total_bps"`
+	CreatedAt          string         `json:"created_at"`
+	Signer             common.Address `json:"signer"`
+	ContentHash        string         `json:"content_hash"`
+	Signature          string         `json:"signature"`
 }
 
 // BuildInput is the trusted identity and raw-measurement input to Build.
@@ -100,8 +107,11 @@ type BuildInput struct {
 	Start, End                              Boundary
 	OperatorSnapshotHash, FleetSnapshotHash string
 	Providers                               []ProviderInput
-	ReliabilityAMin                         uint64
-	CreatedAt                               time.Time
+	// TotalUsers is attested, not derived from Providers (users are the demand
+	// side; providers are the supply side), so Build carries it unchanged.
+	TotalUsers      uint64
+	ReliabilityAMin uint64
+	CreatedAt       time.Time
 }
 
 // Build computes reliability, exact largest-remainder shares, the Merkle root,
@@ -181,7 +191,7 @@ func Build(in BuildInput) (*Artifact, error) {
 		FleetSnapshotHash:    strings.ToLower(in.FleetSnapshotHash),
 		ProviderSnapshotHash: SnapshotHash(providers), ReliabilityAMin: in.ReliabilityAMin,
 		Providers: providers, Leaves: leaves, PayoutRoot: root,
-		TotalUsageBytes: totalUsage, EligibleUsageBytes: eligibleUsage,
+		TotalUsageBytes: totalUsage, TotalUsers: in.TotalUsers, EligibleUsageBytes: eligibleUsage,
 		ExcludedUsageBytes: totalUsage - eligibleUsage, SharesTotalBPS: sharesTotal,
 		CreatedAt: createdAt.Format(time.RFC3339Nano),
 	}, nil
@@ -277,12 +287,12 @@ func Verify(artifact *Artifact) error {
 		Coordinator: artifact.Coordinator, SettlementVault: artifact.SettlementVault,
 		Epoch: artifact.Epoch, NoID: artifact.NoID, Start: artifact.Start, End: artifact.End,
 		OperatorSnapshotHash: artifact.OperatorSnapshotHash, FleetSnapshotHash: artifact.FleetSnapshotHash,
-		Providers: artifact.Providers, ReliabilityAMin: artifact.ReliabilityAMin, CreatedAt: createdAt,
+		Providers: artifact.Providers, TotalUsers: artifact.TotalUsers, ReliabilityAMin: artifact.ReliabilityAMin, CreatedAt: createdAt,
 	})
 	if err != nil {
 		return fmt.Errorf("rebuild artifact: %w", err)
 	}
-	if rebuilt.ProviderSnapshotHash != strings.ToLower(artifact.ProviderSnapshotHash) || rebuilt.PayoutRoot != artifact.PayoutRoot || rebuilt.TotalUsageBytes != artifact.TotalUsageBytes || rebuilt.EligibleUsageBytes != artifact.EligibleUsageBytes || rebuilt.ExcludedUsageBytes != artifact.ExcludedUsageBytes || rebuilt.SharesTotalBPS != artifact.SharesTotalBPS || !reflect.DeepEqual(rebuilt.Providers, artifact.Providers) || !reflect.DeepEqual(rebuilt.Leaves, artifact.Leaves) {
+	if rebuilt.ProviderSnapshotHash != strings.ToLower(artifact.ProviderSnapshotHash) || rebuilt.PayoutRoot != artifact.PayoutRoot || rebuilt.TotalUsageBytes != artifact.TotalUsageBytes || rebuilt.TotalUsers != artifact.TotalUsers || rebuilt.EligibleUsageBytes != artifact.EligibleUsageBytes || rebuilt.ExcludedUsageBytes != artifact.ExcludedUsageBytes || rebuilt.SharesTotalBPS != artifact.SharesTotalBPS || !reflect.DeepEqual(rebuilt.Providers, artifact.Providers) || !reflect.DeepEqual(rebuilt.Leaves, artifact.Leaves) {
 		return errors.New("artifact summary, providers, leaves, or proofs do not reconstruct")
 	}
 	return nil

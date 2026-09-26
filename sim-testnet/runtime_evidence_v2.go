@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
@@ -71,18 +70,7 @@ func runtimeConfigInputDigest(cfg *ResolvedConfig, path string) (string, os.File
 
 // Role widths are protocol constants; variable inputs retain caller policy.
 func runtimeEvidenceV2ReferenceLimit(bounds validatorpkg.ReleaseEvidenceV2Bounds, index int) uint64 {
-	switch index {
-	case 0:
-		return uint64(protocol.ValidatorEvidenceActivationPayloadSize)
-	case 1, 2:
-		return 64
-	case 3:
-		return bounds.Cut.MaxHeaderBytes
-	case 4:
-		return bounds.MaxHistoryBytes
-	default:
-		return 0
-	}
+	return validatorpkg.ReleaseEvidenceV2ReferenceLimit(bounds, index)
 }
 
 // Simulator-owned references have fixed role paths, outside durable state and

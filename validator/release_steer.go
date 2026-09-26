@@ -458,7 +458,11 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		}
 
 		var audit DepositAudit
-		if currentEpoch < s.cfg.Policy.Deposit.UsageLagEpochs {
+		if s.cfg.Policy.IsZeroPrice() {
+			// Zero price: nothing to size or audit, so no payout artifact is
+			// read for steering; the pool is eligible on chain state alone.
+			audit = ZeroPriceDepositAudit(currentEpoch, sourceEpoch, noID, deposit, convictionBefore)
+		} else if currentEpoch < s.cfg.Policy.Deposit.UsageLagEpochs {
 			audit = baseDepositAudit(currentEpoch, 0, noID, deposit, convictionBefore)
 			audit.Status = DepositAuditBootstrap
 			audit.Disposition = "zero_pool_weight_bootstrap"
@@ -536,7 +540,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		if qualityErr != nil {
 			return nil, nil, nil, fmt.Errorf("no_id %d pool quality: %w", noID, qualityErr)
 		}
-		score, err := impliedUsageQuality(deposit, convictionBefore, quality, s.cfg.Policy)
+		score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, convictionBefore, quality, s.cfg.Policy)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("no_id %d weight: %w", noID, err)
 		}

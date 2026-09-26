@@ -1638,7 +1638,7 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 			}
 			o.ValidArtifacts++
 			if p.cfg.previousPolicy != nil && contracts != nil && artifact.PolicyHash == p.cfg.PolicyHash && artifact.Epoch < contracts.CurrentEpoch && (o.RateSource == nil || artifact.Epoch > o.RateSource.Epoch) {
-				o.RateSource = &PolicyRateSourceObservation{NoId: uint64(noID), Epoch: artifact.Epoch, PolicyHash: artifact.PolicyHash, ContentHash: artifact.ContentHash, TotalUsageBytes: artifact.TotalUsageBytes}
+				o.RateSource = &PolicyRateSourceObservation{NoId: uint64(noID), Epoch: artifact.Epoch, PolicyHash: artifact.PolicyHash, ContentHash: artifact.ContentHash, TotalUsageBytes: artifact.TotalUsageBytes, TotalUsers: artifact.TotalUsers}
 			}
 			o.ArtifactHashes = append(o.ArtifactHashes, artifact.ContentHash)
 			if payoutArtifactMatchesChain(&artifact, contracts) {

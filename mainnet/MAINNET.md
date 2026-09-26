@@ -13,12 +13,12 @@ The design is based on SN commit `a59294e98ea02d05125015ae02cf32f2c0059c8a`. The
 
 The bootstrap must deliver all four requested outcomes:
 
-1. Reset the existing miner registrations on our UR subnet, with an exact census and an explicit meaning of reset.
+1. Reset the existing miner registrations on our UR subnet (Bittensor SN25, netuid 25), with an exact census and an explicit meaning of reset.
 2. Install and initialize the production contract set with the approved custody and governance identities.
 3. Begin provider rewards at **10% of the native miner allocation**. This is not 10% of all subnet emission, not a validator take, and not the head/tail steering parameter.
 4. Operate both an owned **root validator on netuid 0** and an owned **validator on the UR subnet**.
 
-The target UR mainnet netuid, owned mainnet node, keys, spend ceilings, reset mechanism, and treatment of the other 90% remain inputs to the future plan. None has a default mainnet address or financial allowance. Existing testnet spend approvals do not authorize mainnet spend.
+The target UR mainnet netuid is SN25 (netuid 25). The owned mainnet node, keys, spend ceilings, reset mechanism, and treatment of the other 90% remain inputs to the future plan. None has a default mainnet address or financial allowance. Existing testnet spend approvals do not authorize mainnet spend.
 
 Two constraints determine the implementation. There is no demonstrated subnet-owner call that arbitrarily clears every miner registration while retaining an arbitrary list of validators. Also, the current UR contracts and validator policy do not provide a standalone switch that changes the native miner allocation to 10%. The planner must expose these as capability decisions, not claim that lowering UID capacity or setting `theta: 0.1` fulfills them. The requested 10% target allows the exact runtime's explicitly established quantization tolerance; a stronger enforceable hard cap is a separate assurance choice, not an additional user requirement.
 
@@ -72,7 +72,7 @@ Every planned transaction records its actual origin: native account or proxy rea
 
 ### What is being reset
 
-Scope is the approved UR mainnet netuid only. Netuid 0 and other subnets are excluded. A UID is a mutable slot, not a permanent miner identity, and a neuron can perform more than one role. “All miners” must become a signed list of **hotkey identities and registration generations**, not a range such as `1..255` or “all UIDs without a validator permit.”
+Scope is the approved UR mainnet netuid, SN25 (netuid 25), only. Netuid 0 and other subnets are excluded. A UID is a mutable slot, not a permanent miner identity, and a neuron can perform more than one role. “All miners” must become a signed list of **hotkey identities and registration generations**, not a range such as `1..255` or “all UIDs without a validator permit.”
 
 At finalized block `B`, write `census.json` containing every UID and both directions of its UID/hotkey mapping; coldkey ownership; registration block; owner identity; role classification; permits and activity; native and mechanism-specific emission/weights; immune status and expiry; collateral and other locks; stake positions relevant to custody; commitments and associated EVM identity. Include the block hash and runtime identity for every decoded field. Reconcile the complete cardinality against `SubnetworkN`; missing entries or ambiguous ownership block planning.
 
@@ -261,7 +261,7 @@ This incomplete config sketch intentionally contains `null` for unapproved ident
 schema: urnetwork-mainnet-bootstrap-v1
 network: mainnet
 deployment_id: null
-netuid: null
+netuid: 25
 owned_node:
   substrate_url: null
   evm_url: null

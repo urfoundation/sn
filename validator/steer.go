@@ -86,27 +86,63 @@ type HeadWeightInput struct {
 }
 
 // RateTier is one step of the published deposit-rate schedule (§7.3): a NO whose
-// conviction (cumulative locked α, §7.2) is ≥ MinConviction pays Rate — the α it
-// must deposit per unit of real usage. Higher tiers (more conviction) pay lower
-// rates, so a committed NO needs less up-front α to signal the same usage.
+// conviction (cumulative locked α, §7.2) is ≥ MinConviction pays Rate per unit of
+// usage and UserRate per distinct user — the α it must deposit for its real
+// demand. Higher tiers (more conviction) pay lower rates, so a committed NO
+// needs less up-front α to signal the same usage.
 type RateTier struct {
 	MinConviction *big.Int // inclusive lower bound on cumulative locked α (rao)
-	Rate          float64  // α per unit of usage at this tier; floored above zero
+	Rate          float64  // α per unit of usage at this tier
+	UserRate      float64  // α per distinct user at this tier
 }
 
 // RateSchedule is the ordered tier→rate schedule (§7.3), a published governance
 // parameter read by validators (never consumed by the contract, §7.1). The zero
 // tier (MinConviction 0) is the baseline (full) rate; rate(conviction) picks the
-// highest tier whose MinConviction ≤ conviction. Rates are floored above zero
-// (§7.3 — a zero rate would make any deposit imply unbounded usage, §8.1).
+// highest tier whose MinConviction ≤ conviction. A schedule whose rates are zero
+// in every tier is the zero-price launch mode (IsZeroPrice): no deposit is
+// required and every pool carries the same implied usage, exactly 1, so quality
+// alone steers. A single (mis)configured zero tier inside a priced schedule is
+// floored instead, so implied_usage = deposit / rate stays finite (§8.1).
 type RateSchedule struct {
 	Tiers []RateTier // sorted ascending by MinConviction; Tiers[0].MinConviction = 0
 }
 
-// rateFloor is the smallest deposit rate the schedule will apply — the "floored
-// above zero" guard (§7.3): implied_usage = deposit / rate stays finite even if a
-// tier is (mis)configured to zero.
+// rateFloor is the smallest deposit rate a priced schedule will apply — the
+// guard for a partially zero schedule: implied_usage = deposit / rate stays
+// finite even if one tier is (mis)configured to zero.
 const rateFloor = 1e-9
+
+// IsZeroPrice reports the zero-price launch mode: a non-empty schedule with
+// both components zero in every tier.
+func (self RateSchedule) IsZeroPrice() bool {
+	if len(self.Tiers) == 0 {
+		return false
+	}
+	for _, tier := range self.Tiers {
+		if tier.Rate != 0 || tier.UserRate != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// legacyImpliedUsage is the flag-mode pool demand signal. Without the signed
+// payout artifact this path cannot split a deposit into its byte and user
+// components, so a priced schedule treats the whole deposit as priced at the
+// tier's per-unit rate (implied_usage = deposit / rate(tier), §8.1, D25); a NO
+// with no deposit this epoch carries no demand signal. Under zero price every
+// pool carries exactly 1 regardless of deposits or conviction.
+func legacyImpliedUsage(schedule RateSchedule, epochDeposit, conviction *big.Int) float64 {
+	if schedule.IsZeroPrice() {
+		return 1
+	}
+	if epochDeposit == nil || epochDeposit.Sign() <= 0 {
+		return 0
+	}
+	deposit, _ := new(big.Float).SetInt(epochDeposit).Float64()
+	return deposit / schedule.Rate(conviction)
+}
 
 // alphaRao is one α expressed in rao (the deposit event's base unit, 1e9 rao/α).
 const alphaRao = 1_000_000_000
@@ -712,16 +748,12 @@ func (self *Steerer) gatherPools(quality map[connect.Id]float64, exposure map[co
 		// implied_usage = epoch_deposit / rate(tier(conviction)) (§8.1, D25): a
 		// NO on a lower-rate tier posts less α for the same implied usage, so the
 		// stake is a discount, not a penalty; a NO with no deposit this epoch
-		// carries no demand signal (weight 0 regardless of quality).
-		impliedUsage := 0.0
-		if epochDeposit, _ := new(big.Float).SetInt(epochDeposits.Get(noId)).Float64(); epochDeposit > 0 {
-			impliedUsage = epochDeposit / self.cfg.Rates.Rate(conviction.Get(noId))
-		}
-
+		// carries no demand signal (weight 0 regardless of quality). Under a
+		// zero-price schedule every pool carries 1 and quality alone steers.
 		pools = append(pools, PoolWeightInput{
 			NoId:         noId,
 			Uid:          uid,
-			ImpliedUsage: impliedUsage,
+			ImpliedUsage: legacyImpliedUsage(self.cfg.Rates, epochDeposits.Get(noId), conviction.Get(noId)),
 			Quality:      self.aggregator.PoolQuality(noId, quality, exposure),
 		})
 	}

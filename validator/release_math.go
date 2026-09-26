@@ -100,27 +100,52 @@ func sumExactInputs(inputs []ExactWeightInput, masked map[uint16]bool) (map[uint
 	return values, total, nil
 }
 
-func depositRateAt(policy protocol.DepositPolicy, conviction *big.Int) (*big.Rat, error) {
-	selected, err := protocol.DepositTierAt(policy, conviction)
+// impliedDemand is one pool's exact demand signal (§8.1): the audited usage
+// (bytes and distinct users from the operator's signed payout artifact) priced
+// at the conviction-zero tier, so a conviction discount changes what the
+// operator pays and not its weight. When the epoch cap truncated the deposit
+// the operator actually owed at its own tier, the demand is truncated by the
+// same factor: usage the operator did not pay for buys no weight, exactly as
+// deposit / rate(tier) was bounded by cap / rate(tier) before. Under a
+// zero-price policy every pool's implied demand is exactly 1, so measured
+// quality alone steers the pool channel and neither usage, a voluntary deposit
+// nor conviction changes the score.
+func impliedDemand(usageBytes, users uint64, conviction *big.Int, policy protocol.DepositPolicy) (*big.Rat, error) {
+	tier, err := protocol.DepositTierAt(policy, conviction)
 	if err != nil {
 		return nil, err
 	}
-	return new(big.Rat).SetFrac(
-		new(big.Int).SetUint64(selected.RateNumeratorRaoPerGiB),
-		new(big.Int).SetUint64(selected.RateDenominator),
-	), nil
-}
-
-func impliedUsageQuality(deposit, conviction *big.Int, qualityPPM uint32, policy protocol.Policy) (*big.Rat, error) {
-	if deposit == nil || deposit.Sign() < 0 {
-		return nil, errors.New("invalid epoch deposit")
+	if policy.IsZeroPrice() {
+		return big.NewRat(1, 1), nil
 	}
-	if deposit.Sign() == 0 || qualityPPM == 0 {
+	if policy.EpochCapRaoPerOperator == 0 {
+		return nil, errors.New("deposit epoch cap is zero")
+	}
+	baseline := protocol.DepositDemandRao(usageBytes, users, policy.Tiers[0])
+	owed := protocol.DepositDemandRao(usageBytes, users, tier)
+	if baseline == nil || owed == nil {
+		return nil, errors.New("deposit rate divisor is zero")
+	}
+	if owed.Sign() == 0 {
 		return new(big.Rat), nil
 	}
-	rate, err := depositRateAt(policy.Deposit, conviction)
+	capRao := new(big.Rat).SetInt(new(big.Int).SetUint64(policy.EpochCapRaoPerOperator))
+	if owed.Cmp(capRao) > 0 {
+		baseline.Mul(baseline, capRao)
+		baseline.Quo(baseline, owed)
+	}
+	return baseline, nil
+}
+
+// impliedUsageQuality is the pool score implied_demand × clamped quality. A
+// pool with zero measured quality scores zero even at zero price.
+func impliedUsageQuality(usageBytes, users uint64, conviction *big.Int, qualityPPM uint32, policy protocol.Policy) (*big.Rat, error) {
+	demand, err := impliedDemand(usageBytes, users, conviction, policy.Deposit)
 	if err != nil {
 		return nil, err
+	}
+	if qualityPPM == 0 || demand.Sign() == 0 {
+		return new(big.Rat), nil
 	}
 	q := qualityPPM
 	if q < policy.Steering.QualityTransform.MinimumPPM {
@@ -129,8 +154,7 @@ func impliedUsageQuality(deposit, conviction *big.Int, qualityPPM uint32, policy
 	if q > policy.Steering.QualityTransform.MaximumPPM {
 		q = policy.Steering.QualityTransform.MaximumPPM
 	}
-	usage := new(big.Rat).Quo(new(big.Rat).SetInt(deposit), rate)
-	return usage.Mul(usage, new(big.Rat).SetFrac(new(big.Int).SetUint64(uint64(q)), big.NewInt(1_000_000))), nil
+	return demand.Mul(demand, new(big.Rat).SetFrac(new(big.Int).SetUint64(uint64(q)), big.NewInt(1_000_000))), nil
 }
 
 // PoolQualityPPM is the exposure-weighted quality of one isolated NO context.

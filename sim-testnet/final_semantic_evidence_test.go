@@ -1939,7 +1939,7 @@ func TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule(
 			if tier.MinConvictionRao <= previous.MinConvictionRao || previousRateScaled.Cmp(currentRateScaled) < 0 {
 				t.Fatalf("fixture deposit tier %d is not a strictly ordered, non-increasing rate: %+v after %+v", index, tier, previous)
 			}
-			_, selectedBefore, err := protocol.RequiredDepositRao(usageBytes, new(big.Int).SetUint64(tier.MinConvictionRao-1), policy.Deposit)
+			_, selectedBefore, err := protocol.RequiredDepositRao(usageBytes, 0, new(big.Int).SetUint64(tier.MinConvictionRao-1), policy.Deposit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1948,7 +1948,7 @@ func TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule(
 			}
 		}
 
-		amountRao, selected, err := protocol.RequiredDepositRao(usageBytes, new(big.Int).SetUint64(tier.MinConvictionRao), policy.Deposit)
+		amountRao, selected, err := protocol.RequiredDepositRao(usageBytes, 0, new(big.Int).SetUint64(tier.MinConvictionRao), policy.Deposit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2204,7 +2204,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	}
 	const fixturePoolUsageBytes = uint64(1024 * 1024 * 1024)
 	fixturePoolConvictionRao := big.NewInt(1_000)
-	fixturePoolDepositRao, fixturePoolTier, err := protocol.RequiredDepositRao(fixturePoolUsageBytes, fixturePoolConvictionRao, policy.Deposit)
+	fixturePoolDepositRao, fixturePoolTier, err := protocol.RequiredDepositRao(fixturePoolUsageBytes, 0, fixturePoolConvictionRao, policy.Deposit)
 	if err != nil {
 		t.Fatal(err)
 	}

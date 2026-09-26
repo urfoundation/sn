@@ -43,7 +43,7 @@ func TestTestnetRateAmendmentExactTierEconomics(t *testing.T) {
 		t.Fatal("amendment did not change policy commitment")
 	}
 	for _, tier := range next.Deposit.Tiers {
-		amount, selected, err := RequiredDepositRao(24*1024*1024, new(big.Int).SetUint64(tier.MinConvictionRao), next.Deposit)
+		amount, selected, err := RequiredDepositRao(24*1024*1024, 0, new(big.Int).SetUint64(tier.MinConvictionRao), next.Deposit)
 		if err != nil || selected != tier {
 			t.Fatalf("tier changed: %+v %v", selected, err)
 		}

@@ -3,8 +3,8 @@
 **A Bittensor subnet for a decentralized privacy network.**
 
 Version 1.0 (launch specification). Target chain: Bittensor / Subtensor — **testnet first, then mainnet**
-(D28). Version 1.0 promotes the completed v0.5 design to the normative release specification without
-changing its scope.
+(D28). The mainnet subnet is **SN25 (netuid 25)**; the testnet campaign runs on netuid 521. Version 1.0
+promotes the completed v0.5 design to the normative release specification without changing its scope.
 
 > **v1.0 — validator effort bounty removed from scope (D29).** The fee‑funded validator effort bounty is
 > **no longer a committed deferred phase** — it is **out of v1 scope entirely**, and whether to add any
@@ -30,7 +30,7 @@ changing its scope.
 
 ## Executive summary
 
-The **UR Subnet** runs a **decentralized privacy/VPN network** entirely through on‑chain incentives.
+The **UR Subnet** (Bittensor **SN25**, netuid 25) runs a **decentralized privacy/VPN network** entirely through on‑chain incentives.
 **Network Operators (NOs)** run the servers; independent **providers** carry ingress/egress traffic; and
 independent **validators** run the `VALIDATOR.md` cryptographic routing‑verification protocol — walking
 server‑assigned chains of providers to prove real‑time transit and measure **which providers are the
@@ -458,7 +458,7 @@ as `vpk` also works but couples key rotation to the wallet; binding is preferred
 
 | Symbol | Meaning |
 |---|---|
-| `netuid` | the UR subnet id |
+| `netuid` | the UR subnet id — 25 (SN25) on mainnet; 521 on the testnet campaign |
 | `T_tempo` | tempo length in blocks (360) |
 | `T_epoch` | UR settlement epoch in blocks (50 400 ≈ 7 days) |
 | `e` | epoch index (monotone counter in the contract) |
@@ -717,12 +717,26 @@ is *the α actually deposited*. A NO stages α on its isolated deposit hotkey an
 `deposit(noId,amount,nonce,deadline)`.
 
 The **"global fixed rate"** survives as an **off‑chain published reference** — now a **schedule of
-deposit rates per conviction tier** (§7.3): `rate(tier)` = the α a NO posts per unit of real usage.
-In release 1.0 (D25) this schedule is read by **the validators** (who set the weights, §8.1) as well as by
-NOs (to size their deposits); it is **never a value the contract consumes**. NOs may still report
-`(gb_n, users_n)` as **optional, unverified metadata** for transparency, but it enters no on‑chain
-computation. This keeps a whole subsystem (`setRates`, on‑chain rate storage, the TAO/USD feed) and a
-trusted input out of the contract.
+deposit rates per conviction tier** (§7.3): `rate(tier)` has **two components**, `rate_gib` (α per GiB of
+real usage) and `rate_user` (α per distinct user), over one shared denominator, and a NO's required
+deposit for an epoch is `floor(bytes × rate_gib / GiB + users × rate_user)`, capped per epoch. `bytes` and
+`users` are the totals of the NO's **signed payout artifact** for the previous epoch (`total_usage_bytes`
+and `total_users` — the latter the same distinct‑users figure its public stats feed publishes per block),
+so the reported usage is signed and audited against the deposit (§8.1), but it still enters no on‑chain
+computation. In release 1.0 (D25) this schedule is read by **the validators** (who set the weights, §8.1)
+as well as by NOs (to size their deposits); it is **never a value the contract consumes**. This keeps a
+whole subsystem (`setRates`, on‑chain rate storage, the TAO/USD feed) and a trusted input out of the
+contract.
+
+**Zero price — the launch mode.** The published schedule may be **entirely zero** (every component of
+every tier), but only when the signed policy says so explicitly: `zero_rate_action: equal_demand`. The
+default (`halt`) rejects an all‑zero schedule, and a schedule with zero rates in *some* tiers only is
+always invalid, so a zero price can never happen by accident. While the price is zero, NOs make **no
+demand deposits**: none are required and none are audited. Every registered pool is given the **same
+implied demand** (exactly 1, §8.1), so the validators' measured quality alone steers the pool channel; a
+voluntary deposit or conviction lock neither helps nor hurts a pool. The head channel, θ, the quality
+clamp and the cede rule are unchanged. This is a deliberate launch mode used while bugs are flushed out
+of the network.
 
 ### 7.2 A deposit is conviction stake (D25)
 
@@ -749,8 +763,12 @@ onboarding + long‑term‑alignment lever (change #4, D25). Governance publishe
 - Higher tiers (more cumulative locked α) pay **progressively lower rates**, so a committed NO needs less
   up‑front α to signal the same usage. A brand‑new NO can either start small at the baseline rate, or
   **pre‑stake conviction** to jump to a better tier from day one.
-- The schedule is **floored above zero** (a zero rate would make any deposit imply unbounded usage,
-  §8.1). It is governance‑set and published off‑chain (§7.1), read by validators.
+- Each component's rate is **non‑increasing with conviction**, and a component is priced in **every tier
+  or in none**. The schedule is governance‑set and published off‑chain (§7.1), read by validators. A
+  schedule that is **zero in every tier** is the explicit **zero‑price launch mode** (§7.1): no deposit is
+  required or audited and every pool carries the same implied demand. Because validators price the
+  *audited usage* rather than dividing the deposit by the rate, a zero rate no longer implies unbounded
+  usage (§8.1) — it simply prices nothing.
 
 The stake and the deposit are the **same locked pool** (§7.4): both are conviction, both are sunk. The
 tier is thus a smooth function of an NO's accumulated commitment — depositing over time *is* staking
@@ -812,21 +830,32 @@ score **themselves**, from **published data**, and submit it as Yuma weights; Yu
 scores and emits to the pool UIDs — so the miners' reward *is* the validators' evaluation. Each validator
 reads, per NO `n`, straight off chain state and its own trails:
 
-- **`epoch_deposit_n`** — this epoch's deposits, summed from finalized `Deposit` events (§7.5);
+- **`epoch_deposit_n`** — this epoch's deposit, read from the coordinator (§7.5), together with the NO's
+  signed payout artifact for the previous epoch and its audited **`bytes_n`** and **`users_n`**: the
+  deposit must equal `floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n))`, capped, or
+  the pool is zero‑weighted (the deposit audit);
 - **`tier_n`** — the NO's conviction tier, from its cumulative locked α (§7.2), and the published
-  **`rate(tier_n)`** (§7.3);
+  two‑component **`rate(tier_n)`** (§7.3);
 - **`Q_n`** — the pool's aggregate provider quality, from the validator's own `VALIDATOR.md` trails.
 
 and sets
 
 ```
-weight_n  ∝  implied_usage_n × Q_n,   implied_usage_n = epoch_deposit_n / rate(tier_n)
+weight_n  ∝  implied_demand_n × Q_n
+implied_demand_n = (bytes_n × rate_gib(0) / GiB + users_n × rate_user(0))   # audited usage priced at the conviction-zero tier
+                   × min(1, cap / owed_n)                                   # truncated exactly as the capped deposit was
+implied_demand_n = 1                                                        # while the published price is zero (§7.1)
 ```
 
-**Implied usage, not raw deposit** (decision A, D25): a NO on a lower tier rate posts less α for the same
-real usage, so dividing by `rate(tier_n)` gives it the **same** weight — the conviction stake that bought
-the lower rate is a *discount, not a penalty*, and the weight still tracks **real revenue‑backed usage**
-(the headline thesis) rather than raw α. NO `n`'s miner‑pool UID then accrues over the epoch
+**Implied demand, not raw deposit** (decision A, D25): the audited usage is priced at the **baseline
+(conviction‑zero) rate** for every NO, so a NO on a lower tier rate posts less α for the same real usage
+and gets the **same** weight — the conviction stake that bought the lower rate is a *discount, not a
+penalty*, and the weight still tracks **real revenue‑backed usage** (the headline thesis) rather than raw
+α. With `users_n = 0` this is exactly the earlier `epoch_deposit_n / rate(tier_n)` ranking. When the
+per‑epoch cap truncates the deposit a NO owes at its own tier (`owed_n`), its demand is truncated by the
+same factor, so usage the NO did not pay for buys no weight. Under the zero‑price launch mode every
+pool's implied demand is exactly 1 and `Q_n` alone steers (§7.1). NO `n`'s miner‑pool UID then accrues
+over the epoch
 
 ```
 emission_n  ≈  0.41 · E_epoch · (1−θ) · ŵ_n,   ŵ_n = consensus(implied_usage_n · Q_n) / Σ_m consensus(implied_usage_m · Q_m)
