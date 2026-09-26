@@ -245,7 +245,6 @@ func TestProvisionalNativeWeightsPreservesStrictAndUnrelatedFailureBudget(t *tes
 		{"strict", false, rejected},
 		{"different epoch", true, &provisionalNativeWeightRejection{nativeEpoch: 1401, settlementEpoch: 302, cause: errNoPositiveUnmaskedWeights}},
 		{"joined failure", true, errors.Join(rejected, errors.New("signed intent storage failure"))},
-		{"strict transport interruption", false, fmt.Errorf("compact attempt chunk ends before its complete JSONL rows: %w", context.DeadlineExceeded)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			attempts := 0

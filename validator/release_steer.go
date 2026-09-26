@@ -964,8 +964,8 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	return s.intents.MarkFinalized(intent.VectorHash, result.TxHash.Hex(), result.FinalizedBlock, result.FinalizedBlockHash.Hex(), result.RevealBlock, result.Values)
 }
 
-// Workload admission shares the actual failed-attempt ceiling used by the
-// native epoch loop; it does not grant permission for an extra retry.
+// Semantic failures retain a finite supervision budget. Transport retries use
+// bounded operations and the normal poll, without changing native custody.
 const ReleaseSteeringFailureLimit = 10
 
 const releaseSteeringFailureLimit = ReleaseSteeringFailureLimit
@@ -1024,24 +1024,27 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 	// keep prior causes; a completed retry clears the recovered failures.
 	var pendingErr error
 	var schedulerErr error
+	// Keep only the latest interrupted operation, separately from the bounded
+	// semantic failures. An unfinished retry must not return successful work.
+	var transportErr error
 	for {
 		// A ready poll may win alongside cancellation; never let that
 		// decision authorize another scheduler read or submission.
 		if ctx.Err() != nil {
-			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr))
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr, transportErr))
 		}
 		currentEpoch, err := epoch()
 		if ctx.Err() != nil {
-			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr, err))
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr, transportErr, err))
 		}
 		if err == nil {
 			schedulerErr = nil
 			if targetKnown && currentEpoch < targetEpoch {
-				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr)
+				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr, transportErr)
 			}
 			if !targetKnown || currentEpoch > targetEpoch {
 				if targetKnown && !completed && !deferred && !weightRejected && !retryableCut {
-					return errors.Join(fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch), pendingErr)
+					return errors.Join(fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch), pendingErr, transportErr)
 				}
 				if targetKnown && retryableCut {
 					fmt.Printf("release steer: provisional native epoch %d retryable cut continued in native epoch %d; no process restart\n", targetEpoch, currentEpoch)
@@ -1051,9 +1054,11 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 				retryableCut = false
 				weightRejected, rejectedAttempts = false, 0
 				pendingErr = nil
+				transportErr = nil
 			}
 			if !completed && !deferred {
 				err = submit()
+				transportErr = nil
 				var closedInput *provisionalClosedNativeInput
 				var rejected *provisionalNativeWeightRejection
 				var interrupted *provisionalNativeReadInterruption
@@ -1076,7 +1081,7 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					retryableCut = false
 					rejectedAttempts++
 					fmt.Printf("release steer: %v; rejected attempt %d; retrying on next poll\n", rejected, rejectedAttempts)
-				} else if allowFreshWeights && errors.As(err, &interrupted) && interrupted.nativeEpoch == targetEpoch && releaseOnlyErrors(err, interrupted) {
+				} else if errors.As(err, &interrupted) && allowFreshWeights && interrupted.nativeEpoch == targetEpoch && releaseOnlyErrors(err, interrupted) {
 					weightRejected = false
 					retryableCut = pendingErr == nil
 					fmt.Printf("release steer: %v; retrying authenticated preparation on next poll\n", interrupted)
@@ -1096,13 +1101,14 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 					if !releaseOnlyErrors(err, errAttemptCutPending) {
 						fmt.Printf("release steer: %v; retrying on next poll\n", err)
 					}
-				} else if allowDeferral && (retryablePreparation || transientReleaseSnapshotError(err)) {
+				} else if retryablePreparation && interrupted == nil {
 					weightRejected = false
-					retryableCut = pendingErr == nil
-					// An interrupted authenticated replica body retains its immutable
-					// cut and retry context, including another operator's cut wait.
-					// Mixed integrity or lifecycle errors remain nonretryable.
-					fmt.Printf("release steer: %v; retrying authenticated collection on next poll\n", err)
+					retryableCut = allowDeferral && pendingErr == nil
+					transportErr = err
+					// Typed service/transport outages do not spend or clear semantic
+					// failures. Retained intent reconciliation still precedes a new
+					// submission, and only existing deferral may advance the epoch.
+					fmt.Printf("release steer: %v; retrying interrupted operation on next poll\n", err)
 				} else {
 					weightRejected = false
 					retryableCut = false
@@ -1125,10 +1131,10 @@ func runReleaseSteeringLoopWithWaitAndPermissions(ctx context.Context, epoch fun
 			fmt.Printf("release steer: finalized scheduler attempt %d: %v\n", failures, err)
 		}
 		if failures >= releaseSteeringFailureLimit {
-			return releaseRuntimeError(ctx, fmt.Errorf("release steering failed %d consecutive attempts: %w", failures, pendingErr))
+			return releaseRuntimeError(ctx, fmt.Errorf("release steering failed %d consecutive attempts: %w", failures, errors.Join(pendingErr, transportErr)))
 		}
 		if !wait() {
-			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr))
+			return releaseRuntimeError(ctx, errors.Join(pendingErr, schedulerErr, transportErr))
 		}
 	}
 }

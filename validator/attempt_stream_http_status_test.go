@@ -224,8 +224,8 @@ func TestReleaseSteererCapacityRetryUsesServerHint(t *testing.T) {
 	}
 }
 
-// Only explicit provisional steering may retain a capacity refusal across its
-// normal failure budget and epoch change; strict or mixed integrity stays hard.
+// All steering may retry capacity within its epoch; only explicit provisional
+// permission may advance it. Mixed integrity still consumes the failure budget.
 func TestProvisionalNativeCapacityWaitPreservesStrictFailureBudget(t *testing.T) {
 	t.Parallel()
 	capacity := &attemptStreamHttpStatusError{status: http.StatusTooManyRequests, upload: true}
@@ -236,12 +236,12 @@ func TestProvisionalNativeCapacityWaitPreservesStrictFailureBudget(t *testing.T)
 		wantFailure bool
 	}{
 		{provisional: true, cause: capacity, wantFailure: false},
-		{provisional: false, cause: capacity, wantFailure: true},
+		{provisional: false, cause: capacity, wantFailure: false},
 		{provisional: true, cause: errors.Join(capacity, integrity), wantFailure: true},
 	} {
 		attempts := 0
 		err := runReleaseSteeringLoopWithWaitAndDeferral(t.Context(), func() (uint64, error) {
-			if test.wantFailure {
+			if test.wantFailure || !test.provisional {
 				return 700, nil
 			}
 			return 700 + uint64(attempts), nil
@@ -254,10 +254,10 @@ func TestProvisionalNativeCapacityWaitPreservesStrictFailureBudget(t *testing.T)
 		}, func() bool { return attempts < releaseSteeringFailureLimit+3 }, test.provisional)
 		if test.wantFailure {
 			if !errors.Is(err, test.cause) || attempts != releaseSteeringFailureLimit {
-				t.Fatalf("strict/mixed boundary changed: attempts=%d err=%v", attempts, err)
+				t.Fatalf("mixed integrity boundary changed: attempts=%d err=%v", attempts, err)
 			}
 		} else if err != nil || attempts != releaseSteeringFailureLimit+3 {
-			t.Fatalf("provisional capacity consumed restart budget: attempts=%d err=%v", attempts, err)
+			t.Fatalf("capacity consumed restart budget: attempts=%d err=%v", attempts, err)
 		}
 	}
 }

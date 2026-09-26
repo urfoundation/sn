@@ -37,6 +37,7 @@ func TestRetryableEvidenceTransportRetainsStrictMixedFailureScope(t *testing.T) 
 	for _, err := range []error{
 		io.EOF, io.ErrUnexpectedEOF, context.Canceled,
 		&os.PathError{Op: "read", Path: "synthetic.json", Err: context.DeadlineExceeded},
+		&os.LinkError{Op: "rename", Old: "synthetic-candidate.json", New: "synthetic-intent.json", Err: context.DeadlineExceeded},
 		errors.New("content hash differs: connection reset"),
 		&attemptStreamHttpStatusError{status: 403, detail: "connection reset"},
 		gethrpc.HTTPError{StatusCode: 403, Body: []byte("connection reset")},

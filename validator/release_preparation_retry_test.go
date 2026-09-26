@@ -126,9 +126,9 @@ func TestReleasePreparationJoinedReadKeepsPreIntentAuthority(t *testing.T) {
 	}
 	for _, cause := range []error{joined, classifyProvisionalNativeRead(true, 8, joined)} {
 		attempts = 0
-		err := runReleaseSteeringLoopWithWaitAndPermissions(t.Context(), func() (uint64, error) { return 7, nil }, func() error { attempts++; return cause }, func() bool { return attempts <= releaseSteeringFailureLimit }, false, true)
-		if err == nil || attempts != releaseSteeringFailureLimit {
-			t.Fatalf("unmarked or foreign-epoch read gained authority: attempts=%d error=%v", attempts, err)
+		err := runReleaseSteeringLoopWithWaitAndPermissions(t.Context(), func() (uint64, error) { return 7 + uint64(attempts), nil }, func() error { attempts++; return cause }, func() bool { return attempts <= releaseSteeringFailureLimit }, false, true)
+		if !errors.Is(err, cause) || attempts != 1 || !strings.Contains(err.Error(), "incomplete epoch") {
+			t.Fatalf("unmarked or foreign-epoch read gained epoch authority: attempts=%d error=%v", attempts, err)
 		}
 	}
 }

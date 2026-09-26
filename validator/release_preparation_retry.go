@@ -15,7 +15,7 @@ func classifyReleasePreparationRetry(err error) (retryable, transport bool) {
 		return true, false
 	}
 	switch err.(type) {
-	case *TrailFatalError, *os.PathError:
+	case *TrailFatalError, *os.PathError, *os.LinkError:
 		return false, false
 	}
 	if RetryableEvidenceTransportError(err) {

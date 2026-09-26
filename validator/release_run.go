@@ -121,10 +121,8 @@ func classifyReleaseSnapshotRetryMode(err error, siblingCancellation, legacyText
 	if err == nil {
 		return true, false
 	}
-	if _, fileError := err.(*os.PathError); fileError {
-		return false, false
-	}
-	if _, fatal := err.(*TrailFatalError); fatal {
+	switch err.(type) {
+	case *os.PathError, *os.LinkError, *TrailFatalError:
 		return false, false
 	}
 	if err == context.Canceled {

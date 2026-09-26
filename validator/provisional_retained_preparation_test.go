@@ -73,6 +73,19 @@ func TestRetainedProvisionalPreparationRequiresEmptyNativeStore(t *testing.T) {
 // retry retains the exact canonical Evm hash; no client-key or stream replay
 // proceeds on a failed census, and the final successful body is fully checked.
 func TestRetainedProvisionalPreparationRetriesPinnedBindingCensus(t *testing.T) {
+	testReleaseSteeringPinnedBindingCensus(t, true)
+}
+
+// A retained strict owner gets the same bounded census retry without receiving
+// pre-intent deferral authority. All canonical observations remain required.
+func TestReleaseSteeringTransportV2RetriesPinnedBindingCensus(t *testing.T) {
+	testReleaseSteeringPinnedBindingCensus(t, false)
+}
+
+// Interrupt the actual census post twelve times before recovering its pinned
+// result. Both scopes replay the complete collector and retain no partial head.
+func testReleaseSteeringPinnedBindingCensus(t *testing.T, fresh bool) {
+	t.Helper()
 	fixture := newReleaseHeadV2TestFixture(t, 1)
 	server := httptest.NewServer(fixture.rpc)
 	t.Cleanup(server.Close)
@@ -134,7 +147,7 @@ func TestRetainedProvisionalPreparationRetriesPinnedBindingCensus(t *testing.T) 
 	cfg := &ReleaseConfig{ChainID: 945, GenesisHash: provisionalRuntimeTestnetGenesis, StateDir: newAttemptSettlementRuntimeV2TestStateDir(t), ProvisionalRuntimeCompatibility: crv4.ProvisionalRuntimeCompatibilityProfile}
 	cfg.Policy.NetworkProfile = "testnet"
 	history := &releaseEvidenceV2StartupHistory{retainedStartup: true}
-	allow := provisionalFreshNativePreparationEnabled(cfg, history, nil)
+	allow := fresh && provisionalFreshNativePreparationEnabled(cfg, history, nil)
 	attempts := 0
 	var result releaseHeadResult
 	err = runReleaseSteeringLoopWithWaitAndPermissions(t.Context(), func() (uint64, error) { return fixture.measurement.artifact.SubnetEpoch, nil }, func() error {

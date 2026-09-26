@@ -142,6 +142,9 @@ func (self *HTTPAttemptStreamV2Writer) write(ctx context.Context, kind, contentH
 		// The existing request owns this bounded diagnostic read. Never retry
 		// an ambiguous write or include headers in its error message.
 		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 1024))
+		if readErr != nil {
+			readErr = &attemptStreamHttpReadError{cause: readErr}
+		}
 		detail := strings.TrimSpace(string(raw))
 		// Suppress even a truncated reflection of this request's session.
 		if strings.Contains(detail, credential[:min(len(credential), 32)]) ||
@@ -154,8 +157,13 @@ func (self *HTTPAttemptStreamV2Writer) write(ctx context.Context, kind, contentH
 		return errors.New("attempt upload acknowledgement differs from exact immutable object")
 	}
 	acknowledgement, err := io.ReadAll(io.LimitReader(response.Body, 1))
-	if err != nil || len(acknowledgement) != 0 {
+	if len(acknowledgement) != 0 {
 		return errors.Join(errors.New("attempt upload acknowledgement contains unexpected bytes"), err)
+	}
+	if err != nil {
+		// An interrupted empty acknowledgement has no unexpected bytes. Keep
+		// its actual transport cause for the immutable publication owner.
+		return &attemptStreamHttpReadError{cause: err}
 	}
 	return nil
 }

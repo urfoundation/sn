@@ -87,7 +87,8 @@ func TestFreshProvisionalNativeReadRejectsMalformedChunkAndMixedCauses(t *testin
 }
 
 // An authorized interrupted read cannot erase prior durability failure or
-// authorize an unrelated epoch, strict owner, post-intent scope or mixed error.
+// authorize an unrelated epoch, strict owner or mixed error. Unmarked transport
+// may retry after an intent exists, while retaining strict epoch continuity.
 func TestFreshProvisionalNativeReadKeepsFailureAndIntentGuards(t *testing.T) {
 	interrupted := classifyProvisionalNativeRead(true, 21, fmt.Errorf("compact terminal replay: %w", context.DeadlineExceeded))
 	for _, test := range []struct {
@@ -96,7 +97,6 @@ func TestFreshProvisionalNativeReadKeepsFailureAndIntentGuards(t *testing.T) {
 		err   error
 	}{
 		{name: "strict", err: interrupted},
-		{name: "post-intent", allow: true, err: classifyProvisionalNativeRead(false, 21, context.DeadlineExceeded)},
 		{name: "wrong epoch", allow: true, err: classifyProvisionalNativeRead(true, 22, context.DeadlineExceeded)},
 		{name: "mixed integrity", allow: true, err: errors.Join(interrupted, errors.New("signed journal changed"))},
 	} {
