@@ -1,5 +1,39 @@
 # Testnet execution plan
 
+## R47 measured interval active — 2026-09-26 14:01 UTC
+
+The sole release owner is `urnetwork-sim-release-r47.service` (PID 1255308 at
+this checkpoint); fleet supervisor `urnetwork-sim-ur-subnet-testnet-v1.service`
+remains active. The signed R47 boundary has not been invalidated. Its five
+measured epochs are 651–655, first block 8,090,674, last block 8,092,174,
+with terminal settlement target 8,092,324. LAN RPC
+`http://192.168.1.162:9944` finalized block 8,090,749 at this checkpoint.
+Do not restart the owner merely to apply later code changes or repair soft
+errors; it is executing the real fault schedule and must reach terminal
+evidence even if strict acceptance fails.
+
+Epoch 650 closed with operator usage 52,450,233 and 50,903,383 bytes; the
+owner's authenticated rate check clears twice the native transfer minimum at
+every tier. Both payout roots and artifact hashes were committed in finalized
+block 8,090,680 with successful receipts. Exact LAN on-chain logs, receipts,
+hashes and peer-review instructions are in the
+[R47 measured-start bundle](sim-testnet/peerreview/evidence/FINAL-3-R47-measured-start-20260926/README.md).
+The owner's epoch-651 observation also reports nonzero deposits for both
+operators. These facts establish live measured activity, not terminal
+settlement or final acceptance.
+
+The quality-cohort fault activated and restored; both head-boundary faults
+and the first fleet-prune pair activated. Postgres-1 fault restored and Redis-1
+was active at this checkpoint. The owner continues to record transient RPC
+adversary errors from its signed ten-second sample limit and provisional
+process-log findings. It also retries transient operator GET failures across
+its five-minute budget. Keep these exceptions visible in `FINAL-3.md` and
+verify the later fault restores, all five epochs, terminal settlements,
+conservation, on-chain receipts, and independent replay before any completion
+claim. Candidate 60-second RPC retry and truthful timeout diagnostics are
+pushed on `codex/r46-integration-20260926` through `867a13d7`; they are not
+in the signed live executable.
+
 ## R45 sealed failure and retained recovery — 2026-09-25 16:56 UTC
 
 The owner exited 1 after sealing `runs/20260925T134346.277250758Z-release-1.0/result.json`:

@@ -2642,8 +2642,11 @@ checkout lacked the sibling vault/config repositories required by discovery,
 and source-capacity tests pinned old exact byte totals after the approved
 census geometry changed. Keep the full module workspace reproducible and
 assert the finite document boundary and aggregate safety property directly.
-The large evidence-census suite needs an explicit duration budget; Go's
-default ten-minute timeout interrupted it while tests were still active.
+The release gate already partitions the large evidence-census tests and runs
+them with a 90-minute timeout. An ad hoc unpartitioned `go test` used Go's
+default ten-minute timeout and interrupted that census; production verification
+must use the existing partitioned gate rather than treating this as a failure
+of the census or weakening its full-size coverage.
 R47 also labeled a timed-out public common-block read as a "common-height
 disagreement" because the actor decoded the empty response after the transport
 error. The post-R47 candidate separates failed reads from successfully decoded
