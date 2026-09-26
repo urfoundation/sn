@@ -278,6 +278,21 @@ triage, not a waiver or a claim that any failed gate passed. The owner
 and [anomalies](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-anomalies.json)
 are copied byte-for-byte from the independent terminal capture.
 
+The sealed read-only diagnostic currently reports
+`result-start-and-fault-binding` failed with “lifecycle cleanup completion
+appeared without its prior signed request.” The exact retained sequence is
+more specific: the signed start has both lifecycle faults pending; the
+authenticated observation at block **8,086,331** records their request; the
+observation at **8,086,382** records completion; and both final result rows
+equal the signed latest checkpoint. The authenticated observation prefix
+contains **74 rows and 89,796,733 bytes**, with no uncredited suffix.
+The diagnostic reader compared start directly to final using an adjacent
+transition rule, so this diagnostic failure does not prove a missing request.
+It also does not turn the failed R46 acceptance into a pass. The final
+diagnostic inventory is still pending.
+[Sealed checkpoint comparison](peerreview/evidence/FINAL-2-R46-continuation-20260925/sealed-r46-cleanup-history.receipt.json)
+(SHA-256 `97352693576e783b6a81edf42c38341293f20a81b721f2ca47fd0e44403f39ff`).
+
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3
 (`RootMissed`)** with zero commitment fields for operator 2, epoch **634**.

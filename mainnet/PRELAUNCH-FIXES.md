@@ -2343,3 +2343,15 @@ bind the final result to the last checkpoint. It must still reject a
 completed cleanup that lacks the signed request in that history. Test both
 the valid multi-step path and a forged start-to-complete jump through
 recovery and terminal diagnostics.
+
+R46's operator stats and proof reads hit their 100,000-row and 10,000-row
+caps while the APIs returned oldest-first history. A healthy response could
+therefore show stale scoring and hide the current proof interval. Mainnet
+observers must request an explicit, pinned time range for every sampled
+operator, reject a full page that might be truncated, and retain the queried
+range with the result. A transient GET may retry within its approved budget
+without changing that range. API response liveness must be judged from the
+response itself; unrelated process-health failures remain separate strict
+findings. Verification faults must not excuse a semantically invalid signed
+response. Exercise saturated history, changed signing keys, replayed samples,
+and later success after earlier errors with deterministic regression tests.

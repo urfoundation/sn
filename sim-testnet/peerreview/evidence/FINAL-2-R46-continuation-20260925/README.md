@@ -151,6 +151,12 @@ independent root causes or converting any failure to a pass. A fresh
 read-only terminal diagnostic is running against the sealed files; its
 completed report will be added separately.
 
+`sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
+cleanup rows with the signed latest checkpoint and binds their request and
+completion observations inside the authenticated prefix. It identifies the
+diagnostic reader's direct start-to-final transition error without changing
+the strict failed R46 result.
+
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault
 emitted `RootMissed(634, 2, 0)` at block 8,086,027 inside the signed window;

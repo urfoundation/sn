@@ -1,0 +1,77 @@
+{
+  "diagnostic_failure": {
+    "detail": "scenario campaign result fault ledger: lifecycle cleanup completion appeared without its prior signed request",
+    "id": "result-start-and-fault-binding",
+    "status": "fail"
+  },
+  "diagnostic_prefix": {
+    "evidence": {
+      "authenticated_prefix_bytes": 89796733,
+      "observations": 74,
+      "terminal_head": {
+        "hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a",
+        "number": 8086545
+      },
+      "uncredited_suffix_bytes": 0
+    },
+    "id": "signed-observation-prefix",
+    "status": "pass"
+  },
+  "faults": [
+    {
+      "completed_observation_hash": "0x678b372b7c2ff8d94c41060c79529a74255ddcdcf93fbdbd4af67c28437e668e",
+      "handoff_hash": "sha256:5a256fa5da964c726ed02873a42e7b21654fb4898e0333ad4b3071ca83216c26",
+      "id": "fleet-lifecycle-target-prune",
+      "initial_status": "pending",
+      "requested_at": "2026-09-25T23:17:47.038143921Z",
+      "requested_head": {
+        "hash": "0xa5c9e4c3ca9d5a6f6ff695585b728438f67853a0f17f671dc8b387cb7d1a1530",
+        "number": 8086331
+      },
+      "requested_observation_hash": "0x836d40398b2127cf81ef691af764fe7e6be89da5cd40d1c8dd51776042918490",
+      "restored_block": 8086382,
+      "restored_block_hash": "0x9085c411803fa91ff9dd8209d3f3f23381d71b711dc5fbd57a5f76c660b02a6a",
+      "signed_final_status": "restored",
+      "signed_result_record_equal": true
+    },
+    {
+      "completed_observation_hash": "0x678b372b7c2ff8d94c41060c79529a74255ddcdcf93fbdbd4af67c28437e668e",
+      "handoff_hash": "sha256:5a256fa5da964c726ed02873a42e7b21654fb4898e0333ad4b3071ca83216c26",
+      "id": "fleet-lifecycle-companion-prune",
+      "initial_status": "pending",
+      "requested_at": "2026-09-25T23:17:47.038143921Z",
+      "requested_head": {
+        "hash": "0xa5c9e4c3ca9d5a6f6ff695585b728438f67853a0f17f671dc8b387cb7d1a1530",
+        "number": 8086331
+      },
+      "requested_observation_hash": "0x836d40398b2127cf81ef691af764fe7e6be89da5cd40d1c8dd51776042918490",
+      "restored_block": 8086382,
+      "restored_block_hash": "0x9085c411803fa91ff9dd8209d3f3f23381d71b711dc5fbd57a5f76c660b02a6a",
+      "signed_final_status": "restored",
+      "signed_result_record_equal": true
+    }
+  ],
+  "note": "Source checkpoint/prefix authentication was performed by sealed v2 diagnostic; this receipt only compares exact retained public data and does not rewrite or validate acceptance.",
+  "observations": [
+    {
+      "hash": "0x836d40398b2127cf81ef691af764fe7e6be89da5cd40d1c8dd51776042918490",
+      "head": {
+        "hash": "0xa5c9e4c3ca9d5a6f6ff695585b728438f67853a0f17f671dc8b387cb7d1a1530",
+        "number": 8086331
+      },
+      "observed_at": "2026-09-25T23:17:47.038143921Z"
+    },
+    {
+      "hash": "0x678b372b7c2ff8d94c41060c79529a74255ddcdcf93fbdbd4af67c28437e668e",
+      "head": {
+        "hash": "0x9085c411803fa91ff9dd8209d3f3f23381d71b711dc5fbd57a5f76c660b02a6a",
+        "number": 8086382
+      },
+      "observed_at": "2026-09-25T23:27:57.095983783Z"
+    }
+  ],
+  "result_sha256": "e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9",
+  "run_id": "20260925T172403.199659160Z-release-1.0",
+  "schema": "r46-cumulative-cleanup-read-only-receipt-v1",
+  "start_sha256": "4b1ebd67df7c9422d61e998f425a1d5694efaa4dd2dc45b583e9735d1848a4fd"
+}
