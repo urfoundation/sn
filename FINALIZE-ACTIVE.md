@@ -17,10 +17,14 @@ claimed from this checkpoint.
 Both authenticated native-1690 pool audits marked the operator pools
 `zero_pool_weight` because their lagged source payout root was unavailable
 on-chain, and the applied vectors omitted pool UIDs 3 and 4. The live vault
-reports those same UIDs for operators 1 and 2. The cause of continuing zero
-pool stake is under native-state review; a one-edge history adoption by
-itself would not create funding. The successor must prove positive eligible
-weights and actual funding, then independently replay the economic receipts.
+reports those same UIDs for operators 1 and 2. Historical native reads now distinguish the earlier epoch-632 loss from the
+R47 zero-pool vector. UID255 was active with pool3/4 weights at the last
+nonzero capture, then exceeded the 5,000-block activity cutoff before the
+next boundary; both pools emitted zero. After native1690, both validators were
+active, but neither current weight row contains pool3 or pool4. A one-edge
+history adoption by itself would not create funding. The successor must prove
+positive eligible weights, automatic pool emission/stake growth and a nonzero
+vault capture, then independently replay the economic receipts.
 
 An isolated adversary selector/pre-arm fix (`4ac7618b`) is now integrated;
 combined focused normal/race tests are running. It cannot erase R47's valid

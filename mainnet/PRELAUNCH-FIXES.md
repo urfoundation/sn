@@ -2722,10 +2722,15 @@ cannot substitute for a positive economic settlement. Epoch-651
 receipts had zero amount and no `ClaimPaid`. The LAN archive scan found 42
 consecutive zero captures after the last nonzero epoch-631 capture. The
 vault's zero-capture branch reads zero pool-hotkey stake; it is distinct from
-minimum-transfer dust or a missed boundary. The authenticated native-1690
-pool audits classified both pools as `zero_pool_weight` because the lagged
-source payout root was unavailable on-chain, and both applied vectors omit
-pool UIDs 3 and 4. Before mainnet acceptance, require a committed lagged
+minimum-transfer dust or a missed boundary. LAN historical state separates two upstream allocation failures. At the last
+nonzero epoch-631 capture, validator UID255 was active and its weight row
+included pool UIDs 3 and 4. By epoch632, both validators were inactive after
+exceeding the 5,000-block activity cutoff even though UID255 still stored
+those positive weights. Later, both validators became active again, but the
+authenticated native-1690 pool audits classified both pools as
+`zero_pool_weight` because the lagged source payout root was unavailable
+on-chain; both applied vectors omit UIDs 3 and 4. Before mainnet acceptance,
+monitor validator activity/LastUpdate versus cutoff, require a committed lagged
 source root, compliant deposit, actual positive eligible pool weights, and
 nonzero native emission/stake delta before claiming an economically valid
 payout epoch. Test zero-root, uncommitted-root, stale-source, deferred dust,
