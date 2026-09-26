@@ -2290,3 +2290,49 @@ classification, original-child signaling proof, write-ahead fault intent,
 pending container restore and post-transition completion heads in the
 composed recovery rehearsal. A documentation-only main advance should not
 change the approved executable, but it must not conceal a missing code patch.
+
+### Require proof production before completing a validator restart
+
+R46 marked replacement validators restored while they were still replaying
+startup evidence. The next sequential restart could then remove the remaining
+proof source. Require the exact healthy replacement PID and kernel start ticks,
+plus a complete signed trail begun after its recorded start in every approved
+operator/VPK namespace. Use bounded tail reads for this readiness check; keep
+the full authenticated proof history audit as a separate terminal requirement.
+A restarted controller must recheck the same durable fault and current process
+generation without signaling again or resetting the freshness boundary. Keep
+the restart pending and its successor blocked while proofs are missing. Test
+the actual restore/scheduler with a healthy but proof-starved child, reentry,
+one missing operator, stale namespace, a late final hop on an old trail,
+foreign signatures, changed kernel generation, incomplete rows and cancellation.
+
+Streamed V2 replay must retain the same bounded exact ASSIGN-signature reuse as
+legacy replay. Two signed M8 trails otherwise repeat 70 checks for 14 unique
+tuples. The 64-entry cache belongs to one cut invocation, keys on full public
+key/message/signature bytes and retains successful checks only. Independent
+replicas, retries and cuts must authenticate again; record signatures, source
+hashes, EOF, proof projection and cancellation remain mandatory. Require the
+real-stream old-behavior control to fail, plus changed-key and late-error tests.
+This reduces duplicate work; it does not establish a measured production
+startup speedup or eliminate all capture and replay costs.
+
+R46 operator 2 closed an empty epoch-634 payout census, while operator 1 closed
+four leaves. The pinned server intentionally skips submission with no leaves;
+the later RootMissed status is consistent with that disposition. Usage bytes
+alone do not grant payout eligibility: active heads remain excluded and pool
+providers need assignment and confirmation exposure. Test proof-starved usage
+through the actual provider join and signed artifact, then recovery with fresh
+confirmed exposure. Test zero-root rejection and exact operator-scoped carry to
+a later real root, preserving the original RootMissed status. Do not invent a
+leaf, backdate a commit or interpret an observation timeout as a missed root.
+The complete proof blackout supports restart starvation as an upstream cause;
+exclusive attribution still requires the exact historical provider census.
+
+Keep the R46 native steering gap explicit: both replicas later held the timed-out
+immutable object and both input cuts were durable, but the prior applied intent
+and EMA were still thirteen native epochs behind. Exact publication recovery
+does not prove a finalized intent and cannot waive EMA continuity. A later run
+needs authenticated complete native history or an explicitly authorized fresh
+generation. Signed-source diagnostic capture is also a separate owner: it
+captures original RPC, controls and stream bytes before independent replay, so
+a replay-signature optimization cannot explain or fix its HTTP/RPC latency.
