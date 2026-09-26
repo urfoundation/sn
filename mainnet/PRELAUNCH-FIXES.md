@@ -2620,6 +2620,17 @@ worst-case source/retry workload (at least 69,106 objects/hour and 21,895,096
 retry requests/hour at this workload) and rerun the forecast using the actual
 rendered operator configuration before any accepting interval. A forecast
 warning is not evidence that the constrained service can sustain load.
+R47's continuous RPC adversary recorded transient LAN-RPC timeouts before the
+measured interval. The configured `request_timeout_milliseconds: 10000` bounds
+an entire sample containing up to 20 sequential JSON-RPC reads, and its
+`rpcAdversary.call` performs one HTTP POST per read without transient retry.
+The owned-LAN transport already removes its internal QPS gate; the short
+sample deadline and lack of retry remain. Before an accepting mainnet run,
+give expected idempotent RPC reads at least 60 seconds of bounded retry,
+separate availability recovery from the latency measurement, count every
+actual retry request in adversary evidence, and test deterministic timeout,
+recovery and exhausted-deadline cases. A single transient read timeout must
+not silently turn an otherwise complete multi-hour interval into a hard stop.
 At 2026-09-26 11:42:09 UTC, the R47 verify adversary recorded one HTTP 400
 at EXTEND depth 7. The operator-1 API log identifies the rejection as
 `source-egress-unresolved` for the assigned pending hop. The owner continued
