@@ -264,7 +264,7 @@ groups. Counts are failed assertion rows, not independent root causes:
 | Validator native decisions missing | 14 | Validator 1 produced no fresh applied decision, vector or deposit audit after restart. |
 | Inherited lifecycle exception | 3 | The approved prune/re-register bypass still cannot satisfy strict lifecycle proof. |
 | Retained process findings | 2 | Ten miner exit-gap classes and validator steering failures remain in the strict log gate. |
-| One uncertain miner claim | 2 | Operator 2 finalized 199 of 200 candidate claims. |
+| Claim census at the terminal cut | 2 | The selected census has 200 finalized claims for operator 1 and 199 for operator 2; miner 881's operator-1 epoch-635 submission was unresolved at that cut. |
 | Cancellation and publication | 2 | Graceful terminal cancellation interrupted publication; the owner result is still retained. |
 | Governance drill, payout tier, cohort separation, open-anomaly aggregate | 4 | One row each, requiring separate source review. |
 
@@ -277,6 +277,22 @@ triage, not a waiver or a claim that any failed gate passed. The owner
 [adversary evidence](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-adversaries.json)
 and [anomalies](peerreview/evidence/FINAL-2-R46-continuation-20260925/owner-anomalies.json)
 are copied byte-for-byte from the independent terminal capture.
+
+The missed payout is independently visible on-chain. A LAN historical
+`eth_call` at the owner's finalized block **8,086,545** returns status **3
+(`RootMissed`)** with zero commitment fields for operator 2, epoch **634**.
+The `RootMissed(634, 2, 0)` log was emitted in transaction
+`0xd7edee5109490c124debd59420de2628c71bcb3c29c32cd45f8e924ab87d35a6`
+at block **8,086,027**, inside the signed measurement window. No operator-2
+epoch-634 payout tier is present; later epoch artifacts do not prove that
+missing root. The selected claim census has a separate timing finding:
+miner 881's operator-1 epoch-635 claim was still `submitting` at the owner's
+cut, although its queue later finalized at block **8,086,568**, after the
+signed terminal block. The later receipt must be recorded as a supplement,
+not used to rewrite the terminal verdict. The operator-2 count of 199 is
+associated with the missed epoch-634 root, not with miner 881's submission.
+[Historical LAN call, event and claim-cut receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/no2-epoch634-rootmissed-claim-cut.receipt.json)
+(SHA-256 `1ca99f9efbc4d1d055813fe1468c427ac3b1dc7557beecec6b44e8ad61247ffa`).
 The first durable R46 observation was taken at 17:30:57 UTC on finalized
 block **8,084,596** (hash `0x0fd8adbca952fcce06db21ab0f057cf78e16c4309273226e6d66ef84e8ce5192`).
 It found **808/808 fleet bindings valid** and current-policy rate readiness

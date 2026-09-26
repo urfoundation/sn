@@ -1,0 +1,95 @@
+{
+  "acceptance_window": {
+    "end_block": 8086174,
+    "epoch_count": 5,
+    "first_epoch": 631,
+    "start_block": 8084674,
+    "terminal_block": 8086324
+  },
+  "created_at": "2026-09-26T00:19:27.839604+00:00",
+  "interpretation": "NO2 epoch634 was RootMissed within the signed acceptance window and remains unproven by later artifacts. Miner881 epoch635 was submitting in the selected observation; its later finalized claim block is after the signed terminal cut, so it cannot repair acceptance.",
+  "no2_epoch634": {
+    "historical_eth_call": {
+      "block_hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a",
+      "block_number": 8086545,
+      "calldata": "0x11f5fe7d000000000000000000000000000000000000000000000000000000000000027a0000000000000000000000000000000000000000000000000000000000000002",
+      "decoded_fields": {
+        "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "claimed_rao": 0,
+        "expiry_block": 0,
+        "funded_rao": 0,
+        "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "status": 3,
+        "total_rao": 0
+      },
+      "return_data": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    "lan_rpc_authority": "192.168.1.162:9944",
+    "observed_contract_row": {
+      "artifact_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "claimed_rao": "0",
+      "commit_block": 0,
+      "committer": "0x0000000000000000000000000000000000000000",
+      "conviction_added_rao": "0",
+      "deposit_rao": "399763964",
+      "expiry_block": 0,
+      "funded_rao": "0",
+      "no_id": 2,
+      "payout_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "status": 3,
+      "total_rao": "0"
+    },
+    "observed_payout_tier_present": false,
+    "root_missed_event": {
+      "blockHash": "0x0ee275b0377d64887fb06186802a2eea750f7ae7ae11c85b7af6a4a6d1ef5358",
+      "blockNumber": "0x7b620b",
+      "data": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "logIndex": "0x2",
+      "topics": [
+        "0x48152d6b76926d2c286e4d33083847a9371068ce54d7fc4420cd73432e5d8b94",
+        "0x000000000000000000000000000000000000000000000000000000000000027a",
+        "0x0000000000000000000000000000000000000000000000000000000000000002"
+      ],
+      "transactionHash": "0xd7edee5109490c124debd59420de2628c71bcb3c29c32cd45f8e924ab87d35a6"
+    },
+    "vault_address": "0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e"
+  },
+  "schema": "r46-rootmissed-claim-terminal-readonly-v1",
+  "selected_claim_window": {
+    "finalized_counts_by_no": {
+      "1": 200,
+      "2": 199
+    },
+    "later_receipt_after_terminal": true,
+    "miner_881_epoch635_observed_status": "submitting",
+    "miner_881_no_id": 1,
+    "miner_881_observation_uncertain": 1
+  },
+  "selected_finalized_head": {
+    "hash": "0xcc20a4ce77d33f43c1eb3181182bfbf5e5e621921878d3a3d0539a28d379f40a",
+    "number": 8086545
+  },
+  "sources": {
+    "later_miner_881_queue": {
+      "finalized_block": 8086568,
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/miner-881/claims/claim-queue.json",
+      "sha256": "sha256:26a17be5c99d0ee6c6692463dd628e47ff178cfbab785f9d4af71146080e06a0",
+      "status_at_capture": "finalized",
+      "updated_at": "2026-09-26T00:04:54.333725823Z"
+    },
+    "observations": {
+      "observation_hash": "0xfe27a910fca8029ef9651352b4cd35db20528eafb5237fcda7db073910da0fc6",
+      "observed_at": "2026-09-26T00:00:38.188279629Z",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/observations.jsonl",
+      "selected_line_bytes": 1220416,
+      "selected_line_sha256": "sha256:f0ad247d1da3a7195f837564ea6a261d864e0ad83e59aa673efd69fa1fcae8e8",
+      "selected_offset": 88576317,
+      "sha256": "sha256:42b097b02b171d1aae061bf8890a153d4d06806a4d7b19ec7819ad37eb78288d"
+    },
+    "result": {
+      "evidence_hash": "0xbd7972698cdfde31ae210e199d92bfe4ec6d44f2c15ed6c7e6dc9c1a3cdcd5d8",
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runs/20260925T172403.199659160Z-release-1.0/result.json",
+      "sha256": "sha256:e979cafe568ae1107a32adcf03b086447fce6db9485a968271cb8cdbd38878c9"
+    }
+  }
+}

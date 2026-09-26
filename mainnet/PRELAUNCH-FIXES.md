@@ -2290,3 +2290,40 @@ classification, original-child signaling proof, write-ahead fault intent,
 pending container restore and post-transition completion heads in the
 composed recovery rehearsal. A documentation-only main advance should not
 change the approved executable, but it must not conceal a missing code patch.
+
+R46 completed all five measured epochs and crossed its terminal block, then
+sealed a failed provisional result with 86 failed assertions. Both validators
+had zero epoch-634 proofs during scheduled rolling restarts. Validator 2 took
+about 80 minutes to resume proof production; validator 1 remained in census
+replay at the terminal cut. Process liveness and a successful restart receipt
+therefore do not establish release readiness. Mainnet restart admission must
+require fresh proof production through both operators and an applied native
+decision from each validator before scheduling the next disruptive fault.
+Persist authenticated replay checkpoints and reuse exact already verified
+stream chunks or signature results within their bounded authority; test
+interrupted replay, a changed origin/key/body, and the point at which proof
+workers actually start. A restart that cannot recover within the signed
+interval must fail that interval explicitly instead of being counted healthy
+from a PID alone.
+
+R46 operator 2 epoch 634 has on-chain `RootMissed` with no committed root,
+and the terminal payout census lacks that epoch's authenticated tier. Mainnet
+must reconcile every expected epoch through capture, carry, root commit,
+payment and claim state, including a missed-root path. A later artifact cannot
+repair the missing original root silently. Keep the exact missed epoch in
+the result and test a validator restart crossing root submission. Separately,
+one claim was still uncertain at the terminal cut; reconcile its durable
+transaction through finalized on-chain state with a bounded post-terminal
+read, preserving the original terminal verdict and recording later resolution
+as a supplement rather than rewriting history.
+
+R46 also showed a terminal control problem: after the signed interval and all
+42 faults were complete, failed strict assertions and an adversary actor with
+zero samples kept the owner polling for hours. Separate collection completion
+from acceptance. Once an authenticated in-window outcome is immutable and all
+fault/lifecycle cleanup is retained, seal a failed result promptly with the
+full strict assertion and adversary inventory; keep retrying mutable reads
+while they can still satisfy acceptance. Test both paths, including an actor
+whose prerequisite never appears. Diagnostic readers must run against the
+sealed result: an earlier read-only inventory that timed out waiting for the
+result is historical, not a substitute for a fresh final check.

@@ -150,3 +150,12 @@ bounded diagnostic groups without treating derived adversary-vector rows as
 independent root causes or converting any failure to a pass. A fresh
 read-only terminal diagnostic is running against the sealed files; its
 completed report will be added separately.
+
+`no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
+owner's exact final observation with LAN historical EVM reads. The vault
+emitted `RootMissed(634, 2, 0)` at block 8,086,027 inside the signed window;
+at the observation block its entitlement still has status 3 and zero root.
+The selected claim projection separately records miner 881's operator-1
+epoch-635 submission as unresolved at the terminal cut, even though a later
+queue receipt finalized after the signed terminal block. Neither later
+artifact nor later claim changes the original acceptance verdict.
