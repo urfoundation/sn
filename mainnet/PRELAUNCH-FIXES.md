@@ -2644,6 +2644,12 @@ census geometry changed. Keep the full module workspace reproducible and
 assert the finite document boundary and aggregate safety property directly.
 The large evidence-census suite needs an explicit duration budget; Go's
 default ten-minute timeout interrupted it while tests were still active.
+R47 also labeled a timed-out public common-block read as a "common-height
+disagreement" because the actor decoded the empty response after the transport
+error. The post-R47 candidate separates failed reads from successfully decoded
+block disagreement and has a deterministic timeout regression. Apply that
+ordering to other paired chain comparisons before mainnet so a provider outage
+cannot be presented as conflicting finalized chain evidence.
 At 2026-09-26 11:42:09 UTC, the R47 verify adversary recorded one HTTP 400
 at EXTEND depth 7. The operator-1 API log identifies the rejection as
 `source-egress-unresolved` for the assigned pending hop. The owner continued

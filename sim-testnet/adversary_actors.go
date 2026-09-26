@@ -756,10 +756,13 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	tag := fmt.Sprintf("0x%x", commonNumber)
 	privateCommon, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+7)
 	publicCommon, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+8)
+	if privateErr != nil || publicErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height reads height=%d operational=%v public=%v", commonNumber, privateErr, publicErr), Requests: 8, MaxInFlight: 1}
+	}
 	privateAt, privateAtNumber, decodePrivateErr := decodeRPCBlock(privateCommon)
 	publicAt, publicAtNumber, decodePublicErr := decodeRPCBlock(publicCommon)
-	if privateErr != nil || publicErr != nil || decodePrivateErr != nil || decodePublicErr != nil || privateAtNumber != commonNumber || publicAtNumber != commonNumber || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%d/%s public=%d/%s errors=%v/%v/%v/%v", commonNumber, privateAtNumber, privateAt.Hash, publicAtNumber, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 8, MaxInFlight: 1}
+	if decodePrivateErr != nil || decodePublicErr != nil || privateAtNumber != commonNumber || publicAtNumber != commonNumber || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%d/%s public=%d/%s errors=%v/%v", commonNumber, privateAtNumber, privateAt.Hash, publicAtNumber, publicAt.Hash, decodePrivateErr, decodePublicErr), Requests: 8, MaxInFlight: 1}
 	}
 	privateRuntimeResponse, privateRuntimeErr := self.call(ctx, privateEndpoint, "state_getRuntimeVersion", []any{privateFinalized}, sequence*32+9)
 	publicRuntimeResponse, publicRuntimeErr := self.call(ctx, publicEndpoint, "state_getRuntimeVersion", []any{publicFinalized}, sequence*32+10)

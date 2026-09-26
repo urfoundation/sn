@@ -123,6 +123,38 @@ func TestAdversaryRpcCommonBlockRejectsReturnedHeightDrift(t *testing.T) {
 	}
 }
 
+// A failed public read is an availability result, not evidence that two
+// successfully decoded finalized blocks disagree.
+func TestAdversaryRpcCommonBlockTimeoutDoesNotClaimDisagreement(t *testing.T) {
+	actor, requests := adversaryRpcBlockTestActor(t, false, nil)
+	original := actor.http.transportForTest
+	failed := 0
+	actor.http.retryWait = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	actor.http.transportForTest = adversaryGetTestTransport(func(request *http.Request) (*http.Response, error) {
+		body, err := request.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		defer body.Close()
+		var call struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(body).Decode(&call); err != nil {
+			return nil, err
+		}
+		if request.URL.Host == "public.example" && call.Method == "eth_getBlockByNumber" && len(call.Params) > 0 && string(call.Params[0]) == `"0x64"` {
+			failed++
+			return nil, context.DeadlineExceeded
+		}
+		return original.RoundTrip(request)
+	})
+	result := actor.Sample(t.Context(), adversaryAttackPhase, 2)
+	if result.Outcome != adversaryOutcomeError || result.Requests != 10 || *requests != 7 || failed != 3 || !strings.Contains(result.Detail, "common-height reads height=100") || !strings.Contains(result.Detail, "context deadline exceeded") || strings.Contains(result.Detail, "disagreement") {
+		t.Fatalf("transport absence became chain disagreement: result=%+v successful=%d failed=%d", result, *requests, failed)
+	}
+}
+
 // Matching malformed hashes are not evidence that two endpoints agree on a
 // block, even when their requested and returned block numbers match exactly.
 func TestAdversaryRpcCommonBlockRejectsMalformedHashAgreement(t *testing.T) {
