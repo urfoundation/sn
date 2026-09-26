@@ -14,7 +14,7 @@ import (
 	"time"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const evidenceRelayStepMaximumAttempts = 5

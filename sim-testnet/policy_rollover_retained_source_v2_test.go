@@ -18,9 +18,9 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Advance the actual signed binding generation before preparing the next

@@ -22,9 +22,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/blake2b"
 
-	snchain "github.com/urfoundation/sn/chain"
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
+	snchain "github.com/urfoundation/sn/v2026/chain"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 type SubstrateManager struct {

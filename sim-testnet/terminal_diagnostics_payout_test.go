@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 // Actual signed artifact fixtures and the strict collector own validation;

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // An authenticated older chain needs a new, separately signed recovery. This
