@@ -273,7 +273,8 @@ func TestPrecompileRecoveryGasRevisionRejectsSavedSignatures(t *testing.T) {
 
 // The immutable origin and exact pending terminal snapshot are distinct valid
 // sources. Similar but unsigned snapshots never become composable by omission.
-func TestPrecompileRecoveryGasRevisionAuthenticatesTerminalSnapshot(t *testing.T) {
+func completedPrecompileGasRevisionFixture(t *testing.T) (*precompileGasRevisionFixture, *PrecompileConformanceEvidence, []JournalEntry, *PrecompileRecoveryCompletion) {
+	t.Helper()
 	f := newPrecompileGasRevisionFixture(t)
 	// Insert the actual unsigned refusal before the fixture's successful calls.
 	// Its new signatures bind the resulting journal coordinates exactly.
@@ -358,6 +359,12 @@ func TestPrecompileRecoveryGasRevisionAuthenticatesTerminalSnapshot(t *testing.T
 	if err := verifyPrecompileRecoveryCompletion(f.base.plan, completed, &completion); err != nil {
 		t.Fatal(err)
 	}
+	return f, completed, entries, &completion
+}
+
+// Both original and pending snapshots remain independently authenticated.
+func TestPrecompileRecoveryGasRevisionAuthenticatesTerminalSnapshot(t *testing.T) {
+	f, completed, entries, _ := completedPrecompileGasRevisionFixture(t)
 	nonce := f.base.plan.PrecompileProbeSuccessor.DeployerNonce + uint64(len(f.base.entries)-len(f.base.base.entries))
 	if err := verifyPrecompileProbeSuccessorCalls(t.Context(), f.base.cfg, f.base.stateDir, f.base.plan, entries, f.base.reader, f.base.reader.finalized, nonce); err != nil {
 		t.Fatalf("v2 strict receipt replay: %v", err)

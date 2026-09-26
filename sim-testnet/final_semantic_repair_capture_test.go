@@ -29,7 +29,7 @@ func TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry(t *
 	}
 	evidence := &FinalSemanticEvidence{DeploymentID: source.DeploymentID}
 	evidence.EVMCampaignStartHead.Number = 300
-	mutations, err := finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence, &current, plans, entries, nil)
+	mutations, err := finalHistoricalCoordinatorJournalActionsWithSources(evidence, &current, plans, entries, finalHistoricalJournalSources{})
 	if err != nil || len(mutations) != 1 {
 		t.Fatalf("historical coordinator reader omitted signed activation: %v, %d actions", err, len(mutations))
 	}
@@ -45,7 +45,7 @@ func TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry(t *
 	if _, err := finalCaptureReleaseContractCensusForLineage(&current, &current.Deployment, batcher, plans, changed); err == nil {
 		t.Fatal("changed corrective intent was admitted")
 	}
-	if _, err := finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence, &current, plans, changed, nil); err == nil {
+	if _, err := finalHistoricalCoordinatorJournalActionsWithSources(evidence, &current, plans, changed, finalHistoricalJournalSources{}); err == nil {
 		t.Fatal("historical coordinator reader admitted changed corrective intent")
 	}
 	duplicate := append(append([]JournalEntry(nil), entries...), entries[0])

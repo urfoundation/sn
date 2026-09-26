@@ -49,7 +49,7 @@ func TestEvidenceRelayHistoricalCaptureAdmitsOriginalSignedJournalRequest(t *tes
 		t.Fatal("legacy census accepted an unknown dynamic action without its original request")
 	}
 	requests := map[evidenceRelayRequestKey][]byte{{planHash: executor.plan.PlanHash, actionId: action.ID}: raw}
-	census, err := finalCaptureReleaseContractCensusWithRelayRequests(executor.plan, &deployment, batcher, plans, entries, requests)
+	census, err := finalCaptureReleaseContractCensusWithSources(executor.plan, &deployment, batcher, plans, entries, finalHistoricalJournalSources{relayRequests: requests})
 	if err != nil || census.fromBlock != 41 {
 		t.Fatal("exact funded action could not define the capture floor", census, err)
 	}
@@ -198,7 +198,7 @@ func TestEvidenceRelayHistoricalCaptureKeepsPredecessorOwnershipAndFailedRequest
 	entries[1].Stage, entries[1].BlockNumber = StageFinalized, 41
 	deployment := current.Deployment
 	deployment.DeployBlock = 100
-	if census, err := finalCaptureReleaseContractCensusWithRelayRequests(&current, &deployment, common.Address{0x91}, plans, entries, requests); err != nil || census.fromBlock != 41 {
+	if census, err := finalCaptureReleaseContractCensusWithSources(&current, &deployment, common.Address{0x91}, plans, entries, finalHistoricalJournalSources{relayRequests: requests}); err != nil || census.fromBlock != 41 {
 		t.Fatal("authenticated predecessor relay prevented later phase capture", err)
 	}
 }

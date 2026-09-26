@@ -124,16 +124,16 @@ func finalHistoricalCoordinatorUpgradedLog(value finalCanonicalEVMLog) (string, 
 // plan lineage, raw captured logs, and live baseline observations. Any extra
 // proxy upgrade log is rejected instead of being treated as harmless history.
 func finalHistoricalCoordinatorBuildTimeline(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, logsByTransaction map[string][]finalCanonicalEVMLog, baselines []FinalCollectedCoordinatorBaseline) (*finalHistoricalCoordinatorTimeline, error) {
-	return finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence, current, plans, entries, logsByTransaction, baselines, nil)
+	return finalHistoricalCoordinatorBuildTimelineWithSources(evidence, current, plans, entries, logsByTransaction, baselines, finalHistoricalJournalSources{})
 }
 
 // The mixed-chain journal is authenticated before native rows or unrelated
 // Evm calls are classified outside the coordinator transition stream.
-func finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, logsByTransaction map[string][]finalCanonicalEVMLog, baselines []FinalCollectedCoordinatorBaseline, requests map[evidenceRelayRequestKey][]byte) (*finalHistoricalCoordinatorTimeline, error) {
+func finalHistoricalCoordinatorBuildTimelineWithSources(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, logsByTransaction map[string][]finalCanonicalEVMLog, baselines []FinalCollectedCoordinatorBaseline, sources finalHistoricalJournalSources) (*finalHistoricalCoordinatorTimeline, error) {
 	if evidence == nil || current == nil || len(plans) == 0 || evidence.EVMCampaignStartHead.Number < 2 {
 		return nil, errors.New("historical coordinator timeline inputs are incomplete")
 	}
-	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -584,12 +584,12 @@ func finalHistoricalCoordinatorTimelinesEqual(left, right []FinalHistoricalCoord
 // compares it byte-for-semantic-byte with the signed top-level projection.
 // This makes a missing or substituted timeline fail before public RPC replay.
 func verifyFinalHistoricalCoordinatorTimelineArtifact(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, data []byte) error {
-	return verifyFinalHistoricalCoordinatorTimelineArtifactWithRelayRequests(evidence, current, plans, entries, data, nil)
+	return verifyFinalHistoricalCoordinatorTimelineArtifactWithSources(evidence, current, plans, entries, data, finalHistoricalJournalSources{})
 }
 
-// Independent artifact replay uses the same retained requests as its exact
-// plan/journal lineage; the legacy wrapper refuses any dynamic admission.
-func verifyFinalHistoricalCoordinatorTimelineArtifactWithRelayRequests(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, data []byte, requests map[evidenceRelayRequestKey][]byte) error {
+// Independent artifact replay uses the same retained proofs as its exact
+// plan/journal lineage; the wrapper has no external supplemental authority.
+func verifyFinalHistoricalCoordinatorTimelineArtifactWithSources(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, data []byte, sources finalHistoricalJournalSources) error {
 	if evidence == nil || current == nil || len(plans) == 0 || len(entries) == 0 || len(data) == 0 {
 		return errors.New("historical coordinator timeline artifact is unavailable")
 	}
@@ -634,7 +634,7 @@ func verifyFinalHistoricalCoordinatorTimelineArtifactWithRelayRequests(evidence 
 		}
 		logsByTransaction[log.TransactionHash] = append(logsByTransaction[log.TransactionHash], log)
 	}
-	reconstructed, err := finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence, current, plans, entries, logsByTransaction, artifact.Baselines, requests)
+	reconstructed, err := finalHistoricalCoordinatorBuildTimelineWithSources(evidence, current, plans, entries, logsByTransaction, artifact.Baselines, sources)
 	if err != nil {
 		return fmt.Errorf("rebuild historical coordinator timeline artifact: %w", err)
 	}

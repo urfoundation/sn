@@ -71,23 +71,23 @@ func finalCaptureReleaseContractCensusFromStateContext(ctx context.Context, stat
 	if err != nil {
 		return finalReleaseContractCaptureCensus{}, err
 	}
-	requests, err := evidenceRelayRequestsFromState(ctx, stateRoot, plans, entries)
+	sources, err := finalHistoricalJournalSourcesFromState(ctx, stateRoot, current, plans, entries)
 	if err != nil {
 		return finalReleaseContractCaptureCensus{}, err
 	}
-	return finalCaptureReleaseContractCensusWithRelayRequests(current, deployment, batcher, plans, entries, requests)
+	return finalCaptureReleaseContractCensusWithSources(current, deployment, batcher, plans, entries, sources)
 }
 
 // Computes a stable emitter/address range from an already authenticated plan
 // lineage. Keeping this pure makes every omission, foreign address, and range
 // boundary testable without a filesystem or a live chain dependency.
 func finalCaptureReleaseContractCensusForLineage(current *SetupPlan, deployment *ContractDeployment, batcher common.Address, plans map[string]*SetupPlan, entries []JournalEntry) (finalReleaseContractCaptureCensus, error) {
-	return finalCaptureReleaseContractCensusWithRelayRequests(current, deployment, batcher, plans, entries, nil)
+	return finalCaptureReleaseContractCensusWithSources(current, deployment, batcher, plans, entries, finalHistoricalJournalSources{})
 }
 
-// Original relay requests extend action admission, never the emitter graph.
-// The companion has its own independently captured contract/log census.
-func finalCaptureReleaseContractCensusWithRelayRequests(current *SetupPlan, deployment *ContractDeployment, batcher common.Address, plans map[string]*SetupPlan, entries []JournalEntry, requests map[evidenceRelayRequestKey][]byte) (finalReleaseContractCaptureCensus, error) {
+// Original relay and completed recovery proofs extend action admission only.
+// Companion and probe contracts keep their independent event verification.
+func finalCaptureReleaseContractCensusWithSources(current *SetupPlan, deployment *ContractDeployment, batcher common.Address, plans map[string]*SetupPlan, entries []JournalEntry, sources finalHistoricalJournalSources) (finalReleaseContractCaptureCensus, error) {
 	if current == nil || deployment == nil || batcher == (common.Address{}) || len(plans) == 0 {
 		return finalReleaseContractCaptureCensus{}, errors.New("historical release capture lineage is incomplete")
 	}
@@ -149,7 +149,7 @@ func finalCaptureReleaseContractCensusWithRelayRequests(current *SetupPlan, depl
 			releaseSet[strings.ToLower(historicalBatcher.Hex())] = historicalBatcher
 		}
 	}
-	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, sources)
 	if err != nil {
 		return finalReleaseContractCaptureCensus{}, err
 	}

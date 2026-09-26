@@ -144,7 +144,7 @@ func TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTim
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := finalHistoricalCoordinatorBuildTimelineWithRelayRequests(fixture.evidence, plan, plans, entries, fixture.logs, fixture.baselines, requests)
+	after, err := finalHistoricalCoordinatorBuildTimelineWithSources(fixture.evidence, plan, plans, entries, fixture.logs, fixture.baselines, finalHistoricalJournalSources{relayRequests: requests})
 	if err != nil || !finalHistoricalCoordinatorTimelinesEqual(before.evidence(), after.evidence()) {
 		t.Fatal("original relay request changed constructor chronology", err)
 	}
@@ -152,7 +152,7 @@ func TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTim
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets, err := finalHistoricalCoordinatorJournalActionsWithRelayRequests(fixture.evidence, plan, plans, entries, requests)
+	targets, err := finalHistoricalCoordinatorJournalActionsWithSources(fixture.evidence, plan, plans, entries, finalHistoricalJournalSources{relayRequests: requests})
 	if err != nil || !reflect.DeepEqual(wantTargets, targets) {
 		t.Fatal("relay created a coordinator target", err)
 	}
@@ -171,7 +171,7 @@ func TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTim
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyFinalHistoricalCoordinatorTimelineArtifactWithRelayRequests(fixture.evidence, plan, plans, entries, raw, requests); err != nil {
+	if err := verifyFinalHistoricalCoordinatorTimelineArtifactWithSources(fixture.evidence, plan, plans, entries, raw, finalHistoricalJournalSources{relayRequests: requests}); err != nil {
 		t.Fatal("independent raw-log timeline rejected original relay bytes", err)
 	}
 	if err := verifyFinalHistoricalCoordinatorTimelineArtifact(fixture.evidence, plan, plans, entries, raw); err == nil {
@@ -181,7 +181,7 @@ func TestEvidenceRelayChronologyOriginalRequestPreservesConstructorAndOfflineTim
 	changedLog.Topics = append([]string(nil), changedLog.Topics...)
 	changedLog.Topics[1] = common.BytesToHash(common.Address{0xb4}.Bytes()).Hex()
 	changedLogs := map[string][]finalCanonicalEVMLog{fixture.initial.TransactionHash: {changedLog}}
-	if _, err := finalHistoricalCoordinatorBuildTimelineWithRelayRequests(fixture.evidence, plan, plans, entries, changedLogs, fixture.baselines, requests); err == nil {
+	if _, err := finalHistoricalCoordinatorBuildTimelineWithSources(fixture.evidence, plan, plans, entries, changedLogs, fixture.baselines, finalHistoricalJournalSources{relayRequests: requests}); err == nil {
 		t.Fatal("relay admission waived the exact coordinator implementation transition")
 	}
 }
@@ -300,7 +300,7 @@ func TestEvidenceRelayChronologyArchiveCensusRequiresExactRequestNamespace(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	census, err := finalCaptureReleaseContractCensusWithRelayRequests(plan, &deployment, batcher, plans, entries, map[evidenceRelayRequestKey][]byte{key: fixture.original})
+	census, err := finalCaptureReleaseContractCensusWithSources(plan, &deployment, batcher, plans, entries, finalHistoricalJournalSources{relayRequests: map[evidenceRelayRequestKey][]byte{key: fixture.original}})
 	if err != nil {
 		t.Fatal(err)
 	}

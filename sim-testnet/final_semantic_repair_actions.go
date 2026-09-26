@@ -9,8 +9,8 @@ import (
 
 // Builds one action lookup shared by the capture, receipt and timeline readers.
 // An original repair is never inferred from an action prefix or proxy address.
-func finalHistoricalJournalActions(current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, requests map[evidenceRelayRequestKey][]byte) (map[evidenceRelayRequestKey]Action, error) {
-	actions, err := evidenceRelayRequestActions(plans, entries, requests)
+func finalHistoricalJournalActions(current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, sources finalHistoricalJournalSources) (map[evidenceRelayRequestKey]Action, error) {
+	actions, err := evidenceRelayRequestActions(plans, entries, sources.relayRequests)
 	if err != nil {
 		return nil, err
 	}
@@ -21,6 +21,16 @@ func finalHistoricalJournalActions(current *SetupPlan, plans map[string]*SetupPl
 	for key, action := range repairs {
 		if _, found := actions[key]; found {
 			return nil, fmt.Errorf("historical corrective action %s conflicts with a relay request", action.ID)
+		}
+		actions[key] = action
+	}
+	precompileActions, err := finalPrecompileRecoveryActions(current, plans, entries, sources.precompileRecovery)
+	if err != nil {
+		return nil, err
+	}
+	for key, action := range precompileActions {
+		if _, found := actions[key]; found {
+			return nil, fmt.Errorf("historical precompile action %s conflicts with another source", action.ID)
 		}
 		actions[key] = action
 	}

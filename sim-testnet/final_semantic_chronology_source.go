@@ -214,16 +214,16 @@ func finalHistoricalCoordinatorPlanHistoryNames(files map[string][]byte) ([]stri
 // a guessed whitelist of action IDs; an unsupported new proxy method fails
 // later during exact ABI replay instead of being silently omitted.
 func finalHistoricalCoordinatorJournalActions(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry) (map[string]finalHistoricalCoordinatorJournalAction, error) {
-	return finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence, current, plans, entries, nil)
+	return finalHistoricalCoordinatorJournalActionsWithSources(evidence, current, plans, entries, finalHistoricalJournalSources{})
 }
 
 // Source admission precedes chain-kind and height classification. An approved
 // native row is not an Evm height, and a dynamic row needs its original request.
-func finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, requests map[evidenceRelayRequestKey][]byte) (map[string]finalHistoricalCoordinatorJournalAction, error) {
+func finalHistoricalCoordinatorJournalActionsWithSources(evidence *FinalSemanticEvidence, current *SetupPlan, plans map[string]*SetupPlan, entries []JournalEntry, sources finalHistoricalJournalSources) (map[string]finalHistoricalCoordinatorJournalAction, error) {
 	if evidence == nil || current == nil || len(plans) == 0 || evidence.EVMCampaignStartHead.Number < 2 {
 		return nil, errors.New("historical coordinator journal action inputs are incomplete")
 	}
-	relayActions, err := finalHistoricalJournalActions(current, plans, entries, requests)
+	relayActions, err := finalHistoricalJournalActions(current, plans, entries, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -273,15 +273,15 @@ func finalHistoricalCoordinatorJournalActionsWithRelayRequests(evidence *FinalSe
 
 // Each caller consumes original archived bytes through the shared admission
 // validator; an absent archive remains valid only for a request-free journal.
-func (self *finalHistoricalCoordinatorSource) relayRequests() (map[evidenceRelayRequestKey][]byte, error) {
+func (self *finalHistoricalCoordinatorSource) journalSources() (finalHistoricalJournalSources, error) {
 	if self == nil {
-		return nil, errors.New("historical coordinator relay source is absent")
+		return finalHistoricalJournalSources{}, errors.New("historical coordinator journal source is absent")
 	}
 	var files map[string][]byte
 	if self.archive != nil {
 		files = self.archive.files
 	}
-	return finalRelayRequestsFromFiles(self.plans, self.entries, files)
+	return finalHistoricalJournalSourcesFromFiles(self.current, self.plans, self.entries, files)
 }
 
 // Recomputes the live EVM query boundary from the authenticated active plan,
@@ -296,11 +296,11 @@ func (self *finalHistoricalCoordinatorSource) verifyReleaseCaptureCensus() error
 	if err != nil || batcher != self.chain.FleetBatcher {
 		return stateMismatchError(err, "historical coordinator fleet batcher is not canonical")
 	}
-	requests, err := self.relayRequests()
+	sources, err := self.journalSources()
 	if err != nil {
 		return err
 	}
-	census, err := finalCaptureReleaseContractCensusWithRelayRequests(self.current, self.deployment, common.HexToAddress(batcher), self.plans, self.entries, requests)
+	census, err := finalCaptureReleaseContractCensusWithSources(self.current, self.deployment, common.HexToAddress(batcher), self.plans, self.entries, sources)
 	if err != nil {
 		return err
 	}
@@ -323,11 +323,11 @@ func (self *finalHistoricalCoordinatorSource) historicalReceipts() (map[string]F
 	if err != nil {
 		return nil, err
 	}
-	requests, err := self.relayRequests()
+	sources, err := self.journalSources()
 	if err != nil {
 		return nil, err
 	}
-	targets, err := finalHistoricalCoordinatorJournalActionsWithRelayRequests(self.evidence, self.current, self.plans, self.entries, requests)
+	targets, err := finalHistoricalCoordinatorJournalActionsWithSources(self.evidence, self.current, self.plans, self.entries, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -646,11 +646,11 @@ func (self *finalHistoricalCoordinatorSource) fleetRefreshOracleWindow(rows []Fi
 	if err != nil {
 		return finalHistoricalCoordinatorOracleWindowArtifact{}, err
 	}
-	requests, err := self.relayRequests()
+	sources, err := self.journalSources()
 	if err != nil {
 		return finalHistoricalCoordinatorOracleWindowArtifact{}, err
 	}
-	targets, err := finalHistoricalCoordinatorJournalActionsWithRelayRequests(self.evidence, self.current, self.plans, self.entries, requests)
+	targets, err := finalHistoricalCoordinatorJournalActionsWithSources(self.evidence, self.current, self.plans, self.entries, sources)
 	if err != nil {
 		return finalHistoricalCoordinatorOracleWindowArtifact{}, err
 	}
@@ -772,11 +772,11 @@ func (self *finalSemanticArchive) buildHistoricalCoordinatorReceipts(evidence *F
 	if err != nil {
 		return err
 	}
-	requests, err := context.relayRequests()
+	sources, err := context.journalSources()
 	if err != nil {
 		return err
 	}
-	timeline, err := finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence, context.current, context.plans, context.entries, context.events.byTx, context.chain.CoordinatorBaselines, requests)
+	timeline, err := finalHistoricalCoordinatorBuildTimelineWithSources(evidence, context.current, context.plans, context.entries, context.events.byTx, context.chain.CoordinatorBaselines, sources)
 	if err != nil {
 		return err
 	}
@@ -940,11 +940,11 @@ func (self *finalHistoricalCoordinatorSource) journalMutation(receipt FinalEVMRe
 		return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, errors.New("historical coordinator finalized plan is absent")
 	}
 	if finalized.ActionID == "repair.coordinator-rounding.activate" {
-		requests, err := self.relayRequests()
+		sources, err := self.journalSources()
 		if err != nil {
 			return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, err
 		}
-		actions, err := finalHistoricalJournalActions(self.current, self.plans, self.entries, requests)
+		actions, err := finalHistoricalJournalActions(self.current, self.plans, self.entries, sources)
 		if err != nil {
 			return JournalEntry{}, nil, Action{}, JournalEntry{}, nil, nil, err
 		}

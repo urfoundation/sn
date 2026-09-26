@@ -152,6 +152,9 @@ func newFinalFleetGenerationSource(archive *finalSemanticArchive, evidence *Fina
 			return nil, stateMismatchError(err, "ordinary fleet lineage changed an original relay request")
 		}
 	}
+	if _, err := finalPrecompileRecoveryForJournal(current, result.plans, result.entries, result.record); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
