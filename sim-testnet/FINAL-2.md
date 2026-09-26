@@ -445,6 +445,19 @@ negative controls and initial schema boundary are in the
 [repair reader review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-repair-history-reader-review.md).
 The separate [signed-result proof review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-repair-result-proof-review.md)
 records the follow-up fix and its remaining live-archive qualification limit.
+An adjacent chronology review then found a second false rejection: the signed
+correction follows an ordinary activation, but the timeline builder compared
+it with the source plan's older upgrade baseline. The retained prior
+activation matches the repair request's signed upgrade address and runtime;
+the older baseline matches neither. The corrected checker uses that signed
+predecessor only for corrective activations and keeps the ordinary-upgrade
+rule intact. Its valid-repair and missing-predecessor regressions failed on
+old source; the fixed combined historical selection passed normally and with
+race detection. [Timeline review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-repair-timeline-review.md),
+[retained field comparison](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-timeline-retained-field-comparison.json),
+and [qualification receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-timeline-qualification.json)
+bound the conclusion. A full archived semantic replay remains pending; this
+code change cannot alter the sealed owner verdict.
 
 The independent sealed diagnostic advanced after its validator-2 source
 capture deadline. That capture failed at cut **70/96**, operator 2, while

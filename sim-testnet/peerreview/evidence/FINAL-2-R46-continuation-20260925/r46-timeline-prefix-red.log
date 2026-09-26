@@ -1,0 +1,12 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 07:13:56.879330  920641 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 07:13:56.879541  920641 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 07:13:56.879641  920641 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 07:13:56.879674  920641 env.go:78] [env]settings = map[]
+--- FAIL: TestFinalSemanticHistoricalCoordinatorTimelineCarriesSignedRepairAfterUpgrade (1.49s)
+    final_semantic_repair_timeline_test.go:107: signed correction after its retained upgrade was rejected: historical coordinator upgrade repair.coordinator-rounding.activate baseline does not chain from the preceding transition
+--- FAIL: TestFinalSemanticHistoricalCoordinatorTimelineRejectsRepairWithoutRetainedUpgrade (0.74s)
+    final_semantic_repair_timeline_test.go:137: signed correction was accepted without the retained upgrade transition
+FAIL
+FAIL	github.com/urfoundation/sn/sim-testnet	2.318s
+FAIL

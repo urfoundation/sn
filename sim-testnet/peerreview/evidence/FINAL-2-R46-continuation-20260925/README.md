@@ -196,6 +196,11 @@ checkpoint is partial, and neither file changes the failed owner result.
 `r46-capture-review-tests.receipt.json` record the later read-only source
 inventory, its limits and unchanged normal/race capture tests. The active
 replay result will be added separately.
+`r46-repair-timeline-review.md`, `r46-timeline-retained-field-comparison.json`
+and `r46-timeline-qualification.json` record the signed predecessor
+chronology correction and its normal/race controls. The paired
+`r46-timeline-*.log` and `.exit` files retain the old-source red and fixed
+green test output. Full archived semantic replay remains pending.
 
 `no2-epoch634-rootmissed-claim-cut.receipt.json` independently combines the
 owner's exact final observation with LAN historical EVM reads. The vault

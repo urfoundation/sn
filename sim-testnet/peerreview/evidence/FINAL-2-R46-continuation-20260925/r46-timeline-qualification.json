@@ -1,0 +1,129 @@
+{
+  "schema": "urnetwork-r46-repair-timeline-qualification-v1",
+  "base_revision": "6adc7be2e4abdd5c17426dbdf9b8ca66536bdba7",
+  "qualified_revision": "b9c725bac4543bba7dab55e657410c6d252100cb",
+  "worktree": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-20260926",
+  "branch": "codex/r46-semantic-adjacent-20260926",
+  "source_files": [
+    {
+      "path": "sim-testnet/final_semantic_chronology_timeline.go",
+      "sha256": "aaf72bfb0a98d65bf57cbac935a0bef5634abab95a5ebdf829747b20451475ad"
+    },
+    {
+      "path": "sim-testnet/final_semantic_repair_timeline_test.go",
+      "sha256": "9c512c9c62cf9ee45d0ee3bd46a540006a257d96bd239c8797e59c4b606d5653"
+    }
+  ],
+  "toolchain": "go1.26.6 linux/amd64",
+  "module_file": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+  "module_sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010",
+  "module_sum_sha256": "177b50d84935a29c36b1771816478bf3c97ac28c99bcb22be4922ad9ba1106a3",
+  "runs": [
+    {
+      "name": "prefix-red",
+      "argv": [
+        "env",
+        "GOMAXPROCS=4",
+        "TMPDIR=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp",
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "-run",
+        "^TestFinalSemanticHistoricalCoordinatorTimeline(CarriesSignedRepairAfterUpgrade|RejectsRepairWithoutRetainedUpgrade)$",
+        "-count=1",
+        "-timeout=15m"
+      ],
+      "exit_code": 1,
+      "log": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/prefix-red.log",
+      "log_sha256": "95d3961f839dd34f4646bc3ed0d6f302f5d045baf83fbbba8fce14c4920c7eb6",
+      "production_source_sha256": "31ac899d4f76961f6e024858fc3642c905b8213efa2b70a52ee63b7c26fb11bd",
+      "regression_test_source_sha256": "a07d6a10cdf0e92c84072cfbd8a655bbf82d60730fcde95e62eeeadf8bc5edf0",
+      "source_revision": "6adc7be2e4abdd5c17426dbdf9b8ca66536bdba7",
+      "source_evidence_note": "The preserved pre-fix test source is the first two final tests, formatted exactly as during the red run; the third control was added with the fix."
+    },
+    {
+      "name": "focused-green",
+      "argv": [
+        "env",
+        "GOMAXPROCS=4",
+        "TMPDIR=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp",
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "-run",
+        "^TestFinalSemanticHistoricalCoordinatorTimeline(CarriesSignedRepairAfterUpgrade|RejectsRepair)",
+        "-count=1",
+        "-timeout=15m"
+      ],
+      "exit_code": 0,
+      "log": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/focused-green.log",
+      "log_sha256": "3265d514cb44b783ebcb16337e41a2e1e39fa4f102ded79ba7ededf1a6579b39"
+    },
+    {
+      "name": "adjacent-normal",
+      "argv": [
+        "env",
+        "GOMAXPROCS=4",
+        "TMPDIR=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp",
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "-run",
+        "TestFinalHistoricalCoordinatorJournalArtifactAcceptsSignedRepairResult|TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry|TestFinalSemanticHistoricalCoordinator|TestFinalSemanticHistoricalCapture|TestFinalSemanticHistoricalArtifactCensus",
+        "-count=1",
+        "-timeout=20m"
+      ],
+      "exit_code": 0,
+      "log": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/adjacent-normal.log",
+      "log_sha256": "dd2ff1a062fc0980ba59020997f0c1f1935930c5190f1ac2e9f296390ed4381b"
+    },
+    {
+      "name": "adjacent-race",
+      "argv": [
+        "env",
+        "GOMAXPROCS=4",
+        "TMPDIR=/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/tmp",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "-modfile=/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+        "./sim-testnet",
+        "-run",
+        "TestFinalHistoricalCoordinatorJournalArtifactAcceptsSignedRepairResult|TestFinalCaptureReleaseContractCensusAcceptsExactCoordinatorRepairCarry|TestFinalSemanticHistoricalCoordinator|TestFinalSemanticHistoricalCapture|TestFinalSemanticHistoricalArtifactCensus",
+        "-count=1",
+        "-timeout=25m"
+      ],
+      "exit_code": 0,
+      "log": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/adjacent-race.log",
+      "log_sha256": "4cf9fb72dc423ce9192e260d8047982e2ac8adcd4d560ba85dfda8d58b0295f3"
+    }
+  ],
+  "retained_field_comparison": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-semantic-adjacent-evidence-20260926/retained-field-comparison.json",
+    "sha256": "f0f355e165096ca210aa9184d08a3329b0699ba6529abff375bd25d51447d9c6"
+  },
+  "live_rpc_reads": 0,
+  "sealed_result_changed": false,
+  "active_diagnostic_changed": false,
+  "final_acceptance": false,
+  "bounded_scope": "Pure historical chronology predecessor binding; a full R46 archive replay is pending a sealed V3 chain and foundation bundle.",
+  "scratch_replay": {
+    "prepared": true,
+    "executed": false,
+    "compile_exit": 0,
+    "helper_source_sha256": "76e351bc0e8adc30cdacc867f3df4e9dc72f71c0a9160f08a33c4a5345018f14",
+    "staging_script_sha256": "9c6415ca1a67563f533aa07c58dbcd47a71d34810d62d9685a5dc0f4ac4f7fba",
+    "binary_sha256": "fbbb2e370509815ffb47c0532264f65782304e9279b45d2cf2321fb0efc91bfa"
+  }
+}

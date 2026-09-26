@@ -2460,6 +2460,14 @@ including exact transaction calldata, emitted implementation, source-plan
 signatures, unique journal finalization, altered result bytes and an invented
 verified row. Keep a failed archive check strict even if synthetic unit tests
 pass.
+R46 also exposed an adjacent chronology rule: after ordinary activations,
+the signed corrective request retains the actual upgrade being replaced,
+while its source plan still carries an older ordinary-upgrade baseline.
+For a corrective transition, compare the immediately preceding observed
+implementation and runtime with the signed retained upgrade; keep the
+source-baseline rule for ordinary upgrades. Test a valid constructor →
+ordinary upgrade → correction chain, a missing predecessor and a changed
+retained runtime, then replay the exact archived timeline before mainnet.
 
 The R46 replay also exposed an operational attestation trap: Go did not stamp
 VCS build information when the diagnostic executable was built from a linked
