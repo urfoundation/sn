@@ -274,7 +274,14 @@ func finalHistoricalCoordinatorBuildTimelineWithRelayRequests(evidence *FinalSem
 			if item.initial || item.position.block.Number == stateHead.Number {
 				return nil, fmt.Errorf("historical coordinator proxy %s has ambiguous same-block transitions", proxy)
 			}
-			if item.plan.CoordinatorUpgradeBaseline.isRepeated() && (!strings.EqualFold(item.plan.CoordinatorUpgradeBaseline.ActiveImplementation, state.Implementation) || !strings.EqualFold(item.plan.CoordinatorUpgradeBaseline.ActiveImplementationHash, state.RuntimeHash)) {
+			if item.action.ID == "repair.coordinator-rounding.activate" {
+				// The authenticated repair follows the retained upgrade, whose
+				// original planning baseline describes an earlier transition.
+				retained := current.CoordinatorRepairCarry.Request.Request.OldUpgrade
+				if !strings.EqualFold(retained.Implementation.Hex(), state.Implementation) || !strings.EqualFold(retained.RuntimeCodeHash, state.RuntimeHash) {
+					return nil, errors.New("historical corrective upgrade does not chain from its signed retained implementation")
+				}
+			} else if item.plan.CoordinatorUpgradeBaseline.isRepeated() && (!strings.EqualFold(item.plan.CoordinatorUpgradeBaseline.ActiveImplementation, state.Implementation) || !strings.EqualFold(item.plan.CoordinatorUpgradeBaseline.ActiveImplementationHash, state.RuntimeHash)) {
 				return nil, fmt.Errorf("historical coordinator upgrade %s baseline does not chain from the preceding transition", item.action.ID)
 			}
 			lineage.Upgrades = append(lineage.Upgrades, FinalHistoricalCoordinatorUpgradeEvidence{
