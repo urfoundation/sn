@@ -160,7 +160,6 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/glog v0.0.0 // indirect
 	github.com/urnetwork/goidenticons v0.0.0 // indirect
-	github.com/urnetwork/operator-proxy v0.0.0 // indirect
 	github.com/urnetwork/proxy v0.0.0 // indirect
 	github.com/urnetwork/userwireguard v0.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
@@ -199,8 +198,6 @@ replace github.com/urnetwork/server => ../server
 
 // The server module also imports Warp; dependency replaces are not inherited.
 replace github.com/urnetwork/warp => ../warp
-
-replace github.com/urnetwork/operator-proxy => ../operator-proxy
 
 replace github.com/urnetwork/proxy => ../proxy
 
