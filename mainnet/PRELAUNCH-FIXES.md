@@ -2295,6 +2295,16 @@ limits, hard integrity/close failures and downstream checks after timeout.
 Strict capture defaults remain serial without these diagnostic retries; a
 late nil return after a check deadline is a failure, never a passing closure.
 
+A diagnostic output directory is never an authority source. R46's terminal
+collector incorrectly looked there for the original adversarial campaign and
+reported it missing. Bind each read to the selected original run, authenticate
+its exact raw campaign against the retained result and canonical matrix, then
+copy those bytes into the external archive. Retain the original path/hash and
+failed vector disposition; a valid matrix does not make its campaign pass.
+`TestTerminalDiagnosticAdversaries*` requires distinct source/output roots,
+rejects an output decoy, missing or substituted original, symlink and matrix
+mismatch, and proves failed originals stay failed without writing into the run.
+
 R45 source review found eleven previously qualified recovery fixes absent from
 the candidate main branch. A passing component test or isolated branch is not
 deployment evidence. Before mainnet launch, derive the release image from a
