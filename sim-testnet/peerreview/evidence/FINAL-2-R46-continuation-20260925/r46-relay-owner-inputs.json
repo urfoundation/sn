@@ -1,0 +1,25 @@
+{
+  "base_commit": "902b9c560baa814517de88e1ffa13f16b415fff5",
+  "diagnostic_driver_commit": "363882d6e9d1fe2892c3ca40c03635e06bc6cdf9",
+  "scheduler_diff_between_driver_and_base": false,
+  "worktree": "/mnt/data/sn-testnet/worktrees/r46-relay-historical-owner-20260926",
+  "strict_owner_capture_changed": false,
+  "evidence_receipt": "/mnt/data/sn-testnet/qualification/r46-relay-historical-owner-20260926/retained-relay-owner.receipt.json",
+  "normal_focused_selector": "^Test(EvidenceRelayGenerationScheduler|EvidencePolicy(Gap|Rollover)|EvidenceRelay(OwnerPlanCache|WaitThrough|RequestRejects|HistoricalCapture)|FinalRelay)",
+  "patch": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-relay-historical-owner-20260926/generation-scheduler.patch",
+    "sha256": "30e9caf79840b44ba1db35def04938e9a4a3a4e035f20e817e0cfae4945c9466"
+  },
+  "modfile": {
+    "path": "/mnt/data/sn-testnet/qualification/r45-final-candidate-20260925/r45-final.mod",
+    "sha256": "c38fba12a5d6fe522eaebd02aea699c834565aa5ce76a8f8b3e0775b0821f010"
+  },
+  "tests": {
+    "path": "/mnt/data/sn-testnet/worktrees/r46-relay-historical-owner-20260926/sim-testnet/evidence_relay_generation_scheduler_test.go",
+    "sha256": "b04675c8cffd99da4b0dfb96c953f2be506729d3aab42cadc7f4e3d5c92a97c0"
+  },
+  "baseline_scheduler": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-relay-historical-owner-20260926/baseline-evidence_relay_runtime.go",
+    "sha256": "f11051eb0d138bcaa3826bd52479c7b76499e63198d87fb3fb4d77b4236963b6"
+  }
+}

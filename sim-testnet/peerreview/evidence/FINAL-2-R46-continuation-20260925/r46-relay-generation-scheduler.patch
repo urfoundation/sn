@@ -1,0 +1,346 @@
+diff --git a/sim-testnet/evidence_relay_generation_scheduler_test.go b/sim-testnet/evidence_relay_generation_scheduler_test.go
+new file mode 100644
+index 00000000..7abd8295
+--- /dev/null
++++ b/sim-testnet/evidence_relay_generation_scheduler_test.go
+@@ -0,0 +1,262 @@
++//go:build linux || darwin
++
++// Independent signed generations retain separate discovery cursors. Real
++// publication reads stop at the read-only admission gate, before any spend.
++package main
++
++import (
++	"bytes"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"math/big"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"strings"
++	"sync"
++	"testing"
++
++	"github.com/ethereum/go-ethereum/common"
++	"github.com/ethereum/go-ethereum/common/hexutil"
++	"github.com/urfoundation/sn/crv4"
++	"github.com/urfoundation/sn/protocol"
++	"github.com/urfoundation/sn/stabi"
++	validatorcomponent "github.com/urfoundation/sn/validator"
++)
++
++// Only public object transport is mutable. The real installer authenticates
++// successor consent and finalized activation before the scheduler can use it.
++type evidenceRelayGenerationSchedulerTestFixture struct {
++	runtime    *evidenceRelayRuntime
++	rpc        *evidenceRelayRpcFixture
++	stateLock  sync.Mutex
++	objectKVs  map[string][]byte
++	readCounts [2]uint64
++}
++
++// An interrupted predecessor is absent at epoch eight; the independently
++// approved successor starts at nine and its first complete interval is ten.
++func newEvidenceRelayGenerationSchedulerTest(t *testing.T) *evidenceRelayGenerationSchedulerTestFixture {
++	t.Helper()
++	runtime, rpc, successor, signed := newEvidencePolicyRolloverSourceTest(t)
++	stream := validatorcomponent.AttemptStreamV2Bounds{MaxDataBytes: 64 * 1024, MaxItems: 1, MaxChunkBytes: 64 * 1024, MaxChunks: 1, MaxPages: 1, MaxPageBytes: 16 * 1024, MaxDescriptorsPerPage: 1, MaxManifestBytes: 16 * 1024}
++	bounds := validatorcomponent.ReleaseEvidenceV2Bounds{Cut: validatorcomponent.AttemptCutV2Bounds{MaxHeaderBytes: 16 * 1024, Records: stream, Proofs: stream}, MaxParticipants: 1, MaxClosureBytes: 128 * 1024, MaxTransitionBytes: 64 * 1024}
++	runtime.sources[0].bounds, successor.bounds = bounds, bounds
++	if err := runtime.installPolicyRolloverSource(t.Context(), 1, successor, []evidenceRelayPolicyGapActivation{signed}); err != nil {
++		t.Fatal(err)
++	}
++	runtime.sources[0].nextEpoch = 8
++	original := runtime.sources[0].activations[0]
++	runtime.horizon = &evidenceRelayHorizon{work: evidenceRelayWork{settlementCadence: 100, nativeCadence: 100}, maximum: 100, anchorBlock: 1000, anchorEpoch: 7, anchorNativeEpoch: 1,
++		sourceKVs: map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation{{hotkey: original.Hotkey, noId: original.NoID}: original}, headerKVs: map[[32]byte]protocol.ValidatorEvidenceHeader{}}
++	runtime.installPolicyRolloverHorizon(runtime.horizon)
++	runtime.prepared = true
++	runtime.work.settlementCadence = 10
++	runtime.executor.cfg.readOnlyAudit = true
++	self := &evidenceRelayGenerationSchedulerTestFixture{runtime: runtime, rpc: rpc, objectKVs: map[string][]byte{}}
++	for index := range runtime.origins {
++		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
++			raw := func() []byte {
++				self.stateLock.Lock()
++				defer self.stateLock.Unlock()
++				self.readCounts[index]++
++				return bytes.Clone(self.objectKVs[request.URL.Query().Get("hash")])
++			}()
++			if request.Method != http.MethodGet || request.URL.Path != "/sn/attempt-artifact" || request.URL.Query().Get("kind") != "metadata" || raw == nil {
++				http.NotFound(writer, request)
++				return
++			}
++			writer.Header().Set("Content-Type", "application/json")
++			_, _ = writer.Write(raw)
++		}))
++		t.Cleanup(server.Close)
++		runtime.origins[index] = server.URL
++	}
++	return self
++}
++
++// Canonical payload, complete census and both real signatures are served by
++// both replicas. The locator stays in the caller-selected source namespace.
++func (self *evidenceRelayGenerationSchedulerTestFixture) publish(t *testing.T, activation protocol.ValidatorEvidenceActivation, epoch uint64, stateDir string) protocol.ValidatorEvidenceHeader {
++	t.Helper()
++	store := func(value any) ([]byte, [32]byte) {
++		raw, err := json.Marshal(value)
++		if err != nil {
++			t.Fatal(err)
++		}
++		raw = append(raw, '\n')
++		hash := sha256.Sum256(raw)
++		self.stateLock.Lock()
++		self.objectKVs[fmt.Sprintf("0x%x", hash)] = raw
++		self.stateLock.Unlock()
++		return raw, hash
++	}
++	domain, err := activation.EvidenceDomain()
++	if err != nil {
++		t.Fatal(err)
++	}
++	payload, payloadHash := store(struct {
++		Epoch uint64 `json:"epoch"`
++	}{Epoch: epoch})
++	census := validatorcomponent.ValidatorEvidenceCensusV2{Schema: validatorcomponent.ValidatorEvidenceCensusV2Schema, Hotkey: activation.Hotkey,
++		Boundary: validatorcomponent.AttemptBoundary{SettlementEpoch: epoch, EVMBlock: 1209, EVMBlockHash: common.Hash{0x72}.Hex()},
++		Members:  []validatorcomponent.ValidatorEvidenceCensusV2Member{{Domain: domain, NoID: activation.NoID, VPK: activation.VPK, PayloadHash: payloadHash, PayloadBytes: uint64(len(payload))}}}
++	censusRaw, censusHash := store(census)
++	header := protocol.ValidatorEvidenceHeader{Domain: domain, Hotkey: activation.Hotkey, NoID: activation.NoID, Epoch: epoch, Kind: protocol.ValidatorEvidenceClosedCensus,
++		VPK: activation.VPK, BoundaryBlock: 1209, BoundaryHash: [32]byte{0x72}, CensusHash: censusHash, PayloadHash: payloadHash, PayloadBytes: uint64(len(payload))}
++	seed := byte(0x91)
++	if activation.VPK == self.runtime.sources[0].activations[0].VPK {
++		seed = 0x72
++	}
++	signed := validatorcomponent.ValidatorEvidenceSignedV2{Schema: validatorcomponent.ValidatorEvidenceSignedV2Schema, Header: header}
++	signed.VPKSignature, err = header.SignVPK(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{seed}, 32)))
++	if err != nil {
++		t.Fatal(err)
++	}
++	hotkey, err := crv4.KeypairFromSeed([32]byte{0x71})
++	if err != nil {
++		t.Fatal(err)
++	}
++	digest, err := header.Digest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	signed.HotkeySignature, err = hotkey.Sign(digest[:])
++	if err != nil {
++		t.Fatal(err)
++	}
++	signedRaw, signedHash := store(signed)
++	manifest := validatorcomponent.ValidatorEvidencePublicationV2Manifest{Schema: validatorcomponent.ValidatorEvidencePublicationV2Schema, Kind: protocol.ValidatorEvidenceClosedCensus,
++		Epoch: epoch, Origins: self.runtime.origins, CensusHash: censusHash, CensusBytes: uint64(len(censusRaw)),
++		Members: []validatorcomponent.ValidatorEvidencePublicationV2MemberReference{{NoId: activation.NoID, SignedArtifactHash: signedHash, SignedArtifactBytes: uint64(len(signedRaw))}}}
++	raw, err := json.MarshalIndent(manifest, "", "  ")
++	if err != nil {
++		t.Fatal(err)
++	}
++	path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(stateDir, epoch)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := atomicWrite(path, append(raw, '\n'), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	parsed, err := stabi.STCoordinatorMetaData.ParseABI()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, view := range []struct {
++		method string
++		input  []byte
++		value  uint64
++	}{
++		{method: "epochStartBlock", input: stabi.NewSTCoordinator().PackEpochStartBlock(new(big.Int).SetUint64(epoch)), value: 1200},
++		{method: "epochEndBlock", input: stabi.NewSTCoordinator().PackEpochEndBlock(new(big.Int).SetUint64(epoch)), value: 1210},
++	} {
++		encoded, err := parsed.Methods[view.method].Outputs.Pack(new(big.Int).SetUint64(view.value))
++		if err != nil {
++			t.Fatal(err)
++		}
++		self.rpc.stateLock.Lock()
++		self.rpc.responses[common.Address(domain.Coordinator).Hex()+":"+hexutil.Encode(view.input)] = encoded
++		self.rpc.stateLock.Unlock()
++	}
++	return header
++}
++
++// Discovery reaches the authenticated successor through both public replicas
++// without moving the missing predecessor or creating historical custody.
++func TestEvidenceRelayGenerationSchedulerReadsSuccessorPastMissingPredecessor(t *testing.T) {
++	fixture := newEvidenceRelayGenerationSchedulerTest(t)
++	runtime := fixture.runtime
++	source := &runtime.sources[0]
++	successor := source.successor
++	header := fixture.publish(t, successor.activations[0], successor.nextEpoch, successor.stateDir)
++	for attempt := 0; attempt < 2; attempt++ {
++		err := runtime.advance()
++		if err == nil || !strings.Contains(err.Error(), "read-only observation cannot admit relay actions") {
++			t.Fatalf("attempt %d never reached authenticated successor admission: %v", attempt, err)
++		}
++	}
++	if source.nextEpoch != 8 || successor.nextEpoch != 9 || runtime.completed[1] || runtime.through[1] != 0 || len(runtime.horizon.headerKVs) != 1 || len(fixture.rpc.manager.journal.Entries()) != 0 {
++		t.Fatal("successor discovery moved an unresolved cursor, duplicated a slot or fabricated completion")
++	}
++	fixture.stateLock.Lock()
++	reads := fixture.readCounts
++	fixture.stateLock.Unlock()
++	if reads[0] == 0 || reads[1] == 0 {
++		t.Fatal("successor bypassed an original public replica")
++	}
++	slot, err := header.SlotKey()
++	if err != nil {
++		t.Fatal(err)
++	}
++	actionId := fmt.Sprintf("%s%x", evidenceRelayActionPrefix, slot)
++	owner, _, raw, err := readFinalRelayCaptureRequest(t.Context(), runtime.executor.stateDir, runtime.executor.plan, nil, actionId, map[string]*SetupPlan{})
++	if owner != nil || len(raw) != 0 || !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "compact relay request has no exact historical owner") {
++		t.Fatalf("unpublished successor lost its strict historical absence: %v", err)
++	}
++	if fixture.rpc.requestCount("eth_sendRawTransaction") != 0 {
++		t.Fatal("read-only scheduler test acquired transaction custody")
++	}
++}
++
++// A later available successor publication cannot move its own missing cutoff
++// cursor, even when the predecessor is independently interrupted as well.
++func TestEvidenceRelayGenerationSchedulerDoesNotSkipMissingSuccessor(t *testing.T) {
++	fixture := newEvidenceRelayGenerationSchedulerTest(t)
++	source := &fixture.runtime.sources[0]
++	successor := source.successor
++	fixture.publish(t, successor.activations[0], 10, successor.stateDir)
++	if err := fixture.runtime.advance(); err != nil {
++		t.Fatal(err)
++	}
++	if source.nextEpoch != 8 || successor.nextEpoch != 9 || fixture.runtime.completed[1] || len(fixture.runtime.horizon.headerKVs) != 0 || len(fixture.rpc.manager.journal.Entries()) != 0 {
++		t.Fatal("later successor publication concealed a missing required epoch")
++	}
++}
++
++// Valid predecessor signatures remain foreign after the signed cutoff, even
++// when a locator is placed directly into the successor's private namespace.
++func TestEvidenceRelayGenerationSchedulerRejectsForeignGenerationOwner(t *testing.T) {
++	fixture := newEvidenceRelayGenerationSchedulerTest(t)
++	source := &fixture.runtime.sources[0]
++	fixture.publish(t, source.activations[0], source.successor.nextEpoch, source.successor.stateDir)
++	if err := fixture.runtime.advance(); err == nil || strings.Contains(err.Error(), "read-only observation cannot admit relay actions") {
++		t.Fatalf("foreign generation reached admission or was never inspected: %v", err)
++	}
++	if source.nextEpoch != 8 || source.successor.nextEpoch != 9 || fixture.runtime.completed[1] || len(fixture.runtime.horizon.headerKVs) != 0 || len(fixture.rpc.manager.journal.Entries()) != 0 {
++		t.Fatal("foreign generation changed original source custody")
++	}
++}
++
++// The predecessor cannot re-read an already processed successor at its cutoff
++// or consume a foreign-namespace file. Only the successor owns its next epoch.
++func TestEvidenceRelayGenerationSchedulerDoesNotReplaySuccessorAtCutoff(t *testing.T) {
++	fixture := newEvidenceRelayGenerationSchedulerTest(t)
++	source := &fixture.runtime.sources[0]
++	fixture.publish(t, source.successor.activations[0], 9, source.successor.stateDir)
++	source.nextEpoch, source.successor.nextEpoch = 9, 10
++	path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.stateDir, 9)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := atomicWrite(path, []byte("foreign generation must not be read\n"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := fixture.runtime.advance(); err != nil {
++		t.Fatalf("predecessor replayed a successor slot: %v", err)
++	}
++	if source.nextEpoch != 9 || source.successor.nextEpoch != 10 || len(fixture.runtime.horizon.headerKVs) != 0 || len(fixture.rpc.manager.journal.Entries()) != 0 {
++		t.Fatal("predecessor consumed or relabeled a successor epoch")
++	}
++	missingPath, _ := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.stateDir, 8)
++	if _, err := os.Stat(missingPath); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("missing predecessor evidence was fabricated: %v", err)
++	}
++	if err := fixture.runtime.WaitRange(t.Context(), 8, 9); err == nil {
++		t.Fatal("independent successor permitted a pre-cutoff acceptance range")
++	}
++}
+diff --git a/sim-testnet/evidence_relay_runtime.go b/sim-testnet/evidence_relay_runtime.go
+index 703dcf62..e00271dd 100644
+--- a/sim-testnet/evidence_relay_runtime.go
++++ b/sim-testnet/evidence_relay_runtime.go
+@@ -385,8 +385,9 @@ func evidenceRelayOnlyRequestCancellation(err, requestErr error) bool {
+ 	return false
+ }
+ 
+-// A missing next manifest is ordinary unpublished state, never permission to
+-// skip a source or epoch. The campaign's required-epoch wait enforces its end.
++// Each authenticated generation owns its cursor. A missing predecessor stays
++// unresolved without blocking the independent successor's signed cutoff.
++// No generation skips its own missing epoch or borrows another's publication.
+ func (self *evidenceRelayRuntime) advance() error {
+ 	block, hash, err := self.chain.FinalizedBlockContext(self.ctx)
+ 	if err != nil {
+@@ -396,27 +397,32 @@ func (self *evidenceRelayRuntime) advance() error {
+ 		return err
+ 	}
+ 	for index := range self.sources {
+-		if err := self.serviceRemainingRequests(); err != nil {
+-			return err
+-		}
+ 		source := &self.sources[index]
+-		path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(source.forEpoch(source.nextEpoch).stateDir, source.nextEpoch)
+-		if err != nil {
+-			return err
+-		}
+-		manifest, err := validatorcomponent.ReadValidatorEvidencePublicationV2Manifest(self.ctx, path, source.bounds.MaxClosureBytes, source.bounds.MaxParticipants)
+-		if errors.Is(err, os.ErrNotExist) {
+-			continue
+-		}
+-		if err != nil {
+-			return err
+-		}
+-		requests, err := self.readClosedPublication(self.ctx, source, manifest, block, hash)
+-		if err != nil {
+-			return err
+-		}
+-		if err := self.advanceClosedPublication(source, manifest, requests, block); err != nil {
+-			return err
++		for _, generation := range source.generations() {
++			if err := self.serviceRemainingRequests(); err != nil {
++				return err
++			}
++			if source.forEpoch(generation.nextEpoch) != generation {
++				continue
++			}
++			path, err := validatorcomponent.ValidatorEvidencePublicationV2ManifestPath(generation.stateDir, generation.nextEpoch)
++			if err != nil {
++				return err
++			}
++			manifest, err := validatorcomponent.ReadValidatorEvidencePublicationV2Manifest(self.ctx, path, generation.bounds.MaxClosureBytes, generation.bounds.MaxParticipants)
++			if errors.Is(err, os.ErrNotExist) {
++				continue
++			}
++			if err != nil {
++				return err
++			}
++			requests, err := self.readClosedPublication(self.ctx, source, manifest, block, hash)
++			if err != nil {
++				return err
++			}
++			if err := self.advanceClosedPublication(generation, manifest, requests, block); err != nil {
++				return err
++			}
+ 		}
+ 	}
+ 	return self.ctx.Err()
+@@ -476,7 +482,7 @@ func (self *evidenceRelayRuntime) advanceClosedPublication(source *evidenceRelay
+ 		func() {
+ 			self.stateLock.Lock()
+ 			defer self.stateLock.Unlock()
+-			self.through[source.validatorId], self.completed[source.validatorId] = source.nextEpoch, true
++			self.through[source.validatorId], self.completed[source.validatorId] = max(self.through[source.validatorId], source.nextEpoch), true
+ 			close(self.changed)
+ 			self.changed = make(chan struct{})
+ 		}()

@@ -201,6 +201,11 @@ replay. Its paired provenance, stderr, exit and comparison receipt show a
 completed 39-check report with failed acceptance, a successful validator-2
 source capture, and the still-unapproved precompile residual journal action.
 The sealed v2 diagnostic and owner result remain unchanged.
+`r46-relay-owner-census.receipt.json` inventories every signed validator-2
+publication and missing historical relay owner. The paired review, scheduler
+patch, reproduction script and qualification files prove the future-run
+generation-cursor correction and its normal/race tests. They do not add
+missing requests to R46.
 `r46-repair-timeline-review.md`, `r46-timeline-retained-field-comparison.json`
 and `r46-timeline-qualification.json` record the signed predecessor
 chronology correction and its normal/race controls. The paired

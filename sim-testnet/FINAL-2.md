@@ -503,6 +503,20 @@ passing semantic bundle. [Complete v3 report](peerreview/evidence/FINAL-2-R46-co
 (SHA-256 `bc298ccb386c5066a7d5c38bd70c113f536c354e4acd8440dc6071288c6549fb`),
 [comparison and provenance receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-terminal-diagnostic-v3.receipt.json)
 (SHA-256 `cd332db64dfe7fabd8e1e69aa4d5e208304fc4fe735065d79ed91d1a4242e5bd`).
+The v3 validator-2 relay readback is unavailable for a separate, genuine
+historical gap: of **66** signed publication members, all **64** closed-census
+slots for epochs 604–635 lack the original relay request, result and journal
+owner; only two audit members have requests. The predecessor generation has
+no epoch-603 closure or publication, so the old single-cursor scheduler
+waited at 603 and never routed the authenticated successor beginning at
+cutoff 604. The post-R46 scheduler now advances each signed generation from
+its own cursor while leaving the missing predecessor and historical capture
+strict. Three old-source scheduler regressions failed; **29 focused tests
+passed normally and under race detection**. This future-run correction
+cannot create the absent R46 requests or pass its sealed readback.
+[Exact retained census](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-census.receipt.json),
+[root-cause review](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-review.md),
+[qualification](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-relay-owner-results.json).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

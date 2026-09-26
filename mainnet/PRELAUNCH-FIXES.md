@@ -2521,3 +2521,15 @@ Preserve exit-gap findings until a causal test proves a fix. The native-1674
 gap is separate: durable input objects did not
 create an applied validator intent. Mainnet admission must require complete
 authenticated native history or a specifically approved fresh generation.
+
+R46's validator-2 relay also exposed a generation scheduling trap. Its
+predecessor lacks epoch-603 closure/publication, while the authenticated
+successor starts at cutoff 604. A single cursor waited for 603 and never
+admitted the successor's 64 closed-census publications through epoch 635;
+all ten acceptance-window closed slots lack original requests and journal
+owners. Schedule each installed generation from its own cursor and signed
+cutoff, never route a predecessor across that cutoff, and keep completion
+watermarks monotonic. Test missing predecessor, independently missing
+successor, foreign owner, cutoff replay and strict historical missing-file
+refusal. This prevents future blockage but does not reconstruct missing R46
+custody or satisfy its original acceptance gate.

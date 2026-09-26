@@ -1,0 +1,1984 @@
+{
+  "schema": "r46-relay-historical-owner-investigation-v1",
+  "observed_at": "2026-09-26T07:36:53.733492+00:00",
+  "read_only_source_investigation": true,
+  "rpc_calls": 0,
+  "diagnostic": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/progress.json",
+    "exists": true,
+    "bytes": 2682578,
+    "sha256": "f2dfdda3836f670f3ea2afdd3ad767109cf0c48d5390d50ed9a460ff06d8b95a"
+  },
+  "retained_journal": {
+    "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/journals/113cae2dcedd32fe8f40148e5a6d355753b20899539bb10570d585a2614009fa.jsonl",
+    "exists": true,
+    "bytes": 45012332,
+    "sha256": "113cae2dcedd32fe8f40148e5a6d355753b20899539bb10570d585a2614009fa"
+  },
+  "acceptance_window": {
+    "schema": "urnetwork-sim-acceptance-window-v1",
+    "baseline_finalized_head": {
+      "number": 8084658,
+      "hash": "0x87e62543188a389570e1dc3717dfc553b505939de459d376850bdba6bfa7972a"
+    },
+    "baseline_observation_hash": "0xf2dc5c316e819564ade9727523b8a080bbdb7d8271f1086517bb91e635b6fb9f",
+    "baseline_epoch": 630,
+    "first_epoch": 631,
+    "epoch_count": 5,
+    "epoch_blocks": 300,
+    "start_block": 8084674,
+    "end_block": 8086174,
+    "finalize_offset_blocks": 150,
+    "terminal_block": 8086324,
+    "policy_effective_epoch": 594,
+    "policy_effective_block": 8073574
+  },
+  "checks": [
+    {
+      "id": "validator-2/relay-publication-readback",
+      "status": "unavailable",
+      "detail": "compact relay request has no exact historical owner\ncompact input journal is initially absent\nfstatat /home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c142b961b93bd182e1e67bcd12bd0b8e87cb6fa68381ed3c78f485928763ec07.json: no such file or directory"
+    }
+  ],
+  "handoff": {
+    "file": {
+      "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/policy-rollover/handoff.json",
+      "exists": true,
+      "bytes": 19320,
+      "sha256": "4f1d30de2715fcce4dcf1a42594393961a2a51d10524bce96f9c9ca41291ccd3"
+    },
+    "plan_hash": "0x5a5dd2760b720ffce852d67ac37171d1b13d0d16a9b84047acbd226655b2fafc",
+    "source_plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+    "activated": true,
+    "generation": 1,
+    "ledger_continuity_claimed": false,
+    "cutoff_epoch": 604,
+    "first_full_epoch": 605
+  },
+  "generation_edges": [
+    {
+      "validator_id": 1,
+      "previous_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2",
+      "successor_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+      "files": [
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2/settlement-closures-v2/602.json",
+          "exists": true,
+          "bytes": 372219,
+          "sha256": "c767d27beb0ba7cde69c82a8132d5bf8dfd8f085ee86e31a1bbfb03ef9d99516"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2/settlement-closures-v2/603.json",
+          "exists": true,
+          "bytes": 412776,
+          "sha256": "b8e986f1f2d3b51457709c356b50a4ec82c43c5964f9ec4be32cf26198cf13bc"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/coordinator-state-v2/evidence-publications/epoch-00000000000000000603.json",
+          "exists": true,
+          "bytes": 1540,
+          "sha256": "560add2000a3dbb1684fa9f06974762a901fe21de8d910aa9f22654633c5b9f6"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2/settlement-closures-v2/604.json",
+          "exists": true,
+          "bytes": 6519,
+          "sha256": "0f6fccdf63f1dc5c19206c6a112ab31d00b8938e0f99b4c433433c872ff5a677"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-1/evidence-generations/generation-00000000000000000001/coordinator-state-v2/evidence-publications/epoch-00000000000000000604.json",
+          "exists": true,
+          "bytes": 1540,
+          "sha256": "f5e641d8f40026c05e76f8f3ba12e4f33107be57605b599681f98afa2ee79640"
+        }
+      ]
+    },
+    {
+      "validator_id": 2,
+      "previous_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2",
+      "successor_state_dir": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2",
+      "files": [
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2/settlement-closures-v2/602.json",
+          "exists": true,
+          "bytes": 413277,
+          "sha256": "48acb3a720c15e7b163f650067ffba35cde3d153822cdd0d0d6bd30c3b0b25ff"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2/settlement-closures-v2/603.json",
+          "exists": false
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/coordinator-state-v2/evidence-publications/epoch-00000000000000000603.json",
+          "exists": false
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/settlement-closures-v2/604.json",
+          "exists": true,
+          "bytes": 6513,
+          "sha256": "8e391532d2f561ea5cca3ae5e4786e728697b0c79f158e3f7f2c765d2962e952"
+        },
+        {
+          "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/validator-2/evidence-generations/generation-00000000000000000001/coordinator-state-v2/evidence-publications/epoch-00000000000000000604.json",
+          "exists": true,
+          "bytes": 1533,
+          "sha256": "93139718c732123db83f801b131705eea5dbb3bc1c50e91b57e335f49500a00b"
+        }
+      ]
+    }
+  ],
+  "retained_gap_record_epochs": [
+    {
+      "validator_id": 1,
+      "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+      "epochs": [
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602,
+        603
+      ]
+    },
+    {
+      "validator_id": 1,
+      "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+      "epochs": [
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602,
+        603
+      ]
+    },
+    {
+      "validator_id": 2,
+      "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+      "epochs": [
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602
+      ]
+    },
+    {
+      "validator_id": 2,
+      "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+      "epochs": [
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602
+      ]
+    }
+  ],
+  "summary": {
+    "captured_publications": 66,
+    "closed_census_slots": 64,
+    "missing_closed_requests": 64,
+    "missing_closed_results": 64,
+    "closed_slots_with_no_journal_owner": 64,
+    "closed_epoch_min": 604,
+    "closed_epoch_max": 635,
+    "audit_slots": 2,
+    "audit_request_headers_match": true
+  },
+  "slots": [
+    {
+      "slot": "c142b961b93bd182e1e67bcd12bd0b8e87cb6fa68381ed3c78f485928763ec07",
+      "epoch": 604,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/25b8e3d9b90c7180004c1edf526ec7d0f7378fcb65b0d55a1cfa946b88131c2d.bin",
+        "exists": true,
+        "bytes": 1815,
+        "sha256": "25b8e3d9b90c7180004c1edf526ec7d0f7378fcb65b0d55a1cfa946b88131c2d"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c142b961b93bd182e1e67bcd12bd0b8e87cb6fa68381ed3c78f485928763ec07.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.c142b961b93bd182e1e67bcd12bd0b8e87cb6fa68381ed3c78f485928763ec07.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "8d9d8c3c8a37c3076c49beb7ece2f3c8ac3980a7ae07aeecc6978260edf7f615",
+      "epoch": 604,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/df0432b34add827d1b1aecb71c5cdefa7fd51054b386ad2e7da2388646d54e2f.bin",
+        "exists": true,
+        "bytes": 1810,
+        "sha256": "df0432b34add827d1b1aecb71c5cdefa7fd51054b386ad2e7da2388646d54e2f"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8d9d8c3c8a37c3076c49beb7ece2f3c8ac3980a7ae07aeecc6978260edf7f615.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8d9d8c3c8a37c3076c49beb7ece2f3c8ac3980a7ae07aeecc6978260edf7f615.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "3b59fd287112dd028349aa7c540a16363b5fa7458c2f26ea4ac932d80c7e3688",
+      "epoch": 605,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/556820ace8e149bd858192c49077f1eed0c2a7af80f73f1e38b931232ea0fd96.bin",
+        "exists": true,
+        "bytes": 1824,
+        "sha256": "556820ace8e149bd858192c49077f1eed0c2a7af80f73f1e38b931232ea0fd96"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/3b59fd287112dd028349aa7c540a16363b5fa7458c2f26ea4ac932d80c7e3688.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.3b59fd287112dd028349aa7c540a16363b5fa7458c2f26ea4ac932d80c7e3688.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "8decc00be72e60969d3992eca2cfff008140f297141aa21f23b99ba7148fdf96",
+      "epoch": 605,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/de5e28e77ce3aca6f64a2b3d22cc55b7efb5b89caa9e3bb20dbde9221124f7d9.bin",
+        "exists": true,
+        "bytes": 1816,
+        "sha256": "de5e28e77ce3aca6f64a2b3d22cc55b7efb5b89caa9e3bb20dbde9221124f7d9"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8decc00be72e60969d3992eca2cfff008140f297141aa21f23b99ba7148fdf96.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8decc00be72e60969d3992eca2cfff008140f297141aa21f23b99ba7148fdf96.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "ce4f8addaae20258063a9b34a6edd7df29a9e421c5d561e0ea15a30e4227b38f",
+      "epoch": 606,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/989ed19945b3eff5efc3c61df3fb2d1bb6745b6cb7cd3b1a554d35d71f7721cb.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "989ed19945b3eff5efc3c61df3fb2d1bb6745b6cb7cd3b1a554d35d71f7721cb"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/ce4f8addaae20258063a9b34a6edd7df29a9e421c5d561e0ea15a30e4227b38f.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.ce4f8addaae20258063a9b34a6edd7df29a9e421c5d561e0ea15a30e4227b38f.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "b691a91911861da7a8b8d805b5b6e287a37befc447e4eaf3e3affbba649d4617",
+      "epoch": 606,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/43187830110f961fd1a52d648b09ecd8594fa3ba1bd3486bddd04907c92a110b.bin",
+        "exists": true,
+        "bytes": 1818,
+        "sha256": "43187830110f961fd1a52d648b09ecd8594fa3ba1bd3486bddd04907c92a110b"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/b691a91911861da7a8b8d805b5b6e287a37befc447e4eaf3e3affbba649d4617.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.b691a91911861da7a8b8d805b5b6e287a37befc447e4eaf3e3affbba649d4617.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "fcdc2c9b96c085754535d4dfae21b1851942645d9a407c77e64d1d0836d3eb99",
+      "epoch": 607,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/3054270512e19b17f504a433d09b00c1ef84803e87d5c3cac03850eea4c79399.bin",
+        "exists": true,
+        "bytes": 1831,
+        "sha256": "3054270512e19b17f504a433d09b00c1ef84803e87d5c3cac03850eea4c79399"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/fcdc2c9b96c085754535d4dfae21b1851942645d9a407c77e64d1d0836d3eb99.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.fcdc2c9b96c085754535d4dfae21b1851942645d9a407c77e64d1d0836d3eb99.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "a913d1ed80612711476f6d2b6ead6cf012e302cd1d81e98b9f1777668939e52c",
+      "epoch": 607,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/dbb68c3b79f38c7dc41809dc56b21296cc3362873108e6a136b00b52d6eff32a.bin",
+        "exists": true,
+        "bytes": 1818,
+        "sha256": "dbb68c3b79f38c7dc41809dc56b21296cc3362873108e6a136b00b52d6eff32a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/a913d1ed80612711476f6d2b6ead6cf012e302cd1d81e98b9f1777668939e52c.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.a913d1ed80612711476f6d2b6ead6cf012e302cd1d81e98b9f1777668939e52c.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "ed0eef62576ab4a44c652f48c4469653c146fb1228aef374d7ca2232feadb953",
+      "epoch": 608,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/dd601b92df4c203dad64b54654212d69a143dd8a1519b1d7a5010cf5be802603.bin",
+        "exists": true,
+        "bytes": 1822,
+        "sha256": "dd601b92df4c203dad64b54654212d69a143dd8a1519b1d7a5010cf5be802603"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/ed0eef62576ab4a44c652f48c4469653c146fb1228aef374d7ca2232feadb953.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.ed0eef62576ab4a44c652f48c4469653c146fb1228aef374d7ca2232feadb953.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "df86b70b3e750a49d64b16db09991ff31438678a9802679049dde3f7330d7be1",
+      "epoch": 608,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/2e520a30ba5d036b98194f620ba87349e762dcef4daad99b58909b55a439ab25.bin",
+        "exists": true,
+        "bytes": 1817,
+        "sha256": "2e520a30ba5d036b98194f620ba87349e762dcef4daad99b58909b55a439ab25"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/df86b70b3e750a49d64b16db09991ff31438678a9802679049dde3f7330d7be1.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.df86b70b3e750a49d64b16db09991ff31438678a9802679049dde3f7330d7be1.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "0593d9b4407e2a64819b88a64c59bb787c91e66c5da811a18d24c09f712a5e20",
+      "epoch": 609,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/51da356f6a01cebe19f265e039cf021f1efea0cb2a82097067a0436e56e6fe0d.bin",
+        "exists": true,
+        "bytes": 1823,
+        "sha256": "51da356f6a01cebe19f265e039cf021f1efea0cb2a82097067a0436e56e6fe0d"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/0593d9b4407e2a64819b88a64c59bb787c91e66c5da811a18d24c09f712a5e20.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.0593d9b4407e2a64819b88a64c59bb787c91e66c5da811a18d24c09f712a5e20.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "1f0643e6f0691658c9ab6c9be4c304c15dc24ede31c372653879d87284acdef4",
+      "epoch": 609,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/636ac0d0a58ed962aad659bb7dd960edf659667df9bdb144c2474af2f238bf55.bin",
+        "exists": true,
+        "bytes": 1816,
+        "sha256": "636ac0d0a58ed962aad659bb7dd960edf659667df9bdb144c2474af2f238bf55"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/1f0643e6f0691658c9ab6c9be4c304c15dc24ede31c372653879d87284acdef4.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.1f0643e6f0691658c9ab6c9be4c304c15dc24ede31c372653879d87284acdef4.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "f7f8a55dd564d749d13172223a142c6686835c574d9de052deea126e395cddc6",
+      "epoch": 610,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/d2149c4855b614f82b96dc716705566bfa3433180ddef9738a9f8e589a7ce47a.bin",
+        "exists": true,
+        "bytes": 1826,
+        "sha256": "d2149c4855b614f82b96dc716705566bfa3433180ddef9738a9f8e589a7ce47a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/f7f8a55dd564d749d13172223a142c6686835c574d9de052deea126e395cddc6.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.f7f8a55dd564d749d13172223a142c6686835c574d9de052deea126e395cddc6.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "9ec468227ae5338a373e1f28f1dd4b822573d95179e4a2e60794106f41b6bd94",
+      "epoch": 610,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/b155e245a8d6af9b35a82e477a8845b24cf56eb1f43d1d0eb2ace67deca3e2af.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "b155e245a8d6af9b35a82e477a8845b24cf56eb1f43d1d0eb2ace67deca3e2af"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/9ec468227ae5338a373e1f28f1dd4b822573d95179e4a2e60794106f41b6bd94.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.9ec468227ae5338a373e1f28f1dd4b822573d95179e4a2e60794106f41b6bd94.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "9aca040c5d68df6703de4568cbe9c4b6ad01bd5a4a4e83d04973164f5ff94a4f",
+      "epoch": 611,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/5ec58cf0e421b2db885446bc531a286e1db41aab85847357fac90c42d0f09af6.bin",
+        "exists": true,
+        "bytes": 1823,
+        "sha256": "5ec58cf0e421b2db885446bc531a286e1db41aab85847357fac90c42d0f09af6"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/9aca040c5d68df6703de4568cbe9c4b6ad01bd5a4a4e83d04973164f5ff94a4f.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.9aca040c5d68df6703de4568cbe9c4b6ad01bd5a4a4e83d04973164f5ff94a4f.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "b54bfc2c70bd73d9cf38c2ac8bde12ca7bf85a68e180e0b980b9f3f210c460e0",
+      "epoch": 611,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/38207d600b78356575c335f3b9116dcc4c96a006f7711b4f1b11986db818565e.bin",
+        "exists": true,
+        "bytes": 1814,
+        "sha256": "38207d600b78356575c335f3b9116dcc4c96a006f7711b4f1b11986db818565e"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/b54bfc2c70bd73d9cf38c2ac8bde12ca7bf85a68e180e0b980b9f3f210c460e0.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.b54bfc2c70bd73d9cf38c2ac8bde12ca7bf85a68e180e0b980b9f3f210c460e0.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "b9dcb9be8cee993a4ab0135e7aea59843670cd0e6b61825a0f0ad32c79cb344f",
+      "epoch": 612,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/382e1d9d082e2b87240ab75c52dc48c3d46a08324842c12628b0ef6efd03432a.bin",
+        "exists": true,
+        "bytes": 1831,
+        "sha256": "382e1d9d082e2b87240ab75c52dc48c3d46a08324842c12628b0ef6efd03432a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/b9dcb9be8cee993a4ab0135e7aea59843670cd0e6b61825a0f0ad32c79cb344f.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.b9dcb9be8cee993a4ab0135e7aea59843670cd0e6b61825a0f0ad32c79cb344f.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "aed6cd653e7b6a4d51702c527199121009e4e17394b72287436390b2f23aa142",
+      "epoch": 612,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/e706296dbf9caec68f54985da7f2afcef6b9069dd5312c9ba6b0cc4c65c1913a.bin",
+        "exists": true,
+        "bytes": 1828,
+        "sha256": "e706296dbf9caec68f54985da7f2afcef6b9069dd5312c9ba6b0cc4c65c1913a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/aed6cd653e7b6a4d51702c527199121009e4e17394b72287436390b2f23aa142.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.aed6cd653e7b6a4d51702c527199121009e4e17394b72287436390b2f23aa142.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "830dda7df517dee1adc9ec3c756aa6de5f357f0fc45e7f8aa6434e2ea74edb54",
+      "epoch": 613,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/48b5026581588f0c5f70e71aede7e5ab906796e02a90b0f826d5e9295d6669e0.bin",
+        "exists": true,
+        "bytes": 1824,
+        "sha256": "48b5026581588f0c5f70e71aede7e5ab906796e02a90b0f826d5e9295d6669e0"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/830dda7df517dee1adc9ec3c756aa6de5f357f0fc45e7f8aa6434e2ea74edb54.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.830dda7df517dee1adc9ec3c756aa6de5f357f0fc45e7f8aa6434e2ea74edb54.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "996ae87e8a5922228ad8a70991c66591e1f652ce3cbf96da3e485d817afa5b10",
+      "epoch": 613,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/263feeeed98e29be2177380b0cd75d34656eaa8d87c3535f810f93a0eb0b87d0.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "263feeeed98e29be2177380b0cd75d34656eaa8d87c3535f810f93a0eb0b87d0"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/996ae87e8a5922228ad8a70991c66591e1f652ce3cbf96da3e485d817afa5b10.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.996ae87e8a5922228ad8a70991c66591e1f652ce3cbf96da3e485d817afa5b10.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "000f6267c981e349e5739975d0ca66b90834c482dab6701f3b8fc6ce3f4e2cc0",
+      "epoch": 614,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/59c7f4703954ee28b908a3a1f7613212e3428fa534074107eba1b4d7cb4392cb.bin",
+        "exists": true,
+        "bytes": 1816,
+        "sha256": "59c7f4703954ee28b908a3a1f7613212e3428fa534074107eba1b4d7cb4392cb"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/000f6267c981e349e5739975d0ca66b90834c482dab6701f3b8fc6ce3f4e2cc0.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.000f6267c981e349e5739975d0ca66b90834c482dab6701f3b8fc6ce3f4e2cc0.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "d95248ba8cf2fcfc6f34b5ad57bcb4004d858ee8e1ce827999e631adb141e206",
+      "epoch": 614,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/7212903e50a7e8a238a32410cce9991d3930bc7eb001ed8d9f0fff2ccd398124.bin",
+        "exists": true,
+        "bytes": 1809,
+        "sha256": "7212903e50a7e8a238a32410cce9991d3930bc7eb001ed8d9f0fff2ccd398124"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/d95248ba8cf2fcfc6f34b5ad57bcb4004d858ee8e1ce827999e631adb141e206.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.d95248ba8cf2fcfc6f34b5ad57bcb4004d858ee8e1ce827999e631adb141e206.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "edde06137a6d6ab23e7184e82f63b3e428ea10b6bd10a8dc429be9ce94f5d6ec",
+      "epoch": 615,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/0905a53775020a701977d0217ec824958825c121806551c211785649c912a555.bin",
+        "exists": true,
+        "bytes": 1829,
+        "sha256": "0905a53775020a701977d0217ec824958825c121806551c211785649c912a555"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/edde06137a6d6ab23e7184e82f63b3e428ea10b6bd10a8dc429be9ce94f5d6ec.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.edde06137a6d6ab23e7184e82f63b3e428ea10b6bd10a8dc429be9ce94f5d6ec.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "b21b62a364471eb78dcafa7162ee39da7b6a893f6931f4b1b3071b3f1a2256e1",
+      "epoch": 615,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/d1e881a5cca9a0bbfc1d522ed7c08d553d54913c17c63a0d6a0077e16b208b1d.bin",
+        "exists": true,
+        "bytes": 1819,
+        "sha256": "d1e881a5cca9a0bbfc1d522ed7c08d553d54913c17c63a0d6a0077e16b208b1d"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/b21b62a364471eb78dcafa7162ee39da7b6a893f6931f4b1b3071b3f1a2256e1.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.b21b62a364471eb78dcafa7162ee39da7b6a893f6931f4b1b3071b3f1a2256e1.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "c86c912213377db9c1ec36e3ebe23d9456567e3c594e105a2e824a2a22764d9e",
+      "epoch": 616,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/f3971e7ea8fda8606c3447280a4da5ad1ab6d4d0cb6b0bfb957d02a389c2edb8.bin",
+        "exists": true,
+        "bytes": 1822,
+        "sha256": "f3971e7ea8fda8606c3447280a4da5ad1ab6d4d0cb6b0bfb957d02a389c2edb8"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c86c912213377db9c1ec36e3ebe23d9456567e3c594e105a2e824a2a22764d9e.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.c86c912213377db9c1ec36e3ebe23d9456567e3c594e105a2e824a2a22764d9e.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "fdd815d139783fdcc3c9d6ae4d879f6e46a2bfed6c01c31698a05ba1d9c9b83e",
+      "epoch": 616,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/227f6e2abb486889920f93a54ad349b488154c1155aa2e525eeca24fb71c74db.bin",
+        "exists": true,
+        "bytes": 1815,
+        "sha256": "227f6e2abb486889920f93a54ad349b488154c1155aa2e525eeca24fb71c74db"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/fdd815d139783fdcc3c9d6ae4d879f6e46a2bfed6c01c31698a05ba1d9c9b83e.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.fdd815d139783fdcc3c9d6ae4d879f6e46a2bfed6c01c31698a05ba1d9c9b83e.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "ae67002188430a66f31e82f84a912be2491436225ea7dd1db91c9f69afa03ebe",
+      "epoch": 617,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/519fcc5f2d824204633e4403b49a7daeed8cfd34ae0bfa911547c978e45b670d.bin",
+        "exists": true,
+        "bytes": 1819,
+        "sha256": "519fcc5f2d824204633e4403b49a7daeed8cfd34ae0bfa911547c978e45b670d"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/ae67002188430a66f31e82f84a912be2491436225ea7dd1db91c9f69afa03ebe.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.ae67002188430a66f31e82f84a912be2491436225ea7dd1db91c9f69afa03ebe.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "c33ccfadb650d347dcbdb9c827ef605b7bb1925871d071a95eaeeea2dd7d10f2",
+      "epoch": 617,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/fa8bd0eea94307173326d161827b7b61ae54ba87acdce04ed71594c487be19e0.bin",
+        "exists": true,
+        "bytes": 1810,
+        "sha256": "fa8bd0eea94307173326d161827b7b61ae54ba87acdce04ed71594c487be19e0"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c33ccfadb650d347dcbdb9c827ef605b7bb1925871d071a95eaeeea2dd7d10f2.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.c33ccfadb650d347dcbdb9c827ef605b7bb1925871d071a95eaeeea2dd7d10f2.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "3670ee57ff6a298f7ad515ec6fa7de1f1c064a62842b481fd3db0dd6b9b1eb4b",
+      "epoch": 618,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/2a6c44b66fceecd140467dbf875cd7622ac637287785fee582ffeab81e046aeb.bin",
+        "exists": true,
+        "bytes": 1828,
+        "sha256": "2a6c44b66fceecd140467dbf875cd7622ac637287785fee582ffeab81e046aeb"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/3670ee57ff6a298f7ad515ec6fa7de1f1c064a62842b481fd3db0dd6b9b1eb4b.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.3670ee57ff6a298f7ad515ec6fa7de1f1c064a62842b481fd3db0dd6b9b1eb4b.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "faedf763871842fd408e9c47a14e57012aff95031bd94973bd1560d22f1b241b",
+      "epoch": 618,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/df48e2db19c32d1d34d1044cf19e4d8caf24aed428301654923b40f31b0ef7d7.bin",
+        "exists": true,
+        "bytes": 1822,
+        "sha256": "df48e2db19c32d1d34d1044cf19e4d8caf24aed428301654923b40f31b0ef7d7"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/faedf763871842fd408e9c47a14e57012aff95031bd94973bd1560d22f1b241b.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.faedf763871842fd408e9c47a14e57012aff95031bd94973bd1560d22f1b241b.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "dda79078c9bb36b78295ebd38d2f84921ce986d6ee3ab33e124384600a4d4f51",
+      "epoch": 619,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/4ac5bd79f44040597e7f44839bf3f23b59a13be7f57664f45bbe3774c4b45bb2.bin",
+        "exists": true,
+        "bytes": 1839,
+        "sha256": "4ac5bd79f44040597e7f44839bf3f23b59a13be7f57664f45bbe3774c4b45bb2"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/dda79078c9bb36b78295ebd38d2f84921ce986d6ee3ab33e124384600a4d4f51.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.dda79078c9bb36b78295ebd38d2f84921ce986d6ee3ab33e124384600a4d4f51.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "cad4247690c7667e55ac53d1724d3dac9bddcb26d3db93200525ee231bb147ce",
+      "epoch": 619,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/f2bb0bdbd05a0b7d2d20deb82106000d7df0b8184d1dcd367775eaf3e2332079.bin",
+        "exists": true,
+        "bytes": 1828,
+        "sha256": "f2bb0bdbd05a0b7d2d20deb82106000d7df0b8184d1dcd367775eaf3e2332079"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/cad4247690c7667e55ac53d1724d3dac9bddcb26d3db93200525ee231bb147ce.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.cad4247690c7667e55ac53d1724d3dac9bddcb26d3db93200525ee231bb147ce.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "8c2bf4309d331e57ec4bd6681629ccdd9c546c7e5f70f06b4065d378327c74c9",
+      "epoch": 620,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/258558e0efcfdb6806f4e73cb03f96b4d4ebf6b7ec60f61343f07daa70635e91.bin",
+        "exists": true,
+        "bytes": 1830,
+        "sha256": "258558e0efcfdb6806f4e73cb03f96b4d4ebf6b7ec60f61343f07daa70635e91"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8c2bf4309d331e57ec4bd6681629ccdd9c546c7e5f70f06b4065d378327c74c9.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8c2bf4309d331e57ec4bd6681629ccdd9c546c7e5f70f06b4065d378327c74c9.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "23f4c898cc0ce6059da7ea160e670f2f90a7ed961e1f652f9e4673f0de6ddcc8",
+      "epoch": 620,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/c162c6035352bfb852945622655fe766c0cf57dda809f7f820e36f050ea392b0.bin",
+        "exists": true,
+        "bytes": 1828,
+        "sha256": "c162c6035352bfb852945622655fe766c0cf57dda809f7f820e36f050ea392b0"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/23f4c898cc0ce6059da7ea160e670f2f90a7ed961e1f652f9e4673f0de6ddcc8.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.23f4c898cc0ce6059da7ea160e670f2f90a7ed961e1f652f9e4673f0de6ddcc8.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "5bcb00e865cba9508155658a8ffd5ad683fde7b82bdb2bafe28b50e7761bb34a",
+      "epoch": 621,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/95bbcc9427aab362c82b37f0b14c76331a47d9998917e15fdfc732a4c86b18db.bin",
+        "exists": true,
+        "bytes": 1828,
+        "sha256": "95bbcc9427aab362c82b37f0b14c76331a47d9998917e15fdfc732a4c86b18db"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/5bcb00e865cba9508155658a8ffd5ad683fde7b82bdb2bafe28b50e7761bb34a.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.5bcb00e865cba9508155658a8ffd5ad683fde7b82bdb2bafe28b50e7761bb34a.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "a3887faf0f9faeae514612359a6e96fa9a2a9df12fa4c7d4b937af49a330be7d",
+      "epoch": 621,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/bf890a987c20a8ae2d90886363f1f154115f67ca788c34aff3f4100bf8b16c6a.bin",
+        "exists": true,
+        "bytes": 1819,
+        "sha256": "bf890a987c20a8ae2d90886363f1f154115f67ca788c34aff3f4100bf8b16c6a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/a3887faf0f9faeae514612359a6e96fa9a2a9df12fa4c7d4b937af49a330be7d.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.a3887faf0f9faeae514612359a6e96fa9a2a9df12fa4c7d4b937af49a330be7d.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "6a2d2cf02884fa88b3f8a924a011c8012ec5a1c852300c7467685d6ef5eab1b8",
+      "epoch": 622,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/d0d7b736af28c419da6dec0af3e15e4a106d8b005ce6643fc53477f27c17337a.bin",
+        "exists": true,
+        "bytes": 1820,
+        "sha256": "d0d7b736af28c419da6dec0af3e15e4a106d8b005ce6643fc53477f27c17337a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/6a2d2cf02884fa88b3f8a924a011c8012ec5a1c852300c7467685d6ef5eab1b8.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.6a2d2cf02884fa88b3f8a924a011c8012ec5a1c852300c7467685d6ef5eab1b8.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "136b91c782ad49b269508debfcd5007d19235ece8f9dda699b05ac5d2b7c0759",
+      "epoch": 622,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/7549e9118c21d50a21646feb9a2da0466f4c17fb9a0b03fba78fc1cfec8e337c.bin",
+        "exists": true,
+        "bytes": 1812,
+        "sha256": "7549e9118c21d50a21646feb9a2da0466f4c17fb9a0b03fba78fc1cfec8e337c"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/136b91c782ad49b269508debfcd5007d19235ece8f9dda699b05ac5d2b7c0759.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.136b91c782ad49b269508debfcd5007d19235ece8f9dda699b05ac5d2b7c0759.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "d0a38ef8c76d2a452e860961a1fb335aca3fe105b359b0bcac89c587f67b9fb1",
+      "epoch": 623,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/ef995ed985ebefe1eb1b0d5089d1fbdb12a343184d0cbbb9af9542505fe58f54.bin",
+        "exists": true,
+        "bytes": 1830,
+        "sha256": "ef995ed985ebefe1eb1b0d5089d1fbdb12a343184d0cbbb9af9542505fe58f54"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/d0a38ef8c76d2a452e860961a1fb335aca3fe105b359b0bcac89c587f67b9fb1.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.d0a38ef8c76d2a452e860961a1fb335aca3fe105b359b0bcac89c587f67b9fb1.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "8526b1bc4d9a405bada0861249bd4d974fcb6d8e4507b209bfb0e25aec5bf840",
+      "epoch": 623,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/2d8e1f0af43e22f753d4f058d98d9430735554644961df5e36c1944f0a123408.bin",
+        "exists": true,
+        "bytes": 1823,
+        "sha256": "2d8e1f0af43e22f753d4f058d98d9430735554644961df5e36c1944f0a123408"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8526b1bc4d9a405bada0861249bd4d974fcb6d8e4507b209bfb0e25aec5bf840.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8526b1bc4d9a405bada0861249bd4d974fcb6d8e4507b209bfb0e25aec5bf840.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "e17c4230181b9e694669259568c4a392f3521182fcebabbf6a299343513ee6ad",
+      "epoch": 624,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/0da3547917e97e2426fcac029724484505b8a502ebcc0cdf69284a890974218a.bin",
+        "exists": true,
+        "bytes": 1829,
+        "sha256": "0da3547917e97e2426fcac029724484505b8a502ebcc0cdf69284a890974218a"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/e17c4230181b9e694669259568c4a392f3521182fcebabbf6a299343513ee6ad.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.e17c4230181b9e694669259568c4a392f3521182fcebabbf6a299343513ee6ad.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "c4a57ae6f2d22a6dbdd60dd902492f53b7c497cd30e73ca43f769c056f30ed96",
+      "epoch": 624,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/547a9ef18cbce613ec948e5547ec8e5a9d60396658dde50f1c765d0e4dc81a16.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "547a9ef18cbce613ec948e5547ec8e5a9d60396658dde50f1c765d0e4dc81a16"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c4a57ae6f2d22a6dbdd60dd902492f53b7c497cd30e73ca43f769c056f30ed96.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.c4a57ae6f2d22a6dbdd60dd902492f53b7c497cd30e73ca43f769c056f30ed96.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "db1635edd77e17939055a49b3cf666ae5cd922995697b8a008e1be298727d01a",
+      "epoch": 625,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/6d1a2ab7a642c57e55ed6bb9fd51576df5bafda5b88de603bee49581aa64b7f1.bin",
+        "exists": true,
+        "bytes": 1835,
+        "sha256": "6d1a2ab7a642c57e55ed6bb9fd51576df5bafda5b88de603bee49581aa64b7f1"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/db1635edd77e17939055a49b3cf666ae5cd922995697b8a008e1be298727d01a.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.db1635edd77e17939055a49b3cf666ae5cd922995697b8a008e1be298727d01a.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "43c3eed3becefeac3cb70f1676c2af85a78f15f34833a578a5e70a34842aa3ba",
+      "epoch": 625,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/7da450ec0023d4ed2f77c152e50506706129ac1980d6244050530476eab0771b.bin",
+        "exists": true,
+        "bytes": 1833,
+        "sha256": "7da450ec0023d4ed2f77c152e50506706129ac1980d6244050530476eab0771b"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/43c3eed3becefeac3cb70f1676c2af85a78f15f34833a578a5e70a34842aa3ba.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.43c3eed3becefeac3cb70f1676c2af85a78f15f34833a578a5e70a34842aa3ba.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "0069d487d659bece97e5f1044cc5b9fb687f3b183ff0bc6054d5558a9e2c18ec",
+      "epoch": 626,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/a5a701b053f4b196395e2b2759daddf4886f27a4d15e7b86a9c6916717f6fb1f.bin",
+        "exists": true,
+        "bytes": 1830,
+        "sha256": "a5a701b053f4b196395e2b2759daddf4886f27a4d15e7b86a9c6916717f6fb1f"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/0069d487d659bece97e5f1044cc5b9fb687f3b183ff0bc6054d5558a9e2c18ec.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.0069d487d659bece97e5f1044cc5b9fb687f3b183ff0bc6054d5558a9e2c18ec.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "a6f7f06dfaa1896040b460934a2c5a76ab2dbc37832c3b9d3b54c4abd94e928d",
+      "epoch": 626,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/8984f542fcfe3e9f7b0089c7477700417082cebeab6e5704d1098063961c89a1.bin",
+        "exists": true,
+        "bytes": 1822,
+        "sha256": "8984f542fcfe3e9f7b0089c7477700417082cebeab6e5704d1098063961c89a1"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/a6f7f06dfaa1896040b460934a2c5a76ab2dbc37832c3b9d3b54c4abd94e928d.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.a6f7f06dfaa1896040b460934a2c5a76ab2dbc37832c3b9d3b54c4abd94e928d.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "0d29ae2dc9130c4377411d36eecfc2a1ce4feb7dab305e6b8f35d500e8ca3566",
+      "epoch": 627,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/41cb73bd6dc9f6f7bce03ca31c1153a64e212323348cbff11602b2ebf8821f04.bin",
+        "exists": true,
+        "bytes": 1818,
+        "sha256": "41cb73bd6dc9f6f7bce03ca31c1153a64e212323348cbff11602b2ebf8821f04"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/0d29ae2dc9130c4377411d36eecfc2a1ce4feb7dab305e6b8f35d500e8ca3566.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.0d29ae2dc9130c4377411d36eecfc2a1ce4feb7dab305e6b8f35d500e8ca3566.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "d95d39ec82b0cc54c4d1b0cb50b43b30d7df6314eb75f7ad4b791b1743d29044",
+      "epoch": 627,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/24f617340382ee97b2f6666846ed76f07032f1bdcb007765b79124904ea31fad.bin",
+        "exists": true,
+        "bytes": 1810,
+        "sha256": "24f617340382ee97b2f6666846ed76f07032f1bdcb007765b79124904ea31fad"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/d95d39ec82b0cc54c4d1b0cb50b43b30d7df6314eb75f7ad4b791b1743d29044.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.d95d39ec82b0cc54c4d1b0cb50b43b30d7df6314eb75f7ad4b791b1743d29044.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "75b7ba4352a9614b24d5b83027b91957845c7c1a27cf468c0596ddfae2facd26",
+      "epoch": 628,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/d23629337a128574950d4c69274ffb3c6107dfcbb9e1e2264755577529321c7e.bin",
+        "exists": true,
+        "bytes": 1832,
+        "sha256": "d23629337a128574950d4c69274ffb3c6107dfcbb9e1e2264755577529321c7e"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/75b7ba4352a9614b24d5b83027b91957845c7c1a27cf468c0596ddfae2facd26.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.75b7ba4352a9614b24d5b83027b91957845c7c1a27cf468c0596ddfae2facd26.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "13e1526f2054725077fcfe776d220c2d76cedcd5fba6d8aa1228f74d1d49708d",
+      "epoch": 628,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/dd4b82b978130a8f772cab16d0b900a4a02f1cb3573c9ca78404599404b74856.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "dd4b82b978130a8f772cab16d0b900a4a02f1cb3573c9ca78404599404b74856"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/13e1526f2054725077fcfe776d220c2d76cedcd5fba6d8aa1228f74d1d49708d.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.13e1526f2054725077fcfe776d220c2d76cedcd5fba6d8aa1228f74d1d49708d.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "3ec306954cf482634657d447dc348e878d4d9362170532b7a87ff2605c52bfd8",
+      "epoch": 629,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/7d09972276542fedc2c3ba2d65e900f9b1b9cfda4a12acd2289bc4ad798fa7a1.bin",
+        "exists": true,
+        "bytes": 1833,
+        "sha256": "7d09972276542fedc2c3ba2d65e900f9b1b9cfda4a12acd2289bc4ad798fa7a1"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/3ec306954cf482634657d447dc348e878d4d9362170532b7a87ff2605c52bfd8.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.3ec306954cf482634657d447dc348e878d4d9362170532b7a87ff2605c52bfd8.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "d01597b5caaa4a005e6d95f0138beeb9a188927208f06c7098cc135830f0f70e",
+      "epoch": 629,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/bf765f46475d8196b6305262b702a321021c1559549aa4ad3e097629006e5d92.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "bf765f46475d8196b6305262b702a321021c1559549aa4ad3e097629006e5d92"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/d01597b5caaa4a005e6d95f0138beeb9a188927208f06c7098cc135830f0f70e.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.d01597b5caaa4a005e6d95f0138beeb9a188927208f06c7098cc135830f0f70e.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "8a26d7589ff22b06d15b4795928cf41fd07d3582977ef841e2c6264bb1abfe9e",
+      "epoch": 630,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/74c7517edb50c7396402081eb025308c1bd3bf05ee64f4ac27b267dd14a293d2.bin",
+        "exists": true,
+        "bytes": 1825,
+        "sha256": "74c7517edb50c7396402081eb025308c1bd3bf05ee64f4ac27b267dd14a293d2"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8a26d7589ff22b06d15b4795928cf41fd07d3582977ef841e2c6264bb1abfe9e.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8a26d7589ff22b06d15b4795928cf41fd07d3582977ef841e2c6264bb1abfe9e.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "7feac753c35022d15da224e6922f87b6baff89c7f9adaed0a57ed7866de9ce99",
+      "epoch": 630,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/68c356711c1c6af765a7a94c7514f72bf482b6b371af7eb04f1619fba11f8cdd.bin",
+        "exists": true,
+        "bytes": 1809,
+        "sha256": "68c356711c1c6af765a7a94c7514f72bf482b6b371af7eb04f1619fba11f8cdd"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/7feac753c35022d15da224e6922f87b6baff89c7f9adaed0a57ed7866de9ce99.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.7feac753c35022d15da224e6922f87b6baff89c7f9adaed0a57ed7866de9ce99.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "68d0a4ba71caee302e2f510b9b0373e92bfd03c9c0ba8bd45d15b03abd9f95d3",
+      "epoch": 631,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/51e77a67733203980b0654a1d3d5878edbc13343043292e1129e0ddde8ba84f6.bin",
+        "exists": true,
+        "bytes": 1842,
+        "sha256": "51e77a67733203980b0654a1d3d5878edbc13343043292e1129e0ddde8ba84f6"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/68d0a4ba71caee302e2f510b9b0373e92bfd03c9c0ba8bd45d15b03abd9f95d3.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.68d0a4ba71caee302e2f510b9b0373e92bfd03c9c0ba8bd45d15b03abd9f95d3.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "ed35b3d48df3f93500e0f80078a37cf63c818d4c0ad7fcfec3161a115ffa4681",
+      "epoch": 631,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/e67f20420b0949e0b3df596d86049dcec146ce7c474804a4a91831adfed85362.bin",
+        "exists": true,
+        "bytes": 1833,
+        "sha256": "e67f20420b0949e0b3df596d86049dcec146ce7c474804a4a91831adfed85362"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/ed35b3d48df3f93500e0f80078a37cf63c818d4c0ad7fcfec3161a115ffa4681.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.ed35b3d48df3f93500e0f80078a37cf63c818d4c0ad7fcfec3161a115ffa4681.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "3f394b385cdafd333cf5cfa014ee5e3f14ee9de3464c0adfdd1ab6c3b3a44d63",
+      "epoch": 632,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/867e6bc079f2aebc0993c93196f69dab5e8fc951f5836868b851ff77149c4499.bin",
+        "exists": true,
+        "bytes": 1821,
+        "sha256": "867e6bc079f2aebc0993c93196f69dab5e8fc951f5836868b851ff77149c4499"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/3f394b385cdafd333cf5cfa014ee5e3f14ee9de3464c0adfdd1ab6c3b3a44d63.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.3f394b385cdafd333cf5cfa014ee5e3f14ee9de3464c0adfdd1ab6c3b3a44d63.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "3488ef8571f62e3d6d901d8e1c72d80d787a5e2c1e81d8b7ca6e0dc61ee50c24",
+      "epoch": 632,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/1967fad4d13a7841afe720de0013fdc2817e6e6c80628993ad804406cf880270.bin",
+        "exists": true,
+        "bytes": 1818,
+        "sha256": "1967fad4d13a7841afe720de0013fdc2817e6e6c80628993ad804406cf880270"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/3488ef8571f62e3d6d901d8e1c72d80d787a5e2c1e81d8b7ca6e0dc61ee50c24.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.3488ef8571f62e3d6d901d8e1c72d80d787a5e2c1e81d8b7ca6e0dc61ee50c24.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "c0fcc9fccf278c903bf44c16a3af9b481ec5682dbfc9bb53510a5df45c2edeff",
+      "epoch": 633,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/b949600e94fd5e315d9b265cfa136ac3cf9f4b6c3b47ceb7f45e03b8777c3d65.bin",
+        "exists": true,
+        "bytes": 1838,
+        "sha256": "b949600e94fd5e315d9b265cfa136ac3cf9f4b6c3b47ceb7f45e03b8777c3d65"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/c0fcc9fccf278c903bf44c16a3af9b481ec5682dbfc9bb53510a5df45c2edeff.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.c0fcc9fccf278c903bf44c16a3af9b481ec5682dbfc9bb53510a5df45c2edeff.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "5fdc0a112a26414530e90a57979c41644ac066b3c4df542d3868042ad4a5b08e",
+      "epoch": 633,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/898958bffe5ae46bec17f9ee40d3b6655617e11406aa58cfc0a54e4ac170ee3b.bin",
+        "exists": true,
+        "bytes": 1825,
+        "sha256": "898958bffe5ae46bec17f9ee40d3b6655617e11406aa58cfc0a54e4ac170ee3b"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/5fdc0a112a26414530e90a57979c41644ac066b3c4df542d3868042ad4a5b08e.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.5fdc0a112a26414530e90a57979c41644ac066b3c4df542d3868042ad4a5b08e.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "e944ad07e2b98db318fb064c737c27745fcf7204a56c2a9740ce94a3c6a67542",
+      "epoch": 634,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/c46d4a10714caaeeb3b2dea869bba8315e5a5b466d1e32cefd0db4ba4df639de.bin",
+        "exists": true,
+        "bytes": 1824,
+        "sha256": "c46d4a10714caaeeb3b2dea869bba8315e5a5b466d1e32cefd0db4ba4df639de"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/e944ad07e2b98db318fb064c737c27745fcf7204a56c2a9740ce94a3c6a67542.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.e944ad07e2b98db318fb064c737c27745fcf7204a56c2a9740ce94a3c6a67542.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "ea55be73e3d8d7ef19ffc1b087509e021f02eb1f4658cb72669a168f09780c66",
+      "epoch": 634,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/44dc199877197af3bed4ec2edff0a4376a07db4493478c6496a4323bc2d2ca98.bin",
+        "exists": true,
+        "bytes": 1819,
+        "sha256": "44dc199877197af3bed4ec2edff0a4376a07db4493478c6496a4323bc2d2ca98"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/ea55be73e3d8d7ef19ffc1b087509e021f02eb1f4658cb72669a168f09780c66.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.ea55be73e3d8d7ef19ffc1b087509e021f02eb1f4658cb72669a168f09780c66.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "1651bc7d09310dbc1b1f31acd05565d49ab88a805fdc708b7c1269bad712740a",
+      "epoch": 635,
+      "kind": 1,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/83c68f67698c522712790b33b87a100f947360116f6eb70d4ca1290d9139f083.bin",
+        "exists": true,
+        "bytes": 1835,
+        "sha256": "83c68f67698c522712790b33b87a100f947360116f6eb70d4ca1290d9139f083"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/1651bc7d09310dbc1b1f31acd05565d49ab88a805fdc708b7c1269bad712740a.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.1651bc7d09310dbc1b1f31acd05565d49ab88a805fdc708b7c1269bad712740a.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "d3d02096495b17fe54492c9ccb40f121fc3d8340c65e4dcb5afb6b3b63af374b",
+      "epoch": 635,
+      "kind": 1,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 0,
+        "native_epoch": 0
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/e74965ab14605c05c92a8c961b09769f72425fa7d2f328980c77fe65f37851ab.bin",
+        "exists": true,
+        "bytes": 1826,
+        "sha256": "e74965ab14605c05c92a8c961b09769f72425fa7d2f328980c77fe65f37851ab"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/d3d02096495b17fe54492c9ccb40f121fc3d8340c65e4dcb5afb6b3b63af374b.json",
+        "exists": false
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.d3d02096495b17fe54492c9ccb40f121fc3d8340c65e4dcb5afb6b3b63af374b.receipt.json",
+        "exists": false
+      },
+      "journal_entries": [],
+      "policy_gap_paths": []
+    },
+    {
+      "slot": "be6ada915f53f538a0141c01eb0925f0a929180c4c093770e867effa6964d38c",
+      "epoch": 613,
+      "kind": 2,
+      "operator": 1,
+      "subject": {
+        "observation_epoch": 614,
+        "native_epoch": 1661
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/98095fce5818063a3125246daaecefbfb2c11cf9359c8299112cd4185a85b139.bin",
+        "exists": true,
+        "bytes": 1837,
+        "sha256": "98095fce5818063a3125246daaecefbfb2c11cf9359c8299112cd4185a85b139"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/be6ada915f53f538a0141c01eb0925f0a929180c4c093770e867effa6964d38c.json",
+        "exists": true,
+        "bytes": 4682,
+        "sha256": "df6a71b9532711037d46fad93fb99e8d357015c6b5effe89fcb769830e8b3205"
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.be6ada915f53f538a0141c01eb0925f0a929180c4c093770e867effa6964d38c.receipt.json",
+        "exists": true,
+        "bytes": 7771,
+        "sha256": "50b7806a7b9de96618873cc9d717ff89d5f7f63a48fc397db158b0d18b247aa3"
+      },
+      "journal_entries": [
+        {
+          "sequence": 53754,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "intent",
+          "entry_hash": "0x977028ea370825c3482a2d1e2da7f29e82148038c1bbae17645b5adfd326b05e"
+        },
+        {
+          "sequence": 53755,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "broadcast",
+          "entry_hash": "0x37fa22aaed5c6379fa03272d0ab24c7b023edc2598fff439cec1ab0594270940"
+        },
+        {
+          "sequence": 53756,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "included",
+          "entry_hash": "0x790208063c7fab4a6aad383f8a80370c29b4f63b34f233d8171e32c5bbef4014"
+        },
+        {
+          "sequence": 53757,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "finalized",
+          "entry_hash": "0xd930b9730c71a15102d183a27809c5f3ce59ab30b8e02a3e71f5ce5e033bd778"
+        }
+      ],
+      "policy_gap_paths": [],
+      "request_header_matches": true
+    },
+    {
+      "slot": "8b5e97855f90c0b9c3712e59148e97be24d349c2f4f6c7d93ad6a2e84bbc55d5",
+      "epoch": 613,
+      "kind": 2,
+      "operator": 2,
+      "subject": {
+        "observation_epoch": 614,
+        "native_epoch": 1661
+      },
+      "source": {
+        "path": "/mnt/data/sn-testnet/qualification/r46-provisional-resume-20260925/terminal-diagnostics-v3-repair-proof-20260926/final-inputs/validators/v2/f537bf3f7ef2455c1483ed3b67793f93c67c05b4e2da37e092b658b645e67d48.bin",
+        "exists": true,
+        "bytes": 1827,
+        "sha256": "f537bf3f7ef2455c1483ed3b67793f93c67c05b4e2da37e092b658b645e67d48"
+      },
+      "request": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/8b5e97855f90c0b9c3712e59148e97be24d349c2f4f6c7d93ad6a2e84bbc55d5.json",
+        "exists": true,
+        "bytes": 4662,
+        "sha256": "b5d70aa444bb16409745ff910783d7355e67d9c444210fbbadb423079045e311"
+      },
+      "result": {
+        "path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/evidence-relay/evidence.relay.8b5e97855f90c0b9c3712e59148e97be24d349c2f4f6c7d93ad6a2e84bbc55d5.receipt.json",
+        "exists": true,
+        "bytes": 7761,
+        "sha256": "fe61d66e61df3ed177f46d33e44321a7e9975bd3edda35aafeb1e8078f12ba99"
+      },
+      "journal_entries": [
+        {
+          "sequence": 53758,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "intent",
+          "entry_hash": "0x028e30cb336c17bef433106219d826a998067805b14cb19a9bd29393e4266f65"
+        },
+        {
+          "sequence": 53759,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "broadcast",
+          "entry_hash": "0x611cdc513188718750d5dee8213fbb0e1eb3200d0d0da808e498d1acaf665ec3"
+        },
+        {
+          "sequence": 53760,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "included",
+          "entry_hash": "0x0b80c744ee8a73d354c8bfe43aba18614b340074a4720e363e51bb0acac2a9f0"
+        },
+        {
+          "sequence": 53761,
+          "plan_hash": "0xcf285ebcc8d72cdf8edfd01e5e950157c58108ae027d7a9dbf7bfebb965a55eb",
+          "stage": "finalized",
+          "entry_hash": "0x45fa49130610b8509a7c06dca8413c09460909d90a22f8de643f018c527a611a"
+        }
+      ],
+      "policy_gap_paths": [],
+      "request_header_matches": true
+    }
+  ],
+  "conclusion": "No historical owner lookup defect. The required request and journal owner are absent. The predecessor closed-census cursor cannot pass its missing epoch 603, while the approved independent successor begins at 604. Existing audit scheduling is independent and has both captured audit requests. Future generation scheduling can be repaired without advancing the unresolved predecessor; it cannot repair the retained R46 custody gap."
+}
