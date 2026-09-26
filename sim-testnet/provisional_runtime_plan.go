@@ -2,7 +2,10 @@
 // strict release and final-acceptance readers continue to use the strict loader.
 package main
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // Observe the exact persisted bytes and operational authority on every reload.
 // Nested render readers may reuse a complete validation of those same inputs;
@@ -21,6 +24,11 @@ func loadRuntimePersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan,
 	}
 	if err != nil {
 		return nil, err
+	}
+	if plan.CampaignConfigMigrationHash != "" {
+		if _, _, _, err := authenticatedCampaignConfigMigrationSource(context.Background(), cfg, stateDir, plan, ""); err != nil {
+			return nil, err
+		}
 	}
 	if !retainRelease {
 		return plan, nil

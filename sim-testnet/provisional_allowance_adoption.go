@@ -72,6 +72,13 @@ func (self *Executor) authenticateProvisionalPlanAdoption(ctx context.Context, a
 		}
 	}
 	matched, err := self.provisionalPlanOnlyTransform(source, sourceBytes)
+	if err == nil && !matched && retainedStartup && self.plan.CampaignConfigMigrationHash != "" && source.ConfigHash != self.plan.ConfigHash {
+		_, _, receipt, migrationErr := authenticatedCampaignConfigMigrationSource(ctx, self.cfg, self.stateDir, self.plan, source.PlanHash)
+		if migrationErr != nil {
+			return false, migrationErr
+		}
+		matched = receipt.PlanHash == self.plan.PlanHash
+	}
 	if err == nil && !matched && retainedStartup && self.plan.PolicyRateAmendment != nil {
 		matched, err = self.authenticateRetainedPolicyRateAmendment(ctx, source)
 	}

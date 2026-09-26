@@ -65,11 +65,11 @@ func authenticatePolicyRolloverHandoffV2(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return nil, err
 	}
-	source, err := retainedPolicyRolloverSourceV2(ctx, cfg, stateDir, base, h.SourcePlanHash)
+	sourceCfg, source, err := retainedPolicyRolloverContextV2(ctx, cfg, stateDir, base, h.SourcePlanHash)
 	if err != nil {
 		return nil, err
 	}
-	p, err := readPolicyRolloverPlanV2(ctx, cfg, source, stateDir, policyRolloverPlanPathV2(stateDir, h.Generation, h.CutoffEpoch))
+	p, err := readPolicyRolloverPlanV2(ctx, sourceCfg, source, stateDir, policyRolloverPlanPathV2(stateDir, h.Generation, h.CutoffEpoch))
 	if err != nil {
 		return nil, err
 	}

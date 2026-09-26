@@ -84,6 +84,7 @@ type SetupPlan struct {
 	ProductionBurnHalfLifeBlocks uint16                     `json:"production_burn_half_life_blocks,omitempty"`
 	PriorPlanHashes              []string                   `json:"prior_plan_hashes,omitempty"`
 	ConfigHash                   string                     `json:"config_hash"`
+	CampaignConfigMigrationHash  string                     `json:"campaign_config_migration_hash,omitempty"`
 	ConfigIdentityRuntimeSpec    uint32                     `json:"config_identity_runtime_spec,omitempty"`
 	ResolvedInputsHash           string                     `json:"resolved_inputs_hash"`
 	OwnedRPCAuthority            string                     `json:"owned_rpc_authority,omitempty"`
@@ -2271,7 +2272,11 @@ func validatePlanBudgetWithFleetRenewalVerifier(p *SetupPlan, verifyRenewal func
 		}
 		seenAcceptedIntents := map[string]bool{}
 		for _, accepted := range action.AcceptedPriorIntentHashes {
-			if action.ID != "evm.reserve-sink" || len(p.PriorPlanHashes) == 0 {
+			// Preview can carry the exact prior runtime stamp. Invocation and
+			// runtime loaders separately require the signed migration receipt.
+			campaignRuntime := validCanonicalHashHex(p.CampaignConfigMigrationHash) && action.Kind == "local" &&
+				(action.ID == "config.render" || action.ID == "topology.launch") && len(action.AcceptedPriorIntentHashes) == 1
+			if (action.ID != "evm.reserve-sink" && !campaignRuntime) || len(p.PriorPlanHashes) == 0 {
 				return fmt.Errorf("action %s cannot accept an ancestor intent", action.ID)
 			}
 			if _, err := decodeHex32("accepted prior action intent", accepted); err != nil {

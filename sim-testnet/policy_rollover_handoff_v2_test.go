@@ -21,7 +21,14 @@ import (
 // finality itself is owned by the narrowly scoped publication test transport.
 func newPolicyRolloverHandoffTestV2(t *testing.T, configure ...func(*policyRolloverGenerationTestV2)) (*policyRolloverGenerationTestV2, *policyRolloverPlanV2, *policyRolloverHandoffV2, *Journal) {
 	t.Helper()
-	g := newPolicyRolloverGenerationTestV2(t)
+	return newPolicyRolloverHandoffConfigTestV2(t, nil, configure...)
+}
+
+// A historical campaign config must be selected before original activation
+// signatures and renderer receipts are produced, never rebound afterward.
+func newPolicyRolloverHandoffConfigTestV2(t *testing.T, config func(*ResolvedConfig), configure ...func(*policyRolloverGenerationTestV2)) (*policyRolloverGenerationTestV2, *policyRolloverPlanV2, *policyRolloverHandoffV2, *Journal) {
+	t.Helper()
+	g := newPolicyRolloverGenerationTestV2(t, config)
 	for _, apply := range configure {
 		apply(g)
 	}

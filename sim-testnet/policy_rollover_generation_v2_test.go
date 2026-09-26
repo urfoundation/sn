@@ -64,9 +64,15 @@ type policyRolloverGenerationTestV2 struct {
 	original   map[string][]byte
 }
 
-func newPolicyRolloverGenerationTestV2(t *testing.T) *policyRolloverGenerationTestV2 {
+func newPolicyRolloverGenerationTestV2(t *testing.T, configure ...func(*ResolvedConfig)) *policyRolloverGenerationTestV2 {
 	t.Helper()
-	f := newRuntimeEvidenceProvisionV2TestFixture(t)
+	f := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, func(cfg *ResolvedConfig) {
+		for _, apply := range configure {
+			if apply != nil {
+				apply(cfg)
+			}
+		}
+	})
 	renderFinalValidatorFixtureTest(t, f)
 	public, err := json.Marshal(f.roles.Public())
 	if err != nil {

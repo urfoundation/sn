@@ -35,6 +35,7 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
 		}
 	}
 	switch command {
+	case "campaign-config-migration":
 	case "audit", "doctor", "plan", "setup", "launch", "resume", "coordinator-repair", "probe-recovery", "fleet-renew", "history-adoption", "native-history-recovery", "relay-continuation", "policy-rollover", "terminal-diagnostics", "scenario", "status", "inspect", "analyze":
 	default:
 		return fmt.Errorf("--owned-rpc-authority is not supported by %s", command)

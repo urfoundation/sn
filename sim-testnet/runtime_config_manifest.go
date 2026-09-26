@@ -415,6 +415,16 @@ func authenticatedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*
 // A retained caller may supply only the original evidence identity derived
 // from an authenticated V6 successor. Every other identity field stays exact.
 func authenticatedRuntimeConfigManifestWithRetainedEvidence(cfg *ResolvedConfig, stateDir, retainedEvidenceHash string) (*RuntimeConfigManifest, map[string]os.FileMode, error) {
+	return authenticatedRuntimeConfigManifestWithRetainedIdentity(cfg, stateDir, retainedEvidenceHash, "")
+}
+
+// Only the signed campaign-migration reader supplies its authenticated old
+// config identity. The live cfg and its real new fingerprint stay unchanged.
+func authenticatedRuntimeConfigManifestWithRetainedIdentity(cfg *ResolvedConfig, stateDir, retainedEvidenceHash, retainedConfigHash string) (*RuntimeConfigManifest, map[string]os.FileMode, error) {
+	expectedConfigHash := cfg.ConfigHash
+	if retainedConfigHash != "" {
+		expectedConfigHash = retainedConfigHash
+	}
 	var manifest RuntimeConfigManifest
 	path := runtimeConfigManifestPath(stateDir)
 	if err := decodeStrictJSONFile(path, &manifest); err != nil {
@@ -433,7 +443,7 @@ func authenticatedRuntimeConfigManifestWithRetainedEvidence(cfg *ResolvedConfig,
 		return nil, nil, stateMismatchError(err, "runtime config manifest is absent or not private")
 	}
 	if manifest.Schema != runtimeConfigManifestSchema || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID ||
-		!strings.EqualFold(manifest.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(manifest.PolicyHash, cfg.PolicyHash) ||
+		!strings.EqualFold(manifest.ConfigHash, expectedConfigHash) || !strings.EqualFold(manifest.PolicyHash, cfg.PolicyHash) ||
 		(manifest.EvidenceV2Hash != evidenceHash && (retainedEvidenceHash == "" || manifest.EvidenceV2Hash != retainedEvidenceHash)) || manifest.AttemptUploadHash != uploadHash {
 		return nil, nil, errors.New("runtime config manifest identity does not match the active deployment")
 	}

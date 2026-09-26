@@ -1005,6 +1005,11 @@ func loadInvocationPlan(cfg *ResolvedConfig, stateDir, command string, options c
 	if err := requireApproved(true, options.PlanHash, plan.PlanHash); err != nil {
 		return nil, err
 	}
+	if plan.CampaignConfigMigrationHash != "" {
+		if _, _, _, err := authenticatedCampaignConfigMigrationSource(context.Background(), cfg, stateDir, plan, ""); err != nil {
+			return nil, err
+		}
+	}
 	return plan, nil
 }
 
@@ -1015,7 +1020,11 @@ func loadPersistedPlanIdentity(cfg *ResolvedConfig, stateDir string, retainRelea
 	if err != nil {
 		return nil, err
 	}
-	return loadPlanIdentityBytes(cfg, raw, retainRelease)
+	plan, err := loadPlanIdentityBytes(cfg, raw, retainRelease)
+	if err == nil && plan.CampaignConfigMigrationHash != "" {
+		_, _, _, err = authenticatedCampaignConfigMigrationSource(context.Background(), cfg, stateDir, plan, "")
+	}
+	return plan, err
 }
 
 // Both active resumes and archived repair reviews authenticate the same
@@ -1026,6 +1035,9 @@ func loadPlanIdentityBytes(cfg *ResolvedConfig, raw []byte, retainRelease bool) 
 	// records a different driver without changing the retained release identity.
 	p, err := decodePersistedPlanWire(raw)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateCampaignConfigMigrationAdmission(p, retainRelease); err != nil {
 		return nil, err
 	}
 	if cfg.Release == nil {

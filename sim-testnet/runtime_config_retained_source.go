@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"reflect"
@@ -17,12 +18,20 @@ func authenticatedRetainedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir st
 	if cfg == nil || cfg.Config == nil || plan == nil {
 		return nil, nil, errors.New("retained runtime manifest has no approved deployment")
 	}
-	if plan.EvidenceRelayContinuation == nil || len(plan.EvidenceRelayContinuation.SourceBounds) == 0 {
+	if plan.CampaignConfigMigrationHash == "" && (plan.EvidenceRelayContinuation == nil || len(plan.EvidenceRelayContinuation.SourceBounds) == 0) {
 		return authenticatedRuntimeConfigManifest(cfg, stateDir)
 	}
 	current, err := loadRuntimePersistedPlan(cfg, stateDir)
 	if err != nil || current.PlanHash != plan.PlanHash {
 		return nil, nil, errors.Join(errors.New("retained runtime manifest differs from the active approved plan"), err)
+	}
+	retainedConfigHash := ""
+	if current.CampaignConfigMigrationHash != "" {
+		sourceCfg, _, _, err := authenticatedCampaignConfigMigrationSource(context.Background(), cfg, stateDir, current, "")
+		if err != nil {
+			return nil, nil, err
+		}
+		retainedConfigHash = sourceCfg.ConfigHash
 	}
 	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
 	if err != nil {
@@ -54,7 +63,7 @@ func authenticatedRetainedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir st
 			return nil, nil, err
 		}
 	}
-	return authenticatedRuntimeConfigManifestWithRetainedEvidence(resolved, stateDir, retainedEvidenceHash)
+	return authenticatedRuntimeConfigManifestWithRetainedIdentity(resolved, stateDir, retainedEvidenceHash, retainedConfigHash)
 }
 
 // Only the explicit non-accepting resume may retain an older render identity.

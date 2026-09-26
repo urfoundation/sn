@@ -29,6 +29,7 @@ var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
 	NativeRecoverySource, NativeRecoveryPlan, NativeRecoveryPlanHash, NativeRecoveryHandoff, NativeRecoveryHandoffSha256            string
+	ConfigMigrationSourceConfig, ConfigMigrationHash                                                                                string
 	DiagnosticOutput                                                                                                                string
 	ProvisionalReleaseRunID                                                                                                         string
 	WaitForTerminal                                                                                                                 bool
@@ -78,6 +79,7 @@ Commands:
   probe-recovery  authorize bounded probe recovery, or execute it with --execute-recovery under exclusive journal ownership
   fleet-renew  plan or resume an exact next-generation renewal of existing fleets
   policy-rollover  review or publish a fresh policy evidence generation and durable handoff
+  campaign-config-migration  review or sign the exact provisional 60-second campaign timeout migration
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
@@ -122,6 +124,8 @@ Common options:
   --rollover-epoch N --rollover-generation N  explicit future activation and fresh source generation
   --rollover-plan PATH --rollover-plan-hash HASH  immutable rollover subplan; required for apply
   --rollover-source-role  review or select a role-only predecessor proof for the active generation
+  --config-migration-source-config PATH  unchanged old yaml for migration capture; --config names new yaml
+  --config-migration-hash HASH  exact reviewed migration request; required for apply
   --renewal-plan PATH  exact JSON plan emitted by fleet-renew; required for apply/resume
   --renewal-transaction-evidence PATH  JSON array of signed external EVM transaction hex strings
   --detach            persistent supervisor mode for launch
@@ -142,6 +146,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	valid["probe-recovery"] = true
 	valid["policy-rollover"] = true
 	valid["native-history-recovery"] = true
+	valid["campaign-config-migration"] = true
 	valid["terminal-diagnostics"] = true
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
@@ -154,6 +159,8 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.NativeRecoveryPlanHash, "native-history-recovery-plan-hash", "", "")
 	fs.StringVar(&o.NativeRecoveryHandoff, "native-history-recovery-handoff", "", "")
 	fs.StringVar(&o.NativeRecoveryHandoffSha256, "native-history-recovery-handoff-sha256", "", "")
+	fs.StringVar(&o.ConfigMigrationSourceConfig, "config-migration-source-config", "", "")
+	fs.StringVar(&o.ConfigMigrationHash, "config-migration-hash", "", "")
 	fs.StringVar(&o.DiagnosticOutput, "diagnostic-output", "", "")
 	fs.BoolVar(&o.WaitForTerminal, "wait-for-terminal", false, "")
 	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
@@ -265,6 +272,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validatePolicyRolloverOptionsV2(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateCampaignConfigMigrationOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateProvisionalProductionOptions(cmd, o); err != nil {
@@ -550,6 +560,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	requireSecrets := cmd == "audit" || cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	requireSecrets = requireSecrets || cmd == "probe-recovery" || cmd == "policy-rollover" || cmd == "terminal-diagnostics"
 	requireSecrets = requireSecrets || cmd == "native-history-recovery"
+	requireSecrets = requireSecrets || cmd == "campaign-config-migration"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -591,6 +602,8 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 	}
 	switch cmd {
+	case "campaign-config-migration":
+		return runCampaignConfigMigration(ctx, resolved, stateDir, o)
 	case "terminal-diagnostics":
 		report, err := runTerminalDiagnostics(ctx, resolved, stateDir, o)
 		return printResult(o.Format, report, err)
