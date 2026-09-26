@@ -2550,3 +2550,15 @@ production-soak dishonest-deposit helper also reads a legacy intent path.
 Before production soak, bind that helper to strict applied source authority
 and test missing/forged generation controls. It is outside the release
 interval path and must not be used to loosen R46 or R47 acceptance.
+
+An isolated sync with newer SN25 main exposed a separate cross-repository
+release boundary. SN25 changes `protocol.RequiredDepositRao` from three to
+four arguments by adding user count, while the available Server checkout
+still calls the three-argument form; the available SDK lacks the wallet
+challenge API now required by the SN25 miner. Its validator also scores
+baseline-priced demand in rao, while the terminal semantic verifier still
+requires the older byte-derived score. Pin compatible SN, Server and SDK
+revisions together, update the verifier's value model, and exercise positive,
+zero-price and per-user-only cases before adopting that mainline version for
+a testnet release or mainnet. The R46 integration branch has not adopted this
+unqualified sync.
