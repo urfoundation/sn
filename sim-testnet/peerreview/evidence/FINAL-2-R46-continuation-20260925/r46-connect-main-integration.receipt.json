@@ -1,0 +1,29 @@
+{
+  "source_base": "d82db9e0",
+  "fix_commit": "b1361a93",
+  "normal_passes": 56,
+  "race_passes": 56,
+  "normal_exit": 0,
+  "race_exit": 0,
+  "files": {
+    "connect-r46-normal.log": {
+      "sha256": "8c2741cf7d64c239625c3667e621f2eeddff0dbcfc8e7cd7078e329cc3818db2",
+      "bytes": 49397
+    },
+    "connect-r46-normal.exit": {
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    "connect-r46-race.log": {
+      "sha256": "3542e4d1ead18d4c1de4e39e9a52ebc746e6abcda205f46f2abb016b85d5137c",
+      "bytes": 52573
+    },
+    "connect-r46-race.exit": {
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    }
+  },
+  "remote_main_observed": "b1361a93c24f638348071f8b4c68db0f0f93f143",
+  "remote_main_observation_command": "git ls-remote origin refs/heads/main",
+  "scope": "focused signed/encrypted contract, contract-ahead, announcement and receive-sequence recovery tests on current Connect main base"
+}

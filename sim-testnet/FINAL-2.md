@@ -381,6 +381,12 @@ the sealed exit gaps. [Connect fix review](peerreview/evidence/FINAL-2-R46-conti
 (SHA-256 `17d662865b9ac684a86fdcf1cb890b8a29815d9586a202b48e92260c547b181b`),
 [qualification receipt](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-connect-prefetch-fix.receipt.json)
 (SHA-256 `8a4f028e50aefd9b4dbd00aa40b2fefcfa001375ad8a613166731e8c22d1a058`).
+The same correction was rebased onto Connect main at `d82db9e0` and
+fast-forwarded to main as `b1361a93`. The focused current-main qualification
+passed **56 normal and 56 race tests**. The [integration receipt and test
+logs](peerreview/evidence/FINAL-2-R46-continuation-20260925/r46-connect-main-integration.receipt.json)
+bind that result and the observed remote main head. This is a future-run
+transport fix; the sealed R46 exit-gap findings remain unchanged.
 
 The sealed read-only diagnostic currently reports
 `result-start-and-fault-binding` failed with “lifecycle cleanup completion

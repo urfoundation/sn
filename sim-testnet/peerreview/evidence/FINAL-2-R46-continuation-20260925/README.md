@@ -174,6 +174,9 @@ defect against all 18 sealed peer windows without attributing it to R46.
 `r46-connect-prefetch-fix-review.md` and
 `r46-connect-prefetch-fix.receipt.json` record the qualified adjacent Connect
 ordering fix, its test results and its sparse-traffic prefetch limit.
+`r46-connect-main-integration.receipt.json` and the paired normal/race logs
+record the current-main integration at `b1361a93`, with 56 focused passes in
+each mode. They do not revise the sealed R46 findings.
 
 `sealed-r46-cleanup-history.receipt.json` compares both final lifecycle
 cleanup rows with the signed latest checkpoint and binds their request and
