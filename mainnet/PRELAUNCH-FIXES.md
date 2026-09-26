@@ -2809,3 +2809,23 @@ not an acceptance threshold. Current walker concurrency four is a generated
 configuration value. Any increase needs a reviewed, authenticated config and
 measured workload test; the 30-second seed gate with actual two-second pacing
 limits it to 15 without changing the signed policy.
+
+### Migrate harness timeouts without rewriting historical authority
+
+The R48 preflight found that the approved R47 harness retained a 10,000 ms
+adversary request timeout and 15,000 ms p99 limit, while the new runtime
+correctly requires at least 60,000 ms. Changing the YAML copy to 60,000/60,000
+passed value validation but changed `ConfigHash`; the stamped read-only doctor
+refused it against the persisted setup plan. The unchanged R47 config still
+passed 66 provisional doctor checks with `ready=true`, so this is an exact
+authority migration, not evidence that the LAN RPC or fleet is down.
+
+Before mainnet, give such bounded operational changes their own owner-signed
+old/new-config receipt. Bind the exact old setup plan and YAML, permit only
+the reviewed field delta, advance local config/topology intent stamps
+deterministically, and leave chain actions, budgets, source-role files and
+historical validator configs untouched. Historical replay must use the
+authenticated old config; new campaign operations must use the signed new
+config. Test interruption after receipt publication and after plan advance,
+then retry without re-signing or replaying setup. Keep the native-history edge
+as a distinct approval and bind both receipts in the successor handoff.
