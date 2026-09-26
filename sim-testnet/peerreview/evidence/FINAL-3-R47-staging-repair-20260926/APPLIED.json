@@ -1,0 +1,23 @@
+{
+  "schema": "urnetwork-r47-local-staging-rotation-applied-v1",
+  "applied_at": "2026-09-26T12:10:56Z",
+  "handoff_sha256": "fd1e5691bec486d8be30be64e4547a27e3c35634d08d0eeac541ef8612a69362",
+  "manifest_unchanged": true,
+  "final_acceptance": false,
+  "operators": [
+    {
+      "no_id": 1,
+      "before_sha256": "c1496dd3027d4588567514dab5367cbd05247fde3a311bafebbbb29a9f77e917",
+      "after_sha256": "203a08272c68aac3c69d11f2ceef423d713b77d2a72f1b57f7634c1db0c0bd10",
+      "backup_path": "/mnt/data/sn-testnet/qualification/r47-staging-rotation-20260926/operator-1.before.st.yml",
+      "live_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-1/vault/st.yml"
+    },
+    {
+      "no_id": 2,
+      "before_sha256": "aa88eed0310a2eec36424dda8ce7b03e4d3ccaaa8071afa2eb851fa166c6edf0",
+      "after_sha256": "b1d7ef4d2d9a9c251931ccf7c556f35f121f051cfb09dc192301ad12ceb5846f",
+      "backup_path": "/mnt/data/sn-testnet/qualification/r47-staging-rotation-20260926/operator-2.before.st.yml",
+      "live_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/runtime/operator-2/vault/st.yml"
+    }
+  ]
+}
