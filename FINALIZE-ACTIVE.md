@@ -1,5 +1,31 @@
 # Testnet execution plan
 
+## R48 launch preflight: exact 60-second config migration — 2026-09-26 16:49 UTC
+
+The current candidate's read-only `doctor` refused the approved live
+rate-config before RPC checks: its adversary request timeout is 10,000 ms and
+p99 bound 15,000 ms, while the successor code requires at least 60,000 ms
+for both. This is the explicit user-requested retry floor. A **copied**
+diagnostic config with only those two fields set to 60,000 ms passed config
+validation; the R47 stamped executable then correctly refused its changed
+`config_hash` against the persisted setup plan. The copy under
+`/mnt/data/sn-testnet/qualification/r48-prep-20260926/config-diagnostic`
+is not a live input, signed plan, or launch authority. An Astra agent is
+implementing a distinct exact-field signed migration that preserves the old
+R47 config and generation-2 validator bytes as historical evidence.
+
+For isolation, the unchanged R47 stamped executable also ran a fresh
+**read-only** provisional doctor against the unchanged approved config at
+16:48:14 UTC. It exited 0 with `ready=true`, 66 checks, three nonhard
+LAN-independence/current-source-deferred findings, and
+`final_acceptance=false`. Its raw private output is
+`/mnt/data/sn-testnet/qualification/r48-prep-20260926/doctor-oldconfig-r47-stamped.json`
+(SHA-256 `de815992b3239f68b48910588df875c53fe2dd8943655e4009107aac8c2e6113`).
+This shows the existing fleet/RPC/services can pass provisional health with
+the old config; it does not authorize the new config, native history edge,
+new executable or final acceptance. A direct integration-worktree diagnostic
+binary lacked the required Git VCS stamp and was not used for writes.
+
 ## R47 sealed partial failure; R48 preparation — 2026-09-26 16:12 UTC
 
 R47 is no longer live. Its owner exited after finalized block 8,091,300,
