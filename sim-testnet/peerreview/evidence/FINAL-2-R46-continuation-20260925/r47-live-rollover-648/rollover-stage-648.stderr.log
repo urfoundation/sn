@@ -1,0 +1,7 @@
+[env]glog not configured from command line. Using default configuration.
+I0926 10:05:19.617402 1186946 env.go:861] [env]try /home/by/urnetwork/config, [settings.yml]
+I0926 10:05:19.617612 1186946 env.go:861] [env]try /home/by/urnetwork/config/all, [settings.yml]
+I0926 10:05:19.617695 1186946 env.go:861] [env]try /home/by/urnetwork/site, [settings.yml]
+I0926 10:05:19.617754 1186946 env.go:78] [env]settings = map[]
+sim-testnet: provisional testnet resume; final_acceptance=false; retained plan 0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e; actual driver SHA256 sha256:4c2d4e8dd01fe0ef6be991a037ead37e42e9db94ed983395e097f792981521a5; provenance /home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/provisional-resumes/invocation-1294429082/provenance.json
+sim-testnet: rollover publications are complete; resume after activation boundary block 8089774 is finalized

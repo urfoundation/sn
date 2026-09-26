@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-09-26T10:06:20.100034+00:00",
+  "source_commit": "550bbaa67c4313e1838c9612a00818e1ca439d38",
+  "rollover_plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+  "files": {
+    "lan-heads-next.json": "sha256:59103ea4446d61b754e85518bab47de3177407da6111218281913e182343d463",
+    "read-lan-schedule.go": "sha256:689a0e388a23fcf45dac11ed0c49dd34fe183c386012fcbc82bc374ceff9aaf1",
+    "lan-schedule-next.json": "sha256:c9c5d6b0165b17c65d97e0d6dc73789350c8fffca22c96f9d55e082dc99baebc",
+    "retained-next-summary.json": "sha256:6d6ec541b28efd0a6352f9403babb4fc6f362c72ce629a47f65d6a45c5e03b10",
+    "lan-keeper-next.json": "sha256:f8cee356dc475bb0eb8351010f5e88bb85b6b008bf992c37d8fb90faf888ed92",
+    "lan-plan-canonical-review.json": "sha256:1afa0fee0e0caecced7a42ce4fdf82c67ed9286270566d200c03329c46ddb2ac",
+    "live-budget-review_test.go": "sha256:e6bd0acd4073f386578b2bbe1acbecd0231e978661c15770603498784dc63312",
+    "live-budget-overlay.json": "sha256:5b1bd20a0b9e4414efc64a30fd3a142df0d4d6ac08e300365270805de1ade29d",
+    "live-budget-review.log": "sha256:0d43a514c54396f82fbf7d93aa9f048493c36690fa6d37893a96bd93a6a324f1",
+    "live-budget-review.receipt.json": "sha256:0d91fd81d56623e6519758dca263b437691d7251f700f2439a136b3e2ae79c9f",
+    "commands-live-review-648.md": "sha256:2bccda4d22da48a0dfd6c3fbd2b40bfb7f76b0e050913b9770792bf530896f1f",
+    "live-launch-review.json": "sha256:eff5e5a803241a3e273714f24716232e89242e3b6b1a7eef087303ff03658485",
+    "README-live-review-648.md": "sha256:1d95ce98b5dcdd529f8cc958dc90c1e015977537dbe215905870cac247794865"
+  }
+}

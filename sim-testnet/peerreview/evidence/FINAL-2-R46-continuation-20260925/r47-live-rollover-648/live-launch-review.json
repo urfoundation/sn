@@ -1,0 +1,101 @@
+{
+  "schema": "r47-live-generation2-plan-review-v1",
+  "sealed_at": "2026-09-26T10:06:20.099463+00:00",
+  "driver_source_commit": "550bbaa67c4313e1838c9612a00818e1ca439d38",
+  "driver_path": "/mnt/data/sn-testnet/qualification/r47-live-preparation-20260926/sim-testnet-550bbaa6-stamped",
+  "driver_sha256": "sha256:4c2d4e8dd01fe0ef6be991a037ead37e42e9db94ed983395e097f792981521a5",
+  "rollover_plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+  "rollover_plan_path": "/home/by/urnetwork/sn/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/policy-rollover/plans/generation-00000000000000000002-epoch-00000000000000000648/plan.json",
+  "plan_file_sha256": "sha256:ad5c4581d1683e4c29ad551c22c4b216542fe39693c65938d42e592a47667382",
+  "read_only_reviewer": true,
+  "parent_performed_no_apply_planning": true,
+  "reviewer_live_writes": 0,
+  "reviewer_transactions": 0,
+  "reviewer_service_changes": 0,
+  "network_authorities": [
+    "192.168.1.162:9944"
+  ],
+  "independent_rpc": false,
+  "final_acceptance": false,
+  "independent_budget_pass": true,
+  "post_review_headroom": {
+    "tao_rao": 76970448553,
+    "alpha_rao": 0,
+    "evm_gas_wei": 97370689553723559109,
+    "registrations": 0,
+    "subnet_creations": 0
+  },
+  "canonical_snapshot_review": {
+    "captured_at": "2026-09-26T10:02:48.475622+00:00",
+    "authority": "192.168.1.162:9944",
+    "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+    "native_snapshot_canonical": true,
+    "evm_snapshot_canonical": true,
+    "native_snapshot": {
+      "number": 8089535,
+      "hash": "0xa32524b39f93345d2a8b9598b673c9c0e5112aadc0fa9bb82d80d37eae7e434e"
+    },
+    "evm_snapshot": {
+      "number": 8089534,
+      "hash": "0x47457022dbd4d055924b680ede9cc2c345522b097f4069fc924870ed69158a97"
+    },
+    "current_finalized_evm": {
+      "number": 8089557,
+      "hash": "0x54a83e864494499d405ef66e66962465835413348050d6d93af7f7b99fdc5eac",
+      "timestamp": 1790416932
+    },
+    "current_settlement_epoch": 647,
+    "activation_epoch": 648,
+    "activation_start_block": 8089774,
+    "activation_end_block": 8090074,
+    "blocks_to_start": 217,
+    "blocks_to_end": 517,
+    "observed_seconds_per_block": 12.0,
+    "estimated_minutes_to_start": 43.4,
+    "estimated_minutes_to_end": 103.4,
+    "estimate_is_not_deadline_guarantee": true,
+    "read_only": true
+  },
+  "native_schedule_observation": {
+    "LastEpochBlock": 8089451,
+    "PendingEpochAt": 0,
+    "SubnetEpochIndex": 1688,
+    "Tempo": 360,
+    "BlocksSinceLastStep": 70,
+    "CurrentBlock": 8089521
+  },
+  "native_slot_observation": {
+    "1": {
+      "absent": true,
+      "hotkey": "0x6873c28d2f449235f1a7a30b211880826d04c2ce1a1454ec6e4e499aebd6005e"
+    },
+    "2": {
+      "absent": false,
+      "commitment_block": 8079823,
+      "finalized_at": 8089521,
+      "finalized_hash": "0x0b646d27d7ee14fb8773626e726044565e767c96f0a63a88945970c793587c3c",
+      "hotkey": "0xeef93451764e40c9f9a78d052c6b61db164396b558adc9032efe473c88da9847",
+      "source_hash": "0x798e599a4d388cc585da325be50d3197b75e4c5d0316e09d366d9c4a9e415a89"
+    }
+  },
+  "keeper_balance_wei": 48026157980000000000,
+  "keeper_nonce_finalized_latest_pending": 7710,
+  "highest_retained_keeper_nonce": 7709,
+  "approval_custody": "exact gen1 hash/size/config/activation/state census plus four valid dual consents and matching signed calldata",
+  "source_role_still_required": "V1 absent predecessor only while native slot remains empty; V2 exact applied gen1 source hash/block match observed, but full historical proof/current native role verification remains the later distinct source-role activation gate",
+  "four_consents_gas_ceiling_wei": 400000000000000000,
+  "activation_boundary_behavior": "Before finalized block8089774, four successful publications can return resume-after-boundary; same immutable plan/hash must be reapplied after boundary for staging. No stop before source staging is ready.",
+  "proposed_commands": "commands-live-review-648.md",
+  "stopped_activation_commands": "commands-successor.md",
+  "outstanding_live_prerequisites": [
+    "reconcile current journal/nonce/allowance before apply",
+    "publish/reconcile all four exact consents",
+    "wait for finalized cutoff block8089774",
+    "stage exact independent generation2 inputs",
+    "officially stop supervisor and validator records",
+    "activate exact successor journal receipt",
+    "plan/review/apply distinct generation2 native source-role continuation",
+    "retained resume with zero setup actions and fresh source observations",
+    "new interval with independently verified fresh acceptance evidence"
+  ]
+}

@@ -601,6 +601,25 @@ unchanged. Before a new release interval, the exact successor plan must be
 reviewed and staged, the retained supervisor officially stopped for handoff
 selection, and the authenticated native source-role continuation applied
 before resume. [Successor readiness and commands](peerreview/evidence/FINAL-2-R46-continuation-20260925/r47-successor-readiness/commands-successor.md).
+The clean stamped driver then created reviewed, immutable generation-2 plan
+`0xaecc96a8…fa120` for cutoff epoch 648. Its four zero-value EVM consent
+transactions were **actually published and finalized** on the LAN-observed
+testnet: V1/NO1
+`0x2521447bd5209affe148f561e38923a9df1ac7208738a512159dd899e3903129`
+at block 8,089,581; V1/NO2
+`0xd8600af6028eaaa84f2ad07bae5cc1e618d05c1a913f6dad186c50ef895f0965`
+at 8,089,584; V2/NO1
+`0x6f7eb0be1ffd0cdb0cbf7a3a945b26587bfb44ee9d234d759046848d8d13aead`
+at 8,089,587; and V2/NO2
+`0x022f374cae5c062cf1764b15b23735da284d3aabbb1f7de14011b8f0e0ea8c9c`
+at 8,089,590. Independent LAN receipts verify status 1, canonical finalized
+block, exact sender/target/nonce and matching immutable journal
+postconditions for all four. The keeper's finalized/latest/pending next nonce
+is 7,714 with no gap. Publication is complete, but the CLI deliberately
+deferred staging until activation boundary block **8,089,774** finalizes.
+Generation 1 and the fleet remain active; no R47 interval or generation-2
+activation is claimed yet. [Exact plan, liability review and independent
+on-chain receipts](peerreview/evidence/FINAL-2-R46-continuation-20260925/r47-live-rollover-648/README.md).
 
 The missed payout is independently visible on-chain. A LAN historical
 `eth_call` at the owner's finalized block **8,086,545** returns status **3

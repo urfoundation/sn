@@ -1,0 +1,319 @@
+{
+  "captured_at": "2026-09-26T10:09:51.853914+00:00",
+  "rows": [
+    {
+      "sequence": 59980,
+      "time": "2026-09-26T10:06:56.923543047Z",
+      "action_id": "evidence.policy-rollover.1.1",
+      "stage": "intent",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59981,
+      "time": "2026-09-26T10:06:56.993949381Z",
+      "action_id": "evidence.policy-rollover.1.1",
+      "stage": "broadcast",
+      "transaction_hash": "0x2521447bd5209affe148f561e38923a9df1ac7208738a512159dd899e3903129",
+      "nonce": "7710",
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59982,
+      "time": "2026-09-26T10:07:03.038820716Z",
+      "action_id": "evidence.policy-rollover.1.1",
+      "stage": "included",
+      "transaction_hash": "0x2521447bd5209affe148f561e38923a9df1ac7208738a512159dd899e3903129",
+      "nonce": null,
+      "block_number": 8089581,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59983,
+      "time": "2026-09-26T10:07:27.062917678Z",
+      "action_id": "evidence.policy-rollover.1.1",
+      "stage": "finalized",
+      "transaction_hash": "0x2521447bd5209affe148f561e38923a9df1ac7208738a512159dd899e3903129",
+      "nonce": null,
+      "block_number": 8089581,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59984,
+      "time": "2026-09-26T10:07:27.182110098Z",
+      "action_id": "evidence.policy-rollover.1.1",
+      "stage": "postcondition_verified",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.1.1.json",
+      "postcondition_hash": "0x2c25f79f93c74be47743e5da9be72ba38fd9962241b9b2d911065155ac14d701"
+    },
+    {
+      "sequence": 59985,
+      "time": "2026-09-26T10:07:27.229616991Z",
+      "action_id": "evidence.policy-rollover.1.2",
+      "stage": "intent",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59986,
+      "time": "2026-09-26T10:07:27.309972777Z",
+      "action_id": "evidence.policy-rollover.1.2",
+      "stage": "broadcast",
+      "transaction_hash": "0xd8600af6028eaaa84f2ad07bae5cc1e618d05c1a913f6dad186c50ef895f0965",
+      "nonce": "7711",
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59987,
+      "time": "2026-09-26T10:07:39.963366225Z",
+      "action_id": "evidence.policy-rollover.1.2",
+      "stage": "included",
+      "transaction_hash": "0xd8600af6028eaaa84f2ad07bae5cc1e618d05c1a913f6dad186c50ef895f0965",
+      "nonce": null,
+      "block_number": 8089584,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59988,
+      "time": "2026-09-26T10:08:03.979142028Z",
+      "action_id": "evidence.policy-rollover.1.2",
+      "stage": "finalized",
+      "transaction_hash": "0xd8600af6028eaaa84f2ad07bae5cc1e618d05c1a913f6dad186c50ef895f0965",
+      "nonce": null,
+      "block_number": 8089584,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59989,
+      "time": "2026-09-26T10:08:04.054038435Z",
+      "action_id": "evidence.policy-rollover.1.2",
+      "stage": "postcondition_verified",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.1.2.json",
+      "postcondition_hash": "0x1cd34c5849bda6363a4591645f8756cd412fa8a66f00845c89a2f963bfe815da"
+    },
+    {
+      "sequence": 59990,
+      "time": "2026-09-26T10:08:04.097903087Z",
+      "action_id": "evidence.policy-rollover.2.1",
+      "stage": "intent",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59991,
+      "time": "2026-09-26T10:08:04.170645633Z",
+      "action_id": "evidence.policy-rollover.2.1",
+      "stage": "broadcast",
+      "transaction_hash": "0x6f7eb0be1ffd0cdb0cbf7a3a945b26587bfb44ee9d234d759046848d8d13aead",
+      "nonce": "7712",
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59992,
+      "time": "2026-09-26T10:08:16.22935613Z",
+      "action_id": "evidence.policy-rollover.2.1",
+      "stage": "included",
+      "transaction_hash": "0x6f7eb0be1ffd0cdb0cbf7a3a945b26587bfb44ee9d234d759046848d8d13aead",
+      "nonce": null,
+      "block_number": 8089587,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59993,
+      "time": "2026-09-26T10:08:40.25106904Z",
+      "action_id": "evidence.policy-rollover.2.1",
+      "stage": "finalized",
+      "transaction_hash": "0x6f7eb0be1ffd0cdb0cbf7a3a945b26587bfb44ee9d234d759046848d8d13aead",
+      "nonce": null,
+      "block_number": 8089587,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59994,
+      "time": "2026-09-26T10:08:40.344856663Z",
+      "action_id": "evidence.policy-rollover.2.1",
+      "stage": "postcondition_verified",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.2.1.json",
+      "postcondition_hash": "0x42970a162c8802b6e9cdf9b7ed354d98d16959fad590b5f03645af684bde7c04"
+    },
+    {
+      "sequence": 59995,
+      "time": "2026-09-26T10:08:40.403708355Z",
+      "action_id": "evidence.policy-rollover.2.2",
+      "stage": "intent",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59996,
+      "time": "2026-09-26T10:08:40.468799239Z",
+      "action_id": "evidence.policy-rollover.2.2",
+      "stage": "broadcast",
+      "transaction_hash": "0x022f374cae5c062cf1764b15b23735da284d3aabbb1f7de14011b8f0e0ea8c9c",
+      "nonce": "7713",
+      "block_number": null,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59997,
+      "time": "2026-09-26T10:08:49.523051622Z",
+      "action_id": "evidence.policy-rollover.2.2",
+      "stage": "included",
+      "transaction_hash": "0x022f374cae5c062cf1764b15b23735da284d3aabbb1f7de14011b8f0e0ea8c9c",
+      "nonce": null,
+      "block_number": 8089590,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59998,
+      "time": "2026-09-26T10:09:16.541769479Z",
+      "action_id": "evidence.policy-rollover.2.2",
+      "stage": "finalized",
+      "transaction_hash": "0x022f374cae5c062cf1764b15b23735da284d3aabbb1f7de14011b8f0e0ea8c9c",
+      "nonce": null,
+      "block_number": 8089590,
+      "postcondition_path": null,
+      "postcondition_hash": null
+    },
+    {
+      "sequence": 59999,
+      "time": "2026-09-26T10:09:16.64289782Z",
+      "action_id": "evidence.policy-rollover.2.2",
+      "stage": "postcondition_verified",
+      "transaction_hash": null,
+      "nonce": null,
+      "block_number": null,
+      "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.2.2.json",
+      "postcondition_hash": "0xab318fdbada3c555e87574d164b5afde519c140cdc610cb1d482a4ffd11bd0d6"
+    }
+  ],
+  "verified_receipts": [
+    {
+      "journal": {
+        "sequence": 59984,
+        "time": "2026-09-26T10:07:27.182110098Z",
+        "action_id": "evidence.policy-rollover.1.1",
+        "stage": "postcondition_verified",
+        "transaction_hash": null,
+        "nonce": null,
+        "block_number": null,
+        "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.1.1.json",
+        "postcondition_hash": "0x2c25f79f93c74be47743e5da9be72ba38fd9962241b9b2d911065155ac14d701"
+      },
+      "file_bytes": 279,
+      "file_hash_matches": true,
+      "postcondition": {
+        "schema": "urnetwork-sim-policy-rollover-publication-v2",
+        "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+        "validator_id": 1,
+        "no_id": 1,
+        "activation_hash": "0x8fc413754f9f68edce2b39ab9fda245338a77f461652f03cf3ead4aaea6d9799",
+        "published_block": 8089581
+      }
+    },
+    {
+      "journal": {
+        "sequence": 59989,
+        "time": "2026-09-26T10:08:04.054038435Z",
+        "action_id": "evidence.policy-rollover.1.2",
+        "stage": "postcondition_verified",
+        "transaction_hash": null,
+        "nonce": null,
+        "block_number": null,
+        "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.1.2.json",
+        "postcondition_hash": "0x1cd34c5849bda6363a4591645f8756cd412fa8a66f00845c89a2f963bfe815da"
+      },
+      "file_bytes": 279,
+      "file_hash_matches": true,
+      "postcondition": {
+        "schema": "urnetwork-sim-policy-rollover-publication-v2",
+        "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+        "validator_id": 1,
+        "no_id": 2,
+        "activation_hash": "0xb3b266bbec0213978004fff0a47b43e51c02e965659b80e1a2011eea217df248",
+        "published_block": 8089584
+      }
+    },
+    {
+      "journal": {
+        "sequence": 59994,
+        "time": "2026-09-26T10:08:40.344856663Z",
+        "action_id": "evidence.policy-rollover.2.1",
+        "stage": "postcondition_verified",
+        "transaction_hash": null,
+        "nonce": null,
+        "block_number": null,
+        "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.2.1.json",
+        "postcondition_hash": "0x42970a162c8802b6e9cdf9b7ed354d98d16959fad590b5f03645af684bde7c04"
+      },
+      "file_bytes": 279,
+      "file_hash_matches": true,
+      "postcondition": {
+        "schema": "urnetwork-sim-policy-rollover-publication-v2",
+        "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+        "validator_id": 2,
+        "no_id": 1,
+        "activation_hash": "0x5e3980611f468b72e0fd6e458044a271f367a5875dc1a30a81e40f6e1af8d05f",
+        "published_block": 8089587
+      }
+    },
+    {
+      "journal": {
+        "sequence": 59999,
+        "time": "2026-09-26T10:09:16.64289782Z",
+        "action_id": "evidence.policy-rollover.2.2",
+        "stage": "postcondition_verified",
+        "transaction_hash": null,
+        "nonce": null,
+        "block_number": null,
+        "postcondition_path": "receipts/postconditions/aecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120/evidence.policy-rollover.2.2.json",
+        "postcondition_hash": "0xab318fdbada3c555e87574d164b5afde519c140cdc610cb1d482a4ffd11bd0d6"
+      },
+      "file_bytes": 279,
+      "file_hash_matches": true,
+      "postcondition": {
+        "schema": "urnetwork-sim-policy-rollover-publication-v2",
+        "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+        "validator_id": 2,
+        "no_id": 2,
+        "activation_hash": "0xdbf2c362d05c42028f654cbf666a92dc5cb4f70b17194e50a2f885e8ee7c0c55",
+        "published_block": 8089590
+      }
+    }
+  ]
+}
