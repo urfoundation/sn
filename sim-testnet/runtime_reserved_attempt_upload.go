@@ -324,8 +324,57 @@ func validateRuntimeReservedAttemptUploadNode(cfg *ResolvedConfig, stateDir, rel
 		return err
 	}
 	observed, err := canonicalHashHex(actual)
-	if err != nil || observed != want {
+	if err != nil {
+		return err
+	}
+	if observed != want && !retainedRolloverReservedStagingPredecessor(cfg, stateDir, &actual, expected) {
 		return errors.New("runtime reserved staging differs from approved capacity or authority pins")
 	}
 	return nil
+}
+
+// A stopped provisional successor may retain the original sealed operator
+// inputs for a diagnostic interval. This does not authorize new-generation
+// uploads: final acceptance must still require a rendered successor config.
+func retainedRolloverReservedStagingPredecessor(cfg *ResolvedConfig, stateDir string, actual, expected *controller.StReservedAttemptUploadConfig) bool {
+	if !provisionalResumeEnabled(cfg) || actual == nil || expected == nil {
+		return false
+	}
+	plan, err := loadRuntimePersistedPlan(cfg, stateDir)
+	if err != nil {
+		return false
+	}
+	handoff, err := readPolicyRolloverHandoffV2(context.Background(), cfg, stateDir, plan)
+	if err != nil || handoff == nil || handoff.Generation < 2 || handoff.predecessor == nil {
+		return false
+	}
+	return retainedRolloverReservedStagingMatches(actual, expected, handoff.predecessor, cfg.Config.Topology.Operators)
+}
+
+// Compare only the four predecessor context references. All capacity, runtime,
+// endpoint and deployment pins must remain identical to the current approval.
+func retainedRolloverReservedStagingMatches(actual, expected *controller.StReservedAttemptUploadConfig, predecessor *policyRolloverHandoffV2, operators int) bool {
+	if actual == nil || expected == nil || predecessor == nil || operators < 1 {
+		return false
+	}
+	previousContexts := make([]validatorpkg.ReleaseEvidenceV2File, 0, len(predecessor.Validators)*operators)
+	for _, validator := range predecessor.Validators {
+		if len(validator.Evidence.Operators) != operators {
+			return false
+		}
+		for _, operator := range validator.Evidence.Operators {
+			previousContexts = append(previousContexts, operator.Context)
+		}
+	}
+	if !slices.Equal(previousContexts, actual.Admission.ActivationContexts) || slices.Equal(previousContexts, expected.Admission.ActivationContexts) {
+		return false
+	}
+	retained := *expected
+	retained.Admission.ActivationContexts = previousContexts
+	want, err := canonicalHashHex(retained)
+	if err != nil {
+		return false
+	}
+	observed, err := canonicalHashHex(actual)
+	return err == nil && observed == want
 }
