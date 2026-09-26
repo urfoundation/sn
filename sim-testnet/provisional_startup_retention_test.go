@@ -97,7 +97,7 @@ func TestProvisionalStartupRetainsAuthenticatedRecoveringSupervisor(t *testing.T
 	if got := cleanupFailedPersistentLaunch(fixture.stateDir, !preserved, launchErr, stop); !errors.Is(got, launchErr) || stopCalls != 0 {
 		t.Fatalf("preserved generation cleanup = %v calls=%d", got, stopCalls)
 	}
-	adoption, err := prepareProvisionalLiveTopology(fixture.cfg, fixture.stateDir, "resume")
+	adoption, err := prepareProvisionalLiveTopology(t.Context(), fixture.cfg, fixture.stateDir, "resume", nil)
 	if err != nil || adoption == nil {
 		t.Fatalf("next resume cannot authenticate retained generation: %+v %v", adoption, err)
 	}

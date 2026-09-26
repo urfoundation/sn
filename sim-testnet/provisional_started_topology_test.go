@@ -221,7 +221,7 @@ func TestProvisionalScenarioAdoptsChangedGenerationWithoutLogGap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	current, err := prepareProvisionalLiveTopology(executor.cfg, fixture.dir, "scenario")
+	current, err := prepareProvisionalLiveTopology(t.Context(), executor.cfg, fixture.dir, "scenario", executor.plan)
 	if err != nil || current == nil {
 		t.Fatal("changed live generation was not prepared", err)
 	}

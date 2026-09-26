@@ -350,18 +350,22 @@ command shape is:
 
 ```sh
 $R48_DRIVER native-history-recovery --config "$R48_CONFIG" --state-dir "$R48_STATE" \
+  --sn-repo /home/by/urnetwork/sn \
   --provisional-resume --plan-hash "$R48_BASE_PLAN" --owned-rpc-authority "$R48_RPC" \
   --native-history-recovery-source "$R48_STATE/campaign-attempts/release-1.0.recovery.47.evidence.json" \
   --first-native-epoch "$R48_FIRST_NATIVE_EPOCH" --format json > "$R48_REVIEW_PLAN"
 ```
 
 `R48_FIRST_NATIVE_EPOCH` must be selected from a fresh finalized native schedule
-with measured startup time available. The reviewed plan includes its actual
+with more than the observed 20-minute validator startup time plus a measured
+margin available. Supervisor liveness alone does not establish completed trails
+or closed-source readiness. The reviewed plan includes its actual
 `plan_hash`; capture does not constitute permission to apply it. An exact-hash
 approval is still required for:
 
 ```sh
 $R48_DRIVER native-history-recovery --config "$R48_CONFIG" --state-dir "$R48_STATE" \
+  --sn-repo /home/by/urnetwork/sn \
   --provisional-resume --plan-hash "$R48_BASE_PLAN" --owned-rpc-authority "$R48_RPC" \
   --apply --native-history-recovery-plan "$R48_REVIEW_PLAN" \
   --native-history-recovery-plan-hash "$R48_RECOVERY_PLAN_HASH" --format json
@@ -370,9 +374,25 @@ $R48_DRIVER native-history-recovery --config "$R48_CONFIG" --state-dir "$R48_STA
 The returned receipt path and SHA-256 select the recovery on the separately
 authorized provisional resume using `--native-history-recovery-handoff` and
 `--native-history-recovery-handoff-sha256`. Retained restarts verify the same
-signed plan and exact child pins from the supervisor. A missed unused N fails
-closed; recapture and a newly reviewed plan are required to select another N.
-The original prefix is never rewritten and no successful native1691 is created.
+signed plan and exact child pins from the supervisor. A live resume may repeat
+the exact existing selection but cannot substitute a different valid receipt or
+repair missing/tampered process arguments. Fresh launch rejects unapproved
+selection before database migration; retained launch requires generation
+authority. A missed unused N fails closed; selecting another N requires exclusive
+recapture and a newly reviewed plan before the final R48 run begins. The original
+prefix is never rewritten and no successful native1691 is created.
+
+A durably completed pending-N intent publication is admitted before and after
+the corresponding EMA commit. Ordinary semantic replay still owns that pending
+intent; same-epoch EMA retry is idempotent and N+2 still fails continuity. An
+interrupted atomic publication that leaves a marker/candidate remains unresolved
+under the existing V2 custody rules. This command never deletes those files or
+claims automatic crash reconciliation. Their recovery is a separate mainnet
+hardening item if encountered.
+
+R48 is the final testnet run. Carry it through its terminal report even if partial;
+there is no R49. Outstanding historical-runtime, economic, or throughput failures
+remain visible and become separately reviewed mainnet work.
 
 This does not qualify a final archive or satisfy the economic gate. The exact
 selected configs retain operator concurrency 4. The observed completed usage
@@ -393,14 +413,28 @@ config files, generation-2 coordinator/client namespaces, source-role receipt,
 policy, custody, and operational route. It does not authorize a concurrency
 change.
 
-Current retained-generation readers require equal source/current ConfigHash;
-current native recovery also binds the R47 terminal to its actual source plan and
-ConfigHash. Neither comparison may be relaxed based on ancestry alone. An
-authenticated migration resolver must load the real archived old configuration,
-recompute its old hash, verify the exact two-field transition and owner receipt,
-and return both actual source/current authorities. Native recovery can then bind
-that receipt explicitly in a separate integration change. Until that receipt and
-adapter exist, a changed harness configuration fails closed.
+The composed resolver loads the actual archived old configuration, recomputes its
+old hash, and verifies the exact two-field transition and owner-signed receipt.
+Native recovery authenticates R47 under that immediate old source plan/config,
+while its new approval remains bound to the current successor plan/config. The
+recovery request separately pins the migration request hash, signed receipt hash,
+exact successor plan hash, and immediate predecessor plan hash. A merely related
+ancestor, absent receipt, changed receipt, or changed pin is refused. Generation
+and source-role readers retain their independently authenticated old context.
+
+Use one stopped cutover window: apply the exact approved campaign config
+migration first, then recapture the native source and future N under the new
+config/base plan, approve and apply that exact native plan, and restart once.
+The dedicated config path is outside repository discovery, so each command must
+include `--sn-repo /home/by/urnetwork/sn`. The read-only in-memory migration
+preflight produced request hash
+`0xddcb7563b456f7c1932f28835914ef7185d1d24817e5c3477f3314df16f5ccf1`,
+successor base plan
+`0x9b1c1024640f73c280462c7173a9d437bda96aaf52a89224b8a95965b47d04cd`,
+and ConfigHash
+`0xac761b65a0495902aac3493758aba61cc7a1d4628e30c3e140fef43d3b419b5f`.
+These previews are not published receipts or permission to apply. Recompute and
+match them under the exclusive cutover before choosing N.
 
 ## Current read-only readiness observations
 

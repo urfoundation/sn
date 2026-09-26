@@ -27,6 +27,7 @@ const nativeHistoryRecoveryMaximumBytesV2 = 1024 * 1024
 // Every source is immutable and independently authenticated. A later native
 // runtime migration or archive exception is deliberately absent from this wire.
 type nativeHistoryRecoveryPlanV2 struct {
+	ConfigMigration       *nativeHistoryRecoveryConfigMigrationV2             `json:"config_migration,omitempty"`
 	Schema                string                                              `json:"schema"`
 	PlanHash              string                                              `json:"plan_hash"`
 	BasePlanHash          string                                              `json:"base_plan_hash"`
@@ -50,6 +51,33 @@ type nativeHistoryRecoveryPlanV2 struct {
 	FinalAcceptance       bool                                                `json:"final_acceptance"`
 	StateImported         bool                                                `json:"state_imported"`
 	Validators            []validatorcomponent.ReleaseNativeHistoryRecoveryV2 `json:"validators"`
+}
+
+// The current recovery approval separately binds the signed timeout migration
+// and its exact immediate predecessor. An arbitrary ancestor is insufficient.
+type nativeHistoryRecoveryConfigMigrationV2 struct {
+	RequestHash    string `json:"request_hash"`
+	ReceiptHash    string `json:"receipt_hash"`
+	PlanHash       string `json:"plan_hash"`
+	SourcePlanHash string `json:"source_plan_hash"`
+}
+
+func nativeRecoveryPredecessorScopeV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) (*ResolvedConfig, *SetupPlan, *nativeHistoryRecoveryConfigMigrationV2, error) {
+	if cfg == nil || base == nil {
+		return nil, nil, nil, errors.New("native recovery lacks its current approved scope")
+	}
+	if base.CampaignConfigMigrationHash == "" {
+		return cfg, base, nil, nil
+	}
+	sourceCfg, source, receipt, err := authenticatedCampaignConfigMigrationSource(ctx, cfg, stateDir, base, "")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if receipt.PlanHash != base.PlanHash || source.PlanHash != receipt.Request.SourcePlanHash {
+		return nil, nil, nil, errors.New("native recovery requires the exact immediate campaign config migration")
+	}
+	pin := &nativeHistoryRecoveryConfigMigrationV2{RequestHash: base.CampaignConfigMigrationHash, ReceiptHash: receipt.Hash, PlanHash: receipt.PlanHash, SourcePlanHash: source.PlanHash}
+	return sourceCfg, source, pin, nil
 }
 
 // The optional selection is invocation-owned. Ordinary retained restarts read
@@ -113,6 +141,10 @@ func validateNativeHistoryRecoveryOptionsV2(command string, o cliOptions) error 
 // authenticateNativeRecoveryTerminalV2 authenticates the sealed failed source
 // and keeps its result bytes unchanged. It does not adopt any failed assertion.
 func authenticateNativeRecoveryTerminalV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, path string) (terminal, result validatorcomponent.ReleaseEvidenceV2File, runId string, resultErr error) {
+	cfg, base, _, err := nativeRecoveryPredecessorScopeV2(ctx, cfg, stateDir, base)
+	if err != nil {
+		return terminal, result, "", err
+	}
 	relative, err := filepath.Rel(stateDir, path)
 	if err != nil || filepath.Dir(relative) != "campaign-attempts" {
 		return terminal, result, "", errors.New("native recovery requires an original campaign-attempt source")
@@ -187,6 +219,10 @@ func validateNativeHistoryRecoveryPlanV2(ctx context.Context, cfg *ResolvedConfi
 	hash, err := p.hash()
 	if err != nil || p.Schema != nativeHistoryRecoverySchemaV2 || p.PlanHash != hash || p.BasePlanHash != base.PlanHash || p.StateDir != stateDir || p.DeploymentId != base.DeploymentID || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Generation != 2 || p.Generation != h.Generation || p.RolloverPlanHash != h.PlanHash || p.RolloverHandoffSha256 != h.sourceSHA256 || p.SourceRole != *h.SourceRoleOverlay || !p.Provisional || p.FinalAcceptance || p.StateImported || len(p.Validators) != 2 || len(h.Validators) != 2 || p.FirstNativeEpoch <= p.NativeEpoch || p.Native.Number == 0 || !validCanonicalHashHex(p.Native.Hash) || p.Driver != cfg.provisionalResume.Driver {
 		return errors.Join(errors.New("native recovery plan changes its approval, runtime driver, generation or scope"), err)
+	}
+	_, _, migration, err := nativeRecoveryPredecessorScopeV2(ctx, cfg, stateDir, base)
+	if err != nil || !reflect.DeepEqual(migration, p.ConfigMigration) {
+		return errors.Join(errors.New("native recovery campaign config migration approval changed"), err)
 	}
 	terminal, result, runId, err := authenticateNativeRecoveryTerminalV2(ctx, cfg, stateDir, base, p.Terminal.Path)
 	if err != nil || terminal != p.Terminal || result != p.Result || runId != p.RunId {
@@ -301,6 +337,9 @@ func attachNativeHistoryRecoveryV2(ctx context.Context, cfg *ResolvedConfig, sta
 	if selection == nil {
 		return nil
 	}
+	if h == nil || base == nil {
+		return errors.New("native recovery requires authenticated generation authority")
+	}
 	p, err := readNativeHistoryRecoveryHandoffV2(ctx, cfg, stateDir, base, h, selection.path, selection.sha256)
 	if err != nil {
 		return err
@@ -357,4 +396,62 @@ func attachNativeHistoryRecoveryV2(ctx context.Context, cfg *ResolvedConfig, sta
 		}
 	}
 	return nil
+}
+
+// Fresh launch must authenticate explicit authority before database migration,
+// account provisioning or rendering. Child argv is checked again after render.
+func preflightNativeHistoryRecoverySelectionV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan) error {
+	if cfg.nativeHistoryRecoveryV2 == nil {
+		return nil
+	}
+	h, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, base)
+	if err != nil || h == nil {
+		return errors.Join(errors.New("native recovery requires authenticated generation authority"), err)
+	}
+	selection := cfg.nativeHistoryRecoveryV2
+	if _, err := readNativeHistoryRecoveryHandoffV2(ctx, cfg, stateDir, base, h, selection.path, selection.sha256); err != nil {
+		return fmt.Errorf("native recovery launch admission: %w", err)
+	}
+	return nil
+}
+
+// Already-running processes cannot receive new argv. Authenticate both an
+// explicit selector and retained pins, then require their exact existing pair.
+func checkNativeHistoryRecoveryLiveArgumentsV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, h *policyRolloverHandoffV2, specs []ProcessSpec) error {
+	copy := make([]ProcessSpec, len(specs))
+	for index, spec := range specs {
+		copy[index] = spec
+		copy[index].Args = append([]string(nil), spec.Args...)
+	}
+	if err := attachNativeHistoryRecoveryV2(ctx, cfg, stateDir, base, h, copy); err != nil {
+		return fmt.Errorf("native recovery live admission: %w", err)
+	}
+	for index := range specs {
+		if !reflect.DeepEqual(specs[index].Args, copy[index].Args) {
+			return errors.New("native recovery selection would change a live process; stopped topology is required")
+		}
+	}
+	return nil
+}
+
+func preflightNativeHistoryRecoveryLiveV2(ctx context.Context, cfg *ResolvedConfig, stateDir string, base *SetupPlan, specs []ProcessSpec) error {
+	selected := cfg.nativeHistoryRecoveryV2 != nil
+	for _, spec := range specs {
+		path, _, err := nativeHistoryRecoveryArgumentsV2(spec.Args)
+		if err != nil {
+			return err
+		}
+		selected = selected || path != ""
+	}
+	if !selected {
+		return nil
+	}
+	if base == nil {
+		return errors.New("native recovery live admission lacks its approved plan")
+	}
+	h, err := readPolicyRolloverHandoffV2(ctx, cfg, stateDir, base)
+	if err != nil {
+		return fmt.Errorf("native recovery live generation: %w", err)
+	}
+	return checkNativeHistoryRecoveryLiveArgumentsV2(ctx, cfg, stateDir, base, h, specs)
 }

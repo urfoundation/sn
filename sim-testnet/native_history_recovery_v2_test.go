@@ -51,7 +51,13 @@ type nativeHistoryRecoveryTestV2 struct {
 // source-role path with unchanged seeds, operator settings and evidence inputs.
 func newNativeHistoryRecoveryTestV2(t *testing.T) *nativeHistoryRecoveryTestV2 {
 	t.Helper()
-	f := newRuntimeEvidenceProvisionV2TestFixture(t)
+	return newNativeHistoryRecoveryConfiguredTestV2(t, nil)
+}
+
+// Configured fixtures preserve genuine historical config hashes and signatures.
+func newNativeHistoryRecoveryConfiguredTestV2(t *testing.T, configure func(*ResolvedConfig)) *nativeHistoryRecoveryTestV2 {
+	t.Helper()
+	f := newRuntimeEvidenceProvisionV2ConfiguredTestFixture(t, configure)
 	renderFinalValidatorFixtureTest(t, f)
 	f.cfg.provisionalResume = &provisionalResumeState{Driver: provisionalDriverProvenance{ExecutablePath: "/synthetic/driver", ExecutableSHA256: "sha256:" + strings.Repeat("31", 32), Build: releaseExecutableBuildIdentity{PackagePath: "github.com/urfoundation/sn/sim-testnet", ModulePath: "github.com/urfoundation/sn", Revision: strings.Repeat("4", 40)}}, Record: &provisionalResumeRecord{Schema: "urnetwork-sim-provisional-resume-v1", Provisional: true, PlanHash: f.plan.PlanHash, ConfigHash: f.cfg.ConfigHash, DeploymentID: f.plan.DeploymentID}}
 	h := &policyRolloverHandoffV2{Generation: 2, PlanHash: "0x" + strings.Repeat("51", 32), sourceSHA256: bytesSHA256([]byte("synthetic-generation-authority"))}

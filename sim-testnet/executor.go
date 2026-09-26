@@ -666,7 +666,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	var stoppedAdoption *provisionalStoppedTopology
-	liveAdoption, liveAdoptionErr := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
+	liveAdoption, liveAdoptionErr := prepareProvisionalLiveTopology(ctx, cfg, stateDir, cmd, p)
 	if provisionalSetupRevision && liveAdoption == nil && liveAdoptionErr == nil {
 		stoppedAdoption, liveAdoptionErr = prepareStoppedProvisionalTopology(ctx, cfg, stateDir, cmd)
 		if stoppedAdoption == nil && liveAdoptionErr == nil {

@@ -162,6 +162,10 @@ func captureNativeHistoryRecoveryPlanV2(ctx context.Context, cfg *ResolvedConfig
 		return nil, err
 	}
 	p := &nativeHistoryRecoveryPlanV2{Schema: nativeHistoryRecoverySchemaV2, BasePlanHash: base.PlanHash, DeploymentId: base.DeploymentID, StateDir: stateDir, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Generation: h.Generation, RolloverPlanHash: h.PlanHash, RolloverHandoffSha256: h.sourceSHA256, SourceRole: *h.SourceRoleOverlay, Driver: cfg.provisionalResume.Driver, Terminal: terminal, Result: result, RunId: runId, Native: head, NativeEpoch: schedule.SubnetEpochIndex, FirstNativeEpoch: first, Runtime: schedule.Stake.Identity.Runtime, Provisional: true}
+	_, _, p.ConfigMigration, err = nativeRecoveryPredecessorScopeV2(ctx, cfg, stateDir, base)
+	if err != nil {
+		return nil, err
+	}
 	for _, selected := range h.Validators {
 		configRaw, err := validatorcomponent.ReadReleaseEvidenceV2File(ctx, selected.Config, validatorcomponent.ReleaseNativeHistoryRecoveryV2MaximumBytes)
 		if err != nil {

@@ -42,8 +42,8 @@ func writeNativeRecoveryBoundaryTestV2(t *testing.T, x *nativeHistoryRecoveryTes
 
 // TestNativeHistoryRecoveryV2SealedEarlyFailure admits the same early failure
 // geometry as R47 without claiming the planned final block was ever observed.
-func TestNativeHistoryRecoveryV2SealedEarlyFailure(t *testing.T) {
-	x := newNativeHistoryRecoveryTestV2(t)
+func sealEarlyNativeRecoveryTestV2(t *testing.T, x *nativeHistoryRecoveryTestV2) (scenarioCampaignAttemptPayload, ScenarioResult) {
+	t.Helper()
 	var envelope ReleaseEvidenceEnvelope
 	raw, err := os.ReadFile(x.p.Terminal.Path)
 	if err != nil || json.Unmarshal(raw, &envelope) != nil {
@@ -74,6 +74,13 @@ func TestNativeHistoryRecoveryV2SealedEarlyFailure(t *testing.T) {
 	result.Assertions = []AssertionRecord{{ID: "acceptance_interval_observed"}, {ID: "adversary_signed_start_continuity", Passed: true}, {ID: "anomaly_ledger_clean"}, {ID: "process_log_completion"}, {ID: "process_log_publication"}, {ID: "scenario_context"}}
 	result.AssertionCount, result.FailedAssertionCount = 6, 5
 	writeNativeRecoveryBoundaryTestV2(t, x, &source, &result)
+	return source, result
+}
+
+func TestNativeHistoryRecoveryV2SealedEarlyFailure(t *testing.T) {
+	x := newNativeHistoryRecoveryTestV2(t)
+	source, result := sealEarlyNativeRecoveryTestV2(t, x)
+	b := source.AcceptanceBoundary
 	t.Run("sealed-partial-interval", func(t *testing.T) {
 		if _, _, _, err := authenticateNativeRecoveryTerminalV2(t.Context(), x.f.cfg, x.f.stateDir, x.f.plan, x.p.Terminal.Path); err != nil {
 			t.Fatal("owner-sealed early failure requires no fabricated terminal coverage", err)

@@ -214,6 +214,9 @@ func attachRetainedProvisionalProcessHandoff(ctx context.Context, cfg *ResolvedC
 	if rollover != nil {
 		return attachPolicyRolloverProcessConfigsV2(ctx, cfg, stateDir, plan, specs)
 	}
+	if err := attachNativeHistoryRecoveryV2(ctx, cfg, stateDir, plan, nil, specs); err != nil {
+		return err
+	}
 	return attachProvisionalActivationSetup(cfg, stateDir, plan, roles, specs)
 }
 
@@ -326,7 +329,7 @@ func launchRetainedProvisionalTopology(ctx context.Context, self *Executor, stop
 		}
 		return err
 	}
-	adoption, err := prepareProvisionalLiveTopology(cfg, stateDir, "resume")
+	adoption, err := prepareProvisionalLiveTopology(ctx, cfg, stateDir, "resume", self.plan)
 	if err != nil || adoption == nil {
 		return errors.Join(errors.New("retained successor supervisor is not live"), err)
 	}

@@ -784,6 +784,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if _, err := runtimeAttemptUploadBudget(cfg); err != nil {
 		return err
 	}
+	if err := preflightNativeHistoryRecoverySelectionV2(ctx, cfg, stateDir, p); err != nil {
+		return err
+	}
 	if err := ensureNoLiveSupervisorForLaunch(stateDir); err != nil {
 		return err
 	}
@@ -853,6 +856,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		return err
 	}
 	if rollover == nil {
+		if err := attachNativeHistoryRecoveryV2(ctx, cfg, stateDir, p, nil, specs); err != nil {
+			return err
+		}
 		if err := attachProvisionalActivationSetup(cfg, stateDir, p, roles, specs); err != nil {
 			return fmt.Errorf("provisional validator activation handoff: %w", err)
 		}

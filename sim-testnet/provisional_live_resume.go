@@ -92,7 +92,7 @@ func provisionalLiveResumeNeedsDoctor(executor *Executor) (bool, error) {
 	return true, errors.New("live adoption has no completed action boundary")
 }
 
-func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command string) (*provisionalLiveTopology, error) {
+func prepareProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stateDir, command string, plan *SetupPlan) (*provisionalLiveTopology, error) {
 	if (command != "setup" && command != "resume" && command != "scenario") || !provisionalResumeEnabled(cfg) {
 		return nil, nil
 	}
@@ -123,6 +123,9 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 		return nil, errors.New("live supervisor executable differs from its retained manifest")
 	}
 	if err := validateSupervisorGeneration(*live); err != nil {
+		return nil, err
+	}
+	if err := preflightNativeHistoryRecoveryLiveV2(ctx, cfg, stateDir, plan, manifest.Specs); err != nil {
 		return nil, err
 	}
 	// Provisional admission records this as an explicitly unverified baseline.
@@ -283,7 +286,7 @@ func adoptStartedProvisionalTopology(ctx context.Context, cfg *ResolvedConfig, s
 	if !provisionalResumeEnabled(cfg) {
 		return false, nil
 	}
-	adoption, err := prepareProvisionalLiveTopology(cfg, stateDir, "resume")
+	adoption, err := prepareProvisionalLiveTopology(ctx, cfg, stateDir, "resume", plan)
 	if err != nil {
 		return true, err
 	}
