@@ -2681,6 +2681,15 @@ retryable type. Preserve the exact semantic-failure budget and strict
 incomplete-epoch boundary, but let typed transport/service failures retry in
 the same process without consuming that budget; test the outage, recovery,
 malformed nonempty acknowledgement, and persistent semantic failure cases.
+The capacity forecasts in `runtime_client_key_upload_capacity.go` and
+`runtime_evidence_source_capacity.go` still multiply native windows by the ten
+semantic-failure limit. Transport retries can poll throughout a native window,
+so that multiplier is not a bound on outage traffic. Before mainnet, use the
+larger of the existing native estimate and the actual horizon divided by the
+configured validator poll interval, plus restart allowance, for each native
+and settlement path; include retry requests and retained objects separately.
+Recheck the rendered server hard caps and the approved resource margin against
+that forecast. R47's provisional quota waiver does not establish capacity.
 
 R46's adversarial consensus sampler read the legacy validator-2 intent file
 while the scenario observer selected its approved provisional/V2 generation.
