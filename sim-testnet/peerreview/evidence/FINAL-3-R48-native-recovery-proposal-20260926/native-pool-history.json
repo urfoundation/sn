@@ -1,0 +1,553 @@
+{
+  "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "netuid": 521,
+  "observations": [
+    {
+      "Active": {
+        "254": false,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 0,
+        "255": 65535,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 0,
+        "255": 147600823655,
+        "3": 73799848706,
+        "4": 73800974879
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 32767,
+        "4": 32767
+      },
+      "LastUpdate": {
+        "254": 7891380,
+        "255": 8079823,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": null,
+        "255": [
+          {
+            "UID": 3,
+            "Value": 65534
+          },
+          {
+            "UID": 4,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8084976,
+      "canonical_hash_unchanged": true,
+      "hash": "0xc26061e231d5aea86b692b417e0278cf2e68a39fda404e3eec91961fec87fc48",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    },
+    {
+      "Active": {
+        "254": false,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 0,
+        "255": 65535,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 0,
+        "255": 147600823655,
+        "3": 73799848706,
+        "4": 73800974879
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 32767,
+        "4": 32767
+      },
+      "LastUpdate": {
+        "254": 7891380,
+        "255": 8079823,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": null,
+        "255": [
+          {
+            "UID": 3,
+            "Value": 65534
+          },
+          {
+            "UID": 4,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8084977,
+      "canonical_hash_unchanged": true,
+      "hash": "0x42c58dd6e60eaa668402af2ba5364086307634cfb15a935a96b01ff42748a835",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    },
+    {
+      "Active": {
+        "254": false,
+        "255": false,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 89170963973,
+        "255": 9150659684,
+        "3": 0,
+        "4": 0
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "LastUpdate": {
+        "254": 7891380,
+        "255": 8079823,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": null,
+        "255": [
+          {
+            "UID": 3,
+            "Value": 65534
+          },
+          {
+            "UID": 4,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8085276,
+      "canonical_hash_unchanged": true,
+      "hash": "0xb6c15947278614efe44f1c5e1a62d8381f0a6591a2d9f9c0ae13e866f0180ca9",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    },
+    {
+      "Active": {
+        "254": false,
+        "255": false,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 89170963973,
+        "255": 9150659684,
+        "3": 0,
+        "4": 0
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "LastUpdate": {
+        "254": 7891380,
+        "255": 8079823,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": null,
+        "255": [
+          {
+            "UID": 3,
+            "Value": 65534
+          },
+          {
+            "UID": 4,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8085277,
+      "canonical_hash_unchanged": true,
+      "hash": "0x0e0f07cdfc1bb64acbf751e1b94159e5f27008ea3ac7e9f2e0d8ff85bbae58f4",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    },
+    {
+      "Active": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 267730149001,
+        "255": 27471498252,
+        "3": 0,
+        "4": 0
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "LastUpdate": {
+        "254": 8090245,
+        "255": 8090245,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": [
+          {
+            "UID": 65,
+            "Value": 65535
+          },
+          {
+            "UID": 107,
+            "Value": 65535
+          },
+          {
+            "UID": 171,
+            "Value": 65535
+          },
+          {
+            "UID": 187,
+            "Value": 65535
+          },
+          {
+            "UID": 201,
+            "Value": 65535
+          },
+          {
+            "UID": 211,
+            "Value": 65535
+          }
+        ],
+        "255": [
+          {
+            "UID": 72,
+            "Value": 32768
+          },
+          {
+            "UID": 89,
+            "Value": 32768
+          },
+          {
+            "UID": 136,
+            "Value": 32768
+          },
+          {
+            "UID": 156,
+            "Value": 32768
+          },
+          {
+            "UID": 160,
+            "Value": 32768
+          },
+          {
+            "UID": 222,
+            "Value": 32768
+          },
+          {
+            "UID": 238,
+            "Value": 32768
+          },
+          {
+            "UID": 247,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8090544,
+      "canonical_hash_unchanged": true,
+      "hash": "0xcca86f02768f23ac12257d67943ed9467785b83754c35ea024dfe31e7529cace",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    },
+    {
+      "Active": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "ActivityCutoff": 5000,
+      "Dividends": {
+        "254": 65535,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "Emission": {
+        "254": 147600823728,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "Incentive": {
+        "254": 0,
+        "255": 0,
+        "3": 0,
+        "4": 0
+      },
+      "LastUpdate": {
+        "254": 8090245,
+        "255": 8090245,
+        "3": 7895419,
+        "4": 7895441
+      },
+      "Tempo": 360,
+      "ValidatorPermit": {
+        "254": true,
+        "255": true,
+        "3": false,
+        "4": false
+      },
+      "Weights": {
+        "254": [
+          {
+            "UID": 65,
+            "Value": 65535
+          },
+          {
+            "UID": 107,
+            "Value": 65535
+          },
+          {
+            "UID": 171,
+            "Value": 65535
+          },
+          {
+            "UID": 187,
+            "Value": 65535
+          },
+          {
+            "UID": 201,
+            "Value": 65535
+          },
+          {
+            "UID": 211,
+            "Value": 65535
+          }
+        ],
+        "255": [
+          {
+            "UID": 72,
+            "Value": 32768
+          },
+          {
+            "UID": 89,
+            "Value": 32768
+          },
+          {
+            "UID": 136,
+            "Value": 32768
+          },
+          {
+            "UID": 156,
+            "Value": 32768
+          },
+          {
+            "UID": 160,
+            "Value": 32768
+          },
+          {
+            "UID": 222,
+            "Value": 32768
+          },
+          {
+            "UID": 238,
+            "Value": 32768
+          },
+          {
+            "UID": 247,
+            "Value": 65535
+          }
+        ],
+        "3": null,
+        "4": null
+      },
+      "block": 8091127,
+      "canonical_hash_unchanged": true,
+      "hash": "0x19df2292a630749bd95c0f1deb4d71a721bd9f25f288db2d2fd71356f76be00d",
+      "runtime": {
+        "code_hash": "0x5b0168d2878c1fdcdc424dddca29111b8fe8960bd169742d1c14ce16b22ae381",
+        "metadata_hash": "0x78d6038b7e6d154114e294ffb664619e64701f11eb7e8ea79a8deedf6c8fabd6",
+        "version": {
+          "specName": "node-subtensor",
+          "specVersion": 471,
+          "transactionVersion": 1,
+          "stateVersion": 1
+        }
+      },
+      "key_sha256": {
+        "254": "sha256:9d1ec2c80d6512f9a41ed3e218e7174ea64078cc41da6469d431ffdc36ff21f6",
+        "255": "sha256:a484a81b8fa33f4bccf21dba358d0a4d3a239899526312f20fd3069149ee74bf",
+        "3": "sha256:d9315a3916ed7779d2138ac14163f5e5c806317bb25ad1ae500c87df798e758a",
+        "4": "sha256:a50327141e9b4880aa0422f190133d5f2c56aa97e87a3282712924256703cd6d"
+      }
+    }
+  ],
+  "observed_at": "2026-09-26T15:49:58.477517075Z",
+  "read_only": true,
+  "schema": "r48-native-pool-history-observation-v1",
+  "projection": "Public key bytes replaced by SHA-256; exact block, runtime, vectors and canonicality checks retained.",
+  "original_source_sha256": "sha256:ac1340781723b21454916d33ff347c09f8281b2fdcea5574c0f6322bfd75256f"
+}

@@ -1,0 +1,170 @@
+// Read-only native storage observations for pool emission diagnosis. These are
+// exact-block facts; no reward causality or acceptance verdict is synthesized.
+package main
+
+import (
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
+	"github.com/urfoundation/sn/crv4"
+)
+
+// Every observation authenticates its actual runtime, then binds each key to
+// that block's metadata and rechecks the canonical hash after all reads.
+func main() {
+	endpoint := flag.String("substrate", "", "read-only native RPC")
+	blocks := flag.String("blocks", "", "comma-separated historical block numbers")
+	netuid := flag.Uint("netuid", 0, "subnet owner")
+	uids := flag.String("uids", "", "comma-separated pool and validator UIDs")
+	flag.Parse()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	native, err := crv4.DialChainContext(ctx, *endpoint)
+	if err != nil {
+		panic(err)
+	}
+	defer native.API.Client.Close()
+	if err := native.EnableProvisionalRuntimeCompatibility(native.GenesisHash, func(crv4.AuthenticatedRuntimeArtifact) error { return nil }); err != nil {
+		panic(err)
+	}
+	var selected []int
+	for _, item := range strings.Split(*uids, ",") {
+		v, err := strconv.Atoi(item)
+		if err != nil {
+			panic(err)
+		}
+		selected = append(selected, v)
+	}
+	var observations []map[string]any
+	for _, item := range strings.Split(*blocks, ",") {
+		number, err := strconv.ParseUint(item, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		row := map[string]any{"block": number}
+		observations = append(observations, row)
+		err = func() error {
+			var hash types.Hash
+			if err := native.API.Client.CallContext(ctx, &hash, "chain_getBlockHash", number); err != nil {
+				return err
+			}
+			row["hash"] = hash.Hex()
+			artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, native, hash, crv4.ReviewedRuntimeArtifacts()...)
+			if err != nil {
+				return err
+			}
+			row["runtime"] = map[string]any{"version": artifact.Version, "code_hash": artifact.CodeHash, "metadata_hash": artifact.MetadataHash}
+			argument := binary.LittleEndian.AppendUint16(nil, uint16(*netuid))
+			read := func(name string, target any, arguments ...[]byte) error {
+				key, err := types.CreateStorageKey(artifact.Metadata, crv4.PalletName, name, arguments...)
+				if err != nil {
+					return err
+				}
+				var value *string
+				if err := native.API.Client.CallContext(ctx, &value, "state_getStorage", key.Hex(), hash.Hex()); err != nil {
+					return err
+				}
+				if value == nil {
+					if name == "Weights" {
+						return nil
+					}
+					return errors.New(name + " storage is absent")
+				}
+				return codec.DecodeFromHex(*value, target)
+			}
+			for _, name := range []string{"Emission", "LastUpdate"} {
+				var vector []types.U64
+				if err := read(name, &vector, argument); err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				values := map[int]uint64{}
+				for _, uid := range selected {
+					if uid >= len(vector) {
+						return errors.New("UID exceeds vector")
+					}
+					values[uid] = uint64(vector[uid])
+				}
+				row[name] = values
+			}
+			for _, name := range []string{"Incentive", "Dividends"} {
+				var vector []types.U16
+				if err := read(name, &vector, argument); err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				values := map[int]uint16{}
+				for _, uid := range selected {
+					if uid >= len(vector) {
+						return errors.New("UID exceeds vector")
+					}
+					values[uid] = uint16(vector[uid])
+				}
+				row[name] = values
+			}
+			for _, name := range []string{"Active", "ValidatorPermit"} {
+				var vector []bool
+				if err := read(name, &vector, argument); err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				values := map[int]bool{}
+				for _, uid := range selected {
+					if uid >= len(vector) {
+						return errors.New("UID exceeds vector")
+					}
+					values[uid] = vector[uid]
+				}
+				row[name] = values
+			}
+			for _, name := range []string{"ActivityCutoff", "Tempo"} {
+				var value types.U16
+				if err := read(name, &value, argument); err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				row[name] = uint16(value)
+			}
+			weights := map[int][]crv4.WeightPair{}
+			keys := map[int]string{}
+			for _, uid := range selected {
+				encodedUid := binary.LittleEndian.AppendUint16(nil, uint16(uid))
+				var value []crv4.WeightPair
+				if err := read("Weights", &value, argument, encodedUid); err != nil {
+					return fmt.Errorf("weights UID %d: %w", uid, err)
+				}
+				weights[uid] = value
+				var key [32]byte
+				if err := read("Keys", &key, argument, encodedUid); err != nil {
+					return fmt.Errorf("key UID %d: %w", uid, err)
+				}
+				keys[uid] = fmt.Sprintf("0x%x", key)
+			}
+			row["Weights"], row["Keys"] = weights, keys
+			var after types.Hash
+			if err := native.API.Client.CallContext(ctx, &after, "chain_getBlockHash", number); err != nil {
+				return err
+			}
+			if after != hash {
+				return errors.New("canonical block changed during observation")
+			}
+			row["canonical_hash_unchanged"] = true
+			return ctx.Err()
+		}()
+		if err != nil {
+			row["error"] = err.Error()
+		}
+	}
+	output := map[string]any{"schema": "r48-native-pool-history-observation-v1", "read_only": true, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "netuid": *netuid, "genesis_hash": native.GenesisHash.Hex(), "observations": observations}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		panic(err)
+	}
+}

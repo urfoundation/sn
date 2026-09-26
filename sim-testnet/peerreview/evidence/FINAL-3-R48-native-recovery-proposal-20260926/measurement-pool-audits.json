@@ -1,0 +1,155 @@
+{
+  "schema": "r48-authenticated-measurement-pool-audit-projection-v1",
+  "read_only": true,
+  "complete_history_replayed": false,
+  "validators": [
+    {
+      "validator_id": 1,
+      "original_artifact_sha256": "sha256:e0f514e5a368e575992de6adff7c7e1083202c0c1fd07a8187aeb7bd85748bb5",
+      "original_envelope_sha256": "sha256:fdd2b735c48eea34e43bb15d621528cd83df0f40af205a740d3aaf2972e965d4",
+      "native_epoch": 1690,
+      "settlement_epoch": 649,
+      "controlled_no_ids": [
+        1
+      ],
+      "pools": [
+        {
+          "no_id": 1,
+          "uid": 3
+        },
+        {
+          "no_id": 2,
+          "uid": 4
+        }
+      ],
+      "deposit_audits": [
+        {
+          "no_id": 1,
+          "epoch": 649,
+          "source_epoch": 648,
+          "observed_at_block": 8090237,
+          "artifact_deadline_block": 8090124,
+          "usage_bytes": 0,
+          "conviction_before_rao": "20752376272",
+          "rate_numerator_rao_per_gib": 0,
+          "rate_denominator": 0,
+          "required_deposit_rao": "0",
+          "observed_deposit_rao": "304373972",
+          "status": "artifact_unavailable",
+          "compliant": false,
+          "disposition": "zero_pool_weight",
+          "error": "source payout root is not committed on chain"
+        },
+        {
+          "no_id": 2,
+          "epoch": 649,
+          "source_epoch": 648,
+          "observed_at_block": 8090237,
+          "artifact_deadline_block": 8090124,
+          "usage_bytes": 0,
+          "conviction_before_rao": "19205165407",
+          "rate_numerator_rao_per_gib": 0,
+          "rate_denominator": 0,
+          "required_deposit_rao": "0",
+          "observed_deposit_rao": "286750786",
+          "status": "artifact_unavailable",
+          "compliant": false,
+          "disposition": "zero_pool_weight",
+          "error": "source payout root is not committed on chain"
+        }
+      ],
+      "applied_uids": [
+        65,
+        107,
+        171,
+        187,
+        201,
+        211
+      ],
+      "applied_values": [
+        65535,
+        65535,
+        65535,
+        65535,
+        65535,
+        65535
+      ],
+      "pool_weights": []
+    },
+    {
+      "validator_id": 2,
+      "original_artifact_sha256": "sha256:2043c465b0ffad004c8f0b2b15ecdb7415e77739877c2d5174fba2d0fee32743",
+      "original_envelope_sha256": "sha256:cdb5c9b8dd1b18e42222900fc887ed9020d1977ff949d23a250171299b056275",
+      "native_epoch": 1690,
+      "settlement_epoch": 649,
+      "controlled_no_ids": [],
+      "pools": [
+        {
+          "no_id": 1,
+          "uid": 3
+        },
+        {
+          "no_id": 2,
+          "uid": 4
+        }
+      ],
+      "deposit_audits": [
+        {
+          "no_id": 1,
+          "epoch": 649,
+          "source_epoch": 648,
+          "observed_at_block": 8090237,
+          "artifact_deadline_block": 8090124,
+          "usage_bytes": 0,
+          "conviction_before_rao": "20752376272",
+          "rate_numerator_rao_per_gib": 0,
+          "rate_denominator": 0,
+          "required_deposit_rao": "0",
+          "observed_deposit_rao": "304373972",
+          "status": "artifact_unavailable",
+          "compliant": false,
+          "disposition": "zero_pool_weight",
+          "error": "source payout root is not committed on chain"
+        },
+        {
+          "no_id": 2,
+          "epoch": 649,
+          "source_epoch": 648,
+          "observed_at_block": 8090237,
+          "artifact_deadline_block": 8090124,
+          "usage_bytes": 0,
+          "conviction_before_rao": "19205165407",
+          "rate_numerator_rao_per_gib": 0,
+          "rate_denominator": 0,
+          "required_deposit_rao": "0",
+          "observed_deposit_rao": "286750786",
+          "status": "artifact_unavailable",
+          "compliant": false,
+          "disposition": "zero_pool_weight",
+          "error": "source payout root is not committed on chain"
+        }
+      ],
+      "applied_uids": [
+        72,
+        89,
+        136,
+        156,
+        160,
+        222,
+        238,
+        247
+      ],
+      "applied_values": [
+        32768,
+        32768,
+        32768,
+        32768,
+        32768,
+        32768,
+        32768,
+        65535
+      ],
+      "pool_weights": []
+    }
+  ]
+}

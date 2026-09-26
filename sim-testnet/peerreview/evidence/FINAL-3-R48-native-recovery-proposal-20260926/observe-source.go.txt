@@ -1,0 +1,137 @@
+// Read-only source authentication for a stopped-recovery proposal. This command
+// opens no signer and writes no validator, coordinator, ledger or plan state.
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/validator"
+)
+
+// Each output entry is an observation with its own error, never approval.
+func main() {
+	root := flag.String("state-root", "", "retained simulator state root")
+	substrate := flag.String("substrate", "", "read-only native RPC")
+	flag.Parse()
+	var supervisor struct {
+		Specs []struct {
+			Id       string `json:"ID"`
+			Role     string
+			Identity string
+			Args     []string
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(*root, "supervisor.json"))
+	if err == nil {
+		err = json.Unmarshal(raw, &supervisor)
+	}
+	if err != nil {
+		panic(err)
+	}
+	output := map[string]any{"schema": "r48-native-source-observation-v1", "read_only": true, "approval_granted": false, "complete_history_replayed": false, "observed_at": time.Now().UTC().Format(time.RFC3339Nano)}
+	var validators []map[string]any
+	for _, spec := range supervisor.Specs {
+		if spec.Role != "validator" {
+			continue
+		}
+		result := map[string]any{"id": spec.Id}
+		validators = append(validators, result)
+		err := func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			var configPath string
+			for _, arg := range spec.Args {
+				if strings.HasPrefix(arg, "--config=") {
+					if configPath != "" {
+						return errors.New("duplicate config owner")
+					}
+					configPath = strings.TrimPrefix(arg, "--config=")
+				}
+			}
+			if !filepath.IsAbs(configPath) {
+				return errors.New("missing exact validator config")
+			}
+			cfg, err := validator.LoadReleaseConfig(configPath)
+			if err != nil {
+				return err
+			}
+			result["config_path"], result["coordinator_state_dir"] = configPath, cfg.StateDir
+			paths := []string{configPath, filepath.Join(cfg.StateDir, "steering-intents.json"), filepath.Join(cfg.StateDir, "head-ema.json")}
+			before := map[string]string{}
+			for _, path := range paths {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				before[path] = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+			}
+			result["source_pins"] = before
+			hotkey, err := ss58.DecodeWithPrefix(spec.Identity, ss58.BittensorPrefix)
+			if err != nil {
+				return err
+			}
+			native, err := crv4.DialChainContext(ctx, *substrate)
+			if err != nil {
+				return err
+			}
+			defer native.API.Client.Close()
+			if cfg.ProvisionalRuntimeCompatibility != "" {
+				genesis, err := types.NewHashFromHexString(cfg.GenesisHash)
+				if err != nil {
+					return err
+				}
+				var runtimes []map[string]any
+				if err := native.EnableProvisionalRuntimeCompatibility(genesis, func(a crv4.AuthenticatedRuntimeArtifact) error {
+					runtimes = append(runtimes, map[string]any{"version": a.Version, "code_hash": a.CodeHash, "metadata_hash": a.MetadataHash, "compatibility_profile": a.CompatibilityProfile})
+					result["authenticated_runtime_artifacts"] = runtimes
+					return nil
+				}); err != nil {
+					return err
+				}
+			}
+			observed, err := validator.ObserveReleaseNativeSourcesV2(ctx, cfg, native, hotkey, nil)
+			if err != nil {
+				return err
+			}
+			var references []map[string]any
+			for _, ref := range observed.References {
+				intent := ref.Intent
+				references = append(references, map[string]any{"native_epoch": intent.SubnetEpoch, "settlement_epoch": intent.SettlementEpoch, "status": intent.Status, "artifact_hash": intent.MeasurementArtifactHash, "envelope_hash": intent.MeasurementEnvelopeHash, "source_commitment": intent.Prepared.SourceCommitment, "finalized_block": intent.FinalizedBlock, "finalized_block_hash": intent.FinalizedBlockHash, "application_block": intent.ApplicationBlock, "application_block_hash": intent.ApplicationBlockHash, "lifecycle": ref.Lifecycle})
+			}
+			result["store_sha256"], result["references"] = observed.StoreSHA256, references
+			for _, path := range paths {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				if before[path] != fmt.Sprintf("sha256:%x", sha256.Sum256(raw)) {
+					return errors.New("source changed during read-only observation")
+				}
+			}
+			result["source_pins_unchanged"] = true
+			return ctx.Err()
+		}()
+		result["authenticated"] = err == nil
+		if err != nil {
+			result["error"] = err.Error()
+		}
+	}
+	output["validators"] = validators
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		panic(err)
+	}
+}

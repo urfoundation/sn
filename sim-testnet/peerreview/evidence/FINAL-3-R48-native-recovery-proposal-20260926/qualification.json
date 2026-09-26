@@ -1,0 +1,41 @@
+{
+  "schema": "r48-native-recovery-boundary-qualification-v1",
+  "base_revision": "dd0909a6",
+  "production_code_changed": false,
+  "new_recovery_implemented": false,
+  "test_data": "Existing deterministic synthetic fixtures only. No live test fixtures.",
+  "toolchain": "go1.26.6 linux/amd64",
+  "limits": {
+    "gomaxprocs": 2,
+    "nice": 15,
+    "go_build_parallelism": 2,
+    "count": 1
+  },
+  "validator_selector": "^(TestReleaseHistoryAdoptionV2|TestReleaseProvisionalRuntime|TestHeadEmaNativeEpochGap|TestSteeringIntentNativeEpochGap|TestReleaseNativeEpochPreflight|TestReleaseRuntimeNativeEpochGap|TestHeadEMAProvisionalGapV2)",
+  "simulator_selector": "^(TestStrictHistoryAdoption|TestPolicyRolloverHandoffSelectsCompleteGenerationAndRejectsChangedContext|TestPolicyRolloverSourceRoleApprovalBindsOneFieldAndRetainedFiles|TestPolicyRolloverSourceRoleActivationRequiresStoppedAndCurrentProof|TestPolicyRolloverSuccessorSourceRoleSelectsCurrentGeneration|TestPolicyRolloverRuntimeInputsRetainSealedGenerationAcrossRoleOverlay)$|^TestStrictHistoryAdoption",
+  "logs": [
+    {
+      "file": "validator-normal.log",
+      "sha256": "sha256:5d74153791eb263eaaf083cf57b905b795918f207aa09d01c1a2cfdf7f0721c2",
+      "result": "ok  \tgithub.com/urfoundation/sn/validator\t12.391s"
+    },
+    {
+      "file": "validator-race.log",
+      "sha256": "sha256:6c61743969803bfd627fa516e99edba82cc644cead4bf507a8675de758d9c5a7",
+      "result": "ok  \tgithub.com/urfoundation/sn/validator\t69.643s"
+    },
+    {
+      "file": "simulator-normal.log",
+      "sha256": "sha256:cb3af7fada5e65be91984cd36abcaed71de9b6c16153e68bed7adbe433db8163",
+      "result": "ok  \tgithub.com/urfoundation/sn/sim-testnet\t49.404s"
+    },
+    {
+      "file": "simulator-race.log",
+      "sha256": "sha256:52407c4bdbea85de7ba3dcdfe3b2fb1d75bbe289278175d7e4062d7312f9b4fc",
+      "result": "ok  \tgithub.com/urfoundation/sn/sim-testnet\t167.130s"
+    }
+  ],
+  "native_source_observation_raw_sha256": "sha256:bc84d556527d4f247792259e6ac57e285a195a817af291c37892d3db1ff16632",
+  "native_pool_history_raw_sha256": "sha256:ac1340781723b21454916d33ff347c09f8281b2fdcea5574c0f6322bfd75256f",
+  "observed_basis_raw_sha256": "sha256:835a39450baf707168bb82d3de8d8657b1b9b8b59d3c22c1752c433640d87ee6"
+}

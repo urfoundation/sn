@@ -1,0 +1,115 @@
+{
+  "schema": "r48-native-recovery-observed-basis-v1",
+  "status": "read-only-proposal-basis-not-approval",
+  "observed_at": "2026-09-26T15:32:01.328417+00:00",
+  "read_only": true,
+  "owner_stopped": false,
+  "approval_granted": false,
+  "recovery_implemented": false,
+  "first_native_epoch": null,
+  "base_source_revision": "dd0909a6",
+  "not_authorized_by_basis": [
+    "A live process stop or restart",
+    "A native gap",
+    "A fabricated native1691 intent, EMA sample or receipt",
+    "A historical archive compatibility waiver",
+    "Any final acceptance claim"
+  ],
+  "original_source_sha256": "sha256:835a39450baf707168bb82d3de8d8657b1b9b8b59d3c22c1752c433640d87ee6",
+  "projection": "Operational paths, local ownership and inode metadata omitted; hash-bound source identity retained.",
+  "setup_plan": {
+    "plan_hash": "0x8bb92697db8f2164e46f6e58848d3407e509382fb61550b919f1d55391ad480e",
+    "config_hash": "0x1dc4882e26b9311a0f4444872d15fc4a3361246e9ca44f24fe24b08a98eca7bd",
+    "policy_hash": "0x41f0c7efe7e1b23b2fd22dac9352ca18be48d2e4d1fb5b41ce89660bc899b0dd",
+    "release_lock_hash": "0xcfbaf5be4e47aeca951e742ca96519c5704a4dc4b3ea49a3a8d0bc585f6b308a",
+    "source_sha256": "sha256:8f50d953a71d853ae3adf5df3fdb59df4cd4c63f9f4d175b2329445b704c8b06"
+  },
+  "rollover": {
+    "generation": 2,
+    "plan_hash": "0xaecc96a8238d6309bb3d611627194a198390f3b458b4f9e830cacdada99fa120",
+    "source_sha256": "sha256:ad5c4581d1683e4c29ad551c22c4b216542fe39693c65938d42e592a47667382"
+  },
+  "source_role_overlay": {
+    "plan_hash": "0xe58dab65ba701ef19af1af92c416fde144bd086d166d20f44fba66760c6fdd89",
+    "role_only": true,
+    "state_imported": false,
+    "ledger_continuity_claimed": false,
+    "source_sha256": "sha256:0165fb2ff026cdd985da17b21e9b7f88fcbf87054ab7635c9b981f68388be331",
+    "owner_signed_handoff_sha256": "sha256:53421aca801bdc471b9b33c88fe0943f9a2e4d2102bcee5102084d4bb3b141c5"
+  },
+  "validators": [
+    {
+      "validator_id": 1,
+      "configured_runtime": {
+        "spec": 467,
+        "transaction_version": 1,
+        "state_version": 1,
+        "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1",
+        "closed_native_input_deferral": false
+      },
+      "history_adoption_argv_present": false,
+      "intent_prefix_count": 1,
+      "last_native_epoch": 1690,
+      "last_settlement_epoch": 649,
+      "last_intent_status": "applied",
+      "last_artifact_hash": "sha256:e0f514e5a368e575992de6adff7c7e1083202c0c1fd07a8187aeb7bd85748bb5",
+      "last_envelope_hash": "sha256:fdd2b735c48eea34e43bb15d621528cd83df0f40af205a740d3aaf2972e965d4",
+      "finalized_block": 8090245,
+      "finalized_block_hash": "0x9aaf69a46e478d425a30c3b8c10a937e269aa51cc29c56759cdf411b588751d3",
+      "application_block": 8090543,
+      "application_block_hash": "0x4083364d97e37527039b9e0e8af35c6f121be4246be1840b530e998030b2184f",
+      "prepared_source_commitment": {
+        "hash": "0xe4ce998f85f2c4f4d4742b03e0204456aa9d65c94aa1ff77da85402a3a5bbe0a",
+        "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+        "runtime_spec": 471,
+        "transaction_version": 1,
+        "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1"
+      },
+      "ema_epoch_fields": {
+        "last_subnet_epoch": 1690
+      },
+      "active_config_kind": "generation-config",
+      "selected_config_sha256": "sha256:8584efe5090f1349bb66ca47fb834e299c9bbb5e1349cbada530ffe605101d88",
+      "intent_prefix_sha256": "sha256:c17241eb9a98de12cc2f3ef64799f89d791d3ff2c9ccca052353d1ae5bfa4ec9",
+      "head_ema_sha256": "sha256:ae95a09dca35e8b9fcbb91a3c6a2ff579f5df66077ee21fcf5f673671545dd4d",
+      "namespace_generation": 2
+    },
+    {
+      "validator_id": 2,
+      "configured_runtime": {
+        "spec": 467,
+        "transaction_version": 1,
+        "state_version": 1,
+        "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1",
+        "closed_native_input_deferral": false
+      },
+      "history_adoption_argv_present": false,
+      "intent_prefix_count": 1,
+      "last_native_epoch": 1690,
+      "last_settlement_epoch": 649,
+      "last_intent_status": "applied",
+      "last_artifact_hash": "sha256:2043c465b0ffad004c8f0b2b15ecdb7415e77739877c2d5174fba2d0fee32743",
+      "last_envelope_hash": "sha256:cdb5c9b8dd1b18e42222900fc887ed9020d1977ff949d23a250171299b056275",
+      "finalized_block": 8090245,
+      "finalized_block_hash": "0x9aaf69a46e478d425a30c3b8c10a937e269aa51cc29c56759cdf411b588751d3",
+      "application_block": 8090539,
+      "application_block_hash": "0x8daa3d82afd5680a292a1ba32c79db0dcb616c23c99900abf6cbbf8677322f56",
+      "prepared_source_commitment": {
+        "hash": "0xafdd783c76e886fa09dbc70f2db7ee0098ac79df19d35da12c25f3b54a602fe9",
+        "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+        "runtime_spec": 471,
+        "transaction_version": 1,
+        "compatibility_profile": "urnetwork-subtensor-consumed-interface-v1"
+      },
+      "ema_epoch_fields": {
+        "last_subnet_epoch": 1690
+      },
+      "active_config_kind": "source-role-overlay",
+      "selected_config_sha256": "sha256:2e3039f8a3bf0e7cbf12d272077264578af4bdaeaa442922fef43cfa3fc57e54",
+      "intent_prefix_sha256": "sha256:8df8b8d7c8090f097ece805957c88b10be6c4b9ea93b96bb0f69e3a2b0d1a1ef",
+      "head_ema_sha256": "sha256:078aa739e6b4d1389c4db0a2de59a043c77368fdcecb914a746cf512b4d0dd4f",
+      "namespace_generation": 2,
+      "source_role_predecessor_sha256": "0xd1f4555e9a139dbccc9190013d007a6cafc0136770107cf3ab97e4a5d242cf16"
+    }
+  ]
+}
