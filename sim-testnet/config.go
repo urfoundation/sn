@@ -363,6 +363,8 @@ type ResolvedConfig struct {
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
 	readOnlyAudit bool
+	// Set only after the historical campaign reader authenticates an ancestor.
+	campaignHistoricalApproval *scenarioCampaignHistoricalApproval
 	// Only the stopped relay capture reader may reconcile a pending marker.
 	relayCapturePlanHash             string
 	provisionalResume                *provisionalResumeState

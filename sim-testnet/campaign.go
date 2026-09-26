@@ -94,10 +94,25 @@ func validateScenarioLifecycleHandoffProvenance(cfg *ResolvedConfig, binding Sce
 	if !scenarioLifecycleHandoffInherited(binding) {
 		return nil
 	}
-	if !provisionalResumeEnabled(cfg) || cfg == nil || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance || cfg.provisionalResume.Record.PlanHash != binding.PlanHash || binding.CurrentRunID == "" || binding.CurrentRunID != binding.ReleaseRunID || binding.InheritedReleaseRunID == "" || binding.InheritedReleaseRunID == binding.CurrentRunID || binding.ConfigHash != cfg.ConfigHash || binding.PolicyHash != cfg.PolicyHash || !validCanonicalHashHex(binding.PlanHash) {
+	if !provisionalResumeEnabled(cfg) || cfg == nil || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance || binding.CurrentRunID == "" || binding.CurrentRunID != binding.ReleaseRunID || binding.InheritedReleaseRunID == "" || binding.InheritedReleaseRunID == binding.CurrentRunID || binding.ConfigHash != cfg.ConfigHash || binding.PolicyHash != cfg.PolicyHash || !validCanonicalHashHex(binding.PlanHash) {
 		return errors.New("inherited release lifecycle handoff provenance is incomplete or inconsistent")
 	}
-	if binding.InheritedPlanHash != "" && (!validCanonicalHashHex(binding.InheritedPlanHash) || binding.InheritedPlanHash == binding.PlanHash || !slices.Contains(cfg.provisionalResume.AcceptedPlanHashes, binding.InheritedPlanHash)) {
+	planHash, acceptedPlanHashes := cfg.provisionalResume.Record.PlanHash, cfg.provisionalResume.AcceptedPlanHashes
+	if historical := cfg.campaignHistoricalApproval; historical != nil {
+		if !cfg.readOnlyAudit || historical.plan == nil || historical.invocationPlanHash != planHash || historical.runId != binding.CurrentRunID || historical.plan.ConfigHash != cfg.ConfigHash || historical.plan.PolicyHash != cfg.PolicyHash {
+			return errors.New("historical lifecycle handoff differs from its authenticated read-only approval")
+		}
+		planHash = historical.plan.PlanHash
+		var err error
+		acceptedPlanHashes, err = provisionalAcceptedPlanHashes(historical.plan)
+		if err != nil {
+			return err
+		}
+	}
+	if planHash != binding.PlanHash {
+		return errors.New("inherited release lifecycle handoff provenance is incomplete or inconsistent")
+	}
+	if binding.InheritedPlanHash != "" && (!validCanonicalHashHex(binding.InheritedPlanHash) || binding.InheritedPlanHash == binding.PlanHash || !slices.Contains(acceptedPlanHashes, binding.InheritedPlanHash)) {
 		return errors.New("inherited release lifecycle handoff has no admitted original approval")
 	}
 	return nil

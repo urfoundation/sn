@@ -16,6 +16,14 @@ import (
 // marker is returned only after the full retained chain has been validated.
 var errScenarioCampaignHistoricalLineage = errors.New("scenario campaign belongs to an authenticated prior approval and requires a new recovery")
 
+// Historical handoff checks use their own signed approval without replacing
+// the actual invocation's provenance or admitting those bytes as a current run.
+type scenarioCampaignHistoricalApproval struct {
+	invocationPlanHash string
+	runId              string
+	plan               *SetupPlan
+}
+
 // One read traversal shares immutable decoded approvals. It is not a durable
 // cache and is confined to the phase lock or the caller's proof witness fence.
 type scenarioCampaignLineageReader struct {
@@ -111,7 +119,14 @@ func (self *scenarioCampaignLineageReader) read(path string) (*scenarioCampaignA
 		view.readOnlyAudit = true
 		cfg = &view
 	}
-	return readScenarioCampaignAttemptAtContext(cfg, self.stateDir, self.roles, plan.PlanHash, "release-1.0", path, plan.PlanHash != self.planHash)
+	attempt, raw, err := readScenarioCampaignAttemptAtContext(cfg, self.stateDir, self.roles, plan.PlanHash, "release-1.0", path, plan.PlanHash != self.planHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	if attempt.historicalEvidence {
+		attempt.cfg.campaignHistoricalApproval = &scenarioCampaignHistoricalApproval{invocationPlanHash: self.planHash, runId: attempt.payload.RunID, plan: plan}
+	}
+	return attempt, raw, nil
 }
 
 // A signed failed boundary is an archived definition commitment, not a claim

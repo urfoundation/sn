@@ -266,7 +266,10 @@ func validateProvisionalLifecycleCleanupHistory(cfg *ResolvedConfig, result *Sce
 				return errors.New("provisional lifecycle cleanup observation lacks its non-mutating bypass")
 			}
 			raw, err := fleetLifecycleCanonicalBytes(evidence)
-			if err != nil || validateScenarioLifecycleHandoffBinding(cfg, *result.LifecycleHandoff, raw) != nil {
+			if err == nil {
+				err = validateScenarioLifecycleHandoffBinding(cfg, *result.LifecycleHandoff, raw)
+			}
+			if err != nil {
 				return stateMismatchError(err, "provisional lifecycle cleanup observation differs from retained handoff bytes")
 			}
 		}
