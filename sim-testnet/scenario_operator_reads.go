@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -19,12 +21,20 @@ const (
 
 const scenarioOperatorReadConcurrency = 4
 
+const (
+	scenarioOperatorStatsMaximumRows = 100000
+	scenarioOperatorProofMaximumRows = 10000
+	scenarioOperatorStatsPeriod      = 15 * time.Minute
+)
+
 type scenarioOperatorRead struct {
 	data              []byte
 	status            int
 	err               error
 	attempts          uint64
 	transientFailures uint64
+	from              time.Time
+	to                time.Time
 }
 
 type scenarioOperatorSurfaces [scenarioOperatorSurfaceCount]scenarioOperatorRead
@@ -34,14 +44,28 @@ type scenarioOperatorSurfaces [scenarioOperatorSurfaceCount]scenarioOperatorRead
 // interval. Every response and error retains its original operator and surface;
 // a timeout never supplies cached counters or authenticated success.
 func (self *liveScenarioProbe) readOperatorSurfaces(ctx context.Context, bases []string) []scenarioOperatorSurfaces {
+	now := time.Now
+	if self.operatorEvidenceNow != nil {
+		now = self.operatorEvidenceNow
+	}
+	to := now().UTC()
+	if self.operatorEvidenceStartedAt.IsZero() {
+		self.operatorEvidenceStartedAt = to
+	}
+	// Stats are overlapping 15-minute rollups. Retain the preceding complete
+	// period for the baseline, then keep the same start throughout this run.
+	statsFrom := self.operatorEvidenceStartedAt.Truncate(scenarioOperatorStatsPeriod).Add(-scenarioOperatorStatsPeriod)
+	proofsFrom := to.Add(-scenarioOperatorStatsPeriod)
 	requests := [scenarioOperatorSurfaceCount]struct {
 		path  string
 		limit int64
+		rows  int
+		from  time.Time
 	}{
 		{path: "/status", limit: 1024 * 1024},
 		{path: "/verify/keys", limit: 1024 * 1024},
-		{path: "/verify/stats?limit=100000", limit: 32 * 1024 * 1024},
-		{path: "/verify/proofs?limit=10000", limit: 32 * 1024 * 1024},
+		{path: "/verify/stats", limit: 32 * 1024 * 1024, rows: scenarioOperatorStatsMaximumRows, from: statsFrom},
+		{path: "/verify/proofs", limit: 32 * 1024 * 1024, rows: scenarioOperatorProofMaximumRows, from: proofsFrom},
 	}
 	result := make([]scenarioOperatorSurfaces, len(bases))
 	jobs := make(chan int, len(bases)*scenarioOperatorSurfaceCount)
@@ -55,7 +79,19 @@ func (self *liveScenarioProbe) readOperatorSurfaces(ctx context.Context, bases [
 			for index := range jobs {
 				operator, surface := index/scenarioOperatorSurfaceCount, index%scenarioOperatorSurfaceCount
 				request := requests[surface]
-				result[operator][surface] = self.readOperatorSurface(ctx, strings.TrimSuffix(bases[operator], "/")+request.path, request.limit)
+				if request.rows != 0 {
+					if to.IsZero() || to.Before(self.operatorEvidenceStartedAt) || !request.from.Before(to) || to.Sub(request.from) > 93*24*time.Hour {
+						result[operator][surface] = scenarioOperatorRead{err: fmt.Errorf("%s observation has an invalid time range", request.path), from: request.from, to: to}
+						continue
+					}
+					query := url.Values{"from": {request.from.Format(time.RFC3339Nano)}, "to": {to.Format(time.RFC3339Nano)}, "limit": {fmt.Sprint(request.rows)}}
+					request.path += "?" + query.Encode()
+				}
+				read := self.readOperatorSurface(ctx, strings.TrimSuffix(bases[operator], "/")+request.path, request.limit)
+				if request.rows != 0 {
+					read.from, read.to = request.from, to
+				}
+				result[operator][surface] = read
 			}
 		})
 	}

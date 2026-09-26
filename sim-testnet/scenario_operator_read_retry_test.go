@@ -85,7 +85,12 @@ func TestScenarioOperatorReadRetryRetainsCompletedSurfaceOwners(t *testing.T) {
 		var stateLock sync.Mutex
 		calls := map[string]int{}
 		probe := &liveScenarioProbe{cfg: testResolvedConfig(t), stateDir: t.TempDir(), client: &http.Client{Transport: scenarioOperatorTestTransport(func(request *http.Request) (*http.Response, error) {
-			endpoint := request.URL.String()
+			identity := *request.URL
+			query := identity.Query()
+			query.Del("from")
+			query.Del("to")
+			identity.RawQuery = query.Encode()
+			endpoint := identity.String()
 			attempt := func() int {
 				stateLock.Lock()
 				defer stateLock.Unlock()

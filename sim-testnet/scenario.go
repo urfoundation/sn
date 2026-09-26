@@ -86,10 +86,14 @@ type OperatorObservation struct {
 	SurfaceReadAttempts           uint64                                       `json:"surface_read_attempts,omitempty"`
 	SurfaceReadTransientFailures  uint64                                       `json:"surface_read_transient_failures,omitempty"`
 	StatsRows                     int                                          `json:"stats_rows"`
+	StatsFrom                     string                                       `json:"stats_from,omitempty"`
+	StatsTo                       string                                       `json:"stats_to,omitempty"`
 	Assignments                   uint64                                       `json:"assignments"`
 	Confirmations                 uint64                                       `json:"confirmations"`
 	ReliabilityPPM                uint32                                       `json:"reliability_ppm"`
 	ProofRows                     int                                          `json:"proof_rows"`
+	ProofsFrom                    string                                       `json:"proofs_from,omitempty"`
+	ProofsTo                      string                                       `json:"proofs_to,omitempty"`
 	VerifyKeyIDs                  []byte                                       `json:"verify_key_ids,omitempty"`
 	VerifyKeys                    []VerifyKeyObservation                       `json:"verify_keys,omitempty"`
 	ProofKeyIDs                   []byte                                       `json:"proof_key_ids,omitempty"`
@@ -405,6 +409,9 @@ type liveScenarioProbe struct {
 	stateDir      string
 	client        *http.Client
 	pathProofs    *scenarioPathProofCache
+	// One probe retains the stats baseline while each observation pins its end.
+	operatorEvidenceStartedAt time.Time
+	operatorEvidenceNow       func() time.Time
 	// payoutArtifacts retains artifacts already authenticated by this live
 	// probe. The cache is scoped to one scenario process: every new hash still
 	// reaches the operator, and strict final acceptance creates a fresh probe.
@@ -1548,6 +1555,9 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 		}
 	}
 	statsBytes, err := surfaces[scenarioOperatorStats].data, surfaces[scenarioOperatorStats].err
+	if read := surfaces[scenarioOperatorStats]; !read.from.IsZero() && !read.to.IsZero() {
+		o.StatsFrom, o.StatsTo = read.from.Format(time.RFC3339Nano), read.to.Format(time.RFC3339Nano)
+	}
 	if err != nil {
 		problems = append(problems, "stats: "+err.Error())
 	} else {
@@ -1561,6 +1571,8 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 		}
 		if json.Unmarshal(statsBytes, &stats) != nil || stats.Schema != "urnetwork-verify-stats-index-v1" {
 			problems = append(problems, "stats: invalid schema")
+		} else if len(stats.Rows) >= scenarioOperatorStatsMaximumRows {
+			problems = append(problems, "stats: observation reached its row limit; quality totals are incomplete")
 		} else {
 			o.StatsRows, o.StatsHash, o.StatsPolicyHash = len(stats.Rows), bytesSHA256(statsBytes), stats.PolicyHash
 			for _, row := range stats.Rows {
@@ -1571,6 +1583,9 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 		}
 	}
 	proofBytes, err := surfaces[scenarioOperatorProofs].data, surfaces[scenarioOperatorProofs].err
+	if read := surfaces[scenarioOperatorProofs]; !read.from.IsZero() && !read.to.IsZero() {
+		o.ProofsFrom, o.ProofsTo = read.from.Format(time.RFC3339Nano), read.to.Format(time.RFC3339Nano)
+	}
 	if err != nil {
 		problems = append(problems, "proofs: "+err.Error())
 	} else {
@@ -1583,6 +1598,8 @@ func (p *liveScenarioProbe) inspectOperatorWithSurfaces(ctx context.Context, con
 		}
 		if json.Unmarshal(proofBytes, &proofs) != nil || proofs.Schema != "urnetwork-verify-proof-index-v1" {
 			problems = append(problems, "proofs: invalid schema")
+		} else if len(proofs.Rows) >= scenarioOperatorProofMaximumRows {
+			problems = append(problems, "proofs: observation reached its row limit; proof census is incomplete")
 		} else {
 			o.ProofRows, o.ProofsHash, o.ProofsPolicyHash = len(proofs.Rows), bytesSHA256(proofBytes), proofs.PolicyHash
 			seen := map[byte]bool{}
