@@ -1,5 +1,29 @@
 # Testnet execution plan
 
+## R47 first measured epoch closed — 2026-09-26 14:51 UTC
+
+The LAN chain crossed the epoch-651 close at block 8,090,974. The active R47
+owner then retained its first epoch-652 observation at finalized block
+8,090,975, with complete epoch-651 operator usage of 19,396,509 and
+18,756,754 bytes and `policy_rate_readiness.ready=true`. Both operator
+epoch-651 `RootCommitted` events finalized at block 8,090,980; each receipt
+has status `0x1` and its artifact hash matches the observed source hash.
+[Exact observation and LAN receipts](sim-testnet/peerreview/evidence/FINAL-3-R47-measured-start-20260926/README.md)
+are pushed. These facts prove source closure and payout-root commitments,
+not entitlement, claims, native steering, or final acceptance.
+
+At this checkpoint the retained applied native steering intent for each
+validator is still epoch 1690. Native epoch 1691 had ten failed attempts per
+validator during the dependency outage; validator 1 then logged repeated
+`compact head EMA epoch jumped` in native epoch 1692. The owner remains active
+without a signed invalidation and continues recording strict process findings.
+Do not restart it to insert a candidate fix; retain this gap as a terminal
+finding and let all remaining measured epochs and settlement evidence run.
+The integration branch has a tested successor transport fix (`d9cd83a6`),
+and isolated EMA-gap diagnosis is in progress. The ordinary simulator test
+partition exposed a separate cancellation/Close error-loss regression now
+under repair; it is not a pass claim.
+
 ## R47 measured interval active — 2026-09-26 14:01 UTC
 
 The sole release owner is `urnetwork-sim-release-r47.service` (PID 1255308 at
