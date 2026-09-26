@@ -57,12 +57,13 @@ func (evidence verifyIntegrityEvidence) metrics() map[string]uint64 {
 }
 
 type verifyAdversary struct {
-	cfg             *ResolvedConfig
-	http            *adversaryHTTP
-	validators      map[int]verifyAdversaryIdentity
-	providerSources map[int]map[connect.Id]string
-	seedProviders   map[int][]connect.Id
-	faults          *adversaryFaultWindow
+	cfg               *ResolvedConfig
+	http              *adversaryHTTP
+	validators        map[int]verifyAdversaryIdentity
+	providerSources   map[int]map[connect.Id]string
+	providerTargetKVs map[connect.Id][]string
+	seedProviders     map[int][]connect.Id
+	faults            *adversaryFaultWindow
 
 	mu                 sync.Mutex
 	lastRealAssignSize map[int]int
@@ -82,6 +83,7 @@ func newVerifyAdversary(cfg *ResolvedConfig, roles *RoleSecrets, client *adversa
 	self := &verifyAdversary{
 		cfg: cfg, http: client, faults: faults, validators: map[int]verifyAdversaryIdentity{},
 		providerSources: map[int]map[connect.Id]string{}, seedProviders: map[int][]connect.Id{},
+		providerTargetKVs:  map[connect.Id][]string{},
 		lastRealAssignSize: map[int]int{}, rateBoundDone: map[int]bool{}, rateBoundAttempts: map[int]uint64{},
 		completedByNo: map[int]uint64{}, attemptedByNo: map[int]uint64{},
 	}
@@ -125,6 +127,14 @@ func newVerifyAdversary(cfg *ResolvedConfig, roles *RoleSecrets, client *adversa
 			return nil, err
 		}
 		operator := operatorForMiner(cfg, miner)
+		if len(self.providerTargetKVs[clientID]) != 0 {
+			return nil, fmt.Errorf("adversarial provider miner-%d duplicates client %s", miner, clientID)
+		}
+		targets, err := adversaryVerifyProviderFaultTargets(cfg, miner)
+		if err != nil {
+			return nil, err
+		}
+		self.providerTargetKVs[clientID] = targets
 		self.providerSources[operator][clientID] = minerTestEgressSourceIP(miner)
 		self.seedProviders[operator] = append(self.seedProviders[operator], clientID)
 	}
@@ -200,6 +210,9 @@ func (self *verifyAdversary) supplementalMetrics(operator int, phase adversarySa
 
 // Attribute only confirmed request absence within the exact operator window.
 func (self *verifyAdversary) sampleError(operator int, err error, requests, maximumInFlight uint64) adversarySampleResult {
+	if _, ok := err.(*adversaryVerifyRouteUnavailable); ok {
+		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: err.Error(), Requests: requests, MaxInFlight: maximumInFlight}
+	}
 	if adversaryVerifyFaultUnavailable(err) && self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
 		return adversarySampleResult{
 			Outcome:  adversaryOutcomeExpectedRejection,
@@ -398,17 +411,23 @@ func verifyFinalIntegrityModels(result *connect.VerifyFinalResult, trailID conne
 // Bind the proof-history read to this signed walk, excluding saturated older
 // history without reducing the signature, source, replay, or uniqueness checks.
 func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence uint64, replay bool) (string, uint64, verifyIntegrityEvidence, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(self.cfg.Config.Scenarios.Adversaries.RequestTimeoutMilliseconds)*time.Millisecond)
+	defer cancel()
+	release, err := self.faults.reserveWalk(ctx)
+	if err != nil {
+		return "", 0, verifyIntegrityEvidence{}, err
+	}
+	defer release()
 	walkStarted := time.Now().UTC()
 	identity := self.validators[operator]
-	providers := self.seedProviders[operator]
-	if len(providers) == 0 {
-		return "", 0, verifyIntegrityEvidence{}, errors.New("operator has no adversarial seed provider")
+	seedProvider, err := self.unaffectedSeedProvider(operator, sequence)
+	if err != nil {
+		return "", 0, verifyIntegrityEvidence{}, err
 	}
 	keys, requests, err := self.serverKeys(ctx, operator)
 	if err != nil {
 		return "", requests, verifyIntegrityEvidence{}, err
 	}
-	seedProvider := providers[int(sequence%uint64(len(providers)))]
 	source := self.providerSources[operator][seedProvider]
 	nonce := deterministicVerifySeed(self.cfg.Config.Scenarios.Adversaries.Seed, sequence, fmt.Sprintf("control-%d", operator))
 	message, err := connect.BuildVerifySeedMessage(identity.public, nonce[:], byte(self.cfg.Policy.Verify.TrailDepth))
@@ -441,6 +460,11 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 		source = self.providerSources[operator][pending]
 		if source == "" {
 			return "", requests, verifyIntegrityEvidence{}, fmt.Errorf("verify ASSIGN named unknown provider %s", pending)
+		}
+		// The previous ASSIGN has already passed signature and path validation.
+		// Never issue the next request through a deliberately disabled provider.
+		if target := self.providerFaultTarget(pending); target != "" {
+			return "", requests, verifyIntegrityEvidence{}, &adversaryVerifyRouteUnavailable{operator: operator, provider: pending, target: target, stage: "signed ASSIGN"}
 		}
 		trail := append(append([]connect.Id(nil), confirmed...), pending)
 		extendMessage, err := connect.BuildVerifyExtendMessage(trailID, serverNonce, identity.public, byte(m), trail)

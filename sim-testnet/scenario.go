@@ -3400,6 +3400,11 @@ func scenarioFaultTargets(records []ScenarioFaultRecord, head uint64, includeDue
 	seen := map[string]bool{}
 	for _, record := range records {
 		expected := record.Status == "active" || scenarioFaultApplyPending(record)
+		// Preparation filters are already installed before their first accepted
+		// trigger block. Retain only the exact recorded arming boundary here.
+		if record.Status == "pending" && record.PreAcceptance && record.ArmedBlock != 0 && validCanonicalHashHex(record.ArmedBlockHash) {
+			expected = true
+		}
 		if includeDue && record.Status == "pending" && head >= record.TriggerBlock {
 			expected = true
 		}
@@ -4231,12 +4236,27 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	// Public-RPC deployment can consume arbitrary epochs, while precompile,
 	// governance, key rotation, and dishonest-deposit preparation remain in
 	// the observed happy path before the exact acceptance baseline is signed.
+	armPreparationFaults := func(armCtx context.Context) (map[string][]FaultProcessEvidence, error) {
+		if options.Adversaries != nil {
+			// Only the approved definition supplies route intent. Publish before
+			// apply, just as the acceptance heartbeat does for its due faults.
+			var targets []string
+			for _, spec := range definition.Faults {
+				if spec.PreAcceptance {
+					targets = append(targets, spec.Targets...)
+					targets = append(targets, spec.Impacts...)
+				}
+			}
+			options.Adversaries.SetExpectedFaultTargets(targets)
+		}
+		return armPreAcceptanceFaults(armCtx, definition.Faults, options.FaultDriver)
+	}
 	preAcceptanceArmed := false
 	if options.Prepare != nil || options.FleetLifecycle != nil || options.Attempt != nil {
 		preparationOptions := options
 		preparationOptions.BeforeFleetLifecycle = func(armCtx context.Context) error {
 			var armErr error
-			prearmedFaults, armErr = armPreAcceptanceFaults(armCtx, definition.Faults, options.FaultDriver)
+			prearmedFaults, armErr = armPreparationFaults(armCtx)
 			if armErr == nil {
 				preAcceptanceArmed = true
 			}
@@ -4255,7 +4275,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return initialFailure(start, fmt.Errorf("scenario preparation exhausted native readiness deadline: %w", err))
 	}
 	if !needsNativeWarmup && !preAcceptanceArmed {
-		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
+		prearmedFaults, err = armPreparationFaults(ctx)
 		if err != nil {
 			return initialFailure(start, err)
 		}
@@ -4290,7 +4310,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	}
 	if needsNativeWarmup {
 		if !preAcceptanceArmed {
-			prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
+			prearmedFaults, err = armPreparationFaults(ctx)
 			if err != nil {
 				return initialFailure(current, err)
 			}

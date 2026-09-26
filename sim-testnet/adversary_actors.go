@@ -51,16 +51,24 @@ type adversaryFaultWindow struct {
 	grace  map[string]time.Time
 	period time.Duration
 	now    func() time.Time
+	// A signed walk borrows the single admission token. Fault intent is
+	// published only after that bounded walk finishes; no state lock spans I/O.
+	walkAdmission         chan struct{}
+	beforeWalkWaitForTest func()
 }
 
 func newAdversaryFaultWindow(period time.Duration) *adversaryFaultWindow {
-	return &adversaryFaultWindow{active: map[string]bool{}, grace: map[string]time.Time{}, period: period, now: time.Now}
+	window := &adversaryFaultWindow{active: map[string]bool{}, grace: map[string]time.Time{}, period: period, now: time.Now, walkAdmission: make(chan struct{}, 1)}
+	window.walkAdmission <- struct{}{}
+	return window
 }
 
 func (self *adversaryFaultWindow) Update(targets []string) {
 	if self == nil {
 		return
 	}
+	release, _ := self.reserveWalk(context.Background())
+	defer release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	now := self.now()
