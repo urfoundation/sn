@@ -1,0 +1,72 @@
+{
+  "process_findings": [
+    {
+      "finding": {
+        "acceptance_scope_sha256": "0xfd1f120d64fac7eefb617ce8334774c3406c26e946fc30a9a36876b6d69c0945",
+        "blocking": true,
+        "class": "warning",
+        "count": 2,
+        "disposition": "unexplained",
+        "first_line_sha256": "b832672739c93d2c56d464dd5cb38e308eac99224a4d0f75f3cadf4bf09dd95a",
+        "first_observed_at": "2026-09-26T15:59:06.500291244Z",
+        "first_offset": 1644896380,
+        "last_line_sha256": "5e0af5e3fb6febb0c1347090dc9c47da8b292234729a26863cc84ab5081cc1dd",
+        "last_observed_at": "2026-09-26T15:59:06.500291244Z",
+        "last_offset": 1644896711,
+        "process_id": "operator-1-api",
+        "role": "operator-api",
+        "stream": "stderr",
+        "summary": "process emitted an unclassified warning log"
+      },
+      "lines": [
+        {
+          "line": "W0926 15:58:12.869839 1473479 sn_attempt_artifact_handlers.go:49] [sn-attempt] artifact stream failed: kind=records hash=0x9d263532ee45a2d86e0e788355d181650324c0088c7ef5cb3ddd5aea06ec22c3 bytes=3064430 elapsed=2m35.81601504s context=<nil> error=\"read tcp 172.28.208.188:60874->172.28.208.177:23900: read: connection reset by peer\"",
+          "line_sha256": "b832672739c93d2c56d464dd5cb38e308eac99224a4d0f75f3cadf4bf09dd95a",
+          "offset": 1644896380
+        },
+        {
+          "line": "W0926 15:58:12.870049 1473479 sn_attempt_artifact_handlers.go:49] [sn-attempt] artifact stream failed: kind=records hash=0xd986433842aa3d90387cd1a01690622ebda748edc5d153f9146c8479c2845fc8 bytes=89021 elapsed=2m31.303145419s context=<nil> error=\"read tcp 172.28.208.188:33304->172.28.208.177:23900: read: connection reset by peer\"",
+          "line_sha256": "5e0af5e3fb6febb0c1347090dc9c47da8b292234729a26863cc84ab5081cc1dd",
+          "offset": 1644896711
+        }
+      ]
+    },
+    {
+      "finding": {
+        "acceptance_scope_sha256": "0xfd1f120d64fac7eefb617ce8334774c3406c26e946fc30a9a36876b6d69c0945",
+        "blocking": true,
+        "class": "warning",
+        "count": 1,
+        "disposition": "unexplained",
+        "first_line_sha256": "dca2e0042374a740e112bb99927343b0097284d2164a7c9992793656e9e209e3",
+        "first_observed_at": "2026-09-26T15:59:06.500291244Z",
+        "first_offset": 1319305688,
+        "last_line_sha256": "dca2e0042374a740e112bb99927343b0097284d2164a7c9992793656e9e209e3",
+        "last_observed_at": "2026-09-26T15:59:06.500291244Z",
+        "last_offset": 1319305688,
+        "process_id": "operator-2-api",
+        "role": "operator-api",
+        "stream": "stderr",
+        "summary": "process emitted an unclassified warning log"
+      },
+      "lines": [
+        {
+          "line": "W0926 15:58:12.869662 1510020 sn_attempt_artifact_handlers.go:49] [sn-attempt] artifact stream failed: kind=records hash=0x9d263532ee45a2d86e0e788355d181650324c0088c7ef5cb3ddd5aea06ec22c3 bytes=4133279 elapsed=2m33.796244929s context=<nil> error=\"read tcp 172.28.208.188:60984->172.28.208.177:23900: read: connection reset by peer\"",
+          "line_sha256": "dca2e0042374a740e112bb99927343b0097284d2164a7c9992793656e9e209e3",
+          "offset": 1319305688
+        },
+        {
+          "line": "W0926 15:58:12.869662 1510020 sn_attempt_artifact_handlers.go:49] [sn-attempt] artifact stream failed: kind=records hash=0x9d263532ee45a2d86e0e788355d181650324c0088c7ef5cb3ddd5aea06ec22c3 bytes=4133279 elapsed=2m33.796244929s context=<nil> error=\"read tcp 172.28.208.188:60984->172.28.208.177:23900: read: connection reset by peer\"",
+          "line_sha256": "dca2e0042374a740e112bb99927343b0097284d2164a7c9992793656e9e209e3",
+          "offset": 1319305688
+        }
+      ]
+    }
+  ],
+  "result_sha256": "1f89032d92aa3ac694288742880c11e86f021adbed2b05c4a79a626beaa9e951",
+  "run_id": "20260926T112551.425107945Z-release-1.0",
+  "schema": "urnetwork-sim-r47-stop-warning-receipt-v1",
+  "signed_attempt_sha256": "bb4c9f5f3fb540c1f3dc2dad28002ef1df0795188fcfc3aa59001cf9f5c27a2b",
+  "source_observations_bytes": 76069209,
+  "source_observations_sha256": "2f3ef3589c353a82e1abcd2a7a4186907d14ab4f2648a5aa2d1725b69864b22c"
+}

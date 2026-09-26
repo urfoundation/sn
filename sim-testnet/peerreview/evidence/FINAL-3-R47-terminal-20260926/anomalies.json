@@ -1,0 +1,1199 @@
+{
+  "schema": "urnetwork-sim-anomaly-ledger-v1",
+  "release": "1.0",
+  "run_id": "20260926T112551.425107945Z-release-1.0",
+  "generated_at": "2026-09-26T16:00:26.60533845Z",
+  "status": "open",
+  "entries": [
+    {
+      "id": "ANOM-0039b276b0e6664af52623a2",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-30",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-01b9d015bfaa58b9a2a1394a",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-16",
+      "summary": "healthy=false pid=1249246",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-02893309684749950f320536",
+      "class": "validator-error",
+      "severity": "critical",
+      "source": "validator:2",
+      "summary": "local runtime intents: local intent generation changed during projection",
+      "first_observed_at": "2026-09-26T11:55:53.840043926Z",
+      "observation_hash": "0x65ff96e5d7c8ef6ac683e3b894587d3ff3498a4981ab546b67b26f5ff4e3c0bf",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-07722ebc33f7357bee8bad4f",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-8",
+      "summary": "healthy=false pid=1245423",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-0a9fb738fe6a731add04de75",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-21",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-0b454263447a0c27f3b1551a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:proxy-staking-mev-slippage",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-0c0fbc0a9f95907e0c043631",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:root-basket-hidden-reward-on-unstake",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-0e06b8a5f8705055b5f2f0f0",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:subnet-eviction-moving-price-pressure",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-13832f80f277be542345c376",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:consensus-stale-weight-copy",
+      "summary": "coverage=continuous-emulation samples=0 errors=0 p99_ms=0",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-14132a909f6df54db52f3fd7",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:verify-poison-distinguishability",
+      "summary": "coverage=live-exercised samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-151dea3596e96f28176140d8",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-1",
+      "summary": "healthy=false pid=1242532",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-160a9ae976d739517bbcf72f",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:drand-randomness-signature-binding",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-178938a6ab8dae5ce5691f25",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-7",
+      "summary": "healthy=false pid=1245421",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-184355dab4a28b12877b1592",
+      "class": "process-log-connection-canceled",
+      "severity": "critical",
+      "source": "process:validator-1:stderr",
+      "summary": "connection handshake was canceled",
+      "first_observed_at": "2026-09-26T16:01:15.69384515Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-1865571abed8996b0974c725",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:artifact-withhold-tamper-equivocate",
+      "summary": "coverage=live-exercised samples=3106 errors=11 p99_ms=3518",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-1a8103fd5fbc5ff22bb4d00a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:deposit-tier-boundary-cross-no-replay",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-1e5e801aa71807796043124b",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-23",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-1fab535807d90792c5f1e071",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:mev-shield-finality-era-expiry",
+      "summary": "coverage=continuous-emulation samples=0 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-1ff68e84f5f6900e8bb8bbd6",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-19",
+      "summary": "healthy=false pid=1250989",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-2447fcd26a2a0d936a9ba4fa",
+      "class": "process-log-warning",
+      "severity": "critical",
+      "source": "process:operator-2-api:stderr",
+      "summary": "process emitted an unclassified warning log",
+      "first_observed_at": "2026-09-26T15:59:06.500291244Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-264dfe03f789c402efb5744f",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:proxy-scope-alias-bypass",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-295141a21116b4ad2195f363",
+      "class": "unexpected-restart",
+      "severity": "critical",
+      "source": "process:validator-2",
+      "summary": "restart_delta=20 scheduled=0 start=1 end=21",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-2da153d1f1f9de01363e399a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:affiliation-mask-evasion",
+      "summary": "coverage=continuous-emulation samples=0 errors=0 p99_ms=1061",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-2dba0e48887af324299beab8",
+      "class": "adversary-actor-error",
+      "severity": "critical",
+      "source": "adversary:operator-api-pressure",
+      "summary": "errors=3 error_rate_ppm=965 last_detail=operator=2 status=200 bytes=139 http_attempts=1 transient_failures=0",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-3247a48d39cf2b914ae3e7b3",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:consensus-rival-knifing",
+      "summary": "coverage=continuous-emulation samples=0 errors=0 p99_ms=0",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-32df9b427a277ffe8f2b2dd3",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:beta-escrow-stake-transfer-injection",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-383a92bb3f1d43b28c345461",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-18",
+      "summary": "healthy=false pid=1250000",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-38d1c06bd2eba39b8dc4a3bc",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:subtensor-substrate-rpc-proxy",
+      "summary": "healthy=false pid=1242258",
+      "first_observed_at": "2026-09-26T14:16:41.910245434Z",
+      "observation_hash": "0xbbe62911ca7690bd8bd90996cdfa2d55406dfe6ef02b5cfaa1361f1f0fa5cd7e",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-394204ddaefdb45d0bfa8326",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:contract-reentrancy-partial-funding-reorder",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-3a14975da58e2b16c1f7334b",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-9",
+      "summary": "healthy=false pid=1246293",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-3e0dcba93151159afb6c8549",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:validator-1",
+      "summary": "healthy=false pid=0",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-3efc11fa6a04b50516e20282",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-20",
+      "summary": "healthy=false pid=1250990",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-41210c6d0dc3aaddbd4a3593",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:shared-prefix-sybil-rebind",
+      "summary": "coverage=continuous-emulation samples=0 errors=0 p99_ms=1061",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-4512637eddb07eef27172605",
+      "class": "assertion-failure",
+      "severity": "critical",
+      "source": "assertion:acceptance_interval_observed",
+      "summary": "acceptance observation interrupted before terminal evaluation: first_epoch=651 epoch_count=5 terminal_block=8092324 observed_epoch=653 observed_block=8091300; pending scenario, fault and adversary gates were not evaluated",
+      "first_observed_at": "2026-09-26T15:59:06.854726309Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-45c94f6fcfb2c75b53d04e7c",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-27",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-48f5a296ccf1f9339b36d523",
+      "class": "validator-error",
+      "severity": "critical",
+      "source": "validator:2",
+      "summary": "local runtime intents: local intent observation: local runtime intents: local intent process differs from its manifest",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-4c8f0f288cf910c1b43e47ca",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-25",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-4def81e73bcb1ddd927d7663",
+      "class": "adversary-actor-error",
+      "severity": "critical",
+      "source": "adversary:rpc-consistency-pressure",
+      "summary": "errors=58 error_rate_ppm=18917 last_detail=operational/public EVM chain id 945",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-4f2dbf4a451271d6fb3f6e24",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-17",
+      "summary": "healthy=false pid=1249999",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-54702587f88c55613ded868b",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:validator-local-head-boundary",
+      "summary": "kind=validator-view-filter status=active error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-557f28d38e38627ca031346f",
+      "class": "unexpected-restart",
+      "severity": "critical",
+      "source": "process:operator-2-api",
+      "summary": "restart_delta=2 scheduled=1 start=0 end=2",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-568257c46cc6a2d7fd13b9a5",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:uid-churn-pruning-reregistration",
+      "summary": "coverage=continuous-emulation samples=3115 errors=8 p99_ms=2946",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-5757d7ac9c4fa91b05bf0b6f",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-13",
+      "summary": "healthy=false pid=1248189",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-5ad7de4e1f2f8aa75f56a9c4",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:queued-registration-reservation-rate-price",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-5b7531bb72230de49ff3dedb",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:verify-replay-concurrent-extend",
+      "summary": "coverage=live-exercised samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-5e7ba86d6ca203a1d9b87f4f",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:runtime-signed-precompile-foreign-frame",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-5fabfab682444a6adb7c3130",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-14",
+      "summary": "healthy=false pid=1248190",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-61744243585295bd5b4b7997",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:provider-collusion-short-circuit",
+      "summary": "coverage=continuous-emulation samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-6180b789c625124903f60c68",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:empty-body-hash-integrity-bypass",
+      "summary": "coverage=continuous-emulation samples=3064 errors=30 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-645af3cb18a630a4ebe5e51d",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-22",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-646d4fb53d3e4ca343a5ae76",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:rounding-gas-unbounded-loop-accounting",
+      "summary": "coverage=continuous-emulation samples=3073 errors=3 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-685ff0ed5b81d1ea69a437ed",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:validator-dropout-disagreement",
+      "summary": "coverage=live-exercised samples=0 errors=3 p99_ms=3518",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-6df8610ea02b2091654acfe6",
+      "class": "process-log-release-steering-attempt-failure",
+      "severity": "critical",
+      "source": "process:validator-2:stdout",
+      "summary": "release steering reported a failed native epoch attempt",
+      "first_observed_at": "2026-09-26T13:22:05.608830213Z",
+      "observation_hash": "0xff424c58d60a4022b84c086cb920590fc8b95ccaf60cf25830b623f4441d5c48",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-71e203c0b6ef3744c5df0b2a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:root-staking-index-state-bloat",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7263940b59e163a2ed48a43f",
+      "class": "unexpected-restart",
+      "severity": "critical",
+      "source": "process:miner-swarm-13",
+      "summary": "restart_delta=0 scheduled=1 start=0 end=0",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-733673ac73fe02a36de49baf",
+      "class": "adversary-actor-error",
+      "severity": "critical",
+      "source": "adversary:verify-replay-poison",
+      "summary": "errors=22 error_rate_ppm=7180 last_detail=operator=1 trail=01a0de71-02e3-cf85-0268-a35a1a951f01 depth=8 concurrent_replay=true unique_proof=true signed_tamper_rejections=12 canonical_body_rejections=10",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7a310d2061cdb70031ea16ae",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-4",
+      "summary": "healthy=false pid=1243456",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7baa2926d7c9a3c65410cbd8",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-15",
+      "summary": "healthy=false pid=1249245",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7c1cc104512e6912590b4081",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:runtime-resource-metering-panic-resistance",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=61 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7c94ad8785dcedc9064270ca",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:rpc-lag-equivocation-history-gap",
+      "summary": "coverage=live-exercised samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-7ef2bafdb8337f09e1115d8f",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-2",
+      "summary": "healthy=false pid=1539733",
+      "first_observed_at": "2026-09-26T15:06:24.026760033Z",
+      "observation_hash": "0xbf03b95f3c8754b9cf1b57a80eb73e1c348e167708686e8d0f3e2c774877ab5d",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-81304c02277c75632f44e5ba",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:late-keeper-carry-claim-ttl-double-claim",
+      "summary": "coverage=live-exercised samples=3073 errors=3 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-860bf8b72b698419bb3d4894",
+      "class": "process-exit",
+      "severity": "critical",
+      "source": "process:validator-2",
+      "summary": "exit status 1",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-864aa535ff3a488a30b32357",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:verify-vpk-rotation-rate-bypass",
+      "summary": "coverage=live-exercised samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-8776ceaf11897f51c04f4a82",
+      "class": "validator-error",
+      "severity": "critical",
+      "source": "validator:1",
+      "summary": "local runtime intents: local intent observation: local runtime intents: local intent process differs from its manifest",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-87a3882f1f858d3450a5176a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:registration-burn-price-race",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-8b97c9a9f75c1e232df27f4a",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-24",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-8ca02edb798c047978d33ea5",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:subnet-reserve-drain-flow-accounting",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-8e78adf4be5de9f621cceff8",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-10",
+      "summary": "healthy=false pid=1246294",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-902881727b22a0757941ec53",
+      "class": "assertion-failure",
+      "severity": "critical",
+      "source": "assertion:process_log_completion",
+      "summary": "process log gate found 4 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "first_observed_at": "2026-09-26T15:59:11.594817507Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-98c6a2a3f01c1092960bdebb",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-2",
+      "summary": "healthy=false pid=1242533",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-9d285e9ff674ff20b36758b3",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:consensus-reveal-following",
+      "summary": "coverage=continuous-emulation samples=0 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-9d7502c3dc1bc981a4a89cd3",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:dependency-restart-state-loss",
+      "summary": "coverage=live-exercised samples=3064 errors=33 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-9f14c792f6f3e76278f3d8d9",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-12",
+      "summary": "healthy=false pid=1247266",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a52bb9eb4cab021de046fe27",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:registration-lock-floor-price-manipulation",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a64530fb3ffad7690698ceb7",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:balance-transfer-coldkey-swap-caller",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a781551bb0c29fbaeb6338c6",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:runtime-composite-atomicity-rollback",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a7e72b1bbcb0c480c9c967b4",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:hotkey-swap-reputation-reset",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a8c911550ac49385a8a287a4",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:weights-withhold-late-invalid-reveal",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=0 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-a8f76ff4f98325e841568e46",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:malicious-upgrade-pause-role-compromise",
+      "summary": "coverage=live-exercised samples=3073 errors=8 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-aabacd7257a32d00d3e76083",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:fleet-lifecycle-target-prune",
+      "summary": "kind=validator-view-filter status=active error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-addd3980cbdd2518d5915457",
+      "class": "adversary-actor-error",
+      "severity": "critical",
+      "source": "adversary:artifact-integrity-pressure",
+      "summary": "errors=8 error_rate_ppm=2568 last_detail=operator=1 artifact=sha256:e3b22399165ba8c2a12e838cbbcfaf85a287fa3de283ee4fa92bdb5c8aee4f0c tamper_rejected=true http_attempts=3 transient_failures=0",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-afd40e8ede7a08a001dd71a5",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:liquid-alpha-bond-copy-participation-churn",
+      "summary": "coverage=continuous-emulation samples=0 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b12628c664ed4ae2a4040c63",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:missing-signature-validator-impersonation",
+      "summary": "coverage=live-exercised samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b4106313a838ae9780147cf3",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:nested-proxy-filter-intersection",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b5ba9aa6ceacb665b7031756",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:weights-fee-free-block-fill",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b8182f7c07fc83ce58610115",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:concentrated-liquidity-subnet-freeze",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b92ed38210b8170e44595f66",
+      "class": "assertion-failure",
+      "severity": "critical",
+      "source": "assertion:scenario_context",
+      "summary": "heartbeat process log gate: process log gate found 4 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "first_observed_at": "2026-09-26T15:59:08.796116947Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-b9c9be350aa0fc28999cac16",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:validator-2",
+      "summary": "healthy=false pid=0",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-bb9c66c630d1cd2b34e004f6",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:commitment-field-parser-type-confusion",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-be1b06af53a142814e64c08a",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-31",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-be8ea20d73a54fe01962d7e4",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:runtime-issuance-reserve-migration-conservation",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-beffbcadf2f6ba78030cf6ef",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-28",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c14145cb5ec8f47e7d06951a",
+      "class": "deployment-health",
+      "severity": "critical",
+      "source": "deployment-status",
+      "summary": "deployment status is unhealthy",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c2c78b2de2de24e26ed0dcea",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-5",
+      "summary": "healthy=false pid=1244454",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c409067ffeac7e454e58659a",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:runtime-precompile-metadata-drift",
+      "summary": "coverage=continuous-sentinel samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c58270c7cc2866bb2c79d2c9",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:drand-round-jump-timelock-denial",
+      "summary": "coverage=continuous-sentinel-plus-release-test samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c6f5840074495068105423dd",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:settlement-runtime-transfer-floor-credit",
+      "summary": "coverage=continuous-emulation samples=3066 errors=58 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c728d8cc1489ec8aa2c7b29c",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:consensus-threshold-stake-churn",
+      "summary": "coverage=continuous-emulation samples=0 errors=58 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-c801e110baa9574e819d478b",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-head-owner-rolling-01",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-d27a24efa237ef5f9efcd207",
+      "class": "process-log-release-steering-attempt-failure",
+      "severity": "critical",
+      "source": "process:validator-1:stdout",
+      "summary": "release steering reported a failed native epoch attempt",
+      "first_observed_at": "2026-09-26T13:22:05.608830213Z",
+      "observation_hash": "0xff424c58d60a4022b84c086cb920590fc8b95ccaf60cf25830b623f4441d5c48",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-d79c5b7c88d2d4964e9fa32c",
+      "class": "unexpected-restart",
+      "severity": "critical",
+      "source": "process:validator-1",
+      "summary": "restart_delta=20 scheduled=0 start=1 end=21",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-d8f5a9f3e47f79e21f7cdf58",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:consensus-minority-cabal-self-weight",
+      "summary": "coverage=continuous-emulation samples=0 errors=0 p99_ms=1061",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-d9aeedf24ba3c6c9235978ec",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-11",
+      "summary": "healthy=false pid=1247265",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-e3ec278bdbff9d443b534472",
+      "class": "process-log-warning",
+      "severity": "critical",
+      "source": "process:operator-1-api:stderr",
+      "summary": "process emitted an unclassified warning log",
+      "first_observed_at": "2026-09-26T15:59:06.500291244Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-e408d9bd4d098d5a503e0add",
+      "class": "assertion-failure",
+      "severity": "critical",
+      "source": "assertion:process_log_publication",
+      "summary": "process log gate found 5 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "first_observed_at": "2026-09-26T16:01:15.883695489Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-e47c6452a13fc4460125ff3b",
+      "class": "validator-error",
+      "severity": "critical",
+      "source": "validator:1",
+      "summary": "local runtime intents: local intent store or handoff changed during projection",
+      "first_observed_at": "2026-09-26T13:18:44.293992683Z",
+      "observation_hash": "0xff424c58d60a4022b84c086cb920590fc8b95ccaf60cf25830b623f4441d5c48",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-e488ca9acd6ab18c5a38fc5e",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:operator-api-resource-pressure",
+      "summary": "coverage=live-exercised samples=3064 errors=25 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-e8d93df0d6c1ffa93afec01d",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-3",
+      "summary": "healthy=false pid=1243455",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-eb90fdeef6ef7e936c1ae883",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:plaintext-unauthenticated-miner-transport-mitm",
+      "summary": "coverage=continuous-emulation samples=3064 errors=25 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-ed1152cc03e02511e42ffea7",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:selective-service-teach-to-test",
+      "summary": "coverage=continuous-emulation samples=3064 errors=22 p99_ms=10000",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-ed5939bd42b04094a0b0706c",
+      "class": "process-exit",
+      "severity": "critical",
+      "source": "process:validator-1",
+      "summary": "exit status 1",
+      "first_observed_at": "2026-09-26T11:49:43.912250153Z",
+      "observation_hash": "0x80b0856cdfbf73aed2b176fdf6dbae7e31203115c5217f94dd34d0d0aadf3f3f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-f194ef25cdc03ecd3bea0cac",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-29",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-f6ece535a97dbdb8ee38f3e0",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:head-boundary",
+      "summary": "kind=miner-control status=active error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-f7cc53cb30580b7359a96992",
+      "class": "unexpected-restart",
+      "severity": "critical",
+      "source": "process:operator-1-api",
+      "summary": "restart_delta=2 scheduled=1 start=0 end=2",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-fa1bf42deeb05878a20b1351",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:fleet-lifecycle-companion-prune",
+      "summary": "kind=validator-view-filter status=active error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-fafb39ab47787ef169343599",
+      "class": "process-health",
+      "severity": "critical",
+      "source": "process:miner-swarm-6",
+      "summary": "healthy=false pid=1244455",
+      "first_observed_at": "2026-09-26T14:12:18.380094226Z",
+      "observation_hash": "0x87ca37e2dc1c74ea13bc91c97224dd94624da8e4227c69d0ca39d3a6d5723b1f",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-fe4d96b3a0b1a5dc59ef03b6",
+      "class": "fault-incomplete",
+      "severity": "critical",
+      "source": "fault:release-rolling-26",
+      "summary": "kind=process-restart status=pending error=",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    },
+    {
+      "id": "ANOM-ff6b0871d78ecab1d53ad1cf",
+      "class": "adversary-vector-failure",
+      "severity": "critical",
+      "source": "adversary-vector:payout-root-omission-duplication-wallet-change",
+      "summary": "coverage=live-exercised samples=3073 errors=8 p99_ms=10003",
+      "first_observed_at": "2026-09-26T16:00:26.60533845Z",
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2",
+      "status": "open"
+    }
+  ]
+}

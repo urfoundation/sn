@@ -1,0 +1,59 @@
+{
+  "schema": "urnetwork-sim-assertions-v1",
+  "assertions": [
+    {
+      "id": "acceptance_interval_observed",
+      "passed": false,
+      "message": "acceptance observation interrupted before terminal evaluation: first_epoch=651 epoch_count=5 terminal_block=8092324 observed_epoch=653 observed_block=8091300; pending scenario, fault and adversary gates were not evaluated",
+      "started_at": "2026-09-26T11:25:51.425107945Z",
+      "completed_at": "2026-09-26T15:59:06.854726309Z",
+      "duration_seconds": 16395.429618364,
+      "observation_hash": "0xdad3a7389b4e3f84595160dd27fc07fd3e60033fb17ab8a6b2f1f7a95c7a382c"
+    },
+    {
+      "id": "adversary_signed_start_continuity",
+      "passed": true,
+      "message": "continuous adversary evidence extends from the signed campaign start marker through happy-path completion",
+      "started_at": "2026-09-26T12:53:07.070680123Z",
+      "completed_at": "2026-09-26T15:59:08.796127812Z",
+      "duration_seconds": 11161.725447689,
+      "observation_hash": "0xdad3a7389b4e3f84595160dd27fc07fd3e60033fb17ab8a6b2f1f7a95c7a382c"
+    },
+    {
+      "id": "anomaly_ledger_clean",
+      "passed": false,
+      "message": "119 open anomalies; 0 unexercised consequences of interruption; see anomalies.json",
+      "started_at": "2026-09-26T11:25:51.425107945Z",
+      "completed_at": "2026-09-26T16:00:26.60533845Z",
+      "duration_seconds": 16475.180230505,
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2"
+    },
+    {
+      "id": "process_log_completion",
+      "passed": false,
+      "message": "process log gate found 4 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "started_at": "2026-09-26T11:25:51.425107945Z",
+      "completed_at": "2026-09-26T15:59:11.594817507Z",
+      "duration_seconds": 16400.169709562,
+      "observation_hash": "0x2f4e277a730fe5d4a2e2aa0c0390e2a54fa69dc35870ad408b671d0ff1121eaa"
+    },
+    {
+      "id": "process_log_publication",
+      "passed": false,
+      "message": "process log gate found 5 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "started_at": "2026-09-26T11:25:51.425107945Z",
+      "completed_at": "2026-09-26T16:01:15.883695489Z",
+      "duration_seconds": 16524.458587544,
+      "observation_hash": "0xd244f6049b72f913517eb0d9809b7997dbb6089d4351b7ea6289706a16dffce2"
+    },
+    {
+      "id": "scenario_context",
+      "passed": false,
+      "message": "heartbeat process log gate: process log gate found 4 release-blocking class(es); first=operator-1-api/stderr/warning count=2",
+      "started_at": "2026-09-26T11:25:51.425107945Z",
+      "completed_at": "2026-09-26T15:59:08.796116947Z",
+      "duration_seconds": 16397.371009002,
+      "observation_hash": "0xdad3a7389b4e3f84595160dd27fc07fd3e60033fb17ab8a6b2f1f7a95c7a382c"
+    }
+  ]
+}
