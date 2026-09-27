@@ -279,6 +279,29 @@ func PreviewOwnerRecycle(input OwnerRecyclePreviewInput) (*OwnerRecyclePreview, 
 	if err != nil {
 		return nil, fmt.Errorf("owner-recycle provider allocation unavailable; no owner-only or zero-incentive fallback: %w", err)
 	}
+	if err := completeOwnerRecycleRow(preview, input.ParentPolicy, uids, scores, ownerUidKVs); err != nil {
+		return nil, err
+	}
+	return preview, nil
+}
+
+// Shared arithmetic consumes an already reconstructed normalized provider row.
+// Callers separately authenticate owner recognition, masks and provider identity;
+// this helper grants no validator eligibility or activation authority.
+func completeOwnerRecycleRow(preview *OwnerRecyclePreview, parent protocol.Policy, uids []uint16, scores []*big.Rat, ownerUidKVs map[uint16]bool) error {
+	if preview == nil || len(preview.OwnerUids) == 0 || len(uids) == 0 || len(uids) != len(scores) {
+		return errors.New("owner-recycle row lacks providers or usable owner destinations")
+	}
+	total := new(big.Rat)
+	for index, uid := range uids {
+		if scores[index] == nil || scores[index].Sign() <= 0 || index > 0 && uid <= uids[index-1] || ownerUidKVs[uid] {
+			return errors.New("owner-recycle provider row is not positive, ordered and separate from owners")
+		}
+		total.Add(total, scores[index])
+	}
+	if total.Cmp(big.NewRat(1, 1)) != 0 {
+		return errors.New("owner-recycle provider row is not exactly normalized")
+	}
 	scoreUidKVs := map[uint16]*big.Rat{}
 	for i, uid := range uids {
 		scoreUidKVs[uid] = new(big.Rat).Mul(scores[i], big.NewRat(1, 10))
@@ -291,20 +314,20 @@ func PreviewOwnerRecycle(input OwnerRecyclePreviewInput) (*OwnerRecyclePreview, 
 		preview.Uids = append(preview.Uids, uid)
 	}
 	sort.Slice(preview.Uids, func(i, j int) bool { return preview.Uids[i] < preview.Uids[j] })
-	capShare := big.NewRat(int64(input.ParentPolicy.Steering.MaxWeightLimitU16), crv4.U16Max)
+	capShare := big.NewRat(int64(parent.Steering.MaxWeightLimitU16), crv4.U16Max)
 	for _, uid := range preview.Uids {
 		score := scoreUidKVs[uid]
 		if score.Cmp(capShare) > 0 {
-			return nil, fmt.Errorf("owner-recycle uid %d exceeds the unchanged signed weight cap; clipping would change the proposal", uid)
+			return fmt.Errorf("owner-recycle uid %d exceeds the unchanged signed weight cap; clipping would change the proposal", uid)
 		}
 		preview.Scores = append(preview.Scores, score)
 	}
 	wireUids, wireValues, err := crv4.NormalizeRationalToU16(preview.Uids, preview.Scores)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(wireUids) != len(preview.Uids) {
-		return nil, errors.New("owner-recycle quantization loses a positive recipient")
+		return errors.New("owner-recycle quantization loses a positive recipient")
 	}
 	var wireSum, providerSum uint64
 	for i, uid := range wireUids {
@@ -314,12 +337,12 @@ func PreviewOwnerRecycle(input OwnerRecyclePreviewInput) (*OwnerRecyclePreview, 
 		}
 	}
 	for _, value := range wireValues {
-		if uint64(value)*crv4.U16Max > wireSum*uint64(input.ParentPolicy.Steering.MaxWeightLimitU16) {
-			return nil, errors.New("owner-recycle quantized row exceeds signed cap; integer repair would change the proposal")
+		if uint64(value)*crv4.U16Max > wireSum*uint64(parent.Steering.MaxWeightLimitU16) {
+			return errors.New("owner-recycle quantized row exceeds signed cap; integer repair would change the proposal")
 		}
 	}
 	preview.WireValues = wireValues
 	preview.WireProviderShare = new(big.Rat).SetFrac(new(big.Int).SetUint64(providerSum), new(big.Int).SetUint64(wireSum))
 	preview.ProviderShareError = new(big.Rat).Sub(preview.WireProviderShare, big.NewRat(1, 10))
-	return preview, nil
+	return nil
 }

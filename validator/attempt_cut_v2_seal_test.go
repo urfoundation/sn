@@ -69,7 +69,14 @@ func newAttemptCutV2SealTestFixtureForOperator(t *testing.T, depth, completed, f
 // durable epoch; ordinary seal fixtures retain their existing generation zero.
 func newAttemptCutV2SealTestFixtureForOperatorWithEpochOrder(t *testing.T, depth, completed, failed int, noID uint64, ledgerBeforeEpoch bool) *attemptCutV2SealTestFixture {
 	t.Helper()
-	policy := exactPolicy(t)
+	identity := AttemptLedgerIdentity{DeploymentID: "attempt-cut-v2-sealer-test", ChainID: 945, GenesisHash: attemptHex32([32]byte{4}), Netuid: 521, ValidatorID: 1, ValidatorUID: 7, NoID: noID}
+	return newAttemptCutV2SealTestFixtureForDomain(t, depth, completed, failed, ledgerBeforeEpoch, exactPolicy(t), identity)
+}
+
+// Select the complete synthetic network/policy before creating or signing any
+// record; a mainnet fixture must not relabel an existing testnet transcript.
+func newAttemptCutV2SealTestFixtureForDomain(t *testing.T, depth, completed, failed int, ledgerBeforeEpoch bool, policy protocol.Policy, identity AttemptLedgerIdentity) *attemptCutV2SealTestFixture {
+	t.Helper()
 	if policy.Verify.TrailDepth != 8 {
 		t.Fatalf("release policy depth = %d, want the existing M8 policy", policy.Verify.TrailDepth)
 	}
@@ -86,7 +93,7 @@ func newAttemptCutV2SealTestFixtureForOperatorWithEpochOrder(t *testing.T, depth
 			t.Fatal(err)
 		}
 	}
-	ledger, err := NewDiskAttemptLedger(context.Background(), state, AttemptLedgerIdentity{DeploymentID: "attempt-cut-v2-sealer-test", ChainID: 945, GenesisHash: attemptHex32([32]byte{4}), Netuid: 521, ValidatorID: 1, ValidatorUID: 7, NoID: noID}, attemptLedgerDiskTestCoordinator, key, attemptLedgerDiskTestLimits())
+	ledger, err := NewDiskAttemptLedger(context.Background(), state, identity, attemptLedgerDiskTestCoordinator, key, attemptLedgerDiskTestLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +170,11 @@ func newAttemptCutV2SealTestFixtureForOperatorWithEpochOrder(t *testing.T, depth
 	bounds, replay := attemptReplayV2TestBounds()
 	bounds.Records.MaxChunkBytes = 32 * 1024
 	bounds.Proofs.MaxChunkBytes = 32 * 1024
-	domain := protocol.ValidatorEvidenceDomain{ChainID: ledger.identity.ChainID, GenesisHash: [32]byte{4}, Netuid: ledger.identity.Netuid, Coordinator: [20]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, SettlementVault: [20]byte{0x12}, DeploymentIDHash: sha256.Sum256([]byte(ledger.identity.DeploymentID)), PolicyHash: policyHash, ActivationEpoch: 42, ActivationHash: [32]byte{0x14}}
+	genesis, err := parseReleaseHex32("synthetic ledger genesis", ledger.identity.GenesisHash, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	domain := protocol.ValidatorEvidenceDomain{ChainID: ledger.identity.ChainID, GenesisHash: genesis, Netuid: ledger.identity.Netuid, Coordinator: [20]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}, SettlementVault: [20]byte{0x12}, DeploymentIDHash: sha256.Sum256([]byte(ledger.identity.DeploymentID)), PolicyHash: policyHash, ActivationEpoch: 42, ActivationHash: [32]byte{0x14}}
 	expected := AttemptCutV2Context{Identity: ledger.identity, Activation: AttemptCutV2Activation{Domain: domain, Hotkey: [32]byte{0x15}, FirstSequence: 1, PriorRoot: zeroAttemptHash()}, Boundary: boundary, FirstSequence: 1, EgressFirstSequence: 1, EgressGeneration: 1, PriorRoot: zeroAttemptHash()}
 	if err := expected.Validate(); err != nil {
 		t.Fatal(err)

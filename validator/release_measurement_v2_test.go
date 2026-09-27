@@ -45,6 +45,15 @@ type releaseMeasurementV2TestFixture struct {
 // positive-quality case uses exactly 15 complete + 1 failed M8 trail per NO.
 func newReleaseMeasurementV2TestFixture(t *testing.T, completed int) *releaseMeasurementV2TestFixture {
 	t.Helper()
+	return newReleaseMeasurementV2TestFixtureWithOperator(t, completed, func(noID uint64) *attemptCutV2SealTestFixture {
+		return newAttemptCutV2SealTestFixtureForOperator(t, 8, completed, 1, noID)
+	})
+}
+
+// A separately declared synthetic domain still passes through the same real
+// engine, ledger, compact sealing and independent legacy scoring oracle.
+func newReleaseMeasurementV2TestFixtureWithOperator(t *testing.T, completed int, create func(uint64) *attemptCutV2SealTestFixture) *releaseMeasurementV2TestFixture {
+	t.Helper()
 	fixture := &releaseMeasurementV2TestFixture{operators: map[uint64]*releaseMeasurementV2TestOperator{}}
 	artifact := &ReleaseMeasurementArtifact{
 		Schema: ReleaseMeasurementSchemaV2, SubnetEpoch: 7,
@@ -53,7 +62,7 @@ func newReleaseMeasurementV2TestFixture(t *testing.T, completed int) *releaseMea
 		HeadEMA: []HeadEMAMeasurement{}, Pools: []ReleasePoolMeasurement{}, DepositAudits: []DepositAudit{},
 	}
 	for _, noID := range []uint64{9, 10} {
-		seal := newAttemptCutV2SealTestFixtureForOperator(t, 8, completed, 1, noID)
+		seal := create(noID)
 		// These caller-pinned, distinct earlier activation anchors are fixed
 		// before actual sealing. This fixture proves full cut authentication,
 		// not historical chain publication of the earlier activation records.

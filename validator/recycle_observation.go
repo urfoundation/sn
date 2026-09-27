@@ -56,6 +56,21 @@ func (self *ReleaseSteerer) ObserveOwnerRecycleAdmission(ctx context.Context) (*
 // Configuration and connection are borrowed and must remain immutable during
 // the call. The reader never rebinds the connection's signing metadata/runtime.
 func ObserveOwnerRecycleAdmission(ctx context.Context, cfg *ReleaseConfig, native *crv4.Chain) (*OwnerRecycleAdmissionObservation, error) {
+	return observeOwnerRecycleAdmissionAt(ctx, cfg, native, types.Hash{})
+}
+
+// Replays the original census at an explicit canonical block at or below the
+// current finalized head. Neither a later head nor a changed runtime relabels
+// the retained approval. Finality/ancestry still rely on the approved RPC.
+func ObserveOwnerRecycleAdmissionAt(ctx context.Context, cfg *ReleaseConfig, native *crv4.Chain, blockHash [32]byte) (*OwnerRecycleAdmissionObservation, error) {
+	if blockHash == ([32]byte{}) {
+		return nil, errors.New("owner-recycle historical census requires an exact block hash")
+	}
+	return observeOwnerRecycleAdmissionAt(ctx, cfg, native, types.Hash(blockHash))
+}
+
+// Current admission and exact historical replay share the same bounded reader.
+func observeOwnerRecycleAdmissionAt(ctx context.Context, cfg *ReleaseConfig, native *crv4.Chain, requested types.Hash) (*OwnerRecycleAdmissionObservation, error) {
 	if ctx == nil || native == nil || native.API == nil || native.API.Client == nil || native.ProvisionalRuntimeCompatibilityEnabled() {
 		return nil, errors.New("owner-recycle observation needs a non-provisional native connection and caller context")
 	}
@@ -101,7 +116,18 @@ func ObserveOwnerRecycleAdmission(ctx context.Context, cfg *ReleaseConfig, nativ
 	if err != nil {
 		return nil, err
 	}
+	finalizedNumber := uint64(header.Number)
+	if requested != (types.Hash{}) {
+		finalized = requested
+		header, err = native.HeaderAtContext(ctx, finalized)
+		if err != nil {
+			return nil, err
+		}
+	}
 	number := uint64(header.Number)
+	if number > finalizedNumber {
+		return nil, errors.New("owner-recycle census is newer than the current finalized head")
+	}
 	if finalized == (types.Hash{}) || number < approval.ValidFromNativeBlock || number > approval.ValidThroughNativeBlock || number > math.MaxUint32 {
 		return nil, errors.New("owner-recycle finalized head is outside the signed observation window")
 	}

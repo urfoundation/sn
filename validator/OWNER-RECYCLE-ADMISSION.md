@@ -7,6 +7,11 @@ activate the successor, submit weights, migrate policy history, or demonstrate a
 10% native outcome. Both `ActivationReady` and `NativeOutcomeVerified` remain
 false. The [pure planner](OWNER-RECYCLE-PLANNER.md) remains non-executable.
 
+The [measured decision capsule](OWNER-RECYCLE-MEASUREMENT.md) now carries these
+exact retained bytes and census through full V2 provider replay into a distinct
+blocked unsigned intent. It leaves every production signing/submission gate and
+the original V1/V2 history unchanged.
+
 ## Independent authority and durable custody
 
 `ReleaseConfig.owner_recycle_approval` contains an absolute content-addressed

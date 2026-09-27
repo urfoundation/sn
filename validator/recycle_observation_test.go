@@ -100,6 +100,9 @@ type recycleAdmissionFixture struct {
 	storage    map[string]any
 	keys       map[string]string
 	finalized  types.Hash
+	headHash   types.Hash
+	headNumber uint64
+	canonical  types.Hash
 	calls      []string
 	before     func(context.Context, string, []any) error
 	chainName  string
@@ -197,6 +200,9 @@ func newRecycleAdmissionFixture(t *testing.T, mutate func(*types.Metadata)) *rec
 		case "eth_chainId":
 			return assign(target, fixture.evmChainId)
 		case "chain_getFinalizedHead":
+			if fixture.headHash != (types.Hash{}) {
+				return assign(target, fixture.headHash)
+			}
 			return assign(target, fixture.finalized)
 		case "chain_getBlockHash":
 			if len(args) != 1 {
@@ -206,10 +212,16 @@ func newRecycleAdmissionFixture(t *testing.T, mutate func(*types.Metadata)) *rec
 				return assign(target, types.Hash(proposal.Runtime.GenesisHash))
 			}
 			if args[0] == uint64(100) {
+				if fixture.canonical != (types.Hash{}) {
+					return assign(target, fixture.canonical)
+				}
 				return assign(target, fixture.finalized)
 			}
 			return errors.New("synthetic canonical query height changed")
 		case "chain_getHeader":
+			if fixture.headHash != (types.Hash{}) && len(args) == 1 && args[0] == fixture.headHash.Hex() {
+				return assign(target, types.Header{Number: types.BlockNumber(fixture.headNumber)})
+			}
 			if len(args) != 1 || args[0] != fixture.finalized.Hex() {
 				return errors.New("synthetic header lost finalized hash")
 			}
