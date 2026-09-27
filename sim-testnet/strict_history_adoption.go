@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const strictHistoryAdoptionSchema = "urnetwork-sim-strict-history-adoption-v2"

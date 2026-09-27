@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 // Both operators publish head exclusion plus actual pool-tail leaves for two
