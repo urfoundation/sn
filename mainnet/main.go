@@ -60,10 +60,13 @@ func main() {
 	os.Exit(runMain(ctx, os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// runMain owns the two read-only commands and their explicit exit codes.
+// Dispatches signer-free observations and reference accounting with explicit exits.
 func runMain(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 && (args[0] == "check-recycle-mode" || args[0] == "economic-reference") {
+		return runEconomicCommand(ctx, args, stdout, stderr)
+	}
 	if len(args) == 0 || args[0] != "inspect" && args[0] != "monitor" {
-		fmt.Fprintln(stderr, "usage: sn-mainnet inspect|monitor --rpc URL [--expected-chain NAME --expected-genesis HASH --expected-evm-chain-id NUMBER]")
+		fmt.Fprintln(stderr, "usage: sn-mainnet inspect|monitor --rpc URL [identity flags]; check-recycle-mode --rpc URL --policy FILE; economic-reference --input FILE")
 		return 2
 	}
 	command := args[0]

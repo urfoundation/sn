@@ -21,6 +21,7 @@ import (
 
 const identitySchema = "urnetwork-mainnet-rpc-identity-v1"
 const maxRpcReplyBytes = 1024 * 1024
+const maxMetadataRpcReplyBytes = 8 * 1024 * 1024
 
 var errRpcIntegrity = errors.New("RPC evidence is inconsistent or malformed")
 
@@ -93,6 +94,19 @@ type rpcReply struct {
 
 // call retries transport and overload failures within one total operation budget.
 func (self *rpcClient) call(ctx context.Context, method string, params []any, result any) error {
+	return self.callWithStorageAbsence(ctx, method, params, result, false)
+}
+
+// Only an explicit storage reader can admit null as absence; identity and
+// runtime artifact reads continue to require a concrete result.
+func (self *rpcClient) callWithStorageAbsence(ctx context.Context, method string, params []any, result any, allowAbsent bool) error {
+	if allowAbsent && method != "state_getStorage" {
+		return errors.New("nullable results are restricted to explicit storage reads")
+	}
+	replyLimit := maxRpcReplyBytes
+	if method == "state_getMetadata" {
+		replyLimit = maxMetadataRpcReplyBytes
+	}
 	operationCtx, cancel := context.WithTimeout(ctx, self.retryWindow)
 	defer cancel()
 	requestBody, err := json.Marshal(struct {
@@ -115,13 +129,13 @@ func (self *rpcClient) call(ctx context.Context, method string, params []any, re
 		request.Header.Set("Content-Type", "application/json")
 		response, requestErr := self.httpClient.Do(request)
 		if requestErr == nil {
-			body, readErr := io.ReadAll(io.LimitReader(response.Body, maxRpcReplyBytes+1))
+			body, readErr := io.ReadAll(io.LimitReader(response.Body, int64(replyLimit)+1))
 			response.Body.Close()
 			if readErr != nil {
 				requestErr = readErr
-			} else if len(body) > maxRpcReplyBytes {
+			} else if len(body) > replyLimit {
 				attemptCancel()
-				return fmt.Errorf("%w: %s: reply exceeds 1 MiB", errRpcIntegrity, method)
+				return fmt.Errorf("%w: %s: reply exceeds %d MiB", errRpcIntegrity, method, replyLimit/(1024*1024))
 			} else if response.StatusCode == http.StatusOK {
 				if decodeErr := protocol.ValidateUniqueJsonKeys(body); decodeErr != nil {
 					attemptCancel()
@@ -140,7 +154,7 @@ func (self *rpcClient) call(ctx context.Context, method string, params []any, re
 					attemptCancel()
 					return fmt.Errorf("%s: RPC error %d: %s", method, reply.Error.Code, reply.Error.Message)
 				}
-				if len(reply.Result) == 0 || bytes.Equal(reply.Result, []byte("null")) {
+				if len(reply.Result) == 0 || bytes.Equal(reply.Result, []byte("null")) && !allowAbsent {
 					attemptCancel()
 					return fmt.Errorf("%w: %s: missing result", errRpcIntegrity, method)
 				}
