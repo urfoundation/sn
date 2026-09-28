@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"debug/buildinfo"
 	"encoding/binary"
 	"encoding/json"
 	"os"
@@ -316,6 +317,43 @@ func TestReleaseBuildRefusesWrongExecutableProfile(t *testing.T) {
 	}
 	if _, _, err := builder.artifact(context.Background(), role, path, inputs); err == nil || !strings.Contains(err.Error(), "role, target, build profile or source revision differs") {
 		t.Fatalf("untrimmed executable profile was accepted: %v", err)
+	}
+}
+
+// The actual compiler emits (devel) for the empty local replacement version in
+// go list. The initial literal comparison rejected every correct local build.
+func TestReleaseBuildAcceptsGoLocalReplacementIdentity(t *testing.T) {
+	fixture := newReleaseBuildFixture(t)
+	builder := fixture.builder(t)
+	role := releaseBuildRoles(fixture.lock)[0]
+	inputs, err := builder.capture(context.Background(), role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(fixture.config.OutputDir, "local-replacement")
+	if _, err := builder.command(context.Background(), role, time.Minute, append(builder.arguments(role), "-o", path, role.Package)...); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := buildinfo.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, embedded := false, false
+	for _, module := range inputs.Modules {
+		if module.Path == "example.test/release-dependency" && module.Replace != nil && module.Replace.Version == "" {
+			listed = true
+		}
+	}
+	for _, module := range actual.Deps {
+		if module.Path == "example.test/release-dependency" && module.Replace != nil && module.Replace.Version == "(devel)" {
+			embedded = true
+		}
+	}
+	if !listed || !embedded {
+		t.Fatal("real compiler fixture did not expose the local-version representation boundary")
+	}
+	if _, _, err := builder.artifact(context.Background(), role, path, inputs); err != nil {
+		t.Fatalf("valid local replacement executable was refused: %v", err)
 	}
 }
 

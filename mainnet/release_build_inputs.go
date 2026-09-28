@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -515,17 +516,31 @@ func (self *releaseBuilder) artifact(ctx context.Context, role releaseBuildRole,
 	}
 	for _, dependency := range info.Deps {
 		module, ok := moduleKVs[dependency.Path]
-		if !ok || dependency.Version != module.Version || dependency.Sum != module.Sum || (dependency.Replace == nil) != (module.Replace == nil) {
+		if !ok || !reflect.DeepEqual(*dependency, releaseBuildModuleIdentity(module)) {
 			return artifact, retained, errors.New("executable linked module differs from the compiler graph")
-		}
-		if dependency.Replace != nil && (dependency.Replace.Path != module.Replace.Path || dependency.Replace.Version != module.Replace.Version || dependency.Replace.Sum != module.Replace.Sum) {
-			return artifact, retained, errors.New("executable replacement differs from the compiler graph")
 		}
 	}
 	if err := releaseBuildVerifyArtifact(ctx, artifact); err != nil {
 		return artifact, retained, err
 	}
 	return artifact, retained, nil
+}
+
+// Go writes empty local versions as (devel) and attaches a checksum only to
+// the final versioned replacement. Compare that representation, not list JSON.
+func releaseBuildModuleIdentity(module releaseBuildModule) debug.Module {
+	version := module.Version
+	if version == "" {
+		version = "(devel)"
+	}
+	identity := debug.Module{Path: module.Path, Version: version}
+	if module.Replace != nil {
+		replacement := releaseBuildModuleIdentity(*module.Replace)
+		identity.Replace = &replacement
+	} else if module.Version != "" {
+		identity.Sum = module.Sum
+	}
+	return identity
 }
 
 // The claimed static Linux/amd64 profile is checked in ELF headers as well as
