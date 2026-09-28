@@ -383,6 +383,9 @@ func (self *evmCreateFixture) execute() error {
 	}
 	self.storageKey = key.Hex()
 	self.receipt = map[string]any{"transactionHash": self.tx.Hash().Hex(), "blockHash": hash, "blockNumber": fmt.Sprintf("0x%x", nextEvm), "transactionIndex": "0x0", "status": "0x1", "gasUsed": fmt.Sprintf("0x%x", gasUsed), "effectiveGasPrice": "0x2", "contractAddress": strings.ToLower(address.Hex())}
+	if self.plan.ActionIndex == 4 {
+		self.receipt["to"], self.receipt["from"] = nil, self.vm.Origin.Hex()
+	}
 	if self.tx.To() != nil {
 		logs := []map[string]any{}
 		for _, log := range self.state.GetLogs(self.tx.Hash(), nextEvm, header.Hash(), header.Time) {
@@ -566,6 +569,9 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 		if self.history != nil {
 			historical := self.vm
 			historical.State = self.historicalState(call.Params[1]).Copy()
+			if block, ok := call.Params[1].(map[string]any); ok {
+				historical.BlockNumber = new(big.Int).Set(self.evmHeaders[block["blockHash"].(string)].Number)
+			}
 			config = &historical
 		}
 		value, _, err := runtime.Call(common.HexToAddress(input["to"].(string)), data, config)

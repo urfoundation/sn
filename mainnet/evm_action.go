@@ -67,6 +67,8 @@ type evmCreateResult struct {
 	ActivationReady      bool                        `json:"activation_ready"`
 	RemainingActions     []string                    `json:"remaining_actions"`
 	EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
+	ProxyAddress         string                      `json:"coordinator_proxy_address,omitempty"`
+	ProxyConstructor     *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
 }
 
 // All mutable projections are copied on construction. Storage failure poisons
@@ -118,6 +120,14 @@ func newEvmEscrowRegisterOwner(plan evmCreatePlan, store, reserveStore, vaultSto
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore}, chain)
 }
 
+// All four ancestor journals remain locked through each proxy operation.
+func newEvmProxyCreateOwner(plan evmCreatePlan, store, reserveStore, vaultStore, coordinatorStore, escrowStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 4 || reserveStore == nil || vaultStore == nil || coordinatorStore == nil || escrowStore == nil {
+		return nil, errors.New("proxy owner lacks four predecessor custody journals")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore}, chain)
+}
+
 // Runtime projections own every nested slice; invocation-specific predecessor
 // records are always loaded afresh under the held locks rather than copied in.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
@@ -137,6 +147,14 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 	if plan.Coordinator != nil {
 		coordinator := copyEvmCreatePlan(*plan.Coordinator)
 		plan.Coordinator = &coordinator
+	}
+	if plan.Escrow != nil {
+		escrow := copyEvmCreatePlan(*plan.Escrow)
+		plan.Escrow = &escrow
+	}
+	if plan.ProxyConstructor != nil {
+		constructor := *plan.ProxyConstructor
+		plan.ProxyConstructor = &constructor
 	}
 	if plan.EscrowRegistration != nil {
 		registration := *plan.EscrowRegistration
@@ -196,12 +214,20 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 		return err
 	}
 	r := record.Receipt
+	if r == nil {
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy"}[plan.ActionIndex]
+		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
+	}
+	getters, err := plan.receiptGetters(*r)
+	if err != nil {
+		return err
+	}
 	expectedAddress := plan.Address.Hex()
 	if plan.ActionIndex == 3 {
 		expectedAddress = ""
 	}
-	if r == nil || r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(plan.Getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration"}[plan.ActionIndex]
+	if r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
@@ -424,12 +450,19 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 		result.ExecutableAction = "coordinator-create"
 		result.RemainingActions = result.RemainingActions[1:]
 	}
-	if self.plan.ActionIndex == 3 {
+	if self.plan.ActionIndex >= 3 {
 		result.CoordinatorAddress = self.plan.Coordinator.Address.Hex()
 		result.ExecutableAction = "escrow-register"
 		result.RemainingActions = result.RemainingActions[1:]
 		registration := *self.plan.EscrowRegistration
 		result.EscrowRegistration = &registration
+	}
+	if self.plan.ActionIndex == 4 {
+		result.ProxyAddress = self.plan.Address.Hex()
+		result.ExecutableAction = "proxy-create"
+		result.RemainingActions = result.RemainingActions[1:]
+		constructor := *self.plan.ProxyConstructor
+		result.ProxyConstructor = &constructor
 	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"

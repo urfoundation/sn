@@ -169,6 +169,12 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 			return result, 0, errors.New("escrow receipt sender or call target differs")
 		}
 	}
+	if plan.ActionIndex == 4 {
+		from, fromErr := textField("from")
+		if !bytes.Equal(fields["to"], []byte("null")) || fromErr != nil || !common.IsHexAddress(from) || common.HexToAddress(from) != action.Sender {
+			return result, 0, errors.New("proxy receipt sender or CREATE target differs")
+		}
+	}
 	if result.TransactionHash != record.TransactionHash || !rootCanonicalHash(result.BlockHash) || result.BlockNumber == 0 || result.Status > 1 || result.GasUsed == 0 || result.GasUsed > action.Gas || values["effectiveGasPrice"].Cmp(fee) > 0 || result.Status == 1 && result.ContractAddress != expectedAddress || result.Status == 0 && result.ContractAddress != "" {
 		return result, 0, errors.New("EVM receipt contradicts the original CREATE")
 	}
@@ -293,7 +299,11 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 		if code != "0x"+hex.EncodeToString(plan.Runtime) {
 			return receipt, errors.New("created contract runtime differs from exact patched release")
 		}
-		for _, getter := range plan.Getters {
+		getters, err := plan.receiptGetters(receipt)
+		if err != nil {
+			return receipt, err
+		}
+		for _, getter := range getters {
 			var output string
 			if err := self.read(ctx, "eth_call", []any{map[string]any{"to": plan.Address.Hex(), "data": getter.Data}, block}, &output); err != nil {
 				return receipt, err
@@ -312,7 +322,7 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 			}
 		}
 		receipt.RuntimeHash = crypto.Keccak256Hash(plan.Runtime).Hex()
-		receipt.GetterHash = rootObjectHash(plan.Getters)
+		receipt.GetterHash = rootObjectHash(getters)
 		if len(plan.Storage) != 0 {
 			receipt.StorageHash = rootObjectHash(plan.Storage)
 		}
@@ -321,6 +331,11 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 				return receipt, err
 			}
 			receipt.RegistrationHash = evmEscrowRegistrationHash(plan, receipt)
+		}
+		if plan.ActionIndex == 4 {
+			if err := self.authenticateProxyImplementation(ctx, plan, block); err != nil {
+				return receipt, err
+			}
 		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.

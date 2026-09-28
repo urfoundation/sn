@@ -1,10 +1,10 @@
-# Executable contract bootstrap: three CREATEs and escrow registration
+# Executable contract bootstrap through initialized coordinator proxy
 
-`bootstrap-contracts preview/plan/apply/resume` implements the first four installation
-actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, then the vault's bounded `registerEscrow` call through retained
+`bootstrap-contracts preview/plan/apply/resume` implements the first five installation
+actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, the vault's bounded `registerEscrow` call, then atomic initialized `ERC1967Proxy` CREATE through retained
 public EVM custody and the owned HTTP submission adapter. `--action reserve-create`
-is the unchanged default; `--action vault-create`, `--action coordinator-create`
-and `--action escrow-register` explicitly select actions one through three from
+is the unchanged default; `--action vault-create`, `--action coordinator-create`,
+`--action escrow-register` and `--action proxy-create` explicitly select actions one through four from
 the **same already approved graph**.
 It does not install the remaining contracts, anchor
 evidence, register miners, change emissions, activate validators, or complete
@@ -19,6 +19,8 @@ The [escrow source handoff](evidence/bootstrap-contract-escrow-source-20260928.m
 records its source scope and pending behavioral qualification. The local escrow
 fixtures model native precompiles explicitly; they do not qualify live burn or
 existential-deposit behavior.
+The [proxy source handoff](evidence/bootstrap-contract-proxy-source-20260928.md)
+records the atomic initializer scope and pending separate behavioral qualification.
 
 The release catalog comes from the existing generator:
 
@@ -47,7 +49,7 @@ constructor arguments, the same deployer's next zero-value CREATE after the
 vault, and the predicted address in the UUPS `__self` immutable. Its constructor
 only disables initialization. The implementation's owner, guardian, network,
 vault, reserve and evidence getters remain zero; those are not initialized proxy
-values. Proxy creation with atomic initialization remains a later action.
+values. Proxy initialization is a separate explicitly selected action.
 
 Escrow selection requires approved action three to call that exact vault at the
 same deployer's next nonce. Its calldata must be the generated binding's exact
@@ -56,6 +58,15 @@ same deployer's next nonce. Its calldata must be the generated binding's exact
 comes from the approved runtime source's `SubtensorEvmBalanceConverter`.
 The cap, hotkey and mapped coldkey are derived review fields; the original
 approved payload, signed plan schema and approval hash remain unchanged.
+
+Proxy selection requires the next zero-value CREATE after escrow. The complete
+release creation bytes and `(implementation, initializer)` constructor ABI must
+repack exactly, including the nonempty generated `STCoordinator.initialize`
+call. Implementation, netuid, reserve, vault and proxy-mapped coldkey derive from
+the same graph. Nonzero owner, guardian, commitment oracle and the initial policy
+are decoded only from approved calldata. The source's policy bounds and immutable
+vault claim-window condition are checked with full-width arithmetic. No live
+Safe authority is inferred from the configured owner address.
 
 ## Approval and custody
 
@@ -93,6 +104,13 @@ With `--action escrow-register`, preview additionally exports
 `escrow_registration`: the decoded cap in rao, exact funded wei, immutable
 escrow hotkey and vault-mapped coldkey. It includes all three prior address and
 runtime projections under the same complete graph hash.
+With `--action proxy-create`, preview also exports
+`coordinator_proxy_address`, `expected_proxy_runtime_hash`, `proxy_constructor`
+and `proxy_storage`. `proxy_constructor.approved_policy` preserves the original
+input fields, including the effective epoch/block words. Reviewed initialization
+overwrites those two words to epoch zero and the actual EVM inclusion height;
+the command preserves the signed payload and derives only the expected observed
+policy from that authenticated height.
 
 Preview reads only the draft and artifact files. It does not inspect or create
 the future run directory, acquire its journal lock, load a key, or open a network
@@ -129,7 +147,7 @@ No DNS, proxy, redirect, endpoint fallback or automatic write retry is admitted.
 
 The bounded graph may contain the ordered prefix of one through nine actions.
 One approval covers all supplied action reservations; no per-step confirmation
-is invented. Actions zero through three are executable in this candidate. Later actions
+is invented. Actions zero through four are executable in this candidate. Later actions
 remain sealed reservations, not claims that their semantic builders or Safe
 executor exist. Extending a prefix changes authority and cannot silently amend
 an existing journal. A previously approved reserve-only prefix cannot gain vault
@@ -137,12 +155,12 @@ authority on reopen. Each prepared vault and implementation must be a zero-value
 CREATE by the reserve deployer at exactly the next nonce. Later executors and any full-installation
 attempt policy remain separate unfinished work.
 
-For the four executable actions, this candidate conservatively counts all
+For the five executable actions, this candidate conservatively counts all
 their submission attempts together against the original `maximum_attempts`.
 Child resume cannot renew any predecessor's spent allowance. The existing limit of
 eight remains unchanged; this is not an implemented nine-action send policy.
 `maximum_total_wei` still bounds the value plus maximum gas liability of every
-approved action. Vault, implementation and escrow send admission also require enough
+approved action. Every child action's send admission also requires enough
 pending balance for the selected action and all later sealed reservations
 belonging to the same sender.
 
@@ -186,9 +204,18 @@ sn-mainnet bootstrap-contracts apply --action escrow-register --config /secure/u
 sn-mainnet bootstrap-contracts resume --action escrow-register --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/escrow.signed.bin --signed-transaction-hash "$ESCROW_SIGNED_FILE_HASH"
 ```
 
+After the exact escrow event/mapping outcome is retained, select the original
+proxy CREATE and its already approved atomic initializer:
+
+```sh
+sn-mainnet bootstrap-contracts plan --action proxy-create --config /secure/ur-mainnet/contract-phase.json
+sn-mainnet bootstrap-contracts apply --action proxy-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH"
+sn-mainnet bootstrap-contracts resume --action proxy-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/proxy.signed.bin --signed-transaction-hash "$PROXY_SIGNED_FILE_HASH"
+```
+
 The result distinguishes `signature-awaiting-import`, `signed-custody-complete`,
 uncertain/pending chain work, `reserve-created`, `vault-created`,
-`coordinator-created`, `escrow-registered`, and a reverted action with its
+`coordinator-created`, `escrow-registered`, `proxy-created-initialized`, and a reverted action with its
 nonce consumed. The escrow failure status is
 `escrow-registration-reverted-nonce-consumed`. `installation_complete` and
 `activation_ready` remain false.
@@ -200,6 +227,10 @@ Implementation results also carry `coordinator_implementation_address` and
 Escrow results retain those addresses and add the derived `escrow_registration`
 review fields with `executable_action: "escrow-register"`; five actions remain.
 Registration does not bind the coordinator or initialize the future proxy.
+Proxy results add `coordinator_proxy_address` and `proxy_constructor` with
+`executable_action: "proxy-create"`; four actions remain. The reserve recorder,
+vault coordinator and validator evidence links are still separate unfinished
+actions; proxy initialization does not complete installation or activation.
 An offline reopen preserves each completed status and the original receipt,
 with `receipt_observation: "retained"`. A successful online receipt audit emits
 `receipt_observation: "revalidated-online"`. Retained completion is historical
@@ -244,6 +275,16 @@ approved registration identities/cap and observed event UID/log index.
 `escrow_uid` and `escrow_log_index` are omitted at zero; zero is valid and is
 still bound by the digest. All new receipt fields are omitted from historical
 CREATE receipts, preserving their serialized bytes and content hashes.
+
+`proxy-create.json` uses `urnetwork-mainnet-evm-proxy-state-v1` and seals the
+exact completed escrow record. Its four transitive ancestors remain held under
+their own locks and keep their historical bytes. Every online proxy invocation
+reauthenticates all four receipts, then fences their checkpoints through current
+and refreshed admission. Existing signature custody, cumulative attempts,
+publication poisoning and claim-recovery rules apply without new send authority.
+No receipt field is added for proxy creation: `getter_hash` binds the initialized
+policy at the authenticated EVM inclusion height and `storage_hash` binds the
+five exact proxy storage words. Earlier actions keep their original hashes.
 
 Reconciliation always precedes submission. A durable attempt is consumed before
 the single HTTP write, including an interrupted or uncertain write. Later sends
@@ -307,6 +348,29 @@ flag and effects. These are source-supported bounded semantics. This adapter
 does not measure actual native burn, existential deposit, refund or resulting
 native balance from receipt gas fields; no such live observations are claimed.
 
+Proxy receipt identity requires the original sender, null call target and exact
+created address, alongside the original transaction bytes and financial bounds.
+At that inclusion the adapter checks exact proxy runtime and 24 getters: network,
+mapped coldkey, reserve/vault addresses, owner, configured/active guardian and
+oracle, one policy, zero pending roles/epochs, unpaused state, zero campaign
+reservation/operators/evidence/current epoch, the interface version, initial
+policy by index and epoch, and epoch-zero start/end blocks. The two policy reads
+must equal approved fields with effective epoch zero and effective block equal
+to the receipt's EVM height. Native height, latest head and the ignored approved
+input block cannot substitute for that observation.
+
+Five `eth_getStorageAt` observations use the same canonical block: ERC1967
+implementation is the completed implementation address; admin and beacon are
+zero; the Initializable namespace holds version one with `_initializing` false;
+and the Ownable namespace holds the exact approved owner. The owner namespace is
+`0x9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c199300`.
+Admin/beacon zero does not imply owner zero. The adapter also reads the reviewed
+implementation runtime and its disabled-initializer/zero-implementation storage
+at this proxy inclusion, separately from its historical CREATE receipt. All
+getters, storage and code share the authenticated canonical block object and
+the final mapping rechecks. A reverted proxy CREATE retains only the consumed
+nonce outcome; it cannot become initialized completion or a replacement nonce.
+
 Each invocation scans at most 128 new native headers. Completed chunks are
 durable; an interrupted current chunk is repeated, at most 128 headers. A failed
 candidate read cannot advance past that candidate. Archive unavailability
@@ -337,8 +401,7 @@ under the originally approved historical runtime. Inclusion under an unapproved
 execution/parent runtime remains unresolved and needs separately qualified
 authority migration, not a fresh journal or an inferred compatibility waiver.
 
-The remaining graph is atomic initialized proxy CREATE,
-reserve recorder binding, vault coordinator binding, `STValidatorEvidence`
+The remaining graph is reserve recorder binding, vault coordinator binding, `STValidatorEvidence`
 CREATE, and the separately authorized Safe `fixValidatorEvidence` call. The
 last action needs exact Safe digest/signature/nonce ownership and the outer
 relayer's distinct nonce/fee reservation. Both the Safe inner success and the
