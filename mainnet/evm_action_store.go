@@ -15,6 +15,7 @@ import (
 const evmActionStateSchema = "urnetwork-mainnet-evm-action-state-v1"
 const evmVaultActionStateSchema = "urnetwork-mainnet-evm-vault-state-v1"
 const evmCoordinatorActionStateSchema = "urnetwork-mainnet-evm-coordinator-state-v1"
+const evmEscrowActionStateSchema = "urnetwork-mainnet-evm-escrow-state-v1"
 
 // Receipt facts are reauthenticated on every online resume. Their retained hash
 // detects accidental corruption; it is neither consensus nor external custody.
@@ -49,7 +50,10 @@ func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex
 	if actionIndex == 2 {
 		schema = evmCoordinatorActionStateSchema
 	}
-	if actionIndex < 0 || actionIndex > 2 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex > 0 && !planSha256(self.PredecessorHash) {
+	if actionIndex == 3 {
+		schema = evmEscrowActionStateSchema
+	}
+	if actionIndex < 0 || actionIndex > 3 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex > 0 && !planSha256(self.PredecessorHash) {
 		return errors.New("EVM journal action or prerequisite differs")
 	}
 	if self.Schema != schema || self.ConfigHash != rootObjectHash(config) || claimed != rootObjectHash(self) || self.Attempts > p.MaximumAttempts || self.ScanNumber < p.StartNativeNumber || !rootCanonicalHash(self.ScanHash) || self.ScanNumber == p.StartNativeNumber && self.ScanHash != p.StartNativeHash {
@@ -71,6 +75,9 @@ func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex
 	}
 	if self.Receipt != nil && (self.Receipt.TransactionHash != self.TransactionHash || !rootCanonicalHash(self.Receipt.NativeHash) || !rootCanonicalHash(self.Receipt.BlockHash) || self.Receipt.NativeNumber <= p.StartNativeNumber || self.Receipt.Status > 1) {
 		return errors.New("retained EVM receipt is incomplete")
+	}
+	if self.Receipt != nil && (actionIndex < 3 || self.Receipt.Status == 0) && (self.Receipt.RegistrationHash != "" || self.Receipt.EscrowUid != 0 || self.Receipt.EscrowLogIndex != 0) {
+		return errors.New("non-registration outcome contains escrow receipt fields")
 	}
 	return nil
 }
@@ -130,13 +137,29 @@ func openEvmCoordinatorActionStore(plan evmCreatePlan, reserve, vault evmActionR
 	return openEvmSelectedActionStore(plan.Config, 2, rootObjectHash(vault), create, claimHook)
 }
 
-// All three actions share publication and initial-claim recovery mechanics with
+// The coordinator record seals both older ancestors. Its hash is immutable
+// while the fourth journal owns its original signature and attempt allowance.
+func openEvmEscrowActionStore(plan evmCreatePlan, reserve, vault, coordinator evmActionRecord, create bool, claimHook func(string) error) (*evmActionStore, error) {
+	if err := plan.validateSelection(); err != nil {
+		return nil, err
+	}
+	if plan.ActionIndex != 3 {
+		return nil, errors.New("escrow custody requires explicit registration selection")
+	}
+	plan.Prerequisites = []evmActionRecord{reserve, vault, coordinator}
+	if err := validateEvmCreatePrerequisite(plan, evmActionRecord{PredecessorHash: rootObjectHash(coordinator)}); err != nil {
+		return nil, err
+	}
+	return openEvmSelectedActionStore(plan.Config, 3, rootObjectHash(coordinator), create, claimHook)
+}
+
+// All four actions share publication and initial-claim recovery mechanics with
 // separate schemas/paths/markers; a completed marker never refreshes budget.
 func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predecessorHash string, create bool, claimHook func(string) error) (*evmActionStore, error) {
 	if err := errors.Join(config.validate(), bootstrapRootDirectory(config.Plan.RunDirectory)); err != nil {
 		return nil, err
 	}
-	if actionIndex < 0 || actionIndex > 2 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex > 0 && !planSha256(predecessorHash) {
+	if actionIndex < 0 || actionIndex > 3 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex > 0 && !planSha256(predecessorHash) {
 		return nil, errors.New("EVM store action or prerequisite differs")
 	}
 	name, schema := evmCreateStateFile, evmActionStateSchema
@@ -146,6 +169,9 @@ func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predeces
 	}
 	if actionIndex == 2 {
 		name, schema = evmCoordinatorCreateStateFile, evmCoordinatorActionStateSchema
+	}
+	if actionIndex == 3 {
+		name, schema = evmEscrowRegisterStateFile, evmEscrowActionStateSchema
 	}
 	if actionIndex > 0 {
 		marker = rootObjectHash(struct{ ConfigHash, ActionId, PredecessorHash string }{ConfigHash: rootObjectHash(config), ActionId: config.Plan.Actions[actionIndex].Id, PredecessorHash: predecessorHash}) + "\n"

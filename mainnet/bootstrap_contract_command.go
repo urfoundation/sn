@@ -13,7 +13,7 @@ import (
 )
 
 // Commands preserve original custody even when result publication fails.
-// An explicit action selects one of the three implemented CREATE reservations.
+// An explicit action selects one of the four implemented graph reservations.
 // The default and original reserve journal remain unchanged.
 func runBootstrapContractCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) < 2 || args[0] != "bootstrap-contracts" {
@@ -28,7 +28,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	flags := flag.NewFlagSet("bootstrap-contracts "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "", "phase configuration; only preview accepts an unsigned draft")
-	actionId := flags.String("action", "reserve-create", "implemented approved CREATE: reserve-create, vault-create or coordinator-create")
+	actionId := flags.String("action", "reserve-create", "implemented approved action: reserve-create, vault-create, coordinator-create or escrow-register")
 	accepted := flags.String("accept-plan-hash", "", "exact reviewed phase hash")
 	runDirectory := flags.String("run-dir", "", "approved private journal directory")
 	signaturePath := flags.String("signed-transaction", "", "private regular file containing original public transaction bytes")
@@ -36,7 +36,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	online := flags.Bool("online", false, "read the independently approved owned RPC route")
 	submit := flags.Bool("submit", false, "permit one originally approved, durably counted HTTP submission")
 	review := command == "plan" || command == "preview"
-	if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || *configPath == "" || (*actionId != "reserve-create" && *actionId != "vault-create" && *actionId != "coordinator-create") || review && (*accepted != "" || *runDirectory != "" || *signaturePath != "" || *signatureHash != "" || *online || *submit) || !review && (*accepted == "" || *runDirectory == "") || (*signaturePath == "") != (*signatureHash == "") || *signaturePath != "" && (command != "resume" || !planSha256(*signatureHash)) || (*online || *submit) && command != "resume" || *submit && !*online {
+	if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || *configPath == "" || (*actionId != "reserve-create" && *actionId != "vault-create" && *actionId != "coordinator-create" && *actionId != "escrow-register") || review && (*accepted != "" || *runDirectory != "" || *signaturePath != "" || *signatureHash != "" || *online || *submit) || !review && (*accepted == "" || *runDirectory == "") || (*signaturePath == "") != (*signatureHash == "") || *signaturePath != "" && (command != "resume" || !planSha256(*signatureHash)) || (*online || *submit) && command != "resume" || *submit && !*online {
 		fmt.Fprintln(stderr, "contract phase requires exact config/plan/run directory; only resume accepts pinned signed bytes, --online and --submit")
 		return 2
 	}
@@ -65,12 +65,13 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	}
 	if command == "plan" {
 		if err := encoder.Encode(struct {
-			Plan                 evmPhasePlan              `json:"plan"`
-			PlanHash             string                    `json:"plan_hash"`
-			ExecutableAction     string                    `json:"executable_action"`
-			InstallationComplete bool                      `json:"installation_complete"`
-			VaultConstructor     *contractVaultConstructor `json:"vault_constructor,omitempty"`
-		}{Plan: plan.Config.Plan, PlanHash: plan.Config.Plan.hash(), ExecutableAction: *actionId, InstallationComplete: false, VaultConstructor: plan.VaultConstructor}); err != nil {
+			Plan                 evmPhasePlan                `json:"plan"`
+			PlanHash             string                      `json:"plan_hash"`
+			ExecutableAction     string                      `json:"executable_action"`
+			InstallationComplete bool                        `json:"installation_complete"`
+			VaultConstructor     *contractVaultConstructor   `json:"vault_constructor,omitempty"`
+			EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
+		}{Plan: plan.Config.Plan, PlanHash: plan.Config.Plan.hash(), ExecutableAction: *actionId, InstallationComplete: false, VaultConstructor: plan.VaultConstructor, EscrowRegistration: plan.EscrowRegistration}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -82,7 +83,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	}
 	var signed []byte
 	if *signaturePath != "" {
-		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile}[:plan.ActionIndex+1] {
+		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile}[:plan.ActionIndex+1] {
 			state := filepath.Join(*runDirectory, name)
 			if *signaturePath == state || *signaturePath == state+".lock" {
 				fmt.Fprintln(stderr, "signed-byte input aliases custody")
@@ -104,7 +105,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	var store, reserveStore, vaultStore *evmActionStore
+	var store, reserveStore, vaultStore, coordinatorStore *evmActionStore
 	if plan.ActionIndex > 0 {
 		reserveStore, err = openEvmActionStore(plan.Config, false, nil)
 		if err != nil {
@@ -131,7 +132,22 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 				fmt.Fprintln(stderr, "contract phase vault prerequisite:", loadErr)
 				return 3
 			}
-			store, err = openEvmCoordinatorActionStore(plan, reserve, vault, command == "apply", nil)
+			if plan.ActionIndex == 2 {
+				store, err = openEvmCoordinatorActionStore(plan, reserve, vault, command == "apply", nil)
+			} else {
+				coordinatorStore, err = openEvmCoordinatorActionStore(*plan.Coordinator, reserve, vault, false, nil)
+				if err != nil {
+					fmt.Fprintln(stderr, "contract phase coordinator prerequisite custody:", err)
+					return 3
+				}
+				defer coordinatorStore.close()
+				coordinator, loadErr := coordinatorStore.load()
+				if loadErr != nil {
+					fmt.Fprintln(stderr, "contract phase coordinator prerequisite:", loadErr)
+					return 3
+				}
+				store, err = openEvmEscrowActionStore(plan, reserve, vault, coordinator, command == "apply", nil)
+			}
 		}
 	} else {
 		store, err = openEvmActionStore(plan.Config, command == "apply", nil)
@@ -152,7 +168,9 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 		defer adapter.client.httpClient.CloseIdleConnections()
 	}
 	var owner *evmCreateOwner
-	if plan.ActionIndex == 2 {
+	if plan.ActionIndex == 3 {
+		owner, err = newEvmEscrowRegisterOwner(plan, store, reserveStore, vaultStore, coordinatorStore, chain)
+	} else if plan.ActionIndex == 2 {
 		owner, err = newEvmCoordinatorCreateOwner(plan, store, reserveStore, vaultStore, chain)
 	} else if plan.ActionIndex == 1 {
 		owner, err = newEvmVaultCreateOwner(plan, store, reserveStore, chain)

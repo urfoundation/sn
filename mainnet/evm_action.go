@@ -28,6 +28,9 @@ type evmCreateReceipt struct {
 	RuntimeHash       string `json:"runtime_hash,omitempty"`
 	GetterHash        string `json:"getter_hash,omitempty"`
 	StorageHash       string `json:"storage_hash,omitempty"`
+	EscrowUid         uint16 `json:"escrow_uid,omitempty"`
+	EscrowLogIndex    uint64 `json:"escrow_log_index,omitempty"`
+	RegistrationHash  string `json:"registration_hash,omitempty"`
 }
 
 // Read results never grant another nonce or a replacement signature.
@@ -48,21 +51,22 @@ type evmActionChain interface {
 
 // The result explicitly separates one contract from the full installation.
 type evmCreateResult struct {
-	PlanHash             string            `json:"plan_hash"`
-	Status               string            `json:"status"`
-	Address              string            `json:"reserve_address"`
-	VaultAddress         string            `json:"vault_address,omitempty"`
-	CoordinatorAddress   string            `json:"coordinator_implementation_address,omitempty"`
-	ExecutableAction     string            `json:"executable_action,omitempty"`
-	SigningDigest        string            `json:"signing_digest"`
-	UnsignedTransaction  string            `json:"unsigned_transaction"`
-	TransactionHash      string            `json:"transaction_hash,omitempty"`
-	Attempts             uint8             `json:"attempts"`
-	Receipt              *evmCreateReceipt `json:"receipt,omitempty"`
-	ReceiptObservation   string            `json:"receipt_observation,omitempty"`
-	InstallationComplete bool              `json:"installation_complete"`
-	ActivationReady      bool              `json:"activation_ready"`
-	RemainingActions     []string          `json:"remaining_actions"`
+	PlanHash             string                      `json:"plan_hash"`
+	Status               string                      `json:"status"`
+	Address              string                      `json:"reserve_address"`
+	VaultAddress         string                      `json:"vault_address,omitempty"`
+	CoordinatorAddress   string                      `json:"coordinator_implementation_address,omitempty"`
+	ExecutableAction     string                      `json:"executable_action,omitempty"`
+	SigningDigest        string                      `json:"signing_digest"`
+	UnsignedTransaction  string                      `json:"unsigned_transaction"`
+	TransactionHash      string                      `json:"transaction_hash,omitempty"`
+	Attempts             uint8                       `json:"attempts"`
+	Receipt              *evmCreateReceipt           `json:"receipt,omitempty"`
+	ReceiptObservation   string                      `json:"receipt_observation,omitempty"`
+	InstallationComplete bool                        `json:"installation_complete"`
+	ActivationReady      bool                        `json:"activation_ready"`
+	RemainingActions     []string                    `json:"remaining_actions"`
+	EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
 }
 
 // All mutable projections are copied on construction. Storage failure poisons
@@ -106,6 +110,14 @@ func newEvmCoordinatorCreateOwner(plan evmCreatePlan, store, reserveStore, vault
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore}, chain)
 }
 
+// All three predecessor locks remain held for the complete escrow invocation.
+func newEvmEscrowRegisterOwner(plan evmCreatePlan, store, reserveStore, vaultStore, coordinatorStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 3 || reserveStore == nil || vaultStore == nil || coordinatorStore == nil {
+		return nil, errors.New("escrow owner lacks reserve, vault and coordinator custody")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore}, chain)
+}
+
 // Runtime projections own every nested slice; invocation-specific predecessor
 // records are always loaded afresh under the held locks rather than copied in.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
@@ -121,6 +133,14 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 	if plan.Vault != nil {
 		vault := copyEvmCreatePlan(*plan.Vault)
 		plan.Vault = &vault
+	}
+	if plan.Coordinator != nil {
+		coordinator := copyEvmCreatePlan(*plan.Coordinator)
+		plan.Coordinator = &coordinator
+	}
+	if plan.EscrowRegistration != nil {
+		registration := *plan.EscrowRegistration
+		plan.EscrowRegistration = &registration
 	}
 	if plan.VaultConstructor != nil {
 		constructor := *plan.VaultConstructor
@@ -151,7 +171,7 @@ func newEvmSelectedCreateOwner(plan evmCreatePlan, store evmActionStorage, prior
 	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
 		return nil, err
 	}
-	if plan.ActionIndex == 2 && record.Receipt != nil && record.Receipt.Status == 1 {
+	if plan.ActionIndex >= 2 && record.Receipt != nil && record.Receipt.Status == 1 {
 		if err := validateEvmCreateCompletion(plan, record); err != nil {
 			return nil, err
 		}
@@ -176,12 +196,19 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 		return err
 	}
 	r := record.Receipt
-	if r == nil || r.Status != 1 || r.ContractAddress != plan.Address.Hex() || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(plan.Getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		name := []string{"reserve", "vault", "coordinator implementation"}[plan.ActionIndex]
+	expectedAddress := plan.Address.Hex()
+	if plan.ActionIndex == 3 {
+		expectedAddress = ""
+	}
+	if r == nil || r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(plan.Getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
 		return errors.New("retained constructor storage postconditions differ")
+	}
+	if plan.ActionIndex == 3 && (plan.EscrowRegistration == nil || r.RegistrationHash != evmEscrowRegistrationHash(plan, *r)) {
+		return errors.New("retained escrow registration postconditions differ")
 	}
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, err := evmWei(r.EffectiveGasPrice)
@@ -289,7 +316,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 	if err := record.validateForAction(self.plan.Config, self.plan.ActionIndex); err != nil {
 		return result, err
 	}
-	if self.plan.ActionIndex == 2 && record.Receipt != nil && record.Receipt.Status == 1 {
+	if self.plan.ActionIndex >= 2 && record.Receipt != nil && record.Receipt.Status == 1 {
 		if err := validateEvmCreateCompletion(self.plan, record); err != nil {
 			return result, err
 		}
@@ -329,7 +356,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 	if record.Receipt != nil {
 		status = self.plan.completedStatus()
 		if record.Receipt.Status == 0 {
-			status = "create-reverted-nonce-consumed"
+			status = self.plan.revertedStatus()
 		}
 	}
 	if online {
@@ -391,11 +418,18 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 		result.ExecutableAction = "vault-create"
 		result.RemainingActions = result.RemainingActions[1:]
 	}
-	if self.plan.ActionIndex == 2 {
+	if self.plan.ActionIndex >= 2 {
 		result.VaultAddress = self.plan.Vault.Address.Hex()
 		result.CoordinatorAddress = self.plan.Address.Hex()
 		result.ExecutableAction = "coordinator-create"
 		result.RemainingActions = result.RemainingActions[1:]
+	}
+	if self.plan.ActionIndex == 3 {
+		result.CoordinatorAddress = self.plan.Coordinator.Address.Hex()
+		result.ExecutableAction = "escrow-register"
+		result.RemainingActions = result.RemainingActions[1:]
+		registration := *self.plan.EscrowRegistration
+		result.EscrowRegistration = &registration
 	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"

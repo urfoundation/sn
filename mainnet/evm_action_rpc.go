@@ -157,8 +157,25 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 	}
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, _ := evmWei(action.FeeCapWei)
-	if result.TransactionHash != record.TransactionHash || !rootCanonicalHash(result.BlockHash) || result.BlockNumber == 0 || result.Status > 1 || result.GasUsed == 0 || result.GasUsed > action.Gas || values["effectiveGasPrice"].Cmp(fee) > 0 || result.Status == 1 && result.ContractAddress != plan.Address.Hex() || result.Status == 0 && result.ContractAddress != "" {
+	expectedAddress := plan.Address.Hex()
+	if plan.ActionIndex == 3 {
+		expectedAddress = ""
+		if !bytes.Equal(fields["contractAddress"], []byte("null")) {
+			return result, 0, errors.New("escrow call receipt requires a null CREATE address")
+		}
+		to, toErr := textField("to")
+		from, fromErr := textField("from")
+		if toErr != nil || fromErr != nil || !common.IsHexAddress(to) || !common.IsHexAddress(from) || common.HexToAddress(to) != *action.To || common.HexToAddress(from) != action.Sender {
+			return result, 0, errors.New("escrow receipt sender or call target differs")
+		}
+	}
+	if result.TransactionHash != record.TransactionHash || !rootCanonicalHash(result.BlockHash) || result.BlockNumber == 0 || result.Status > 1 || result.GasUsed == 0 || result.GasUsed > action.Gas || values["effectiveGasPrice"].Cmp(fee) > 0 || result.Status == 1 && result.ContractAddress != expectedAddress || result.Status == 0 && result.ContractAddress != "" {
 		return result, 0, errors.New("EVM receipt contradicts the original CREATE")
+	}
+	if plan.ActionIndex == 3 {
+		if err := evmEscrowReceiptEvent(fields, &result, values["transactionIndex"].Uint64(), plan); err != nil {
+			return result, 0, err
+		}
 	}
 	return result, values["transactionIndex"].Uint64(), nil
 }
@@ -299,6 +316,12 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 		if len(plan.Storage) != 0 {
 			receipt.StorageHash = rootObjectHash(plan.Storage)
 		}
+		if plan.ActionIndex == 3 {
+			if err := self.authenticateEscrowRegistration(ctx, plan, receipt, block); err != nil {
+				return receipt, err
+			}
+			receipt.RegistrationHash = evmEscrowRegistrationHash(plan, receipt)
+		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.
 	if _, err := self.client.readFinalizedMappingAtIdentity(ctx, identity); err != nil {
@@ -364,7 +387,7 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 			result.Receipt = &authenticated
 			result.Status = plan.completedStatus()
 			if authenticated.Status == 0 {
-				result.Status = "create-reverted-nonce-consumed"
+				result.Status = plan.revertedStatus()
 			}
 		}
 		return result, ctx.Err()
@@ -455,7 +478,11 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 		result.Status = "pending-nonce-unresolved"
 		return result, nil
 	}
-	if code != "0x" {
+	if plan.ActionIndex == 3 {
+		if err := self.admitEscrowTarget(ctx, plan, block, code); err != nil {
+			return result, err
+		}
+	} else if code != "0x" {
 		return result, errors.New("CREATE address already has pending code without its canonical receipt")
 	}
 	tx, _ := action.unsigned()

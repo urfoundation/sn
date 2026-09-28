@@ -324,8 +324,8 @@ func (self *evmCreateFixture) command(command string, extra ...string) (evmCreat
 	return result, code, stderr.String()
 }
 
-// A transaction executes the actual reviewed constructor, after exact custody
-// validation, and returns live EVM code/getter results rather than canned bytes.
+// Transactions execute the reviewed constructor or call. The call branch models
+// transaction nonce consumption around geth's lower-level runtime.Call helper.
 func (self *evmCreateFixture) execute() error {
 	nextEvm := uint64(0)
 	var parentHash string
@@ -336,17 +336,29 @@ func (self *evmCreateFixture) execute() error {
 		}
 	}
 	self.vm.BlockNumber = new(big.Int).SetUint64(nextEvm)
-	code, address, left, err := runtime.Create(self.tx.Data(), &self.vm)
+	var code []byte
+	var address common.Address
+	var left uint64
+	var err error
+	self.state.SetTxContext(self.tx.Hash(), 0)
+	if self.tx.To() == nil {
+		code, address, left, err = runtime.Create(self.tx.Data(), &self.vm)
+	} else {
+		config := self.vm
+		config.Value = self.tx.Value()
+		self.state.SetNonce(self.vm.Origin, self.tx.Nonce()+1, tracing.NonceChangeUnspecified)
+		_, left, err = runtime.Call(*self.tx.To(), self.tx.Data(), &config)
+	}
 	if self.gasFailure {
 		if !errors.Is(err, vm.ErrOutOfGas) && !errors.Is(err, vm.ErrCodeStoreOutOfGas) {
 			return fmt.Errorf("expected genuine CREATE gas failure: %w", err)
 		}
-		if len(self.state.GetCode(self.plan.Address)) != 0 || self.state.GetNonce(self.config.Plan.Actions[0].Sender) != self.tx.Nonce()+1 {
+		if self.tx.To() == nil && len(self.state.GetCode(self.plan.Address)) != 0 || self.state.GetNonce(self.config.Plan.Actions[0].Sender) != self.tx.Nonce()+1 {
 			return errors.New("failed CREATE did not consume only its original nonce")
 		}
 	} else if err != nil {
 		return err
-	} else if address != self.plan.Address || !bytes.Equal(code, self.plan.Runtime) {
+	} else if self.tx.To() == nil && (address != self.plan.Address || !bytes.Equal(code, self.plan.Runtime)) {
 		return fmt.Errorf("genuine EVM constructor differs from approved immutable projection")
 	}
 	gasUsed := self.vm.GasLimit - left
@@ -371,6 +383,17 @@ func (self *evmCreateFixture) execute() error {
 	}
 	self.storageKey = key.Hex()
 	self.receipt = map[string]any{"transactionHash": self.tx.Hash().Hex(), "blockHash": hash, "blockNumber": fmt.Sprintf("0x%x", nextEvm), "transactionIndex": "0x0", "status": "0x1", "gasUsed": fmt.Sprintf("0x%x", gasUsed), "effectiveGasPrice": "0x2", "contractAddress": strings.ToLower(address.Hex())}
+	if self.tx.To() != nil {
+		logs := []map[string]any{}
+		for _, log := range self.state.GetLogs(self.tx.Hash(), nextEvm, header.Hash(), header.Time) {
+			topics := []string{}
+			for _, topic := range log.Topics {
+				topics = append(topics, topic.Hex())
+			}
+			logs = append(logs, map[string]any{"address": log.Address.Hex(), "topics": topics, "data": "0x" + hex.EncodeToString(log.Data), "transactionHash": log.TxHash.Hex(), "blockHash": log.BlockHash.Hex(), "blockNumber": fmt.Sprintf("0x%x", log.BlockNumber), "transactionIndex": fmt.Sprintf("0x%x", log.TxIndex), "logIndex": fmt.Sprintf("0x%x", log.Index), "removed": log.Removed})
+		}
+		self.receipt["contractAddress"], self.receipt["to"], self.receipt["from"], self.receipt["logs"] = nil, self.tx.To().Hex(), self.vm.Origin.Hex(), logs
+	}
 	if self.gasFailure {
 		self.receipt["status"], self.receipt["contractAddress"] = "0x0", nil
 	}

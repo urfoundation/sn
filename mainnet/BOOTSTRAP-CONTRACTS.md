@@ -1,10 +1,11 @@
-# Executable contract bootstrap: reserve, vault and implementation CREATE
+# Executable contract bootstrap: three CREATEs and escrow registration
 
-`bootstrap-contracts preview/plan/apply/resume` implements the first three installation
-actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE through retained
+`bootstrap-contracts preview/plan/apply/resume` implements the first four installation
+actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, then the vault's bounded `registerEscrow` call through retained
 public EVM custody and the owned HTTP submission adapter. `--action reserve-create`
-is the unchanged default; `--action vault-create` and `--action coordinator-create`
-explicitly select actions one and two from the **same already approved graph**.
+is the unchanged default; `--action vault-create`, `--action coordinator-create`
+and `--action escrow-register` explicitly select actions one through three from
+the **same already approved graph**.
 It does not install the remaining contracts, anchor
 evidence, register miners, change emissions, activate validators, or complete
 mainnet bootstrap. The [reserve qualification receipt](evidence/bootstrap-contract-qualification-20260928.md)
@@ -14,6 +15,10 @@ records its separate normal/race and causal checks. The
 [implementation source handoff](evidence/bootstrap-contract-coordinator-source-20260928.md)
 records the coordinator scope and pending behavioral qualification. Prior reserve
 and vault results do not qualify this new implementation path.
+The [escrow source handoff](evidence/bootstrap-contract-escrow-source-20260928.md)
+records its source scope and pending behavioral qualification. The local escrow
+fixtures model native precompiles explicitly; they do not qualify live burn or
+existential-deposit behavior.
 
 The release catalog comes from the existing generator:
 
@@ -43,6 +48,14 @@ vault, and the predicted address in the UUPS `__self` immutable. Its constructor
 only disables initialization. The implementation's owner, guardian, network,
 vault, reserve and evidence getters remain zero; those are not initialized proxy
 values. Proxy creation with atomic initialization remains a later action.
+
+Escrow selection requires approved action three to call that exact vault at the
+same deployer's next nonce. Its calldata must be the generated binding's exact
+36-byte `registerEscrow(uint64)` encoding with a nonzero cap. Value must equal
+`maximumBurnRao * 1_000_000_000` wei, using full-width arithmetic. The conversion
+comes from the approved runtime source's `SubtensorEvmBalanceConverter`.
+The cap, hotkey and mapped coldkey are derived review fields; the original
+approved payload, signed plan schema and approval hash remain unchanged.
 
 ## Approval and custody
 
@@ -76,6 +89,10 @@ With `--action coordinator-create`, preview additionally exports
 `coordinator_implementation_address`, `expected_coordinator_runtime_hash` and
 the two exact `coordinator_storage` slot/word expectations. The signed plan
 schema, approval message and accepted hash remain unchanged.
+With `--action escrow-register`, preview additionally exports
+`escrow_registration`: the decoded cap in rao, exact funded wei, immutable
+escrow hotkey and vault-mapped coldkey. It includes all three prior address and
+runtime projections under the same complete graph hash.
 
 Preview reads only the draft and artifact files. It does not inspect or create
 the future run directory, acquire its journal lock, load a key, or open a network
@@ -112,7 +129,7 @@ No DNS, proxy, redirect, endpoint fallback or automatic write retry is admitted.
 
 The bounded graph may contain the ordered prefix of one through nine actions.
 One approval covers all supplied action reservations; no per-step confirmation
-is invented. Actions zero through two are executable in this candidate. Later actions
+is invented. Actions zero through three are executable in this candidate. Later actions
 remain sealed reservations, not claims that their semantic builders or Safe
 executor exist. Extending a prefix changes authority and cannot silently amend
 an existing journal. A previously approved reserve-only prefix cannot gain vault
@@ -120,12 +137,12 @@ authority on reopen. Each prepared vault and implementation must be a zero-value
 CREATE by the reserve deployer at exactly the next nonce. Later executors and any full-installation
 attempt policy remain separate unfinished work.
 
-For the three executable actions, this candidate conservatively counts all
+For the four executable actions, this candidate conservatively counts all
 their submission attempts together against the original `maximum_attempts`.
-Child resume cannot renew either predecessor's spent allowance. The existing limit of
+Child resume cannot renew any predecessor's spent allowance. The existing limit of
 eight remains unchanged; this is not an implemented nine-action send policy.
 `maximum_total_wei` still bounds the value plus maximum gas liability of every
-approved action. Vault and implementation send admission also require enough
+approved action. Vault, implementation and escrow send admission also require enough
 pending balance for the selected action and all later sealed reservations
 belonging to the same sender.
 
@@ -160,15 +177,29 @@ sn-mainnet bootstrap-contracts apply --action coordinator-create --config /secur
 sn-mainnet bootstrap-contracts resume --action coordinator-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/coordinator.signed.bin --signed-transaction-hash "$COORDINATOR_SIGNED_FILE_HASH"
 ```
 
+After all three exact CREATE outcomes are retained, select and import the
+already approved funded call. The command never chooses a new burn cap:
+
+```sh
+sn-mainnet bootstrap-contracts plan --action escrow-register --config /secure/ur-mainnet/contract-phase.json
+sn-mainnet bootstrap-contracts apply --action escrow-register --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH"
+sn-mainnet bootstrap-contracts resume --action escrow-register --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/escrow.signed.bin --signed-transaction-hash "$ESCROW_SIGNED_FILE_HASH"
+```
+
 The result distinguishes `signature-awaiting-import`, `signed-custody-complete`,
 uncertain/pending chain work, `reserve-created`, `vault-created`,
-`coordinator-created`, and a reverted CREATE with its
-nonce consumed. `installation_complete` and `activation_ready` remain false.
+`coordinator-created`, `escrow-registered`, and a reverted action with its
+nonce consumed. The escrow failure status is
+`escrow-registration-reverted-nonce-consumed`. `installation_complete` and
+`activation_ready` remain false.
 Vault results retain `reserve_address` and add `vault_address` and
 `executable_action: "vault-create"`; seven installation actions remain. Vault
 creation does not register its escrow or bind its coordinator.
 Implementation results also carry `coordinator_implementation_address` and
 `executable_action: "coordinator-create"`; six installation actions remain.
+Escrow results retain those addresses and add the derived `escrow_registration`
+review fields with `executable_action: "escrow-register"`; five actions remain.
+Registration does not bind the coordinator or initialize the future proxy.
 An offline reopen preserves each completed status and the original receipt,
 with `receipt_observation: "retained"`. A successful online receipt audit emits
 `receipt_observation: "revalidated-online"`. Retained completion is historical
@@ -205,6 +236,15 @@ cannot create a new graph allowance. Successful coordinator receipts also retain
 `storage_hash`; the field is omitted from historical reserve/vault receipts so
 their wire encoding and content hashes remain unchanged.
 
+`escrow-register.json` uses `urnetwork-mainnet-evm-escrow-state-v1` and seals the
+exact completed coordinator record, transitively including vault and reserve.
+All four journals and locks remain required. All three ancestor files keep their
+historical bytes. Successful call receipts add `registration_hash`, binding the
+approved registration identities/cap and observed event UID/log index.
+`escrow_uid` and `escrow_log_index` are omitted at zero; zero is valid and is
+still bound by the digest. All new receipt fields are omitted from historical
+CREATE receipts, preserving their serialized bytes and content hashes.
+
 Reconciliation always precedes submission. A durable attempt is consumed before
 the single HTTP write, including an interrupted or uncertain write. Later sends
 use the same signed bytes and remaining attempt count. A pending or consumed
@@ -227,6 +267,11 @@ predecessors in order. Each retained native checkpoint also fences later
 current-head admission, including a healthy head refresh; changed ancestor
 ancestry cannot slip between those observations. Every online completed resume
 rechecks the selected receipt too.
+Every online escrow operation reauthenticates all three predecessors and fences
+their checkpoints through selected-action reconciliation and refreshed-head
+admission. Fresh escrow submission requires exact vault runtime, all thirteen
+unregistered constructor getters and absent neuron UID in both canonical and
+pending state. The target is an existing vault, so empty code is a refusal.
 
 Coordinator completion checks eighteen getters: sixteen zero words for the
 uninitialized implementation's public state and counts, the reviewed
@@ -242,6 +287,25 @@ initialization enabled and is rejected. The ERC1967 implementation slot
 must itself contain zero because this address is the implementation, not the
 future proxy. Native and EVM canonical mappings are checked again after these
 observations. Missing archive support remains a read error, not completion.
+
+Escrow success requires the original call transaction at its inclusion, exact
+receipt sender and target, null `contractAddress`, and one vault-emitted
+`EscrowRegistered(bytes32 indexed hotkey,uint16 uid)` event. Explicit event
+block/transaction positions, `removed: false`, the approved hotkey, canonical
+uint16 data and unique log index are checked. UID zero is valid. At that same
+canonical inclusion hash the adapter requires exact vault runtime and thirteen
+getters, with only `escrowRegistered` changed to true, then neuron `getUid` at
+`0x804` and metagraph `getHotkey`/`getColdkey` at `0x802`. UID, hotkey and the
+vault's mapped coldkey must agree. Final native/EVM mapping checks still run
+after those observations. A reverted call must have no events and retains no
+successful registration digest.
+
+Reviewed `STSettlementVault.sol` limits the bootstrap caller to one attempt that
+succeeds, calls native `registerLimit` with the approved cap, and refunds surplus
+while preserving the prior reducible balance. Failed execution rolls back its
+flag and effects. These are source-supported bounded semantics. This adapter
+does not measure actual native burn, existential deposit, refund or resulting
+native balance from receipt gas fields; no such live observations are claimed.
 
 Each invocation scans at most 128 new native headers. Completed chunks are
 durable; an interrupted current chunk is repeated, at most 128 headers. A failed
@@ -273,8 +337,7 @@ under the originally approved historical runtime. Inclusion under an unapproved
 execution/parent runtime remains unresolved and needs separately qualified
 authority migration, not a fresh journal or an inferred compatibility waiver.
 
-The remaining graph is `registerEscrow` with bounded rao-to-wei value,
-atomic initialized proxy CREATE,
+The remaining graph is atomic initialized proxy CREATE,
 reserve recorder binding, vault coordinator binding, `STValidatorEvidence`
 CREATE, and the separately authorized Safe `fixValidatorEvidence` call. The
 last action needs exact Safe digest/signature/nonce ownership and the outer
