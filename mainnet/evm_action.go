@@ -55,26 +55,28 @@ type evmActionChain interface {
 
 // The result explicitly separates one contract from the full installation.
 type evmCreateResult struct {
-	PlanHash             string                      `json:"plan_hash"`
-	Status               string                      `json:"status"`
-	Address              string                      `json:"reserve_address"`
-	VaultAddress         string                      `json:"vault_address,omitempty"`
-	CoordinatorAddress   string                      `json:"coordinator_implementation_address,omitempty"`
-	ExecutableAction     string                      `json:"executable_action,omitempty"`
-	SigningDigest        string                      `json:"signing_digest"`
-	UnsignedTransaction  string                      `json:"unsigned_transaction"`
-	TransactionHash      string                      `json:"transaction_hash,omitempty"`
-	Attempts             uint8                       `json:"attempts"`
-	Receipt              *evmCreateReceipt           `json:"receipt,omitempty"`
-	ReceiptObservation   string                      `json:"receipt_observation,omitempty"`
-	InstallationComplete bool                        `json:"installation_complete"`
-	ActivationReady      bool                        `json:"activation_ready"`
-	RemainingActions     []string                    `json:"remaining_actions"`
-	EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
-	ProxyAddress         string                      `json:"coordinator_proxy_address,omitempty"`
-	ProxyConstructor     *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
-	ReserveBinding       *contractReserveBinding     `json:"reserve_binding,omitempty"`
-	VaultBinding         *contractVaultBinding       `json:"vault_binding,omitempty"`
+	PlanHash             string                       `json:"plan_hash"`
+	Status               string                       `json:"status"`
+	Address              string                       `json:"reserve_address"`
+	VaultAddress         string                       `json:"vault_address,omitempty"`
+	CoordinatorAddress   string                       `json:"coordinator_implementation_address,omitempty"`
+	ExecutableAction     string                       `json:"executable_action,omitempty"`
+	SigningDigest        string                       `json:"signing_digest"`
+	UnsignedTransaction  string                       `json:"unsigned_transaction"`
+	TransactionHash      string                       `json:"transaction_hash,omitempty"`
+	Attempts             uint8                        `json:"attempts"`
+	Receipt              *evmCreateReceipt            `json:"receipt,omitempty"`
+	ReceiptObservation   string                       `json:"receipt_observation,omitempty"`
+	InstallationComplete bool                         `json:"installation_complete"`
+	ActivationReady      bool                         `json:"activation_ready"`
+	RemainingActions     []string                     `json:"remaining_actions"`
+	EscrowRegistration   *contractEscrowRegistration  `json:"escrow_registration,omitempty"`
+	ProxyAddress         string                       `json:"coordinator_proxy_address,omitempty"`
+	ProxyConstructor     *contractProxyConstructor    `json:"proxy_constructor,omitempty"`
+	ReserveBinding       *contractReserveBinding      `json:"reserve_binding,omitempty"`
+	VaultBinding         *contractVaultBinding        `json:"vault_binding,omitempty"`
+	EvidenceAddress      string                       `json:"validator_evidence_address,omitempty"`
+	EvidenceConstructor  *contractEvidenceConstructor `json:"evidence_constructor,omitempty"`
 }
 
 // All mutable projections are copied on construction. Storage failure poisons
@@ -150,6 +152,14 @@ func newEvmVaultLinkOwner(plan evmCreatePlan, store, reserveStore, vaultStore, c
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore}, chain)
 }
 
+// Seven completed predecessor journals remain locked through evidence CREATE.
+func newEvmEvidenceCreateOwner(plan evmCreatePlan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore, vaultLinkStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 7 || reserveStore == nil || vaultStore == nil || coordinatorStore == nil || escrowStore == nil || proxyStore == nil || reserveLinkStore == nil || vaultLinkStore == nil {
+		return nil, errors.New("evidence owner lacks seven predecessor custody journals")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore, vaultLinkStore}, chain)
+}
+
 // Runtime projections own every nested slice; invocation-specific predecessor
 // records are always loaded afresh under the held locks rather than copied in.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
@@ -181,6 +191,14 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 	if plan.ReserveLink != nil {
 		link := copyEvmCreatePlan(*plan.ReserveLink)
 		plan.ReserveLink = &link
+	}
+	if plan.VaultLink != nil {
+		link := copyEvmCreatePlan(*plan.VaultLink)
+		plan.VaultLink = &link
+	}
+	if plan.EvidenceConstructor != nil {
+		constructor := *plan.EvidenceConstructor
+		plan.EvidenceConstructor = &constructor
 	}
 	if plan.VaultBinding != nil {
 		binding := *plan.VaultBinding
@@ -253,7 +271,7 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 	}
 	r := record.Receipt
 	if r == nil {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding", "unanchored validator evidence"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	getters, err := plan.receiptGetters(*r)
@@ -265,7 +283,7 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 		expectedAddress = ""
 	}
 	if r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding", "unanchored validator evidence"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
@@ -515,11 +533,18 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 		binding := *self.plan.ReserveBinding
 		result.ReserveBinding = &binding
 	}
-	if self.plan.ActionIndex == 6 {
+	if self.plan.ActionIndex >= 6 {
 		result.ExecutableAction = "vault-link"
 		result.RemainingActions = result.RemainingActions[1:]
 		binding := *self.plan.VaultBinding
 		result.VaultBinding = &binding
+	}
+	if self.plan.ActionIndex == 7 {
+		result.ExecutableAction = "evidence-create"
+		result.RemainingActions = result.RemainingActions[1:]
+		result.EvidenceAddress = self.plan.Address.Hex()
+		constructor := *self.plan.EvidenceConstructor
+		result.EvidenceConstructor = &constructor
 	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"

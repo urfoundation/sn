@@ -1,13 +1,12 @@
-# Executable contract bootstrap through vault coordinator binding
+# Executable contract bootstrap through unanchored evidence CREATE
 
-`bootstrap-contracts preview/plan/apply/resume` implements the first seven installation
-actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, the vault's bounded `registerEscrow` call, atomic initialized `ERC1967Proxy` CREATE, then the reserve recorder and vault coordinator bindings through retained
+`bootstrap-contracts preview/plan/apply/resume` implements the first eight installation
+actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, the vault's bounded `registerEscrow` call, atomic initialized `ERC1967Proxy` CREATE, the reserve recorder and vault coordinator bindings, and immutable `STValidatorEvidence` CREATE through retained
 public EVM custody and the owned HTTP submission adapter. `--action reserve-create`
 is the unchanged default; `--action vault-create`, `--action coordinator-create`,
-`--action escrow-register`, `--action proxy-create`, `--action reserve-link` and `--action vault-link` explicitly select actions one through six from
+`--action escrow-register`, `--action proxy-create`, `--action reserve-link`, `--action vault-link` and `--action evidence-create` explicitly select actions one through seven from
 the **same already approved graph**.
-It does not install the remaining contracts, anchor
-evidence, register miners, change emissions, activate validators, or complete
+It does not anchor evidence, register miners, change emissions, activate validators, or complete
 mainnet bootstrap. The [reserve qualification receipt](evidence/bootstrap-contract-qualification-20260928.md)
 records its passed normal/race scopes, retained fixture failures and composed
 dependency check. The [vault qualification receipt](evidence/bootstrap-contract-vault-qualification-20260928.md)
@@ -27,6 +26,10 @@ The [getter-gas fixture correction](evidence/bootstrap-contract-read-gas-fixture
 records its reproduced positive failure and independent read simulation budget.
 The [vault binding source handoff](evidence/bootstrap-contract-vault-link-source-20260928.md)
 records its packed storage, six-predecessor custody and pending qualification.
+The [vault selector fixture correction](evidence/bootstrap-contract-vault-selector-fixture-correction-20260928.md)
+records the pending-selector panic and deterministic callback correction.
+The [evidence CREATE source handoff](evidence/bootstrap-contract-evidence-source-20260928.md)
+records its provisional eight-action prefix and separate pending qualification.
 
 The release catalog comes from the existing generator:
 
@@ -87,6 +90,15 @@ argument is the same initialized proxy, value is zero, and the bootstrap deploye
 uses the next nonce after reserve binding. The reviewed deployment script calls
 it immediately after `setRecorderOnce`. `vault_binding` is derived review data.
 
+Evidence selection requires index seven to be the same deployer's next zero-value
+CREATE after vault binding. The exact release creation bytes are followed by
+three canonical ABI words: the derived initialized proxy, the approved native
+genesis hash, and SHA-256 of the approved deployment ID bytes. That hash rule
+comes from the existing reviewed `sim-testnet/evidence_deployment.go`; simulator
+upgrade/fleet nonce reservations are not part of this mainnet graph. The
+generated binding and artifact ABI must repack the same 96 constructor bytes.
+`Deploy.s.sol` itself stops after vault binding and does not install this journal.
+
 ## Approval and custody
 
 The `urnetwork-mainnet-contract-phase-config-v1` config contains an independently
@@ -137,6 +149,10 @@ With `--action vault-link`, preview adds `vault_binding` and seven
 `vault_binding_storage` words. Slot zero packs the coordinator in its low 20
 bytes with `escrowRegistered` at byte offset 20; binding preserves that flag as
 one. Reentrancy slot one and accounting slots eight through twelve stay zero.
+With `--action evidence-create`, preview also adds `validator_evidence_address`,
+`expected_evidence_runtime_hash`, the six derived `evidence_constructor` values,
+and two `evidence_storage` mapping-root words. Earlier proxy and binding review
+projections remain unchanged. The new journal is still unanchored.
 
 Preview reads only the draft and artifact files. It does not inspect or create
 the future run directory, acquire its journal lock, load a key, or open a network
@@ -173,7 +189,7 @@ No DNS, proxy, redirect, endpoint fallback or automatic write retry is admitted.
 
 The bounded graph may contain the ordered prefix of one through nine actions.
 One approval covers all supplied action reservations; no per-step confirmation
-is invented. Actions zero through six are executable in this candidate. Later actions
+is invented. Actions zero through seven are executable in this candidate. Later actions
 remain sealed reservations, not claims that their semantic builders or Safe
 executor exist. Extending a prefix changes authority and cannot silently amend
 an existing journal. A previously approved reserve-only prefix cannot gain vault
@@ -256,9 +272,17 @@ sn-mainnet bootstrap-contracts apply --action vault-link --config /secure/ur-mai
 sn-mainnet bootstrap-contracts resume --action vault-link --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/vault-link.signed.bin --signed-transaction-hash "$VAULT_LINK_SIGNED_FILE_HASH"
 ```
 
+After exact vault binding is retained, select the approved evidence CREATE:
+
+```sh
+sn-mainnet bootstrap-contracts plan --action evidence-create --config /secure/ur-mainnet/contract-phase.json
+sn-mainnet bootstrap-contracts apply --action evidence-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH"
+sn-mainnet bootstrap-contracts resume --action evidence-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/evidence.signed.bin --signed-transaction-hash "$EVIDENCE_SIGNED_FILE_HASH"
+```
+
 The result distinguishes `signature-awaiting-import`, `signed-custody-complete`,
 uncertain/pending chain work, `reserve-created`, `vault-created`,
-`coordinator-created`, `escrow-registered`, `proxy-created-initialized`, `reserve-recorder-bound`, `vault-coordinator-bound`, and a reverted action with its
+`coordinator-created`, `escrow-registered`, `proxy-created-initialized`, `reserve-recorder-bound`, `vault-coordinator-bound`, `evidence-created-unanchored`, and a reverted action with its
 nonce consumed. The escrow failure status is
 `escrow-registration-reverted-nonce-consumed`; reserve binding failure is
 `reserve-binding-reverted-nonce-consumed`; vault binding failure is
@@ -277,9 +301,12 @@ Proxy results add `coordinator_proxy_address` and `proxy_constructor` with
 Reserve binding results retain those addresses and add `reserve_binding` with
 `executable_action: "reserve-link"`; three actions remain after recorder binding.
 Vault binding results also include `vault_binding` with
-`executable_action: "vault-link"`; two actions remain. Validator evidence
-deployment and anchoring are still unfinished; neither binding completes
-installation or activation.
+`executable_action: "vault-link"`; two actions remain. Evidence results retain
+those projections and add `validator_evidence_address` and `evidence_constructor`
+with `executable_action: "evidence-create"`; only the anchor remains. Creation
+does not anchor the journal, authenticate published evidence, or complete
+installation or activation. Failed evidence CREATE retains
+`create-reverted-nonce-consumed`.
 An offline reopen preserves each completed status and the original receipt,
 with `receipt_observation: "retained"`. A successful online receipt audit emits
 `receipt_observation: "revalidated-online"`. Retained completion is historical
@@ -352,6 +379,16 @@ refreshed admission. Successful receipts add optional `vault_binding_hash`
 and `coordinator_log_index`, committing the derived vault/proxy pair and event
 position. Index zero is valid and included in the digest. Older receipt bytes,
 hashes, marker authority and original approval remain unchanged.
+
+`evidence-create.json` uses `urnetwork-mainnet-evm-evidence-state-v1` and seals the
+exact completed vault-binding record. All eight journal locks remain held, all
+seven historical receipts are reauthenticated, and their checkpoints fence both
+current and refreshed admission. No new receipt field changes historical bytes.
+The original maximum-eight attempt bound is unchanged: seven prior submissions
+leave one evidence attempt. An uncertain durable attempt publication can consume
+that last allowance without a transport write; restart preserves the liability
+and does not invent an additional attempt. Later same-sender value/gas remains
+reserved, even though the final anchor is unimplemented.
 
 Reconciliation always precedes submission. A durable attempt is consumed before
 the single HTTP write, including an interrupted or uncertain write. Later sends
@@ -488,6 +525,23 @@ under the same block selector. Those checks remain separate from the six
 historical receipts. Initial proxy policy still uses its original EVM height.
 No live Safe ownership or authority is inferred by binding the coordinator.
 
+Evidence admission independently requires an empty predicted CREATE address and
+the exact bound vault, bound reserve, initialized proxy and implementation under
+current canonical and pending selectors. Successful inclusion requires the
+original transaction, exact receipt sender, null `to`, predicted CREATE address,
+gas/fee bounds and an explicit empty log list. The reviewed constructor makes
+static coordinator getter calls and emits no events. At that authenticated EVM
+inclusion, the exact patched evidence runtime and all six immutable getters
+must agree: coordinator, settlement vault, chain ID, netuid, genesis hash and
+deployment ID hash. Mapping-root slots zero and one must be zero; these words
+are not enumerable evidence about all hashed mapping entries.
+
+The same inclusion rechecks bound vault/reserve state and initialized proxy/
+implementation state, keeping the original proxy's EVM policy height and
+requiring its `validatorEvidence()` getter still zero. Missing observations
+remain read errors; an unmapped receipt remains nonfinal. The separate anchor
+executor is not selected or implemented by evidence creation.
+
 Each invocation scans at most 128 new native headers. Completed chunks are
 durable; an interrupted current chunk is repeated, at most 128 headers. A failed
 candidate read cannot advance past that candidate. Archive unavailability
@@ -518,8 +572,7 @@ under the originally approved historical runtime. Inclusion under an unapproved
 execution/parent runtime remains unresolved and needs separately qualified
 authority migration, not a fresh journal or an inferred compatibility waiver.
 
-The remaining graph is `STValidatorEvidence`
-CREATE, and the separately authorized Safe `fixValidatorEvidence` call. The
+The remaining graph is the separately authorized Safe `fixValidatorEvidence` call. The
 last action needs exact Safe digest/signature/nonce ownership and the outer
 relayer's distinct nonce/fee reservation. Both the Safe inner success and the
 canonical coordinator getter must agree; outer EVM status 1 is insufficient.

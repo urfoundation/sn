@@ -19,6 +19,7 @@ const evmEscrowActionStateSchema = "urnetwork-mainnet-evm-escrow-state-v1"
 const evmProxyActionStateSchema = "urnetwork-mainnet-evm-proxy-state-v1"
 const evmReserveLinkActionStateSchema = "urnetwork-mainnet-evm-reserve-link-state-v1"
 const evmVaultLinkActionStateSchema = "urnetwork-mainnet-evm-vault-link-state-v1"
+const evmEvidenceActionStateSchema = "urnetwork-mainnet-evm-evidence-state-v1"
 
 // Receipt facts are reauthenticated on every online resume. Their retained hash
 // detects accidental corruption; it is neither consensus nor external custody.
@@ -65,7 +66,10 @@ func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex
 	if actionIndex == 6 {
 		schema = evmVaultLinkActionStateSchema
 	}
-	if actionIndex < 0 || actionIndex > 6 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex > 0 && !planSha256(self.PredecessorHash) {
+	if actionIndex == 7 {
+		schema = evmEvidenceActionStateSchema
+	}
+	if actionIndex < 0 || actionIndex > 7 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex > 0 && !planSha256(self.PredecessorHash) {
 		return errors.New("EVM journal action or prerequisite differs")
 	}
 	if self.Schema != schema || self.ConfigHash != rootObjectHash(config) || claimed != rootObjectHash(self) || self.Attempts > p.MaximumAttempts || self.ScanNumber < p.StartNativeNumber || !rootCanonicalHash(self.ScanHash) || self.ScanNumber == p.StartNativeNumber && self.ScanHash != p.StartNativeHash {
@@ -218,13 +222,29 @@ func openEvmVaultLinkActionStore(plan evmCreatePlan, reserve, vault, coordinator
 	return openEvmSelectedActionStore(plan.Config, 6, rootObjectHash(reserveLink), create, claimHook)
 }
 
-// All seven actions share publication and initial-claim recovery mechanics with
+// Completed vault binding seals all seven predecessor journals before evidence
+// acquires its own original signature and the same graph's remaining allowance.
+func openEvmEvidenceActionStore(plan evmCreatePlan, reserve, vault, coordinator, escrow, proxy, reserveLink, vaultLink evmActionRecord, create bool, claimHook func(string) error) (*evmActionStore, error) {
+	if err := plan.validateSelection(); err != nil {
+		return nil, err
+	}
+	if plan.ActionIndex != 7 {
+		return nil, errors.New("evidence custody requires explicit CREATE selection")
+	}
+	plan.Prerequisites = []evmActionRecord{reserve, vault, coordinator, escrow, proxy, reserveLink, vaultLink}
+	if err := validateEvmCreatePrerequisite(plan, evmActionRecord{PredecessorHash: rootObjectHash(vaultLink)}); err != nil {
+		return nil, err
+	}
+	return openEvmSelectedActionStore(plan.Config, 7, rootObjectHash(vaultLink), create, claimHook)
+}
+
+// All eight actions share publication and initial-claim recovery mechanics with
 // separate schemas/paths/markers; a completed marker never refreshes budget.
 func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predecessorHash string, create bool, claimHook func(string) error) (*evmActionStore, error) {
 	if err := errors.Join(config.validate(), bootstrapRootDirectory(config.Plan.RunDirectory)); err != nil {
 		return nil, err
 	}
-	if actionIndex < 0 || actionIndex > 6 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex > 0 && !planSha256(predecessorHash) {
+	if actionIndex < 0 || actionIndex > 7 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex > 0 && !planSha256(predecessorHash) {
 		return nil, errors.New("EVM store action or prerequisite differs")
 	}
 	name, schema := evmCreateStateFile, evmActionStateSchema
@@ -246,6 +266,9 @@ func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predeces
 	}
 	if actionIndex == 6 {
 		name, schema = evmVaultLinkStateFile, evmVaultLinkActionStateSchema
+	}
+	if actionIndex == 7 {
+		name, schema = evmEvidenceCreateStateFile, evmEvidenceActionStateSchema
 	}
 	if actionIndex > 0 {
 		marker = rootObjectHash(struct{ ConfigHash, ActionId, PredecessorHash string }{ConfigHash: rootObjectHash(config), ActionId: config.Plan.Actions[actionIndex].Id, PredecessorHash: predecessorHash}) + "\n"

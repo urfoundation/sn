@@ -397,10 +397,10 @@ func (self *evmCreateFixture) execute() error {
 	}
 	self.storageKey = key.Hex()
 	self.receipt = map[string]any{"transactionHash": self.tx.Hash().Hex(), "blockHash": hash, "blockNumber": fmt.Sprintf("0x%x", nextEvm), "transactionIndex": "0x0", "status": "0x1", "gasUsed": fmt.Sprintf("0x%x", gasUsed), "effectiveGasPrice": "0x2", "contractAddress": strings.ToLower(address.Hex())}
-	if self.plan.ActionIndex == 4 {
+	if self.plan.ActionIndex == 4 || self.plan.ActionIndex == 7 {
 		self.receipt["to"], self.receipt["from"] = nil, self.vm.Origin.Hex()
 	}
-	if self.tx.To() != nil {
+	if self.tx.To() != nil || self.plan.ActionIndex == 7 {
 		logs := []map[string]any{}
 		for _, log := range self.state.GetLogs(self.tx.Hash(), nextEvm, header.Hash(), header.Time) {
 			topics := []string{}
@@ -409,7 +409,10 @@ func (self *evmCreateFixture) execute() error {
 			}
 			logs = append(logs, map[string]any{"address": log.Address.Hex(), "topics": topics, "data": "0x" + hex.EncodeToString(log.Data), "transactionHash": log.TxHash.Hex(), "blockHash": log.BlockHash.Hex(), "blockNumber": fmt.Sprintf("0x%x", log.BlockNumber), "transactionIndex": fmt.Sprintf("0x%x", log.TxIndex), "logIndex": fmt.Sprintf("0x%x", log.Index), "removed": log.Removed})
 		}
-		self.receipt["contractAddress"], self.receipt["to"], self.receipt["from"], self.receipt["logs"] = nil, self.tx.To().Hex(), self.vm.Origin.Hex(), logs
+		self.receipt["logs"] = logs
+		if self.tx.To() != nil {
+			self.receipt["contractAddress"], self.receipt["to"], self.receipt["from"] = nil, self.tx.To().Hex(), self.vm.Origin.Hex()
+		}
 	}
 	if self.gasFailure {
 		self.receipt["status"], self.receipt["contractAddress"] = "0x0", nil

@@ -16,32 +16,36 @@ const evmPhasePreviewSchema = "urnetwork-mainnet-contract-phase-preview-v1"
 // The reviewable typed plan and the exact domain-separated bytes are exported
 // together. Hashes identify content; only the independent signature can approve.
 type evmPhasePreview struct {
-	Schema                         string                      `json:"schema"`
-	Plan                           evmPhasePlan                `json:"plan"`
-	PlanHash                       string                      `json:"plan_hash"`
-	ApprovalPublicKey              string                      `json:"approval_public_key_ed25519"`
-	ApprovalSigningMessageHex      string                      `json:"approval_signing_message_hex"`
-	ApprovalSigningMessageSha256   string                      `json:"approval_signing_message_sha256"`
-	ApprovalVerified               bool                        `json:"approval_verified"`
-	ExecutableAction               string                      `json:"executable_action"`
-	ReserveAddress                 string                      `json:"reserve_address"`
-	ExpectedReserveRuntimeHash     string                      `json:"expected_reserve_runtime_hash"`
-	VaultAddress                   string                      `json:"vault_address,omitempty"`
-	ExpectedVaultRuntimeHash       string                      `json:"expected_vault_runtime_hash,omitempty"`
-	VaultConstructor               *contractVaultConstructor   `json:"vault_constructor,omitempty"`
-	CoordinatorAddress             string                      `json:"coordinator_implementation_address,omitempty"`
-	ExpectedCoordinatorRuntimeHash string                      `json:"expected_coordinator_runtime_hash,omitempty"`
-	CoordinatorStorage             []contractStorageWord       `json:"coordinator_storage,omitempty"`
-	EscrowRegistration             *contractEscrowRegistration `json:"escrow_registration,omitempty"`
-	ProxyAddress                   string                      `json:"coordinator_proxy_address,omitempty"`
-	ExpectedProxyRuntimeHash       string                      `json:"expected_proxy_runtime_hash,omitempty"`
-	ProxyConstructor               *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
-	ProxyStorage                   []contractStorageWord       `json:"proxy_storage,omitempty"`
-	ReserveBinding                 *contractReserveBinding     `json:"reserve_binding,omitempty"`
-	ReserveBindingStorage          []contractStorageWord       `json:"reserve_binding_storage,omitempty"`
-	VaultBinding                   *contractVaultBinding       `json:"vault_binding,omitempty"`
-	VaultBindingStorage            []contractStorageWord       `json:"vault_binding_storage,omitempty"`
-	InstallationComplete           bool                        `json:"installation_complete"`
+	Schema                         string                       `json:"schema"`
+	Plan                           evmPhasePlan                 `json:"plan"`
+	PlanHash                       string                       `json:"plan_hash"`
+	ApprovalPublicKey              string                       `json:"approval_public_key_ed25519"`
+	ApprovalSigningMessageHex      string                       `json:"approval_signing_message_hex"`
+	ApprovalSigningMessageSha256   string                       `json:"approval_signing_message_sha256"`
+	ApprovalVerified               bool                         `json:"approval_verified"`
+	ExecutableAction               string                       `json:"executable_action"`
+	ReserveAddress                 string                       `json:"reserve_address"`
+	ExpectedReserveRuntimeHash     string                       `json:"expected_reserve_runtime_hash"`
+	VaultAddress                   string                       `json:"vault_address,omitempty"`
+	ExpectedVaultRuntimeHash       string                       `json:"expected_vault_runtime_hash,omitempty"`
+	VaultConstructor               *contractVaultConstructor    `json:"vault_constructor,omitempty"`
+	CoordinatorAddress             string                       `json:"coordinator_implementation_address,omitempty"`
+	ExpectedCoordinatorRuntimeHash string                       `json:"expected_coordinator_runtime_hash,omitempty"`
+	CoordinatorStorage             []contractStorageWord        `json:"coordinator_storage,omitempty"`
+	EscrowRegistration             *contractEscrowRegistration  `json:"escrow_registration,omitempty"`
+	ProxyAddress                   string                       `json:"coordinator_proxy_address,omitempty"`
+	ExpectedProxyRuntimeHash       string                       `json:"expected_proxy_runtime_hash,omitempty"`
+	ProxyConstructor               *contractProxyConstructor    `json:"proxy_constructor,omitempty"`
+	ProxyStorage                   []contractStorageWord        `json:"proxy_storage,omitempty"`
+	ReserveBinding                 *contractReserveBinding      `json:"reserve_binding,omitempty"`
+	ReserveBindingStorage          []contractStorageWord        `json:"reserve_binding_storage,omitempty"`
+	VaultBinding                   *contractVaultBinding        `json:"vault_binding,omitempty"`
+	VaultBindingStorage            []contractStorageWord        `json:"vault_binding_storage,omitempty"`
+	EvidenceAddress                string                       `json:"validator_evidence_address,omitempty"`
+	ExpectedEvidenceRuntimeHash    string                       `json:"expected_evidence_runtime_hash,omitempty"`
+	EvidenceConstructor            *contractEvidenceConstructor `json:"evidence_constructor,omitempty"`
+	EvidenceStorage                []contractStorageWord        `json:"evidence_storage,omitempty"`
+	InstallationComplete           bool                         `json:"installation_complete"`
 }
 
 // An unsigned config must explicitly lack a signature; already signed or
@@ -109,10 +113,17 @@ func loadEvmPhasePreviewAction(ctx context.Context, path, actionId string) (evmP
 	}
 	if selected.ActionIndex >= 5 {
 		result.ReserveBinding, result.ReserveBindingStorage = selected.ReserveBinding, selected.Storage
-		if selected.ActionIndex == 6 {
+		if selected.ActionIndex >= 6 {
 			result.ReserveBindingStorage = selected.ReserveLink.Storage
 			result.VaultBinding, result.VaultBindingStorage = selected.VaultBinding, selected.Storage
+			if selected.ActionIndex == 7 {
+				result.VaultBindingStorage = selected.VaultLink.Storage
+			}
 		}
+	}
+	if selected.ActionIndex == 7 {
+		result.EvidenceAddress, result.ExpectedEvidenceRuntimeHash = selected.Address.Hex(), crypto.Keccak256Hash(selected.Runtime).Hex()
+		result.EvidenceConstructor, result.EvidenceStorage = selected.EvidenceConstructor, selected.Storage
 	}
 	return result, ctx.Err()
 }

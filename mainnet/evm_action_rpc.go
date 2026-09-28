@@ -193,6 +193,11 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 			return result, 0, err
 		}
 	}
+	if plan.ActionIndex == 7 {
+		if err := evmEvidenceCreateReceipt(fields, plan); err != nil {
+			return result, 0, err
+		}
+	}
 	return result, values["transactionIndex"].Uint64(), nil
 }
 
@@ -358,6 +363,11 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 				return receipt, err
 			}
 			receipt.VaultBindingHash = evmVaultBindingHash(plan, receipt)
+		}
+		if plan.ActionIndex == 7 {
+			if err := self.authenticateEvidenceDependencies(ctx, plan, block); err != nil {
+				return receipt, err
+			}
 		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.
@@ -529,6 +539,11 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 		}
 	} else if code != "0x" {
 		return result, errors.New("CREATE address already has pending code without its canonical receipt")
+	}
+	if plan.ActionIndex == 7 {
+		if err := self.admitEvidenceCreate(ctx, plan, block); err != nil {
+			return result, err
+		}
 	}
 	tx, _ := action.unsigned()
 	cost := new(big.Int).Add(tx.Value(), new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasFeeCap()))
