@@ -75,7 +75,7 @@ func (self *evmOwnedChain) read(ctx context.Context, method string, params []any
 	switch method {
 	case "eth_getTransactionReceipt":
 		allowAbsent = true
-	case "eth_getTransactionByBlockHashAndIndex", "eth_getTransactionCount", "eth_getBalance", "eth_getCode", "eth_call":
+	case "eth_getTransactionByBlockHashAndIndex", "eth_getTransactionCount", "eth_getBalance", "eth_getCode", "eth_call", "eth_getStorageAt":
 	default:
 		return errors.New("method is outside the contract EVM read profile")
 	}
@@ -285,8 +285,20 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 				return receipt, errors.New("created contract constructor getter differs")
 			}
 		}
+		for _, word := range plan.Storage {
+			var output string
+			if err := self.read(ctx, "eth_getStorageAt", []any{plan.Address.Hex(), word.Slot, block}, &output); err != nil {
+				return receipt, err
+			}
+			if output != word.Expected {
+				return receipt, errors.New("created implementation constructor storage differs")
+			}
+		}
 		receipt.RuntimeHash = crypto.Keccak256Hash(plan.Runtime).Hex()
 		receipt.GetterHash = rootObjectHash(plan.Getters)
+		if len(plan.Storage) != 0 {
+			receipt.StorageHash = rootObjectHash(plan.Storage)
+		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.
 	if _, err := self.client.readFinalizedMappingAtIdentity(ctx, identity); err != nil {
@@ -321,8 +333,8 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 	if err := self.continuity(ctx, p, record, head); err != nil {
 		return result, err
 	}
-	if plan.ActionIndex == 1 {
-		if err := self.continuity(ctx, p, *plan.Prerequisite, head); err != nil {
+	for _, prior := range plan.Prerequisites {
+		if err := self.continuity(ctx, p, prior, head); err != nil {
 			return result, err
 		}
 	}
@@ -344,8 +356,10 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 			if err != nil {
 				return result, err
 			}
-			if plan.ActionIndex == 1 && (authenticated.NativeNumber < plan.Prerequisite.Receipt.NativeNumber || authenticated.BlockNumber < plan.Prerequisite.Receipt.BlockNumber) {
-				return result, errors.New("vault inclusion precedes its reserve prerequisite")
+			for _, prior := range plan.Prerequisites {
+				if authenticated.NativeNumber < prior.Receipt.NativeNumber || authenticated.BlockNumber < prior.Receipt.BlockNumber {
+					return result, errors.New("CREATE inclusion precedes its prerequisite")
+				}
 			}
 			result.Receipt = &authenticated
 			result.Status = plan.completedStatus()
@@ -372,8 +386,8 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 	if err := self.continuity(ctx, p, evmActionRecord{ScanNumber: head.FinalizedNumber, ScanHash: head.FinalizedHash}, check); err != nil {
 		return result, err
 	}
-	if plan.ActionIndex == 1 {
-		if err := self.continuity(ctx, p, *plan.Prerequisite, check); err != nil {
+	for _, prior := range plan.Prerequisites {
+		if err := self.continuity(ctx, p, prior, check); err != nil {
 			return result, err
 		}
 	}
@@ -446,10 +460,10 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 	}
 	tx, _ := action.unsigned()
 	cost := new(big.Int).Add(tx.Value(), new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasFeeCap()))
-	if plan.ActionIndex == 1 {
+	if plan.ActionIndex > 0 {
 		// Later sealed reservations still own this sender's funds. They do not
 		// become executable or acquire new nonce/fee authority through this read.
-		for _, reserved := range p.Actions[2:] {
+		for _, reserved := range p.Actions[plan.ActionIndex+1:] {
 			if reserved.Sender == action.Sender {
 				future, err := reserved.unsigned()
 				if err != nil {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -26,6 +27,7 @@ type evmCreateReceipt struct {
 	ContractAddress   string `json:"contract_address"`
 	RuntimeHash       string `json:"runtime_hash,omitempty"`
 	GetterHash        string `json:"getter_hash,omitempty"`
+	StorageHash       string `json:"storage_hash,omitempty"`
 }
 
 // Read results never grant another nonce or a replacement signature.
@@ -50,6 +52,7 @@ type evmCreateResult struct {
 	Status               string            `json:"status"`
 	Address              string            `json:"reserve_address"`
 	VaultAddress         string            `json:"vault_address,omitempty"`
+	CoordinatorAddress   string            `json:"coordinator_implementation_address,omitempty"`
 	ExecutableAction     string            `json:"executable_action,omitempty"`
 	SigningDigest        string            `json:"signing_digest"`
 	UnsignedTransaction  string            `json:"unsigned_transaction"`
@@ -65,12 +68,12 @@ type evmCreateResult struct {
 // All mutable projections are copied on construction. Storage failure poisons
 // this instance; a new owner must reload actual durable state before proceeding.
 type evmCreateOwner struct {
-	plan         evmCreatePlan
-	store        evmActionStorage
-	chain        evmActionChain
-	reserveStore evmActionStorage
-	gate         chan struct{}
-	failed       error
+	plan        evmCreatePlan
+	store       evmActionStorage
+	chain       evmActionChain
+	priorStores []evmActionStorage
+	gate        chan struct{}
+	failed      error
 }
 
 // JSON copying preserves the exact public approval while severing caller slices.
@@ -92,11 +95,42 @@ func newEvmVaultCreateOwner(plan evmCreatePlan, store, reserveStore evmActionSto
 	if plan.ActionIndex != 1 || reserveStore == nil {
 		return nil, errors.New("vault owner lacks reserve custody")
 	}
-	return newEvmSelectedCreateOwner(plan, store, reserveStore, chain)
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore}, chain)
 }
 
-// Copy both projections; caller changes cannot alter an admitted prerequisite.
-func newEvmSelectedCreateOwner(plan evmCreatePlan, store, reserveStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+// Both predecessor locks remain held while coordinator custody is open.
+func newEvmCoordinatorCreateOwner(plan evmCreatePlan, store, reserveStore, vaultStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 2 || reserveStore == nil || vaultStore == nil {
+		return nil, errors.New("coordinator owner lacks reserve and vault custody")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore}, chain)
+}
+
+// Runtime projections own every nested slice; invocation-specific predecessor
+// records are always loaded afresh under the held locks rather than copied in.
+func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
+	plan.Config = copyEvmPhaseConfig(plan.Config)
+	plan.Prerequisites = nil
+	plan.Runtime = append([]byte(nil), plan.Runtime...)
+	plan.Getters = append([]contractGetter(nil), plan.Getters...)
+	plan.Storage = append([]contractStorageWord(nil), plan.Storage...)
+	if plan.Reserve != nil {
+		reserve := copyEvmCreatePlan(*plan.Reserve)
+		plan.Reserve = &reserve
+	}
+	if plan.Vault != nil {
+		vault := copyEvmCreatePlan(*plan.Vault)
+		plan.Vault = &vault
+	}
+	if plan.VaultConstructor != nil {
+		constructor := *plan.VaultConstructor
+		plan.VaultConstructor = &constructor
+	}
+	return plan
+}
+
+// Copy every projection; caller changes cannot alter an admitted prerequisite.
+func newEvmSelectedCreateOwner(plan evmCreatePlan, store evmActionStorage, priorStores []evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
 	if store == nil {
 		return nil, errors.New("EVM custody storage is unavailable")
 	}
@@ -106,24 +140,10 @@ func newEvmSelectedCreateOwner(plan evmCreatePlan, store, reserveStore evmAction
 	if err := plan.validateSelection(); err != nil {
 		return nil, err
 	}
-	if (plan.ActionIndex == 1) != (reserveStore != nil) {
+	if plan.ActionIndex != len(priorStores) {
 		return nil, errors.New("EVM owner prerequisite differs from action selection")
 	}
-	plan.Config = copyEvmPhaseConfig(plan.Config)
-	plan.Prerequisite = nil
-	plan.Runtime = append([]byte(nil), plan.Runtime...)
-	plan.Getters = append([]contractGetter(nil), plan.Getters...)
-	if plan.Reserve != nil {
-		reserve := *plan.Reserve
-		reserve.Config = copyEvmPhaseConfig(reserve.Config)
-		reserve.Runtime = append([]byte(nil), reserve.Runtime...)
-		reserve.Getters = append([]contractGetter(nil), reserve.Getters...)
-		plan.Reserve = &reserve
-	}
-	if plan.VaultConstructor != nil {
-		constructor := *plan.VaultConstructor
-		plan.VaultConstructor = &constructor
-	}
+	plan = copyEvmCreatePlan(plan)
 	record, err := store.load()
 	if err != nil {
 		return nil, err
@@ -131,7 +151,12 @@ func newEvmSelectedCreateOwner(plan evmCreatePlan, store, reserveStore evmAction
 	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
 		return nil, err
 	}
-	owner := &evmCreateOwner{plan: plan, store: store, reserveStore: reserveStore, chain: chain, gate: make(chan struct{}, 1)}
+	if plan.ActionIndex == 2 && record.Receipt != nil && record.Receipt.Status == 1 {
+		if err := validateEvmCreateCompletion(plan, record); err != nil {
+			return nil, err
+		}
+	}
+	owner := &evmCreateOwner{plan: plan, store: store, priorStores: append([]evmActionStorage(nil), priorStores...), chain: chain, gate: make(chan struct{}, 1)}
 	if _, err := owner.prerequisite(context.Background(), record, false); err != nil {
 		return nil, err
 	}
@@ -141,50 +166,65 @@ func newEvmSelectedCreateOwner(plan evmCreatePlan, store, reserveStore evmAction
 // Status one alone is insufficient to open the next signed-intent reservation.
 // Offline evidence must include the exact runtime and constructor getter hashes.
 func validateEvmReservePrerequisite(plan evmCreatePlan, record evmActionRecord) error {
-	if err := record.validate(plan.Config); err != nil {
+	return validateEvmCreateCompletion(plan, record)
+}
+
+// Every completed predecessor carries exact semantic hashes, including storage
+// when the implementation constructor has a namespaced initialization guard.
+func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) error {
+	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
 		return err
 	}
 	r := record.Receipt
 	if r == nil || r.Status != 1 || r.ContractAddress != plan.Address.Hex() || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(plan.Getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		return errors.New("vault requires the exact retained successful reserve postconditions")
+		name := []string{"reserve", "vault", "coordinator implementation"}[plan.ActionIndex]
+		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
-	action := plan.Config.Plan.Actions[0]
+	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
+		return errors.New("retained constructor storage postconditions differ")
+	}
+	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, err := evmWei(r.EffectiveGasPrice)
 	maximum, maximumErr := evmWei(action.FeeCapWei)
 	if err != nil || maximumErr != nil || fee.Cmp(maximum) > 0 || r.BlockNumber == 0 || r.GasUsed == 0 || r.GasUsed > action.Gas {
-		return errors.New("reserve prerequisite financial receipt is incomplete")
+		return errors.New("completed CREATE financial receipt is incomplete")
 	}
 	return nil
 }
 
-// Re-audit the original reserve at its historical inclusion before any online
-// vault progress. The reserve file itself remains unchanged under its held lock.
-func (self *evmCreateOwner) prerequisite(ctx context.Context, record evmActionRecord, online bool) (evmActionRecord, error) {
-	if self.plan.ActionIndex == 0 {
-		return evmActionRecord{}, nil
-	}
-	reserve, err := self.reserveStore.load()
-	if err != nil {
-		return reserve, err
+// Re-audit each predecessor at its historical inclusion before online progress.
+// Predecessor files remain unchanged under their held locks.
+func (self *evmCreateOwner) prerequisite(ctx context.Context, record evmActionRecord, online bool) ([]evmActionRecord, error) {
+	priorRecords := []evmActionRecord{}
+	for _, store := range self.priorStores {
+		prior, err := store.load()
+		if err != nil {
+			return nil, err
+		}
+		priorRecords = append(priorRecords, prior)
 	}
 	plan := self.plan
-	plan.Prerequisite = &reserve
+	plan.Prerequisites = priorRecords
 	if err := validateEvmCreatePrerequisite(plan, record); err != nil {
-		return reserve, err
+		return nil, err
 	}
-	if online {
+	if online && len(priorRecords) != 0 {
 		if self.chain == nil {
-			return reserve, errors.New("vault prerequisite audit requires the owned adapter")
+			return nil, errors.New("prerequisite audit requires the owned adapter")
 		}
-		observation, err := self.chain.reconcile(ctx, *self.plan.Reserve, reserve)
-		if err != nil {
-			return reserve, err
-		}
-		if observation.Receipt == nil || *observation.Receipt != *reserve.Receipt || observation.ScanNumber != reserve.ScanNumber || observation.ScanHash != reserve.ScanHash || observation.SendReady {
-			return reserve, errors.New("vault prerequisite canonical reserve receipt changed")
+		for i, prior := range priorRecords {
+			priorPlan := plan.priorPlan(i)
+			priorPlan.Prerequisites = priorRecords[:i]
+			observation, err := self.chain.reconcile(ctx, priorPlan, prior)
+			if err != nil {
+				return nil, err
+			}
+			if observation.Receipt == nil || *observation.Receipt != *prior.Receipt || observation.ScanNumber != prior.ScanNumber || observation.ScanHash != prior.ScanHash || observation.SendReady {
+				return nil, errors.New("prerequisite canonical receipt changed")
+			}
 		}
 	}
-	return reserve, ctx.Err()
+	return priorRecords, ctx.Err()
 }
 
 // The transport receives the exact prerequisite loaded under its held lock,
@@ -193,15 +233,24 @@ func validateEvmCreatePrerequisite(plan evmCreatePlan, record evmActionRecord) e
 	if plan.ActionIndex == 0 {
 		return nil
 	}
-	if plan.Prerequisite == nil {
-		return errors.New("vault transport lacks retained reserve custody")
+	if len(plan.Prerequisites) != plan.ActionIndex {
+		return errors.New("transport lacks the exact retained predecessor prefix")
 	}
-	reserve := *plan.Prerequisite
-	if err := validateEvmReservePrerequisite(*plan.Reserve, reserve); err != nil {
-		return err
+	attempts := uint16(record.Attempts)
+	for i, prior := range plan.Prerequisites {
+		if err := validateEvmCreateCompletion(plan.priorPlan(i), prior); err != nil {
+			return err
+		}
+		if i > 0 {
+			previous := plan.Prerequisites[i-1]
+			if prior.PredecessorHash != rootObjectHash(previous) || prior.Receipt.NativeNumber < previous.Receipt.NativeNumber || prior.Receipt.BlockNumber < previous.Receipt.BlockNumber {
+				return errors.New("retained predecessor chain or inclusion order differs")
+			}
+		}
+		attempts += uint16(prior.Attempts)
 	}
-	if rootObjectHash(reserve) != record.PredecessorHash || uint16(record.Attempts)+uint16(reserve.Attempts) > uint16(plan.Config.Plan.MaximumAttempts) {
-		return errors.New("vault prerequisite custody or original graph attempt allowance changed")
+	if rootObjectHash(plan.Prerequisites[len(plan.Prerequisites)-1]) != record.PredecessorHash || attempts > uint16(plan.Config.Plan.MaximumAttempts) {
+		return errors.New("prerequisite custody or original graph attempt allowance changed")
 	}
 	return nil
 }
@@ -240,13 +289,20 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 	if err := record.validateForAction(self.plan.Config, self.plan.ActionIndex); err != nil {
 		return result, err
 	}
+	if self.plan.ActionIndex == 2 && record.Receipt != nil && record.Receipt.Status == 1 {
+		if err := validateEvmCreateCompletion(self.plan, record); err != nil {
+			return result, err
+		}
+	}
 	prior, err := self.prerequisite(ctx, record, online)
 	if err != nil {
 		return result, err
 	}
 	plan := self.plan
-	if plan.ActionIndex == 1 {
-		plan.Prerequisite = &prior
+	plan.Prerequisites = prior
+	priorAttempts := uint16(0)
+	for _, record := range prior {
+		priorAttempts += uint16(record.Attempts)
 	}
 	p := self.plan.Config.Plan
 	action := p.Actions[self.plan.ActionIndex]
@@ -297,7 +353,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 		}
 		status = observation.Status
 		if submit && observation.SendReady {
-			if record.Receipt != nil || uint16(record.Attempts)+uint16(prior.Attempts) >= uint16(p.MaximumAttempts) {
+			if record.Receipt != nil || uint16(record.Attempts)+priorAttempts >= uint16(p.MaximumAttempts) {
 				status = "attempt-allowance-exhausted"
 			} else {
 				if err := ctx.Err(); err != nil {
@@ -329,10 +385,16 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 	raw, _ := tx.MarshalBinary()
 	signer := types.LatestSignerForChainID(big.NewInt(mainnetEvmChainId))
 	result := evmCreateResult{PlanHash: self.plan.Config.Plan.hash(), Status: status, Address: self.plan.Address.Hex(), SigningDigest: signer.Hash(tx).Hex(), UnsignedTransaction: "0x" + hex.EncodeToString(raw), TransactionHash: record.TransactionHash, Attempts: record.Attempts, Receipt: record.Receipt, RemainingActions: []string{"vault-create", "coordinator-create", "escrow-register", "proxy-create", "reserve-link", "vault-link", "evidence-create", "evidence-anchor"}}
-	if self.plan.ActionIndex == 1 {
+	if self.plan.ActionIndex >= 1 {
 		result.Address = self.plan.Reserve.Address.Hex()
 		result.VaultAddress = self.plan.Address.Hex()
 		result.ExecutableAction = "vault-create"
+		result.RemainingActions = result.RemainingActions[1:]
+	}
+	if self.plan.ActionIndex == 2 {
+		result.VaultAddress = self.plan.Vault.Address.Hex()
+		result.CoordinatorAddress = self.plan.Address.Hex()
+		result.ExecutableAction = "coordinator-create"
 		result.RemainingActions = result.RemainingActions[1:]
 	}
 	if record.Receipt != nil {

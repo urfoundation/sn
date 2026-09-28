@@ -519,6 +519,13 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 		}
 	case "eth_getBalance":
 		result = "0xffffffffffff"
+	case "eth_getStorageAt":
+		if self.history == nil {
+			http.Error(writer, "unexpected historical storage read", 400)
+			return
+		}
+		observed := self.historicalState(call.Params[2])
+		result = observed.GetState(common.HexToAddress(call.Params[0].(string)), common.HexToHash(call.Params[1].(string))).Hex()
 	case "eth_getCode":
 		result = "0x" + hex.EncodeToString(self.state.GetCode(self.plan.Address))
 		if self.history != nil {

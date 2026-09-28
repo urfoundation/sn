@@ -14,6 +14,7 @@ import (
 
 const evmActionStateSchema = "urnetwork-mainnet-evm-action-state-v1"
 const evmVaultActionStateSchema = "urnetwork-mainnet-evm-vault-state-v1"
+const evmCoordinatorActionStateSchema = "urnetwork-mainnet-evm-coordinator-state-v1"
 
 // Receipt facts are reauthenticated on every online resume. Their retained hash
 // detects accidental corruption; it is neither consensus nor external custody.
@@ -36,7 +37,7 @@ func (self evmActionRecord) validate(config evmPhaseConfig) error {
 }
 
 // Every retained signature belongs to its selected action in the same approval.
-// A vault journal additionally seals the completed reserve custody it consumed.
+// Each later journal seals the completed predecessor custody it consumed.
 func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex int) error {
 	claimed := self.ContentHash
 	self.ContentHash = ""
@@ -45,7 +46,10 @@ func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex
 	if actionIndex == 1 {
 		schema = evmVaultActionStateSchema
 	}
-	if actionIndex < 0 || actionIndex > 1 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex == 1 && !planSha256(self.PredecessorHash) {
+	if actionIndex == 2 {
+		schema = evmCoordinatorActionStateSchema
+	}
+	if actionIndex < 0 || actionIndex > 2 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex > 0 && !planSha256(self.PredecessorHash) {
 		return errors.New("EVM journal action or prerequisite differs")
 	}
 	if self.Schema != schema || self.ConfigHash != rootObjectHash(config) || claimed != rootObjectHash(self) || self.Attempts > p.MaximumAttempts || self.ScanNumber < p.StartNativeNumber || !rootCanonicalHash(self.ScanHash) || self.ScanNumber == p.StartNativeNumber && self.ScanHash != p.StartNativeHash {
@@ -110,20 +114,41 @@ func openEvmVaultActionStore(plan evmCreatePlan, reserve evmActionRecord, create
 	return openEvmSelectedActionStore(plan.Config, 1, rootObjectHash(reserve), create, claimHook)
 }
 
-// Both actions share publication and initial-claim recovery mechanics. Only the
-// vault uses a new schema/path/marker; a completed marker never refreshes budget.
+// The vault hash transitively seals its reserve; all three original records
+// remain required, under their existing locks, for every coordinator operation.
+func openEvmCoordinatorActionStore(plan evmCreatePlan, reserve, vault evmActionRecord, create bool, claimHook func(string) error) (*evmActionStore, error) {
+	if err := plan.validateSelection(); err != nil {
+		return nil, err
+	}
+	if plan.ActionIndex != 2 {
+		return nil, errors.New("coordinator custody requires explicit coordinator selection")
+	}
+	plan.Prerequisites = []evmActionRecord{reserve, vault}
+	if err := validateEvmCreatePrerequisite(plan, evmActionRecord{PredecessorHash: rootObjectHash(vault)}); err != nil {
+		return nil, err
+	}
+	return openEvmSelectedActionStore(plan.Config, 2, rootObjectHash(vault), create, claimHook)
+}
+
+// All three actions share publication and initial-claim recovery mechanics with
+// separate schemas/paths/markers; a completed marker never refreshes budget.
 func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predecessorHash string, create bool, claimHook func(string) error) (*evmActionStore, error) {
 	if err := errors.Join(config.validate(), bootstrapRootDirectory(config.Plan.RunDirectory)); err != nil {
 		return nil, err
 	}
-	if actionIndex < 0 || actionIndex > 1 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex == 1 && !planSha256(predecessorHash) {
+	if actionIndex < 0 || actionIndex > 2 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex > 0 && !planSha256(predecessorHash) {
 		return nil, errors.New("EVM store action or prerequisite differs")
 	}
 	name, schema := evmCreateStateFile, evmActionStateSchema
 	marker := rootObjectHash(config) + "\n"
 	if actionIndex == 1 {
 		name, schema = evmVaultCreateStateFile, evmVaultActionStateSchema
-		marker = rootObjectHash(struct{ ConfigHash, ActionId, PredecessorHash string }{ConfigHash: rootObjectHash(config), ActionId: "vault-create", PredecessorHash: predecessorHash}) + "\n"
+	}
+	if actionIndex == 2 {
+		name, schema = evmCoordinatorCreateStateFile, evmCoordinatorActionStateSchema
+	}
+	if actionIndex > 0 {
+		marker = rootObjectHash(struct{ ConfigHash, ActionId, PredecessorHash string }{ConfigHash: rootObjectHash(config), ActionId: config.Plan.Actions[actionIndex].Id, PredecessorHash: predecessorHash}) + "\n"
 	}
 	path := filepath.Join(config.Plan.RunDirectory, name)
 	flags := syscall.O_RDWR | syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK

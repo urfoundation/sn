@@ -127,6 +127,13 @@ type contractGetter struct {
 	Expected string `json:"expected"`
 }
 
+// Reviewed namespaced storage is checked only at the authenticated canonical
+// inclusion. A zero initializer word is distinct from constructor-disabled state.
+type contractStorageWord struct {
+	Slot     string `json:"slot"`
+	Expected string `json:"expected"`
+}
+
 // The reserve constructor is the first executable action of installation.
 // Its address-derived custody key is fixed before creation.
 func contractReservePayload(artifact contractReleaseArtifact, netuid uint16, hotkey [32]byte, deployer common.Address, nonce uint64) ([]byte, []byte, []contractGetter, error) {
@@ -219,4 +226,51 @@ func contractVaultPayload(artifact contractReleaseArtifact, netuid uint16, hotke
 		getters = append(getters, contractGetter{Data: "0x" + hex.EncodeToString(getter.data), Expected: "0x" + hex.EncodeToString(getter.value)})
 	}
 	return append(creation, arguments...), runtime, getters, nil
+}
+
+// The implementation constructor only disables initialization. Its UUPS self
+// word binds the predicted CREATE address; proxy initialization is a later action.
+func contractCoordinatorPayload(artifact contractReleaseArtifact, deployer common.Address, nonce uint64) ([]byte, []byte, []contractGetter, []contractStorageWord, error) {
+	if artifact.Name != "Coordinator" || deployer == (common.Address{}) {
+		return nil, nil, nil, nil, errors.New("coordinator implementation deployment domain is incomplete")
+	}
+	creation, err := contractCode(artifact.Creation, 48*1024)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	parsed, err := abi.JSON(strings.NewReader(artifact.Abi))
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	binding, err := stabi.STCoordinatorMetaData.ParseABI()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	arguments, err := parsed.Pack("")
+	expected, bindingErr := binding.Pack("")
+	if err != nil || bindingErr != nil || len(parsed.Constructor.Inputs) != 0 || len(arguments) != 0 || !bytes.Equal(arguments, expected) {
+		return nil, nil, nil, nil, errors.Join(errors.New("coordinator implementation constructor must match the empty generated binding"), err, bindingErr)
+	}
+	address := crypto.CreateAddress(deployer, nonce)
+	selfWord := make([]byte, 32)
+	copy(selfWord[12:], address[:])
+	runtime, err := artifact.withImmutables(map[string][]byte{"__self": selfWord})
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	contract := stabi.NewSTCoordinator()
+	getters := []contractGetter{}
+	for _, data := range [][]byte{contract.PackNetuid(), contract.PackSelfColdkey(), contract.PackSettlementVault(), contract.PackReserveSink(), contract.PackGuardian(), contract.PackPendingGuardian(), contract.PackPendingGuardianEpoch(), contract.PackPaused(), contract.PackCampaignReserved(), contract.PackCommitmentOracle(), contract.PackPendingCommitmentOracle(), contract.PackPendingCommitmentOracleEpoch(), contract.PackValidatorEvidence(), contract.PackOwner(), contract.PackPolicyCount(), contract.PackOperatorCount()} {
+		getters = append(getters, contractGetter{Data: "0x" + hex.EncodeToString(data), Expected: "0x" + strings.Repeat("00", 32)})
+	}
+	// These constants are fixed by the reviewed OpenZeppelin source imported by
+	// STCoordinator. The independent release file still pins that exact bytecode.
+	implementationSlot := "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+	version, err := binding.Methods["UPGRADE_INTERFACE_VERSION"].Outputs.Pack("5.0.0")
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	getters = append(getters, contractGetter{Data: "0x" + hex.EncodeToString(contract.PackProxiableUUID()), Expected: implementationSlot}, contractGetter{Data: "0x" + hex.EncodeToString(contract.PackUPGRADEINTERFACEVERSION()), Expected: "0x" + hex.EncodeToString(version)})
+	storage := []contractStorageWord{{Slot: "0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00", Expected: "0x" + strings.Repeat("00", 24) + strings.Repeat("ff", 8)}, {Slot: implementationSlot, Expected: "0x" + strings.Repeat("00", 32)}}
+	return creation, runtime, getters, storage, nil
 }

@@ -1,5 +1,5 @@
-// One independent approval seals a bounded installation graph. Reserve and
-// vault CREATE are executable; all later actions remain unexecuted.
+// One independent approval seals a bounded installation graph. The first three
+// CREATE actions are executable; all later actions remain unexecuted.
 package main
 
 import (
@@ -24,6 +24,7 @@ const evmPhaseApprovalSchema = "urnetwork-mainnet-contract-phase-approval-v1"
 const evmPhaseConfigSchema = "urnetwork-mainnet-contract-phase-config-v1"
 const evmCreateStateFile = "reserve-create.json"
 const evmVaultCreateStateFile = "vault-create.json"
+const evmCoordinatorCreateStateFile = "coordinator-create.json"
 
 // All native transaction fields are explicit; no live quote may replace an
 // approved nonce, fee, target, value or byte of calldata during recovery.
@@ -221,29 +222,57 @@ type evmCreatePlan struct {
 	Address          common.Address
 	Runtime          []byte
 	Getters          []contractGetter
+	Storage          []contractStorageWord
 	ActionIndex      int
 	Reserve          *evmCreatePlan
-	Prerequisite     *evmActionRecord
+	Vault            *evmCreatePlan
+	Prerequisites    []evmActionRecord
 	VaultConstructor *contractVaultConstructor
 }
 
 // Only implemented selections may choose a journal or index approved actions.
 func (self evmCreatePlan) validateSelection() error {
-	if self.ActionIndex == 0 && self.Reserve == nil {
+	if self.ActionIndex == 0 && self.Reserve == nil && self.Vault == nil {
 		return nil
 	}
-	if self.ActionIndex != 1 || len(self.Config.Plan.Actions) < 2 || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
+	if self.ActionIndex < 1 || self.ActionIndex > 2 || len(self.Config.Plan.Actions) <= self.ActionIndex || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || self.Reserve.Vault != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
 		return errors.New("contract action selection lacks its approved reserve prerequisite")
 	}
 	reserve, vault := self.Config.Plan.Actions[0], self.Config.Plan.Actions[1]
 	if reserve.Nonce == ^uint64(0) || vault.Sender != reserve.Sender || vault.Nonce != reserve.Nonce+1 || vault.To != nil || vault.ValueWei != "0" {
 		return errors.New("vault must be the same deployer's next zero-value CREATE")
 	}
+	if self.ActionIndex == 1 && self.Vault != nil {
+		return errors.New("vault selection contains a descendant projection")
+	}
+	if self.ActionIndex == 2 {
+		if self.Vault == nil || self.Vault.ActionIndex != 1 || rootObjectHash(self.Vault.Config) != rootObjectHash(self.Config) {
+			return errors.New("coordinator selection lacks the approved vault prerequisite")
+		}
+		if err := self.Vault.validateSelection(); err != nil {
+			return err
+		}
+		coordinator := self.Config.Plan.Actions[2]
+		if vault.Nonce == ^uint64(0) || coordinator.Sender != vault.Sender || coordinator.Nonce != vault.Nonce+1 || coordinator.To != nil || coordinator.ValueWei != "0" {
+			return errors.New("coordinator implementation must be the same deployer's next zero-value CREATE")
+		}
+	}
 	return nil
+}
+
+// The finite implemented prefix has at most two predecessors, in graph order.
+func (self evmCreatePlan) priorPlan(index int) evmCreatePlan {
+	if index == 0 {
+		return *self.Reserve
+	}
+	return *self.Vault
 }
 
 // Completion names identify only the selected contract, never the whole graph.
 func (self evmCreatePlan) completedStatus() string {
+	if self.ActionIndex == 2 {
+		return "coordinator-created"
+	}
 	if self.ActionIndex == 1 {
 		return "vault-created"
 	}
@@ -255,6 +284,39 @@ func (self evmCreatePlan) completedStatus() string {
 func selectEvmCreatePlan(ctx context.Context, reserve evmCreatePlan, actionId, configPath string) (evmCreatePlan, error) {
 	if actionId == "reserve-create" {
 		return reserve, nil
+	}
+	if actionId == "coordinator-create" {
+		vault, err := selectEvmCreatePlan(ctx, reserve, "vault-create", configPath)
+		if err != nil {
+			return evmCreatePlan{}, err
+		}
+		result := evmCreatePlan{Config: reserve.Config, ActionIndex: 2, Reserve: &reserve, Vault: &vault, VaultConstructor: vault.VaultConstructor}
+		if err := result.validateSelection(); err != nil {
+			return result, err
+		}
+		statePath := filepath.Join(result.Config.Plan.RunDirectory, evmCoordinatorCreateStateFile)
+		for _, input := range []string{configPath, result.Config.Plan.Artifacts.Path} {
+			if input == statePath || input == statePath+".lock" {
+				return result, errors.New("contract phase input aliases its coordinator journal")
+			}
+		}
+		artifacts, err := loadContractRelease(ctx, result.Config.Plan.Artifacts)
+		if err != nil {
+			return result, err
+		}
+		var artifact contractReleaseArtifact
+		for _, candidate := range artifacts.Artifacts {
+			if candidate.Name == "Coordinator" {
+				artifact = candidate
+			}
+		}
+		action := result.Config.Plan.Actions[2]
+		data, runtime, getters, storage, err := contractCoordinatorPayload(artifact, action.Sender, action.Nonce)
+		if err != nil || action.Data != "0x"+hex.EncodeToString(data) {
+			return result, errors.Join(errors.New("approved coordinator implementation constructor differs from exact release"), err)
+		}
+		result.Address, result.Runtime, result.Getters, result.Storage = crypto.CreateAddress(action.Sender, action.Nonce), runtime, getters, storage
+		return result, nil
 	}
 	result := evmCreatePlan{Config: reserve.Config, ActionIndex: 1, Reserve: &reserve}
 	if actionId != "vault-create" {
