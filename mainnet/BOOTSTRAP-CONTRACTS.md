@@ -1,12 +1,16 @@
-# Executable contract bootstrap: reserve CREATE
+# Executable contract bootstrap: reserve and vault CREATE
 
-`bootstrap-contracts preview/plan/apply/resume` implements the first installation action:
-an exact `STReserveSink` CREATE through retained public EVM custody and the owned
-HTTP submission adapter. It does not install the remaining contracts, anchor
+`bootstrap-contracts preview/plan/apply/resume` implements the first two installation
+actions: exact `STReserveSink` and `STSettlementVault` CREATE through retained
+public EVM custody and the owned HTTP submission adapter. `--action reserve-create`
+is the unchanged default; `--action vault-create` explicitly selects action one
+from the **same already approved graph**. It does not install the remaining contracts, anchor
 evidence, register miners, change emissions, activate validators, or complete
-mainnet bootstrap. See the [qualification receipt](evidence/bootstrap-contract-qualification-20260928.md)
-for passed normal/race scopes, retained fixture failures and the composed
-dependency check. The remaining installation actions are still open.
+mainnet bootstrap. The [reserve qualification receipt](evidence/bootstrap-contract-qualification-20260928.md)
+records its passed normal/race scopes, retained fixture failures and composed
+dependency check. The [vault implementation handoff](evidence/bootstrap-contract-vault-source-20260928.md)
+records the new source scope and pending behavioral qualification. Reserve results
+do not qualify the new vault path. The remaining installation actions are still open.
 
 The release catalog comes from the existing generator:
 
@@ -20,7 +24,15 @@ or modify the committed bindings/catalog. `STValidatorEvidence` is included;
 simulator adversaries, probes and fleet helpers are excluded. The independently
 signed phase pins the exact exported file. The reserve builder independently
 recreates its constructor, predicted CREATE address, address-derived mapped
-coldkey, semantic immutable words and five constructor getter results.
+coldkey, semantic immutable words and five constructor getter results. Vault
+selection additionally checks the release creation prefix and exactly six
+constructor words. Its escrow hotkey, minimum claim TTL in blocks and minimum
+transfer in rao are decoded from already approved calldata and exported for
+review. No new unsigned configuration field supplies those values. The builder
+independently recreates netuid 25, the next CREATE address and mapped coldkey,
+and the same deployer's bootstrap address. Both uint64 amounts must be nonzero,
+the escrow hotkey must be nonzero and distinct from the reserve hotkey, and the
+complete encoding must equal the generated binding's constructor encoding.
 
 ## Approval and custody
 
@@ -46,6 +58,10 @@ domain-separated approval bytes as `approval_signing_message_hex` (unprefixed
 lowercase hexadecimal). `approval_signing_message_sha256` identifies those
 bytes. The exported `approval_verified` value is always false. A supplied
 signature is rejected by preview; `plan` is the signed approval review command.
+With `--action vault-create`, preview validates both constructor projections and
+exports both addresses/runtime hashes plus `vault_constructor`. It signs the
+same complete graph bytes as reserve preview; selecting an action neither
+extends the graph nor changes its approval hash.
 
 Preview reads only the draft and artifact files. It does not inspect or create
 the future run directory, acquire its journal lock, load a key, or open a network
@@ -82,11 +98,21 @@ No DNS, proxy, redirect, endpoint fallback or automatic write retry is admitted.
 
 The bounded graph may contain the ordered prefix of one through nine actions.
 One approval covers all supplied action reservations; no per-step confirmation
-is invented. Only action zero is executable in this candidate. Later actions
+is invented. Actions zero and one are executable in this candidate. Later actions
 remain sealed reservations, not claims that their semantic builders or Safe
 executor exist. Extending a prefix changes authority and cannot silently amend
-an existing journal. The complete later phase must prepare all nine actions
-before its single graph approval if it is to progress without a new approval.
+an existing journal. A previously approved reserve-only prefix cannot gain vault
+authority on reopen. A prepared vault must be a zero-value CREATE by the reserve
+deployer at exactly its next nonce. Later executors and any full-installation
+attempt policy remain separate unfinished work.
+
+For the two executable actions, this candidate conservatively counts reserve
+and vault submission attempts together against the original `maximum_attempts`.
+Vault resume cannot renew the reserve's spent allowance. The existing limit of
+eight remains unchanged; this is not an implemented nine-action send policy.
+`maximum_total_wei` still bounds the value plus maximum gas liability of every
+approved action. Vault send admission also requires enough pending balance for
+the vault and all later sealed reservations belonging to the same sender.
 
 Only empty-access-list EIP-1559 envelopes are admitted here. A separate signer
 returns the original **binary signed transaction**, not a key or a signing
@@ -100,9 +126,22 @@ sn-mainnet bootstrap-contracts apply --config /secure/ur-mainnet/contract-phase.
 sn-mainnet bootstrap-contracts resume --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/reserve.signed.bin --signed-transaction-hash "$SIGNED_FILE_HASH"
 ```
 
+After canonical reserve completion has been retained under that same approval,
+select the already prepared vault. `apply` exports its exact unsigned envelope;
+the separate signer returns original binary bytes for `resume` import:
+
+```sh
+sn-mainnet bootstrap-contracts plan --action vault-create --config /secure/ur-mainnet/contract-phase.json
+sn-mainnet bootstrap-contracts apply --action vault-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH"
+sn-mainnet bootstrap-contracts resume --action vault-create --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/vault.signed.bin --signed-transaction-hash "$VAULT_SIGNED_FILE_HASH"
+```
+
 The result distinguishes `signature-awaiting-import`, `signed-custody-complete`,
-uncertain/pending chain work, `reserve-created`, and a reverted CREATE with its
+uncertain/pending chain work, `reserve-created`, `vault-created`, and a reverted CREATE with its
 nonce consumed. `installation_complete` and `activation_ready` remain false.
+Vault results retain `reserve_address` and add `vault_address` and
+`executable_action: "vault-create"`; seven installation actions remain. Vault
+creation does not register its escrow or bind its coordinator.
 An offline reopen preserves either completed status and the original receipt,
 with `receipt_observation: "retained"`. A successful online receipt audit emits
 `receipt_observation: "revalidated-online"`. Retained completion is historical
@@ -122,6 +161,14 @@ the owner; reopen reloads the actual complete record. Only the exact unfinished
 initial marker with absent or untouched unsigned state can recover. A completed
 marker with a missing/corrupt journal cannot become a new allowance.
 
+`vault-create.json` uses a distinct schema and marker and seals the exact completed
+reserve record in `predecessor_hash`, including its original signed bytes,
+receipt, scan checkpoint and spent attempts. The reserve lock remains held while
+vault custody is open; the vault path leaves the reserve file unchanged. Both
+journals are required on resume. An absent, reverted, unauthenticated, changed
+or unreadable reserve outcome cannot acquire or advance vault authority. The
+old reserve schema, marker, content hash and default command output are preserved.
+
 Reconciliation always precedes submission. A durable attempt is consumed before
 the single HTTP write, including an interrupted or uncertain write. Later sends
 use the same signed bytes and remaining attempt count. A pending or consumed
@@ -133,9 +180,16 @@ original transaction at the reported block/index, native header ancestry,
 Frontier digest/raw EVM header/canonical EVM lookup, and the exact native
 `Ethereum.BlockHash` first insertion using the independently approved runtime
 at both execution and parent. Native and EVM heights are distinct. A successful
-CREATE additionally requires byte-for-byte patched release runtime and all five
-constructor getters at the canonical inclusion hash. Status 1 alone cannot
-complete the phase. Every online completed resume rechecks the receipt.
+CREATE additionally requires byte-for-byte patched release runtime and constructor
+getters at the canonical inclusion hash. Reserve has five getters; vault has
+thirteen: its six immutable fields, zero coordinator, false escrow registration,
+and zero total captured, total paid, pending funding, outstanding liability and
+escrow accounted. Status 1 alone cannot complete an action. Every online vault
+operation first reauthenticates the original reserve receipt and its historical
+code/getters. The reserve's retained native checkpoint also fences the vault's
+later current-head admission, including a healthy head refresh; a changed reserve
+ancestry cannot slip between those observations. Every online completed resume
+rechecks the selected receipt too.
 
 Each invocation scans at most 128 new native headers. Completed chunks are
 durable; an interrupted current chunk is repeated, at most 128 headers. A failed
@@ -167,7 +221,7 @@ under the originally approved historical runtime. Inclusion under an unapproved
 execution/parent runtime remains unresolved and needs separately qualified
 authority migration, not a fresh journal or an inferred compatibility waiver.
 
-The remaining graph is vault CREATE, coordinator implementation CREATE,
+The remaining graph is coordinator implementation CREATE,
 `registerEscrow` with bounded rao-to-wei value, atomic initialized proxy CREATE,
 reserve recorder binding, vault coordinator binding, `STValidatorEvidence`
 CREATE, and the separately authorized Safe `fixValidatorEvidence` call. The

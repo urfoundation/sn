@@ -13,6 +13,7 @@ import (
 )
 
 const evmActionStateSchema = "urnetwork-mainnet-evm-action-state-v1"
+const evmVaultActionStateSchema = "urnetwork-mainnet-evm-vault-state-v1"
 
 // Receipt facts are reauthenticated on every online resume. Their retained hash
 // detects accidental corruption; it is neither consensus nor external custody.
@@ -25,15 +26,29 @@ type evmActionRecord struct {
 	ScanNumber      uint64            `json:"scan_number"`
 	ScanHash        string            `json:"scan_hash"`
 	Receipt         *evmCreateReceipt `json:"receipt,omitempty"`
+	PredecessorHash string            `json:"predecessor_hash,omitempty"`
 	ContentHash     string            `json:"content_hash"`
 }
 
-// Retained signatures must still satisfy independently supplied exact authority.
+// The original reserve schema and content hash remain byte-for-byte compatible.
 func (self evmActionRecord) validate(config evmPhaseConfig) error {
+	return self.validateForAction(config, 0)
+}
+
+// Every retained signature belongs to its selected action in the same approval.
+// A vault journal additionally seals the completed reserve custody it consumed.
+func (self evmActionRecord) validateForAction(config evmPhaseConfig, actionIndex int) error {
 	claimed := self.ContentHash
 	self.ContentHash = ""
 	p := config.Plan
-	if self.Schema != evmActionStateSchema || self.ConfigHash != rootObjectHash(config) || claimed != rootObjectHash(self) || self.Attempts > p.MaximumAttempts || self.ScanNumber < p.StartNativeNumber || !rootCanonicalHash(self.ScanHash) || self.ScanNumber == p.StartNativeNumber && self.ScanHash != p.StartNativeHash {
+	schema := evmActionStateSchema
+	if actionIndex == 1 {
+		schema = evmVaultActionStateSchema
+	}
+	if actionIndex < 0 || actionIndex > 1 || actionIndex >= len(p.Actions) || actionIndex == 0 && self.PredecessorHash != "" || actionIndex == 1 && !planSha256(self.PredecessorHash) {
+		return errors.New("EVM journal action or prerequisite differs")
+	}
+	if self.Schema != schema || self.ConfigHash != rootObjectHash(config) || claimed != rootObjectHash(self) || self.Attempts > p.MaximumAttempts || self.ScanNumber < p.StartNativeNumber || !rootCanonicalHash(self.ScanHash) || self.ScanNumber == p.StartNativeNumber && self.ScanHash != p.StartNativeHash {
 		return errors.New("EVM journal identity, continuity or allowance differs")
 	}
 	if self.Signed == "" {
@@ -46,7 +61,7 @@ func (self evmActionRecord) validate(config evmPhaseConfig) error {
 	if err != nil {
 		return err
 	}
-	tx, err := p.Actions[0].signed(raw)
+	tx, err := p.Actions[actionIndex].signed(raw)
 	if err != nil || tx.Hash().Hex() != self.TransactionHash {
 		return errors.Join(errors.New("retained EVM signature differs"), err)
 	}
@@ -66,19 +81,51 @@ type evmActionStorage interface {
 // A local flock is an instance fence, not a claim of distributed key exclusivity.
 // Close is called only after the action owner joins all operations.
 type evmActionStore struct {
-	config        evmPhaseConfig
-	path          string
-	lock          *os.File
-	syncDirectory func(*os.File) error
+	config          evmPhaseConfig
+	actionIndex     int
+	predecessorHash string
+	path            string
+	lock            *os.File
+	syncDirectory   func(*os.File) error
 }
 
 // Initial claim recovery is limited to the exact untouched prepared record.
 // The complete marker is synced before signed bytes can ever be retained.
 func openEvmActionStore(config evmPhaseConfig, create bool, claimHook func(string) error) (*evmActionStore, error) {
+	return openEvmSelectedActionStore(config, 0, "", create, claimHook)
+}
+
+// The caller holds the reserve lock through this store's lifetime. The vault
+// marker and state bind exactly that successful prerequisite, including attempts.
+func openEvmVaultActionStore(plan evmCreatePlan, reserve evmActionRecord, create bool, claimHook func(string) error) (*evmActionStore, error) {
+	if err := plan.validateSelection(); err != nil {
+		return nil, err
+	}
+	if plan.ActionIndex != 1 {
+		return nil, errors.New("vault custody requires explicit vault selection")
+	}
+	if err := validateEvmReservePrerequisite(*plan.Reserve, reserve); err != nil {
+		return nil, err
+	}
+	return openEvmSelectedActionStore(plan.Config, 1, rootObjectHash(reserve), create, claimHook)
+}
+
+// Both actions share publication and initial-claim recovery mechanics. Only the
+// vault uses a new schema/path/marker; a completed marker never refreshes budget.
+func openEvmSelectedActionStore(config evmPhaseConfig, actionIndex int, predecessorHash string, create bool, claimHook func(string) error) (*evmActionStore, error) {
 	if err := errors.Join(config.validate(), bootstrapRootDirectory(config.Plan.RunDirectory)); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(config.Plan.RunDirectory, evmCreateStateFile)
+	if actionIndex < 0 || actionIndex > 1 || actionIndex >= len(config.Plan.Actions) || actionIndex == 0 && predecessorHash != "" || actionIndex == 1 && !planSha256(predecessorHash) {
+		return nil, errors.New("EVM store action or prerequisite differs")
+	}
+	name, schema := evmCreateStateFile, evmActionStateSchema
+	marker := rootObjectHash(config) + "\n"
+	if actionIndex == 1 {
+		name, schema = evmVaultCreateStateFile, evmVaultActionStateSchema
+		marker = rootObjectHash(struct{ ConfigHash, ActionId, PredecessorHash string }{ConfigHash: rootObjectHash(config), ActionId: "vault-create", PredecessorHash: predecessorHash}) + "\n"
+	}
+	path := filepath.Join(config.Plan.RunDirectory, name)
 	flags := syscall.O_RDWR | syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
 	if create {
 		for _, name := range []string{path, path + ".lock"} {
@@ -92,7 +139,7 @@ func openEvmActionStore(config evmPhaseConfig, create bool, claimHook func(strin
 	if err != nil {
 		return nil, err
 	}
-	store := &evmActionStore{config: copyEvmPhaseConfig(config), path: path, lock: os.NewFile(uintptr(fd), path+".lock")}
+	store := &evmActionStore{config: copyEvmPhaseConfig(config), actionIndex: actionIndex, predecessorHash: predecessorHash, path: path, lock: os.NewFile(uintptr(fd), path+".lock")}
 	success := false
 	defer func() {
 		if !success {
@@ -106,7 +153,6 @@ func openEvmActionStore(config evmPhaseConfig, create bool, claimHook func(strin
 	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return nil, errors.Join(errors.New("EVM journal already has an owner"), err)
 	}
-	marker := rootObjectHash(config) + "\n"
 	if create {
 		written, err := store.lock.WriteString(marker)
 		if written != len(marker) && err == nil {
@@ -138,7 +184,7 @@ func openEvmActionStore(config evmPhaseConfig, create bool, claimHook func(strin
 	}
 	record, err := store.load()
 	if errors.Is(err, os.ErrNotExist) {
-		record = evmActionRecord{Schema: evmActionStateSchema, ConfigHash: rootObjectHash(config), ScanNumber: config.Plan.StartNativeNumber, ScanHash: config.Plan.StartNativeHash}
+		record = evmActionRecord{Schema: schema, ConfigHash: rootObjectHash(config), ScanNumber: config.Plan.StartNativeNumber, ScanHash: config.Plan.StartNativeHash, PredecessorHash: predecessorHash}
 		record.ContentHash = rootObjectHash(record)
 		if err := store.save(record); err != nil {
 			return nil, err
@@ -185,7 +231,10 @@ func (self *evmActionStore) load() (evmActionRecord, error) {
 	if err := decodePlanJson(raw, &record); err != nil {
 		return record, err
 	}
-	return record, record.validate(self.config)
+	if record.PredecessorHash != self.predecessorHash {
+		return record, errors.New("EVM journal reserve custody changed")
+	}
+	return record, record.validateForAction(self.config, self.actionIndex)
 }
 
 // Atomic rename is followed by directory sync before acknowledging custody.
@@ -193,7 +242,10 @@ func (self *evmActionStore) save(record evmActionRecord) error {
 	if self.lock == nil {
 		return errors.New("EVM journal is closed")
 	}
-	if err := record.validate(self.config); err != nil {
+	if record.PredecessorHash != self.predecessorHash {
+		return errors.New("EVM publication changes reserve custody")
+	}
+	if err := record.validateForAction(self.config, self.actionIndex); err != nil {
 		return err
 	}
 	if info, err := os.Lstat(self.path); err == nil {

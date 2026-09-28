@@ -96,6 +96,9 @@ func evmQuantity(encoded string, bits int) (*big.Int, error) {
 // tolerating ordinary additional node fields. Duplicate fields are rejected.
 func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreatePlan) (evmCreateReceipt, uint64, error) {
 	var result evmCreateReceipt
+	if err := plan.validateSelection(); err != nil {
+		return result, 0, err
+	}
 	var fields map[string]json.RawMessage
 	if err := decodePlanJson(raw, &fields); err != nil {
 		return result, 0, err
@@ -152,8 +155,9 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 			result.ContractAddress = ""
 		}
 	}
-	fee, _ := evmWei(plan.Config.Plan.Actions[0].FeeCapWei)
-	if result.TransactionHash != record.TransactionHash || !rootCanonicalHash(result.BlockHash) || result.BlockNumber == 0 || result.Status > 1 || result.GasUsed == 0 || result.GasUsed > plan.Config.Plan.Actions[0].Gas || values["effectiveGasPrice"].Cmp(fee) > 0 || result.Status == 1 && result.ContractAddress != plan.Address.Hex() || result.Status == 0 && result.ContractAddress != "" {
+	action := plan.Config.Plan.Actions[plan.ActionIndex]
+	fee, _ := evmWei(action.FeeCapWei)
+	if result.TransactionHash != record.TransactionHash || !rootCanonicalHash(result.BlockHash) || result.BlockNumber == 0 || result.Status > 1 || result.GasUsed == 0 || result.GasUsed > action.Gas || values["effectiveGasPrice"].Cmp(fee) > 0 || result.Status == 1 && result.ContractAddress != plan.Address.Hex() || result.Status == 0 && result.ContractAddress != "" {
 		return result, 0, errors.New("EVM receipt contradicts the original CREATE")
 	}
 	return result, values["transactionIndex"].Uint64(), nil
@@ -270,7 +274,7 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 			return receipt, err
 		}
 		if code != "0x"+hex.EncodeToString(plan.Runtime) {
-			return receipt, errors.New("created reserve runtime differs from exact patched release")
+			return receipt, errors.New("created contract runtime differs from exact patched release")
 		}
 		for _, getter := range plan.Getters {
 			var output string
@@ -278,7 +282,7 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 				return receipt, err
 			}
 			if output != getter.Expected {
-				return receipt, errors.New("created reserve constructor getter differs")
+				return receipt, errors.New("created contract constructor getter differs")
 			}
 		}
 		receipt.RuntimeHash = crypto.Keccak256Hash(plan.Runtime).Hex()
@@ -298,7 +302,13 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 	if ctx == nil || self.configHash != rootObjectHash(plan.Config) || self.client.url != plan.Config.Plan.Route.RpcUrl || record.Signed == "" {
 		return result, errors.New("EVM adapter scope differs")
 	}
-	if err := record.validate(plan.Config); err != nil {
+	if err := plan.validateSelection(); err != nil {
+		return result, err
+	}
+	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
+		return result, err
+	}
+	if err := validateEvmCreatePrerequisite(plan, record); err != nil {
 		return result, err
 	}
 	p := plan.Config.Plan
@@ -310,6 +320,11 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 	}
 	if err := self.continuity(ctx, p, record, head); err != nil {
 		return result, err
+	}
+	if plan.ActionIndex == 1 {
+		if err := self.continuity(ctx, p, *plan.Prerequisite, head); err != nil {
+			return result, err
+		}
 	}
 	var raw json.RawMessage
 	if err := self.read(ctx, "eth_getTransactionReceipt", []any{record.TransactionHash}, &raw); err != nil {
@@ -329,8 +344,11 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 			if err != nil {
 				return result, err
 			}
+			if plan.ActionIndex == 1 && (authenticated.NativeNumber < plan.Prerequisite.Receipt.NativeNumber || authenticated.BlockNumber < plan.Prerequisite.Receipt.BlockNumber) {
+				return result, errors.New("vault inclusion precedes its reserve prerequisite")
+			}
 			result.Receipt = &authenticated
-			result.Status = "reserve-created"
+			result.Status = plan.completedStatus()
 			if authenticated.Status == 0 {
 				result.Status = "create-reverted-nonce-consumed"
 			}
@@ -353,6 +371,11 @@ func (self *evmOwnedChain) reconcile(ctx context.Context, plan evmCreatePlan, re
 	}
 	if err := self.continuity(ctx, p, evmActionRecord{ScanNumber: head.FinalizedNumber, ScanHash: head.FinalizedHash}, check); err != nil {
 		return result, err
+	}
+	if plan.ActionIndex == 1 {
+		if err := self.continuity(ctx, p, *plan.Prerequisite, check); err != nil {
+			return result, err
+		}
 	}
 	if check.FinalizedHash != head.FinalizedHash {
 		// A healthy advancing head refreshes only affected current authority.
@@ -389,7 +412,7 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 		return result, err
 	}
 	block := map[string]any{"blockHash": mapping.EvmHeader.Hash, "requireCanonical": true}
-	action := p.Actions[0]
+	action := p.Actions[plan.ActionIndex]
 	var confirmed, pending, balance, code string
 	for _, read := range []struct {
 		method string
@@ -419,10 +442,23 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 		return result, nil
 	}
 	if code != "0x" {
-		return result, errors.New("reserve CREATE address already has pending code without its canonical receipt")
+		return result, errors.New("CREATE address already has pending code without its canonical receipt")
 	}
 	tx, _ := action.unsigned()
 	cost := new(big.Int).Add(tx.Value(), new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasFeeCap()))
+	if plan.ActionIndex == 1 {
+		// Later sealed reservations still own this sender's funds. They do not
+		// become executable or acquire new nonce/fee authority through this read.
+		for _, reserved := range p.Actions[2:] {
+			if reserved.Sender == action.Sender {
+				future, err := reserved.unsigned()
+				if err != nil {
+					return result, err
+				}
+				cost.Add(cost, new(big.Int).Add(future.Value(), new(big.Int).Mul(new(big.Int).SetUint64(future.Gas()), future.GasFeeCap())))
+			}
+		}
+	}
 	if available.Cmp(cost) < 0 {
 		return result, errors.New("EVM balance cannot cover original maximum liability")
 	}
@@ -437,7 +473,13 @@ func (self *evmOwnedChain) submit(ctx context.Context, plan evmCreatePlan, recor
 	if self.configHash != rootObjectHash(plan.Config) || record.Attempts == 0 {
 		return errors.New("EVM write lacks retained phase scope or attempt")
 	}
-	if err := record.validate(plan.Config); err != nil {
+	if err := plan.validateSelection(); err != nil {
+		return err
+	}
+	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
+		return err
+	}
+	if err := validateEvmCreatePrerequisite(plan, record); err != nil {
 		return err
 	}
 	_, err := ownedSubmissionPost(ctx, self.client, plan.Config.Plan.Route, "eth_sendRawTransaction", record.Signed, record.TransactionHash)

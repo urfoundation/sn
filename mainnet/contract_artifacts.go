@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -160,6 +161,61 @@ func contractReservePayload(artifact contractReleaseArtifact, netuid uint16, hot
 	}
 	getters := []contractGetter{}
 	for _, getter := range []struct{ data, value []byte }{{data: contract.PackNetuid(), value: uid}, {data: contract.PackReserveHotkey(), value: hotkey[:]}, {data: contract.PackSelfColdkey(), value: mirror[:]}, {data: contract.PackBootstrap(), value: word(deployer)}, {data: contract.PackRecorder(), value: make([]byte, 32)}} {
+		getters = append(getters, contractGetter{Data: "0x" + hex.EncodeToString(getter.data), Expected: "0x" + hex.EncodeToString(getter.value)})
+	}
+	return append(creation, arguments...), runtime, getters, nil
+}
+
+// These review values come from the exact approved constructor calldata. The
+// address-derived coldkey, netuid and bootstrap are reconstructed independently.
+type contractVaultConstructor struct {
+	EscrowHotkey          string `json:"escrow_hotkey"`
+	MinimumClaimTtlBlocks uint64 `json:"minimum_claim_ttl_blocks"`
+	MinimumTransferTaoRao uint64 `json:"minimum_transfer_tao_rao"`
+}
+
+// Six immutable words and the initial unbound/unregistered accounting state
+// must agree with genuine constructor execution at the canonical inclusion.
+func contractVaultPayload(artifact contractReleaseArtifact, netuid uint16, hotkey [32]byte, minimumClaimTtlBlocks, minimumTransferTaoRao uint64, deployer common.Address, nonce uint64) ([]byte, []byte, []contractGetter, error) {
+	if artifact.Name != "SettlementVault" || netuid != 25 || hotkey == ([32]byte{}) || minimumClaimTtlBlocks == 0 || minimumTransferTaoRao == 0 || deployer == (common.Address{}) {
+		return nil, nil, nil, errors.New("vault deployment domain is incomplete")
+	}
+	creation, err := contractCode(artifact.Creation, 48*1024)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	mirror := ss58.EvmMirrorPubkey(crypto.CreateAddress(deployer, nonce))
+	word := func(value uint64) []byte {
+		result := make([]byte, 32)
+		binary.BigEndian.PutUint64(result[24:], value)
+		return result
+	}
+	bootstrap := make([]byte, 32)
+	copy(bootstrap[12:], deployer[:])
+	uid, ttl, minimum := word(uint64(netuid)), word(minimumClaimTtlBlocks), word(minimumTransferTaoRao)
+	runtime, err := artifact.withImmutables(map[string][]byte{"netuid": uid, "escrowHotkey": hotkey[:], "selfColdkey": mirror[:], "minimumClaimTTLBlocks": ttl, "minimumTransferTaoRao": minimum, "bootstrap": bootstrap})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	contract := stabi.NewSTSettlementVault()
+	parsed, err := abi.JSON(strings.NewReader(artifact.Abi))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	arguments, err := parsed.Pack("", netuid, hotkey, mirror, minimumClaimTtlBlocks, minimumTransferTaoRao, deployer)
+	if err != nil || !bytes.Equal(arguments, contract.PackConstructor(netuid, hotkey, mirror, minimumClaimTtlBlocks, minimumTransferTaoRao, deployer)) {
+		return nil, nil, nil, errors.Join(errors.New("vault artifact constructor differs from generated binding"), err)
+	}
+	getters := []contractGetter{}
+	for _, getter := range []struct{ data, value []byte }{
+		{data: contract.PackNetuid(), value: uid}, {data: contract.PackEscrowHotkey(), value: hotkey[:]},
+		{data: contract.PackSelfColdkey(), value: mirror[:]}, {data: contract.PackMinimumClaimTTLBlocks(), value: ttl},
+		{data: contract.PackMinimumTransferTaoRao(), value: minimum}, {data: contract.PackBootstrap(), value: bootstrap},
+		{data: contract.PackCoordinator(), value: word(0)}, {data: contract.PackEscrowRegistered(), value: word(0)},
+		{data: contract.PackTotalCaptured(), value: word(0)}, {data: contract.PackTotalPaid(), value: word(0)},
+		{data: contract.PackPendingFunding(), value: word(0)}, {data: contract.PackOutstandingLiability(), value: word(0)},
+		{data: contract.PackEscrowAccounted(), value: word(0)},
+	} {
 		getters = append(getters, contractGetter{Data: "0x" + hex.EncodeToString(getter.data), Expected: "0x" + hex.EncodeToString(getter.value)})
 	}
 	return append(creation, arguments...), runtime, getters, nil

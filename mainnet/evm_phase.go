@@ -1,11 +1,12 @@
-// One independent approval seals a bounded installation graph. This first
-// executor admits only its reserve CREATE; later actions remain unexecuted.
+// One independent approval seals a bounded installation graph. Reserve and
+// vault CREATE are executable; all later actions remain unexecuted.
 package main
 
 import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ const evmPhaseSchema = "urnetwork-mainnet-contract-phase-v1"
 const evmPhaseApprovalSchema = "urnetwork-mainnet-contract-phase-approval-v1"
 const evmPhaseConfigSchema = "urnetwork-mainnet-contract-phase-config-v1"
 const evmCreateStateFile = "reserve-create.json"
+const evmVaultCreateStateFile = "vault-create.json"
 
 // All native transaction fields are explicit; no live quote may replace an
 // approved nonce, fee, target, value or byte of calldata during recovery.
@@ -212,13 +214,95 @@ func (self evmPhaseConfig) validate() error {
 	return nil
 }
 
-// The actual executable projection retains all approved graph reservations but
-// exposes only the first reserve action until its descendants are implemented.
+// Selection preserves the whole approved graph. A vault projection retains its
+// reserve prerequisite without altering any signed plan field or legacy hash.
 type evmCreatePlan struct {
-	Config  evmPhaseConfig
-	Address common.Address
-	Runtime []byte
-	Getters []contractGetter
+	Config           evmPhaseConfig
+	Address          common.Address
+	Runtime          []byte
+	Getters          []contractGetter
+	ActionIndex      int
+	Reserve          *evmCreatePlan
+	Prerequisite     *evmActionRecord
+	VaultConstructor *contractVaultConstructor
+}
+
+// Only implemented selections may choose a journal or index approved actions.
+func (self evmCreatePlan) validateSelection() error {
+	if self.ActionIndex == 0 && self.Reserve == nil {
+		return nil
+	}
+	if self.ActionIndex != 1 || len(self.Config.Plan.Actions) < 2 || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
+		return errors.New("contract action selection lacks its approved reserve prerequisite")
+	}
+	reserve, vault := self.Config.Plan.Actions[0], self.Config.Plan.Actions[1]
+	if reserve.Nonce == ^uint64(0) || vault.Sender != reserve.Sender || vault.Nonce != reserve.Nonce+1 || vault.To != nil || vault.ValueWei != "0" {
+		return errors.New("vault must be the same deployer's next zero-value CREATE")
+	}
+	return nil
+}
+
+// Completion names identify only the selected contract, never the whole graph.
+func (self evmCreatePlan) completedStatus() string {
+	if self.ActionIndex == 1 {
+		return "vault-created"
+	}
+	return "reserve-created"
+}
+
+// Explicit vault selection validates its sealed reservation without making
+// legacy reserve-only commands depend on unimplemented descendant semantics.
+func selectEvmCreatePlan(ctx context.Context, reserve evmCreatePlan, actionId, configPath string) (evmCreatePlan, error) {
+	if actionId == "reserve-create" {
+		return reserve, nil
+	}
+	result := evmCreatePlan{Config: reserve.Config, ActionIndex: 1, Reserve: &reserve}
+	if actionId != "vault-create" {
+		return result, errors.New("contract action is not implemented")
+	}
+	if err := result.validateSelection(); err != nil {
+		return result, err
+	}
+	p := result.Config.Plan
+	statePath := filepath.Join(p.RunDirectory, evmVaultCreateStateFile)
+	for _, input := range []string{configPath, p.Artifacts.Path} {
+		if input == statePath || input == statePath+".lock" {
+			return result, errors.New("contract phase input aliases its vault journal")
+		}
+	}
+	artifacts, err := loadContractRelease(ctx, p.Artifacts)
+	if err != nil {
+		return result, err
+	}
+	var artifact contractReleaseArtifact
+	for _, candidate := range artifacts.Artifacts {
+		if candidate.Name == "SettlementVault" {
+			artifact = candidate
+		}
+	}
+	creation, err := contractCode(artifact.Creation, 48*1024)
+	if err != nil {
+		return result, err
+	}
+	action := p.Actions[1]
+	approved, err := rootReceiptHex(action.Data, 64*1024)
+	if err != nil || len(approved) != len(creation)+6*32 || !bytes.Equal(approved[:len(creation)], creation) {
+		return result, errors.Join(errors.New("vault payload is not exact release creation and six constructor words"), err)
+	}
+	arguments := approved[len(creation):]
+	var hotkey [32]byte
+	copy(hotkey[:], arguments[32:64])
+	constructor := contractVaultConstructor{EscrowHotkey: "0x" + hex.EncodeToString(hotkey[:]), MinimumClaimTtlBlocks: binary.BigEndian.Uint64(arguments[120:128]), MinimumTransferTaoRao: binary.BigEndian.Uint64(arguments[152:160])}
+	if constructor.EscrowHotkey == p.ReserveHotkey {
+		return result, errors.New("vault escrow hotkey must differ from the reserve hotkey")
+	}
+	data, runtime, getters, err := contractVaultPayload(artifact, p.Netuid, hotkey, constructor.MinimumClaimTtlBlocks, constructor.MinimumTransferTaoRao, action.Sender, action.Nonce)
+	if err != nil || !bytes.Equal(approved, data) {
+		return result, errors.Join(errors.New("approved vault constructor differs from release and custody identities"), err)
+	}
+	result.Address, result.Runtime, result.Getters = crypto.CreateAddress(action.Sender, action.Nonce), runtime, getters
+	result.VaultConstructor = &constructor
+	return result, nil
 }
 
 // Both review paths decode one bounded public config with duplicate/unknown

@@ -10,6 +10,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // A complete canonical observation is retained independently of CLI output.
@@ -48,6 +49,8 @@ type evmCreateResult struct {
 	PlanHash             string            `json:"plan_hash"`
 	Status               string            `json:"status"`
 	Address              string            `json:"reserve_address"`
+	VaultAddress         string            `json:"vault_address,omitempty"`
+	ExecutableAction     string            `json:"executable_action,omitempty"`
 	SigningDigest        string            `json:"signing_digest"`
 	UnsignedTransaction  string            `json:"unsigned_transaction"`
 	TransactionHash      string            `json:"transaction_hash,omitempty"`
@@ -62,11 +65,12 @@ type evmCreateResult struct {
 // All mutable projections are copied on construction. Storage failure poisons
 // this instance; a new owner must reload actual durable state before proceeding.
 type evmCreateOwner struct {
-	plan   evmCreatePlan
-	store  evmActionStorage
-	chain  evmActionChain
-	gate   chan struct{}
-	failed error
+	plan         evmCreatePlan
+	store        evmActionStorage
+	chain        evmActionChain
+	reserveStore evmActionStorage
+	gate         chan struct{}
+	failed       error
 }
 
 // JSON copying preserves the exact public approval while severing caller slices.
@@ -79,19 +83,127 @@ func copyEvmPhaseConfig(config evmPhaseConfig) evmPhaseConfig {
 
 // No network operation or signature request happens during construction.
 func newEvmCreateOwner(plan evmCreatePlan, store evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	return newEvmSelectedCreateOwner(plan, store, nil, chain)
+}
+
+// Vault custody borrows an already locked reserve store for the owner's entire
+// lifetime. No signature or attempt may bypass that completed prerequisite.
+func newEvmVaultCreateOwner(plan evmCreatePlan, store, reserveStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 1 || reserveStore == nil {
+		return nil, errors.New("vault owner lacks reserve custody")
+	}
+	return newEvmSelectedCreateOwner(plan, store, reserveStore, chain)
+}
+
+// Copy both projections; caller changes cannot alter an admitted prerequisite.
+func newEvmSelectedCreateOwner(plan evmCreatePlan, store, reserveStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
 	if store == nil {
 		return nil, errors.New("EVM custody storage is unavailable")
 	}
 	if err := plan.Config.validate(); err != nil {
 		return nil, err
 	}
-	plan.Config = copyEvmPhaseConfig(plan.Config)
-	plan.Runtime = append([]byte(nil), plan.Runtime...)
-	plan.Getters = append([]contractGetter(nil), plan.Getters...)
-	if _, err := store.load(); err != nil {
+	if err := plan.validateSelection(); err != nil {
 		return nil, err
 	}
-	return &evmCreateOwner{plan: plan, store: store, chain: chain, gate: make(chan struct{}, 1)}, nil
+	if (plan.ActionIndex == 1) != (reserveStore != nil) {
+		return nil, errors.New("EVM owner prerequisite differs from action selection")
+	}
+	plan.Config = copyEvmPhaseConfig(plan.Config)
+	plan.Prerequisite = nil
+	plan.Runtime = append([]byte(nil), plan.Runtime...)
+	plan.Getters = append([]contractGetter(nil), plan.Getters...)
+	if plan.Reserve != nil {
+		reserve := *plan.Reserve
+		reserve.Config = copyEvmPhaseConfig(reserve.Config)
+		reserve.Runtime = append([]byte(nil), reserve.Runtime...)
+		reserve.Getters = append([]contractGetter(nil), reserve.Getters...)
+		plan.Reserve = &reserve
+	}
+	if plan.VaultConstructor != nil {
+		constructor := *plan.VaultConstructor
+		plan.VaultConstructor = &constructor
+	}
+	record, err := store.load()
+	if err != nil {
+		return nil, err
+	}
+	if err := record.validateForAction(plan.Config, plan.ActionIndex); err != nil {
+		return nil, err
+	}
+	owner := &evmCreateOwner{plan: plan, store: store, reserveStore: reserveStore, chain: chain, gate: make(chan struct{}, 1)}
+	if _, err := owner.prerequisite(context.Background(), record, false); err != nil {
+		return nil, err
+	}
+	return owner, nil
+}
+
+// Status one alone is insufficient to open the next signed-intent reservation.
+// Offline evidence must include the exact runtime and constructor getter hashes.
+func validateEvmReservePrerequisite(plan evmCreatePlan, record evmActionRecord) error {
+	if err := record.validate(plan.Config); err != nil {
+		return err
+	}
+	r := record.Receipt
+	if r == nil || r.Status != 1 || r.ContractAddress != plan.Address.Hex() || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(plan.Getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
+		return errors.New("vault requires the exact retained successful reserve postconditions")
+	}
+	action := plan.Config.Plan.Actions[0]
+	fee, err := evmWei(r.EffectiveGasPrice)
+	maximum, maximumErr := evmWei(action.FeeCapWei)
+	if err != nil || maximumErr != nil || fee.Cmp(maximum) > 0 || r.BlockNumber == 0 || r.GasUsed == 0 || r.GasUsed > action.Gas {
+		return errors.New("reserve prerequisite financial receipt is incomplete")
+	}
+	return nil
+}
+
+// Re-audit the original reserve at its historical inclusion before any online
+// vault progress. The reserve file itself remains unchanged under its held lock.
+func (self *evmCreateOwner) prerequisite(ctx context.Context, record evmActionRecord, online bool) (evmActionRecord, error) {
+	if self.plan.ActionIndex == 0 {
+		return evmActionRecord{}, nil
+	}
+	reserve, err := self.reserveStore.load()
+	if err != nil {
+		return reserve, err
+	}
+	plan := self.plan
+	plan.Prerequisite = &reserve
+	if err := validateEvmCreatePrerequisite(plan, record); err != nil {
+		return reserve, err
+	}
+	if online {
+		if self.chain == nil {
+			return reserve, errors.New("vault prerequisite audit requires the owned adapter")
+		}
+		observation, err := self.chain.reconcile(ctx, *self.plan.Reserve, reserve)
+		if err != nil {
+			return reserve, err
+		}
+		if observation.Receipt == nil || *observation.Receipt != *reserve.Receipt || observation.ScanNumber != reserve.ScanNumber || observation.ScanHash != reserve.ScanHash || observation.SendReady {
+			return reserve, errors.New("vault prerequisite canonical reserve receipt changed")
+		}
+	}
+	return reserve, ctx.Err()
+}
+
+// The transport receives the exact prerequisite loaded under its held lock,
+// not a checkpoint learned from the RPC response or from an unsigned plan.
+func validateEvmCreatePrerequisite(plan evmCreatePlan, record evmActionRecord) error {
+	if plan.ActionIndex == 0 {
+		return nil
+	}
+	if plan.Prerequisite == nil {
+		return errors.New("vault transport lacks retained reserve custody")
+	}
+	reserve := *plan.Prerequisite
+	if err := validateEvmReservePrerequisite(*plan.Reserve, reserve); err != nil {
+		return err
+	}
+	if rootObjectHash(reserve) != record.PredecessorHash || uint16(record.Attempts)+uint16(reserve.Attempts) > uint16(plan.Config.Plan.MaximumAttempts) {
+		return errors.New("vault prerequisite custody or original graph attempt allowance changed")
+	}
+	return nil
 }
 
 // A failed publication must never be followed by a network effect in this owner.
@@ -125,8 +237,19 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 	if err != nil {
 		return result, err
 	}
+	if err := record.validateForAction(self.plan.Config, self.plan.ActionIndex); err != nil {
+		return result, err
+	}
+	prior, err := self.prerequisite(ctx, record, online)
+	if err != nil {
+		return result, err
+	}
+	plan := self.plan
+	if plan.ActionIndex == 1 {
+		plan.Prerequisite = &prior
+	}
 	p := self.plan.Config.Plan
-	action := p.Actions[0]
+	action := p.Actions[self.plan.ActionIndex]
 	if len(signed) != 0 {
 		tx, err := action.signed(signed)
 		if err != nil {
@@ -148,7 +271,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 		status = "signed-custody-complete"
 	}
 	if record.Receipt != nil {
-		status = "reserve-created"
+		status = self.plan.completedStatus()
 		if record.Receipt.Status == 0 {
 			status = "create-reverted-nonce-consumed"
 		}
@@ -157,7 +280,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 		if self.chain == nil || record.Signed == "" {
 			return result, errors.New("EVM online reconciliation requires retained signed bytes and an owned adapter")
 		}
-		observation, err := self.chain.reconcile(ctx, self.plan, record)
+		observation, err := self.chain.reconcile(ctx, plan, record)
 		if err != nil {
 			return result, err
 		}
@@ -174,7 +297,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 		}
 		status = observation.Status
 		if submit && observation.SendReady {
-			if record.Receipt != nil || record.Attempts >= p.MaximumAttempts {
+			if record.Receipt != nil || uint16(record.Attempts)+uint16(prior.Attempts) >= uint16(p.MaximumAttempts) {
 				status = "attempt-allowance-exhausted"
 			} else {
 				if err := ctx.Err(); err != nil {
@@ -186,7 +309,7 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 				}
 				// The attempt is uncertain before entering the transport, even if
 				// cancellation or a malformed reply prevents acknowledgement.
-				if err := self.chain.submit(ctx, self.plan, record); err != nil {
+				if err := self.chain.submit(ctx, plan, record); err != nil {
 					return self.result(record, "submission-uncertain"), err
 				}
 				status = "submitted-awaiting-canonical-receipt"
@@ -202,10 +325,16 @@ func (self *evmCreateOwner) advance(ctx context.Context, signed []byte, online, 
 
 // Public signing material contains the exact envelope; it cannot sign itself.
 func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCreateResult {
-	tx, _ := self.plan.Config.Plan.Actions[0].unsigned()
+	tx, _ := self.plan.Config.Plan.Actions[self.plan.ActionIndex].unsigned()
 	raw, _ := tx.MarshalBinary()
 	signer := types.LatestSignerForChainID(big.NewInt(mainnetEvmChainId))
 	result := evmCreateResult{PlanHash: self.plan.Config.Plan.hash(), Status: status, Address: self.plan.Address.Hex(), SigningDigest: signer.Hash(tx).Hex(), UnsignedTransaction: "0x" + hex.EncodeToString(raw), TransactionHash: record.TransactionHash, Attempts: record.Attempts, Receipt: record.Receipt, RemainingActions: []string{"vault-create", "coordinator-create", "escrow-register", "proxy-create", "reserve-link", "vault-link", "evidence-create", "evidence-anchor"}}
+	if self.plan.ActionIndex == 1 {
+		result.Address = self.plan.Reserve.Address.Hex()
+		result.VaultAddress = self.plan.Address.Hex()
+		result.ExecutableAction = "vault-create"
+		result.RemainingActions = result.RemainingActions[1:]
+	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"
 	}

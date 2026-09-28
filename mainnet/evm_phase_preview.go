@@ -16,22 +16,31 @@ const evmPhasePreviewSchema = "urnetwork-mainnet-contract-phase-preview-v1"
 // The reviewable typed plan and the exact domain-separated bytes are exported
 // together. Hashes identify content; only the independent signature can approve.
 type evmPhasePreview struct {
-	Schema                       string       `json:"schema"`
-	Plan                         evmPhasePlan `json:"plan"`
-	PlanHash                     string       `json:"plan_hash"`
-	ApprovalPublicKey            string       `json:"approval_public_key_ed25519"`
-	ApprovalSigningMessageHex    string       `json:"approval_signing_message_hex"`
-	ApprovalSigningMessageSha256 string       `json:"approval_signing_message_sha256"`
-	ApprovalVerified             bool         `json:"approval_verified"`
-	ExecutableAction             string       `json:"executable_action"`
-	ReserveAddress               string       `json:"reserve_address"`
-	ExpectedReserveRuntimeHash   string       `json:"expected_reserve_runtime_hash"`
-	InstallationComplete         bool         `json:"installation_complete"`
+	Schema                       string                    `json:"schema"`
+	Plan                         evmPhasePlan              `json:"plan"`
+	PlanHash                     string                    `json:"plan_hash"`
+	ApprovalPublicKey            string                    `json:"approval_public_key_ed25519"`
+	ApprovalSigningMessageHex    string                    `json:"approval_signing_message_hex"`
+	ApprovalSigningMessageSha256 string                    `json:"approval_signing_message_sha256"`
+	ApprovalVerified             bool                      `json:"approval_verified"`
+	ExecutableAction             string                    `json:"executable_action"`
+	ReserveAddress               string                    `json:"reserve_address"`
+	ExpectedReserveRuntimeHash   string                    `json:"expected_reserve_runtime_hash"`
+	VaultAddress                 string                    `json:"vault_address,omitempty"`
+	ExpectedVaultRuntimeHash     string                    `json:"expected_vault_runtime_hash,omitempty"`
+	VaultConstructor             *contractVaultConstructor `json:"vault_constructor,omitempty"`
+	InstallationComplete         bool                      `json:"installation_complete"`
 }
 
 // An unsigned config must explicitly lack a signature; already signed or
 // malformed approval material cannot be silently treated as an unsigned draft.
 func loadEvmPhasePreview(ctx context.Context, path string) (evmPhasePreview, error) {
+	return loadEvmPhasePreviewAction(ctx, path, "reserve-create")
+}
+
+// Selecting a prepared vault still reads only draft and release files. Both
+// constructor projections are checked without opening future custody paths.
+func loadEvmPhasePreviewAction(ctx context.Context, path, actionId string) (evmPhasePreview, error) {
 	var result evmPhasePreview
 	config, err := readEvmPhaseConfig(ctx, path)
 	if err != nil {
@@ -47,11 +56,21 @@ func loadEvmPhasePreview(ctx context.Context, path string) (evmPhasePreview, err
 	if err != nil {
 		return result, err
 	}
+	selected, err := selectEvmCreatePlan(ctx, plan, actionId, path)
+	if err != nil {
+		return result, err
+	}
 	message, err := config.Plan.signingBytes()
 	if err != nil {
 		return result, err
 	}
 	digest := sha256.Sum256(message)
 	result = evmPhasePreview{Schema: evmPhasePreviewSchema, Plan: config.Plan, PlanHash: config.Plan.hash(), ApprovalPublicKey: config.ApprovalPublicKey, ApprovalSigningMessageHex: hex.EncodeToString(message), ApprovalSigningMessageSha256: "sha256:" + hex.EncodeToString(digest[:]), ExecutableAction: "reserve-create", ReserveAddress: plan.Address.Hex(), ExpectedReserveRuntimeHash: crypto.Keccak256Hash(plan.Runtime).Hex()}
+	if selected.ActionIndex == 1 {
+		result.ExecutableAction = "vault-create"
+		result.VaultAddress = selected.Address.Hex()
+		result.ExpectedVaultRuntimeHash = crypto.Keccak256Hash(selected.Runtime).Hex()
+		result.VaultConstructor = selected.VaultConstructor
+	}
 	return result, ctx.Err()
 }

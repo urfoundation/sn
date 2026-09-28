@@ -179,6 +179,16 @@ type evmCreateFixture struct {
 	loseReply  bool
 	gasFailure bool
 	override   func(string, []any, any) any
+	history    *evmCreateHistory
+}
+
+// Two-action fixtures retain real execution state at each inclusion hash. The
+// legacy one-action fixture leaves this nil and retains its original behavior.
+type evmCreateHistory struct {
+	receipts     map[string]map[string]any
+	transactions map[string]*types.Transaction
+	states       map[string]*state.StateDB
+	storage      map[string]map[string]string
 }
 
 // All keys, approvals and balances are synthetic and stay inside this fixture.
@@ -364,6 +374,12 @@ func (self *evmCreateFixture) execute() error {
 	if self.gasFailure {
 		self.receipt["status"], self.receipt["contractAddress"] = "0x0", nil
 	}
+	if self.history != nil {
+		self.history.receipts[self.tx.Hash().Hex()] = self.receipt
+		self.history.transactions[hash] = self.tx
+		self.history.states[hash] = self.state.Copy()
+		self.history.storage[self.storageKey] = map[string]string{nativeHash: hash}
+	}
 	return nil
 }
 
@@ -403,6 +419,9 @@ func (self *evmCreateFixture) advanceEmpty() {
 	self.evmHeaders[hash], self.rawHeaders[hash] = header, "0x"+hex.EncodeToString(raw)
 	nativeHeader, nativeHash := evmTestNativeHeader(self.t, self.hashes[self.head], self.head+1, []string{mappingTestDigest(self.t, 1, hash, []string{})})
 	self.headers[nativeHash], self.hashes[self.head+1], self.head = nativeHeader, nativeHash, self.head+1
+	if self.history != nil {
+		self.history.states[hash] = self.state.Copy()
+	}
 }
 
 // Synchronous HTTP dispatch is the only place that executes or mutates the EVM.
@@ -447,6 +466,10 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 	case "state_getStorage":
 		if call.Params[0] == runtimeCodeStorageKey {
 			result = "0x" + hex.EncodeToString(self.code)
+		} else if self.history != nil {
+			if value := self.history.storage[call.Params[0].(string)][call.Params[1].(string)]; value != "" {
+				result = value
+			}
 		} else if call.Params[0] == self.storageKey && self.receipt != nil && self.headers[call.Params[1].(string)].Number == self.receiptNativeNumber() {
 			result = self.receipt["blockHash"]
 		} else if call.Params[0] != self.storageKey {
@@ -467,21 +490,41 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 				if self.receipt != nil && hash == self.receipt["blockHash"] {
 					hashes = append(hashes, self.tx.Hash().Hex())
 				}
+				if self.history != nil {
+					hashes = []string{}
+					if transaction := self.history.transactions[hash]; transaction != nil {
+						hashes = append(hashes, transaction.Hash().Hex())
+					}
+				}
 				result = map[string]any{"hash": hash, "number": call.Params[0], "transactions": hashes}
 			}
 		}
 	case "eth_getTransactionReceipt":
 		result = self.receipt
+		if self.history != nil {
+			result = self.history.receipts[call.Params[0].(string)]
+		}
 	case "eth_getTransactionByBlockHashAndIndex":
 		if self.receipt != nil && call.Params[0] == self.receipt["blockHash"] && call.Params[1] == "0x0" {
 			result = self.tx
 		}
+		if self.history != nil && call.Params[1] == "0x0" {
+			result = self.history.transactions[call.Params[0].(string)]
+		}
 	case "eth_getTransactionCount":
 		result = fmt.Sprintf("0x%x", self.state.GetNonce(self.config.Plan.Actions[0].Sender))
+		if self.history != nil {
+			observed := self.historicalState(call.Params[1])
+			result = fmt.Sprintf("0x%x", observed.GetNonce(common.HexToAddress(call.Params[0].(string))))
+		}
 	case "eth_getBalance":
 		result = "0xffffffffffff"
 	case "eth_getCode":
 		result = "0x" + hex.EncodeToString(self.state.GetCode(self.plan.Address))
+		if self.history != nil {
+			observed := self.historicalState(call.Params[1])
+			result = "0x" + hex.EncodeToString(observed.GetCode(common.HexToAddress(call.Params[0].(string))))
+		}
 	case "eth_call":
 		input := call.Params[0].(map[string]any)
 		data, err := hex.DecodeString(input["data"].(string)[2:])
@@ -489,7 +532,13 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 			http.Error(writer, err.Error(), 400)
 			return
 		}
-		value, _, err := runtime.Call(common.HexToAddress(input["to"].(string)), data, &self.vm)
+		config := &self.vm
+		if self.history != nil {
+			historical := self.vm
+			historical.State = self.historicalState(call.Params[1]).Copy()
+			config = &historical
+		}
+		value, _, err := runtime.Call(common.HexToAddress(input["to"].(string)), data, config)
 		if err != nil {
 			http.Error(writer, err.Error(), 400)
 			return
@@ -526,4 +575,19 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 		reply["error"] = map[string]any{"code": fault.code, "message": "synthetic historical read unavailable"}
 	}
 	_ = json.NewEncoder(writer).Encode(reply)
+}
+
+// Exact canonical selectors read the captured EVM state; pending reads use the
+// active state. Unknown historical hashes fail the fixture instead of guessing.
+func (self *evmCreateFixture) historicalState(selector any) *state.StateDB {
+	if block, ok := selector.(map[string]any); ok {
+		if block["requireCanonical"] != true || self.history.states[block["blockHash"].(string)] == nil {
+			panic("synthetic EVM historical selector is not canonical or known")
+		}
+		return self.history.states[block["blockHash"].(string)]
+	}
+	if selector != "pending" {
+		panic("synthetic EVM state selector is not pending")
+	}
+	return self.state
 }
