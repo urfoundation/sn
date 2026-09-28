@@ -103,10 +103,19 @@ func TestEvmVaultLinkFencesSixPredecessorCheckpoints(t *testing.T) {
 			original := f.headers[originalHash]
 			fork, forkHash := evmTestNativeHeader(t, original.ParentHash, number, append(append([]string(nil), original.Digest.Logs...), "0x0000"))
 			f.headers[forkHash] = fork
-			proxyObserved, targetObserved, changed := false, false, false
+			proxyObserved, targetObserved, pendingObserved, changed := false, false, false, false
 			f.override = func(method string, params []any, result any) any {
-				if method == "eth_getStorageAt" && params[0] == f.plan.Proxy.Address.Hex() && params[1] == f.plan.Proxy.Storage[4].Slot && params[2].(map[string]any)["blockHash"] == bindingHash {
-					proxyObserved = true
+				if method == "eth_getStorageAt" && params[0] == f.plan.Proxy.Address.Hex() && params[1] == f.plan.Proxy.Storage[4].Slot {
+					switch block := params[2].(type) {
+					case map[string]any:
+						if block["blockHash"] == bindingHash {
+							proxyObserved = true
+						}
+					case string:
+						if block == "pending" {
+							pendingObserved = true
+						}
+					}
 				}
 				if method == "eth_getCode" && params[0] == f.plan.Address.Hex() && params[1] == "pending" {
 					targetObserved = true
@@ -118,7 +127,13 @@ func TestEvmVaultLinkFencesSixPredecessorCheckpoints(t *testing.T) {
 				}
 				return result
 			}
-			if _, code, diagnostic := f.command("resume", "--action", "vault-link", "--online", "--submit"); code != 1 || !changed || !strings.Contains(diagnostic, "ancestry") || len(f.writes) != 6 {
+			// Probe the real callback directly so a selector regression fails
+			// here instead of surfacing as a swallowed HTTP-handler panic.
+			if result := f.override("eth_getStorageAt", []any{f.plan.Proxy.Address.Hex(), f.plan.Proxy.Storage[4].Slot, "pending"}, "0x"); result != "0x" || !pendingObserved || proxyObserved || targetObserved || changed {
+				t.Fatal("pending storage selector released the historical checkpoint barrier")
+			}
+			pendingObserved = false
+			if _, code, diagnostic := f.command("resume", "--action", "vault-link", "--online", "--submit"); code != 1 || !changed || refresh && !pendingObserved || !strings.Contains(diagnostic, "ancestry") || len(f.writes) != 6 {
 				t.Fatalf("binding checkpoint %d refresh=%v accepted: %d %s", number, refresh, code, diagnostic)
 			}
 			f.override = nil
