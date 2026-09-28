@@ -4,6 +4,11 @@
 lock. It makes no RPC calls, loads no keys and executes no listed artifact.
 It emits an **unapproved candidate**, even if every category is populated.
 
+For freshly compiled, named Linux/amd64 roles, [release-build](RELEASE-BUILD.md)
+owns two bounded local builds and produces this inventory with an additional
+compiler-input and executable-identity manifest. Same-builder byte equality
+keeps the inventory's approval and provenance limitations unchanged.
+
 ```sh
 GOWORK=off sn-mainnet release-inventory --config /secure/ur-mainnet/inventory.json > candidate-inventory.json
 ```
