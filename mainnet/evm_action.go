@@ -16,21 +16,23 @@ import (
 
 // A complete canonical observation is retained independently of CLI output.
 type evmCreateReceipt struct {
-	TransactionHash   string `json:"transaction_hash"`
-	BlockHash         string `json:"evm_block_hash"`
-	BlockNumber       uint64 `json:"evm_block_number"`
-	NativeHash        string `json:"native_block_hash"`
-	NativeNumber      uint64 `json:"native_block_number"`
-	Status            uint64 `json:"status"`
-	GasUsed           uint64 `json:"gas_used"`
-	EffectiveGasPrice string `json:"effective_gas_price_wei"`
-	ContractAddress   string `json:"contract_address"`
-	RuntimeHash       string `json:"runtime_hash,omitempty"`
-	GetterHash        string `json:"getter_hash,omitempty"`
-	StorageHash       string `json:"storage_hash,omitempty"`
-	EscrowUid         uint16 `json:"escrow_uid,omitempty"`
-	EscrowLogIndex    uint64 `json:"escrow_log_index,omitempty"`
-	RegistrationHash  string `json:"registration_hash,omitempty"`
+	TransactionHash     string `json:"transaction_hash"`
+	BlockHash           string `json:"evm_block_hash"`
+	BlockNumber         uint64 `json:"evm_block_number"`
+	NativeHash          string `json:"native_block_hash"`
+	NativeNumber        uint64 `json:"native_block_number"`
+	Status              uint64 `json:"status"`
+	GasUsed             uint64 `json:"gas_used"`
+	EffectiveGasPrice   string `json:"effective_gas_price_wei"`
+	ContractAddress     string `json:"contract_address"`
+	RuntimeHash         string `json:"runtime_hash,omitempty"`
+	GetterHash          string `json:"getter_hash,omitempty"`
+	StorageHash         string `json:"storage_hash,omitempty"`
+	EscrowUid           uint16 `json:"escrow_uid,omitempty"`
+	EscrowLogIndex      uint64 `json:"escrow_log_index,omitempty"`
+	RegistrationHash    string `json:"registration_hash,omitempty"`
+	RecorderLogIndex    uint64 `json:"recorder_log_index,omitempty"`
+	RecorderBindingHash string `json:"recorder_binding_hash,omitempty"`
 }
 
 // Read results never grant another nonce or a replacement signature.
@@ -69,6 +71,7 @@ type evmCreateResult struct {
 	EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
 	ProxyAddress         string                      `json:"coordinator_proxy_address,omitempty"`
 	ProxyConstructor     *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
+	ReserveBinding       *contractReserveBinding     `json:"reserve_binding,omitempty"`
 }
 
 // All mutable projections are copied on construction. Storage failure poisons
@@ -128,6 +131,14 @@ func newEvmProxyCreateOwner(plan evmCreatePlan, store, reserveStore, vaultStore,
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore}, chain)
 }
 
+// All five predecessor journals remain locked for the one-shot reserve call.
+func newEvmReserveLinkOwner(plan evmCreatePlan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 5 || reserveStore == nil || vaultStore == nil || coordinatorStore == nil || escrowStore == nil || proxyStore == nil {
+		return nil, errors.New("reserve binding owner lacks five predecessor custody journals")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore}, chain)
+}
+
 // Runtime projections own every nested slice; invocation-specific predecessor
 // records are always loaded afresh under the held locks rather than copied in.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
@@ -151,6 +162,14 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 	if plan.Escrow != nil {
 		escrow := copyEvmCreatePlan(*plan.Escrow)
 		plan.Escrow = &escrow
+	}
+	if plan.Proxy != nil {
+		proxy := copyEvmCreatePlan(*plan.Proxy)
+		plan.Proxy = &proxy
+	}
+	if plan.ReserveBinding != nil {
+		binding := *plan.ReserveBinding
+		plan.ReserveBinding = &binding
 	}
 	if plan.ProxyConstructor != nil {
 		constructor := *plan.ProxyConstructor
@@ -215,7 +234,7 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 	}
 	r := record.Receipt
 	if r == nil {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	getters, err := plan.receiptGetters(*r)
@@ -223,11 +242,11 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 		return err
 	}
 	expectedAddress := plan.Address.Hex()
-	if plan.ActionIndex == 3 {
+	if plan.ActionIndex == 3 || plan.ActionIndex == 5 {
 		expectedAddress = ""
 	}
 	if r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
@@ -235,6 +254,9 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 	}
 	if plan.ActionIndex == 3 && (plan.EscrowRegistration == nil || r.RegistrationHash != evmEscrowRegistrationHash(plan, *r)) {
 		return errors.New("retained escrow registration postconditions differ")
+	}
+	if plan.ActionIndex == 5 && (plan.ReserveBinding == nil || r.RecorderBindingHash != evmReserveBindingHash(plan, *r)) {
+		return errors.New("retained reserve recorder binding postconditions differ")
 	}
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, err := evmWei(r.EffectiveGasPrice)
@@ -457,12 +479,19 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 		registration := *self.plan.EscrowRegistration
 		result.EscrowRegistration = &registration
 	}
-	if self.plan.ActionIndex == 4 {
+	if self.plan.ActionIndex >= 4 {
 		result.ProxyAddress = self.plan.Address.Hex()
 		result.ExecutableAction = "proxy-create"
 		result.RemainingActions = result.RemainingActions[1:]
 		constructor := *self.plan.ProxyConstructor
 		result.ProxyConstructor = &constructor
+	}
+	if self.plan.ActionIndex == 5 {
+		result.ProxyAddress = self.plan.Proxy.Address.Hex()
+		result.ExecutableAction = "reserve-link"
+		result.RemainingActions = result.RemainingActions[1:]
+		binding := *self.plan.ReserveBinding
+		result.ReserveBinding = &binding
 	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"

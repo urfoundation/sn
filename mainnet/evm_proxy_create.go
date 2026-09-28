@@ -191,7 +191,7 @@ func (self evmCreatePlan) receiptGetters(receipt evmCreateReceipt) ([]contractGe
 
 // The implementation slot names the already reviewed code at this same proxy
 // inclusion, independently from its historical predecessor receipt.
-func (self *evmOwnedChain) authenticateProxyImplementation(ctx context.Context, plan evmCreatePlan, block map[string]any) error {
+func (self *evmOwnedChain) authenticateProxyImplementation(ctx context.Context, plan evmCreatePlan, block any) error {
 	var code string
 	if err := self.read(ctx, "eth_getCode", []any{plan.Coordinator.Address.Hex(), block}, &code); err != nil {
 		return err

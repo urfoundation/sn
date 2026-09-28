@@ -1,5 +1,5 @@
 // One independent approval seals a bounded installation graph. Three CREATEs,
-// escrow registration and initialized proxy creation are executable.
+// escrow registration, initialized proxy creation and reserve binding execute.
 package main
 
 import (
@@ -27,6 +27,7 @@ const evmVaultCreateStateFile = "vault-create.json"
 const evmCoordinatorCreateStateFile = "coordinator-create.json"
 const evmEscrowRegisterStateFile = "escrow-register.json"
 const evmProxyCreateStateFile = "proxy-create.json"
+const evmReserveLinkStateFile = "reserve-link.json"
 
 // All native transaction fields are explicit; no live quote may replace an
 // approved nonce, fee, target, value or byte of calldata during recovery.
@@ -230,25 +231,27 @@ type evmCreatePlan struct {
 	Vault              *evmCreatePlan
 	Coordinator        *evmCreatePlan
 	Escrow             *evmCreatePlan
+	Proxy              *evmCreatePlan
 	Prerequisites      []evmActionRecord
 	VaultConstructor   *contractVaultConstructor
 	EscrowRegistration *contractEscrowRegistration
 	ProxyConstructor   *contractProxyConstructor
+	ReserveBinding     *contractReserveBinding
 }
 
 // Only implemented selections may choose a journal or index approved actions.
 func (self evmCreatePlan) validateSelection() error {
-	if self.ActionIndex == 0 && self.Reserve == nil && self.Vault == nil && self.Coordinator == nil && self.Escrow == nil {
+	if self.ActionIndex == 0 && self.Reserve == nil && self.Vault == nil && self.Coordinator == nil && self.Escrow == nil && self.Proxy == nil {
 		return nil
 	}
-	if self.ActionIndex < 1 || self.ActionIndex > 4 || len(self.Config.Plan.Actions) <= self.ActionIndex || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || self.Reserve.Vault != nil || self.Reserve.Coordinator != nil || self.Reserve.Escrow != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
+	if self.ActionIndex < 1 || self.ActionIndex > 5 || len(self.Config.Plan.Actions) <= self.ActionIndex || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || self.Reserve.Vault != nil || self.Reserve.Coordinator != nil || self.Reserve.Escrow != nil || self.Reserve.Proxy != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
 		return errors.New("contract action selection lacks its approved reserve prerequisite")
 	}
 	reserve, vault := self.Config.Plan.Actions[0], self.Config.Plan.Actions[1]
 	if reserve.Nonce == ^uint64(0) || vault.Sender != reserve.Sender || vault.Nonce != reserve.Nonce+1 || vault.To != nil || vault.ValueWei != "0" {
 		return errors.New("vault must be the same deployer's next zero-value CREATE")
 	}
-	if self.ActionIndex == 1 && (self.Vault != nil || self.Coordinator != nil || self.Escrow != nil) {
+	if self.ActionIndex == 1 && (self.Vault != nil || self.Coordinator != nil || self.Escrow != nil || self.Proxy != nil) {
 		return errors.New("vault selection contains a descendant projection")
 	}
 	if self.ActionIndex >= 2 {
@@ -262,7 +265,7 @@ func (self evmCreatePlan) validateSelection() error {
 		if vault.Nonce == ^uint64(0) || coordinator.Sender != vault.Sender || coordinator.Nonce != vault.Nonce+1 || coordinator.To != nil || coordinator.ValueWei != "0" {
 			return errors.New("coordinator implementation must be the same deployer's next zero-value CREATE")
 		}
-		if self.ActionIndex == 2 && (self.Coordinator != nil || self.Escrow != nil) {
+		if self.ActionIndex == 2 && (self.Coordinator != nil || self.Escrow != nil || self.Proxy != nil) {
 			return errors.New("coordinator selection contains a descendant projection")
 		}
 	}
@@ -280,11 +283,11 @@ func (self evmCreatePlan) validateSelection() error {
 		if self.EscrowRegistration == nil || *self.EscrowRegistration != registration {
 			return errors.New("escrow registration projection differs from the approved envelope")
 		}
-		if self.ActionIndex == 3 && self.Escrow != nil {
+		if self.ActionIndex == 3 && (self.Escrow != nil || self.Proxy != nil) {
 			return errors.New("escrow selection contains a descendant projection")
 		}
 	}
-	if self.ActionIndex == 4 {
+	if self.ActionIndex >= 4 {
 		if self.Escrow == nil || self.Escrow.ActionIndex != 3 || rootObjectHash(self.Escrow.Config) != rootObjectHash(self.Config) || self.ProxyConstructor == nil {
 			return errors.New("proxy selection lacks its approved escrow prerequisite or initializer")
 		}
@@ -295,11 +298,29 @@ func (self evmCreatePlan) validateSelection() error {
 		if escrow.Nonce == ^uint64(0) || proxy.Sender != escrow.Sender || proxy.Nonce != escrow.Nonce+1 || proxy.To != nil || proxy.ValueWei != "0" {
 			return errors.New("proxy must be the same deployer's next zero-value CREATE after escrow")
 		}
+		if self.ActionIndex == 4 && self.Proxy != nil {
+			return errors.New("proxy selection contains a descendant projection")
+		}
+	}
+	if self.ActionIndex == 5 {
+		if self.Proxy == nil || self.Proxy.ActionIndex != 4 || rootObjectHash(self.Proxy.Config) != rootObjectHash(self.Config) {
+			return errors.New("reserve binding lacks the approved proxy prerequisite")
+		}
+		if err := self.Proxy.validateSelection(); err != nil {
+			return err
+		}
+		binding, err := contractReserveLinkAction(self.Config.Plan, *self.Reserve, *self.Proxy)
+		if err != nil {
+			return err
+		}
+		if self.ReserveBinding == nil || *self.ReserveBinding != binding || *self.ProxyConstructor != *self.Proxy.ProxyConstructor {
+			return errors.New("reserve binding projection differs from the approved graph")
+		}
 	}
 	return nil
 }
 
-// The finite implemented prefix has at most four predecessors, in graph order.
+// The finite implemented prefix has at most five predecessors, in graph order.
 func (self evmCreatePlan) priorPlan(index int) evmCreatePlan {
 	if index == 0 {
 		return *self.Reserve
@@ -310,11 +331,17 @@ func (self evmCreatePlan) priorPlan(index int) evmCreatePlan {
 	if index == 2 {
 		return *self.Coordinator
 	}
-	return *self.Escrow
+	if index == 3 {
+		return *self.Escrow
+	}
+	return *self.Proxy
 }
 
 // Completion names identify only the selected contract, never the whole graph.
 func (self evmCreatePlan) completedStatus() string {
+	if self.ActionIndex == 5 {
+		return "reserve-recorder-bound"
+	}
 	if self.ActionIndex == 4 {
 		return "proxy-created-initialized"
 	}
@@ -332,6 +359,9 @@ func (self evmCreatePlan) completedStatus() string {
 
 // Call failure consumes the original nonce without suggesting another CREATE.
 func (self evmCreatePlan) revertedStatus() string {
+	if self.ActionIndex == 5 {
+		return "reserve-binding-reverted-nonce-consumed"
+	}
 	if self.ActionIndex == 3 {
 		return "escrow-registration-reverted-nonce-consumed"
 	}
@@ -343,6 +373,30 @@ func (self evmCreatePlan) revertedStatus() string {
 func selectEvmCreatePlan(ctx context.Context, reserve evmCreatePlan, actionId, configPath string) (evmCreatePlan, error) {
 	if actionId == "reserve-create" {
 		return reserve, nil
+	}
+	if actionId == "reserve-link" {
+		proxy, err := selectEvmCreatePlan(ctx, reserve, "proxy-create", configPath)
+		if err != nil {
+			return evmCreatePlan{}, err
+		}
+		result := evmCreatePlan{Config: reserve.Config, ActionIndex: 5, Reserve: &reserve, Vault: proxy.Vault, Coordinator: proxy.Coordinator, Escrow: proxy.Escrow, Proxy: &proxy, VaultConstructor: proxy.VaultConstructor, EscrowRegistration: proxy.EscrowRegistration, ProxyConstructor: proxy.ProxyConstructor}
+		binding, err := contractReserveLinkAction(result.Config.Plan, reserve, proxy)
+		if err != nil {
+			return result, err
+		}
+		result.ReserveBinding = &binding
+		if err := result.validateSelection(); err != nil {
+			return result, err
+		}
+		statePath := filepath.Join(result.Config.Plan.RunDirectory, evmReserveLinkStateFile)
+		for _, input := range []string{configPath, result.Config.Plan.Artifacts.Path} {
+			if input == statePath || input == statePath+".lock" {
+				return result, errors.New("contract phase input aliases its reserve binding journal")
+			}
+		}
+		result.Address, result.Runtime = reserve.Address, append([]byte(nil), reserve.Runtime...)
+		result.Getters, result.Storage = contractReserveLinkState(reserve, proxy.Address)
+		return result, nil
 	}
 	if actionId == "proxy-create" {
 		escrow, err := selectEvmCreatePlan(ctx, reserve, "escrow-register", configPath)

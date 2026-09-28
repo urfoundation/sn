@@ -158,15 +158,15 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, _ := evmWei(action.FeeCapWei)
 	expectedAddress := plan.Address.Hex()
-	if plan.ActionIndex == 3 {
+	if plan.ActionIndex == 3 || plan.ActionIndex == 5 {
 		expectedAddress = ""
 		if !bytes.Equal(fields["contractAddress"], []byte("null")) {
-			return result, 0, errors.New("escrow call receipt requires a null CREATE address")
+			return result, 0, errors.New("contract call receipt requires a null CREATE address")
 		}
 		to, toErr := textField("to")
 		from, fromErr := textField("from")
 		if toErr != nil || fromErr != nil || !common.IsHexAddress(to) || !common.IsHexAddress(from) || common.HexToAddress(to) != *action.To || common.HexToAddress(from) != action.Sender {
-			return result, 0, errors.New("escrow receipt sender or call target differs")
+			return result, 0, errors.New("contract call receipt sender or target differs")
 		}
 	}
 	if plan.ActionIndex == 4 {
@@ -180,6 +180,11 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 	}
 	if plan.ActionIndex == 3 {
 		if err := evmEscrowReceiptEvent(fields, &result, values["transactionIndex"].Uint64(), plan); err != nil {
+			return result, 0, err
+		}
+	}
+	if plan.ActionIndex == 5 {
+		if err := evmReserveLinkReceiptEvent(fields, &result, values["transactionIndex"].Uint64(), plan); err != nil {
 			return result, 0, err
 		}
 	}
@@ -336,6 +341,12 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 			if err := self.authenticateProxyImplementation(ctx, plan, block); err != nil {
 				return receipt, err
 			}
+		}
+		if plan.ActionIndex == 5 {
+			if err := self.authenticateReserveRecorder(ctx, plan, block); err != nil {
+				return receipt, err
+			}
+			receipt.RecorderBindingHash = evmReserveBindingHash(plan, receipt)
 		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.
@@ -495,6 +506,10 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 	}
 	if plan.ActionIndex == 3 {
 		if err := self.admitEscrowTarget(ctx, plan, block, code); err != nil {
+			return result, err
+		}
+	} else if plan.ActionIndex == 5 {
+		if err := self.admitReserveLinkTarget(ctx, plan, block, code); err != nil {
 			return result, err
 		}
 	} else if code != "0x" {
