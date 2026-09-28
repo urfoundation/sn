@@ -1,10 +1,10 @@
-# Executable contract bootstrap through reserve recorder binding
+# Executable contract bootstrap through vault coordinator binding
 
-`bootstrap-contracts preview/plan/apply/resume` implements the first six installation
-actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, the vault's bounded `registerEscrow` call, atomic initialized `ERC1967Proxy` CREATE, then the reserve's one-shot recorder binding through retained
+`bootstrap-contracts preview/plan/apply/resume` implements the first seven installation
+actions: exact `STReserveSink`, `STSettlementVault` and `STCoordinator` implementation CREATE, the vault's bounded `registerEscrow` call, atomic initialized `ERC1967Proxy` CREATE, then the reserve recorder and vault coordinator bindings through retained
 public EVM custody and the owned HTTP submission adapter. `--action reserve-create`
 is the unchanged default; `--action vault-create`, `--action coordinator-create`,
-`--action escrow-register`, `--action proxy-create` and `--action reserve-link` explicitly select actions one through five from
+`--action escrow-register`, `--action proxy-create`, `--action reserve-link` and `--action vault-link` explicitly select actions one through six from
 the **same already approved graph**.
 It does not install the remaining contracts, anchor
 evidence, register miners, change emissions, activate validators, or complete
@@ -23,6 +23,10 @@ The [proxy source handoff](evidence/bootstrap-contract-proxy-source-20260928.md)
 records the atomic initializer scope and pending separate behavioral qualification.
 The [reserve binding source handoff](evidence/bootstrap-contract-reserve-link-source-20260928.md)
 records the one-shot call, five-predecessor custody and separate qualification scope.
+The [getter-gas fixture correction](evidence/bootstrap-contract-read-gas-fixture-correction-20260928.md)
+records its reproduced positive failure and independent read simulation budget.
+The [vault binding source handoff](evidence/bootstrap-contract-vault-link-source-20260928.md)
+records its packed storage, six-predecessor custody and pending qualification.
 
 The release catalog comes from the existing generator:
 
@@ -77,6 +81,12 @@ the sender is the same bootstrap deployer at its next nonce, and value is zero.
 `evm/script/Deploy.s.sol` places this call immediately after proxy creation.
 The decoded `reserve_binding` review fields add no new authority or payload.
 
+Vault binding selection requires action six to call the derived vault with the
+exact 36-byte `setCoordinatorOnce(address)` payload (selector `0xf406b76b`). Its
+argument is the same initialized proxy, value is zero, and the bootstrap deployer
+uses the next nonce after reserve binding. The reviewed deployment script calls
+it immediately after `setRecorderOnce`. `vault_binding` is derived review data.
+
 ## Approval and custody
 
 The `urnetwork-mainnet-contract-phase-config-v1` config contains an independently
@@ -123,6 +133,10 @@ policy from that authenticated height.
 With `--action reserve-link`, preview preserves all those proxy review fields and
 adds `reserve_binding` plus `reserve_binding_storage`: recorder in slot zero
 must equal the approved proxy and principal in slot one must stay zero.
+With `--action vault-link`, preview adds `vault_binding` and seven
+`vault_binding_storage` words. Slot zero packs the coordinator in its low 20
+bytes with `escrowRegistered` at byte offset 20; binding preserves that flag as
+one. Reentrancy slot one and accounting slots eight through twelve stay zero.
 
 Preview reads only the draft and artifact files. It does not inspect or create
 the future run directory, acquire its journal lock, load a key, or open a network
@@ -159,7 +173,7 @@ No DNS, proxy, redirect, endpoint fallback or automatic write retry is admitted.
 
 The bounded graph may contain the ordered prefix of one through nine actions.
 One approval covers all supplied action reservations; no per-step confirmation
-is invented. Actions zero through five are executable in this candidate. Later actions
+is invented. Actions zero through six are executable in this candidate. Later actions
 remain sealed reservations, not claims that their semantic builders or Safe
 executor exist. Extending a prefix changes authority and cannot silently amend
 an existing journal. A previously approved reserve-only prefix cannot gain vault
@@ -167,7 +181,7 @@ authority on reopen. Each prepared vault and implementation must be a zero-value
 CREATE by the reserve deployer at exactly the next nonce. Later executors and any full-installation
 attempt policy remain separate unfinished work.
 
-For the six executable actions, this candidate conservatively counts all
+For the seven executable actions, this candidate conservatively counts all
 their submission attempts together against the original `maximum_attempts`.
 Child resume cannot renew any predecessor's spent allowance. The existing limit of
 eight remains unchanged; this is not an implemented nine-action send policy.
@@ -234,12 +248,21 @@ sn-mainnet bootstrap-contracts apply --action reserve-link --config /secure/ur-m
 sn-mainnet bootstrap-contracts resume --action reserve-link --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/reserve-link.signed.bin --signed-transaction-hash "$RESERVE_LINK_SIGNED_FILE_HASH"
 ```
 
+After exact reserve recorder binding is retained, select the original vault call:
+
+```sh
+sn-mainnet bootstrap-contracts plan --action vault-link --config /secure/ur-mainnet/contract-phase.json
+sn-mainnet bootstrap-contracts apply --action vault-link --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH"
+sn-mainnet bootstrap-contracts resume --action vault-link --config /secure/ur-mainnet/contract-phase.json --run-dir /secure/ur-mainnet/run --accept-plan-hash "$CONTRACT_PHASE_HASH" --signed-transaction /secure/ur-mainnet/vault-link.signed.bin --signed-transaction-hash "$VAULT_LINK_SIGNED_FILE_HASH"
+```
+
 The result distinguishes `signature-awaiting-import`, `signed-custody-complete`,
 uncertain/pending chain work, `reserve-created`, `vault-created`,
-`coordinator-created`, `escrow-registered`, `proxy-created-initialized`, `reserve-recorder-bound`, and a reverted action with its
+`coordinator-created`, `escrow-registered`, `proxy-created-initialized`, `reserve-recorder-bound`, `vault-coordinator-bound`, and a reverted action with its
 nonce consumed. The escrow failure status is
 `escrow-registration-reverted-nonce-consumed`; reserve binding failure is
-`reserve-binding-reverted-nonce-consumed`. `installation_complete` and
+`reserve-binding-reverted-nonce-consumed`; vault binding failure is
+`vault-binding-reverted-nonce-consumed`. `installation_complete` and
 `activation_ready` remain false.
 Vault results retain `reserve_address` and add `vault_address` and
 `executable_action: "vault-create"`; seven installation actions remain. Vault
@@ -252,9 +275,11 @@ Registration does not bind the coordinator or initialize the future proxy.
 Proxy results add `coordinator_proxy_address` and `proxy_constructor` with
 `executable_action: "proxy-create"`; four actions remain after proxy creation.
 Reserve binding results retain those addresses and add `reserve_binding` with
-`executable_action: "reserve-link"`; three actions remain. Vault coordinator
-binding and validator evidence deployment/anchoring are still unfinished;
-binding the recorder does not complete installation or activation.
+`executable_action: "reserve-link"`; three actions remain after recorder binding.
+Vault binding results also include `vault_binding` with
+`executable_action: "vault-link"`; two actions remain. Validator evidence
+deployment and anchoring are still unfinished; neither binding completes
+installation or activation.
 An offline reopen preserves each completed status and the original receipt,
 with `receipt_observation: "retained"`. A successful online receipt audit emits
 `receipt_observation: "revalidated-online"`. Retained completion is historical
@@ -319,6 +344,14 @@ Successful binding receipts add `recorder_binding_hash`, committing the derived
 reserve/proxy pair and event log index. `recorder_log_index` is omitted at zero,
 which remains valid and bound by the digest. Both new fields are omitted from
 all historical receipts; predecessor byte order, hashes and markers stay intact.
+
+`vault-link.json` uses `urnetwork-mainnet-evm-vault-link-state-v1` and seals exact
+completed reserve binding. All seven journals remain locked; six historical
+receipts and their checkpoint ancestry are required through initial and
+refreshed admission. Successful receipts add optional `vault_binding_hash`
+and `coordinator_log_index`, committing the derived vault/proxy pair and event
+position. Index zero is valid and included in the digest. Older receipt bytes,
+hashes, marker authority and original approval remain unchanged.
 
 Reconciliation always precedes submission. A durable attempt is consumed before
 the single HTTP write, including an interrupted or uncertain write. Later sends
@@ -430,6 +463,31 @@ projection; later binding checks retain the exact policy/epoch-zero boundaries
 while allowing the clock to advance. These observations do not infer live Safe
 authority from the configured owner or introduce a Safe-inner operation.
 
+Vault binding has independent current canonical/pending one-shot admission:
+exact vault runtime, all thirteen registered-but-unbound getters, and seven
+storage words must agree before a send. An already fixed coordinator prevents
+another call, even when it is the intended proxy. Missing reads remain unresolved.
+Success requires original receipt sender/target, null CREATE address, original
+transaction and fee bounds, and one exact `CoordinatorFixed(address indexed
+coordinator)` event from the vault with the proxy topic, empty data and explicit
+canonical transaction/block/index identity and `removed: false`.
+
+At authenticated inclusion the same thirteen getters require coordinator equal
+to the proxy, registration still true and all five accounting counters zero.
+Raw storage independently requires the exact packed slot-zero word: eleven zero
+bytes, one registration byte `01`, then the twenty coordinator bytes. The
+reentrancy guard at slot one and `totalCaptured`, `totalPaid`, `pendingFunding`,
+`outstandingLiability`, `escrowAccounted` at slots eight through twelve must all
+remain zero. The setter writes only the coordinator member and emits its event;
+it makes no external call and does not rewrite registration or accounting.
+
+Current and inclusion observations also require the already-bound reserve's
+exact runtime, six getters and two storage words, then the initialized proxy's
+23 stable getters, five distinct namespaces and implementation runtime/storage
+under the same block selector. Those checks remain separate from the six
+historical receipts. Initial proxy policy still uses its original EVM height.
+No live Safe ownership or authority is inferred by binding the coordinator.
+
 Each invocation scans at most 128 new native headers. Completed chunks are
 durable; an interrupted current chunk is repeated, at most 128 headers. A failed
 candidate read cannot advance past that candidate. Archive unavailability
@@ -460,7 +518,7 @@ under the originally approved historical runtime. Inclusion under an unapproved
 execution/parent runtime remains unresolved and needs separately qualified
 authority migration, not a fresh journal or an inferred compatibility waiver.
 
-The remaining graph is vault coordinator binding, `STValidatorEvidence`
+The remaining graph is `STValidatorEvidence`
 CREATE, and the separately authorized Safe `fixValidatorEvidence` call. The
 last action needs exact Safe digest/signature/nonce ownership and the outer
 relayer's distinct nonce/fee reservation. Both the Safe inner success and the

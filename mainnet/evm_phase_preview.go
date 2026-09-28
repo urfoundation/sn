@@ -39,6 +39,8 @@ type evmPhasePreview struct {
 	ProxyStorage                   []contractStorageWord       `json:"proxy_storage,omitempty"`
 	ReserveBinding                 *contractReserveBinding     `json:"reserve_binding,omitempty"`
 	ReserveBindingStorage          []contractStorageWord       `json:"reserve_binding_storage,omitempty"`
+	VaultBinding                   *contractVaultBinding       `json:"vault_binding,omitempty"`
+	VaultBindingStorage            []contractStorageWord       `json:"vault_binding_storage,omitempty"`
 	InstallationComplete           bool                        `json:"installation_complete"`
 }
 
@@ -98,15 +100,19 @@ func loadEvmPhasePreviewAction(ctx context.Context, path, actionId string) (evmP
 	}
 	if selected.ActionIndex >= 4 {
 		proxy := selected
-		if selected.ActionIndex == 5 {
+		if selected.ActionIndex >= 5 {
 			proxy = *selected.Proxy
 		}
 		result.ProxyAddress = proxy.Address.Hex()
 		result.ExpectedProxyRuntimeHash = crypto.Keccak256Hash(proxy.Runtime).Hex()
 		result.ProxyConstructor, result.ProxyStorage = proxy.ProxyConstructor, proxy.Storage
 	}
-	if selected.ActionIndex == 5 {
+	if selected.ActionIndex >= 5 {
 		result.ReserveBinding, result.ReserveBindingStorage = selected.ReserveBinding, selected.Storage
+		if selected.ActionIndex == 6 {
+			result.ReserveBindingStorage = selected.ReserveLink.Storage
+			result.VaultBinding, result.VaultBindingStorage = selected.VaultBinding, selected.Storage
+		}
 	}
 	return result, ctx.Err()
 }

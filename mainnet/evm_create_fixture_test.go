@@ -28,6 +28,7 @@ import (
 	native "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -152,34 +153,35 @@ func evmTestNativeHeader(t *testing.T, parent string, number uint64, logs []stri
 // HTTP fixture mutation and counters share one lock. Tests install faults only
 // between completed commands or through a deterministic barrier callback.
 type evmCreateFixture struct {
-	stateLock  sync.Mutex
-	t          *testing.T
-	server     *httptest.Server
-	config     evmPhaseConfig
-	configPath string
-	signedPath string
-	signedHash string
-	plan       evmCreatePlan
-	tx         *types.Transaction
-	raw        []byte
-	head       uint64
-	headers    map[string]rootReceiptHeader
-	hashes     map[uint64]string
-	evmHeaders map[string]*types.Header
-	rawHeaders map[string]string
-	metadata   []byte
-	code       []byte
-	storageKey string
-	state      *state.StateDB
-	vm         runtime.Config
-	receipt    map[string]any
-	writes     [][]byte
-	counts     map[string]int
-	mine       bool
-	loseReply  bool
-	gasFailure bool
-	override   func(string, []any, any) any
-	history    *evmCreateHistory
+	stateLock        sync.Mutex
+	t                *testing.T
+	server           *httptest.Server
+	config           evmPhaseConfig
+	configPath       string
+	signedPath       string
+	signedHash       string
+	plan             evmCreatePlan
+	tx               *types.Transaction
+	raw              []byte
+	head             uint64
+	headers          map[string]rootReceiptHeader
+	hashes           map[uint64]string
+	evmHeaders       map[string]*types.Header
+	rawHeaders       map[string]string
+	metadata         []byte
+	code             []byte
+	storageKey       string
+	state            *state.StateDB
+	vm               runtime.Config
+	receipt          map[string]any
+	writes           [][]byte
+	counts           map[string]int
+	mine             bool
+	loseReply        bool
+	gasFailure       bool
+	callIntrinsicGas bool
+	override         func(string, []any, any) any
+	history          *evmCreateHistory
 }
 
 // Two-action fixtures retain real execution state at each inclusion hash. The
@@ -339,6 +341,7 @@ func (self *evmCreateFixture) execute() error {
 	var code []byte
 	var address common.Address
 	var left uint64
+	var floorGas uint64
 	var err error
 	self.state.SetTxContext(self.tx.Hash(), 0)
 	if self.tx.To() == nil {
@@ -346,6 +349,17 @@ func (self *evmCreateFixture) execute() error {
 	} else {
 		config := self.vm
 		config.Value = self.tx.Value()
+		// Vault-link opts into full transaction gas accounting. Its packed slot
+		// is already nonzero after registration, so a real exhausted execution
+		// requires charging intrinsic calldata gas before the cheap setter runs.
+		if self.callIntrinsicGas {
+			intrinsic, intrinsicErr := core.IntrinsicGas(self.tx.Data(), self.tx.AccessList(), self.tx.SetCodeAuthorizations(), false, config.ChainConfig.IsHomestead(config.BlockNumber), config.ChainConfig.IsIstanbul(config.BlockNumber), config.ChainConfig.IsShanghai(config.BlockNumber, config.Time))
+			floor, floorErr := core.FloorDataGas(self.tx.Data())
+			if intrinsicErr != nil || floorErr != nil || self.tx.Gas() < max(intrinsic, floor) {
+				return errors.Join(errors.New("synthetic call does not fund intrinsic transaction gas"), intrinsicErr, floorErr)
+			}
+			config.GasLimit, floorGas = self.tx.Gas()-intrinsic, floor
+		}
 		self.state.SetNonce(self.vm.Origin, self.tx.Nonce()+1, tracing.NonceChangeUnspecified)
 		_, left, err = runtime.Call(*self.tx.To(), self.tx.Data(), &config)
 	}
@@ -361,7 +375,7 @@ func (self *evmCreateFixture) execute() error {
 	} else if self.tx.To() == nil && (address != self.plan.Address || !bytes.Equal(code, self.plan.Runtime)) {
 		return fmt.Errorf("genuine EVM constructor differs from approved immutable projection")
 	}
-	gasUsed := self.vm.GasLimit - left
+	gasUsed := max(self.vm.GasLimit-left, floorGas)
 	header := &types.Header{ParentHash: common.HexToHash(parentHash), UncleHash: types.EmptyUncleHash, Root: self.state.IntermediateRoot(true), TxHash: types.DeriveSha(types.Transactions{self.tx}, trie.NewStackTrie(nil)), ReceiptHash: types.EmptyReceiptsHash, Difficulty: big.NewInt(0), Number: new(big.Int).SetUint64(nextEvm), GasLimit: 75_000_000, GasUsed: gasUsed, Time: 1700000001001}
 	raw, err := rlp.EncodeToBytes(header)
 	if err != nil {

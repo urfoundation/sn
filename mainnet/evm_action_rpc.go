@@ -158,7 +158,7 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, _ := evmWei(action.FeeCapWei)
 	expectedAddress := plan.Address.Hex()
-	if plan.ActionIndex == 3 || plan.ActionIndex == 5 {
+	if plan.ActionIndex == 3 || plan.ActionIndex == 5 || plan.ActionIndex == 6 {
 		expectedAddress = ""
 		if !bytes.Equal(fields["contractAddress"], []byte("null")) {
 			return result, 0, errors.New("contract call receipt requires a null CREATE address")
@@ -185,6 +185,11 @@ func evmReceiptFacts(raw json.RawMessage, record evmActionRecord, plan evmCreate
 	}
 	if plan.ActionIndex == 5 {
 		if err := evmReserveLinkReceiptEvent(fields, &result, values["transactionIndex"].Uint64(), plan); err != nil {
+			return result, 0, err
+		}
+	}
+	if plan.ActionIndex == 6 {
+		if err := evmVaultLinkReceiptEvent(fields, &result, values["transactionIndex"].Uint64(), plan); err != nil {
 			return result, 0, err
 		}
 	}
@@ -348,6 +353,12 @@ func (self *evmOwnedChain) authenticateReceipt(ctx context.Context, plan evmCrea
 			}
 			receipt.RecorderBindingHash = evmReserveBindingHash(plan, receipt)
 		}
+		if plan.ActionIndex == 6 {
+			if err := self.authenticateVaultCoordinator(ctx, plan, block); err != nil {
+				return receipt, err
+			}
+			receipt.VaultBindingHash = evmVaultBindingHash(plan, receipt)
+		}
 	}
 	// Re-read both canonical mappings after contract and transaction observations.
 	if _, err := self.client.readFinalizedMappingAtIdentity(ctx, identity); err != nil {
@@ -510,6 +521,10 @@ func (self *evmOwnedChain) admitCurrent(ctx context.Context, plan evmCreatePlan,
 		}
 	} else if plan.ActionIndex == 5 {
 		if err := self.admitReserveLinkTarget(ctx, plan, block, code); err != nil {
+			return result, err
+		}
+	} else if plan.ActionIndex == 6 {
+		if err := self.admitVaultLinkTarget(ctx, plan, block, code); err != nil {
 			return result, err
 		}
 	} else if code != "0x" {

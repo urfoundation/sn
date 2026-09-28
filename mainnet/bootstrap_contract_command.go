@@ -13,7 +13,7 @@ import (
 )
 
 // Commands preserve original custody even when result publication fails.
-// An explicit action selects one of the six implemented graph reservations.
+// An explicit action selects one of the seven implemented graph reservations.
 // The default and original reserve journal remain unchanged.
 func runBootstrapContractCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) < 2 || args[0] != "bootstrap-contracts" {
@@ -28,7 +28,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	flags := flag.NewFlagSet("bootstrap-contracts "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "", "phase configuration; only preview accepts an unsigned draft")
-	actionId := flags.String("action", "reserve-create", "implemented approved action: reserve-create, vault-create, coordinator-create, escrow-register, proxy-create or reserve-link")
+	actionId := flags.String("action", "reserve-create", "implemented approved action: reserve-create, vault-create, coordinator-create, escrow-register, proxy-create, reserve-link or vault-link")
 	accepted := flags.String("accept-plan-hash", "", "exact reviewed phase hash")
 	runDirectory := flags.String("run-dir", "", "approved private journal directory")
 	signaturePath := flags.String("signed-transaction", "", "private regular file containing original public transaction bytes")
@@ -36,7 +36,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	online := flags.Bool("online", false, "read the independently approved owned RPC route")
 	submit := flags.Bool("submit", false, "permit one originally approved, durably counted HTTP submission")
 	review := command == "plan" || command == "preview"
-	if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || *configPath == "" || (*actionId != "reserve-create" && *actionId != "vault-create" && *actionId != "coordinator-create" && *actionId != "escrow-register" && *actionId != "proxy-create" && *actionId != "reserve-link") || review && (*accepted != "" || *runDirectory != "" || *signaturePath != "" || *signatureHash != "" || *online || *submit) || !review && (*accepted == "" || *runDirectory == "") || (*signaturePath == "") != (*signatureHash == "") || *signaturePath != "" && (command != "resume" || !planSha256(*signatureHash)) || (*online || *submit) && command != "resume" || *submit && !*online {
+	if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || *configPath == "" || (*actionId != "reserve-create" && *actionId != "vault-create" && *actionId != "coordinator-create" && *actionId != "escrow-register" && *actionId != "proxy-create" && *actionId != "reserve-link" && *actionId != "vault-link") || review && (*accepted != "" || *runDirectory != "" || *signaturePath != "" || *signatureHash != "" || *online || *submit) || !review && (*accepted == "" || *runDirectory == "") || (*signaturePath == "") != (*signatureHash == "") || *signaturePath != "" && (command != "resume" || !planSha256(*signatureHash)) || (*online || *submit) && command != "resume" || *submit && !*online {
 		fmt.Fprintln(stderr, "contract phase requires exact config/plan/run directory; only resume accepts pinned signed bytes, --online and --submit")
 		return 2
 	}
@@ -73,7 +73,8 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 			EscrowRegistration   *contractEscrowRegistration `json:"escrow_registration,omitempty"`
 			ProxyConstructor     *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
 			ReserveBinding       *contractReserveBinding     `json:"reserve_binding,omitempty"`
-		}{Plan: plan.Config.Plan, PlanHash: plan.Config.Plan.hash(), ExecutableAction: *actionId, InstallationComplete: false, VaultConstructor: plan.VaultConstructor, EscrowRegistration: plan.EscrowRegistration, ProxyConstructor: plan.ProxyConstructor, ReserveBinding: plan.ReserveBinding}); err != nil {
+			VaultBinding         *contractVaultBinding       `json:"vault_binding,omitempty"`
+		}{Plan: plan.Config.Plan, PlanHash: plan.Config.Plan.hash(), ExecutableAction: *actionId, InstallationComplete: false, VaultConstructor: plan.VaultConstructor, EscrowRegistration: plan.EscrowRegistration, ProxyConstructor: plan.ProxyConstructor, ReserveBinding: plan.ReserveBinding, VaultBinding: plan.VaultBinding}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -85,7 +86,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 	}
 	var signed []byte
 	if *signaturePath != "" {
-		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile}[:plan.ActionIndex+1] {
+		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile, evmVaultLinkStateFile}[:plan.ActionIndex+1] {
 			state := filepath.Join(*runDirectory, name)
 			if *signaturePath == state || *signaturePath == state+".lock" {
 				fmt.Fprintln(stderr, "signed-byte input aliases custody")
@@ -107,7 +108,7 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	var store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore *evmActionStore
+	var store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore *evmActionStore
 	if plan.ActionIndex > 0 {
 		reserveStore, err = openEvmActionStore(plan.Config, false, nil)
 		if err != nil {
@@ -176,7 +177,22 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 							fmt.Fprintln(stderr, "contract phase proxy prerequisite:", loadErr)
 							return 3
 						}
-						store, err = openEvmReserveLinkActionStore(plan, reserve, vault, coordinator, escrow, proxy, command == "apply", nil)
+						if plan.ActionIndex == 5 {
+							store, err = openEvmReserveLinkActionStore(plan, reserve, vault, coordinator, escrow, proxy, command == "apply", nil)
+						} else {
+							reserveLinkStore, err = openEvmReserveLinkActionStore(*plan.ReserveLink, reserve, vault, coordinator, escrow, proxy, false, nil)
+							if err != nil {
+								fmt.Fprintln(stderr, "contract phase reserve binding prerequisite custody:", err)
+								return 3
+							}
+							defer reserveLinkStore.close()
+							link, loadErr := reserveLinkStore.load()
+							if loadErr != nil {
+								fmt.Fprintln(stderr, "contract phase reserve binding prerequisite:", loadErr)
+								return 3
+							}
+							store, err = openEvmVaultLinkActionStore(plan, reserve, vault, coordinator, escrow, proxy, link, command == "apply", nil)
+						}
 					}
 				}
 			}
@@ -200,7 +216,9 @@ func runBootstrapContractCommand(ctx context.Context, args []string, stdout, std
 		defer adapter.client.httpClient.CloseIdleConnections()
 	}
 	var owner *evmCreateOwner
-	if plan.ActionIndex == 5 {
+	if plan.ActionIndex == 6 {
+		owner, err = newEvmVaultLinkOwner(plan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore, chain)
+	} else if plan.ActionIndex == 5 {
 		owner, err = newEvmReserveLinkOwner(plan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, chain)
 	} else if plan.ActionIndex == 4 {
 		owner, err = newEvmProxyCreateOwner(plan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, chain)

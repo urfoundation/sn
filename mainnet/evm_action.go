@@ -33,6 +33,8 @@ type evmCreateReceipt struct {
 	RegistrationHash    string `json:"registration_hash,omitempty"`
 	RecorderLogIndex    uint64 `json:"recorder_log_index,omitempty"`
 	RecorderBindingHash string `json:"recorder_binding_hash,omitempty"`
+	CoordinatorLogIndex uint64 `json:"coordinator_log_index,omitempty"`
+	VaultBindingHash    string `json:"vault_binding_hash,omitempty"`
 }
 
 // Read results never grant another nonce or a replacement signature.
@@ -72,6 +74,7 @@ type evmCreateResult struct {
 	ProxyAddress         string                      `json:"coordinator_proxy_address,omitempty"`
 	ProxyConstructor     *contractProxyConstructor   `json:"proxy_constructor,omitempty"`
 	ReserveBinding       *contractReserveBinding     `json:"reserve_binding,omitempty"`
+	VaultBinding         *contractVaultBinding       `json:"vault_binding,omitempty"`
 }
 
 // All mutable projections are copied on construction. Storage failure poisons
@@ -139,6 +142,14 @@ func newEvmReserveLinkOwner(plan evmCreatePlan, store, reserveStore, vaultStore,
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore}, chain)
 }
 
+// All six predecessor journals remain locked for the one-shot vault binding.
+func newEvmVaultLinkOwner(plan evmCreatePlan, store, reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore evmActionStorage, chain evmActionChain) (*evmCreateOwner, error) {
+	if plan.ActionIndex != 6 || reserveStore == nil || vaultStore == nil || coordinatorStore == nil || escrowStore == nil || proxyStore == nil || reserveLinkStore == nil {
+		return nil, errors.New("vault binding owner lacks six predecessor custody journals")
+	}
+	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore}, chain)
+}
+
 // Runtime projections own every nested slice; invocation-specific predecessor
 // records are always loaded afresh under the held locks rather than copied in.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
@@ -166,6 +177,14 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 	if plan.Proxy != nil {
 		proxy := copyEvmCreatePlan(*plan.Proxy)
 		plan.Proxy = &proxy
+	}
+	if plan.ReserveLink != nil {
+		link := copyEvmCreatePlan(*plan.ReserveLink)
+		plan.ReserveLink = &link
+	}
+	if plan.VaultBinding != nil {
+		binding := *plan.VaultBinding
+		plan.VaultBinding = &binding
 	}
 	if plan.ReserveBinding != nil {
 		binding := *plan.ReserveBinding
@@ -234,7 +253,7 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 	}
 	r := record.Receipt
 	if r == nil {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	getters, err := plan.receiptGetters(*r)
@@ -242,11 +261,11 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 		return err
 	}
 	expectedAddress := plan.Address.Hex()
-	if plan.ActionIndex == 3 || plan.ActionIndex == 5 {
+	if plan.ActionIndex == 3 || plan.ActionIndex == 5 || plan.ActionIndex == 6 {
 		expectedAddress = ""
 	}
 	if r.Status != 1 || r.ContractAddress != expectedAddress || r.RuntimeHash != crypto.Keccak256Hash(plan.Runtime).Hex() || r.GetterHash != rootObjectHash(getters) || r.NativeNumber != record.ScanNumber || r.NativeHash != record.ScanHash {
-		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding"}[plan.ActionIndex]
+		name := []string{"reserve", "vault", "coordinator implementation", "escrow registration", "initialized proxy", "reserve recorder binding", "vault coordinator binding"}[plan.ActionIndex]
 		return fmt.Errorf("action requires the exact retained successful %s postconditions", name)
 	}
 	if len(plan.Storage) != 0 && r.StorageHash != rootObjectHash(plan.Storage) {
@@ -257,6 +276,9 @@ func validateEvmCreateCompletion(plan evmCreatePlan, record evmActionRecord) err
 	}
 	if plan.ActionIndex == 5 && (plan.ReserveBinding == nil || r.RecorderBindingHash != evmReserveBindingHash(plan, *r)) {
 		return errors.New("retained reserve recorder binding postconditions differ")
+	}
+	if plan.ActionIndex == 6 && (plan.VaultBinding == nil || r.VaultBindingHash != evmVaultBindingHash(plan, *r)) {
+		return errors.New("retained vault coordinator binding postconditions differ")
 	}
 	action := plan.Config.Plan.Actions[plan.ActionIndex]
 	fee, err := evmWei(r.EffectiveGasPrice)
@@ -486,12 +508,18 @@ func (self *evmCreateOwner) result(record evmActionRecord, status string) evmCre
 		constructor := *self.plan.ProxyConstructor
 		result.ProxyConstructor = &constructor
 	}
-	if self.plan.ActionIndex == 5 {
+	if self.plan.ActionIndex >= 5 {
 		result.ProxyAddress = self.plan.Proxy.Address.Hex()
 		result.ExecutableAction = "reserve-link"
 		result.RemainingActions = result.RemainingActions[1:]
 		binding := *self.plan.ReserveBinding
 		result.ReserveBinding = &binding
+	}
+	if self.plan.ActionIndex == 6 {
+		result.ExecutableAction = "vault-link"
+		result.RemainingActions = result.RemainingActions[1:]
+		binding := *self.plan.VaultBinding
+		result.VaultBinding = &binding
 	}
 	if record.Receipt != nil {
 		result.ReceiptObservation = "retained"
