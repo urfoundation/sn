@@ -565,16 +565,17 @@ func (self *evmCreateFixture) serve(writer http.ResponseWriter, request *http.Re
 			http.Error(writer, err.Error(), 400)
 			return
 		}
-		config := &self.vm
+		// Read simulation has its own budget; a deliberately exhausted signed
+		// transaction must not starve historical or pending prerequisite getters.
+		config := self.vm
+		config.GasLimit = 2_000_000
 		if self.history != nil {
-			historical := self.vm
-			historical.State = self.historicalState(call.Params[1]).Copy()
+			config.State = self.historicalState(call.Params[1]).Copy()
 			if block, ok := call.Params[1].(map[string]any); ok {
-				historical.BlockNumber = new(big.Int).Set(self.evmHeaders[block["blockHash"].(string)].Number)
+				config.BlockNumber = new(big.Int).Set(self.evmHeaders[block["blockHash"].(string)].Number)
 			}
-			config = &historical
 		}
-		value, _, err := runtime.Call(common.HexToAddress(input["to"].(string)), data, config)
+		value, _, err := runtime.Call(common.HexToAddress(input["to"].(string)), data, &config)
 		if err != nil {
 			http.Error(writer, err.Error(), 400)
 			return

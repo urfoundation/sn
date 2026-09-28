@@ -29,6 +29,24 @@ func TestEvmCreateOfflineResumeRetainsRevertedReceipt(t *testing.T) {
 	testEvmCreateOfflineReceipt(t, true)
 }
 
+// The legacy fixture branch without historical snapshots also separates read
+// simulation from the execution budget, without modifying signed bytes or state.
+func TestEvmCreateGetterReadBudgetPreservesExecutionBudget(t *testing.T) {
+	f := newEvmCreateFixture(t)
+	f.prepareSigned()
+	if _, code, diagnostic := f.command("resume", "--online", "--submit"); code != 0 {
+		t.Fatal(diagnostic)
+	}
+	f.vm.GasLimit = 1
+	result, code, diagnostic := f.command("resume", "--online", "--submit")
+	if code != 0 || result.Status != "reserve-created" || result.Receipt == nil || result.Attempts != 1 || f.counts["eth_call"] != len(f.plan.Getters) {
+		t.Fatalf("getter simulation inherited the transaction budget: %+v %d %s", result, code, diagnostic)
+	}
+	if f.vm.GasLimit != 1 || f.tx.Gas() != f.config.Plan.Actions[0].Gas || len(f.writes) != 1 || !bytes.Equal(f.writes[0], f.raw) || !bytes.Equal(f.state.GetCode(f.plan.Address), f.plan.Runtime) || f.state.GetNonce(f.config.Plan.Actions[0].Sender) != 1 {
+		t.Fatal("getter simulation changed execution authority or deployed state")
+	}
+}
+
 // Both terminal states cross the real command, disk, HTTP and execution paths;
 // RPC counters and journal bytes are compared after reopening without --online.
 func testEvmCreateOfflineReceipt(t *testing.T, reverted bool) {

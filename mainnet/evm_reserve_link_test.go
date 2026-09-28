@@ -581,8 +581,27 @@ func TestEvmReserveLinkRevertRetainsConsumedNonce(t *testing.T) {
 	f.publishConfig()
 	f.prepareReserveLinkSigned()
 	f.gasFailure = true
+	f.advanceEmpty()
+	currentHash := f.newestEvmHash()
+	policySelector := "0x" + hex.EncodeToString(stabi.NewSTCoordinator().PackPolicyByIndex(big.NewInt(0)))
+	observed := map[string]bool{}
+	f.override = func(method string, params []any, result any) any {
+		if method == "eth_call" && params[0].(map[string]any)["to"] == f.plan.Proxy.Address.Hex() && params[0].(map[string]any)["data"] == policySelector {
+			if params[1] == "pending" {
+				observed["pending"] = true
+			} else if params[1].(map[string]any)["blockHash"] == currentHash {
+				observed["current"] = true
+			} else {
+				observed["historical"] = true
+			}
+		}
+		return result
+	}
 	if _, code, diagnostic := f.command("resume", "--action", "reserve-link", "--online", "--submit"); code != 0 {
 		t.Fatal(diagnostic)
+	}
+	if !observed["historical"] || !observed["current"] || !observed["pending"] || f.vm.GasLimit != 21_000 || f.tx.Gas() != 21_000 || len(f.writes) != 6 || !bytes.Equal(f.writes[5], f.raw) {
+		t.Fatalf("binding read budget changed execution or skipped a read scope: %v, execution gas %d", observed, f.vm.GasLimit)
 	}
 	result, code, diagnostic := f.command("resume", "--action", "reserve-link", "--online", "--submit")
 	if code != 0 || result.Status != "reserve-binding-reverted-nonce-consumed" || result.Receipt == nil || result.Receipt.Status != 0 || result.Receipt.RuntimeHash != "" || result.Receipt.GetterHash != "" || result.Receipt.StorageHash != "" || result.Receipt.RecorderBindingHash != "" || len(f.writes) != 6 || !bytes.Equal(f.state.GetCode(f.plan.Address), f.plan.Runtime) || f.state.GetState(f.plan.Address, common.Hash{}) != (common.Hash{}) || f.state.GetNonce(f.config.Plan.Actions[5].Sender) != 6 {
