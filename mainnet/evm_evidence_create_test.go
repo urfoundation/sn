@@ -92,7 +92,8 @@ func TestEvmEvidenceCreateExecutesExactConstructorAndPreservesAncestors(t *testi
 }
 
 // Fresh synthetic approval cannot authorize different constructor semantics,
-// noncanonical words or a changed reserved CREATE identity.
+// noncanonical words or a changed reserved CREATE identity. Selection rejects
+// with the CLI's authority exit before any journal or lock can be opened.
 func TestEvmEvidenceCreateRejectsChangedConstructor(t *testing.T) {
 	f := newEvmEvidenceFixture(t)
 	f.config.Plan.MaximumTotalWei = "2243000001"
@@ -132,15 +133,21 @@ func TestEvmEvidenceCreateRejectsChangedConstructor(t *testing.T) {
 		action.Data = "0x" + hex.EncodeToString(data)
 		f.config.Plan.Actions[7] = action
 		f.publishConfig()
-		if _, code, diagnostic := f.command("apply", "--action", "evidence-create"); code != 1 || !strings.Contains(diagnostic, "evidence") {
-			t.Fatalf("changed evidence %s reached custody: %d %s", fault, code, diagnostic)
+		if _, code, diagnostic := f.command("apply", "--action", "evidence-create"); code != 2 || !strings.HasPrefix(diagnostic, "contract phase selected action:") || !strings.Contains(diagnostic, "evidence") {
+			t.Fatalf("changed evidence %s escaped selection rejection: %d %s", fault, code, diagnostic)
+		}
+		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile, evmVaultLinkStateFile, evmEvidenceCreateStateFile} {
+			for _, suffix := range []string{"", ".lock"} {
+				if _, err := os.Lstat(filepath.Join(f.config.Plan.RunDirectory, name+suffix)); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("changed constructor %s opened %s%s: %v", fault, name, suffix, err)
+				}
+			}
 		}
 	}
-	if len(f.counts) != 0 {
-		t.Fatal("changed constructor reached RPC")
-	}
-	if _, err := os.Lstat(filepath.Join(f.config.Plan.RunDirectory, evmEvidenceCreateStateFile) + ".lock"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("changed constructor acquired evidence custody: %v", err)
+	f.config.Plan.Actions[7] = original
+	f.publishConfig()
+	if _, code, diagnostic := f.command("plan", "--action", "evidence-create"); code != 0 || len(f.counts) != 0 || len(f.writes) != 0 {
+		t.Fatalf("restored evidence constructor refused or opened RPC: %d %s", code, diagnostic)
 	}
 }
 
@@ -148,10 +155,25 @@ func TestEvmEvidenceCreateRejectsChangedConstructor(t *testing.T) {
 // approval must not reuse constructor bytes carrying the old identifier hash.
 func TestEvmEvidenceCreateBindsApprovedDeploymentDomain(t *testing.T) {
 	f := newEvmEvidenceFixture(t)
+	original := f.config.Plan.DeploymentId
 	f.config.Plan.DeploymentId = "synthetic-other-install"
 	f.publishConfig()
-	if _, code, diagnostic := f.command("plan", "--action", "evidence-create"); code != 1 || !strings.Contains(diagnostic, "deployment domain") || len(f.counts) != 0 {
-		t.Fatalf("evidence reused another deployment domain: %d %s", code, diagnostic)
+	for _, command := range []string{"plan", "apply"} {
+		if _, code, diagnostic := f.command(command, "--action", "evidence-create"); code != 2 || !strings.HasPrefix(diagnostic, "contract phase selected action:") || !strings.Contains(diagnostic, "deployment domain") {
+			t.Fatalf("evidence %s escaped deployment-domain selection rejection: %d %s", command, code, diagnostic)
+		}
+		for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile, evmVaultLinkStateFile, evmEvidenceCreateStateFile} {
+			for _, suffix := range []string{"", ".lock"} {
+				if _, err := os.Lstat(filepath.Join(f.config.Plan.RunDirectory, name+suffix)); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("changed deployment domain opened %s%s: %v", name, suffix, err)
+				}
+			}
+		}
+	}
+	f.config.Plan.DeploymentId = original
+	f.publishConfig()
+	if _, code, diagnostic := f.command("plan", "--action", "evidence-create"); code != 0 || len(f.counts) != 0 || len(f.writes) != 0 {
+		t.Fatalf("restored evidence domain refused or opened RPC: %d %s", code, diagnostic)
 	}
 }
 

@@ -310,7 +310,8 @@ func TestEvmEvidenceCreateOutputFailureRetainsCreation(t *testing.T) {
 }
 
 // A different original reservation or any one of sixteen custody paths cannot
-// substitute for the imported evidence transaction.
+// substitute for the imported evidence transaction. Input rejection precedes
+// custody, preserves every journal byte and leaves the genuine import available.
 func TestEvmEvidenceCreateRejectsOtherSignatureAndEightCustodyAliases(t *testing.T) {
 	f := newEvmEvidenceFixture(t)
 	f.prepareEvidencePrerequisites()
@@ -318,7 +319,18 @@ func TestEvmEvidenceCreateRejectsOtherSignatureAndEightCustodyAliases(t *testing
 		t.Fatal(diagnostic)
 	}
 	counts := maps.Clone(f.counts)
-	for _, name := range []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile, evmVaultLinkStateFile, evmEvidenceCreateStateFile} {
+	before := map[string][]byte{}
+	custodyNames := []string{evmCreateStateFile, evmVaultCreateStateFile, evmCoordinatorCreateStateFile, evmEscrowRegisterStateFile, evmProxyCreateStateFile, evmReserveLinkStateFile, evmVaultLinkStateFile, evmEvidenceCreateStateFile}
+	for _, name := range custodyNames {
+		for _, suffix := range []string{"", ".lock"} {
+			raw, err := os.ReadFile(filepath.Join(f.config.Plan.RunDirectory, name+suffix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before[name+suffix] = raw
+		}
+	}
+	for _, name := range custodyNames {
 		for _, suffix := range []string{"", ".lock"} {
 			if _, code, diagnostic := f.command("resume", "--action", "evidence-create", "--signed-transaction", filepath.Join(f.config.Plan.RunDirectory, name+suffix), "--signed-transaction-hash", f.signedHash); code != 2 || !strings.Contains(diagnostic, "aliases custody") {
 				t.Fatalf("evidence accepted alias %s%s: %d %s", name, suffix, code, diagnostic)
@@ -333,8 +345,20 @@ func TestEvmEvidenceCreateRejectsOtherSignatureAndEightCustodyAliases(t *testing
 	if _, err := f.config.Plan.Actions[7].signed(raw); err == nil {
 		t.Fatal("vault binding signature became evidence CREATE authority")
 	}
-	if _, code, diagnostic := f.command("resume", "--action", "evidence-create", "--signed-transaction", path, "--signed-transaction-hash", hash); code != 1 || !strings.Contains(diagnostic, "differs from exact approved envelope") {
-		t.Fatalf("evidence accepted vault binding signature: %d %s", code, diagnostic)
+	if _, code, diagnostic := f.command("resume", "--action", "evidence-create", "--signed-transaction", path, "--signed-transaction-hash", hash); code != 2 || !strings.HasPrefix(diagnostic, "signed-byte envelope:") || !strings.Contains(diagnostic, "differs from exact approved envelope") {
+		t.Fatalf("wrong evidence signature escaped input rejection: %d %s", code, diagnostic)
+	}
+	for name, raw := range before {
+		after, err := os.ReadFile(filepath.Join(f.config.Plan.RunDirectory, name))
+		if err != nil || !bytes.Equal(raw, after) {
+			t.Fatalf("rejected evidence input changed %s: %v", name, err)
+		}
+	}
+	if result, code, diagnostic := f.command("resume", "--action", "evidence-create"); code != 0 || result.Status != "signature-awaiting-import" || result.Attempts != 0 || result.TransactionHash != "" || result.Receipt != nil {
+		t.Fatalf("rejected evidence input changed prepared custody: %+v %d %s", result, code, diagnostic)
+	}
+	if result, code, diagnostic := f.command("resume", "--action", "evidence-create", "--signed-transaction", f.signedPath, "--signed-transaction-hash", f.signedHash); code != 0 || result.Status != "signed-custody-complete" || result.TransactionHash != f.tx.Hash().Hex() || result.Attempts != 0 || result.Receipt != nil {
+		t.Fatalf("genuine evidence import refused after invalid input: %+v %d %s", result, code, diagnostic)
 	}
 	if !maps.Equal(counts, f.counts) || len(f.writes) != 7 {
 		t.Fatal("evidence custody alias check reached RPC")
