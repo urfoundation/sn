@@ -19,7 +19,7 @@ const productionReceiptScanBlockLimit uint64 = 4096
 // completed disk work. A busy advancing chain cannot make one poll unbounded.
 func (self *ReleaseSteerer) scanProductionPendingReceipt(ctx context.Context, current *SteeringIntent, decisionCfg *ReleaseConfig, native *crv4.Chain, preparedHash, txHash types.Hash) (*crv4.FinalizedExtrinsic, uint64, types.Hash, error) {
 	if err := self.productionRead(ctx, productionReadReceipt, current, func(readCtx context.Context) error {
-		return authenticateHistoricalNativeRuntimeAtContext(readCtx, native, decisionCfg, preparedHash)
+		return authenticateProductionSourceRuntimeAtContext(readCtx, native, decisionCfg, preparedHash)
 	}); err != nil {
 		return nil, 0, types.Hash{}, err
 	}

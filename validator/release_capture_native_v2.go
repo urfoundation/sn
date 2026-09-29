@@ -151,6 +151,20 @@ func CaptureReleaseNativeSourceV2(ctx context.Context, native *crv4.Chain, cfg *
 			return err
 		}
 		hashes = append(hashes, releaseHex32(approval.Approval.Production.ActivationNativeHash))
+		if intent.FinalizedBlock != 0 {
+			receiptHash, err := types.NewHashFromHexString(intent.FinalizedBlockHash)
+			if err != nil {
+				return err
+			}
+			number, parent, err := owned.ReceiptHeaderAtContext(ctx, receiptHash)
+			if err != nil {
+				return err
+			}
+			if number != intent.FinalizedBlock {
+				return errors.New("native capture receipt differs from its authenticated height")
+			}
+			hashes = append(hashes, parent.Hex())
+		}
 	}
 	for _, hash := range hashes {
 		if hash == "" || seen[hash] {
@@ -163,7 +177,7 @@ func CaptureReleaseNativeSourceV2(ctx context.Context, native *crv4.Chain, cfg *
 		seen[hash] = true
 		var authenticated crv4.AuthenticatedRuntimeArtifact
 		if isOwnerRecycleProductionConfig(cfg) {
-			authenticated, _, err = authenticateOwnerRecycleProductionArtifactAtContext(ctx, owned, cfg, types.Hash(blockHash), true)
+			authenticated, _, err = authenticateOwnerRecycleProductionArtifactWithHeadersAtContext(ctx, owned, cfg, types.Hash(blockHash), true, true)
 		} else {
 			authenticated, err = crv4.AuthenticateRuntimeArtifactAtContext(ctx, owned, types.Hash(blockHash), HistoricalReleaseRuntimeArtifacts(releaseRuntimeIdentityV2(cfg))...)
 		}

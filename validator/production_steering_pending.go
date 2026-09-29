@@ -47,10 +47,7 @@ func (self *ReleaseSteerer) reconcileProductionPendingV2(ctx context.Context, cu
 	}
 	if receipt != nil {
 		err := self.productionRead(ctx, productionReadReceipt, current, func(readCtx context.Context) error {
-			if err := authenticateHistoricalNativeRuntimeAtContext(readCtx, &native, self.cfg, receipt.BlockHash); err != nil {
-				return err
-			}
-			return native.VerifyFinalizedSourceContext(readCtx, current.Prepared, receipt)
+			return authenticateProductionFinalizedSourceContext(readCtx, &native, self.cfg, current.Prepared, receipt)
 		})
 		if err != nil {
 			var dispatch *crv4.FinalizedDispatchError

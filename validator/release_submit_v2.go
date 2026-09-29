@@ -64,7 +64,11 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 	if err != nil {
 		return err
 	}
-	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &own, cfg, hash); err != nil {
+	authenticateSource := authenticateHistoricalNativeRuntimeAtContext
+	if isOwnerRecycleProductionConfig(cfg) && intent.FinalizedBlock != 0 {
+		authenticateSource = authenticateProductionSourceRuntimeAtContext
+	}
+	if err := authenticateSource(ctx, &own, cfg, hash); err != nil {
 		return err
 	}
 	if err := own.ValidatePreparedSource(prepared); err != nil {
@@ -96,6 +100,10 @@ func authenticateReleaseNativeSourceReferenceV2(ctx context.Context, native *crv
 	}
 	// The signed source keeps its original authority. Its eventual receipt is
 	// a distinct historical read and may belong to a later approved window.
+	if isOwnerRecycleProductionConfig(lifecycleCfg) {
+		return authenticateProductionFinalizedSourceContext(ctx, &own, lifecycleCfg, prepared,
+			&crv4.FinalizedExtrinsic{ExtrinsicHash: txHash, BlockHash: blockHash, BlockNumber: intent.FinalizedBlock})
+	}
 	if err := authenticateHistoricalNativeRuntimeAtContext(ctx, &own, lifecycleCfg, blockHash); err != nil {
 		return err
 	}

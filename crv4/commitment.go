@@ -240,15 +240,22 @@ func (c *Chain) FleetCommitmentFinalizedContext(ctx context.Context, netuid uint
 // FleetCommitmentAtContext verifies runtime 454's exact one-field Sha256
 // registration through exact-block state and header RPCs which honor ctx.
 func (c *Chain) FleetCommitmentAtContext(ctx context.Context, netuid uint16, hotkey [32]byte, blockHash types.Hash) (*FinalizedCommitment, error) {
-	if ctx == nil || c == nil || c.API == nil || c.API.Client == nil || c.Meta == nil ||
+	return c.fleetCommitmentAtContext(ctx, netuid, hotkey, blockHash, 0)
+}
+
+// Source receipts already authenticated their complete header and body. Their
+// nonzero height avoids a duplicate legacy SDK decode of runtime-update digests;
+// ordinary commitment callers retain their existing header observation below.
+func (self *Chain) fleetCommitmentAtContext(ctx context.Context, netuid uint16, hotkey [32]byte, blockHash types.Hash, receiptNumber uint64) (*FinalizedCommitment, error) {
+	if ctx == nil || self == nil || self.API == nil || self.API.Client == nil || self.Meta == nil ||
 		netuid == 0 || hotkey == ([32]byte{}) || blockHash == (types.Hash{}) {
 		return nil, fmt.Errorf("crv4: invalid commitment lookup identity/block")
 	}
-	key, err := types.CreateStorageKey(c.Meta, CommitmentsPalletName, "CommitmentOf", encodeNetuid(netuid), hotkey[:])
+	key, err := types.CreateStorageKey(self.Meta, CommitmentsPalletName, "CommitmentOf", encodeNetuid(netuid), hotkey[:])
 	if err != nil {
 		return nil, fmt.Errorf("crv4: commitment storage key: %w", err)
 	}
-	raw, err := c.storageRawAtContext(ctx, key, blockHash)
+	raw, err := self.storageRawAtContext(ctx, key, blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("crv4: commitment storage: %w", err)
 	}
@@ -260,11 +267,11 @@ func (c *Chain) FleetCommitmentAtContext(ctx context.Context, netuid uint16, hot
 		return nil, err
 	}
 
-	lastKey, err := types.CreateStorageKey(c.Meta, CommitmentsPalletName, "LastCommitment", encodeNetuid(netuid), hotkey[:])
+	lastKey, err := types.CreateStorageKey(self.Meta, CommitmentsPalletName, "LastCommitment", encodeNetuid(netuid), hotkey[:])
 	if err != nil {
 		return nil, fmt.Errorf("crv4: last commitment storage key: %w", err)
 	}
-	lastRaw, err := c.storageRawAtContext(ctx, lastKey, blockHash)
+	lastRaw, err := self.storageRawAtContext(ctx, lastKey, blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("crv4: last commitment storage: %w", err)
 	}
@@ -278,14 +285,17 @@ func (c *Chain) FleetCommitmentAtContext(ctx context.Context, netuid uint16, hot
 	if registrationBlock != commitmentBlock {
 		return nil, fmt.Errorf("crv4: commitment registration block %d differs from LastCommitment %d", registrationBlock, commitmentBlock)
 	}
-	var header types.Header
-	if err := c.API.Client.CallContext(ctx, &header, "chain_getHeader", blockHash.Hex()); err != nil {
-		return nil, fmt.Errorf("crv4: finalized commitment header: %w", err)
+	if receiptNumber == 0 {
+		var header types.Header
+		if err := self.API.Client.CallContext(ctx, &header, "chain_getHeader", blockHash.Hex()); err != nil {
+			return nil, fmt.Errorf("crv4: finalized commitment header: %w", err)
+		}
+		if header.Number == 0 {
+			return nil, fmt.Errorf("crv4: finalized commitment header has zero block number")
+		}
+		receiptNumber = uint64(header.Number)
 	}
-	if header.Number == 0 {
-		return nil, fmt.Errorf("crv4: finalized commitment header has zero block number")
-	}
-	return &FinalizedCommitment{Hash: commitmentHash, CommitmentBlock: uint64(commitmentBlock), FinalizedAt: uint64(header.Number), FinalizedHash: blockHash}, nil
+	return &FinalizedCommitment{Hash: commitmentHash, CommitmentBlock: uint64(commitmentBlock), FinalizedAt: receiptNumber, FinalizedHash: blockHash}, nil
 }
 
 // FleetCommitmentAt preserves the contextless compatibility surface for

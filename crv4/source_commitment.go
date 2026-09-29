@@ -496,6 +496,55 @@ func verifySourceCommitmentEvents(prepared *PreparedSubmission, index uint32, re
 // and the single-slot commitment at that exact finalized write block. Recovery
 // reads this historical slot, never the latest overwritten metadata commitment.
 func (self *Chain) VerifyFinalizedSourceContext(ctx context.Context, prepared *PreparedSubmission, receipt *FinalizedExtrinsic) error {
+	return self.verifyFinalizedSourceContext(ctx, prepared, receipt, self, self)
+}
+
+// The source, execution and post-state views remain distinct when a runtime
+// upgrade is installed by the inclusion block. Only independently authenticated
+// artifacts may select the execution decoder and final commitment reader.
+func (self *Chain) VerifyFinalizedSourceRuntimeContext(ctx context.Context, prepared *PreparedSubmission, receipt *FinalizedExtrinsic, executionArtifact, postStateArtifact AuthenticatedRuntimeArtifact) error {
+	if ctx == nil || self == nil || prepared == nil || receipt == nil || receipt.BlockHash == (types.Hash{}) || receipt.BlockNumber == 0 {
+		return errors.New("crv4: source receipt runtime context is incomplete")
+	}
+	proof := self.runtimeArtifactProof
+	if proof == nil || proof.blockHash.Hex() != prepared.PreparedAtBlockHash || proof.metadata != self.Meta ||
+		!proof.matches(self, AuthenticatedRuntimeArtifact{BlockHash: proof.blockHash, Version: proof.identity.Version,
+			CodeHash: proof.identity.CodeHash, MetadataHash: proof.identity.MetadataHash, Metadata: self.Meta, GenesisHash: self.GenesisHash}) {
+		return errors.New("crv4: source receipt lacks its original authenticated preparation view")
+	}
+	if err := self.ValidatePreparedSource(prepared); err != nil {
+		return err
+	}
+	number, parent, err := self.ReceiptHeaderAtContext(ctx, receipt.BlockHash)
+	if err != nil {
+		return err
+	}
+	if number != receipt.BlockNumber || prepared.PreparedAtBlock >= number || executionArtifact.BlockHash != parent || postStateArtifact.BlockHash != receipt.BlockHash {
+		return errors.New("crv4: source receipt runtime views differ from its authenticated execution parent or post-state")
+	}
+	execution, postState := *self, *self
+	for _, view := range []struct {
+		chain    *Chain
+		artifact AuthenticatedRuntimeArtifact
+	}{{&execution, executionArtifact}, {&postState, postStateArtifact}} {
+		if err := ValidateValidatorProducerRuntimeArtifactContext(ctx, self, view.artifact); err != nil {
+			return err
+		}
+		if err := view.chain.BindRuntimeArtifact(view.artifact); err != nil {
+			return err
+		}
+	}
+	// CheckSpecVersion still binds the original signature to the runtime that
+	// executed it. A later post-state tuple cannot relabel those signed bytes.
+	if err := execution.ValidatePreparedSource(prepared); err != nil {
+		return err
+	}
+	return self.verifyFinalizedSourceContext(ctx, prepared, receipt, &execution, &postState)
+}
+
+// Byte authority stays with the source view; events use execution metadata and
+// the finalized single-slot commitment uses the independently admitted state.
+func (self *Chain) verifyFinalizedSourceContext(ctx context.Context, prepared *PreparedSubmission, receipt *FinalizedExtrinsic, execution, postState *Chain) error {
 	if ctx == nil || self == nil || self.API == nil || self.API.Client == nil || receipt == nil || receipt.BlockNumber == 0 || receipt.BlockHash == (types.Hash{}) || prepared == nil || receipt.ExtrinsicHash.Hex() != prepared.ExtrinsicHash {
 		return errors.New("crv4: source finality identity is incomplete")
 	}
@@ -537,7 +586,7 @@ func (self *Chain) VerifyFinalizedSourceContext(ctx context.Context, prepared *P
 	if canonical != receipt.BlockHash {
 		return errors.New("crv4: source receipt is not the canonical native block")
 	}
-	verified, err := self.verifyFinalizedExtrinsicContext(ctx, receipt.BlockHash, receipt.ExtrinsicHash)
+	verified, err := execution.verifyFinalizedExtrinsicContext(ctx, receipt.BlockHash, receipt.ExtrinsicHash)
 	if err != nil {
 		return err
 	}
@@ -553,7 +602,7 @@ func (self *Chain) VerifyFinalizedSourceContext(ctx context.Context, prepared *P
 	hashRaw, _ := codec.HexDecodeString(prepared.SourceCommitment.Hash)
 	var hash [32]byte
 	copy(hash[:], hashRaw)
-	observed, err := self.FleetCommitmentAtContext(ctx, prepared.Netuid, hotkey, receipt.BlockHash)
+	observed, err := postState.fleetCommitmentAtContext(ctx, prepared.Netuid, hotkey, receipt.BlockHash, verified.number)
 	if err != nil {
 		return err
 	}
