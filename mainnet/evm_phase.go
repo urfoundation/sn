@@ -245,12 +245,50 @@ type evmCreatePlan struct {
 	EvidenceConstructor *contractEvidenceConstructor
 }
 
+// A validation call owns its memo tables. Pointer identity preserves distinct
+// conflicting projections even when they select the same action index.
+type evmSelectionValidation struct {
+	configPlanHashes map[*evmCreatePlan]string
+	validatedPlans   map[*evmCreatePlan]bool
+}
+
 // Only implemented selections may choose a journal or index approved actions.
+// Later invocations always recheck the current inputs and their exact hashes.
 func (self evmCreatePlan) validateSelection() error {
+	validation := evmSelectionValidation{configPlanHashes: map[*evmCreatePlan]string{}, validatedPlans: map[*evmCreatePlan]bool{}}
+	return validation.validate(&self)
+}
+
+// Shared ancestors need one complete check within this synchronous traversal.
+// Failed or incomplete checks never enter the successful-validation table.
+func (self *evmSelectionValidation) validate(plan *evmCreatePlan) error {
+	if self.validatedPlans[plan] {
+		return nil
+	}
+	if err := plan.validateSelectionWith(self); err != nil {
+		return err
+	}
+	self.validatedPlans[plan] = true
+	return nil
+}
+
+// Hash the unchanged public JSON once per projection in this invocation.
+func (self *evmSelectionValidation) configHash(plan *evmCreatePlan) string {
+	if hash, ok := self.configPlanHashes[plan]; ok {
+		return hash
+	}
+	hash := rootObjectHash(plan.Config)
+	self.configPlanHashes[plan] = hash
+	return hash
+}
+
+// Every original edge and envelope guard remains checked. Memoization applies
+// only to repeated visits of the same predecessor object during this call.
+func (self *evmCreatePlan) validateSelectionWith(validation *evmSelectionValidation) error {
 	if self.ActionIndex == 0 && self.Reserve == nil && self.Vault == nil && self.Coordinator == nil && self.Escrow == nil && self.Proxy == nil && self.ReserveLink == nil && self.VaultLink == nil {
 		return nil
 	}
-	if self.ActionIndex < 1 || self.ActionIndex > 7 || len(self.Config.Plan.Actions) <= self.ActionIndex || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || self.Reserve.Vault != nil || self.Reserve.Coordinator != nil || self.Reserve.Escrow != nil || self.Reserve.Proxy != nil || self.Reserve.ReserveLink != nil || self.Reserve.VaultLink != nil || rootObjectHash(self.Reserve.Config) != rootObjectHash(self.Config) {
+	if self.ActionIndex < 1 || self.ActionIndex > 7 || len(self.Config.Plan.Actions) <= self.ActionIndex || self.Reserve == nil || self.Reserve.ActionIndex != 0 || self.Reserve.Reserve != nil || self.Reserve.Vault != nil || self.Reserve.Coordinator != nil || self.Reserve.Escrow != nil || self.Reserve.Proxy != nil || self.Reserve.ReserveLink != nil || self.Reserve.VaultLink != nil || validation.configHash(self.Reserve) != validation.configHash(self) {
 		return errors.New("contract action selection lacks its approved reserve prerequisite")
 	}
 	if self.ActionIndex < 7 && self.VaultLink != nil {
@@ -264,10 +302,10 @@ func (self evmCreatePlan) validateSelection() error {
 		return errors.New("vault selection contains a descendant projection")
 	}
 	if self.ActionIndex >= 2 {
-		if self.Vault == nil || self.Vault.ActionIndex != 1 || rootObjectHash(self.Vault.Config) != rootObjectHash(self.Config) {
+		if self.Vault == nil || self.Vault.ActionIndex != 1 || validation.configHash(self.Vault) != validation.configHash(self) {
 			return errors.New("coordinator selection lacks the approved vault prerequisite")
 		}
-		if err := self.Vault.validateSelection(); err != nil {
+		if err := validation.validate(self.Vault); err != nil {
 			return err
 		}
 		coordinator := self.Config.Plan.Actions[2]
@@ -279,10 +317,10 @@ func (self evmCreatePlan) validateSelection() error {
 		}
 	}
 	if self.ActionIndex >= 3 {
-		if self.Coordinator == nil || self.Coordinator.ActionIndex != 2 || rootObjectHash(self.Coordinator.Config) != rootObjectHash(self.Config) {
+		if self.Coordinator == nil || self.Coordinator.ActionIndex != 2 || validation.configHash(self.Coordinator) != validation.configHash(self) {
 			return errors.New("escrow selection lacks the approved coordinator prerequisite")
 		}
-		if err := self.Coordinator.validateSelection(); err != nil {
+		if err := validation.validate(self.Coordinator); err != nil {
 			return err
 		}
 		registration, err := contractEscrowAction(self.Config.Plan, *self.Vault)
@@ -297,10 +335,10 @@ func (self evmCreatePlan) validateSelection() error {
 		}
 	}
 	if self.ActionIndex >= 4 {
-		if self.Escrow == nil || self.Escrow.ActionIndex != 3 || rootObjectHash(self.Escrow.Config) != rootObjectHash(self.Config) || self.ProxyConstructor == nil {
+		if self.Escrow == nil || self.Escrow.ActionIndex != 3 || validation.configHash(self.Escrow) != validation.configHash(self) || self.ProxyConstructor == nil {
 			return errors.New("proxy selection lacks its approved escrow prerequisite or initializer")
 		}
-		if err := self.Escrow.validateSelection(); err != nil {
+		if err := validation.validate(self.Escrow); err != nil {
 			return err
 		}
 		escrow, proxy := self.Config.Plan.Actions[3], self.Config.Plan.Actions[4]
@@ -312,10 +350,10 @@ func (self evmCreatePlan) validateSelection() error {
 		}
 	}
 	if self.ActionIndex >= 5 {
-		if self.Proxy == nil || self.Proxy.ActionIndex != 4 || rootObjectHash(self.Proxy.Config) != rootObjectHash(self.Config) {
+		if self.Proxy == nil || self.Proxy.ActionIndex != 4 || validation.configHash(self.Proxy) != validation.configHash(self) {
 			return errors.New("reserve binding lacks the approved proxy prerequisite")
 		}
-		if err := self.Proxy.validateSelection(); err != nil {
+		if err := validation.validate(self.Proxy); err != nil {
 			return err
 		}
 		binding, err := contractReserveLinkAction(self.Config.Plan, *self.Reserve, *self.Proxy)
@@ -330,10 +368,10 @@ func (self evmCreatePlan) validateSelection() error {
 		}
 	}
 	if self.ActionIndex >= 6 {
-		if self.ReserveLink == nil || self.ReserveLink.ActionIndex != 5 || rootObjectHash(self.ReserveLink.Config) != rootObjectHash(self.Config) {
+		if self.ReserveLink == nil || self.ReserveLink.ActionIndex != 5 || validation.configHash(self.ReserveLink) != validation.configHash(self) {
 			return errors.New("vault binding lacks the approved reserve-binding prerequisite")
 		}
-		if err := self.ReserveLink.validateSelection(); err != nil {
+		if err := validation.validate(self.ReserveLink); err != nil {
 			return err
 		}
 		binding, err := contractVaultLinkAction(self.Config.Plan, *self.Vault, *self.Proxy)
@@ -345,10 +383,10 @@ func (self evmCreatePlan) validateSelection() error {
 		}
 	}
 	if self.ActionIndex == 7 {
-		if self.VaultLink == nil || self.VaultLink.ActionIndex != 6 || rootObjectHash(self.VaultLink.Config) != rootObjectHash(self.Config) {
+		if self.VaultLink == nil || self.VaultLink.ActionIndex != 6 || validation.configHash(self.VaultLink) != validation.configHash(self) {
 			return errors.New("evidence CREATE lacks the approved vault-binding prerequisite")
 		}
-		if err := self.VaultLink.validateSelection(); err != nil {
+		if err := validation.validate(self.VaultLink); err != nil {
 			return err
 		}
 		domain, err := contractEvidenceDomain(self.Config.Plan, *self.Vault, *self.Proxy)

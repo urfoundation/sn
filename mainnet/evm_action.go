@@ -160,41 +160,46 @@ func newEvmEvidenceCreateOwner(plan evmCreatePlan, store, reserveStore, vaultSto
 	return newEvmSelectedCreateOwner(plan, store, []evmActionStorage{reserveStore, vaultStore, coordinatorStore, escrowStore, proxyStore, reserveLinkStore, vaultLinkStore}, chain)
 }
 
-// Runtime projections own every nested slice; invocation-specific predecessor
-// records are always loaded afresh under the held locks rather than copied in.
+// The owner retains private copies of the graph's distinct projections. Shared
+// ancestors stay shared within that private graph instead of expanding paths.
 func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
+	return *copyEvmCreateProjection(&plan, map[*evmCreatePlan]*evmCreatePlan{})
+}
+
+// Identity is the source pointer, never the action index or approval hash.
+// No caller-owned mutable slice or constructor survives the private copy;
+// invocation-specific records are loaded afresh under custody locks.
+func copyEvmCreateProjection(source *evmCreatePlan, copiedPlans map[*evmCreatePlan]*evmCreatePlan) *evmCreatePlan {
+	if copied, ok := copiedPlans[source]; ok {
+		return copied
+	}
+	plan := *source
+	copiedPlans[source] = &plan
 	plan.Config = copyEvmPhaseConfig(plan.Config)
 	plan.Prerequisites = nil
 	plan.Runtime = append([]byte(nil), plan.Runtime...)
 	plan.Getters = append([]contractGetter(nil), plan.Getters...)
 	plan.Storage = append([]contractStorageWord(nil), plan.Storage...)
 	if plan.Reserve != nil {
-		reserve := copyEvmCreatePlan(*plan.Reserve)
-		plan.Reserve = &reserve
+		plan.Reserve = copyEvmCreateProjection(plan.Reserve, copiedPlans)
 	}
 	if plan.Vault != nil {
-		vault := copyEvmCreatePlan(*plan.Vault)
-		plan.Vault = &vault
+		plan.Vault = copyEvmCreateProjection(plan.Vault, copiedPlans)
 	}
 	if plan.Coordinator != nil {
-		coordinator := copyEvmCreatePlan(*plan.Coordinator)
-		plan.Coordinator = &coordinator
+		plan.Coordinator = copyEvmCreateProjection(plan.Coordinator, copiedPlans)
 	}
 	if plan.Escrow != nil {
-		escrow := copyEvmCreatePlan(*plan.Escrow)
-		plan.Escrow = &escrow
+		plan.Escrow = copyEvmCreateProjection(plan.Escrow, copiedPlans)
 	}
 	if plan.Proxy != nil {
-		proxy := copyEvmCreatePlan(*plan.Proxy)
-		plan.Proxy = &proxy
+		plan.Proxy = copyEvmCreateProjection(plan.Proxy, copiedPlans)
 	}
 	if plan.ReserveLink != nil {
-		link := copyEvmCreatePlan(*plan.ReserveLink)
-		plan.ReserveLink = &link
+		plan.ReserveLink = copyEvmCreateProjection(plan.ReserveLink, copiedPlans)
 	}
 	if plan.VaultLink != nil {
-		link := copyEvmCreatePlan(*plan.VaultLink)
-		plan.VaultLink = &link
+		plan.VaultLink = copyEvmCreateProjection(plan.VaultLink, copiedPlans)
 	}
 	if plan.EvidenceConstructor != nil {
 		constructor := *plan.EvidenceConstructor
@@ -220,7 +225,7 @@ func copyEvmCreatePlan(plan evmCreatePlan) evmCreatePlan {
 		constructor := *plan.VaultConstructor
 		plan.VaultConstructor = &constructor
 	}
-	return plan
+	return &plan
 }
 
 // Copy every projection; caller changes cannot alter an admitted prerequisite.
