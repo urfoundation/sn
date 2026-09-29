@@ -99,7 +99,9 @@ func installProductionSourceReceiptTest(t *testing.T, continuation *productionCo
 				return err
 			}
 		}
-		assign := func(value any) error { return setValidatorRuntimeIdentityTestResult(target, value) }
+		// Match the transport's JSON decode for typed hashes/headers, nullable
+		// storage and capture's bounded custom result, as well as raw replies.
+		assign := func(value any) error { return setReleaseHistoricalTestResult(target, value) }
 		if strings.HasPrefix(method, "author_") {
 			t.Fatal("historical source receipt attempted a native mutation")
 		}
@@ -226,7 +228,7 @@ func TestProductionSourceReceiptRequiresSeparateAuthenticatedViews(t *testing.T)
 			return false, nil
 		}
 		if method == "chain_getHeader" {
-			return true, setValidatorRuntimeIdentityTestResult(target, releaseReceiptTestHeaderWire(header))
+			return true, setReleaseHistoricalTestResult(target, releaseReceiptTestHeaderWire(header))
 		}
 		if method == "state_getRuntimeVersion" || method == "state_getMetadata" || method == "state_getStorageHash" {
 			translated := append([]any(nil), args...)
@@ -303,7 +305,7 @@ func TestProductionSourceReceiptRejectsApprovedUnsupportedInterface(t *testing.T
 	}
 	fixture.fault = func(ctx context.Context, target any, method string, args ...any) (bool, error) {
 		if method == "state_getMetadata" && len(args) == 1 && args[0] == fixture.receipt.BlockHash.Hex() {
-			return true, setValidatorRuntimeIdentityTestResult(target, wire)
+			return true, setReleaseHistoricalTestResult(target, wire)
 		}
 		return false, nil
 	}
@@ -322,16 +324,21 @@ func TestProductionSourceReceiptRejectsUnapprovedOrUnavailableEvidence(t *testin
 	intent := *fixture.intent
 	intent.FinalizedBlock, intent.FinalizedBlockHash = 101, fixture.receipt.BlockHash.Hex()
 	canary := errors.New("synthetic receipt archive unavailable")
+	expectedKVs := map[string]string{
+		"no-renewal":          "unreviewed identity",
+		"unapproved-code":     "observed runtime code hash",
+		"header-substitution": "receipt header SCALE hash differs",
+	}
 	for _, fault := range []string{"no-renewal", "unapproved-code", "header-substitution", "archive-unavailable", "cancelled"} {
 		cfg := fixture.current
 		ctx, cancel := context.WithCancel(t.Context())
 		fixture.fault = func(ctx context.Context, target any, method string, args ...any) (bool, error) {
 			if fault == "unapproved-code" && method == "state_getStorageHash" && len(args) == 2 && args[1] == fixture.receipt.BlockHash.Hex() {
-				return true, setValidatorRuntimeIdentityTestResult(target, types.Hash{0xe1}.Hex())
+				return true, setReleaseHistoricalTestResult(target, types.Hash{0xe1}.Hex())
 			}
 			if method == "chain_getHeader" && len(args) == 1 && args[0] == fixture.receipt.BlockHash.Hex() {
 				if fault == "header-substitution" {
-					return true, setValidatorRuntimeIdentityTestResult(target, releaseReceiptTestHeaderWire(fixture.production.header(100)))
+					return true, setReleaseHistoricalTestResult(target, releaseReceiptTestHeaderWire(fixture.production.header(100)))
 				}
 				if fault == "archive-unavailable" {
 					return true, canary
@@ -350,6 +357,9 @@ func TestProductionSourceReceiptRejectsUnapprovedOrUnavailableEvidence(t *testin
 		var dispatch *crv4.FinalizedDispatchError
 		if err == nil || errors.As(err, &dispatch) || fixture.eventReads != 0 || fault == "archive-unavailable" && !errors.Is(err, canary) || fault == "cancelled" && !errors.Is(err, context.Canceled) {
 			t.Fatalf("%s evidence escaped its actual refusal: %v", fault, err)
+		}
+		if expected := expectedKVs[fault]; expected != "" && !strings.Contains(err.Error(), expected) {
+			t.Fatalf("%s failed before its intended authority boundary: %v", fault, err)
 		}
 	}
 }
@@ -380,10 +390,10 @@ func TestProductionSourceReceiptPreservesDispatchAndStateFailures(t *testing.T) 
 		fixture.fault = func(ctx context.Context, target any, method string, args ...any) (bool, error) {
 			if method == "state_getStorage" && len(args) == 2 && args[1] == fixture.receipt.BlockHash.Hex() {
 				if dispatchFailure && args[0] == eventsKey.Hex() {
-					return true, setValidatorRuntimeIdentityTestResult(target, codec.HexEncodeToString(failed))
+					return true, setReleaseHistoricalTestResult(target, codec.HexEncodeToString(failed))
 				}
 				if !dispatchFailure && args[0] == lastKey.Hex() {
-					return true, setValidatorRuntimeIdentityTestResult(target, "0x64000000")
+					return true, setReleaseHistoricalTestResult(target, "0x64000000")
 				}
 			}
 			return false, nil
