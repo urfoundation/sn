@@ -106,12 +106,9 @@ func claimNonceRpcFixture(t *testing.T, blockFinality bool) (string, <-chan *typ
 	return server.URL, sent, blocked
 }
 
-func claimNoncePollFixture(t *testing.T, cfg *ClaimDaemonConfig, claim *sdk.SnPoolClaimResult, admission *claimAdmission, owner string) (*ClaimQueue, claimQueuePollHooks) {
+func claimNoncePollFixture(t *testing.T, cfg *ClaimDaemonConfig, claim *sdk.SnPoolClaimResult, admission *claimAdmission, owner string) (*ClaimQueue, claimQueuePollHooks, *claimQueueStore) {
 	t.Helper()
-	store, err := newClaimQueueStore(cfg.StateDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, cfg.StateDir)
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: claim.Epoch, Entries: map[string]*ClaimQueueEntry{fmt.Sprint(claim.Epoch): {Epoch: claim.Epoch, Status: "pending"}}}
 	hooks := claimPollTestHooks(t, time.Now())
 	hooks.latestEpoch = admission.observeEpoch
@@ -123,7 +120,7 @@ func claimNoncePollFixture(t *testing.T, cfg *ClaimDaemonConfig, claim *sdk.SnPo
 	hooks.submit = func(ctx context.Context, entry *ClaimQueueEntry) error {
 		return submitClaimDirect(ctx, cfg, fakeClaimAPI{result: claim}, entry, store, queue, admission)
 	}
-	return queue, hooks
+	return queue, hooks, store
 }
 
 // A durably prepared nonce survives an unacknowledged send. A second member
@@ -134,7 +131,7 @@ func TestClaimNonceFloorPreventsReuseAfterUnacknowledgedSend(t *testing.T) {
 	endpoint, sent, blocked := claimNonceRpcFixture(t, false)
 	cfg.RPC = []string{endpoint}
 	admission := &claimAdmission{}
-	first, firstHooks := claimNoncePollFixture(t, cfg, claim, admission, "first")
+	first, firstHooks, firstStore := claimNoncePollFixture(t, cfg, claim, admission, "first")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -152,7 +149,7 @@ func TestClaimNonceFloorPreventsReuseAfterUnacknowledgedSend(t *testing.T) {
 	secondCfg, secondClaim := *cfg, *claim
 	secondCfg.StateDir = filepath.Join(t.TempDir(), "claims")
 	secondClaim.Epoch = 71
-	second, secondHooks := claimNoncePollFixture(t, &secondCfg, &secondClaim, admission, "second")
+	second, secondHooks, secondStore := claimNoncePollFixture(t, &secondCfg, &secondClaim, admission, "second")
 	if err := pollClaimQueue(context.Background(), second, secondHooks); err != nil {
 		t.Fatal(err)
 	}
@@ -161,10 +158,18 @@ func TestClaimNonceFloorPreventsReuseAfterUnacknowledgedSend(t *testing.T) {
 		t.Fatalf("stale RPC reused nonce: tx=%d entry=%+v floor=%d", secondTx.Nonce(), second.Entries["71"], admission.nonceMinimum())
 	}
 	restarted := &claimAdmission{}
-	if err := restarted.seedMember(cfg); err != nil {
+	if err := firstStore.close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.seedMember(&secondCfg); err != nil {
+	if err := secondStore.close(); err != nil {
+		t.Fatal(err)
+	}
+	firstStore = newClaimQueueTestStore(t, cfg.StateDir)
+	secondStore = newClaimQueueTestStore(t, secondCfg.StateDir)
+	if err := restarted.seedMember(cfg, firstStore); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.seedMember(&secondCfg, secondStore); err != nil {
 		t.Fatal(err)
 	}
 	if restarted.nonceMinimum() != 25 {
@@ -179,7 +184,7 @@ func TestClaimAdmissionCancelsInFlightFinalityAndRetainsSignedOutcome(t *testing
 	endpoint, sent, blocked := claimNonceRpcFixture(t, true)
 	cfg.RPC = []string{endpoint}
 	admission := &claimAdmission{}
-	queue, hooks := claimNoncePollFixture(t, cfg, claim, admission, "owner")
+	queue, hooks, _ := claimNoncePollFixture(t, cfg, claim, admission, "owner")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -203,10 +208,7 @@ func TestClaimAdmissionCancelsInFlightFinalityAndRetainsSignedOutcome(t *testing
 }
 
 func TestClaimQueueRestartPreservesPartialSignedIdentity(t *testing.T) {
-	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "claims"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, filepath.Join(t.TempDir(), "claims"))
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 3, Entries: map[string]*ClaimQueueEntry{
 		"1": {Epoch: 1, Status: "submitting"},
 		"2": {Epoch: 2, Status: "submitting", TxHash: common.HexToHash("0x22").Hex()},

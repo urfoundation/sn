@@ -128,30 +128,78 @@ type ClaimQueue struct {
 	Entries        map[string]*ClaimQueueEntry `json:"entries"`
 }
 
-// One daemon owns this store. Only a successful file and directory sync can
-// establish the same-process acknowledgement used for unchanged saves.
+// One daemon owns the locked physical directory until every worker has joined.
+// Methods are not concurrent-safe. Only a successful file and directory sync
+// can establish the same-process acknowledgement used for unchanged saves.
 type claimQueueStore struct {
 	path      string
+	directory *os.File
 	savedHash [sha256.Size]byte
 	saved     bool
 }
 
+// Resolve aliases once, then retain a directory descriptor and its process
+// lock. The queue itself is replaced atomically and cannot serve as the lock.
 func newClaimQueueStore(stateDir string) (*claimQueueStore, error) {
-	if !filepath.IsAbs(stateDir) {
-		return nil, errors.New("claim queue state_dir must be absolute")
-	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+	if err := claimQueuePlatformSupported(); err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(stateDir)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("claim queue state_dir %s must have mode 0700 or stricter", stateDir)
+	physical, err := canonicalClaimStateDirectory(stateDir)
+	if err != nil {
+		return nil, err
 	}
-	return &claimQueueStore{path: filepath.Join(stateDir, "claim-queue.json")}, nil
+	if err := os.MkdirAll(physical, 0o700); err != nil {
+		return nil, err
+	}
+	directory, err := claimQueueOpenDirectory(physical)
+	if err != nil {
+		return nil, err
+	}
+	store := &claimQueueStore{path: filepath.Join(physical, "claim-queue.json"), directory: directory}
+	if err := store.requireOwner(); err != nil {
+		return nil, errors.Join(err, store.close())
+	}
+	return store, nil
 }
 
-func (s *claimQueueStore) load() (*ClaimQueue, error) {
-	b, err := os.ReadFile(s.path)
+// Closing the descriptor releases ownership on normal return and every error
+// path. A closed store cannot resume reading or writing retained custody.
+func (self *claimQueueStore) close() error {
+	if self == nil || self.directory == nil {
+		return nil
+	}
+	directory := self.directory
+	self.directory, self.saved = nil, false
+	return directory.Close()
+}
+
+// Directory replacement cannot redirect a retained owner into another queue.
+// All actual I/O also uses this descriptor so a later path race cannot redirect it.
+func (self *claimQueueStore) requireOwner() error {
+	if self == nil || self.directory == nil {
+		return errors.New("claim queue store has no directory owner")
+	}
+	opened, openErr := self.directory.Stat()
+	named, nameErr := os.Lstat(filepath.Dir(self.path))
+	if err := errors.Join(openErr, nameErr, claimQueuePrivateDirectory(self.directory)); err != nil {
+		return fmt.Errorf("claim queue directory ownership: %w", err)
+	}
+	if !named.IsDir() || !os.SameFile(opened, named) {
+		return errors.New("claim queue directory was replaced after ownership admission")
+	}
+	return nil
+}
+
+// Startup reads only from the held physical namespace, before any network
+// worker can consume signed state or seed the shared nonce floor.
+func (self *claimQueueStore) load() (*ClaimQueue, error) {
+	if err := self.requireOwner(); err != nil {
+		return nil, err
+	}
+	b, _, err := claimQueueReadFile(self.directory, filepath.Base(self.path))
+	if ownerErr := self.requireOwner(); ownerErr != nil {
+		return nil, errors.Join(err, ownerErr)
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: -1, Entries: map[string]*ClaimQueueEntry{}}, nil
 	}
@@ -188,6 +236,9 @@ func (s *claimQueueStore) load() (*ClaimQueue, error) {
 // Compare the current durable bytes, not a process-local cache: unchanged
 // discovery polls need no rename/fsync, and removed files must be recreated.
 func (self *claimQueueStore) save(q *ClaimQueue) error {
+	if err := self.requireOwner(); err != nil {
+		return err
+	}
 	b, err := json.MarshalIndent(q, "", "  ")
 	if err != nil {
 		return err
@@ -195,55 +246,22 @@ func (self *claimQueueStore) save(q *ClaimQueue) error {
 	b = append(b, '\n')
 	hash := sha256.Sum256(b)
 	if self.saved && self.savedHash == hash {
-		info, statErr := os.Lstat(self.path)
-		if statErr == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o600 {
-			prior, readErr := os.ReadFile(self.path)
-			if readErr == nil && bytes.Equal(prior, b) {
-				return nil
-			}
-			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-				self.saved = false
-				return readErr
-			}
+		prior, mode, readErr := claimQueueReadFile(self.directory, filepath.Base(self.path))
+		if readErr == nil && mode.Perm() == 0o600 && bytes.Equal(prior, b) {
+			return self.requireOwner()
 		}
 		self.saved = false
-		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-			return statErr
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) && !errors.Is(readErr, errClaimQueueUnsafeFile) {
+			return readErr
 		}
 	}
 	// A failed rename or directory sync must not make the next identical
 	// attempt skip the durability boundary merely because bytes are visible.
 	self.saved = false
-	f, err := os.CreateTemp(filepath.Dir(self.path), ".claim-queue-")
-	if err != nil {
+	if err := claimQueuePublish(self.directory, filepath.Base(self.path), b); err != nil {
 		return err
 	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if err := f.Chmod(0o600); err != nil {
-		f.Close()
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, self.path); err != nil {
-		return err
-	}
-	dir, err := os.Open(filepath.Dir(self.path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	if err := dir.Sync(); err != nil {
+	if err := self.requireOwner(); err != nil {
 		return err
 	}
 	self.savedHash, self.saved = hash, true
@@ -852,12 +870,19 @@ func runClaimDaemonWithAdmission(ctx context.Context, configPath string, admissi
 	if err != nil {
 		return err
 	}
-	defer admission.forget(cfg.StateDir)
 	store, err := newClaimQueueStore(cfg.StateDir)
 	if err != nil {
 		return err
 	}
-	if err := admission.seedMember(cfg); err != nil {
+	defer func() { runErr = errors.Join(runErr, store.close()) }()
+	return runClaimDaemonWithStore(ctx, cfg, store, admission, initialDelay, onReady)
+}
+
+// The caller retains the queue owner until this function has joined all local
+// work. A swarm supplies its already loaded config and already locked store.
+func runClaimDaemonWithStore(ctx context.Context, cfg *ClaimDaemonConfig, store *claimQueueStore, admission *claimAdmission, initialDelay time.Duration, onReady func()) (runErr error) {
+	defer admission.forget(cfg.StateDir)
+	if err := admission.seedMember(cfg, store); err != nil {
 		return err
 	}
 	queue, err := store.load()

@@ -149,16 +149,13 @@ func TestClaimQueueCannotClearSignedHistoryForRetryOrNoClaim(t *testing.T) {
 // raw/hash, foreign relayer or second chain rather than guessing a nonce floor.
 func TestClaimNonceFloorSeedsAllDurableMembersAndRejectsForgedIdentity(t *testing.T) {
 	cfg, _, entry, _, _ := signedClaimFixture(t, 70, 23)
-	store, err := newClaimQueueStore(cfg.StateDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, cfg.StateDir)
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 70, Entries: map[string]*ClaimQueueEntry{"70": entry}}
 	if err := store.save(queue); err != nil {
 		t.Fatal(err)
 	}
 	admission := &claimAdmission{}
-	if err := admission.seedMember(cfg); err != nil || admission.nonceMinimum() != 24 {
+	if err := admission.seedMember(cfg, store); err != nil || admission.nonceMinimum() != 24 {
 		t.Fatalf("seed floor=%d error=%v", admission.nonceMinimum(), err)
 	}
 	key, err := onchain.LoadKeyFile(cfg.KeyFile)
@@ -208,7 +205,7 @@ func TestClaimNonceFloorSeedsAllDurableMembersAndRejectsForgedIdentity(t *testin
 		if err := store.save(queue); err != nil {
 			t.Fatal(err)
 		}
-		if err := admission.seedMember(cfg); err == nil || admission.nonceMinimum() != 24 {
+		if err := admission.seedMember(cfg, store); err == nil || admission.nonceMinimum() != 24 {
 			t.Fatalf("%s allowed forged nonce seed: floor=%d error=%v", test.name, admission.nonceMinimum(), err)
 		}
 	}

@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 )
 
+// A new reader refuses unsafe queue entries; an existing owner may replace
+// one atomically without following it or importing its contents.
+var errClaimQueueUnsafeFile = errors.New("claim queue entry is not a private owned regular file")
+
 func canonicalClaimStateDirectory(path string) (string, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return "", errors.New("claim state directory is not canonical and absolute")

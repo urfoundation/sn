@@ -2,6 +2,9 @@
 
 This package implements a provider binary.
 
+Production claim daemon and swarm recovery require exclusive retained
+[claim queue ownership](CLAIM-QUEUE-OWNERSHIP.md).
+
 ```
 Usage:
     provider provide [--port=<port>] --user_auth=<user_auth> [--password=<password>]

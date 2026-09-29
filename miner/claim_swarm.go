@@ -167,7 +167,7 @@ func loadClaimSwarmMembers(config *ClaimSwarmConfig) (map[string]*ClaimDaemonCon
 	return loaded, minimumPoll, nil
 }
 
-func (self *ClaimSwarm) Run(ctx context.Context) error {
+func (self *ClaimSwarm) Run(ctx context.Context) (runErr error) {
 	if ctx == nil {
 		return errors.New("claim swarm context is nil")
 	}
@@ -175,11 +175,28 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	members := append([]ClaimSwarmMember(nil), self.config.Members...)
+	sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
+	stores := make(map[string]*claimQueueStore, len(members))
+	defer func() {
+		for _, member := range members {
+			runErr = errors.Join(runErr, stores[member.ID].close())
+		}
+	}()
+	// Acquire every queue before reading custody or starting any sibling.
+	// Partial admission releases only our descriptors and leaves bytes untouched.
+	for _, member := range members {
+		store, err := newClaimQueueStore(loaded[member.ID].StateDir)
+		if err != nil {
+			return fmt.Errorf("claim member %s queue ownership: %w", member.ID, err)
+		}
+		stores[member.ID] = store
+	}
 	admission := &claimAdmission{}
 	// Seed the complete nonce domain before even the first member can sign.
 	// External signers using this key require a separate shared nonce owner.
-	for _, cfg := range loaded {
-		if err := admission.seedMember(cfg); err != nil {
+	for _, member := range members {
+		if err := admission.seedMember(loaded[member.ID], stores[member.ID]); err != nil {
 			return fmt.Errorf("seed relayer nonce custody: %w", err)
 		}
 	}
@@ -199,8 +216,6 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	members := append([]ClaimSwarmMember(nil), self.config.Members...)
-	sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
 	terminalErrors := make(chan error, 1)
 	var membersDone sync.WaitGroup
 	defer func() { cancel(); membersDone.Wait() }()
@@ -214,7 +229,7 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 				self.running[member.ID] = true
 				self.stateLock.Unlock()
 			}
-			if runErr := runClaimDaemonWithAdmission(runCtx, member.ConfigPath, admission, initialDelay, onReady); runErr != nil {
+			if runErr := runClaimDaemonWithStore(runCtx, loaded[member.ID], stores[member.ID], admission, initialDelay, onReady); runErr != nil {
 				self.stateLock.Lock()
 				delete(self.running, member.ID)
 				self.failures[member.ID] = runErr.Error()

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"path/filepath"
 )
 
 type claimNonceSafetyError struct{ cause error }
@@ -70,8 +69,9 @@ func (self *claimAdmission) rememberSigned(cfg *ClaimDaemonConfig, entry *ClaimQ
 	return nil
 }
 
-func (self *claimAdmission) seedMember(cfg *ClaimDaemonConfig) error {
-	store := &claimQueueStore{path: filepath.Join(cfg.StateDir, "claim-queue.json")}
+// The caller must retain ownership through startup and every worker's joined
+// shutdown; an unlocked path cannot supply a stable nonce-custody snapshot.
+func (self *claimAdmission) seedMember(cfg *ClaimDaemonConfig, store *claimQueueStore) error {
 	queue, err := store.load()
 	if err != nil {
 		return err

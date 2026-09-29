@@ -92,10 +92,7 @@ func TestClaimDaemonConfigRejectsMalformedTrailingYAML(t *testing.T) {
 }
 
 func TestClaimQueueDiscoveryAndCrashRecoveryBoundary(t *testing.T) {
-	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, filepath.Join(t.TempDir(), "state"))
 	queue, err := store.load()
 	if err != nil {
 		t.Fatal(err)

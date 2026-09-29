@@ -136,10 +136,7 @@ func TestClaimQueuePollHistoricalBudgetPreservesUncertainOutcomePriority(t *test
 // Reconciliation backoff survives restart and grows even when no transaction
 // has ever been submitted. The bounded counter cannot overflow after retries.
 func TestClaimQueuePollPersistsIndependentBoundedReconciliationBackoff(t *testing.T) {
-	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, filepath.Join(t.TempDir(), "state"))
 	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 9, Entries: map[string]*ClaimQueueEntry{"4": {Epoch: 4, Status: "retry"}}}
 	for attempt := 1; attempt <= 9; attempt++ {
@@ -151,10 +148,11 @@ func TestClaimQueuePollPersistsIndependentBoundedReconciliationBackoff(t *testin
 		if err := pollClaimQueue(context.Background(), queue, hooks); err != nil {
 			t.Fatal(err)
 		}
-		queue, err = store.load()
+		loaded, err := store.load()
 		if err != nil {
 			t.Fatal(err)
 		}
+		queue = loaded
 		entry := queue.Entries["4"]
 		deadline, err := time.Parse(time.RFC3339Nano, entry.NextRetryAt)
 		if err != nil || entry.ReconcileAttempts != min(attempt, 7) || entry.Attempts != 0 || deadline.Sub(now) != claimRetry(attempt) {
@@ -304,10 +302,7 @@ func TestClaimQueuePollRejectsMalformedRetryDeadline(t *testing.T) {
 // File identity proves unchanged saves do not replace/fsync the queue. A
 // missing or externally changed file still requires a fresh durable write.
 func TestClaimQueueStoreSkipsOnlyCurrentIdenticalBytes(t *testing.T) {
-	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, filepath.Join(t.TempDir(), "state"))
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: 0, Entries: map[string]*ClaimQueueEntry{"0": {Epoch: 0, Status: "pending"}}}
 	if err := store.save(queue); err != nil {
 		t.Fatal(err)
@@ -351,10 +346,7 @@ func TestClaimQueueStoreSkipsOnlyCurrentIdenticalBytes(t *testing.T) {
 // Equal bytes cannot bypass the existing private-file boundary or turn an
 // external symlink into an acknowledged durable queue generation.
 func TestClaimQueueStoreRepairsChangedPrivacyBeforeSkippingSave(t *testing.T) {
-	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, filepath.Join(t.TempDir(), "state"))
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: -1, Entries: map[string]*ClaimQueueEntry{}}
 	if err := store.save(queue); err != nil {
 		t.Fatal(err)
@@ -389,10 +381,7 @@ func TestClaimQueueStoreRepairsChangedPrivacyBeforeSkippingSave(t *testing.T) {
 // owner's bytes are visible; this also models an unacknowledged prior write.
 func TestClaimQueueStoreReacknowledgesPreviouslyVisibleBytes(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
-	store, err := newClaimQueueStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newClaimQueueTestStore(t, dir)
 	queue := &ClaimQueue{Schema: "urnetwork-provider-claim-queue-v1", LastDiscovered: -1, Entries: map[string]*ClaimQueueEntry{}}
 	if err := store.save(queue); err != nil {
 		t.Fatal(err)
@@ -401,10 +390,10 @@ func TestClaimQueueStoreReacknowledgesPreviouslyVisibleBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := newClaimQueueStore(dir)
-	if err != nil {
+	if err := store.close(); err != nil {
 		t.Fatal(err)
 	}
+	reopened := newClaimQueueTestStore(t, dir)
 	if err := reopened.save(queue); err != nil {
 		t.Fatal(err)
 	}
