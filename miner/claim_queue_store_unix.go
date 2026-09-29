@@ -49,7 +49,7 @@ func claimQueueOpenDirectory(path string) (*os.File, error) {
 
 // Read only a private regular entry; a fifo cannot block ownership admission.
 // Unsafe entries may be replaced by an existing owner's atomic publication.
-func claimQueueReadFile(directory *os.File, name string) ([]byte, os.FileMode, error) {
+func claimQueueReadFile(directory *os.File, name string, hooks claimQueueReadHooks) ([]byte, os.FileMode, error) {
 	fd, err := unix.Openat(int(directory.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, unix.ELOOP) {
@@ -67,19 +67,46 @@ func claimQueueReadFile(directory *os.File, name string) ([]byte, os.FileMode, e
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || stat.Uid != uint32(os.Geteuid()) {
 		return nil, 0, errors.Join(errClaimQueueUnsafeFile, file.Close())
 	}
-	raw, readErr := io.ReadAll(file)
-	return raw, info.Mode(), errors.Join(readErr, file.Close())
+	if info.Size() > maximumClaimQueueBytes {
+		return nil, 0, errors.Join(errClaimQueueCapacity, file.Close())
+	}
+	if hooks.afterStat != nil {
+		if err := hooks.afterStat(); err != nil {
+			return nil, 0, errors.Join(err, file.Close())
+		}
+	}
+	// The extra byte detects growth after stat without trusting the original
+	// length or allocating in proportion to a subsequently enlarged file.
+	raw, readErr := io.ReadAll(io.LimitReader(file, maximumClaimQueueBytes+1))
+	closeErr := file.Close()
+	if len(raw) > maximumClaimQueueBytes {
+		return nil, 0, errors.Join(errClaimQueueCapacity, readErr, closeErr)
+	}
+	return raw, info.Mode(), errors.Join(readErr, closeErr)
 }
 
 // All temporary creation, replacement and sync use the locked directory, even
 // when its original pathname is renamed or replaced during publication.
 func claimQueuePublish(directory *os.File, name string, raw []byte) error {
+	if len(raw) > maximumClaimQueueBytes {
+		return errClaimQueueCapacity
+	}
+	directoryFd := int(directory.Fd())
+	var retained unix.Stat_t
+	if err := unix.Fstatat(directoryFd, name, &retained, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	} else if retained.Mode&unix.S_IFMT == unix.S_IFREG && retained.Size > maximumClaimQueueBytes {
+		// A changed or unacknowledged save must not overwrite an oversized
+		// retained regular file merely because its replacement fits the cap.
+		return errClaimQueueCapacity
+	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
 	}
 	temporary := ".claim-queue-" + hex.EncodeToString(nonce[:])
-	directoryFd := int(directory.Fd())
 	fd, err := unix.Openat(directoryFd, temporary, unix.O_CREAT|unix.O_EXCL|unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
 	if err != nil {
 		return err

@@ -262,7 +262,7 @@ func TestClaimQueueOwnerIoStaysWithinPinnedDirectory(t *testing.T) {
 	if err := claimQueuePublish(store.directory, "claim-queue.json", intended); err != nil {
 		t.Fatal(err)
 	}
-	read, _, err := claimQueueReadFile(store.directory, "claim-queue.json")
+	read, _, err := claimQueueReadFile(store.directory, "claim-queue.json", claimQueueReadHooks{})
 	if err != nil || !bytes.Equal(read, intended) {
 		t.Fatalf("read escaped the held directory: %v", err)
 	}

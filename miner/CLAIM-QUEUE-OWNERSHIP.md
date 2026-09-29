@@ -29,6 +29,35 @@ in-memory crash rule still converts `submitting` with retained transaction
 identity to `uncertain`, retaining the exact hash and raw transaction. A closed
 store cannot read or publish state; restart requires a new successful lock.
 
+Retained reads and publications admit at most **16 MiB per queue**, including
+the JSON writer's indentation and final newline. Startup checks the opened
+file's size before allocation, then reads at most the limit plus one byte so
+growth after that check cannot evade admission. A refused read returns no
+queue. A refused publication creates no temporary file and leaves the previous
+queue and its signed fields intact. Publication also checks the retained regular
+file's size, so a repeated or changed save cannot replace an oversized file
+after its prior acknowledgement was invalidated. The limit does not authorize truncation,
+compaction, a fresh queue, or another nonce; an oversized retained file needs
+separately reviewed recovery.
+
+The sizing fixture uses the actual v1 queue and signed claim ABI/RLP encoding:
+1,024 retained epochs, a 16-node proof and 2 KiB of diagnostic text per record,
+plus hashes, receipt fields and timestamps. Each representative record fits
+within 8 KiB and the complete fixture stays below half the 16 MiB limit. The
+production reference claim window is eight epochs plus one grace epoch, and
+1,024 mainnet epochs represent 51,609,600 blocks at the required 50,400-block
+period. This gives substantial history margin without using accelerated testnet
+timing. Swarm members keep separate queues; the up-to-1,000-member limit does
+not multiply entries in one file. The fixture is a sizing assumption, not a
+schema maximum: proof lengths and diagnostic strings can vary, and the actual
+encoded byte count is the admission boundary.
+
+This per-file boundary does not supply an aggregate host-memory budget, bound
+future epoch-jump discovery, or cap JSON encoding allocations for already
+oversized in-memory state. Those workload and storage qualifications remain
+separate gates. Existing oversized files are preserved and refused, without a
+schema migration or a weaker legacy reader.
+
 This is local filesystem ownership. Every process using a queue must use the
 same retained physical directory and a filesystem with working exclusive locks,
 atomic rename, file sync and directory sync. Do not replace/delete the directory,
@@ -38,7 +67,7 @@ and a shared nonce owner across different queues/processes remain separate
 production gates. The process-local swarm nonce admission retains its original
 scope. Unsupported platforms refuse daemon startup before creating state.
 
-The source and deterministic regressions are a qualification candidate.
-Behavioral normal/race tests and causal controls are pending independent
-execution. No mainnet route, key, transaction, receipt or deployment is supplied
-by this change.
+The ownership source at `b7e84b2f` has separate normal/race and causal-control
+qualification. The retained-byte successor and its deterministic boundary
+regressions are a separate qualification candidate. No mainnet route, key,
+transaction, receipt or deployment is supplied by either change.

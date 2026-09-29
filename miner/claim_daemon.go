@@ -196,7 +196,7 @@ func (self *claimQueueStore) load() (*ClaimQueue, error) {
 	if err := self.requireOwner(); err != nil {
 		return nil, err
 	}
-	b, _, err := claimQueueReadFile(self.directory, filepath.Base(self.path))
+	b, _, err := claimQueueReadFile(self.directory, filepath.Base(self.path), claimQueueReadHooks{})
 	if ownerErr := self.requireOwner(); ownerErr != nil {
 		return nil, errors.Join(err, ownerErr)
 	}
@@ -244,9 +244,12 @@ func (self *claimQueueStore) save(q *ClaimQueue) error {
 		return err
 	}
 	b = append(b, '\n')
+	if len(b) > maximumClaimQueueBytes {
+		return errClaimQueueCapacity
+	}
 	hash := sha256.Sum256(b)
 	if self.saved && self.savedHash == hash {
-		prior, mode, readErr := claimQueueReadFile(self.directory, filepath.Base(self.path))
+		prior, mode, readErr := claimQueueReadFile(self.directory, filepath.Base(self.path), claimQueueReadHooks{})
 		if readErr == nil && mode.Perm() == 0o600 && bytes.Equal(prior, b) {
 			return self.requireOwner()
 		}

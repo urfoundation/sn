@@ -23,7 +23,7 @@ func claimQueueOpenDirectory(string) (*os.File, error) {
 func claimQueuePrivateDirectory(*os.File) error { return claimQueuePlatformSupported() }
 
 // Unsupported platforms never consume retained queue custody.
-func claimQueueReadFile(*os.File, string) ([]byte, os.FileMode, error) {
+func claimQueueReadFile(*os.File, string, claimQueueReadHooks) ([]byte, os.FileMode, error) {
 	return nil, 0, claimQueuePlatformSupported()
 }
 
