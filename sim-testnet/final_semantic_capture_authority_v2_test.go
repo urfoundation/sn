@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Enter through the actual external diagnostic admission, writing provenance

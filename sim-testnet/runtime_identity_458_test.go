@@ -13,7 +13,7 @@ import (
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 	"gopkg.in/yaml.v3"
 )
 
