@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/model"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/model"
 )
 
 // Independent arithmetic includes every miner, not just the 404 currently
