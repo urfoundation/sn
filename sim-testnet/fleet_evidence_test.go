@@ -10,9 +10,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 func TestFleetMirrorComparisonRequiresExactNativeFinalityAttestation(t *testing.T) {

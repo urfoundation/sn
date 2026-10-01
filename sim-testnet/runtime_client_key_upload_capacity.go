@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/model"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/model"
 )
 
 // Preserve the existing ordinary traffic allowance in addition to the new

@@ -16,9 +16,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
-	"github.com/urfoundation/sn/ss58"
-	"github.com/urnetwork/connect"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	"github.com/urfoundation/sn/v2026/ss58"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Holds a compact, fully signed operator artifact and its independent
