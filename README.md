@@ -1,8 +1,8 @@
-# UR Subnet
+# UR (SN25)
 
 **Bittensor SN25 (netuid 25): a subnet for a decentralized privacy network.**
 
-This repository (`sn`) is the reference implementation of the UR Subnet — the EVM
+This repository (`sn`) is the reference implementation of UR (SN25): the EVM
 contract suite, miner and validator software, chain tooling, and the real-testnet
 integration harness. The operator/API implementation lives in the sibling `server`
 repository; provider probing, tunnel confinement, geolocation, bandwidth, and
@@ -12,10 +12,10 @@ egress-health tooling live in the sibling `operator-proxy` repository.
 
 **Network Operators (NOs)** run the privacy servers and sell the traffic. Independent
 **providers** carry ingress/egress traffic for them. Independent **validators** run the
-[`VALIDATOR.md`](VALIDATOR.md) routing‑verification protocol — walking server‑assigned
+[`VALIDATOR.md`](VALIDATOR.md) routing‑verification protocol, walking server‑assigned
 chains of providers to prove real‑time transit and measure *which providers are the weakest
 links*. Bittensor's **Yuma Consensus** turns that measurement into emission. Everything is
-denominated in the subnet's native token — **α**, branded **$UR**.
+denominated in the subnet's native token, **α**, branded **$SN25**.
 
 The full specification is in [`WHITEPAPER.md`](WHITEPAPER.md); the design rationale versus
 the rest of the Bittensor field is in [`COMPARISON.md`](COMPARISON.md). Terms are defined in
@@ -30,7 +30,7 @@ the [glossary](#glossary) at the end.
 Money flows in three coupled channels, all in α. The detailed map of every contract and
 flow is [`diagrams/mechanism.png`](diagrams/mechanism.png).
 
-### 1. Deposits — the demand signal, conviction stake, and a buyback
+### 1. Deposits: the demand signal, conviction stake, and a buyback
 
 ![Deposits move one way into the immutable reserve sink; conviction sets the rate tier](diagrams/readme/03-deposits.svg)
 
@@ -56,14 +56,14 @@ the same implied demand, so measured quality alone steers the pool channel. The 
 testnet policy ([`deploy/testnet/policy-v2.yml`](deploy/testnet/policy-v2.yml)) is bytes‑only
 and halts on a zero rate.
 
-### 2. Emission — Yuma Consensus
+### 2. Emission: Yuma Consensus
 
 ![Emission split 18/41/41; validators steer the 41% miner share by θ between head fleets and pool UIDs](diagrams/readme/04-emission.svg)
 
 The Bittensor coinbase pays the standard **18% owner / 41% miner / 41% validator** α split.
 Each tempo (360 blocks, ~72 min), validators score **both miner tiers** from their own trails,
 submit one weight vector under **commit‑reveal**, and Yuma's stake‑weighted
-**median + clipping + vtrust** turns those scores into miner emission — so the validators'
+**median + clipping + vtrust** turns those scores into miner emission, so the validators'
 evaluation *is* what moves the money. Validator emission flows **natively** (∝ stake × vtrust),
 including to the stake the reserve holds.
 
@@ -100,7 +100,7 @@ distinct routable /29 IPv4 or /48 IPv6 prefix hashes its clients served; a hash 
 fleets counts 1/k to each. Routable means a real trail hop completed through it, so the head
 needs no separate quality term.
 
-### 3. Settlement — the 7‑day epoch
+### 3. Settlement: the 7‑day epoch
 
 ![One settlement epoch: close, root commit, finalize, claim, expiry and carry](diagrams/readme/06-settlement.svg)
 
@@ -117,15 +117,15 @@ vault** with a Merkle proof. A NO never holds anyone else's funds. The full time
 One NO may serve **100k+ providers, far beyond a subnet's 256‑UID cap**, so the miner side
 runs two tiers inside **one** mechanism, divided by **θ**:
 
-- **Pool tier (tail, `1−θ`)** — the **on‑ramp**. Each NO is a single vault‑owned
+- **Pool tier (tail, `1−θ`)**: the **on‑ramp**. Each NO is a single vault‑owned
   **pool UID**, weighted as above. Its providers are *not* UIDs: they are paid *inside* the
   pool by **Merkle claim**. Low provider barrier (join a NO; no UID or burn needed, because the
   immutable vault owns one shared, burn‑registered pool UID per NO), baseline reward.
-- **Head (top‑level miners, `θ`)** — the **supply apex**. Up to **200 fleets**
+- **Head (top‑level miners, `θ`)**: the **supply apex**. Up to **200 fleets**
   (`maximum_head_fleets`) by split‑adjusted routable‑IP breadth (real VPN supply breadth, *not*
   traffic volume). A **fleet** is one hotkey binding many `client_id`s through a
   **dual‑signed `client_id`s ⇄ hotkey binding**. Each fleet claims its **own miner UID**, is
-  steered **directly** by validators, and is paid **natively** to its own hotkey — no contract
+  steered **directly** by validators, and is paid **natively** to its own hotkey, with no contract
   custody, no Merkle claim, no operator in the payout path.
 
 **Promotion and demotion.** A fleet promotes itself: it burn‑registers a UID, publishes its
@@ -157,9 +157,9 @@ leave 188 head slots.
   The immutable vault is the sole custodian of in‑transit pool emission; every payout is a
   **direct on‑chain pull claim** paid as α stake to the claimant's coldkey; the head is paid
   **natively**.
-- **Finalized claims are sacrosanct** from day one — no upgrade, pause, or admin action can
+- **Finalized claims are sacrosanct** from day one. No upgrade, pause, or admin action can
   block or claw back a finalized claim. Pause stops new close/finalize calls, never claims.
-- **The buyback reserve is one‑way** — no contract function ever sources a transfer out of it.
+- **The buyback reserve is one‑way**: no contract function ever sources a transfer out of it.
 - **Split governance.** `STReserveSink` and `STSettlementVault` are non‑upgradeable from
   launch. Only `STCoordinator` is UUPS‑upgradeable: testnet uses a dedicated value‑capped
   owner, and mainnet requires a distinct 2‑of‑3 Safe. A ≥1‑epoch upgrade timelock is planned
@@ -169,14 +169,14 @@ leave 188 head slots.
 
 ## How this compares to the Bittensor field
 
-The UR Subnet follows the Bittensor core almost everywhere and diverges only deliberately.
+UR (SN25) follows the Bittensor core almost everywhere and diverges only deliberately.
 Of the major design decisions, **12 are aligned** with prevailing practice, **2 are
-divergent** (reward settlement/custody and the worker‑payout trust model — both *toward*
+divergent** (reward settlement/custody and the worker‑payout trust model, both *toward*
 trustlessness), and **2 are genuinely novel bets**: coupling miner reward to real,
 revenue‑backed demand (`implied_usage × quality`, inactive while the published price is
 zero) and tiering miners into a trust‑minimized pooled tail plus a directly‑paid head.
 
-![UR Subnet vs. the Bittensor norm — design‑decision alignment matrix](diagrams/comparison_matrix.png)
+![UR (SN25) vs. the Bittensor norm: design‑decision alignment matrix](diagrams/comparison_matrix.png)
 
 Full analysis, per‑theme and per‑subnet, is in [`COMPARISON.md`](COMPARISON.md).
 
@@ -201,7 +201,7 @@ pays.
 ### Register a provider (ingress or egress)
 
 Follow the provider documentation at <https://ur.xyz>. Providers work with network
-operators — the miner defaults to the reference operator, and you can point it at another
+operators. The miner defaults to the reference operator, and you can point it at another
 operator with `provider choose_network <api_url> <connect_url>` (`--show` prints the network in
 effect, `--reset` returns to the default).
 
@@ -209,7 +209,7 @@ Providers register a `client_id` with the subnet, and are paid *inside* their NO
 **Merkle claim** against that NO's payout root (`provider claim`, or `snclaim submit` for an
 air‑gapped key). A fleet whose **routable‑IP breadth** ranks among the network's top fleets
 can claim its own **top‑level miner UID** and be paid **directly** by validator emission
-steering — no pool, no operator in the payout path. The fleet registers that UID itself
+steering, with no pool and no operator in the payout path. The fleet registers that UID itself
 (`provider fleet register`: a burned `register_limit` signed by the fleet coldkey, dry run
 until `--apply`), publishes its manifest commitment (`provider fleet publish`) and links its
 `client_id`s to the hotkey with a **dual‑signed binding** (`provider fleet bind`) so
@@ -220,9 +220,9 @@ validators can attribute its measured breadth to that slot. See
 
 Validators stake their **own** α, run the [`VALIDATOR.md`](VALIDATOR.md)
 routing‑verification protocol (walking provider chains to measure quality and routable‑IP
-breadth), and each tempo score **both** miner tiers under commit‑reveal — the pools by
+breadth), and each tempo score **both** miner tiers under commit‑reveal: the pools by
 `implied_usage × quality` and the head by routable‑IP breadth. Validators earn
-Bittensor‑native **dividends** (∝ stake × vtrust) — v1's only validator reward.
+Bittensor‑native **dividends** (∝ stake × vtrust), v1's only validator reward.
 No NO owns a validator, and the set is permissionless and Bittensor‑native. At launch the owner
 is the stake‑majority validator, because the reserve is staked on its hotkey (§7.4, §9.2).
 
@@ -244,11 +244,11 @@ accelerated epochs). Offsets below are mainnet values from
 |---|---|
 | `t = 0` (≤ 120 blocks) | Anyone calls `closeOperatorEpoch`; the vault moves that NO's pool emission to escrow. A missed close defers the capture to the next boundary. |
 | `t ≤ +4h` (1,200 blocks) | Each NO commits its payout‑list root for the epoch. A missed root carries the funds to the same NO's next epoch. |
-| `t < +48h` | Audit window — committed roots and content‑addressed payout artifacts are public and reproducible. Review is off‑chain; there is no on‑chain challenge. |
+| `t < +48h` | Audit window. Committed roots and content‑addressed payout artifacts are public and reproducible. Review is off‑chain; there is no on‑chain challenge. |
 | `+48h` (14,400 blocks) | Anyone calls `finalizeOperatorEpoch`: the vault fixes the per‑NO entitlement and **claims open**. |
 | end of epoch `e+9` | Claims expire (TTL 8 epochs + 1 grace). Unclaimed shares carry to the same NO. |
 
-Top‑level miners need **no settlement** — Yuma pays their UID natively each tempo.
+Top‑level miners need **no settlement**; Yuma pays their UID natively each tempo.
 
 ---
 
