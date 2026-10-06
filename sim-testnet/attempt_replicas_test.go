@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Owns two independent namespaces without reading host configuration or keys.

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // Observe real retained bytes; output belongs to stdout, never this tree.
