@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	servermodel "github.com/urnetwork/server/model"
+	servermodel "github.com/urnetwork/server/v2026/model"
 )
 
 const (

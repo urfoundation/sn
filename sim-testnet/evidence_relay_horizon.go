@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // Phase work is expressed in configured block equivalents. It does not

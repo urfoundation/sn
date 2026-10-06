@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Runs only the two fixed validator owners through the existing joined test
