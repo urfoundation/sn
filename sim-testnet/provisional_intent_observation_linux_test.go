@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 // A real test-owned child passes the kernel argv/generation checks before the
