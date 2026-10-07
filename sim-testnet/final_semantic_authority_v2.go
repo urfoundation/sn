@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 	"gopkg.in/yaml.v3"
 )
 

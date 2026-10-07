@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Discovery keeps the original source and cursor. Only the exact approved
