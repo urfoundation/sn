@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Exact plan ownership prevents a predecessor request from being relabeled
