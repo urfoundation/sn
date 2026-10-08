@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/urnetwork/server"
-	servercontroller "github.com/urnetwork/server/controller"
+	"github.com/urnetwork/server/v2026"
+	servercontroller "github.com/urnetwork/server/v2026/controller"
 )
 
 const (
