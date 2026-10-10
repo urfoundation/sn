@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 func policyRolloverPublicationFixtureV2(t *testing.T) (*policyRolloverPlanV2, *Journal, uint64) {

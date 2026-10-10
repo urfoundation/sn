@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // One current index plus every admitted source slot, and a complete prior
