@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // A stopped campaign can begin from one exact approved renewal. The original
