@@ -1,6 +1,6 @@
 package main
 
-import "github.com/urfoundation/sn/payoutartifact"
+import "github.com/urfoundation/sn/v2026/payoutartifact"
 
 // Validator consumers can contribute signed usage without becoming miners.
 // Only their exact unpaid shape is outside the miner payout census. Callers

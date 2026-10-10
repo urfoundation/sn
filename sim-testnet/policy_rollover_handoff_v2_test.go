@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Shared with integration tests for the API/relay selectors: all activation

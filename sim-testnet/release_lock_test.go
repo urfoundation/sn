@@ -625,7 +625,7 @@ func TestModuleRootRequiresExactModuleIdentity(t *testing.T) {
 	if err := os.WriteFile(goMod, []byte("module example.invalid/sdk\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := moduleRoot(parent, "sdk"); err == nil || !strings.Contains(err.Error(), "want \"github.com/urnetwork/sdk\"") {
+	if _, err := moduleRoot(parent, "sdk"); err == nil || !strings.Contains(err.Error(), "want \"github.com/urnetwork/sdk/v2026\"") {
 		t.Fatalf("wrong sibling module identity was accepted: %v", err)
 	}
 	if err := os.WriteFile(goMod, []byte("module github.com/urnetwork/sdk\n"), 0o600); err != nil {
