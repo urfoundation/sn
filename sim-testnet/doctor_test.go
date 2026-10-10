@@ -18,7 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	serverst "github.com/urnetwork/server/st"
+	serverst "github.com/urnetwork/server/v2026/st"
 )
 
 // The diagnostic request must exercise the same three-address, one-thousand

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 func appendScenarioPathProofCacheRecord(t *testing.T, path string, trailId connect.Id) {

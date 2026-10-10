@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Every fixture has both validators, a provider, four retained proof domains,
