@@ -19,8 +19,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/urfoundation/sn/ss58"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/ss58"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 type finalSemanticPinnedEVMRequest struct {

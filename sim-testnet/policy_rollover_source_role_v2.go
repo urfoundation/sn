@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/crv4"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 	"gopkg.in/yaml.v3"
 )
 
