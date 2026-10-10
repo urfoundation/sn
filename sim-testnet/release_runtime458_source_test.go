@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // Supplies fake executables before the host path, retaining actual jq parsing.

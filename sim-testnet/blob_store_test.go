@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 )
 
 // fixtureFailureBlobStore keeps fault injection explicit at every BlobStore
