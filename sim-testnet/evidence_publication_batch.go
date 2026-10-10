@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 )
 
 // Sixty-four envelopes bound lock tenure independently of the archive census.
