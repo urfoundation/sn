@@ -9,7 +9,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Admission belongs to the caller's fresh grammar check; the same bounded

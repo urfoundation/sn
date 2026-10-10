@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // The downstream observer owns its copy, never the streaming writer's buffer.
