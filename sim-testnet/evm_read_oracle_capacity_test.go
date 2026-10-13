@@ -19,7 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 func TestFleetRefreshOracleStateKeepsFullGroupAfterLearnedHistoryCapacity(t *testing.T) {
