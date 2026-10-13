@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/controller"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/controller"
 	"gopkg.in/yaml.v3"
 )
 
