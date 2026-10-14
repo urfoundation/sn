@@ -21,7 +21,9 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/urfoundation/sn/crv4"
@@ -227,6 +229,9 @@ func (self *releaseStartupVerified) enableRecord(stateDir string, hotkey *crv4.K
 		return
 	}
 	record := &releaseStartupVerifiedRecord{path: filepath.Join(stateDir, releaseStartupVerifiedFileName), hotkey: hotkey, authority: authority, stderr: stderr, serverKeys: authority.serverKeys}
+	if err := removeStaleReleaseStartupVerifiedTemporaries(stateDir); err != nil {
+		fmt.Fprintf(stderr, "validator: stale startup verified progress temporaries remain: %v\n", err)
+	}
 	file, err := readReleaseStartupVerifiedFile(record.path)
 	if err == nil && file != nil {
 		err = releaseStartupVerifiedAccepts(file, authority)
@@ -322,8 +327,8 @@ func releaseStartupVerifiedSigningDigest(file *releaseStartupVerifiedFile) ([32]
 	return sha256.Sum256(append(append([]byte(releaseStartupVerifiedSigningDomain), 0), encoded...)), nil
 }
 
-// A private regular file of bounded size whose canonical bytes carry a valid
-// hotkey signature. Absence is not an error.
+// This account's private regular file of bounded size whose canonical bytes
+// carry a valid hotkey signature. Absence is not an error.
 func readReleaseStartupVerifiedFile(path string) (*releaseStartupVerifiedFile, error) {
 	handle, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if errors.Is(err, os.ErrNotExist) {
@@ -337,8 +342,8 @@ func readReleaseStartupVerifiedFile(path string) (*releaseStartupVerifiedFile, e
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || info.Size() > releaseStartupVerifiedMaximumBytes {
-		return nil, errors.New("record is not a private regular file within its byte bound")
+	if !releaseStartupVerifiedPrivateFile(info, os.Geteuid()) || info.Size() > releaseStartupVerifiedMaximumBytes {
+		return nil, errors.New("record is not this account's private regular file within its byte bound")
 	}
 	encoded, err := io.ReadAll(io.LimitReader(handle, releaseStartupVerifiedMaximumBytes+1))
 	if err != nil {
@@ -447,6 +452,33 @@ func (self *releaseStartupVerified) flush() error {
 		self.stateLock.Unlock()
 	}
 	return err
+}
+
+// Only the validator account's own private regular file is read as a record.
+func releaseStartupVerifiedPrivateFile(info os.FileInfo, uid int) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && uid >= 0 && stat.Uid == uint32(uid) && info.Mode().IsRegular() && info.Mode().Perm()&0o077 == 0
+}
+
+// A process that stopped between creating its temporary and renaming it left
+// the temporary behind. Nothing else uses the name, and this process has not
+// written yet, so each start removes the regular files among them.
+func removeStaleReleaseStartupVerifiedTemporaries(stateDir string) error {
+	entries, err := os.ReadDir(stateDir)
+	if err != nil {
+		return err
+	}
+	prefix := "." + releaseStartupVerifiedFileName + "."
+	var result error
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), prefix) || !entry.Type().IsRegular() {
+			continue
+		}
+		if err := os.Remove(filepath.Join(stateDir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			result = errors.Join(result, err)
+		}
+	}
+	return result
 }
 
 func writeReleaseStartupVerifiedFile(path string, encoded []byte) (resultErr error) {

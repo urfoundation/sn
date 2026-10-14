@@ -422,3 +422,51 @@ func TestReleaseStartupVerifiedRecordNamesRuntimeServerKeys(t *testing.T) {
 		t.Fatalf("a record was written after a listed version changed: %+v", file)
 	}
 }
+
+// Only this account's private record is read, and a temporary that a stopped
+// process left behind is removed at the next start; nothing else is.
+func TestReleaseStartupVerifiedRecordIsOwnedAndStaleTemporariesGo(t *testing.T) {
+	t.Parallel()
+	hotkey, authority := releaseStartupVerifiedTestAuthority(t)
+	dir := t.TempDir()
+	releaseStartupVerifiedTestRecord(t, dir, hotkey, authority)
+	path := filepath.Join(dir, releaseStartupVerifiedFileName)
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !releaseStartupVerifiedPrivateFile(info, os.Geteuid()) || releaseStartupVerifiedPrivateFile(info, os.Geteuid()+1) {
+		t.Fatal("the record is not admitted for its owning account alone")
+	}
+	temporary := filepath.Join(dir, "."+releaseStartupVerifiedFileName+".")
+	if err := os.WriteFile(temporary+"123456", []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(temporary+"directory", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, temporary+"link"); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(dir, "."+releaseStartupVerifiedFileName+"x")
+	if err := os.WriteFile(unrelated, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	newReleaseStartupVerified().enableRecord(dir, hotkey, authority, &stderr)
+	if !strings.Contains(stderr.String(), "record accepted") {
+		t.Fatalf("the owned record was refused: %q", stderr.String())
+	}
+	if _, err := os.Lstat(temporary + "123456"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a stale temporary remains: %v", err)
+	}
+	for _, kept := range []string{temporary + "directory", temporary + "link", target, unrelated, path} {
+		if _, err := os.Lstat(kept); err != nil {
+			t.Fatalf("start removed %s: %v", kept, err)
+		}
+	}
+}
