@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 // Holds decoded deposit facts retained for cross-receipt nonce validation.
