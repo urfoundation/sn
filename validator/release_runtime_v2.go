@@ -658,5 +658,8 @@ func (self *releaseRuntimeV2) refreshServerKeys(ctx context.Context) error {
 			self.history.keys[noId][version] = bytes.Clone(key)
 		}
 	}
+	// Cuts verified under an added version reach the startup verified
+	// progress record, so the record names that version before them.
+	releaseStartupVerifiedFrom(ctx).observeServerKeys(self.history.keys)
 	return nil
 }

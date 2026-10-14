@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -339,5 +340,85 @@ func TestReleaseStartupVerifiedRecordResumesAnotherProcess(t *testing.T) {
 	}
 	if resumed := reads() - before; resumed != 0 {
 		t.Fatalf("the next process replayed %d public objects again", resumed)
+	}
+}
+
+// The live service admits server-key versions after startup and verifies cuts
+// under them, so the record names each one from the next flush on. A successor
+// that no longer holds such a version, or holds other bytes under it, then
+// verifies everything.
+func TestReleaseStartupVerifiedRecordNamesRuntimeServerKeys(t *testing.T) {
+	fixture := newReleaseRuntimeV2TestFixture(t)
+	hotkey, authority := releaseStartupVerifiedTestAuthority(t)
+	startupKeys, err := releaseStartupVerifiedServerKeysOf(fixture.startup.keys)
+	if err != nil || len(startupKeys) == 0 {
+		t.Fatalf("fixture server keys are not listable: %v", err)
+	}
+	authority.serverKeys = startupKeys
+	dir := t.TempDir()
+	owner := newReleaseStartupVerified()
+	owner.enableRecord(dir, hotkey, authority, &bytes.Buffer{})
+	owner.add([32]byte{0xa1})
+	written := func() *releaseStartupVerifiedFile {
+		t.Helper()
+		if err := owner.flush(); err != nil {
+			t.Fatal(err)
+		}
+		file, err := readReleaseStartupVerifiedFile(filepath.Join(dir, releaseStartupVerifiedFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	if !slices.Equal(written().ServerKeys, startupKeys) {
+		t.Fatal("the first record does not name startup's server keys")
+	}
+	ctx := withReleaseStartupVerified(t.Context(), owner)
+	if err := fixture.runtime.refreshServerKeys(ctx); err != nil {
+		t.Fatal(err)
+	}
+	owner.stateLock.Lock()
+	rewritten := owner.dirty
+	owner.stateLock.Unlock()
+	if rewritten {
+		t.Fatal("a refresh that admitted nothing rewrote the record")
+	}
+	noID := fixture.startup.disk.participants[0].NoID
+	const version = byte(0xee)
+	if fixture.startup.keys[noID][version] != nil {
+		t.Fatal("the test version is already published")
+	}
+	added := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{9}, 32)).Public().(ed25519.PublicKey)
+	fixture.startup.keys[noID][version] = added
+	if err := fixture.runtime.refreshServerKeys(ctx); err != nil {
+		t.Fatal(err)
+	}
+	named := releaseStartupVerifiedServerKey{NoID: noID, Version: version, Key: fmt.Sprintf("%x", []byte(added))}
+	current := written().ServerKeys
+	if len(current) != len(startupKeys)+1 || !slices.Contains(current, named) {
+		t.Fatalf("the record does not name the admitted version: %+v", current)
+	}
+	replaced := slices.Clone(current)
+	for index := range replaced {
+		if replaced[index] == named {
+			replaced[index].Key = strings.Repeat("0", 64)
+		}
+	}
+	accepts := func(serverKeys []releaseStartupVerifiedServerKey) bool {
+		t.Helper()
+		successor := authority
+		successor.serverKeys = serverKeys
+		var stderr bytes.Buffer
+		newReleaseStartupVerified().enableRecord(dir, hotkey, successor, &stderr)
+		return strings.Contains(stderr.String(), "record accepted")
+	}
+	if !accepts(current) || accepts(startupKeys) || accepts(replaced) {
+		t.Fatal("a successor's acceptance does not follow the admitted version")
+	}
+	// Other bytes under a listed version stop every later write.
+	owner.observeServerKeys(map[uint64]map[byte]ed25519.PublicKey{noID: {version: ed25519.NewKeyFromSeed(bytes.Repeat([]byte{10}, 32)).Public().(ed25519.PublicKey)}})
+	owner.add([32]byte{0xa2})
+	if file := written(); !slices.Equal(file.ServerKeys, current) || len(file.Units) != 1 {
+		t.Fatalf("a record was written after a listed version changed: %+v", file)
 	}
 }

@@ -111,16 +111,27 @@ func releaseStartupVerifiedAuthorityFor(cfg *ReleaseConfig, hotkey [32]byte, ser
 			authority.lineage[entry.config.ownerRecycleProduction.configHash] = true
 		}
 	}
+	listed, err := releaseStartupVerifiedServerKeysOf(serverKeys)
+	if err != nil {
+		return releaseStartupVerifiedAuthority{}, err
+	}
+	authority.serverKeys = listed
+	return authority, nil
+}
+
+// A server-key census as the record lists it, in canonical order.
+func releaseStartupVerifiedServerKeysOf(serverKeys map[uint64]map[byte]ed25519.PublicKey) ([]releaseStartupVerifiedServerKey, error) {
+	var listed []releaseStartupVerifiedServerKey
 	for noID, keys := range serverKeys {
 		for version, key := range keys {
 			if len(key) != ed25519.PublicKeySize {
-				return releaseStartupVerifiedAuthority{}, errors.New("startup verified progress server key has invalid width")
+				return nil, errors.New("startup verified progress server key has invalid width")
 			}
-			authority.serverKeys = append(authority.serverKeys, releaseStartupVerifiedServerKey{NoID: noID, Version: version, Key: hex.EncodeToString(key)})
+			listed = append(listed, releaseStartupVerifiedServerKey{NoID: noID, Version: version, Key: hex.EncodeToString(key)})
 		}
 	}
-	sortReleaseStartupVerifiedServerKeys(authority.serverKeys)
-	return authority, nil
+	sortReleaseStartupVerifiedServerKeys(listed)
+	return listed, nil
 }
 
 func sortReleaseStartupVerifiedServerKeys(keys []releaseStartupVerifiedServerKey) {
@@ -201,6 +212,12 @@ type releaseStartupVerifiedRecord struct {
 	writeLock sync.Mutex
 	stderr    io.Writer
 	full      bool
+	// Every server-key version this process admitted: startup's census and each
+	// version the live service added since. Guarded by the owner's stateLock;
+	// replaced, never modified, so a flush may keep the slice it read.
+	serverKeys []releaseStartupVerifiedServerKey
+	// A census that could not be listed stops all further writes.
+	unlisted bool
 }
 
 // Reads and admits the record before the first remembered unit is consulted.
@@ -209,7 +226,7 @@ func (self *releaseStartupVerified) enableRecord(stateDir string, hotkey *crv4.K
 	if self == nil || hotkey == nil || !filepath.IsAbs(stateDir) {
 		return
 	}
-	record := &releaseStartupVerifiedRecord{path: filepath.Join(stateDir, releaseStartupVerifiedFileName), hotkey: hotkey, authority: authority, stderr: stderr}
+	record := &releaseStartupVerifiedRecord{path: filepath.Join(stateDir, releaseStartupVerifiedFileName), hotkey: hotkey, authority: authority, stderr: stderr, serverKeys: authority.serverKeys}
 	file, err := readReleaseStartupVerifiedFile(record.path)
 	if err == nil && file != nil {
 		err = releaseStartupVerifiedAccepts(file, authority)
@@ -240,6 +257,46 @@ func (self *releaseStartupVerified) enableRecord(stateDir string, hotkey *crv4.K
 		fmt.Fprintf(stderr, "validator: no startup verified progress record yet; this start verifies the complete history\n")
 	default:
 		fmt.Fprintf(stderr, "validator: startup verified progress record accepted: %d units and %d intents already verified\n", len(units), len(intents))
+	}
+}
+
+// The live service admits new server-key versions and then verifies cuts under
+// them, so each later flush names every version admitted so far: a successor
+// keeps those units only while each named key is still current. A listed
+// version is never dropped; one whose bytes differ stops all further writes.
+func (self *releaseStartupVerified) observeServerKeys(serverKeys map[uint64]map[byte]ed25519.PublicKey) {
+	if self == nil {
+		return
+	}
+	admitted, err := releaseStartupVerifiedServerKeysOf(serverKeys)
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	record := self.record
+	if record == nil || record.unlisted {
+		return
+	}
+	listed := make(map[[2]uint64]string, len(record.serverKeys))
+	for _, key := range record.serverKeys {
+		listed[[2]uint64{key.NoID, uint64(key.Version)}] = key.Key
+	}
+	merged := slices.Clone(record.serverKeys)
+	for _, key := range admitted {
+		prior, found := listed[[2]uint64{key.NoID, uint64(key.Version)}]
+		if found && prior != key.Key {
+			err = errors.Join(err, errors.New("a listed server-key version changed"))
+		} else if !found {
+			merged = append(merged, key)
+		}
+	}
+	if err != nil {
+		record.unlisted = true
+		fmt.Fprintf(record.stderr, "validator: startup verified progress record is no longer updated: %v\n", err)
+		return
+	}
+	if len(merged) != len(record.serverKeys) {
+		sortReleaseStartupVerifiedServerKeys(merged)
+		record.serverKeys = merged
+		self.dirty = true
 	}
 }
 
@@ -334,7 +391,7 @@ func (self *releaseStartupVerified) flush() error {
 	}
 	self.stateLock.Lock()
 	record := self.record
-	if record == nil || !self.dirty {
+	if record == nil || !self.dirty || record.unlisted {
 		self.stateLock.Unlock()
 		return nil
 	}
@@ -346,6 +403,8 @@ func (self *releaseStartupVerified) flush() error {
 	for index, digest := range self.intents {
 		intents[index] = attemptHex32(digest)
 	}
+	// Read with the units: every unit was verified under a key listed here.
+	serverKeys := record.serverKeys
 	self.dirty = false
 	self.stateLock.Unlock()
 	record.writeLock.Lock()
@@ -361,7 +420,7 @@ func (self *releaseStartupVerified) flush() error {
 	authority := record.authority
 	file := releaseStartupVerifiedFile{Schema: releaseStartupVerifiedSchema, Verifier: releaseStartupVerifiedVerifier, ChainID: authority.chainID, DeploymentID: authority.deploymentID,
 		ValidatorID: authority.validatorID, Hotkey: releaseHex32(authority.hotkey), ConfigHash: releaseHex32(authority.configHash), BridgeEdges: authority.bridge,
-		ServerKeys: authority.serverKeys, Intents: intents, Units: units}
+		ServerKeys: serverKeys, Intents: intents, Units: units}
 	if file.BridgeEdges == nil {
 		file.BridgeEdges = []ReleaseNativeGapBridgeEdge{}
 	}
