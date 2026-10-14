@@ -273,7 +273,7 @@ func TestReleaseGateMainnetLeavesTheAggregateJob(t *testing.T) {
 		t.Fatalf("sn-all-normal runs %q, %v; want %q", commands, err, releaseGateAggregateNormalBody)
 	}
 	root := t.TempDir()
-	packages := []string{"github.com/urfoundation/sn/crv4", "github.com/urfoundation/sn/mainnet", "github.com/urfoundation/sn/mainnet/sub", "github.com/urfoundation/sn/mainnetx", "github.com/urfoundation/sn/sim-testnet"}
+	packages := []string{"github.com/urfoundation/sn/v2026/crv4", "github.com/urfoundation/sn/v2026/mainnet", "github.com/urfoundation/sn/v2026/mainnet/sub", "github.com/urfoundation/sn/v2026/mainnetx", "github.com/urfoundation/sn/v2026/sim-testnet"}
 	body := strings.Join(commands[1:], "\n")
 	command := exec.Command("bash", "-c", `set -euo pipefail
 release_gate_aggregate_skip=skip
@@ -290,7 +290,7 @@ go() {
 		t.Fatal(err)
 	}
 	want := []string{"test", "-parallel=4", "-timeout", "90m"}
-	want = append(want, slices.DeleteFunc(slices.Clone(packages), func(path string) bool { return path == "github.com/urfoundation/sn/mainnet" })...)
+	want = append(want, slices.DeleteFunc(slices.Clone(packages), func(path string) bool { return path == "github.com/urfoundation/sn/v2026/mainnet" })...)
 	want = append(want, "-count=1", "-skip", "skip")
 	if got := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n"); !slices.Equal(got, want) {
 		t.Fatalf("sn-all-normal ran go %q, want %q", got, want)
