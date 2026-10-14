@@ -173,6 +173,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 	var previous *SteeringIntent
 	var priorArtifact *ReleaseMeasurementArtifact
 	verified := releaseStartupVerifiedFrom(ctx)
+	digests, digestible := releaseIntentV2EntryDigests(all)
 	// A retained provisional testnet startup may legitimately omit native
 	// submissions from epochs that were closed before this process resumed.
 	// The live runtime still authenticates every terminal around the gap; this
@@ -244,8 +245,9 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 		} else if err := verifyStartupArtifactSuccessorV2(previous, priorArtifact, artifact, allowGap); err != nil {
 			return nil, err
 		}
-		// These reads run at most once per process for the same intent bytes.
-		if !self.retainedStartup {
+		// The intent store's complete verification of this exact prefix ran
+		// these same reads; otherwise they run at most once per process.
+		if !self.retainedStartup && !(digestible && verified.intentVerified(digests, index)) {
 			before, remaining := len(owned.owners), owned.remaining
 			if err := verified.onceIf("intent", releaseStartupVerifiedIntentInputs(intent, runtime), func() (bool, error) {
 				err := self.authenticateIntentChainReferenceWithKeyCustody(ctx, chain, native, runtime, intent, artifact, owned)

@@ -29,12 +29,14 @@ import (
 const releaseStartupVerifiedSchema = "urnetwork-validator-startup-verified-v1"
 
 // Units this process verified completely, and the longest intent prefix whose
-// complete lineage it verified.
+// complete lineage it verified. The optional record persists both.
 type releaseStartupVerified struct {
 	stateLock sync.Mutex
 	units     map[[32]byte]struct{}
 	intents   [][32]byte
 	skipped   uint64
+	dirty     bool
+	record    *releaseStartupVerifiedRecord
 }
 
 type releaseStartupVerifiedKey struct{}
@@ -96,7 +98,10 @@ func (self *releaseStartupVerified) add(unit [32]byte) {
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	self.units[unit] = struct{}{}
+	if _, found := self.units[unit]; !found {
+		self.units[unit] = struct{}{}
+		self.dirty = true
+	}
 }
 
 // Runs verify unless an identical unit already passed. Only a complete
@@ -291,7 +296,10 @@ func (self *releaseStartupVerified) rememberIntents(digests [][32]byte, complete
 	if last := len(digests) - 1; !complete && last < len(self.intents) && self.intents[last] == digests[last] {
 		return
 	}
-	self.intents = slices.Clone(digests)
+	if !slices.Equal(self.intents, digests) {
+		self.intents = slices.Clone(digests)
+		self.dirty = true
+	}
 }
 
 // How many verifications this process skipped, for the startup notice.
