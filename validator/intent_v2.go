@@ -251,10 +251,28 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 	// process with these exact bytes, position, predecessors and authority.
 	authority := self.v2.verifiedAuthority()
 	digests, digestible := releaseIntentV2EntryDigests(all)
-	reusable := 0
+	reusable, anchor := 0, -1
+	startup := releaseStartupVerifiedFrom(ctx)
 	if digestible {
 		reusable = self.v2.verified.reusablePrefix(authority, digests)
+		// A new store, as at startup or after a failed startup attempt, keeps
+		// the prefix this process or an accepted predecessor completely
+		// verified, under the same reuse rules. Its last entry rebuilds only
+		// the measurement options the next entry's lineage replay needs.
+		if self.v2.verified == nil {
+			if prefix := startup.intentPrefix(digests); prefix > 0 {
+				reusable, anchor = prefix, prefix-1
+			}
+		}
 	}
+	// A failed read keeps the prefix it completely verified before the entry
+	// it could not, while every retained file it read is still unchanged.
+	verifiedEntries := 0
+	defer func() {
+		if resultErr != nil && digestible && verifiedEntries > 0 && result != nil && result.custody.check() == nil {
+			startup.rememberIntents(digests[:verifiedEntries], false)
+		}
+	}()
 	verifiedOptions := make(map[int]ReleaseMeasurementV2Options, min(len(all), releaseIntentV2VerifiedTail))
 	seen := make(map[string]bool, len(all))
 	var previous *SteeringIntent
@@ -283,8 +301,12 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 		if index < reusable {
 			// Only the first entry's artifact is consulted below, for its
 			// absent predecessor; reused lineage needs just the bytes.
-			artifact, measurement, err = self.readVerifiedMeasurementV2(ctx, result.custody, intent, index == 0)
-			options, optionsKnown = self.v2.verified.optionsAt(index)
+			artifact, measurement, err = self.readVerifiedMeasurementV2(ctx, result.custody, intent, index == 0 || index == anchor)
+			if err == nil && index == anchor {
+				options, err = self.v2.runtime.measurementOptionsForIntent(ctx, intent, artifact)
+			} else {
+				options, optionsKnown = self.v2.verified.optionsAt(index)
+			}
 		} else {
 			artifact, _, measurement, options, err = self.readMeasurementV2(ctx, result.custody, intent)
 		}
@@ -317,12 +339,14 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 			verifiedOptions[index] = options
 		}
 		previous, result.lastBytes, result.lastOptions = intent, measurement, options
+		verifiedEntries = index + 1
 	}
 	if err := errors.Join(result.custody.check(), ctx.Err()); err != nil {
 		return result, err
 	}
 	if digestible {
 		self.v2.rememberVerifiedHistory(authority, digests, verifiedOptions)
+		startup.rememberIntents(digests, true)
 	}
 	return result, nil
 }

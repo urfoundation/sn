@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -190,11 +191,12 @@ func (self *releaseEvidenceV2StartupHistory) operator(ctx context.Context, noID 
 	bounds := self.cfg.EvidenceV2.Bounds
 	var readMetadata AttemptStreamV2MetadataReader
 	var openData AttemptStreamV2DataOpener
+	var origin string
 	if self.archive != nil {
 		readMetadata, openData = self.archive.reader(replica)
 	} else {
 		reader := self.readers[replica]
-		readMetadata, openData = reader.ReadMetadata, reader.OpenData
+		readMetadata, openData, origin = reader.ReadMetadata, reader.OpenData, reader.endpoint.String()
 	}
 	replayPolicy, err := ReleasePolicyForHash(&self.cfg, releaseHex32(expected.Activation.Domain.PolicyHash))
 	if err != nil {
@@ -203,7 +205,7 @@ func (self *releaseEvidenceV2StartupHistory) operator(ctx context.Context, noID 
 	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: replayPolicy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
 		ExpectedConfig: ReleaseStatsConfig{AMin: self.cfg.Policy.Verify.ReliabilityAMin, AlphaNumerator: releasePoolAlphaNumerator, AlphaDenominator: releasePoolAlphaDenominator, LatRefMillis: releasePoolLatRefMillis},
 		MaxProviders:   bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, MaxFleetPrefixes: bounds.MaxFleetPrefixes,
-		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.keys[noID], ReadMetadata: readMetadata, OpenData: openData},
+		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.keys[noID], ReadMetadata: readMetadata, OpenData: openData, origin: origin},
 	}}, nil
 }
 
@@ -319,7 +321,7 @@ func (self *releaseEvidenceV2StartupHistory) replayOrdinary(ctx context.Context,
 		} else if self.retainedStartup {
 			err = admitProvisionalRetainedStatsV2(ctx, input.Stats, *cut, operator)
 		} else {
-			_, _, err = VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay})
+			err = releaseStartupVerifiedFrom(ctx).verifyStatsCut(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay})
 		}
 		if err != nil {
 			return fmt.Errorf("startup no_id %d origin %d ordinary replay: %w", input.NoID, replica, err)
@@ -403,7 +405,15 @@ func (self *releaseEvidenceV2StartupHistory) replayTerminal(ctx context.Context,
 		} else if self.retainedStartup {
 			_, err = admitProvisionalRetainedSettlementV2(ctx, closure, options)
 		} else {
-			_, err = VerifyAttemptSettlementClosureV2(ctx, closure, options)
+			verify := func() error {
+				_, err := VerifyAttemptSettlementClosureV2(ctx, closure, options)
+				return err
+			}
+			if inputs, ok := releaseStartupVerifiedTerminalInputs(closure, options); ok {
+				err = releaseStartupVerifiedFrom(ctx).once("terminal", inputs, verify)
+			} else {
+				err = verify()
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("startup origin %d complete terminal replay: %w", replica, err)
@@ -597,14 +607,18 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 		}
 		owned.inputByEpoch[journal.SubnetEpoch][member.noID] = journal
 		input := journal.MeasurementInput
-		observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&owned.cfg))
-		err = authenticateReleaseStartupNativeV2ContextWithConfig(observationCtx, native, initial, journal, runtime, member.legacy, retainedHistoricalRPC, &owned.cfg)
-		cancel()
-		if err != nil {
-			return nil, err
-		}
 		boundary := AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
-		if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false, retainedHistoricalRPC, &owned.cfg, journal.PolicyHash); err != nil {
+		// Both historical observations of these exact retained journal bytes.
+		verifiedInput := releaseStartupVerifiedInput{Journal: sha256.Sum256(member.encoded), NoID: member.noID, Legacy: member.legacy, Retained: retainedHistoricalRPC, Runtime: runtime, Initial: initial}
+		if err := releaseStartupVerifiedFrom(ctx).once("input", verifiedInput, func() error {
+			observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&owned.cfg))
+			err := authenticateReleaseStartupNativeV2ContextWithConfig(observationCtx, native, initial, journal, runtime, member.legacy, retainedHistoricalRPC, &owned.cfg)
+			cancel()
+			if err != nil {
+				return err
+			}
+			return chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false, retainedHistoricalRPC, &owned.cfg, journal.PolicyHash)
+		}); err != nil {
 			return nil, err
 		}
 		if member.legacy {
@@ -685,7 +699,11 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 			if transition == nil || transition.Identity.NoID != participant.NoID {
 				return nil, errors.New("startup terminal operator order differs from configured history")
 			}
-			if err := chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, owned.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, transition.FromBoundary, true, retainedHistoricalRPC, &owned.cfg, ""); err != nil {
+			domain := owned.initial[participant.NoID].InitialCut.Activation.Domain
+			verifiedBoundary := releaseStartupVerifiedBoundary{Domain: domain, NoID: participant.NoID, Boundary: transition.FromBoundary, Terminal: true, Retained: retainedHistoricalRPC}
+			if err := releaseStartupVerifiedFrom(ctx).once("boundary", verifiedBoundary, func() error {
+				return chain.authenticateReleaseStartupBoundaryV2WithPolicy(ctx, domain, participant.NoID, transition.FromBoundary, true, retainedHistoricalRPC, &owned.cfg, "")
+			}); err != nil {
 				return nil, err
 			}
 		}

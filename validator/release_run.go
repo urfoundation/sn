@@ -933,6 +933,13 @@ func runReleaseWithStartupAndProgressV2(ctx context.Context, configPath string, 
 		}
 	}
 	production := isOwnerRecycleProductionConfig(cfg)
+	// Verified startup work outlives a failed stage attempt and serves the
+	// live service, so a retry resumes instead of starting from nothing.
+	var verified *releaseStartupVerified
+	if production {
+		verified = newReleaseStartupVerified()
+		ctx = withReleaseStartupVerified(ctx, verified)
+	}
 	startupStage := func(stage string, operation func(context.Context) error) error {
 		if production {
 			return awaitProductionStartupStage(ctx, cfg, progress, stage, operation)
@@ -1126,6 +1133,9 @@ func runReleaseWithStartupAndProgressV2(ctx context.Context, configPath string, 
 	}
 	if err != nil {
 		return fmt.Errorf("release V2 native startup: %w", err)
+	}
+	if production {
+		fmt.Fprintf(os.Stderr, "validator: startup reused %d already verified history units\n", verified.skippedUnits())
 	}
 	if !production {
 		if err := advanceInitialReleaseWithRetry(ctx, snapshot, chain.ReleaseSnapshotContext, runtimeV2.advance, waitReleaseSnapshotRetry); err != nil {

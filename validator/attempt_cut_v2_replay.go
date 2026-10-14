@@ -58,6 +58,10 @@ type AttemptCutV2ReplayOptions struct {
 	ReadMetadata     AttemptStreamV2MetadataReader
 	OpenData         AttemptStreamV2DataOpener
 	VisitRecord      func(AttemptRecord) error
+	// The configured public origin the transport reads, where a release
+	// reader is bound. It names the replica in a remembered startup verdict
+	// and takes no part in the replay.
+	origin string
 }
 
 // A result is returned only after every byte and terminal outcome has been

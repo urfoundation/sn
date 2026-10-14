@@ -405,7 +405,7 @@ func (self *StatsEngine) reconcileReleaseStatsCutV2OwnedWithJournalGuard(owner *
 			return err
 		}
 	} else {
-		if _, _, err := VerifyReleaseStatsMeasurementWithAttemptCutV2(owner.ctx, measurement, cut, expected, options.Policy, options.Bounds, options.Stats); err != nil {
+		if err := releaseStartupVerifiedFrom(owner.ctx).verifyStatsCut(owner.ctx, measurement, cut, expected, options.Policy, options.Bounds, options.Stats); err != nil {
 			return err
 		}
 	}
