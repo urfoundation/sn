@@ -36,7 +36,7 @@ func TestProductionReceiptInterruptedBudgetRetainsActualPartialPrefix(t *testing
 		case 300 * time.Second:
 			operations++
 			return context.WithTimeout(parent, duration)
-		case 60 * time.Second:
+		case productionSteeringReadAttemptTimeout:
 			attempts++
 			var cancel context.CancelFunc
 			attempt, cancel = newProductionNativeReadDeadline(parent, duration)

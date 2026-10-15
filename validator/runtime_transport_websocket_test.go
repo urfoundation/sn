@@ -129,7 +129,7 @@ func TestProductionRuntimeActualWebsocketReconnectReobservesOriginalAuthority(t 
 	})
 	if err != nil || report == nil || report.NativeHash != f.hashes[150] || report.NativeNumber != 150 || report.SigningAuthority || report.ProductionSelectionInstalled ||
 		!disconnected.Load() || attempts != 1 || waits != 0 || connections.Load() != 3 || native.API != api || native.API.Client != client || native.Meta != metadata || native.Runtime != runtime ||
-		!slices.Equal(budgets, []time.Duration{300 * time.Second, 60 * time.Second}) || !bytes.Equal(originalApproval, f.owner.cfg.ownerRecycleProduction.encoded) ||
+		!slices.Equal(budgets, []time.Duration{300 * time.Second, productionSteeringReadAttemptTimeout}) || !bytes.Equal(originalApproval, f.owner.cfg.ownerRecycleProduction.encoded) ||
 		!bytes.Equal(originalPolicy, f.policyRaw) || !bytes.Equal(originalCertificate, f.certificateRaw) {
 		t.Fatalf("production owner failed actual reconnect with retained authority: attempts=%d waits=%d connections=%d budgets=%v report=%+v err=%v", attempts, waits, connections.Load(), budgets, report, err)
 	}

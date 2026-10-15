@@ -71,7 +71,7 @@ func TestProductionSteeringReadBudgetExhaustionRetainsPhase(t *testing.T) {
 		return &crv4.ReceiptEvidenceUnavailableError{Field: "block body"}
 	})
 	var wait *productionSteeringReadWait
-	if !errors.As(err, &wait) || wait.phase != productionReadReceipt || wait.nativeEpoch != 23 || !wait.epochKnown || wait.extrinsicHash != intent.Prepared.ExtrinsicHash || reads != 1 || !slices.Equal(durations, []time.Duration{300 * time.Second, 60 * time.Second}) {
+	if !errors.As(err, &wait) || wait.phase != productionReadReceipt || wait.nativeEpoch != 23 || !wait.epochKnown || wait.extrinsicHash != intent.Prepared.ExtrinsicHash || reads != 1 || !slices.Equal(durations, []time.Duration{300 * time.Second, productionSteeringReadAttemptTimeout}) {
 		t.Fatalf("bounded receipt read changed phase, identity or budget: reads=%d budgets=%v error=%v", reads, durations, err)
 	}
 	if !errors.Is(err, context.DeadlineExceeded) || !retryableProductionSteeringRead(wait.cause) {

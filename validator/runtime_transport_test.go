@@ -67,7 +67,7 @@ func TestProductionRuntimeTransportExpiryReobservesWithinOriginalBudget(t *testi
 		return err
 	})
 	if err != nil || report == nil || !faulted || attempts != 1 || waits != 0 || versionReads != 4 || f.owner.rpc.callKVs["system_chain"] != 2 || report.NativeHash != f.hashes[150] ||
-		!slices.Equal(durations, []time.Duration{300 * time.Second, 60 * time.Second}) ||
+		!slices.Equal(durations, []time.Duration{300 * time.Second, productionSteeringReadAttemptTimeout}) ||
 		!bytes.Equal(original, f.owner.cfg.ownerRecycleProduction.encoded) || native.Meta != originalMetadata || native.Runtime != originalRuntime || report.SigningAuthority {
 		t.Fatalf("same-block runtime read did not recover within original owner: attempts=%d waits=%d budgets=%v report=%+v err=%v", attempts, waits, durations, report, err)
 	}

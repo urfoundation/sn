@@ -50,7 +50,7 @@ func TestProductionRuntimeRetainedExpiryReentersOriginalReadOwner(t *testing.T) 
 		return err
 	})
 	if err != nil || observation == nil || observation.NativeHash != fixture.hashes[150] || observation.SigningAuthority || attempts != 2 || waits != 1 ||
-		!slices.Equal(budgets, []time.Duration{300 * time.Second, 60 * time.Second, 60 * time.Second}) {
+		!slices.Equal(budgets, []time.Duration{300 * time.Second, productionSteeringReadAttemptTimeout, productionSteeringReadAttemptTimeout}) {
 		t.Fatalf("retained runtime expiry escaped the original bounded production owner: attempts=%d waits=%d budgets=%v observation=%+v err=%v", attempts, waits, budgets, observation, err)
 	}
 }

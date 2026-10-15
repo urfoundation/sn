@@ -156,7 +156,7 @@ func TestProductionSteeringNativeHttpExhaustionBecomesObservableWait(t *testing.
 	err := <-done
 	<-stopped
 	var wait *productionSteeringReadWait
-	if !errors.As(err, &wait) || wait.phase != productionReadReceipt || wait.nativeEpoch != intent.SubnetEpoch || wait.extrinsicHash != intent.Prepared.ExtrinsicHash || !crv4.HasSubstrateReadTransportCause(physical) || !crv4.RetryableSubstrateReadTransportError(physical) || t.Context().Err() != nil || !slices.Equal(durations, []time.Duration{300 * time.Second, 60 * time.Second}) {
+	if !errors.As(err, &wait) || wait.phase != productionReadReceipt || wait.nativeEpoch != intent.SubnetEpoch || wait.extrinsicHash != intent.Prepared.ExtrinsicHash || !crv4.HasSubstrateReadTransportCause(physical) || !crv4.RetryableSubstrateReadTransportError(physical) || t.Context().Err() != nil || !slices.Equal(durations, []time.Duration{300 * time.Second, productionSteeringReadAttemptTimeout}) {
 		t.Fatalf("configured native physical deadline became a hard or unowned result: budgets=%v physical=%v result=%v", durations, physical, err)
 	}
 	progress := &releaseProgress{now: func() time.Time { return time.Unix(2_000_000_000, 0) }}
