@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Shared-key controls declare that sharing explicitly for each operator.

@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	clientconnect "github.com/urnetwork/connect"
-	serverpkg "github.com/urnetwork/server"
-	servermodel "github.com/urnetwork/server/model"
-	serversession "github.com/urnetwork/server/session"
+	clientconnect "github.com/urnetwork/connect/v2026"
+	serverpkg "github.com/urnetwork/server/v2026"
+	servermodel "github.com/urnetwork/server/v2026/model"
+	serversession "github.com/urnetwork/server/v2026/session"
 	"gopkg.in/yaml.v3"
 )
 
