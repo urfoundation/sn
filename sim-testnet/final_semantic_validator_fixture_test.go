@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Authority and capture tests retain the complete signed setup, but consume

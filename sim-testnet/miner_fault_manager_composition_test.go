@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/miner"
+	"github.com/urfoundation/sn/v2026/miner"
 )
 
 type minerManagerComposition struct {
