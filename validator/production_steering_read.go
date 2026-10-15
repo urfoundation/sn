@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	productionSteeringReadAttemptTimeout = 60 * time.Second
+	productionSteeringReadAttemptTimeout = 180 * time.Second
 	productionSteeringReadTimeout        = 300 * time.Second
 )
 
