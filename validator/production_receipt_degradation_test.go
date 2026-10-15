@@ -30,11 +30,15 @@ func TestProductionReceiptInterruptedBudgetRetainsActualPartialPrefix(t *testing
 	fixture.production.epoch++
 	native.bodyReads = map[uint64]int{}
 	var attempt *productionNativeReadDeadline
-	var attempts, operations, waits, interrupted int
+	var attempts, intentAttempts, operations, waits, interrupted int
 	fixture.steerer.productionReadHooks.withTimeout = func(parent context.Context, duration time.Duration) (context.Context, context.CancelFunc) {
 		switch duration {
 		case 300 * time.Second:
 			operations++
+			return context.WithTimeout(parent, duration)
+		case productionSteeringIntentReadAttemptTimeout:
+			// The retained intent read that precedes reconciliation.
+			intentAttempts++
 			return context.WithTimeout(parent, duration)
 		case productionSteeringReadAttemptTimeout:
 			attempts++
@@ -70,8 +74,8 @@ func TestProductionReceiptInterruptedBudgetRetainsActualPartialPrefix(t *testing
 	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.As(err, &pendingWait) {
 		t.Fatalf("slow complete bodies stopped original reconciliation: %v", err)
 	}
-	if interrupted != 2 || waits != 2 || operations == 0 || attempts <= operations || !slices.Equal(native.nonceReads, []uint64{104}) {
-		t.Fatalf("partial retries borrowed an incomplete or different boundary: interrupted=%d waits=%d attempts=%d operations=%d nonces=%v", interrupted, waits, attempts, operations, native.nonceReads)
+	if interrupted != 2 || waits != 2 || operations == 0 || intentAttempts != 1 || attempts+intentAttempts <= operations || !slices.Equal(native.nonceReads, []uint64{104}) {
+		t.Fatalf("partial retries borrowed an incomplete or different boundary: interrupted=%d waits=%d attempts=%d intent attempts=%d operations=%d nonces=%v", interrupted, waits, attempts, intentAttempts, operations, native.nonceReads)
 	}
 	for number := uint64(100); number <= 104; number++ {
 		if native.bodyReads[number] != 1 {

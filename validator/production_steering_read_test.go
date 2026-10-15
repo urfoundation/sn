@@ -79,6 +79,44 @@ func TestProductionSteeringReadBudgetExhaustionRetainsPhase(t *testing.T) {
 	}
 }
 
+// A retried intent read replays retained history from the start, so its first
+// attempt gets nearly the whole read budget. The other phases keep the shorter
+// attempt, and the unchanged read budget still fits inside the steering step.
+func TestProductionSteeringIntentReadAttemptOwnsItsBudget(t *testing.T) {
+	if productionSteeringIntentReadAttemptTimeout <= productionSteeringReadAttemptTimeout || productionSteeringIntentReadAttemptTimeout >= productionSteeringReadTimeout ||
+		productionSteeringReadTimeout >= releaseSteeringOperationTimeout(nil) {
+		t.Fatal("intent attempt budget is not between the shared attempt and the read budget, inside the steering step")
+	}
+	for _, scenario := range []struct {
+		phase   productionSteeringReadPhase
+		attempt time.Duration
+	}{
+		{phase: productionReadIntent, attempt: productionSteeringIntentReadAttemptTimeout},
+		{phase: productionReadReceipt, attempt: productionSteeringReadAttemptTimeout},
+		{phase: productionReadPreparation, attempt: productionSteeringReadAttemptTimeout},
+		{phase: productionReadApplication, attempt: productionSteeringReadAttemptTimeout},
+	} {
+		self := &ReleaseSteerer{cfg: &ReleaseConfig{SchemaVersion: ReleaseMainnetProductionSchemaVersion}}
+		var durations []time.Duration
+		self.productionReadHooks.withTimeout = func(ctx context.Context, duration time.Duration) (context.Context, context.CancelFunc) {
+			durations = append(durations, duration)
+			return context.WithTimeout(ctx, duration)
+		}
+		self.productionReadHooks.wait = func(context.Context, time.Duration) error { return context.DeadlineExceeded }
+		reads := 0
+		err := self.productionRead(t.Context(), scenario.phase, nil, func(ctx context.Context) error {
+			reads++
+			if deadline, found := ctx.Deadline(); !found || time.Until(deadline) <= scenario.attempt-30*time.Second || time.Until(deadline) > scenario.attempt {
+				t.Errorf("phase %d read lost its %s attempt deadline", scenario.phase, scenario.attempt)
+			}
+			return nil
+		})
+		if err != nil || reads != 1 || !slices.Equal(durations, []time.Duration{productionSteeringReadTimeout, scenario.attempt}) {
+			t.Fatalf("phase %d read used the wrong budgets: reads=%d budgets=%v error=%v", scenario.phase, reads, durations, err)
+		}
+	}
+}
+
 // Exercise the real configured EVM HTTP client rather than constructing its
 // error value. The same production read owner recovers from both 500 and 502.
 func TestProductionSteeringReadRecoversActualEvmHttpFailure(t *testing.T) {

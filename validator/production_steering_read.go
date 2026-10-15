@@ -18,7 +18,12 @@ import (
 
 const (
 	productionSteeringReadAttemptTimeout = 180 * time.Second
-	productionSteeringReadTimeout        = 300 * time.Second
+	// The intent read re-verifies the settlement epoch's cumulative attempt
+	// cuts, which grow until the epoch ends, and a retry starts that replay
+	// over. Its first attempt owns all but the last seconds of the read
+	// budget, which still bounds the whole read.
+	productionSteeringIntentReadAttemptTimeout = 290 * time.Second
+	productionSteeringReadTimeout              = 300 * time.Second
 )
 
 // This private closed phase is assigned at the actual read boundary, never
@@ -31,6 +36,15 @@ const (
 	productionReadPreparation
 	productionReadApplication
 )
+
+// Only the intent phase gets the long attempt. The other phases keep the
+// shorter one, which leaves a stalled read time to retry within its budget.
+func productionSteeringReadAttemptBudget(phase productionSteeringReadPhase) time.Duration {
+	if phase == productionReadIntent {
+		return productionSteeringIntentReadAttemptTimeout
+	}
+	return productionSteeringReadAttemptTimeout
+}
 
 // Pure unavailable/transport outcomes retain their original cause. Local file
 // and lifecycle errors stay hard even when joined to a missing RPC response.
@@ -356,7 +370,7 @@ func (self *ReleaseSteerer) productionRead(ctx context.Context, phase production
 			lastErr = errors.Join(lastErr, err)
 			break
 		}
-		attempt, attemptCancel := withTimeout(operation, productionSteeringReadAttemptTimeout)
+		attempt, attemptCancel := withTimeout(operation, productionSteeringReadAttemptBudget(phase))
 		if err := errors.Join(evidenceReadContextError(ctx), evidenceReadContextError(operation), evidenceReadContextError(attempt)); err != nil {
 			lastErr = errors.Join(lastErr, err)
 		} else {
