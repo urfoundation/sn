@@ -98,14 +98,14 @@ var releaseGateSimulatorRaceShards = releaseGateShards{
 // partition, and one skip list; each has GOMAXPROCS 4, as the whole package's
 // race runs had.
 var releaseGateConnectRaceShards = releaseGateShards{
-	path: "github.com/urnetwork/connect", mode: "race", job: "connect-race-", phase: "connect_race_", owner: "release_gate_connect_race_shard",
+	path: "github.com/urnetwork/connect/v2026", mode: "race", job: "connect-race-", phase: "connect_race_", owner: "release_gate_connect_race_shard",
 	countVariable: "release_gate_connect_race_shards", skipVariable: "release_gate_connect_skip_names",
 	directory: releaseGateConnectDirectory, environment: "GOMAXPROCS=4 ", source: "../../connect",
 	count: 15, flags: []string{"-timeout", "340m"},
 }
 
 var releaseGateConnectShuffleShards = releaseGateShards{
-	path: "github.com/urnetwork/connect", mode: "race", job: "connect-shuffle-", phase: "connect_shuffle_", owner: "release_gate_connect_shuffle_shard",
+	path: "github.com/urnetwork/connect/v2026", mode: "race", job: "connect-shuffle-", phase: "connect_shuffle_", owner: "release_gate_connect_shuffle_shard",
 	countVariable: "release_gate_connect_race_shards", skipVariable: "release_gate_connect_skip_names",
 	directory: releaseGateConnectDirectory, environment: "GOMAXPROCS=4 ", source: "../../connect",
 	count: 15, flags: []string{"-timeout", "340m", "-shuffle=4535211000"},
@@ -586,8 +586,8 @@ go() {
 func verifyReleaseGateShardedPackageLeavesTheAggregateJob(t *testing.T, path string) {
 	t.Helper()
 	script := readReleaseGateLocalScript(t)
-	sharded := []string{"github.com/urfoundation/sn/mainnet", "github.com/urfoundation/sn/validator", "github.com/urfoundation/sn/sim-testnet"}
-	packages := []string{"github.com/urfoundation/sn/crv4"}
+	sharded := []string{"github.com/urfoundation/sn/v2026/mainnet", "github.com/urfoundation/sn/v2026/validator", "github.com/urfoundation/sn/v2026/sim-testnet"}
+	packages := []string{"github.com/urfoundation/sn/v2026/crv4"}
 	for _, excluded := range sharded {
 		packages = append(packages, excluded, excluded+"/sub", excluded+"x")
 	}
@@ -598,7 +598,7 @@ func verifyReleaseGateShardedPackageLeavesTheAggregateJob(t *testing.T, path str
 		t.Fatalf("sn-all-normal ran go %q, want %q", got, want)
 	}
 	name := strings.TrimPrefix(path, "./")
-	if !slices.Contains(sharded, "github.com/urfoundation/sn/"+name) {
+	if !slices.Contains(sharded, "github.com/urfoundation/sn/v2026/"+name) {
 		t.Fatalf("%s is no sharded package", path)
 	}
 	census, err := releaseGateAggregateSkipCensus("..")
