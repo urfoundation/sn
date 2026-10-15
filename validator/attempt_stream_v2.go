@@ -323,6 +323,13 @@ func WalkAttemptStreamV2Descriptors(ctx context.Context, kind string, reference 
 // The operation-owned hook exposes the boundary between authenticated metadata
 // decoding and downstream data work without replacing any validation.
 func walkAttemptStreamV2DescriptorsWithPageHook(ctx context.Context, kind string, reference AttemptStreamV2Reference, bounds AttemptStreamV2Bounds, read AttemptStreamV2MetadataReader, visit func(AttemptStreamV2Chunk) error, pageDecoded func()) (AttemptStreamV2Census, error) {
+	return walkAttemptStreamV2DescriptorPages(ctx, kind, reference, bounds, read, visit, pageDecoded, nil)
+}
+
+// pageChunks receives each linked page's decoded descriptors before any of
+// them is checked against the census or visited. It may only schedule reads:
+// every descriptor is still checked here, in order, before its visit.
+func walkAttemptStreamV2DescriptorPages(ctx context.Context, kind string, reference AttemptStreamV2Reference, bounds AttemptStreamV2Bounds, read AttemptStreamV2MetadataReader, visit func(AttemptStreamV2Chunk) error, pageDecoded func(), pageChunks func([]AttemptStreamV2Chunk)) (AttemptStreamV2Census, error) {
 	if ctx == nil || read == nil || visit == nil || !attemptStreamV2Kind(kind) {
 		return AttemptStreamV2Census{}, errors.New("attempt stream traversal authority is incomplete")
 	}
@@ -372,6 +379,9 @@ func walkAttemptStreamV2DescriptorsWithPageHook(ctx context.Context, kind string
 		lastPage := index == reference.PageCount-1
 		if lastPage != (page.NextPageHash == zeroAttemptHash()) {
 			return AttemptStreamV2Census{}, errors.New("attempt stream page chain is truncated or has an extra suffix")
+		}
+		if pageChunks != nil {
+			pageChunks(page.Chunks)
 		}
 		for _, chunk := range page.Chunks {
 			if err := ctx.Err(); err != nil {

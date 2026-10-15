@@ -3,8 +3,10 @@
 package validator
 
 // Public cut replay keeps one bounded descriptor page and one bounded record
-// in memory. A fresh private scratch index holds interleaved trail state and
-// the ordered proof projection; it is never a substitute for signed input.
+// in memory, plus at most attemptStreamV2PrefetchBytes of fetched chunk
+// bytes when a release reader prefetches. A fresh private scratch index holds
+// interleaved trail state and the ordered proof projection; it is never a
+// substitute for signed input.
 
 import (
 	"bufio"
@@ -62,6 +64,9 @@ type AttemptCutV2ReplayOptions struct {
 	// reader is bound. It names the replica in a remembered startup verdict
 	// and takes no part in the replay.
 	origin string
+	// Data chunks a release reader may fetch ahead of the one being
+	// verified; zero reads each chunk only when its turn comes.
+	prefetch int
 }
 
 // A result is returned only after every byte and terminal outcome has been
@@ -568,8 +573,10 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 	previousHash := expected.PriorRoot
 	var recordCount uint64
 	expectedProofHash := sha256.New()
-	result.Records, err = WalkAttemptStreamV2Descriptors(ctx, AttemptStreamV2Records, cut.Records, bounds.Records, options.ReadMetadata, func(chunk AttemptStreamV2Chunk) error {
-		return walkAttemptStreamV2Chunk(ctx, AttemptStreamV2Records, chunk, options.Bounds.MaxRecordBytes, options.OpenData, func(index uint64, raw []byte) error {
+	records := newAttemptStreamV2Prefetch(ctx, AttemptStreamV2Records, options.OpenData, options.prefetch, bounds.Records.MaxChunkBytes)
+	defer records.close()
+	result.Records, err = walkAttemptStreamV2DescriptorPages(ctx, AttemptStreamV2Records, cut.Records, bounds.Records, options.ReadMetadata, func(chunk AttemptStreamV2Chunk) error {
+		return walkAttemptStreamV2Chunk(ctx, AttemptStreamV2Records, chunk, options.Bounds.MaxRecordBytes, records.Open, func(index uint64, raw []byte) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -622,7 +629,8 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 			}
 			return nil
 		})
-	})
+	}, nil, records.page)
+	records.close()
 	if err != nil {
 		return result, err
 	}
@@ -631,8 +639,10 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 	}
 	var proofCount uint64
 	actualProofHash := sha256.New()
-	result.Proofs, err = WalkAttemptStreamV2Descriptors(ctx, AttemptStreamV2Proofs, cut.Proofs, bounds.Proofs, options.ReadMetadata, func(chunk AttemptStreamV2Chunk) error {
-		return walkAttemptStreamV2Chunk(ctx, AttemptStreamV2Proofs, chunk, options.Bounds.MaxProofBytes, options.OpenData, func(index uint64, raw []byte) error {
+	proofs := newAttemptStreamV2Prefetch(ctx, AttemptStreamV2Proofs, options.OpenData, options.prefetch, bounds.Proofs.MaxChunkBytes)
+	defer proofs.close()
+	result.Proofs, err = walkAttemptStreamV2DescriptorPages(ctx, AttemptStreamV2Proofs, cut.Proofs, bounds.Proofs, options.ReadMetadata, func(chunk AttemptStreamV2Chunk) error {
+		return walkAttemptStreamV2Chunk(ctx, AttemptStreamV2Proofs, chunk, options.Bounds.MaxProofBytes, proofs.Open, func(index uint64, raw []byte) error {
 			sequence, err := scratch.proof(ctx, proofCount, raw)
 			if err != nil {
 				return err
@@ -644,7 +654,8 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 			proofCount++
 			return nil
 		})
-	})
+	}, nil, proofs.page)
+	proofs.close()
 	if err != nil {
 		return result, err
 	}
