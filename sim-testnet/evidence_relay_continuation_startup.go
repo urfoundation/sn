@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Only the exact invocation-local, non-accepting testnet record can turn the
