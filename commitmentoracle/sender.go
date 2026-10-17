@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/urfoundation/sn/internal/durablesync"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -412,8 +413,10 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	if handle, err := os.Open(directory); err == nil {
-		handle.Sync()
-		handle.Close()
+		// best-effort as before; the flush routes through the shared helper so
+		// the platform without a directory flush proceeds instead of failing
+		_ = durablesync.Sync(handle)
+		_ = handle.Close()
 	}
 	return nil
 }

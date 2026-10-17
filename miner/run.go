@@ -59,6 +59,14 @@ func initGlog() {
 // mainUsage returns the docopt usage string. Package-level (rather than
 // inline in `main`) so tests can parse argv against the real usage.
 // Docopt needs two spaces between an option declaration and its description.
+// fatal reports an error and exits non-zero. Failures here are operator
+// input or environment problems, not crashes; a panic buries the message in
+// a stack trace and reads as a bug in the miner itself.
+func fatal(err error) {
+	fmt.Fprintf(os.Stderr, "%s\n", err)
+	os.Exit(1)
+}
+
 func mainUsage() string {
 	return fmt.Sprintf(
 		`Connect provider.
@@ -314,7 +322,7 @@ func Run(args []string) {
 	opts, err := docopt.ParseArgs(mainUsage(), args, RequireVersion())
 
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 	providing, _ := opts.Bool("provide")
 	authProviding, _ := opts.Bool("auth-provide")
@@ -364,15 +372,15 @@ func Run(args []string) {
 		claim(opts)
 	} else if claimDaemon, _ := opts.Bool("claim-daemon"); claimDaemon {
 		if err := runClaimDaemon(minerStorageContext(context.Background(), opts), fleetOpt(opts, "--config")); err != nil {
-			panic(err)
+			fatal(err)
 		}
 	} else if claimDaemonV2, _ := opts.Bool("claim-daemon-v2"); claimDaemonV2 {
 		if err := runClaimDaemonV2Command(minerStorageContext(context.Background(), opts), opts); err != nil {
-			panic(err)
+			fatal(err)
 		}
 	} else if fleet_, _ := opts.Bool("fleet"); fleet_ {
 		if err := fleetCommand(opts); err != nil {
-			panic(err)
+			fatal(err)
 		}
 	} else if auth_, _ := opts.Bool("auth"); auth_ {
 		if _, err := opts.String("--operator"); err == nil {
@@ -403,7 +411,7 @@ func Run(args []string) {
 func auth(opts docopt.Opts) {
 	jwtPath, err := providerStatePath("jwt")
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 	if !confirmJwtOverwrite(opts, jwtPath) {
 		return
@@ -426,11 +434,11 @@ func auth(opts docopt.Opts) {
 
 	byJwt, err := networkLogin(ctx, opts, apiUrl, terminalLoginPrompts())
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 	if byJwt != "" {
 		if err := clientauth.WriteNetworkTokenWithContext(ctx, jwtPath, byJwt); err != nil {
-			panic(err)
+			fatal(err)
 		}
 		fmt.Printf("Jwt written to %s\n", jwtPath)
 	}
@@ -581,7 +589,7 @@ func provide(opts docopt.Opts) {
 	}
 	testEgressDialer, err := testEgressDialContext(opts)
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
@@ -636,6 +644,14 @@ func provide(opts docopt.Opts) {
 	if code, ok := providerRunExitCode(err); ok {
 		stopSignals()
 		os.Exit(code)
+	}
+	// The diagnostics event for a refusal goes to a sink that is refused on
+	// non-Linux platforms and on a Linux stdout that is a regular file, so the
+	// operator can see nothing at all. A refusal carries a closed code; say it
+	// on stderr (exit status stays 0 by design).
+	var refused *clientauth.RegistrationRefusedError
+	if errors.As(err, &refused) && ctx.Err() == nil {
+		fmt.Fprintf(os.Stderr, "provider did not start: %s. Known new work: --allow-client-registration. Verified original legacy key/JWT: --adopt-legacy-provider-key. See miner/PROVIDER-REGISTRATION.md.\n", refused.Code)
 	}
 	if err != nil && ctx.Err() == nil && (settings.requireWorkCapture || settings.workCapturePath != "" || settings.workCaptureSha256 != "" || settings.requireContractCapture || settings.contractCapturePath != "" || settings.contractCaptureSha256 != "") {
 		stopSignals()
@@ -778,11 +794,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		networkJwtPath, err := providerStatePath("jwt")
 		if err != nil {
-			panic(err)
+			fatal(err)
 		}
 		clientJwtPath, err := providerClientJwtPath(proxySettings)
 		if err != nil {
-			panic(err)
+			fatal(err)
 		}
 
 		seed := keyOwner.Seed()
@@ -1171,7 +1187,7 @@ func Host() (string, error) {
 func RequireHost() string {
 	host, err := Host()
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 	return host
 }
@@ -1243,7 +1259,7 @@ func proxyAdd(opts docopt.Opts) {
 	if proxyPath, _ := opts.String("--proxy_file"); proxyPath != "" {
 		b, err := os.ReadFile(proxyPath)
 		if err != nil {
-			panic(err)
+			fatal(err)
 		}
 		for _, line := range strings.Split(string(b), "\n") {
 			line = strings.TrimSpace(line)
@@ -1430,7 +1446,7 @@ func obfuscatePassword(password string) string {
 func readProxyConfig() *ProxyConfig {
 	proxyPath, err := providerStatePath("proxy")
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 
 	if _, err := os.Stat(proxyPath); errors.Is(err, os.ErrNotExist) {
@@ -1439,13 +1455,13 @@ func readProxyConfig() *ProxyConfig {
 
 	b, err := os.ReadFile(proxyPath)
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 
 	var proxyConfig ProxyConfig
 	err = json.Unmarshal(b, &proxyConfig)
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 	return &proxyConfig
 }
@@ -1454,16 +1470,16 @@ func readProxyConfig() *ProxyConfig {
 func writeProxyConfig(proxyConfig *ProxyConfig) {
 	proxyPath, err := providerStatePath("proxy")
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 
 	b, err := json.Marshal(proxyConfig)
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 
 	err = os.WriteFile(proxyPath, b, 0700)
 	if err != nil {
-		panic(err)
+		fatal(err)
 	}
 }
