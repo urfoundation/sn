@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // Start from a real authenticated 1024-slot predecessor with a failed original

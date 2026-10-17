@@ -16,10 +16,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/controller"
-	"github.com/urnetwork/server/model"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/controller"
+	"github.com/urnetwork/server/v2026/model"
 )
 
 // Independent creation history remains separate from the earlier coordinator
