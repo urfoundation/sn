@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/startifact"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Preserve the historical 256-slot metadata profile and synthetic origins.

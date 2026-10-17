@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 func previousAcceleratedPolicy(t *testing.T, cfg *ResolvedConfig) (*protocol.Policy, string) {
