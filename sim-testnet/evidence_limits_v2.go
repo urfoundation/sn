@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Decode one bounded raw document. A malformed document contributes no partial
