@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Reject malformed bytes after a complete signed record, even when the

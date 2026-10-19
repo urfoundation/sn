@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The signed role-only config is a second immutable owner, not a relocation

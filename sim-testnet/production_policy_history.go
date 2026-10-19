@@ -10,7 +10,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // All snapshots belong to the caller's finalized block. The last snapshot is

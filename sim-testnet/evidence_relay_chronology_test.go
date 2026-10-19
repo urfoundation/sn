@@ -18,7 +18,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Uses the real approved plan and signed admission writer, plus exact raw
