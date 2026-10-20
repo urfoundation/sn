@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Bounded actual archive entries exercise only structural/raw custody. The
