@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 func lifecyclePayoutTestClients(cfg *ResolvedConfig) map[[16]byte]int {
