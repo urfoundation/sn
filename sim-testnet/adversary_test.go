@@ -26,9 +26,9 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/payoutartifact"
-	"github.com/urfoundation/sn/stabi"
-	"github.com/urnetwork/connect"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	"github.com/urfoundation/sn/v2026/stabi"
+	"github.com/urnetwork/connect/v2026"
 )
 
 type scenarioAdversaryStub struct {
