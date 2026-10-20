@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The sealed runtime manifest retains the activated generation's original
