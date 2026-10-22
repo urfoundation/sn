@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 func auxiliaryPayoutTierFixture(t *testing.T) (*ResolvedConfig, *payoutArtifact, map[[16]byte]int, payoutartifact.ProviderInput) {

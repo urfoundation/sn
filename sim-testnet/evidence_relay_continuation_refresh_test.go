@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Reuse the actual admitted signature instead of signing its header twice.
