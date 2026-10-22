@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const provisionalProductionGateSchema = "urnetwork-sim-provisional-production-gate-v1"
