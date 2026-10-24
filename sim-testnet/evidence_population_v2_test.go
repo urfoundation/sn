@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Only descriptors and byte counts survive between reads. Atomic counters

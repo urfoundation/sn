@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Distinct failed actions retain diagnostic padding inside each hashed record;
