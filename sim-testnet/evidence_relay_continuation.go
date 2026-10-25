@@ -11,8 +11,8 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const evidenceRelayContinuationSchema = "urnetwork-sim-evidence-relay-continuation-v3"
