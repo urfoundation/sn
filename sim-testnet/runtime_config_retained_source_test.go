@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 	"gopkg.in/yaml.v3"
 )
 

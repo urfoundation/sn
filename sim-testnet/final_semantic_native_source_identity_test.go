@@ -6,7 +6,7 @@ package main
 import (
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Builds one exact approved registration plan/journal/postcondition graph.
