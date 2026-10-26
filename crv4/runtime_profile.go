@@ -296,8 +296,9 @@ func ValidateProvisionalRuntimeMetadata(metadata *types.Metadata) error {
 
 // Metadata14 does not expose runtime API signatures. Pin the consumed API's
 // declared version separately; changes to other APIs do not affect admission.
-// Runtime481/source6a972693 retains the selective-metagraph signature and all77
-// SCALE fields from API2; API3 only adds the unrelated emission-weights method.
+// Runtime481 and runtime486 retain the selective-metagraph signature and all77
+// SCALE fields from API2; their API3 also declares emission weights. Captured
+// runtime-specific metadata and API replies independently pin those interfaces.
 // This exception grants no source or artifact authority: each caller still
 // authenticates its exact block artifact and checks its consumed interfaces.
 func validateProvisionalRuntimeApis(raw json.RawMessage) error {
@@ -322,12 +323,12 @@ func validateProvisionalRuntimeApis(raw json.RawMessage) error {
 		}
 		value, err := decodeRuntimeVersionUint("SubnetInfoRuntimeApi", pair[1], 32)
 		if found || err != nil || value != 2 && value != 3 {
-			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481 version3")
+			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481/486 version3")
 		}
 		if value == 3 {
 			identity, err := DecodeRuntimeVersionIdentity(raw)
-			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) {
-				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 tuple"), err)
+			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 486, TransactionVersion: 1, StateVersion: 1}) {
+				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 or node-subtensor/486/1/1 tuple"), err)
 			}
 		}
 		found = true
