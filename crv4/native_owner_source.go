@@ -11,6 +11,9 @@ const NativeOwnerSource478 = "850f2755bb05a3851f948489f0ab27b0645cebce"
 const NativeOwnerSource479 = "e66c7eed760efaa5a3b1c249b5a3369a9bc693cf"
 const NativeOwnerSource481 = "6a972693ae9580541225bd37696ac2fee26b8ae9"
 
+// Runtime484 source review confirms the consumed API and metagraph layout remain unchanged.
+const NativeOwnerSource484 = "e4dbe52d3dacb4119dfabbb2a500eb3099f4cd9c"
+
 // Runtime486 source capabilities remain separate from exact artifact authority.
 const NativeOwnerSource486 = "d665b0eb4c95809f985ddf0c5a100253b496a74e"
 
@@ -28,6 +31,7 @@ var reviewedNativeOwnerSources = []struct {
 	{NativeOwnerSource478, 478},
 	{NativeOwnerSource479, 479},
 	{NativeOwnerSource481, 481},
+	{source: NativeOwnerSource484, spec: 484},
 	{source: NativeOwnerSource486, spec: 486},
 }
 
@@ -64,7 +68,7 @@ func ReviewedNativeOwnerSpecSource(spec uint32) (string, bool) {
 // completion proof: each approval still proves the marker at its own activation.
 func ReviewedPostAlphaMigrationSource(source string) bool {
 	switch source {
-	case NativeOwnerSource473, NativeOwnerSource475, NativeOwnerSource477, NativeOwnerSource478, NativeOwnerSource479, NativeOwnerSource481, NativeOwnerSource486:
+	case NativeOwnerSource473, NativeOwnerSource475, NativeOwnerSource477, NativeOwnerSource478, NativeOwnerSource479, NativeOwnerSource481, NativeOwnerSource484, NativeOwnerSource486:
 		return true
 	default:
 		return false
