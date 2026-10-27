@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/yaml.v3"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Explicit small fixture policy, never a fallback for the live testnet file.
