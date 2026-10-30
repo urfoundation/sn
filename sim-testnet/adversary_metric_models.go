@@ -17,9 +17,9 @@ import (
 	"time"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/miner"
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/miner"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 // Retains a bounded sliding sample set for named p99 matrix metrics. The
