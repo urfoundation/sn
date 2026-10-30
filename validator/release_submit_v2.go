@@ -727,7 +727,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	durableIntent = intent
 	// The decided head result goes to the operator in the background; this
 	// copies and returns at once, and cannot fail or change this commit.
-	self.offerHeadSummary(intent, measurementArtifact.HeadEMA)
+	self.offerHeadSummary(intent, measurementArtifact)
 	if err := self.runtimeV2.publishDepositAuditV2(ctx, measurementArtifact); err != nil {
 		return err
 	}

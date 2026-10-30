@@ -1,10 +1,10 @@
 package validator
 
 // head_summary_upload.go publishes the validator's per-tempo head result to
-// each configured operator (docs/spec/head-summary-v1.md; server LEADERTOP.md
+// each configured operator (docs/spec/head-summary-v2.md; server LEADERTOP.md
 // §6.1, design question 9). It is off the steering path. offerHeadSummary
 // copies the durably begun intent's head result into a bounded queue and
-// returns at once; a background builder signs the summary, and one worker per
+// returns at once; a background builder signs each recipient's summary, and one worker per
 // operator posts it with a short timeout and bounded retries, failing open.
 // Nothing here returns an error to steering, holds a steering lock or writes
 // steering state, so a failing or hanging operator cannot delay, change or
@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/protocol/headsummary"
 )
 
@@ -57,6 +58,11 @@ type headSummaryJob struct {
 	eligible, selected, rejected                             []uint16
 	scores                                                   []RationalJSON
 	head                                                     []HeadEMAMeasurement
+	previousMeasurementArtifactHash                          string
+	evidenceRecipient                                        uint64
+	evidenceOperators                                        []uint64
+	evidenceCuts                                             []headsummary.EvidenceCut
+	evidencePolicy                                           *protocol.Policy
 }
 
 // headSummaryUpload is one signed summary queued for one operator.
@@ -219,17 +225,17 @@ func (self *headSummaryUploader) close() {
 
 // offerHeadSummary hands a durably begun intent's head result to the
 // uploader. It returns nothing and never waits: it copies the fields it
-// needs and queues them. It reads intent and head and changes neither.
-func (self *ReleaseSteerer) offerHeadSummary(intent *SteeringIntent, head []HeadEMAMeasurement) {
+// needs and queues them. It reads intent and artifact and changes neither.
+func (self *ReleaseSteerer) offerHeadSummary(intent *SteeringIntent, artifact *ReleaseMeasurementArtifact) {
 	if self == nil {
 		return
 	}
-	self.headSummary.offer(intent, head)
+	self.headSummary.offer(intent, artifact)
 }
 
 // offer copies one intent's head result into the build queue.
-func (self *headSummaryUploader) offer(intent *SteeringIntent, head []HeadEMAMeasurement) {
-	if self == nil || intent == nil || self.closed.Load() {
+func (self *headSummaryUploader) offer(intent *SteeringIntent, artifact *ReleaseMeasurementArtifact) {
+	if self == nil || intent == nil || artifact == nil || self.closed.Load() {
 		return
 	}
 	defer func() {
@@ -242,7 +248,21 @@ func (self *headSummaryUploader) offer(intent *SteeringIntent, head []HeadEMAMea
 		settlementEpoch: intent.SettlementEpoch, nativeHash: intent.NativeSnapshotHash, evmHash: intent.EVMSnapshotHash,
 		policyHash: intent.PolicyHash, measurementArtifactHash: intent.MeasurementArtifactHash, selfUID: intent.SelfUID,
 		eligible: slices.Clone(intent.EligibleHeadUIDs), selected: slices.Clone(intent.SelectedHeadUIDs), rejected: slices.Clone(intent.RejectedHeadUIDs),
-		scores: slices.Clone(intent.EligibleHeadScores), head: slices.Clone(head),
+		scores: slices.Clone(intent.EligibleHeadScores), head: slices.Clone(artifact.HeadEMA),
+	}
+	if artifact.Schema == ReleaseMeasurementSchemaV2 {
+		cuts, err := headSummaryEvidence(artifact)
+		if err != nil {
+			self.counters.offerFailed.Add(1)
+			return
+		}
+		job.previousMeasurementArtifactHash = artifact.PreviousArtifactHash
+		job.evidenceCuts = cuts
+		job.evidencePolicy = cloneReleasePolicy(&artifact.Policy)
+		job.evidenceOperators = make([]uint64, len(cuts))
+		for index, cut := range cuts {
+			job.evidenceOperators[index] = cut.NoId
+		}
 	}
 	self.counters.offered.Add(1)
 	if _, dropped := self.builds.push(job); dropped {
@@ -257,7 +277,7 @@ func (self *headSummaryUploader) now() time.Time {
 	return time.Now()
 }
 
-// runBuilder signs each offered summary once and queues it for every operator.
+// runBuilder signs the shared v1 result once, or one private v2 body per operator.
 func (self *headSummaryUploader) runBuilder() {
 	defer self.workers.Done()
 	reported := uint64(0)
@@ -270,21 +290,41 @@ func (self *headSummaryUploader) runBuilder() {
 			releaseDiagnostic(self.ctx, "steering", "head_summary_dropped", 0, false, dropped-reported)
 			reported = dropped
 		}
-		body, err := self.build(job)
-		if self.hooks.afterBuild != nil {
-			self.hooks.afterBuild(job.nativeEpoch, err)
+		publish := func(scoped headSummaryJob, targets []*headSummaryTarget) {
+			body, err := self.build(scoped)
+			if self.hooks.afterBuild != nil {
+				self.hooks.afterBuild(job.nativeEpoch, err)
+			}
+			if err != nil {
+				self.counters.buildFailed.Add(1)
+				releaseDiagnostic(self.ctx, "steering", "head_summary_build_failed", job.nativeEpoch, true, 0, releaseDiagnosticFacts{cause: releaseDiagnosticHardError})
+				return
+			}
+			self.counters.built.Add(1)
+			for _, target := range targets {
+				if dropped, wasDropped := target.queue.push(headSummaryUpload{nativeEpoch: job.nativeEpoch, body: body}); wasDropped {
+					self.counters.sendDropped.Add(1)
+					releaseDiagnostic(self.ctx, "operator", "head_summary_dropped", dropped.nativeEpoch, true, 0, releaseDiagnosticFacts{operatorId: target.noID, operatorKnown: true})
+				}
+			}
 		}
-		if err != nil {
-			self.counters.buildFailed.Add(1)
-			releaseDiagnostic(self.ctx, "steering", "head_summary_build_failed", job.nativeEpoch, true, 0, releaseDiagnosticFacts{cause: releaseDiagnosticHardError})
+		if job.evidencePolicy == nil {
+			publish(job, self.targets)
 			continue
 		}
-		self.counters.built.Add(1)
+		// The global fleet result is shared; each eligible-client census is
+		// signed and delivered only to its owning operator's authenticated API.
 		for _, target := range self.targets {
-			if dropped, wasDropped := target.queue.push(headSummaryUpload{nativeEpoch: job.nativeEpoch, body: body}); wasDropped {
-				self.counters.sendDropped.Add(1)
-				releaseDiagnostic(self.ctx, "operator", "head_summary_dropped", dropped.nativeEpoch, true, 0, releaseDiagnosticFacts{operatorId: target.noID, operatorKnown: true})
+			scoped := job
+			scoped.evidenceRecipient = target.noID
+			scoped.evidenceCuts = nil
+			for index := range job.evidenceCuts {
+				if job.evidenceCuts[index].NoId == target.noID {
+					scoped.evidenceCuts = job.evidenceCuts[index : index+1]
+					break
+				}
 			}
+			publish(scoped, []*headSummaryTarget{target})
 		}
 	}
 }
@@ -367,11 +407,17 @@ func newHeadSummary(job headSummaryJob, hotkey [32]byte, policyID uint64, maximu
 		}
 		return values
 	}
+	schema := headsummary.Schema
+	if job.evidencePolicy != nil {
+		schema = headsummary.SchemaV2
+	}
 	return &headsummary.Summary{
-		Schema: headsummary.Schema, Netuid: job.netuid, NativeEpoch: job.nativeEpoch,
+		Schema: schema, Netuid: job.netuid, NativeEpoch: job.nativeEpoch,
 		NativeSnapshotBlock: job.nativeBlock, NativeSnapshotHash: strings.ToLower(job.nativeHash),
 		EVMSnapshotBlock: job.evmBlock, EVMSnapshotHash: strings.ToLower(job.evmHash), SettlementEpoch: job.settlementEpoch,
 		PolicyID: policyID, PolicyHash: strings.ToLower(job.policyHash), MeasurementArtifactHash: job.measurementArtifactHash,
+		PreviousMeasurementArtifactHash: job.previousMeasurementArtifactHash, EvidenceCuts: job.evidenceCuts, EvidencePolicy: job.evidencePolicy,
+		EvidenceRecipient: job.evidenceRecipient, EvidenceOperators: job.evidenceOperators,
 		ValidatorHotkey: headsummary.Hex32(hotkey), ValidatorUID: job.selfUID, MaximumHeadFleets: maximum,
 		Entries: entries, SelectedUIDs: nonNil(job.selected), RejectedUIDs: nonNil(job.rejected),
 	}, nil

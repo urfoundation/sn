@@ -1,5 +1,9 @@
 # Validator head summary v1
 
+The backward-compatible decoder also supports [v2](head-summary-v2.md), which
+adds exact cut references and a private census scoped to the recipient operator.
+Version 1 retains the encoding and signature contract below.
+
 After each native tempo's steering intent is decided, the validator uploads a
 signed summary of its head result to each configured operator. The operator
 shows the validator's actual ranking of claimed fleets (server `LEADERTOP.md`

@@ -1,12 +1,12 @@
-// Package headsummary is the validator head summary v1 of
-// docs/spec/head-summary-v1.md: the signed per-tempo envelope in which a
+// Package headsummary implements docs/spec/head-summary-v1.md and
+// docs/spec/head-summary-v2.md: the signed per-tempo envelope in which a
 // validator publishes its head result to an operator, its canonical
 // encoding, its sr25519 signature, and the strict decoder an operator uses to
 // ingest it. The scores, order and selection are protocol/headscore's.
 //
-// A summary carries only the result: fleet identities, exact scores, ranks
-// and the selection. It has no latencies, trail hops, prefix hashes, client
-// ids or EMA state.
+// Version 1 carries only the result: fleet identities, exact scores, ranks and
+// selection. Version 2 adds exact cut references and the recipient operator's
+// eligible client census. Neither carries client keys or measurement artifacts.
 package headsummary
 
 import (
@@ -23,49 +23,61 @@ import (
 
 	"github.com/vedhavyas/go-subkey/v2/sr25519"
 
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/protocol/headscore"
 )
 
 const (
 	// Schema names version 1 of the envelope.
 	Schema = "urnetwork-validator-head-summary-v1"
+	// SchemaV2 authenticates the exact published cuts and their eligible bindings.
+	SchemaV2 = "urnetwork-validator-head-summary-v2"
 	// SigningDomain separates these signatures from every other message the
 	// validator hotkey signs.
-	SigningDomain = "urnetwork/validator/head-summary/v1"
+	SigningDomain   = "urnetwork/validator/head-summary/v1"
+	SigningDomainV2 = "urnetwork/validator/head-summary/v2"
 	// SignatureScheme is the hotkey's signature scheme.
 	SignatureScheme = "sr25519"
 	// Path is the operator route that receives a summary.
 	Path = "/sn/head-summary"
 	// MaxBytes bounds an encoded summary; the operator answers 413 above it.
-	MaxBytes = 16 << 20
+	MaxBytes = 16 * 1024 * 1024
 	// MaxEntries bounds the eligible head UIDs of one summary.
 	MaxEntries = 4096
+	// These are v2 wire limits, shared by its publisher and strict decoder.
+	MaxEvidenceCuts     = 4096
+	MaxEvidenceBindings = 65536
 )
 
 // Summary is the envelope. Its fields are in canonical order; see the spec
 // for each one.
 type Summary struct {
-	Schema                  string   `json:"schema"`
-	Netuid                  uint16   `json:"netuid"`
-	NativeEpoch             uint64   `json:"native_epoch"`
-	NativeSnapshotBlock     uint64   `json:"native_snapshot_block"`
-	NativeSnapshotHash      string   `json:"native_snapshot_hash"`
-	EVMSnapshotBlock        uint64   `json:"evm_snapshot_block"`
-	EVMSnapshotHash         string   `json:"evm_snapshot_hash"`
-	SettlementEpoch         uint64   `json:"settlement_epoch"`
-	PolicyID                uint64   `json:"policy_id"`
-	PolicyHash              string   `json:"policy_hash"`
-	MeasurementArtifactHash string   `json:"measurement_artifact_hash"`
-	ValidatorHotkey         string   `json:"validator_hotkey"`
-	ValidatorUID            uint16   `json:"validator_uid"`
-	MaximumHeadFleets       uint16   `json:"maximum_head_fleets"`
-	Entries                 []Entry  `json:"entries"`
-	SelectedUIDs            []uint16 `json:"selected_uids"`
-	RejectedUIDs            []uint16 `json:"rejected_uids"`
-	SignedAt                string   `json:"signed_at"`
-	SignatureScheme         string   `json:"signature_scheme"`
-	SigningHash             string   `json:"signing_hash"`
-	Signature               string   `json:"signature"`
+	Schema                          string           `json:"schema"`
+	Netuid                          uint16           `json:"netuid"`
+	NativeEpoch                     uint64           `json:"native_epoch"`
+	NativeSnapshotBlock             uint64           `json:"native_snapshot_block"`
+	NativeSnapshotHash              string           `json:"native_snapshot_hash"`
+	EVMSnapshotBlock                uint64           `json:"evm_snapshot_block"`
+	EVMSnapshotHash                 string           `json:"evm_snapshot_hash"`
+	SettlementEpoch                 uint64           `json:"settlement_epoch"`
+	PolicyID                        uint64           `json:"policy_id"`
+	PolicyHash                      string           `json:"policy_hash"`
+	MeasurementArtifactHash         string           `json:"measurement_artifact_hash"`
+	PreviousMeasurementArtifactHash string           `json:"previous_measurement_artifact_hash,omitempty"`
+	EvidenceRecipient               uint64           `json:"evidence_recipient,omitempty"`
+	EvidenceOperators               []uint64         `json:"evidence_operators,omitempty"`
+	EvidenceCuts                    []EvidenceCut    `json:"evidence_cuts,omitempty"`
+	EvidencePolicy                  *protocol.Policy `json:"evidence_policy,omitempty"`
+	ValidatorHotkey                 string           `json:"validator_hotkey"`
+	ValidatorUID                    uint16           `json:"validator_uid"`
+	MaximumHeadFleets               uint16           `json:"maximum_head_fleets"`
+	Entries                         []Entry          `json:"entries"`
+	SelectedUIDs                    []uint16         `json:"selected_uids"`
+	RejectedUIDs                    []uint16         `json:"rejected_uids"`
+	SignedAt                        string           `json:"signed_at"`
+	SignatureScheme                 string           `json:"signature_scheme"`
+	SigningHash                     string           `json:"signing_hash"`
+	Signature                       string           `json:"signature"`
 }
 
 // Entry is one eligible head UID.
@@ -85,6 +97,28 @@ type Entry struct {
 type Fleet struct {
 	FleetID    string `json:"fleet_id"`
 	Generation uint64 `json:"generation"`
+}
+
+// EvidenceCut identifies an already published canonical attempt-cut-v2 header.
+// Its signed content hash authenticates the header's complete context and both
+// stream roots. Bindings are the eligible census at this measurement's pinned
+// native and coordinator view, including live identities with no completed hop.
+// They contain no client keys, key captures, latencies or settlement inputs.
+type EvidenceCut struct {
+	NoId            uint64            `json:"no_id"`
+	NativeBlock     uint64            `json:"native_block"`
+	NativeBlockHash string            `json:"native_block_hash"`
+	ContentHash     string            `json:"content_hash"`
+	Bindings        []EvidenceBinding `json:"bindings"`
+}
+
+// One eligible historical identity, scoped to its owning operator's envelope.
+type EvidenceBinding struct {
+	ClientId   string `json:"client_id"`
+	FleetId    string `json:"fleet_id"`
+	Hotkey     string `json:"hotkey"`
+	Generation uint64 `json:"generation"`
+	Uid        uint16 `json:"uid"`
 }
 
 // Hex32 renders a 32-byte value as the envelope's lowercase 0x hex.
@@ -141,7 +175,7 @@ func (self *Summary) validateContent() error {
 	if self == nil {
 		return errors.New("head summary is nil")
 	}
-	if self.Schema != Schema {
+	if self.Schema != Schema && self.Schema != SchemaV2 {
 		return fmt.Errorf("head summary schema %q is unknown", self.Schema)
 	}
 	if self.Netuid == 0 || self.NativeSnapshotBlock == 0 || self.EVMSnapshotBlock == 0 || self.PolicyID == 0 || self.MaximumHeadFleets == 0 {
@@ -154,6 +188,9 @@ func (self *Summary) validateContent() error {
 	}
 	if err := parseContentHash(self.MeasurementArtifactHash); err != nil {
 		return fmt.Errorf("head summary measurement artifact hash: %w", err)
+	}
+	if err := self.validateEvidence(); err != nil {
+		return err
 	}
 	if _, err := nonzeroHex32("head summary validator hotkey", self.ValidatorHotkey); err != nil {
 		return err
@@ -229,8 +266,12 @@ func SigningDigest(summary *Summary) ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, err
 	}
-	input := make([]byte, 0, len(SigningDomain)+1+len(encoded))
-	input = append(input, SigningDomain...)
+	domain := SigningDomain
+	if summary.Schema == SchemaV2 {
+		domain = SigningDomainV2
+	}
+	input := make([]byte, 0, len(domain)+1+len(encoded))
+	input = append(input, domain...)
 	input = append(input, 0)
 	input = append(input, encoded...)
 	return sha256.Sum256(input), nil

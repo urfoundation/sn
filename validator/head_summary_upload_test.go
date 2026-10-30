@@ -238,7 +238,7 @@ func TestHeadSummaryUploadDeliversTheSignedHeadResult(t *testing.T) {
 	operator := newHeadSummaryTestOperator(t, nil)
 	uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{})
 	intent, head := headSummaryTestIntent(t, 51234)
-	(&ReleaseSteerer{headSummary: uploader.headSummaryUploader}).offerHeadSummary(intent, head)
+	(&ReleaseSteerer{headSummary: uploader.headSummaryUploader}).offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	if err := uploader.next(t); err != nil {
 		t.Fatalf("upload failed: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestHeadSummaryOfferNeitherChangesNorRetainsItsInputs(t *testing.T) {
 	wantIntent.EligibleHeadUIDs, wantIntent.EligibleHeadScores = slices.Clone(intent.EligibleHeadUIDs), slices.Clone(intent.EligibleHeadScores)
 	wantIntent.SelectedHeadUIDs, wantIntent.RejectedHeadUIDs = slices.Clone(intent.SelectedHeadUIDs), slices.Clone(intent.RejectedHeadUIDs)
 	steerer := &ReleaseSteerer{headSummary: uploader.headSummaryUploader}
-	steerer.offerHeadSummary(intent, head)
+	steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	if !reflect.DeepEqual(*intent, wantIntent) || !reflect.DeepEqual(head, wantHead) {
 		t.Fatal("offer changed the intent or its head transcript")
 	}
@@ -321,14 +321,14 @@ func TestHeadSummaryOfferNeverWaitsAndDropsTheOldest(t *testing.T) {
 	}})
 	steerer := &ReleaseSteerer{headSummary: uploader.headSummaryUploader}
 	first, head := headSummaryTestIntent(t, 1)
-	steerer.offerHeadSummary(first, head)
+	steerer.offerHeadSummary(first, &ReleaseMeasurementArtifact{HeadEMA: head})
 	<-entered
 	offered := make(chan struct{})
 	go func() {
 		defer close(offered)
 		for epoch := uint64(2); epoch <= 50; epoch++ {
 			intent, head := headSummaryTestIntent(t, epoch)
-			steerer.offerHeadSummary(intent, head)
+			steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 		}
 	}()
 	select {
@@ -374,14 +374,14 @@ func TestHeadSummaryHangingOperatorBlocksNothing(t *testing.T) {
 	uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{attemptTimeout: time.Hour})
 	steerer := &ReleaseSteerer{headSummary: uploader.headSummaryUploader}
 	intent, head := headSummaryTestIntent(t, 1)
-	steerer.offerHeadSummary(intent, head)
+	steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	operator.waitEntered(t)
 	offered := make(chan struct{})
 	go func() {
 		defer close(offered)
 		for epoch := uint64(2); epoch <= 40; epoch++ {
 			intent, head := headSummaryTestIntent(t, epoch)
-			steerer.offerHeadSummary(intent, head)
+			steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 		}
 	}()
 	select {
@@ -413,7 +413,7 @@ func TestHeadSummaryAttemptTimeoutBoundsAHangingOperator(t *testing.T) {
 	operator := newHeadSummaryTestOperator(t, func(_ http.ResponseWriter, request *http.Request) { <-request.Context().Done() })
 	uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{attemptTimeout: 50 * time.Millisecond})
 	intent, head := headSummaryTestIntent(t, 1)
-	uploader.offer(intent, head)
+	uploader.offer(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	err := uploader.next(t)
 	if !errors.Is(err, context.DeadlineExceeded) || headSummaryFailureCause(err) != releaseDiagnosticTimeout {
 		t.Fatalf("hanging operator: %v", err)
@@ -463,7 +463,7 @@ func TestHeadSummaryRetriesOnlyTransientFailuresAndBoundsThem(t *testing.T) {
 			})
 			uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{})
 			intent, head := headSummaryTestIntent(t, 1)
-			uploader.offer(intent, head)
+			uploader.offer(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 			err := uploader.next(t)
 			if (err == nil) != testCase.ok || operator.count() != testCase.attempts || redirected.count() != 0 || !slices.Equal(uploader.recordedWaits(), testCase.waits) {
 				t.Fatalf("err %v attempts %d redirected %d waits %v", err, operator.count(), redirected.count(), uploader.recordedWaits())
@@ -479,7 +479,7 @@ func TestHeadSummaryRetriesOnlyTransientFailuresAndBoundsThem(t *testing.T) {
 		closed.Close()
 		uploader := startHeadSummaryTestUploader(t, keypair, []string{closed.URL}, headSummaryTestSessionGetter, headSummaryHooks{})
 		intent, head := headSummaryTestIntent(t, 1)
-		uploader.offer(intent, head)
+		uploader.offer(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 		if err := uploader.next(t); err == nil || uploader.counters.attempts.Load() != 3 || headSummaryFailureCause(err) != releaseDiagnosticTransport {
 			t.Fatalf("unreachable operator: %v attempts %d", err, uploader.counters.attempts.Load())
 		}
@@ -488,7 +488,7 @@ func TestHeadSummaryRetriesOnlyTransientFailuresAndBoundsThem(t *testing.T) {
 		operator := newHeadSummaryTestOperator(t, nil)
 		uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, func() string { return "" }, headSummaryHooks{})
 		intent, head := headSummaryTestIntent(t, 1)
-		uploader.offer(intent, head)
+		uploader.offer(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 		if err := uploader.next(t); !errors.Is(err, errHeadSummaryNoSession) || operator.count() != 0 || uploader.counters.attempts.Load() != 3 {
 			t.Fatalf("no session: %v requests %d", err, operator.count())
 		}
@@ -547,21 +547,21 @@ func TestHeadSummaryBuildFailuresAreContained(t *testing.T) {
 	mismatched, mismatchedHead := headSummaryTestIntent(t, 2)
 	mismatched.EligibleHeadScores[0] = RationalJSON{Numerator: "1", Denominator: "1"}
 	missing, _ := headSummaryTestIntent(t, 3)
-	steerer.offerHeadSummary(intent, head)               // the signer panics
-	steerer.offerHeadSummary(mismatched, mismatchedHead) // a score its identities do not sum to
-	steerer.offerHeadSummary(missing, nil)               // eligible UIDs without identities
+	steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})               // the signer panics
+	steerer.offerHeadSummary(mismatched, &ReleaseMeasurementArtifact{HeadEMA: mismatchedHead}) // a score its identities do not sum to
+	steerer.offerHeadSummary(missing, &ReleaseMeasurementArtifact{})                           // eligible UIDs without identities
 	for range 3 {
 		if err := nextBuild(); err == nil {
 			t.Fatal("a broken summary was built")
 		}
 	}
 	setMode("error")
-	steerer.offerHeadSummary(intent, head)
+	steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	if err := nextBuild(); err == nil {
 		t.Fatal("a summary was built without a signature")
 	}
 	setMode("sign")
-	steerer.offerHeadSummary(intent, head)
+	steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	if err := nextBuild(); err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +585,7 @@ func TestHeadSummaryEmptyHeadIsSent(t *testing.T) {
 	uploader := startHeadSummaryTestUploader(t, keypair, []string{operator.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{})
 	intent, _ := headSummaryTestIntent(t, 9)
 	intent.EligibleHeadUIDs, intent.EligibleHeadScores, intent.SelectedHeadUIDs, intent.RejectedHeadUIDs = nil, nil, nil, nil
-	uploader.offer(intent, nil)
+	uploader.offer(intent, &ReleaseMeasurementArtifact{})
 	if err := uploader.next(t); err != nil {
 		t.Fatal(err)
 	}
@@ -603,7 +603,7 @@ func TestHeadSummaryOperatorsAreIndependent(t *testing.T) {
 	hanging := newHeadSummaryTestOperator(t, func(_ http.ResponseWriter, request *http.Request) { <-request.Context().Done() })
 	uploader := startHeadSummaryTestUploader(t, keypair, []string{hanging.server.URL, working.server.URL}, headSummaryTestSessionGetter, headSummaryHooks{attemptTimeout: time.Hour})
 	intent, head := headSummaryTestIntent(t, 4)
-	uploader.offer(intent, head)
+	uploader.offer(intent, &ReleaseMeasurementArtifact{HeadEMA: head})
 	if err := uploader.next(t); err != nil {
 		t.Fatalf("the working operator was held back: %v", err)
 	}
@@ -617,7 +617,7 @@ func TestHeadSummaryOperatorsAreIndependent(t *testing.T) {
 // as a statement whose type has no result: it cannot fail or return a value
 // into the commit path.
 func TestSubmitV2OffersTheHeadSummaryRightAfterTheDurableBegin(t *testing.T) {
-	var _ func(*ReleaseSteerer, *SteeringIntent, []HeadEMAMeasurement) = (*ReleaseSteerer).offerHeadSummary
+	var _ func(*ReleaseSteerer, *SteeringIntent, *ReleaseMeasurementArtifact) = (*ReleaseSteerer).offerHeadSummary
 	source, err := os.ReadFile("release_submit_v2.go")
 	if err != nil {
 		t.Fatal(err)
@@ -709,7 +709,7 @@ func TestHeadSummaryOperatorCannotDelayOrAlterTheCommit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fixture.steerer.offerHeadSummary(intent, []HeadEMAMeasurement{})
+			fixture.steerer.offerHeadSummary(intent, &ReleaseMeasurementArtifact{HeadEMA: []HeadEMAMeasurement{}})
 			after, err := os.ReadFile(fixture.steerer.intents.path)
 			if err != nil {
 				t.Fatal(err)
