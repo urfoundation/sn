@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/docopt/docopt-go"
 
@@ -20,13 +21,16 @@ import (
 // audit fetches per root: 2 GiB.
 const DefaultLedgerMaxBytes uint64 = 2 << 30
 
-// SettlementV2RuntimeOptions are the v2 audit's runtime flags.
+// Release runtime flags remain outside the signed configuration.
 type SettlementV2RuntimeOptions struct {
 	// --ledger_auditor_key_file, the key NewSettlementV2Sender signs with.
 	// Empty sends no auditor transaction.
 	AuditorKeyFile string
 	// --ledger_max_bytes
 	LedgerMaxBytes uint64
+	// Optional whole steering-operation budget. Zero selects
+	// DefaultReleaseSteeringSettings; negative values are invalid.
+	SteeringOperationTimeout time.Duration
 }
 
 type settlementV2RuntimeOptionsKey struct{}
@@ -49,6 +53,13 @@ func SettlementV2RuntimeOptionsFrom(ctx context.Context) SettlementV2RuntimeOpti
 // stops `validator run` at startup rather than at the first approval.
 func settlementV2RuntimeOptionsFromOpts(opts docopt.Opts) (SettlementV2RuntimeOptions, error) {
 	options := SettlementV2RuntimeOptions{AuditorKeyFile: expandHome(optString(opts, "--ledger_auditor_key_file", "")), LedgerMaxBytes: DefaultLedgerMaxBytes}
+	if text, present := opts["--steering-operation-timeout"].(string); present {
+		timeout, err := time.ParseDuration(text)
+		if err != nil || timeout < productionSteeringReadTimeout {
+			return options, fmt.Errorf("--steering-operation-timeout=%q must be a duration of at least %s", text, productionSteeringReadTimeout)
+		}
+		options.SteeringOperationTimeout = timeout
+	}
 	if text := optString(opts, "--ledger_max_bytes", ""); text != "" {
 		value, err := strconv.ParseUint(text, 10, 64)
 		if err != nil || value == 0 {

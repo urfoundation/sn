@@ -222,6 +222,8 @@ func TestValidatorRunMeasurementModesRemainExplicit(t *testing.T) {
 		{"run", "--all-operators", "--config=release.yml"},
 		{"run", "--measurement-only", "--all-operators"},
 		{"run", "--measurement-only", "--ledger_auditor_key_file=auditor.key"},
+		{"run", "--measurement-only", "--steering-operation-timeout=35m"},
+		{"run", "--all-operators", "--steering-operation-timeout=35m"},
 		{"run", "--measurement-only", "--substrate=ws://127.0.0.1:9944", "--netuid=7"},
 		{"run", "--api_url=http://127.0.0.1:8080"},
 	} {

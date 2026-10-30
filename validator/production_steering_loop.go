@@ -128,14 +128,15 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 
 // The deadline covers preparation as well as bounded retained reads. A poll
 // never consults fresh signing runtime before the durable intent owner does.
-func (self *ReleaseSteerer) runProductionSteering(ctx context.Context, poll, timeout time.Duration) error {
+func (self *ReleaseSteerer) runProductionSteering(ctx context.Context, poll time.Duration) error {
+	timeout := releaseSteeringOperationTimeout(ctx)
 	if ctx == nil || poll <= 0 || timeout < productionSteeringReadTimeout {
 		return errors.New("production steering timing owner is invalid")
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	return runReleaseProductionSteeringLoopWithCutWait(ctx, func() error {
-		return runReleaseSteeringOperation(ctx, timeout, self.SubmitOnce)
+		return runConfiguredReleaseSteeringOperation(ctx, self.SubmitOnce)
 	}, func() bool {
 		select {
 		case <-ctx.Done():

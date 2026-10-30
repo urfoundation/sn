@@ -266,14 +266,14 @@ func TestReleaseSteeringOperationTimeoutPreservesAdmittedClientKeyBatch(t *testi
 	read := attemptStreamV2HttpReadIoTimeout
 	for _, test := range []struct {
 		name string
-		cfg  *ReleaseConfig
+		ctx  context.Context
 		want time.Duration
 	}{
-		{name: "nil config", want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second + read},
-		{name: "ordinary polling", cfg: &ReleaseConfig{PollSeconds: 15}, want: batch + time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks)*time.Second + read},
-		{name: "slow polling", cfg: &ReleaseConfig{PollSeconds: 60}, want: batch + 4*time.Minute + read},
+		{name: "nil context", want: DefaultReleaseSteeringSettings().OperationTimeout},
+		{name: "ordinary runtime", ctx: t.Context(), want: DefaultReleaseSteeringSettings().OperationTimeout},
+		{name: "explicit runtime override", ctx: WithSettlementV2RuntimeOptions(t.Context(), SettlementV2RuntimeOptions{SteeringOperationTimeout: 35 * time.Minute}), want: 35 * time.Minute},
 	} {
-		if got := releaseSteeringOperationTimeout(test.cfg); got != test.want {
+		if got := releaseSteeringOperationTimeout(test.ctx); got != test.want {
 			t.Errorf("%s: steering operation timeout=%s, want %s", test.name, got, test.want)
 		}
 		if test.want < batch+read+time.Minute {
