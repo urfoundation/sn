@@ -14,12 +14,15 @@ import (
 // cut explicitly; missing evidence cannot be interpreted as an empty tempo.
 func (self *Summary) validateEvidence() error {
 	if self.Schema == Schema {
-		if self.PreviousMeasurementArtifactHash != "" || self.EvidenceRecipient != 0 || self.EvidenceOperators != nil || self.EvidenceCuts != nil || self.EvidencePolicy != nil {
+		if self.PreviousMeasurementArtifactHash != "" || self.EvidenceEmptyPrior || self.EvidenceRecipient != 0 || self.EvidenceOperators != nil || self.EvidenceCuts != nil || self.EvidencePolicy != nil {
 			return errors.New("head summary v1 contains v2 evidence")
 		}
 		return nil
 	}
 	if self.PreviousMeasurementArtifactHash != "" {
+		if self.EvidenceEmptyPrior {
+			return errors.New("head summary empty prior claim has a predecessor")
+		}
 		if err := parseContentHash(self.PreviousMeasurementArtifactHash); err != nil || self.PreviousMeasurementArtifactHash == self.MeasurementArtifactHash {
 			return errors.New("head summary previous measurement artifact hash is invalid")
 		}

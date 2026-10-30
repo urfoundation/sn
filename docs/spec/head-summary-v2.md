@@ -19,6 +19,7 @@ These members appear immediately after `measurement_artifact_hash`, in order:
 | Member | Type | Meaning |
 |---|---|---|
 | `previous_measurement_artifact_hash` | string, omitted when empty | The previous durable steering intent's `sha256:` measurement hash. Empty identifies the first intent; a numeric native-epoch gap does not imply empty folds. |
+| `evidence_empty_prior` | bool, omitted when false | True only for a first intent whose complete EMA transcript contains no prior state. A nonempty predecessor forbids this claim. Absence does not authorize an empty-state bootstrap. |
 | `evidence_recipient` | u64 | The nonzero operator ID to which this private envelope is addressed. |
 | `evidence_operators` | array of u64 | The complete, nonempty operator census for the global head result, strictly increasing, at most 4096. |
 | `evidence_cuts` | array | Exactly the recipient's one cut, described below. |
@@ -67,7 +68,12 @@ operator receipt time defines an evidence boundary. During replay, each signed
 assignment must match the supplied eligible fleet identity and generation.
 
 An exact global replica requires all operator inputs and a complete EMA
-history from the first intent or an independently authenticated checkpoint.
+history from a first intent with `evidence_empty_prior: true` or an independently
+authenticated checkpoint. An empty predecessor alone is insufficient: a first
+intent may inherit a migrated EMA store. The producer attests empty prior only
+after checking every transcript record, including identities absent from the
+live census. A migrated prior remains unavailable without a trusted checkpoint;
+the summary does not disclose that private prior state.
 This owner-scoped format supplies a complete cut for a single-operator
 validator. A consumer with only one part of a multi-operator census must leave
 the exact replica unavailable; its local prefix counts cannot reconstruct the

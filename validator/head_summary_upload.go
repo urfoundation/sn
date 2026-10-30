@@ -59,6 +59,7 @@ type headSummaryJob struct {
 	scores                                                   []RationalJSON
 	head                                                     []HeadEMAMeasurement
 	previousMeasurementArtifactHash                          string
+	evidenceEmptyPrior                                       bool
 	evidenceRecipient                                        uint64
 	evidenceOperators                                        []uint64
 	evidenceCuts                                             []headsummary.EvidenceCut
@@ -257,6 +258,12 @@ func (self *headSummaryUploader) offer(intent *SteeringIntent, artifact *Release
 			return
 		}
 		job.previousMeasurementArtifactHash = artifact.PreviousArtifactHash
+		// A first intent may inherit a migrated EMA store. Only an explicit
+		// absence of every prior permits reconstruction from an empty state.
+		job.evidenceEmptyPrior = artifact.PreviousArtifactHash == ""
+		for _, record := range artifact.HeadEMA {
+			job.evidenceEmptyPrior = job.evidenceEmptyPrior && !record.HasPrior
+		}
 		job.evidenceCuts = cuts
 		job.evidencePolicy = cloneReleasePolicy(&artifact.Policy)
 		job.evidenceOperators = make([]uint64, len(cuts))
@@ -416,7 +423,7 @@ func newHeadSummary(job headSummaryJob, hotkey [32]byte, policyID uint64, maximu
 		NativeSnapshotBlock: job.nativeBlock, NativeSnapshotHash: strings.ToLower(job.nativeHash),
 		EVMSnapshotBlock: job.evmBlock, EVMSnapshotHash: strings.ToLower(job.evmHash), SettlementEpoch: job.settlementEpoch,
 		PolicyID: policyID, PolicyHash: strings.ToLower(job.policyHash), MeasurementArtifactHash: job.measurementArtifactHash,
-		PreviousMeasurementArtifactHash: job.previousMeasurementArtifactHash, EvidenceCuts: job.evidenceCuts, EvidencePolicy: job.evidencePolicy,
+		PreviousMeasurementArtifactHash: job.previousMeasurementArtifactHash, EvidenceEmptyPrior: job.evidenceEmptyPrior, EvidenceCuts: job.evidenceCuts, EvidencePolicy: job.evidencePolicy,
 		EvidenceRecipient: job.evidenceRecipient, EvidenceOperators: job.evidenceOperators,
 		ValidatorHotkey: headsummary.Hex32(hotkey), ValidatorUID: job.selfUID, MaximumHeadFleets: maximum,
 		Entries: entries, SelectedUIDs: nonNil(job.selected), RejectedUIDs: nonNil(job.rejected),

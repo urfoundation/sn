@@ -64,6 +64,7 @@ type Summary struct {
 	PolicyHash                      string           `json:"policy_hash"`
 	MeasurementArtifactHash         string           `json:"measurement_artifact_hash"`
 	PreviousMeasurementArtifactHash string           `json:"previous_measurement_artifact_hash,omitempty"`
+	EvidenceEmptyPrior              bool             `json:"evidence_empty_prior,omitempty"`
 	EvidenceRecipient               uint64           `json:"evidence_recipient,omitempty"`
 	EvidenceOperators               []uint64         `json:"evidence_operators,omitempty"`
 	EvidenceCuts                    []EvidenceCut    `json:"evidence_cuts,omitempty"`

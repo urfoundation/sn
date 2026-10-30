@@ -96,12 +96,42 @@ func TestEvidenceSummaryRejectsMissingDuplicateOrUnscopedEvidence(t *testing.T) 
 		func(s *headsummary.Summary) { s.EvidencePolicy = nil },
 		func(s *headsummary.Summary) { s.EvidencePolicy.PolicyID++ },
 		func(s *headsummary.Summary) { s.PreviousMeasurementArtifactHash = s.MeasurementArtifactHash },
+		func(s *headsummary.Summary) { s.EvidenceEmptyPrior = true },
 	} {
 		summary := unsignedEvidence(t)
 		change(summary)
 		if _, err := headsummary.Sign(summary, publicKey(t, testKey(t)), time.Unix(1_800_000_000, 0), testKey(t).Sign); err == nil {
 			t.Fatalf("invalid evidence case %d was signed", index)
 		}
+	}
+}
+
+// A first measurement can inherit migrated state. Only the explicit signed
+// empty-prior attestation permits a consumer to bootstrap without that state.
+func TestEvidenceSummaryAuthenticatesEmptyPrior(t *testing.T) {
+	summary := unsignedEvidence(t)
+	summary.PreviousMeasurementArtifactHash = ""
+	summary.EvidenceEmptyPrior = true
+	body, err := headsummary.Sign(summary, publicKey(t, testKey(t)), time.Unix(1_800_000_000, 0), testKey(t).Sign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := headsummary.Decode(body)
+	if err != nil || !decoded.EvidenceEmptyPrior {
+		t.Fatalf("empty-prior attestation was lost: %v", err)
+	}
+	decoded.EvidenceEmptyPrior = false
+	changed, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := headsummary.Decode(changed); err == nil {
+		t.Fatal("removing empty-prior attestation retained its signature")
+	}
+	summary = unsigned(publicKey(t, testKey(t)))
+	summary.EvidenceEmptyPrior = true
+	if _, err := headsummary.Sign(summary, publicKey(t, testKey(t)), time.Unix(1_800_000_000, 0), testKey(t).Sign); err == nil {
+		t.Fatal("version 1 signed an empty-prior attestation")
 	}
 }
 

@@ -94,7 +94,7 @@ func TestHeadSummaryReplayFixture(t *testing.T) {
 		Schema: headsummary.SchemaV2, Netuid: fixture.expected.Identity.Netuid, NativeEpoch: 7, NativeSnapshotBlock: 200, NativeSnapshotHash: headsummary.Hex32([32]byte{0x71}),
 		EVMSnapshotBlock: fixture.expected.Boundary.EVMBlock, EVMSnapshotHash: fixture.expected.Boundary.EVMBlockHash, SettlementEpoch: fixture.expected.Boundary.SettlementEpoch,
 		PolicyID: fixture.policy.PolicyID, PolicyHash: headsummary.Hex32(fixture.expected.Activation.Domain.PolicyHash), MeasurementArtifactHash: "sha256:" + headsummary.Hex32([32]byte{0x72})[2:],
-		EvidenceRecipient: fixture.expected.Identity.NoID, EvidenceOperators: []uint64{fixture.expected.Identity.NoID}, EvidencePolicy: &fixture.policy,
+		EvidenceEmptyPrior: true, EvidenceRecipient: fixture.expected.Identity.NoID, EvidenceOperators: []uint64{fixture.expected.Identity.NoID}, EvidencePolicy: &fixture.policy,
 		EvidenceCuts:    []headsummary.EvidenceCut{{NoId: fixture.expected.Identity.NoID, NativeBlock: 198, NativeBlockHash: headsummary.Hex32([32]byte{0x73}), ContentHash: cutHash, Bindings: bindings}},
 		ValidatorHotkey: headsummary.Hex32(key.PublicKey()), ValidatorUID: fixture.expected.Identity.ValidatorUID, MaximumHeadFleets: fixture.policy.Steering.MaximumHeadFleets,
 		Entries:      []headsummary.Entry{{Rank: 1, UID: liveKey.UID, Hotkey: headsummary.Hex32(liveKey.Hotkey), Score: headscore.Rational{Numerator: "6", Denominator: "1"}, Selected: true, Fleets: []headsummary.Fleet{{FleetID: headsummary.Hex32(liveKey.FleetID), Generation: liveKey.Generation}}}},

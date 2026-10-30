@@ -8,6 +8,7 @@ package validator
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"math/big"
 	"reflect"
 	"slices"
 	"sync"
@@ -71,6 +72,65 @@ func TestHeadSummaryEvidenceReplaysThePublishedCut(t *testing.T) {
 		})
 		if err != nil || replayed.CompleteCount != 2 {
 			t.Fatalf("published cut could not fully replay: %+v %v", replayed, err)
+		}
+	}
+}
+
+// The full measurement verifier allows a first intent to inherit prior EMA
+// state. Its publisher must retain the validator score without claiming an
+// empty bootstrap, including prior identities absent from the current census.
+func TestHeadSummaryEvidenceDoesNotInventEmptyMigratedPrior(t *testing.T) {
+	fixture := newReleaseMeasurementV2TestFixture(t, 2)
+	raw, err := rawHeadEMAInputs(fixture.artifact.HeadEMA)
+	if err != nil || len(raw) == 0 {
+		t.Fatalf("fixture has no live raw head input: %v", err)
+	}
+	keypair := headSummaryTestKeypair(t)
+	for _, migrated := range []bool{false, true} {
+		store := &HeadEMAStore{values: map[string]headEMAEntry{}}
+		if migrated {
+			// A historical identity need not be live to affect future folds.
+			key := FleetScoreKey{FleetID: [32]byte{0x74}, Hotkey: [32]byte{0x75}, Generation: 1, UID: 300}
+			prior, err := encodeRationalJSON(big.NewRat(5, 1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			store.values[key.String()] = headEMAEntry{Key: key, Numerator: prior.Numerator, Denominator: prior.Denominator}
+		}
+		_, records, err := store.foldWithLock(raw, fixture.artifact.Policy.Steering.HeadScoreEMA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.artifact.HeadEMA = records
+		verified, err := VerifyReleaseMeasurementArtifactV2(t.Context(), fixture.artifact, fixture.options(t))
+		if err != nil {
+			t.Fatalf("valid first measurement with migrated=%v: %v", migrated, err)
+		}
+		fixture.want = verified.Decision
+		encoded, err := canonicalReleaseMeasurementBytes(fixture.artifact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		intent := fixture.intent(t, encoded)
+		target := newHeadSummaryTestOperator(t, nil)
+		finished := make(chan error, 1)
+		uploader := startHeadSummaryUploader(t.Context(), keypair.PublicKey(), keypair.Sign, fixture.artifact.Policy.PolicyID, fixture.artifact.Policy.Steering.MaximumHeadFleets,
+			[]*headSummaryTarget{{noID: 9, endpoint: target.server.URL + headsummary.Path, credential: headSummaryTestSessionGetter}},
+			headSummaryHooks{afterUpload: func(_, _ uint64, err error) { finished <- err }})
+		t.Cleanup(uploader.close)
+		uploader.offer(intent, fixture.artifact)
+		select {
+		case err := <-finished:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(headSummaryTestDeadline):
+			t.Fatal("first measurement summary did not upload")
+		}
+		uploader.close()
+		summary, err := headsummary.Decode(target.body(0))
+		if err != nil || summary.PreviousMeasurementArtifactHash != "" || summary.EvidenceEmptyPrior == migrated || len(summary.Entries) == 0 {
+			t.Fatalf("migrated=%v received incorrect bootstrap evidence: %+v %v", migrated, summary, err)
 		}
 	}
 }
