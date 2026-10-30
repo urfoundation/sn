@@ -94,6 +94,28 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 	if !disk || store == nil || ledger.identity != expected.Identity || store.identity.Identity != expected.Identity || store.identity.Coordinator != "0x"+hex.EncodeToString(expected.Activation.Domain.Coordinator[:]) {
 		return nil, verified, errors.New("compact attempt sealer requires the expected disk-ledger namespace")
 	}
+	checkSource := func(ctx context.Context) error {
+		if err := store.begin(ctx); err != nil {
+			return err
+		}
+		defer store.active.Done()
+		return store.check(ctx)
+	}
+	// A visitor can wait remotely after copying records. Re-observe source
+	// custody around each external handoff, without holding any store owner.
+	checkedWriter := func(write AttemptStreamV2ObjectWriter) AttemptStreamV2ObjectWriter {
+		return func(ctx context.Context, hash string, raw []byte) error {
+			if err := checkSource(ctx); err != nil {
+				return err
+			}
+			err := write(ctx, hash, raw)
+			if closing := checkSource(ctx); closing != nil {
+				return errors.Join(err, closing)
+			}
+			return err
+		}
+	}
+	writeMetadata := checkedWriter(options.WriteMetadata)
 	vpk, err := canonicalAttemptHex32("compact attempt sealer validator", expected.Identity.ValidatorVPK, false)
 	if err != nil {
 		return nil, verified, err
@@ -193,7 +215,7 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 			})
 		}
 		diagnostic.move(releasePreparationSealRecords)
-		cut.Records, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Records, recordSource, AttemptStreamV2WriteOptions{Bounds: bounds.Records, MaxRowBytes: options.ReplayBounds.MaxRecordBytes, Spool: recordSpool, WriteData: options.WriteRecords, WriteMetadata: options.WriteMetadata})
+		cut.Records, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Records, recordSource, AttemptStreamV2WriteOptions{Bounds: bounds.Records, MaxRowBytes: options.ReplayBounds.MaxRecordBytes, Spool: recordSpool, WriteData: checkedWriter(options.WriteRecords), WriteMetadata: writeMetadata})
 		if err != nil {
 			return nil, verified, err
 		}
@@ -214,7 +236,7 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 			})
 		}
 		diagnostic.move(releasePreparationSealProofs)
-		cut.Proofs, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Proofs, proofSource, AttemptStreamV2WriteOptions{Bounds: bounds.Proofs, MaxRowBytes: options.ReplayBounds.MaxProofBytes, Spool: proofSpool, WriteData: options.WriteProofs, WriteMetadata: options.WriteMetadata})
+		cut.Proofs, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Proofs, proofSource, AttemptStreamV2WriteOptions{Bounds: bounds.Proofs, MaxRowBytes: options.ReplayBounds.MaxProofBytes, Spool: proofSpool, WriteData: checkedWriter(options.WriteProofs), WriteMetadata: writeMetadata})
 		if err != nil {
 			return nil, verified, err
 		}
@@ -236,6 +258,9 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 	if err := ctx.Err(); err != nil {
 		return nil, verified, err
 	}
+	if err := checkSource(ctx); err != nil {
+		return nil, verified, err
+	}
 	cut.Signature, err = cut.Sign(privateKey, bounds)
 	if err != nil {
 		return nil, verified, err
@@ -243,19 +268,35 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 	return &cut, verified, nil
 }
 
-// The local reader authenticates each bounded canonical VPK-signed record.
-// Both passes additionally prove exactly the same policy, boundary and hash
-// prefix. Committed record keys are immutable. Reading one record at a time
-// releases its storage owner before a visitor can upload or run a foreground
-// proof projection. No remote wait retains the sole snapshot iterator gate.
-// Sequence/prior-root checks and the final captured root bind the exact prefix;
+// The local reader authenticates bounded copies of immutable VPK-signed records
+// between fresh custody checks, then releases storage ownership before visiting
+// them. Neither pass holds a snapshot iterator across a remote callback. Policy,
+// boundary, sequence and root checks still bind the exact captured prefix;
 // full server/proof/lifecycle checks still run against fetched staged bytes.
 func walkAttemptCutV2SealPrefix(ctx context.Context, ledger *AttemptLedger, head AttemptLedgerHead, expected AttemptCutV2Context, depth int, visit func(AttemptRecord) error) error {
 	store, ok := ledger.disk.(*attemptRecordStore)
 	if !ok || store == nil {
 		return errors.New("compact attempt source requires a checked immutable disk prefix")
 	}
-	return walkAttemptCutV2Prefix(ctx, func(sequence uint64) (AttemptRecord, error) { return store.Read(ctx, sequence) }, head, expected, depth, visit)
+	var recordTs []AttemptRecord
+	var first uint64
+	return walkAttemptCutV2Prefix(ctx, func(sequence uint64) (AttemptRecord, error) {
+		if len(recordTs) == 0 || sequence-first >= uint64(len(recordTs)) {
+			var err error
+			recordTs, err = store.readBatch(ctx, sequence, head.LastSequence, 256, 4*1024*1024)
+			if err != nil {
+				return AttemptRecord{}, err
+			}
+			first = sequence
+		}
+		// Copies outlive backend ownership, but never a closed or faulted
+		// instance. This admission performs no new physical data read.
+		if err := store.begin(ctx); err != nil {
+			return AttemptRecord{}, err
+		}
+		store.active.Done()
+		return recordTs[sequence-first], nil
+	}, head, expected, depth, visit)
 }
 
 // Both the live sealer and stopped recovery authenticate the same original
