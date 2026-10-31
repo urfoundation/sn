@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docopt/docopt-go"
 	"github.com/urfoundation/sn/crv4"
 )
 
@@ -153,6 +154,59 @@ func TestConfigureMainnetWritesOwnSignedActivationPendingConfig(t *testing.T) {
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 			t.Fatal("generated signed input is not a private regular file", err)
 		}
+	}
+}
+
+// The actual init writer's canonical hotkey encoding must survive configure
+// and runtime's key reader. Independent raw client and approval seeds keep
+// their existing grammar and remain outside the pristine runtime directory.
+func TestConfigureAcceptsKeysCreatedByActualInit(t *testing.T) {
+	profile, options, snapshot := configureTestInputs(t)
+	if err := os.Remove(options.HotkeySeedFile); err != nil {
+		t.Fatal(err)
+	}
+	keyDir := filepath.Join(filepath.Dir(options.OutputPath), "keys")
+	options.ClientKeySeedFile = filepath.Join(keyDir, "no-1", "client.key")
+	opts, err := docopt.ParseArgs(mainUsage(), []string{"init", "--state_dir=" + keyDir, "--hotkey_seed_file=" + options.HotkeySeedFile, "--no_id=1"}, RequireVersion())
+	if err != nil {
+		t.Fatal(err)
+	}
+	initOutput, err := os.CreateTemp(filepath.Dir(options.OutputPath), "init-output-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(runInit(opts, initOutput), initOutput.Close()); err != nil {
+		t.Fatal("real init failed", err)
+	}
+	hotkeyBytes, err := os.ReadFile(options.HotkeySeedFile)
+	if err != nil || !bytes.HasPrefix(hotkeyBytes, []byte("0x")) {
+		t.Fatal("init did not exercise its canonical prefixed hotkey format", err)
+	}
+	if _, err := loadClientSeed(options.ClientKeySeedFile); err != nil {
+		t.Fatal("init client seed does not survive the actual runtime reader", err)
+	}
+	var output, errorOutput bytes.Buffer
+	if code := runConfigureCommandWithProfile(t.Context(), configureTestArgs(options), &output, &errorOutput, profile,
+		func(context.Context, *releaseMainnetProfile, string) (releaseConfigureNativeSnapshot, error) {
+			return snapshot, nil
+		}); code != 0 {
+		t.Fatalf("init-created keys cannot configure the validator: exit=%d %s", code, errorOutput.String())
+	}
+	cfg, err := LoadReleaseProductionConfigPreActivation(options.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := crv4.LoadSeedFile(cfg.HotkeySeedFile)
+	if err != nil {
+		t.Fatal("configured hotkey cannot pass the actual runtime reader", err)
+	}
+	key, err := crv4.KeypairFromSeed(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := ownerRecycleProductionApproval(cfg)
+	if err != nil || approved.Approval.ValidatorHotkey != key.PublicKey() || cfg.Operators[0].ClientKeySeedFile != options.ClientKeySeedFile {
+		t.Fatal("init and configured production identities differ", err)
 	}
 }
 

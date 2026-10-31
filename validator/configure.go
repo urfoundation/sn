@@ -194,7 +194,7 @@ func configureRelease(ctx context.Context, options releaseConfigureOptions, sett
 	if err != nil {
 		return fmt.Errorf("approval key: %w", err)
 	}
-	seed, err := crv4.LoadRawOrBareHexSeedFile(options.HotkeySeedFile)
+	seed, err := crv4.LoadSeedFile(options.HotkeySeedFile)
 	if err != nil {
 		return fmt.Errorf("hotkey: %w", err)
 	}
