@@ -77,11 +77,18 @@ contracts=(
 # An accepted finding carries a slither-disable-next-line comment in its
 # source, except in a release-locked contract, whose source cannot change.
 # Slither's triage database, slither.db.json, accepts those by finding id.
-# Its one entry is locked-ether in STSubnetProbe, whose bytecode
+# Its first entry is locked-ether in STSubnetProbe, whose bytecode
 # sim-testnet/contracts_gen.go pins: receive and seedFromTao fund the probe's
 # mapped account, and the staking precompile's addStake debits that account
 # natively, an outflow Slither cannot see. The id hashes the contract name and
 # its payable function signatures, so any change to them fails the gate again.
+# Its second entry is unused-return in STSettlement2PhaseC.recordV1Sweep,
+# whose creation code the phase C upgrade fixes by CREATE2 address (deployed
+# at block 9,406,535), so its source cannot change. The call reads the v1
+# coordinator's rootCommitments and ignores committer and commitBlock: the
+# checks are the payout root and the artifact hash, and the coordinator
+# already restricts who commits. The id hashes the finding's description,
+# which names the function and its source lines.
 failed=()
 for contract in "${contracts[@]}"; do
   rm -f -- "$report"
