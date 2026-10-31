@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func provisionalEpochFixture(t *testing.T) (*ResolvedConfig, scenarioDefinition, *ScenarioObservation, *ScenarioObservation) {
