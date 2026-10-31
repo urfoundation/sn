@@ -119,7 +119,8 @@ fi
 # The phase C upgrade (VERSION2-FINAL.md §16) is pinned the same way, with the
 # compiler's ids also dropped from its struct's members and type names. It must
 # keep every STSettlement2 entry in place and declare its own only past the
-# end of STSettlement2's gap.
+# end of STSettlement2's gap. jq 1.6 takes no keyword, such as label, as an
+# object key shorthand.
 phase_c_filter='def strip: if type == "string" then gsub("t_struct\\((?<n>[A-Za-z0-9_]+)\\)[0-9]+_storage"; "t_struct(\(.n))_storage") else . end;
   def walkall: if type == "object" then with_entries(.key |= strip | .value |= walkall) elif type == "array" then map(walkall) else strip end;
   del(.storage[].astId, .types[].members[]?.astId) | walkall'
@@ -129,9 +130,9 @@ if ! diff -u layout/STSettlement2PhaseC.json - <<<"$phase_c_layout"; then
   echo "STSettlement2PhaseC storage layout differs from layout/STSettlement2PhaseC.json" >&2
   failed+=(layout/STSettlement2PhaseC.json)
 elif ! jq -e --slurpfile base layout/STSettlement2.json '
-  ($base[0].storage | map({label, slot, offset, type})) as $kept
+  ($base[0].storage | map({"label": .label, "slot": .slot, "offset": .offset, "type": .type})) as $kept
   | ($base[0].storage[-1] | (.slot | tonumber) + (($base[0].types[.type].numberOfBytes | tonumber) / 32)) as $free
-  | (.storage | map({label, slot, offset, type})) as $all
+  | (.storage | map({"label": .label, "slot": .slot, "offset": .offset, "type": .type})) as $all
   | $all[0:($kept | length)] == $kept and ([$all[($kept | length):][] | (.slot | tonumber) >= $free] | all)' \
   <<<"$phase_c_layout" >/dev/null; then
   echo "STSettlement2PhaseC storage layout does not extend STSettlement2's past its gap" >&2
