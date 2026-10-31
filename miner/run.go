@@ -106,6 +106,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--pprof=<addr>]
         [-v...]
     provider auth-provide ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
 		[--close-report-domain=<path>]
@@ -120,6 +121,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--pprof=<addr>]
         [-v...]
     provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
         [--api_url=<api_url>]
@@ -230,6 +232,13 @@ Options:
     				                 password anyways, if you don't specify it using this option.
     -p --port=<port>                 Status server port [default: 0].
     --max-memory=<mem>               Set the maximum amount of memory in bytes, or the suffixes b, kib, mib, gib may be used [This is a soft limit].
+    --pprof=<addr>                   Serve Go profiles at http://<addr>/debug/pprof/ (CPU profile, goroutine,
+                                     heap and more) to diagnose CPU and memory use. Off by default. A bare port
+                                     such as 6060 listens on 127.0.0.1 only; another host, such as 0.0.0.0:6060,
+                                     must be given, and anyone who can reach it can read the profiles.
+                                     Separately, on Linux and macOS, kill -USR1 <pid> writes a goroutine dump to
+                                     stderr (miner.log when provider start runs in a terminal) and the miner
+                                     keeps running.
     --wallet-from-epoch=<epoch>     First prospective earning epoch in the signed provider mapping.
     --wallet-through-epoch=<epoch>  Last inclusive earning epoch; at most 65536 epochs.
                                      Omit both to use the next epoch through the finite 65536-epoch window.
@@ -650,6 +659,10 @@ func provideWith(opts docopt.Opts, start bool) {
 	if !providePreflight(opts, start, os.Stdin, os.Stdout, os.Stderr) {
 		os.Exit(minerExitNeedsSetup)
 	}
+	// opt-in diagnostics (provider_pprof.go): --pprof, and SIGUSR1 dumps
+	pprofServer := startProvidePprof(opts)
+	defer pprofServer.close()
+	defer startGoroutineDumpSignal(os.Stderr)()
 	var ui *startTerminalUi
 	if start && cliIsTerminal(os.Stdout) && cliIsTerminal(os.Stderr) && cliVerbosity(os.Args[1:]) == 0 && os.Getenv("PROVIDER_DEBUG") == "" {
 		ui = newStartTerminalUi(os.Stdout)

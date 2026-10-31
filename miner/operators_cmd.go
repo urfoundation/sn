@@ -35,8 +35,9 @@ const defaultOperatorsRefresh = time.Hour
 
 // Single-operator provide flags that --all-operators replaces (the urls and
 // the provider jwt come from each operator's directory) or that stay
-// single-operator: the wallet set, captures, close reports and test egress.
-// A new operator directory has no legacy key to adopt.
+// single-operator: the wallet set, captures, close reports, test egress and
+// --pprof (every operator child would ask for the same address). A new
+// operator directory has no legacy key to adopt.
 var allOperatorsExcludedOptions = []string{
 	"--api_url",
 	"--connect_url",
@@ -56,6 +57,7 @@ var allOperatorsExcludedOptions = []string{
 	"--original-contract-capture-sha256",
 	"--require-original-contract-capture",
 	"--adopt-legacy-provider-key",
+	"--pprof",
 }
 
 // provide and auth with every option of the main table, so a refusal can name
@@ -95,7 +97,7 @@ func operatorArgsError(args []string) error {
 		}
 		if present := given(allOperatorsExcludedOptions...); 0 < len(present) {
 			return fmt.Errorf(
-				"provide --all-operators excludes %s: each operator's urls and jwt come from the operator list and its directory, and the wallet, capture, close-report and test egress settings stay single-operator",
+				"provide --all-operators excludes %s: each operator's urls and jwt come from the operator list and its directory, and the wallet, capture, close-report, test egress and pprof settings stay single-operator",
 				strings.Join(present, ", "),
 			)
 		}
@@ -201,6 +203,9 @@ func provideAllOperatorsCmd(opts docopt.Opts) {
 	// children through the supervisor
 	signals := make(chan os.Signal, 4)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	// SIGUSR1 dumps the supervisor's own goroutines; each operator child is a
+	// provide process that answers it too (provider_pprof.go)
+	defer startGoroutineDumpSignal(os.Stderr)()
 	ctx := context.Background()
 	refresher, err := operatorlist.NewRefresher(ctx, listSettings)
 	if err != nil {
