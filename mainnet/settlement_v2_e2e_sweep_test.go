@@ -56,15 +56,17 @@ func (f *e2eFixture) vault1Counter(pack func() []byte) *big.Int {
 	return e2eView(f, f.vault1, pack(), func(out []byte) (*big.Int, error) { return new(big.Int).SetBytes(out), nil })
 }
 
-// E-7: the phase C sweep path on phase-A bytecode (§16, §12.2). v1 epoch 1's
-// root is finalized and partly claimed, and v1 epoch 2 misses its root; v2
-// takes over from epoch 3 while reveal-lag emission still reaches the v1
-// pool hotkey. Once epoch 1's root expires, its remainder joins the carry;
-// the sweep epoch's v1 close captures the reveal-lag stake, and its
-// single-leaf root pays everything to vault2's coldkey. absorbStake moves that
-// stake from the v1 escrow hotkey into vault2's escrow as surplus, and a test
-// upgrade of STSettlement2 assigns it to the pool, whose next funding
-// snapshot holds it. Conservation holds in each vault and across both.
+// E-7: the phase C sweep path (§16, §12.2) on phase-A bytecode and the phase C
+// upgrade of STSettlement2, the real STSettlement2PhaseC. v1 epoch 1's root is
+// finalized and partly claimed, and v1 epoch 2 misses its root; v2 takes over
+// from epoch 3 while reveal-lag emission still reaches the v1 pool hotkey.
+// Once epoch 1's root expires, its remainder joins the carry; the sweep
+// epoch's v1 close captures the reveal-lag stake, and its single-leaf root
+// pays everything to vault2's coldkey. absorbStake moves that stake from the
+// v1 escrow hotkey into vault2's escrow as surplus. The owner upgrades the
+// proxy, records the sweep and assigns the surplus to the pool's next epoch,
+// whose funding snapshot holds it. Conservation holds in each vault and
+// across both.
 func TestSettlementV2E2ESweepPath(t *testing.T) {
 	const first = 3
 	f := newE2EFixture(t, first)
@@ -152,26 +154,51 @@ func TestSettlementV2E2ESweepPath(t *testing.T) {
 		t.Fatalf("absorbed surplus %s, want %s", surplus, swept)
 	}
 
-	// The test coordinator upgrade, the I suite's STSettlement2Surplus with
-	// the phase C wrapper, assigns it: only through the owner, and never more
-	// than the surplus.
-	wrapper := e2eForgeArtifact(t, "STSettlement2Surplus")
-	upgrade := f.deploy(f.deployer, wrapper, nil)
-	upgradeABI := wrapper.abi
+	// The phase C upgrade, code only: upgradeToAndCall(implementation, 0x).
+	phaseC := e2eForgeArtifact(t, "STSettlement2PhaseC")
+	upgrade := f.deploy(f.deployer, phaseC, nil)
 	pack := func(method string, args ...any) []byte {
-		data, err := upgradeABI.Pack(method, args...)
+		data, err := phaseC.abi.Pack(method, args...)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return data
 	}
+	f.refused(f.anyone, f.settlement, nil, pack("upgradeToAndCall", upgrade, []byte{}), "OwnableUnauthorizedAccount")
 	receipt = f.must(f.owner, f.settlement, nil, pack("upgradeToAndCall", upgrade, []byte{}))
 	f.requireLogs(receipt, f.settlementLog("Upgraded", upgrade))
-	f.refused(f.anyone, f.settlement, nil, pack("assignSurplus", e2eRao(e2eNoID), swept), "OwnableUnauthorizedAccount")
-	f.refused(f.owner, f.settlement, nil, pack("assignSurplus", e2eRao(e2eNoID), new(big.Int).Add(swept, common.Big1)), "InvalidSurplus")
-	next := e2eView(f, f.vault2, e2eVault2Binding.PackLastFundedEpoch(e2eRao(e2eNoID)), e2eVault2Binding.UnpackLastFundedEpoch).Uint64() + 1
-	receipt = f.must(f.owner, f.settlement, nil, pack("assignSurplus", e2eRao(e2eNoID), swept))
-	f.requireLogs(receipt, f.vault2Log("SurplusAssigned", e2eRao(e2eNoID), e2eRao(next), swept))
+	// The proxy now answers with the phase C interface, a superset of phase A's.
+	f.settlementABI = phaseC.abi
+
+	// The owner records the sweep: only the committed single-leaf root with
+	// its artifact hash, and only once.
+	noId, sweepEpoch := e2eRao(e2eNoID), e2eRao(sweep)
+	f.refused(f.anyone, f.settlement, nil, pack("recordV1Sweep", noId, sweepEpoch, record), "OwnableUnauthorizedAccount")
+	f.refused(f.owner, f.settlement, nil, pack("recordV1Sweep", noId, sweepEpoch, sha256.Sum256([]byte("another sweep record"))), "NotV1SweepRoot")
+	f.refused(f.owner, f.settlement, nil, pack("recordV1Sweep", noId, e2eRao(1), sha256.Sum256([]byte("v1 epoch 1 artifact"))), "InvalidEpoch")
+	receipt = f.must(f.owner, f.settlement, nil, pack("recordV1Sweep", noId, sweepEpoch, record))
+	f.requireLogs(receipt, f.settlementLog("V1SweepRecorded", noId, sweepEpoch, sweepRoot, record))
+	f.refused(f.owner, f.settlement, nil, pack("recordV1Sweep", noId, sweepEpoch, record), "V1SweepAlreadyRecorded")
+	recorded, err := f.chain.call(f.settlement, pack("v1Sweep", noId))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := phaseC.abi.Unpack("v1Sweep", recorded)
+	if err != nil || values[0].(uint64) != sweep || values[1].([32]byte) != sweepRoot || values[2].([32]byte) != record {
+		t.Fatalf("v1Sweep(%d) reads %v (%v)", e2eNoID, values, err)
+	}
+
+	// It assigns the surplus: only through the owner, only to the pool's next
+	// unfunded epoch, never more than the surplus, and only once.
+	next := e2eView(f, f.vault2, e2eVault2Binding.PackLastFundedEpoch(noId), e2eVault2Binding.UnpackLastFundedEpoch).Uint64() + 1
+	nextEpoch := e2eRao(next)
+	f.refused(f.anyone, f.settlement, nil, pack("assignSurplus", noId, nextEpoch, swept), "OwnableUnauthorizedAccount")
+	f.refused(f.owner, f.settlement, nil, pack("assignSurplus", noId, e2eRao(next+1), swept), "InvalidEpoch")
+	f.refused(f.owner, f.settlement, nil, pack("assignSurplus", e2eRao(e2eNoID+1), nextEpoch, swept), "UnknownPool")
+	f.refused(f.owner, f.settlement, nil, pack("assignSurplus", noId, nextEpoch, new(big.Int).Add(swept, common.Big1)), "InvalidSurplus")
+	receipt = f.must(f.owner, f.settlement, nil, pack("assignSurplus", noId, nextEpoch, swept))
+	f.requireLogs(receipt, f.vault2Log("SurplusAssigned", noId, nextEpoch, swept))
+	f.refused(f.owner, f.settlement, nil, pack("assignSurplus", noId, nextEpoch, common.Big1), "InvalidSurplus")
 	f.requireConservation()
 
 	// The pool's next close defers the epochs between and snapshots the
