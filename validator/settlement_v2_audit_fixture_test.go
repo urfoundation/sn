@@ -59,12 +59,17 @@ type settlementV2AuditTestChain struct {
 	logs   []types.Log
 	// served, when set, replaces the logs one eth_getLogs returns.
 	served func([]types.Log) []types.Log
+	// entitlements holds the v1 vault's entitlement(epoch, 1) answers.
+	entitlements map[uint64]stabi.STSettlementVaultEntitlement
 }
+
+// settlementV2AuditTestV1Vault is the v1 vault the recovery reads.
+var settlementV2AuditTestV1Vault = common.HexToAddress("0x7a10000000000000000000000000000000000001")
 
 func newSettlementV2AuditTestChain(t *testing.T, auditor common.Address) *settlementV2AuditTestChain {
 	t.Helper()
 	chain := &settlementV2AuditTestChain{settlementV2TestChain: newSettlementV2TestChain(t, auditor), pools: map[uint64]stabi.ISTSettlementVault2Pool{},
-		funded: map[uint64]map[uint64]*big.Int{}, active: map[settlementV2AuditTestBinding]bool{}}
+		funded: map[uint64]map[uint64]*big.Int{}, active: map[settlementV2AuditTestBinding]bool{}, entitlements: map[uint64]stabi.STSettlementVaultEntitlement{}}
 	server := gethrpc.NewServer()
 	if err := server.RegisterName("eth", chain); err != nil {
 		t.Fatal(err)
@@ -82,6 +87,35 @@ func settlementV2AuditTestBlockOf(hash common.Hash) (uint64, bool) {
 }
 
 func (self *settlementV2AuditTestChain) Call(args settlementV2TestCallArgs, selector gethrpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	if args.To == settlementV2AuditTestV1Vault && len(args.Input) >= 4 {
+		contractABI, err := stabi.STSettlementVaultMetaData.ParseABI()
+		if err != nil {
+			return nil, err
+		}
+		method, err := contractABI.MethodById(args.Input)
+		if err != nil || method.Name != "entitlement" {
+			return nil, errors.New("the test v1 vault answers only entitlement")
+		}
+		if err := self.hit("entitlement"); err != nil {
+			return nil, err
+		}
+		arguments, err := method.Inputs.Unpack(args.Input[4:])
+		if err != nil {
+			return nil, err
+		}
+		self.lock.Lock()
+		defer self.lock.Unlock()
+		entitlement := self.entitlements[arguments[0].(*big.Int).Uint64()]
+		if arguments[1].(*big.Int).Uint64() != settlementV2AuditTestNoID {
+			entitlement = stabi.STSettlementVaultEntitlement{}
+		}
+		for _, value := range []**big.Int{&entitlement.Funded, &entitlement.Total, &entitlement.Claimed} {
+			if *value == nil {
+				*value = new(big.Int)
+			}
+		}
+		return method.Outputs.Pack(entitlement)
+	}
 	if contractABI := settlementV2TestABI(args.To); contractABI != nil && len(args.Input) >= 4 {
 		if method, err := contractABI.MethodById(args.Input); err == nil && slices.Contains([]string{"pools", "fundedThrough", "epochStartBlock", "bindingAt"}, method.Name) {
 			if err := self.hit(method.Name); err != nil {

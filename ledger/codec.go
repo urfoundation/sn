@@ -279,6 +279,22 @@ type HeaderEpoch struct {
 	// Providers lists the epoch's provider chunks; empty when Null, or when
 	// the epoch has no rows ("providers": []).
 	Providers []Ref
+	// Recovery lists the epoch's recovery components ("recovery"), written
+	// only when there is one (§16 step 6).
+	Recovery []HeaderRecovery
+}
+
+// HeaderRecovery is one recovery component of a covered epoch: the funding
+// Amount, in rao, of the source epoch Epoch, allocated by that epoch's
+// provider rows.
+type HeaderRecovery struct {
+	Epoch  uint64
+	Amount uint64
+	// Null declares the source epoch's inputs unrecoverable.
+	Null bool
+	// Providers lists the source epoch's provider chunks; empty when Null,
+	// or when it has no rows.
+	Providers []Ref
 }
 
 // headerJSON is a header as JSON decodes it, before any reference is parsed.
@@ -292,14 +308,24 @@ type headerJSON struct {
 }
 
 type headerEpochJSON struct {
+	Epoch     uint64               `json:"epoch"`
+	Providers []string             `json:"providers"`
+	Recovery  []headerRecoveryJSON `json:"recovery"`
+}
+
+type headerRecoveryJSON struct {
 	Epoch     uint64   `json:"epoch"`
+	Amount    uint64   `json:"amount"`
 	Providers []string `json:"providers"`
 }
 
 // appendJSON writes the canonical form: compact, keys in order, integers as
-// JSON numbers. Strings are written without escaping; a header whose
-// strings need escaping fails the schema or reference rules, so the bytes
-// accepted are exactly the canonical JSON.
+// JSON numbers. An epoch's "recovery" key follows its "providers" and is
+// written only when the epoch has a recovery component, so a header without
+// one has the bytes it had before recovery existed, and "recovery":[] or
+// null is not canonical. Strings are written without escaping; a header
+// whose strings need escaping fails the schema or reference rules, so the
+// bytes accepted are exactly the canonical JSON.
 func (h *headerJSON) appendJSON(b []byte) []byte {
 	b = append(b, `{"schema":"`...)
 	b = append(b, h.Schema...)
@@ -320,6 +346,22 @@ func (h *headerJSON) appendJSON(b []byte) []byte {
 			b = strconv.AppendUint(b, h.Epochs[i].Epoch, 10)
 			b = append(b, `,"providers":`...)
 			b = appendStrings(b, h.Epochs[i].Providers)
+			if recovery := h.Epochs[i].Recovery; len(recovery) > 0 {
+				b = append(b, `,"recovery":[`...)
+				for j := range recovery {
+					if j > 0 {
+						b = append(b, ',')
+					}
+					b = append(b, `{"epoch":`...)
+					b = strconv.AppendUint(b, recovery[j].Epoch, 10)
+					b = append(b, `,"amount":`...)
+					b = strconv.AppendUint(b, recovery[j].Amount, 10)
+					b = append(b, `,"providers":`...)
+					b = appendStrings(b, recovery[j].Providers)
+					b = append(b, '}')
+				}
+				b = append(b, ']')
+			}
 			b = append(b, '}')
 		}
 		b = append(b, ']')
@@ -356,6 +398,13 @@ func EncodeHeader(h *Header) ([]byte, error) {
 		if !h.Epochs[i].Null {
 			raw.Epochs[i].Providers = refStrings(h.Epochs[i].Providers)
 		}
+		for _, recovery := range h.Epochs[i].Recovery {
+			entry := headerRecoveryJSON{Epoch: recovery.Epoch, Amount: recovery.Amount}
+			if !recovery.Null {
+				entry.Providers = refStrings(recovery.Providers)
+			}
+			raw.Epochs[i].Recovery = append(raw.Epochs[i].Recovery, entry)
+		}
 	}
 	data := raw.appendJSON(nil)
 	if len(data) > maxHeaderBytes {
@@ -375,7 +424,8 @@ func refStrings(refs []Ref) []string {
 // DecodeHeader decodes a canonical header. It decodes with unknown fields
 // refused and requires that re-encoding reproduce the bytes exactly
 // (§6.5), then checks the schema, that null appears only for providers, the
-// epoch count and every reference.
+// epoch count and every reference. Which recovery components a root must
+// list is a fact of the chain that Verify checks (CheckRecovery).
 func DecodeHeader(data []byte) (*Header, error) {
 	if len(data) > maxHeaderBytes {
 		return nil, fmt.Errorf("%w: %d bytes", ErrHeaderTooLarge, len(data))
@@ -408,6 +458,13 @@ func DecodeHeader(data []byte) (*Header, error) {
 		epoch.Epoch, epoch.Null = raw.Epochs[i].Epoch, raw.Epochs[i].Providers == nil
 		if epoch.Providers, err = parseRefs(raw.Epochs[i].Providers); err != nil {
 			return nil, err
+		}
+		for _, entry := range raw.Epochs[i].Recovery {
+			recovery := HeaderRecovery{Epoch: entry.Epoch, Amount: entry.Amount, Null: entry.Providers == nil}
+			if recovery.Providers, err = parseRefs(entry.Providers); err != nil {
+				return nil, err
+			}
+			epoch.Recovery = append(epoch.Recovery, recovery)
 		}
 	}
 	if h.Accounts, err = parseRefs(raw.Accounts); err != nil {

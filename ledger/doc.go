@@ -19,7 +19,12 @@
 // It covers the epochs p+1 … e, at most MaxCoveredEpochs of them, where p is
 // the latest finalized root's epoch or firstEpoch − 1. "providers": [] is an
 // epoch without rows; "providers": null is an epoch the operator declared
-// unrecoverable. The header lists chunks:
+// unrecoverable. An epoch that carries a phase C recovery component (below)
+// lists it after its providers, and only then:
+//
+//	{"epoch":K,"providers":[…],"recovery":[{"epoch":S,"amount":A,"providers":["sha256:…",…]|null},…]}
+//
+// The header lists chunks:
 //
 //   - provider chunks: ProviderRowBytes-byte rows (protocol.LedgerUsageRow),
 //     client_id(16) ‖ coldkey(32) ‖ usage_bytes(8) ‖ head_excluded(1),
@@ -86,6 +91,31 @@
 // ErrRowZeroUsage, ErrRowsUnsorted, ErrRowDuplicate, ErrUsageOverflow) and
 // ErrHeaderTooLarge.
 //
+// # Recovery components (phase C, VERSION2-FINAL.md §16 step 6)
+//
+// The v1 sweep moves v1 carry into vault2, which assigns it as surplus to an
+// epoch's funding. A recovery component allocates a recovered source
+// epoch's v1 funding A by that source epoch's own provider rows, built with
+// the v2 rules over its own earning window, wallets and head bindings, with
+// protocol.AllocateLedgerEpoch; the deltas sum exactly to A. The covered
+// epoch's own rows then allocate f_k less the amounts the components
+// allocated, plus the carry, as in the walk above. A component whose source
+// epoch has no rows, no eligible usage, or is unrecoverable leaves A in the
+// ordinary funding. Build refuses components that are not ascending
+// distinct source epochs before their epoch with positive amounts
+// (ErrRecoveryInput) and amounts beyond f_k (ErrRecoveryFunding). Source
+// rows are fixed inputs like an epoch's: EpochInput.Recovery[i].Chunks, and
+// custody's valid rows under the source epoch.
+//
+// Which source epochs a pool recovers is the owner's decision, fixed in
+// code (ScheduledRecovery, keyed by vault2 and no_id; mainnet pool 1
+// recovers epoch 3). Where it lands is a fact of the chain: PlanRecovery
+// places it at the first epoch at or after firstEpoch whose own vault2
+// SurplusAssigned amounts reach the scheduled total, and a root carries it
+// only when it covers that epoch. Builder and verifier both check each
+// source's amount against vault1's terminal RootMissed entitlement
+// (RecoverySchedule.CheckSource).
+//
 // # Auditing a root (validator, snclaim)
 //
 // Verify takes a VerifyInput read from chain at one pinned block: NoID,
@@ -131,12 +161,18 @@
 //	                      ErrAccountUnsorted, ErrAccountZeroDelta
 //	9 CheckTree           ErrTreeLeafCount, ErrTreeTotal, ErrTreeRoot
 //	  CheckFetch          ErrObjectUnavailable, ErrByteBudget
+//	10 CheckRecovery      ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount
 //
-// The checks run in the order 2, 1, 4 for the pending account chunks, 3,
-// 8, 9, then per covered epoch 4, 5 and 6 with its allocation, then 7. The
-// previous root comes first so that a failed root still has accounts to
-// protect, and the pending accounts are read before the other checks so that
-// their faults are known whatever else fails.
+// The checks run in the order 2, 1, 4 for the pending account chunks, 10,
+// 3, 8, 9, then per covered epoch 4, 5 and 6 with its allocation, each
+// recovery component's source rows first (head bindings of the source
+// epoch), then 7. The previous root comes first so that a failed root still
+// has accounts to protect, and the pending accounts are read before the
+// other checks so that their faults are known whatever else fails; a
+// recovery dispute is therefore found with the root reproduced, and leads
+// to a refusal, not a demand. VerifyInput.Recoveries holds the components
+// the chain calls for, per covered epoch; the header must list exactly
+// those (check 10).
 //
 // The Result also says what §9.3 needs. Previous and PreviousAccounts are
 // the finalized root's verified tree and accounts. Accounts and Tree are the

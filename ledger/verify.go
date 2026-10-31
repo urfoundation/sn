@@ -115,6 +115,9 @@ const (
 	CheckTree
 	// CheckFetch: an object was unavailable, or the byte budget ran out.
 	CheckFetch
+	// CheckRecovery: the header's recovery components are not the ones the
+	// chain calls for (§16 step 6).
+	CheckRecovery
 )
 
 func (c Check) String() string {
@@ -141,6 +144,8 @@ func (c Check) String() string {
 		return "tree"
 	case CheckFetch:
 		return "fetch"
+	case CheckRecovery:
+		return "recovery"
 	default:
 		return fmt.Sprintf("check(%d)", int(c))
 	}
@@ -209,6 +214,11 @@ type VerifyInput struct {
 	// MaxFetchBytes bounds the bytes fetched for objects not in custody.
 	// The budget is per root: a retry passes what earlier attempts left.
 	MaxFetchBytes uint64
+	// Recoveries holds, per covered epoch, the recovery components the chain
+	// calls for, from PlanRecovery over vault2's SurplusAssigned events, with
+	// each amount checked against vault1 (RecoverySchedule.CheckSource). The
+	// header must list exactly these. Nil calls for none.
+	Recoveries map[uint64][]Recovery
 }
 
 // Fault is a previous account that the pending root's published account
@@ -381,7 +391,10 @@ func (v *verifier) run() error {
 	if err := v.accounts(header); err != nil {
 		return err
 	}
-	held, err := v.fixedInputs(header)
+	if err := v.recoveryDeclarations(header); err != nil {
+		return err
+	}
+	held, heldRecovery, err := v.fixedInputs(header)
 	if err != nil {
 		return err
 	}
@@ -391,7 +404,7 @@ func (v *verifier) run() error {
 	if err := v.checkTree(); err != nil {
 		return err
 	}
-	return v.allocation(header, p, held)
+	return v.allocation(header, p, held, heldRecovery)
 }
 
 // get returns an object from custody, or fetches, checks and keeps it.
@@ -574,29 +587,77 @@ func Faults(previous, accounts []merkle.LedgerAccount) []Fault {
 	return faults
 }
 
-// fixedInputs runs check 3 and records every null declaration it accepts.
-// It returns, per covered epoch, whether custody holds its valid rows.
-func (v *verifier) fixedInputs(h *Header) ([]bool, error) {
-	held := make([]bool, len(h.Epochs))
+// recoveryDeclarations runs check 10: each covered epoch lists exactly the
+// recovery components the chain calls for, with their scheduled amounts. It
+// runs once the pending accounts are read, so a dispute over the recovery
+// is a refusal with the root reproduced, never a demand.
+func (v *verifier) recoveryDeclarations(h *Header) error {
 	for i := range h.Epochs {
 		epoch := &h.Epochs[i]
-		chunks, ok, err := v.in.Custody.ValidRows(v.ctx, v.in.NoID, epoch.Epoch)
-		if err != nil {
-			return nil, err
-		}
-		switch {
-		case ok && epoch.Null:
-			return nil, fail(CheckFixedInputs, fmt.Errorf("%w: epoch %d", ErrNullAgainstValidRows, epoch.Epoch))
-		case ok && !slices.Equal(chunks, epoch.Providers):
-			return nil, fail(CheckFixedInputs, fmt.Errorf("%w: epoch %d", ErrFixedInputs, epoch.Epoch))
-		case epoch.Null:
-			if err := v.in.Custody.KeepNull(v.ctx, v.in.NoID, epoch.Epoch, v.in.Seq); err != nil {
-				return nil, err
+		want := v.in.Recoveries[epoch.Epoch]
+		for j, listed := range epoch.Recovery {
+			if j >= len(want) || listed.Epoch != want[j].Epoch {
+				return fail(CheckRecovery, fmt.Errorf("%w: epoch %d recovers epoch %d", ErrRecoveryUnexpected, epoch.Epoch, listed.Epoch))
+			}
+			if listed.Amount != want[j].Amount {
+				return fail(CheckRecovery, fmt.Errorf("%w: epoch %d recovers %d of epoch %d, not %d", ErrRecoveryAmount, epoch.Epoch, listed.Amount, listed.Epoch, want[j].Amount))
 			}
 		}
-		held[i] = ok
+		if len(epoch.Recovery) < len(want) {
+			return fail(CheckRecovery, fmt.Errorf("%w: epoch %d does not recover epoch %d", ErrRecoveryMissing, epoch.Epoch, want[len(epoch.Recovery)].Epoch))
+		}
 	}
-	return held, nil
+	// PlanRecovery plans only covered epochs; anything else is the caller's.
+	for k, want := range v.in.Recoveries {
+		if len(want) > 0 && (k < h.Epochs[0].Epoch || k > h.Epoch) {
+			return fmt.Errorf("%w: a recovery is expected at epoch %d, which the root does not cover", ErrInput, k)
+		}
+	}
+	return nil
+}
+
+// fixedRows runs check 3 for one list of provider chunks of a pool epoch: a
+// covered epoch's, or a recovery component's source epoch's. It records a
+// null declaration it accepts, and reports whether custody holds the
+// epoch's valid rows.
+func (v *verifier) fixedRows(epoch uint64, null bool, providers []Ref, label string) (bool, error) {
+	chunks, ok, err := v.in.Custody.ValidRows(v.ctx, v.in.NoID, epoch)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case ok && null:
+		return false, fail(CheckFixedInputs, fmt.Errorf("%w: %s", ErrNullAgainstValidRows, label))
+	case ok && !slices.Equal(chunks, providers):
+		return false, fail(CheckFixedInputs, fmt.Errorf("%w: %s", ErrFixedInputs, label))
+	case null:
+		if err := v.in.Custody.KeepNull(v.ctx, v.in.NoID, epoch, v.in.Seq); err != nil {
+			return false, err
+		}
+	}
+	return ok, nil
+}
+
+// fixedInputs runs check 3 and records every null declaration it accepts.
+// It returns, per covered epoch, whether custody holds its valid rows, and
+// per recovery component whether custody holds its source epoch's.
+func (v *verifier) fixedInputs(h *Header) ([]bool, [][]bool, error) {
+	held, heldRecovery := make([]bool, len(h.Epochs)), make([][]bool, len(h.Epochs))
+	for i := range h.Epochs {
+		epoch := &h.Epochs[i]
+		var err error
+		if held[i], err = v.fixedRows(epoch.Epoch, epoch.Null, epoch.Providers, fmt.Sprintf("epoch %d", epoch.Epoch)); err != nil {
+			return nil, nil, err
+		}
+		heldRecovery[i] = make([]bool, len(epoch.Recovery))
+		for j := range epoch.Recovery {
+			component := &epoch.Recovery[j]
+			if heldRecovery[i][j], err = v.fixedRows(component.Epoch, component.Null, component.Providers, fmt.Sprintf("epoch %d recovery %d", epoch.Epoch, component.Epoch)); err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+	return held, heldRecovery, nil
 }
 
 // checkAccounts runs check 8.
@@ -640,9 +701,10 @@ func (v *verifier) checkTree() error {
 	return fail(CheckTree, ErrTreeRoot)
 }
 
-// allocation runs checks 4 to 6 on each covered epoch's provider rows, walks
-// the epochs (§6.4) and runs check 7.
-func (v *verifier) allocation(h *Header, p uint64, held []bool) error {
+// allocation runs checks 4 to 6 on each covered epoch's provider rows and
+// on its recovery components' source rows, walks the epochs (§6.4), each
+// recovery component allocated by its source rows first, and runs check 7.
+func (v *verifier) allocation(h *Header, p uint64, held []bool, heldRecovery [][]bool) error {
 	var base uint256.Int
 	if v.in.Previous != nil {
 		base = v.in.Previous.Total
@@ -654,15 +716,19 @@ func (v *verifier) allocation(h *Header, p uint64, held []bool) error {
 	var w walk
 	for i := range h.Epochs {
 		epoch := &h.Epochs[i]
+		ordinary, err := v.recovery(epoch, &w, &funding[i], heldRecovery[i])
+		if err != nil {
+			return err
+		}
 		var rows []protocol.LedgerUsageRow
 		if !epoch.Null {
-			if rows, err = v.providerRows(epoch); err != nil {
+			if rows, err = v.providerRows(epoch.Epoch, epoch.Providers, fmt.Sprintf("epoch %d", epoch.Epoch)); err != nil {
 				return err
 			}
 		}
 		// Check 5 bounds the usage, so the allocation fails only with the
 		// context.
-		if _, _, err := w.step(v.ctx, &funding[i], rows, epoch.Null); err != nil {
+		if _, _, err := w.step(v.ctx, &ordinary, rows, epoch.Null); err != nil {
 			return err
 		}
 		if !epoch.Null && !held[i] {
@@ -677,38 +743,81 @@ func (v *verifier) allocation(h *Header, p uint64, held []bool) error {
 	return v.checkDeltas(w.sum)
 }
 
-// providerRows reads an epoch's provider chunks (check 4) and checks its
-// rows (check 5) and head flags (check 6).
-func (v *verifier) providerRows(epoch *HeaderEpoch) ([]protocol.LedgerUsageRow, error) {
+// recovery checks and allocates a covered epoch's recovery components, each
+// over its source epoch's rows (checks 4 to 6, with the source epoch's head
+// bindings), records valid source rows, and returns the epoch's ordinary
+// funding: f_k less the amounts allocated. Check 10 has matched the
+// components to the chain's, so amounts beyond f_k are the caller's input
+// error.
+func (v *verifier) recovery(epoch *HeaderEpoch, w *walk, f *uint256.Int, held []bool) (uint256.Int, error) {
+	ordinary := *f
+	var total uint256.Int
+	for _, component := range epoch.Recovery {
+		total.AddUint64(&total, component.Amount)
+	}
+	if total.Gt(f) {
+		return ordinary, fmt.Errorf("%w: epoch %d recovers %s of funding %s", ErrFunding, epoch.Epoch, total.Dec(), f.Dec())
+	}
+	for j := range epoch.Recovery {
+		component := &epoch.Recovery[j]
+		if component.Null {
+			continue
+		}
+		label := fmt.Sprintf("epoch %d recovery %d", epoch.Epoch, component.Epoch)
+		rows, err := v.providerRows(component.Epoch, component.Providers, label)
+		if err != nil {
+			return ordinary, err
+		}
+		amount := uint256.NewInt(component.Amount)
+		allocated, _, err := w.recover(v.ctx, amount, rows)
+		if err != nil {
+			return ordinary, err
+		}
+		if allocated {
+			ordinary.Sub(&ordinary, amount)
+		}
+		if !held[j] {
+			if err := v.in.Custody.KeepValidRows(v.ctx, v.in.NoID, component.Epoch, component.Providers); err != nil {
+				return ordinary, err
+			}
+		}
+	}
+	return ordinary, nil
+}
+
+// providerRows reads a pool epoch's provider chunks (check 4) and checks
+// its rows (check 5) and its head flags against the epoch's bindings (check
+// 6). label names them in errors.
+func (v *verifier) providerRows(epoch uint64, providers []Ref, label string) ([]protocol.LedgerUsageRow, error) {
 	var rows []protocol.LedgerUsageRow
-	for j, ref := range epoch.Providers {
+	for j, ref := range providers {
 		data, err := v.get(ref, &providerChunkRole)
 		if err != nil {
 			return nil, err
 		}
-		if err := checkChunk(len(data), ProviderRowBytes, j, len(epoch.Providers)); err != nil {
-			return nil, fail(CheckChunks, fmt.Errorf("epoch %d: %w", epoch.Epoch, err))
+		if err := checkChunk(len(data), ProviderRowBytes, j, len(providers)); err != nil {
+			return nil, fail(CheckChunks, fmt.Errorf("%s: %w", label, err))
 		}
 		if rows, err = decodeProviderRows(rows, data); err != nil {
-			return nil, fail(CheckChunks, fmt.Errorf("epoch %d chunk %d: %w", epoch.Epoch, j, err))
+			return nil, fail(CheckChunks, fmt.Errorf("%s chunk %d: %w", label, j, err))
 		}
 	}
 	if err := checkProviderRows(rows); err != nil {
-		return nil, fail(CheckRows, fmt.Errorf("epoch %d: %w", epoch.Epoch, err))
+		return nil, fail(CheckRows, fmt.Errorf("%s: %w", label, err))
 	}
 	if v.in.Heads == nil || len(rows) == 0 {
 		return rows, nil
 	}
-	bound, err := v.in.Heads.HeadBindings(v.ctx, epoch.Epoch)
+	bound, err := v.in.Heads.HeadBindings(v.ctx, epoch)
 	if err != nil {
 		return nil, err
 	}
 	for i := range rows {
 		switch want := bound[rows[i].ClientID]; {
 		case rows[i].HeadExcluded && !want:
-			return nil, fail(CheckHeadExclusion, fmt.Errorf("%w: epoch %d row %d", ErrHeadFlagSet, epoch.Epoch, i))
+			return nil, fail(CheckHeadExclusion, fmt.Errorf("%w: %s row %d", ErrHeadFlagSet, label, i))
 		case !rows[i].HeadExcluded && want:
-			return nil, fail(CheckHeadExclusion, fmt.Errorf("%w: epoch %d row %d", ErrHeadFlagCleared, epoch.Epoch, i))
+			return nil, fail(CheckHeadExclusion, fmt.Errorf("%w: %s row %d", ErrHeadFlagCleared, label, i))
 		}
 	}
 	return rows, nil

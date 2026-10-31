@@ -26,6 +26,11 @@
 // that root. Demands and challenges name the protected root's index and
 // prove its accounts against it. An audit that could not obtain the objects
 // Verify reads is retried until that block.
+// A pool with a phase C recovery schedule (ledger.ScheduledRecovery) also
+// has the recovery components its covered epochs must carry read from
+// vault2's SurplusAssigned events, each source amount checked against
+// vault1's terminal RootMissed entitlement, and Verify requires exactly
+// those (VERSION2-FINAL.md §16 step 6).
 // The decision and the demand set, drawn once after the commit was seen, are
 // recorded before anything is sent, and sends take their trees from
 // custody; the auditor sender is idempotent, so a restart sends exactly the
@@ -45,6 +50,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 
 	"github.com/urfoundation/sn/ledger"
@@ -99,6 +105,11 @@ type settlementV2AuditReader interface {
 	// the pending commit, the earlier pending roots over F that were replaced
 	// or deleted while a demand was open, and the indexes of those demands.
 	demandHistory(ctx context.Context, state *settlementV2PoolState) (doublings uint, again []uint64, err error)
+	// recoveries returns the phase C recovery components the pending root's
+	// covered epochs must carry (ledger.PlanRecovery), each source amount
+	// checked against vault1 at state's pinned block, or nil for a pool
+	// without a recovery schedule.
+	recoveries(ctx context.Context, state *settlementV2PoolState) (map[uint64][]ledger.Recovery, error)
 }
 
 // settlementV2AuditSender sends the auditor's transactions;
@@ -137,10 +148,18 @@ type settlementV2Audit struct {
 	// contracts (§13); the audit runs no pass before it succeeds once. Nil
 	// once confirmed.
 	confirm func(context.Context) error
+	// planned holds each pending root's recovery components, read once: they
+	// are fixed once its epochs are funded.
+	planned map[settlementV2PlanKey]map[uint64][]ledger.Recovery
+}
+
+// settlementV2PlanKey names a pool's pending root.
+type settlementV2PlanKey struct {
+	noID, seq uint64
 }
 
 func newSettlementV2Audit(reader settlementV2AuditReader, custody *settlementV2Custody, sender settlementV2AuditSender, pools []settlementV2AuditPool, maxBytes uint64) *settlementV2Audit {
-	return &settlementV2Audit{reader: reader, custody: custody, sender: sender, pools: pools, maxBytes: maxBytes, random: rand.Reader}
+	return &settlementV2Audit{reader: reader, custody: custody, sender: sender, pools: pools, maxBytes: maxBytes, random: rand.Reader, planned: map[settlementV2PlanKey]map[uint64][]ledger.Recovery{}}
 }
 
 // errSettlementV2Unconfirmed: the release runtime has not yet confirmed the
@@ -191,7 +210,7 @@ func newReleaseSettlementV2Audit(ctx context.Context, cfg *ReleaseConfig, chain 
 		}
 		pools[i] = settlementV2AuditPool{noID: operator.NoID, objects: objects}
 	}
-	reader := &settlementV2AuditChain{chain: chain, vault: addresses.Vault, deployBlock: cfg.DeployBlock}
+	reader := &settlementV2AuditChain{chain: chain, vault: addresses.Vault, settlementVault: common.HexToAddress(cfg.SettlementVault), deployBlock: cfg.DeployBlock}
 	audit := newSettlementV2Audit(reader, custody, sender, pools, options.LedgerMaxBytes)
 	audit.confirm = confirm
 	return audit, nil
@@ -280,14 +299,24 @@ func (self *settlementV2Audit) audit(ctx context.Context, pool settlementV2Audit
 }
 
 // verify runs ledger.Verify with what is left of the root's byte budget and
-// records what it fetched.
+// records what it fetched. The recovery components the chain calls for are
+// read once per pending root.
 func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord) (*ledger.Result, error) {
 	pending := &state.pending
+	key := settlementV2PlanKey{noID: state.noID, seq: pending.Seq}
+	recoveries, planned := self.planned[key]
+	if !planned {
+		var err error
+		if recoveries, err = self.reader.recoveries(ctx, state); err != nil {
+			return nil, fmt.Errorf("settlement v2 recovery plan of pool %d seq %d: %w", state.noID, pending.Seq, err)
+		}
+		self.planned[key] = recoveries
+	}
 	in := ledger.VerifyInput{
 		NoID: state.noID, FirstEpoch: state.firstEpoch, Seq: pending.Seq,
 		Pending:       settlementV2PendingRoot(pending),
 		FundedThrough: state.funded, Fetcher: pool.objects, Custody: self.custody, Heads: self.reader.headOracle(state),
-		MaxFetchBytes: self.remainingBytes(record),
+		MaxFetchBytes: self.remainingBytes(record), Recoveries: recoveries,
 	}
 	if previous := state.previous; previous != nil {
 		root := settlementV2LedgerRoot(previous.Epoch, previous.Root, previous.Total, previous.LeafCount, previous.LedgerHash)

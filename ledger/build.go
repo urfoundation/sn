@@ -59,6 +59,10 @@ type EpochInput struct {
 	// first built with. Rows must encode to exactly these chunks. Leave it
 	// nil the first time, or to rebuild on an operator command.
 	Chunks []Ref
+	// Recovery lists the epoch's recovery components (PlanRecovery), in
+	// ascending source epoch order. Each is allocated by its source epoch's
+	// rows, and the epoch's own rows allocate f_k less their amounts.
+	Recovery []RecoveryInput
 }
 
 // BuildInput is a root's input.
@@ -83,12 +87,15 @@ type EpochAllocation struct {
 	// Funding is f_k.
 	Funding uint256.Int
 	// Allocated reports that the epoch's rows had eligible usage. Amount, f_k
-	// plus the carry from earlier epochs, was then split into Deltas.
+	// less the epoch's allocated recovery plus the carry from earlier
+	// epochs, was then split into Deltas.
 	Allocated bool
 	Amount    uint256.Int
 	// Deltas lists every coldkey with eligible usage in ascending order, zero
 	// deltas included. They sum to Amount.
 	Deltas []protocol.LedgerDelta
+	// Recovery lists the epoch's recovery components and what each allocated.
+	Recovery []RecoveryAllocation
 }
 
 // Objects holds ledger objects by reference.
@@ -110,9 +117,12 @@ type Ledger struct {
 
 // Build builds the root for epoch e (§6.4, §6.5, §8.2). Each covered epoch
 // with eligible usage is allocated from its own rows; the others carry their
-// funding forward. Each coldkey's deltas are added to its account, and
-// coldkeys without an account get new accounts, appended in ascending order.
-// The result depends only on the input.
+// funding forward. A covered epoch's recovery components (§16 step 6) are
+// each allocated from their source epoch's rows first, and the epoch's own
+// walk step takes f_k less the amounts they allocated. Each coldkey's deltas
+// are added to its account, and coldkeys without an account get new
+// accounts, appended in ascending order. The result depends only on the
+// input.
 func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 	if ctx == nil {
 		return nil, ErrInput
@@ -186,11 +196,18 @@ func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 				return nil, fmt.Errorf("%w: epoch %d", ErrFixedInputs, input.Epoch)
 			}
 		}
-		if out.Amount, out.Deltas, err = w.step(ctx, &funding[i], input.Rows, input.Null); err != nil {
+		ordinary, err := buildRecovery(ctx, &w, input, out, &funding[i], objects)
+		if err != nil {
+			return nil, err
+		}
+		if out.Amount, out.Deltas, err = w.step(ctx, &ordinary, input.Rows, input.Null); err != nil {
 			return nil, fmt.Errorf("epoch %d: %w", input.Epoch, err)
 		}
 		out.Allocated = w.allocated
 		header.Epochs[i] = HeaderEpoch{Epoch: out.Epoch, Null: out.Null, Providers: out.Providers}
+		for _, component := range out.Recovery {
+			header.Epochs[i].Recovery = append(header.Epochs[i].Recovery, HeaderRecovery{Epoch: component.Epoch, Amount: component.Amount, Null: component.Null, Providers: component.Providers})
+		}
 	}
 	if !w.allocated {
 		return nil, fmt.Errorf("%w: epoch %d", ErrEpochNotAllocated, in.Epoch)
@@ -221,6 +238,56 @@ func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 		Objects:  objects,
 		Epochs:   epochs,
 	}, nil
+}
+
+// buildRecovery checks and allocates a covered epoch's recovery components
+// into out and the walk, encodes their source rows into objects, and returns
+// the epoch's ordinary funding: f_k less the amounts allocated. A component
+// whose source epoch has no rows, no eligible usage, or is unrecoverable
+// leaves its amount in the ordinary funding.
+func buildRecovery(ctx context.Context, w *walk, input *EpochInput, out *EpochAllocation, f *uint256.Int, objects Objects) (uint256.Int, error) {
+	ordinary := *f
+	if len(input.Recovery) == 0 {
+		return ordinary, nil
+	}
+	total, err := checkRecoveryInputs(input.Epoch, input.Recovery)
+	if err != nil {
+		return ordinary, err
+	}
+	if total.Gt(f) {
+		return ordinary, fmt.Errorf("%w: epoch %d recovers %s of %s", ErrRecoveryFunding, input.Epoch, total.Dec(), f.Dec())
+	}
+	out.Recovery = make([]RecoveryAllocation, len(input.Recovery))
+	for j := range input.Recovery {
+		component, alloc := &input.Recovery[j], &out.Recovery[j]
+		alloc.Recovery, alloc.Null = component.Recovery, component.Null
+		if component.Null {
+			if len(component.Rows) != 0 || component.Chunks != nil {
+				return ordinary, fmt.Errorf("%w: epoch %d recovery %d", ErrEpochInput, input.Epoch, component.Epoch)
+			}
+			continue
+		}
+		if err := checkProviderRows(component.Rows); err != nil {
+			return ordinary, fmt.Errorf("epoch %d recovery %d: %w", input.Epoch, component.Epoch, err)
+		}
+		chunks := EncodeProviderChunks(component.Rows)
+		alloc.Providers = make([]Ref, len(chunks))
+		for k, chunk := range chunks {
+			alloc.Providers[k] = RefOf(chunk)
+			objects[alloc.Providers[k]] = chunk
+		}
+		if component.Chunks != nil && !slices.Equal(component.Chunks, alloc.Providers) {
+			return ordinary, fmt.Errorf("%w: epoch %d recovery %d", ErrFixedInputs, input.Epoch, component.Epoch)
+		}
+		amount := uint256.NewInt(component.Amount)
+		if alloc.Allocated, alloc.Deltas, err = w.recover(ctx, amount, component.Rows); err != nil {
+			return ordinary, fmt.Errorf("epoch %d recovery %d: %w", input.Epoch, component.Epoch, err)
+		}
+		if alloc.Allocated {
+			ordinary.Sub(&ordinary, amount)
+		}
+	}
+	return ordinary, nil
 }
 
 // applyDeltas adds each positive delta to its coldkey's account, keeping

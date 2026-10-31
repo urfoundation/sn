@@ -39,10 +39,16 @@ var (
 type settlementV2AuditChain struct {
 	chain *ChainClient
 	vault common.Address
+	// settlementVault is the v1 vault, whose entitlements the recovery
+	// sources are checked against.
+	settlementVault common.Address
 	// deployBlock is the coordinator's deploy block: no event of either
 	// contract precedes it.
 	deployBlock uint64
 	fleet       settlementV2FleetIndex
+	// schedule returns a pool's recovery schedule; nil is
+	// ledger.ScheduledRecovery.
+	schedule func(vault [20]byte, noID uint64) *ledger.RecoverySchedule
 }
 
 // poolState reads the pool, and for a registered pool its pending root; with
@@ -370,6 +376,68 @@ func (self *settlementV2AuditChain) demandHistory(ctx context.Context, state *se
 	}
 	slices.Sort(again)
 	return doublings, slices.Compact(again), nil
+}
+
+// recoveries plans the pending root's recovery components (§16 step 6): the
+// pool's SurplusAssigned events from its schedule's first block through the
+// pending commit, after which no epoch the root covers can receive surplus,
+// placed by ledger.PlanRecovery; each placed source's amount must be vault1's
+// RootMissed entitlement of it at the pinned block. A pool without a
+// schedule reads nothing.
+func (self *settlementV2AuditChain) recoveries(ctx context.Context, state *settlementV2PoolState) (map[uint64][]ledger.Recovery, error) {
+	lookup := self.schedule
+	if lookup == nil {
+		lookup = ledger.ScheduledRecovery
+	}
+	schedule := lookup(self.vault, state.noID)
+	if schedule == nil {
+		return nil, nil
+	}
+	p := state.firstEpoch - 1
+	if state.previous != nil {
+		p = state.previous.Epoch
+	}
+	surplus := map[uint64]uint256.Int{}
+	topics := [][]common.Hash{{settlementV2VaultABI.Events["SurplusAssigned"].ID}, {common.BigToHash(new(big.Int).SetUint64(state.noID))}}
+	for from := max(schedule.FromBlock, self.deployBlock); from <= state.pending.CommittedBlock; from += getLogsChunkBlocks {
+		logs, err := readSettlementV2Logs(ctx, self.chain, self.vault, topics, from, min(from+getLogsChunkBlocks-1, state.pending.CommittedBlock))
+		if err != nil {
+			return nil, fmt.Errorf("vault2 surplus: %w", err)
+		}
+		for i := range logs {
+			event, err := settlementV2Vault.UnpackSurplusAssignedEvent(&logs[i])
+			if err != nil {
+				return nil, fmt.Errorf("vault2 log %d of block %d: %w", logs[i].Index, logs[i].BlockNumber, err)
+			}
+			if !event.NoId.IsUint64() || event.NoId.Uint64() != state.noID || !event.Epoch.IsUint64() {
+				return nil, fmt.Errorf("vault2 SurplusAssigned log %d of block %d names another pool or epoch", logs[i].Index, logs[i].BlockNumber)
+			}
+			amount, overflow := uint256.FromBig(event.Amount)
+			if overflow {
+				return nil, fmt.Errorf("vault2 SurplusAssigned log %d of block %d has an amount of 2^256 or more", logs[i].Index, logs[i].BlockNumber)
+			}
+			total := surplus[event.Epoch.Uint64()]
+			surplus[event.Epoch.Uint64()] = *total.Add(&total, amount)
+		}
+	}
+	plan := ledger.PlanRecovery(schedule, surplus, state.firstEpoch, p, state.pending.Epoch)
+	for _, components := range plan {
+		for _, component := range components {
+			values, err := self.chain.settlementV2ViewAtHashContext(ctx, self.settlementVault, &stabi.STSettlementVaultMetaData, "entitlement", []any{new(big.Int).SetUint64(component.Epoch), new(big.Int).SetUint64(state.noID)}, state.block, state.blockHash)
+			if err != nil {
+				return nil, fmt.Errorf("vault1 entitlement of epoch %d of pool %d at block %d: %w", component.Epoch, state.noID, state.block, err)
+			}
+			entitlement := *abi.ConvertType(values[0], new(stabi.STSettlementVaultEntitlement)).(*stabi.STSettlementVaultEntitlement)
+			funded, overflow := uint256.FromBig(entitlement.Funded)
+			if overflow {
+				return nil, fmt.Errorf("vault1 entitlement of epoch %d funds 2^256 or more", component.Epoch)
+			}
+			if err := schedule.CheckSource(component.Epoch, entitlement.Status, funded); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return plan, nil
 }
 
 // settlementV2Objects reads ledger objects from an operator's public

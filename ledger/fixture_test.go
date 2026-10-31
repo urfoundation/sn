@@ -263,6 +263,7 @@ var checkErrors = []error{
 	ErrEpochNotAllocated, ErrAccountOmitted, ErrAccountDelta,
 	ErrAccountMoved, ErrAccountLowered, ErrAccountDuplicate, ErrAccountUnsorted, ErrAccountZeroDelta,
 	ErrTreeLeafCount, ErrTreeTotal, ErrTreeRoot,
+	ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount,
 }
 
 // expectFailure requires that res failed exactly check with exactly the
