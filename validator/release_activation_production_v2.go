@@ -7,6 +7,7 @@
 package validator
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -30,10 +31,18 @@ type ReleaseProductionSuccessorOptions struct {
 	SuccessorApprovalPath string
 	OriginalAuthorityPath string
 	ApprovalSignature     string
+	ApprovalKeyFile       string
+	approvalKeyProvided   bool
 }
 
 // Each path is canonical and stands alone; none may contain another.
 func (self ReleaseProductionSuccessorOptions) validate() error {
+	if self.approvalKeyProvided && self.ApprovalKeyFile == "" {
+		return errors.New("--approval-key-file requires a nonempty path")
+	}
+	if self.ApprovalKeyFile != "" && self.ApprovalSignature != "" {
+		return errors.New("--approval-key-file and --approval-signature are mutually exclusive")
+	}
 	paths := []string{self.RenderedConfigPath, self.SuccessorApprovalPath, self.OriginalAuthorityPath}
 	for index, path := range paths {
 		if path == "" {
@@ -54,6 +63,43 @@ func (self ReleaseProductionSuccessorOptions) validate() error {
 		}
 	}
 	return nil
+}
+
+// Checks the caller-selected private key against the existing configuration's
+// public signer. It neither creates a key nor grants a different signing root.
+func loadProductionApprovalKey(cfg *ReleaseConfig, path string) (ed25519.PrivateKey, error) {
+	if cfg == nil {
+		return nil, errors.New("production approval key has no configured signer")
+	}
+	selection := productionEconomicSelection(cfg)
+	if selection == nil {
+		return nil, errors.New("production approval key has no configured signer")
+	}
+	signer, err := canonicalAttemptHex32("production approval signer", selection.Signer, false)
+	if err != nil {
+		return nil, err
+	}
+	private, err := loadApprovalKeyFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(private.Public().(ed25519.PublicKey), signer[:]) {
+		return nil, errors.New("--approval-key-file does not match the configured approval signer")
+	}
+	return private, nil
+}
+
+// Resolves only this successor's exact message. Publication still performs the
+// same signature verification and strict producer reload as a detached signature.
+func (self *releaseProductionSuccessor) approvalSignature() (string, error) {
+	if self.options.ApprovalKeyFile == "" {
+		return self.options.ApprovalSignature, nil
+	}
+	private, err := loadProductionApprovalKey(self.config, self.options.ApprovalKeyFile)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(ed25519.Sign(private, self.message)), nil
 }
 
 // The envelope stores exactly this canonical spelling, so it is required here.
@@ -384,11 +430,15 @@ func (self *releaseActivationSetup) completeProduction(ctx context.Context, prep
 		return err
 	}
 	successor.print(self.output)
-	if options.ApprovalSignature == "" {
+	signature, err := successor.approvalSignature()
+	if err != nil {
+		return err
+	}
+	if signature == "" {
 		fmt.Fprintf(self.output, "waiting: sign exactly the 32 signing-message bytes with the approval key, then re-run with --approval-signature=<128 hex> --apply\n")
 		return nil
 	}
-	if _, err := successor.publish(ctx, options.ApprovalSignature); err != nil {
+	if _, err := successor.publish(ctx, signature); err != nil {
 		return err
 	}
 	fmt.Fprintf(self.output, "configuration: successor written to %s; the signed original %s is unchanged\n", options.RenderedConfigPath, self.configPath)

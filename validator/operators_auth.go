@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/docopt/docopt-go"
@@ -21,13 +22,25 @@ import (
 
 // Where auth signs in and where it writes the network JWT.
 type authTarget struct {
-	apiUrl  string
-	jwtPath string
+	apiUrl         string
+	jwtPath        string
+	hotkeySeedFile string
+	expectedHotkey [32]byte
 }
 
 // A domain becomes a path only after the list names it, so an unlisted value
 // never selects a directory.
 func authTargetFromOpts(ctx context.Context, opts docopt.Opts) (authTarget, error) {
+	if configPath, provided := opts["--config"].(string); provided {
+		if strings.TrimSpace(configPath) == "" {
+			return authTarget{}, errors.New("--config requires a nonempty path")
+		}
+		noIds := optStringList(opts, "--no_id")
+		if len(noIds) != 1 {
+			return authTarget{}, errors.New("configured authentication requires exactly one --no_id")
+		}
+		return configuredAuthTarget(configPath, noIds[0])
+	}
 	domain := optString(opts, "--operator", "")
 	if domain == "" {
 		jwtPath, err := networkJwtPath()
@@ -50,6 +63,33 @@ func authTargetFromOpts(ctx context.Context, opts docopt.Opts) (authTarget, erro
 		return authTarget{}, fmt.Errorf("operator %q is not in the operator list from %s", domain, listUrl)
 	}
 	return authTarget{apiUrl: operator.ApiUrl, jwtPath: filepath.Join(operatorlist.DomainStateDir(stateDir, operator.Domain), "jwt")}, nil
+}
+
+// Production authentication uses only the configured endpoint, key and token
+// path. A directory-list observation can never enroll another production NO.
+func configuredAuthTarget(configPath, rawNoId string) (authTarget, error) {
+	noId, err := strconv.ParseUint(rawNoId, 10, 64)
+	if err != nil || noId == 0 {
+		return authTarget{}, errors.New("--no_id must name a positive configured operator id")
+	}
+	cfg, err := loadReleaseBootstrapCommandConfig(configPath)
+	if err != nil {
+		return authTarget{}, err
+	}
+	var expectedHotkey [32]byte
+	if isOwnerRecycleProductionConfig(cfg) {
+		approved, err := ownerRecycleProductionApproval(cfg)
+		if err != nil {
+			return authTarget{}, err
+		}
+		expectedHotkey = approved.Approval.ValidatorHotkey
+	}
+	for _, operator := range cfg.Operators {
+		if operator.NoID == noId {
+			return authTarget{apiUrl: operator.APIURL, jwtPath: operator.NetworkJWTFile, hotkeySeedFile: cfg.HotkeySeedFile, expectedHotkey: expectedHotkey}, nil
+		}
+	}
+	return authTarget{}, fmt.Errorf("--no_id=%d is not a configured operator", noId)
 }
 
 // The measurement runner's --state_dir resolution.

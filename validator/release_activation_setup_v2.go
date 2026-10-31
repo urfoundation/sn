@@ -838,6 +838,11 @@ func RunReleaseActivation(ctx context.Context, options ReleaseActivationOptions)
 		if err := validateReleaseProductionSuccessorPaths(setup.cfg, options.ConfigPath, *options.Successor); err != nil {
 			return err
 		}
+		if options.Successor.ApprovalKeyFile != "" {
+			if _, err := loadProductionApprovalKey(setup.cfg, options.Successor.ApprovalKeyFile); err != nil {
+				return err
+			}
+		}
 	}
 	prepared, encoded, err := setup.loadOrPrepare(ctx, options.Apply)
 	if err != nil || prepared == nil {

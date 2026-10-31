@@ -68,7 +68,7 @@ func takeCommand(opts docopt.Opts) {
 
 // Read only: status needs neither the coldkey nor the journal.
 func runTakeStatus(opts docopt.Opts, output io.Writer) error {
-	cfg, err := LoadReleaseConfigPreActivation(optString(opts, "--config", ""))
+	cfg, err := loadReleaseBootstrapCommandConfig(optString(opts, "--config", ""))
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func runTakeStatus(opts docopt.Opts, output io.Writer) error {
 // Follows runStakeAdd: owner custody, journal, release hotkey, coldkey seed,
 // then the pinned native endpoint.
 func runTakeChange(opts docopt.Opts, command string, output io.Writer) error {
-	cfg, err := LoadReleaseConfigPreActivation(optString(opts, "--config", ""))
+	cfg, err := loadReleaseBootstrapCommandConfig(optString(opts, "--config", ""))
 	if err != nil {
 		return err
 	}

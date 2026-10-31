@@ -85,8 +85,9 @@ Usage:
     validator auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>] | --hotkey_seed_file=<path>) [-f]
         [--api_url=<api_url> | --operator=<domain> [--operators-url=<url>] [--state_dir=<path>]]
         [-v...]
+    validator auth --config=<path> --no_id=<id> [-f] [-v...]
     validator init (--config=<path> | --state_dir=<path> [--hotkey_seed_file=<path>] [--no_id=<id>]...)
-        [-v...]
+        [--approval-key-file=<path>] [-v...]
     validator register --config=<path> --coldkey_seed_file=<path>
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [--burn_limit_rao=<n>] [--fee_limit_rao=<n>] [--apply | --dry-run]
@@ -106,7 +107,7 @@ Usage:
         [--fee_limit_rao=<n>] [--apply | --dry-run]
         [-v...]
     validator activate --config=<path> [--relayer_key_file=<path>] [--apply | --dry-run]
-        [--rendered-config=<path> --successor-approval=<path> --original-authority=<path> [--approval-signature=<hex>]]
+        [--rendered-config=<path> --successor-approval=<path> --original-authority=<path> [(--approval-signature=<hex> | --approval-key-file=<path>)]]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
     validator run [--config=<path>] [--progress-file=<path>]
@@ -146,6 +147,10 @@ Options:
                                  approvals, challenges and demands. Without it none is sent.
     --ledger_max_bytes=<n>       Ledger objects new to custody that the settlement v2 audit fetches
                                  per root, in bytes; raised operationally [default: 2147483648].
+    --approval-key-file=<path>   Private raw32 or bare64-hex Ed25519 seed for the configured approval
+                                 signer. Signs activation's exact successor message; never copied into
+                                 the rendered configuration. init creates a private raw seed if absent,
+                                 otherwise reuses it. May be removed before the daemon runs.
     --steering-operation-timeout=<duration>  Finite whole preparation and submission budget,
                                  including public replay. Omitted: runtime settings default.
                                  Must be at least 5m; does not change the signed configuration,
@@ -195,6 +200,8 @@ Options:
     --dry-run                    Explicit dry run (the default).
     --no_id=<id>                 With init --state_dir, create <state_dir>/no-<id>/client.key for each
                                  operator; without any, create the flag-mode <state_dir>/.validator.key.
+                                 With auth --config, select exactly one configured operator and write
+                                 its network_jwt_file using the config's hotkey seed.
     --connect_url=<connect_url>  Custom connect (platform transport) URL.
     --measurement-only          Measure one operator using the flag options; never steers.
     --all-operators              Measure every operator in the operator list, each with its own state
@@ -400,7 +407,16 @@ func confirmAuthTarget(ctx context.Context, opts docopt.Opts, input io.Reader, o
 func writeAuthJwt(ctx context.Context, opts docopt.Opts, target authTarget, output io.Writer) error {
 	var byJwt string
 	var err error
-	if hotkeySeedFile := authHotkeySeedFile(opts); hotkeySeedFile != "" {
+	if target.hotkeySeedFile != "" {
+		hotkey, loadErr := loadOperatorHotkey(target.hotkeySeedFile)
+		if loadErr != nil {
+			return loadErr
+		}
+		if target.expectedHotkey != ([32]byte{}) && hotkey.PublicKey() != target.expectedHotkey {
+			return errors.New("configured authentication hotkey differs from the approved production signer")
+		}
+		byJwt, err = hotkeySignInJwt(ctx, target.apiUrl, hotkey)
+	} else if hotkeySeedFile := authHotkeySeedFile(opts); hotkeySeedFile != "" {
 		byJwt, err = hotkeyAuthJwt(ctx, target.apiUrl, hotkeySeedFile)
 	} else {
 		byJwt, err = loginNetworkJwt(ctx, opts, target.apiUrl, output)

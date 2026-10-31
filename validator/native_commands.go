@@ -109,8 +109,24 @@ func initCommand(opts docopt.Opts) {
 }
 
 func runInit(opts docopt.Opts, output *os.File) error {
+	approvalPath, approvalProvided := opts["--approval-key-file"].(string)
+	if approvalProvided && strings.TrimSpace(approvalPath) == "" {
+		return errors.New("--approval-key-file requires a nonempty path")
+	}
+	if err := initValidatorSeeds(opts, output); err != nil {
+		return err
+	}
+	if approvalProvided {
+		return initApprovalKeySeed(expandHome(approvalPath), output)
+	}
+	return nil
+}
+
+// Provision selected seed files only, not a daemon storage layout. Existing
+// identities are checked and never replaced.
+func initValidatorSeeds(opts docopt.Opts, output *os.File) error {
 	if configPath := optString(opts, "--config", ""); configPath != "" {
-		cfg, err := LoadReleaseConfigPreActivation(configPath)
+		cfg, err := loadReleaseBootstrapCommandConfig(configPath)
 		if err != nil {
 			return err
 		}
@@ -156,6 +172,29 @@ func runInit(opts docopt.Opts, output *os.File) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// Existing raw or hex approval seeds retain their bytes. Only a missing path
+// enters the same durable, non-replacing private raw-seed creator as init keys.
+func initApprovalKeySeed(path string, output *os.File) error {
+	private, err := loadApprovalKeyFile(path)
+	created := false
+	if errors.Is(err, os.ErrNotExist) {
+		var seed [32]byte
+		seed, created, err = crv4.LoadOrCreateRawSeedFile(path)
+		if err == nil {
+			private = ed25519.NewKeyFromSeed(seed[:])
+		}
+	}
+	if err != nil {
+		return err
+	}
+	state := "existing"
+	if created {
+		state = "created"
+	}
+	fmt.Fprintf(output, "approval key seed: %s (%s, mode 0600)\napproval signer: 0x%x\n", path, state, private.Public().(ed25519.PublicKey))
 	return nil
 }
 
@@ -213,7 +252,7 @@ func registerCommand(opts docopt.Opts) {
 }
 
 func runRegister(opts docopt.Opts) error {
-	cfg, err := LoadReleaseConfigPreActivation(optString(opts, "--config", ""))
+	cfg, err := loadReleaseBootstrapCommandConfig(optString(opts, "--config", ""))
 	if err != nil {
 		return err
 	}
@@ -253,7 +292,7 @@ func stakeAddCommand(opts docopt.Opts) {
 }
 
 func runStakeAdd(opts docopt.Opts) error {
-	cfg, err := LoadReleaseConfigPreActivation(optString(opts, "--config", ""))
+	cfg, err := loadReleaseBootstrapCommandConfig(optString(opts, "--config", ""))
 	if err != nil {
 		return err
 	}
@@ -325,6 +364,8 @@ func releaseProductionSuccessorOptionsFromOpts(opts docopt.Opts) *ReleaseProduct
 		RenderedConfigPath: optString(opts, "--rendered-config", ""), SuccessorApprovalPath: optString(opts, "--successor-approval", ""),
 		OriginalAuthorityPath: optString(opts, "--original-authority", ""), ApprovalSignature: optString(opts, "--approval-signature", ""),
 	}
+	successor.ApprovalKeyFile, successor.approvalKeyProvided = opts["--approval-key-file"].(string)
+	successor.ApprovalKeyFile = expandHome(successor.ApprovalKeyFile)
 	if successor == (ReleaseProductionSuccessorOptions{}) {
 		return nil
 	}
@@ -337,7 +378,7 @@ func releaseProductionSuccessorOptionsFromOpts(opts docopt.Opts) *ReleaseProduct
 // registration (UID, permit, stake) and the activation setup state. Chain
 // failures are reported, not fatal, so status stays usable offline.
 func statusRelease(configPath string) {
-	cfg, err := LoadReleaseConfigPreActivation(configPath)
+	cfg, err := loadReleaseBootstrapCommandConfig(configPath)
 	if err != nil {
 		panic(err)
 	}
