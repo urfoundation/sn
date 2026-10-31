@@ -290,9 +290,15 @@ All of this is from read-only EXPLAINs and stats on main.
 
   Both are rebased onto f45365d84 with no change to the tested files. The model
   suite passed again on gate containers (832 s).
-- **Deployment:** it ships in the owner-approved cohort-rotation release, run
-  by the play-webhook-monitoring-fix session: migrate 902, then api, then alt,
-  then a taskworker built from main at 7720f0deb or later. The fix is live once
-  that taskworker is deployed, which must happen before 2026-11-06 about 18:00Z.
+- **Deployed 2026-10-31:** shipped in the owner-approved cohort-rotation
+  release:
+  - migrate 902 at 06:37:40Z;
+  - api 1086286270 at 06:45Z;
+  - alt 1086288290 at 06:47Z;
+  - **taskworker `2026.10.31-outerwerld-1086289460`** (server 7720f0deb) on g1
+    and g2 at 06:49Z.
+
+  The image binary's vcs.revision is 7720f0deb, unmodified, and it contains the
+  whole-window read.
 - **On 11-06:** watch the epoch-4 read (log line, duration, horizon age).
 - **This document:** in sn main.
