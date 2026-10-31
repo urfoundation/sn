@@ -19,6 +19,7 @@ import (
 
 	"github.com/urfoundation/sn/internal/durablepath"
 	"github.com/urnetwork/connect/durablevolume"
+	"golang.org/x/sys/unix"
 )
 
 const validatorStoragePrepareUsage = `Usage:
@@ -39,6 +40,10 @@ Reserve defaults:100GiB and100000inodes. Flags select reserve floors, not quotas
 plan stages original empty ledgers and returns the public accepted-plan input.
 apply takes that exact plan and publishes the prepared daemon declaration.
 `
+
+// Only the synchronous request creator's directory-sync boundary is injectable;
+// neither request contents nor a successful publication result can be supplied.
+type validatorStorageRequestSyncKey struct{}
 
 // Return the usual CLI exit status while preserving cancellation and diagnostics.
 func runValidatorStoragePrepare(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -86,7 +91,7 @@ func runValidatorStoragePrepare(ctx context.Context, args []string, stdout, stde
 }
 
 // Observe the explicit fresh root and generate only public preparation inputs.
-func createValidatorStorageRequest(ctx context.Context, args []string, stderr io.Writer) (durablevolume.Reference, error) {
+func createValidatorStorageRequest(ctx context.Context, args []string, stderr io.Writer) (result durablevolume.Reference, resultErr error) {
 	var none durablevolume.Reference
 	flags := flag.NewFlagSet("validator storage-prepare request", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -149,7 +154,12 @@ func createValidatorStorageRequest(ctx context.Context, args []string, stderr io
 	if err != nil {
 		return none, err
 	}
-	defer directory.Close()
+	defer func() {
+		resultErr = errors.Join(resultErr, directory.Close())
+		if resultErr != nil {
+			result = none
+		}
+	}()
 	if err := attemptPreparationPrivate(directory, true); err != nil {
 		return none, err
 	}
@@ -166,6 +176,19 @@ func createValidatorStorageRequest(ctx context.Context, args []string, stderr io
 		return none, errors.New("cannot observe fresh runtime root inode")
 	}
 	metadata := filepath.Dir(*out)
+	metadataDirectory, err := openAttemptPrivateDirectoryFile(metadata)
+	if err != nil {
+		return none, err
+	}
+	defer func() {
+		resultErr = errors.Join(resultErr, metadataDirectory.Close())
+		if resultErr != nil {
+			result = none
+		}
+	}()
+	if err := attemptPreparationPrivate(metadataDirectory, true); err != nil {
+		return none, err
+	}
 	fencePath := *out + ".fresh.json"
 	fence := durablevolume.PreparationFence{Schema: "urnetwork-storage-preparation-fence-v1", RootPath: *root, RootInode: physical.Ino,
 		Purpose: "fresh", FormerWritersStopped: true, NoPreviousOwnerState: true,
@@ -190,7 +213,7 @@ func createValidatorStorageRequest(ctx context.Context, args []string, stderr io
 	if err != nil {
 		return none, err
 	}
-	if err := os.Mkdir(request.StagingDirectory, 0o700); err != nil {
+	if err := unix.Mkdirat(int(metadataDirectory.Fd()), filepath.Base(request.StagingDirectory), 0o700); err != nil {
 		return none, err
 	}
 	// Neither input is replaced on retry. Retain the exact original files once
@@ -199,10 +222,11 @@ func createValidatorStorageRequest(ctx context.Context, args []string, stderr io
 		path string
 		raw  []byte
 	}{{path: fencePath, raw: fenceRaw}, {path: *out, raw: raw}} {
-		output, err := os.OpenFile(file.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		fd, err := unix.Openat(int(metadataDirectory.Fd()), filepath.Base(file.path), unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0o600)
 		if err != nil {
 			return none, err
 		}
+		output := os.NewFile(uintptr(fd), file.path)
 		n, writeErr := output.Write(file.raw)
 		if n != len(file.raw) && writeErr == nil {
 			writeErr = io.ErrShortWrite
@@ -210,6 +234,17 @@ func createValidatorStorageRequest(ctx context.Context, args []string, stderr io
 		if err := errors.Join(writeErr, output.Sync(), output.Close()); err != nil {
 			return none, err
 		}
+	}
+	// File fsync does not persist the new names. Sync their retained parent
+	// only after both complete files and the staging directory exist.
+	var syncErr error
+	if syncDirectory, ok := ctx.Value(validatorStorageRequestSyncKey{}).(func(*os.File) error); ok {
+		syncErr = syncDirectory(metadataDirectory)
+	} else {
+		syncErr = metadataDirectory.Sync()
+	}
+	if syncErr != nil {
+		return none, syncErr
 	}
 	if err := ctx.Err(); err != nil {
 		return none, err
