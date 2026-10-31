@@ -56,8 +56,9 @@ cd "$evm_repo"
 # sim-testnet. The coordinator root traverses immutable custody, proxy libraries,
 # and runtime-precompile interfaces. The fleet batcher, disposable precompile
 # probe, hostile governance-drill implementation, immutable validator evidence
-# journal, settlement v2 coordinator, immutable settlement v2 vault and its
-# optional claim batcher are separate deployment roots analyzed independently.
+# journal, settlement v2 coordinator and its phase C upgrade, immutable
+# settlement v2 vault and its optional claim batcher are separate deployment
+# roots analyzed independently.
 # The settlement v2 ledger sum tree library is analyzed as a root of its own.
 contracts=(
   src/STCoordinator.sol
@@ -67,6 +68,7 @@ contracts=(
   src/testnet/STCoordinatorAdversary.sol
   src/LedgerTree.sol
   src/STSettlement2.sol
+  src/STSettlement2PhaseC.sol
   src/STSettlementVault2.sol
   src/STClaimBatcher.sol
 )
@@ -114,8 +116,30 @@ if ! FOUNDRY_OUT="$slither_foundry_out" FOUNDRY_CACHE_PATH="$slither_foundry_cac
   failed+=(layout/STSettlement2.json)
 fi
 
+# The phase C upgrade (VERSION2-FINAL.md §16) is pinned the same way, with the
+# compiler's ids also dropped from its struct's members and type names. It must
+# keep every STSettlement2 entry in place and declare its own only past the
+# end of STSettlement2's gap.
+phase_c_filter='def strip: if type == "string" then gsub("t_struct\\((?<n>[A-Za-z0-9_]+)\\)[0-9]+_storage"; "t_struct(\(.n))_storage") else . end;
+  def walkall: if type == "object" then with_entries(.key |= strip | .value |= walkall) elif type == "array" then map(walkall) else strip end;
+  del(.storage[].astId, .types[].members[]?.astId) | walkall'
+phase_c_layout="$(FOUNDRY_OUT="$slither_foundry_out" FOUNDRY_CACHE_PATH="$slither_foundry_cache" \
+  forge inspect STSettlement2PhaseC storageLayout --json | jq -S "$phase_c_filter")" || phase_c_layout=""
+if ! diff -u layout/STSettlement2PhaseC.json - <<<"$phase_c_layout"; then
+  echo "STSettlement2PhaseC storage layout differs from layout/STSettlement2PhaseC.json" >&2
+  failed+=(layout/STSettlement2PhaseC.json)
+elif ! jq -e --slurpfile base layout/STSettlement2.json '
+  ($base[0].storage | map({label, slot, offset, type})) as $kept
+  | ($base[0].storage[-1] | (.slot | tonumber) + (($base[0].types[.type].numberOfBytes | tonumber) / 32)) as $free
+  | (.storage | map({label, slot, offset, type})) as $all
+  | $all[0:($kept | length)] == $kept and ([$all[($kept | length):][] | (.slot | tonumber) >= $free] | all)' \
+  <<<"$phase_c_layout" >/dev/null; then
+  echo "STSettlement2PhaseC storage layout does not extend STSettlement2's past its gap" >&2
+  failed+=(layout/STSettlement2PhaseC.json)
+fi
+
 if (( ${#failed[@]} != 0 )); then
   echo "release Solidity static gate failed for: ${failed[*]}" >&2
   exit 1
 fi
-echo "release Solidity static gate passed for all ${#contracts[@]} deployable roots (Slither 0.11.6; no high/medium findings; STSettlement2 storage layout pinned)"
+echo "release Solidity static gate passed for all ${#contracts[@]} deployable roots (Slither 0.11.6; no high/medium findings; STSettlement2 and STSettlement2PhaseC storage layouts pinned)"

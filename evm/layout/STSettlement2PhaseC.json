@@ -1,0 +1,190 @@
+{
+  "storage": [
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "v1Coordinator",
+      "offset": 0,
+      "slot": "0",
+      "type": "t_address"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "vault",
+      "offset": 0,
+      "slot": "1",
+      "type": "t_address"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "_auditors",
+      "offset": 0,
+      "slot": "2",
+      "type": "t_array(t_address)dyn_storage"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "quorum",
+      "offset": 0,
+      "slot": "3",
+      "type": "t_uint256"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "auditorSetVersion",
+      "offset": 0,
+      "slot": "4",
+      "type": "t_uint64"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "_approvalCount",
+      "offset": 0,
+      "slot": "5",
+      "type": "t_mapping(t_uint256,t_mapping(t_uint64,t_mapping(t_uint64,t_uint256)))"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "_approved",
+      "offset": 0,
+      "slot": "6",
+      "type": "t_mapping(t_uint256,t_mapping(t_uint64,t_mapping(t_uint64,t_mapping(t_address,t_bool))))"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "__gap",
+      "offset": 0,
+      "slot": "7",
+      "type": "t_array(t_uint256)43_storage"
+    },
+    {
+      "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+      "label": "_v1Sweeps",
+      "offset": 0,
+      "slot": "50",
+      "type": "t_mapping(t_uint256,t_struct(V1Sweep)_storage)"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_array(t_address)dyn_storage": {
+      "base": "t_address",
+      "encoding": "dynamic_array",
+      "label": "address[]",
+      "numberOfBytes": "32"
+    },
+    "t_array(t_uint256)43_storage": {
+      "base": "t_uint256",
+      "encoding": "inplace",
+      "label": "uint256[43]",
+      "numberOfBytes": "1376"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_mapping(t_address,t_bool)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => bool)",
+      "numberOfBytes": "32",
+      "value": "t_bool"
+    },
+    "t_mapping(t_uint256,t_mapping(t_uint64,t_mapping(t_uint64,t_mapping(t_address,t_bool))))": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => mapping(uint64 => mapping(uint64 => mapping(address => bool))))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_uint64,t_mapping(t_uint64,t_mapping(t_address,t_bool)))"
+    },
+    "t_mapping(t_uint256,t_mapping(t_uint64,t_mapping(t_uint64,t_uint256)))": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => mapping(uint64 => mapping(uint64 => uint256)))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_uint64,t_mapping(t_uint64,t_uint256))"
+    },
+    "t_mapping(t_uint256,t_struct(V1Sweep)_storage)": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => struct STSettlement2PhaseC.V1Sweep)",
+      "numberOfBytes": "32",
+      "value": "t_struct(V1Sweep)_storage"
+    },
+    "t_mapping(t_uint64,t_mapping(t_address,t_bool))": {
+      "encoding": "mapping",
+      "key": "t_uint64",
+      "label": "mapping(uint64 => mapping(address => bool))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_bool)"
+    },
+    "t_mapping(t_uint64,t_mapping(t_uint64,t_mapping(t_address,t_bool)))": {
+      "encoding": "mapping",
+      "key": "t_uint64",
+      "label": "mapping(uint64 => mapping(uint64 => mapping(address => bool)))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_uint64,t_mapping(t_address,t_bool))"
+    },
+    "t_mapping(t_uint64,t_mapping(t_uint64,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_uint64",
+      "label": "mapping(uint64 => mapping(uint64 => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_uint64,t_uint256)"
+    },
+    "t_mapping(t_uint64,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_uint64",
+      "label": "mapping(uint64 => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_struct(V1Sweep)_storage": {
+      "encoding": "inplace",
+      "label": "struct STSettlement2PhaseC.V1Sweep",
+      "members": [
+        {
+          "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+          "label": "epoch",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_uint64"
+        },
+        {
+          "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+          "label": "payoutRoot",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_bytes32"
+        },
+        {
+          "contract": "src/STSettlement2PhaseC.sol:STSettlement2PhaseC",
+          "label": "artifactHash",
+          "offset": 0,
+          "slot": "2",
+          "type": "t_bytes32"
+        }
+      ],
+      "numberOfBytes": "96"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint64": {
+      "encoding": "inplace",
+      "label": "uint64",
+      "numberOfBytes": "8"
+    }
+  }
+}
