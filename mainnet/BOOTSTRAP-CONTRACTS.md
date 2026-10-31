@@ -1091,3 +1091,44 @@ Safe transaction first changes the hash, so review again.
 `mainnet/evm_v2_upgrade_test.go` runs both transactions through the pinned
 Safe 1.4.1 SafeL2 on the e2e chain (UP-1 to UP-3). R-8 runs the creation and
 the upgrade on the rehearsal runtime (`scripts/runtime-rehearsal/README.md`).
+
+After the upgrade, the Safe makes the sweep's two owner calls the same way:
+
+- `recordV1Sweep(noId, E, artifactHash)` once the single-leaf v1 root is
+  committed;
+- `assignSurplus(noId, k, amount)` once `absorbStake` has made the swept stake
+  vault2 surplus. `k` is the pool's next unfunded epoch; this is before epoch
+  `k`'s close.
+
+`owner-call-settlement2 review` builds each one. It neither signs nor sends:
+
+```sh
+sn-mainnet owner-call-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --no-id 1 --epoch "$E" --function recordV1Sweep --artifact-hash "$ARTIFACT_HASH"
+sn-mainnet owner-call-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --no-id 1 --epoch "$K" --function assignSurplus --amount "$AMOUNT_RAO"
+```
+
+Before signing, it checks the call against the chain at one head. It refuses
+with exit 3:
+
+- a proxy that does not run the phase C implementation;
+- a pool vault2 does not hold.
+
+For a record, it also refuses:
+
+- a pool that already records its sweep;
+- an epoch before the pool's first v2 epoch;
+- a committed v1 root other than `payoutLeaf(vault2.selfColdkey(), 10000)`;
+- another artifact hash.
+
+For an assignment, it also refuses:
+
+- an epoch other than `lastFundedEpoch + 1`;
+- an amount above `liveEscrowStake − escrowAccounted`.
+
+It then builds the Safe transaction and the owner's `execTransaction` as
+`upgrade-settlement2 review` does, and preflights them from the owner. It
+prints the facts it checked under `chain`.
+`mainnet/evm_v2_owner_call_test.go` (UP-4) records and assigns through the
+pinned Safe on the e2e chain.

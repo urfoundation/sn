@@ -430,20 +430,149 @@ func upgradeView(ctx context.Context, chain *upgradeChain, to common.Address, co
 	return values, nil
 }
 
-func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade settlement2Upgrade) (settlement2UpgradeReview, error) {
-	var result settlement2UpgradeReview
+// openUpgradeChain requires EVM chain 964 and pins every later read to its head.
+func openUpgradeChain(ctx context.Context, client *rpcClient) (*upgradeChain, uint64, error) {
 	var chainId hexutil.Uint64
 	if err := client.callUpgradeRead(ctx, "eth_chainId", []any{}, &chainId); err != nil {
-		return result, err
+		return nil, 0, err
 	}
 	if chainId != mainnetEvmChainId {
-		return result, upgradeRefusal("the RPC is not EVM chain 964")
+		return nil, 0, upgradeRefusal("the RPC is not EVM chain 964")
 	}
 	var head hexutil.Uint64
 	if err := client.callUpgradeRead(ctx, "eth_blockNumber", []any{}, &head); err != nil {
+		return nil, 0, err
+	}
+	return &upgradeChain{client: client, head: hexutil.EncodeUint64(uint64(head))}, uint64(head), nil
+}
+
+// readSettlement2Proxy requires the Safe to own the proxy and returns the
+// proxy's current implementation, which must exist.
+func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement, safe common.Address) (common.Address, error) {
+	settlementAbi := stabi.NewSTSettlement2()
+	ownerOutput, err := chain.call(ctx, nil, settlement, settlementAbi.PackOwner())
+	if err != nil {
+		return common.Address{}, err
+	}
+	owner, err := settlementAbi.UnpackOwner(ownerOutput)
+	if err != nil {
+		return common.Address{}, upgradeRefusal(fmt.Sprintf("owner() of %s answered 0x%x", settlement.Hex(), ownerOutput))
+	}
+	if owner != safe {
+		return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe", owner.Hex()))
+	}
+	slot, err := chain.word(ctx, settlement, common.HexToHash(contractImplementationSlot))
+	if err != nil {
+		return common.Address{}, err
+	}
+	current := common.BytesToAddress(slot.Bytes())
+	if current == (common.Address{}) {
+		return common.Address{}, upgradeRefusal("the proxy has no implementation: it is not the STSettlement2 proxy")
+	}
+	return current, nil
+}
+
+// readUpgradeSafe requires a Safe 1.4.1 with one owner at threshold one, no
+// modules and no guard, and returns it with its owner and nonce.
+func readUpgradeSafe(ctx context.Context, chain *upgradeChain, address common.Address) (settlement2UpgradeSafe, common.Address, *big.Int, error) {
+	safe := settlement2UpgradeSafe{Address: address.Hex(), Modules: []string{}}
+	values, err := upgradeView(ctx, chain, address, upgradeSafeAbi, "VERSION")
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	safe.Version = values[0].(string)
+	values, err = upgradeView(ctx, chain, address, upgradeSafeAbi, "getThreshold")
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	threshold := values[0].(*big.Int)
+	values, err = upgradeView(ctx, chain, address, upgradeSafeAbi, "getOwners")
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	owners := values[0].([]common.Address)
+	values, err = upgradeView(ctx, chain, address, upgradeSafeAbi, "nonce")
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	nonce := values[0].(*big.Int)
+	values, err = upgradeView(ctx, chain, address, upgradeSafeAbi, "getModulesPaginated", upgradeModulesSentinel, big.NewInt(10))
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	modules := values[0].([]common.Address)
+	guard, err := chain.word(ctx, address, upgradeSafeGuardSlot)
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	handler, err := chain.word(ctx, address, upgradeSafeFallbackSlot)
+	if err != nil {
+		return safe, common.Address{}, nil, err
+	}
+	switch {
+	case safe.Version != upgradeSafeVersion:
+		return safe, common.Address{}, nil, upgradeRefusal(fmt.Sprintf("the Safe runs version %q, not %s", safe.Version, upgradeSafeVersion))
+	case threshold.Cmp(common.Big1) != 0 || len(owners) != 1:
+		return safe, common.Address{}, nil, upgradeRefusal(fmt.Sprintf("the Safe has threshold %s of %d owners, not one of one", threshold, len(owners)))
+	case len(modules) != 0:
+		return safe, common.Address{}, nil, upgradeRefusal(fmt.Sprintf("the Safe has %d modules", len(modules)))
+	case guard != (common.Hash{}):
+		return safe, common.Address{}, nil, upgradeRefusal("the Safe has a transaction guard")
+	}
+	safe.Threshold, safe.Owners, safe.Nonce = threshold.Uint64(), []string{owners[0].Hex()}, nonce.String()
+	safe.Guard, safe.FallbackHandler = common.Address{}.Hex(), common.BytesToAddress(handler.Bytes()).Hex()
+	return safe, owners[0], nonce, nil
+}
+
+// buildOwnerSafeCall builds the Safe's call of data on `to`, at the Safe's
+// nonce with no refund, which the Safe must hash identically, and the owner's
+// execTransaction of it.
+func buildOwnerSafeCall(ctx context.Context, chain *upgradeChain, safe, owner common.Address, nonce *big.Int, to common.Address, data []byte, function string, args map[string]string) (settlement2UpgradeSafeTx, settlement2UpgradeOwnerTx, []byte, error) {
+	tx := safeTransaction{To: to, Value: new(big.Int), Data: data, SafeTxGas: new(big.Int), BaseGas: new(big.Int), GasPrice: new(big.Int), Nonce: nonce}
+	domain, message, hash := safeTransactionHash(mainnetEvmChainId, safe, tx)
+	values, err := upgradeView(ctx, chain, safe, upgradeSafeAbi, "getTransactionHash", tx.To, tx.Value, tx.Data, tx.Operation, tx.SafeTxGas, tx.BaseGas, tx.GasPrice, tx.GasToken, tx.RefundReceiver, tx.Nonce)
+	if err != nil {
+		return settlement2UpgradeSafeTx{}, settlement2UpgradeOwnerTx{}, nil, err
+	}
+	if values[0].([32]byte) != hash {
+		return settlement2UpgradeSafeTx{}, settlement2UpgradeOwnerTx{}, nil, upgradeRefusal(fmt.Sprintf("the Safe hashes the transaction as %x, not %s", values[0], hash.Hex()))
+	}
+	signature := upgradeOwnerSignature(owner)
+	execData, err := upgradeSafeAbi.Pack("execTransaction", tx.To, tx.Value, tx.Data, tx.Operation, tx.SafeTxGas, tx.BaseGas, tx.GasPrice, tx.GasToken, tx.RefundReceiver, signature)
+	if err != nil {
+		return settlement2UpgradeSafeTx{}, settlement2UpgradeOwnerTx{}, nil, err
+	}
+	zero := common.Address{}.Hex()
+	return settlement2UpgradeSafeTx{
+		To: tx.To.Hex(), ValueWei: "0", Data: hexutil.Encode(tx.Data), Operation: tx.Operation, SafeTxGas: "0", BaseGas: "0", GasPrice: "0",
+		GasToken: zero, RefundReceiver: zero, Nonce: nonce.String(), Function: function, Args: args,
+		DomainSeparator: domain.Hex(), MessageHash: message.Hex(), SafeTxHash: hash.Hex(),
+	}, settlement2UpgradeOwnerTx{
+		From: owner.Hex(), To: safe.Hex(), ValueWei: "0", Data: hexutil.Encode(execData), DataKeccak: crypto.Keccak256Hash(execData).Hex(),
+		Function: "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)", Signature: hexutil.Encode(signature),
+	}, execData, nil
+}
+
+// preflightOwnerCall runs the owner's execTransaction as an eth_call from the
+// owner; it must return true.
+func preflightOwnerCall(ctx context.Context, chain *upgradeChain, owner, safe common.Address, execData []byte) error {
+	output, err := chain.call(ctx, &owner, safe, execData)
+	if err != nil {
+		return err
+	}
+	success, unpackErr := upgradeSafeAbi.Unpack("execTransaction", output)
+	if unpackErr != nil || len(success) != 1 || success[0] != true {
+		return upgradeRefusal(fmt.Sprintf("the owner's execTransaction answered 0x%x, not true", output))
+	}
+	return nil
+}
+
+func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade settlement2Upgrade) (settlement2UpgradeReview, error) {
+	var result settlement2UpgradeReview
+	chain, head, err := openUpgradeChain(ctx, client)
+	if err != nil {
 		return result, err
 	}
-	chain := &upgradeChain{client: client, head: hexutil.EncodeUint64(uint64(head))}
 
 	// The factory and the implementation it creates.
 	factory, err := chain.code(ctx, upgradeCreate2Factory)
@@ -465,92 +594,23 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 	createData := append(upgrade.salt.Bytes(), upgrade.artifact.creation...)
 
 	// The proxy: owned by the Safe, not yet on the implementation.
-	settlementAbi := stabi.NewSTSettlement2()
-	ownerOutput, err := chain.call(ctx, nil, upgrade.settlement, settlementAbi.PackOwner())
+	current, err := readSettlement2Proxy(ctx, chain, upgrade.settlement, upgrade.safe)
 	if err != nil {
 		return result, err
 	}
-	owner, err := settlementAbi.UnpackOwner(ownerOutput)
-	if err != nil {
-		return result, upgradeRefusal(fmt.Sprintf("owner() of %s answered 0x%x", upgrade.settlement.Hex(), ownerOutput))
-	}
-	if owner != upgrade.safe {
-		return result, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe", owner.Hex()))
-	}
-	slot, err := chain.word(ctx, upgrade.settlement, common.HexToHash(contractImplementationSlot))
-	if err != nil {
-		return result, err
-	}
-	current := common.BytesToAddress(slot.Bytes())
 	if current == implementation {
 		return result, upgradeRefusal("the proxy already runs the phase C implementation")
 	}
-	if current == (common.Address{}) {
-		return result, upgradeRefusal("the proxy has no implementation: it is not the STSettlement2 proxy")
-	}
-
-	// The Safe: 1.4.1, one owner, threshold one, no modules and no guard.
-	safe := settlement2UpgradeSafe{Address: upgrade.safe.Hex(), Modules: []string{}}
-	values, err := upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "VERSION")
+	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, upgrade.safe)
 	if err != nil {
 		return result, err
 	}
-	safe.Version = values[0].(string)
-	values, err = upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "getThreshold")
-	if err != nil {
-		return result, err
-	}
-	threshold := values[0].(*big.Int)
-	values, err = upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "getOwners")
-	if err != nil {
-		return result, err
-	}
-	owners := values[0].([]common.Address)
-	values, err = upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "nonce")
-	if err != nil {
-		return result, err
-	}
-	nonce := values[0].(*big.Int)
-	values, err = upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "getModulesPaginated", upgradeModulesSentinel, big.NewInt(10))
-	if err != nil {
-		return result, err
-	}
-	modules := values[0].([]common.Address)
-	guard, err := chain.word(ctx, upgrade.safe, upgradeSafeGuardSlot)
-	if err != nil {
-		return result, err
-	}
-	handler, err := chain.word(ctx, upgrade.safe, upgradeSafeFallbackSlot)
-	if err != nil {
-		return result, err
-	}
-	switch {
-	case safe.Version != upgradeSafeVersion:
-		return result, upgradeRefusal(fmt.Sprintf("the Safe runs version %q, not %s", safe.Version, upgradeSafeVersion))
-	case threshold.Cmp(common.Big1) != 0 || len(owners) != 1:
-		return result, upgradeRefusal(fmt.Sprintf("the Safe has threshold %s of %d owners, not one of one", threshold, len(owners)))
-	case len(modules) != 0:
-		return result, upgradeRefusal(fmt.Sprintf("the Safe has %d modules", len(modules)))
-	case guard != (common.Hash{}):
-		return result, upgradeRefusal("the Safe has a transaction guard")
-	}
-	safe.Threshold, safe.Owners, safe.Nonce = threshold.Uint64(), []string{owners[0].Hex()}, nonce.String()
-	safe.Guard, safe.FallbackHandler = common.Address{}.Hex(), common.BytesToAddress(handler.Bytes()).Hex()
 
 	// The Safe transaction: a call of upgradeToAndCall(implementation, 0x) on
-	// the proxy, at the Safe's nonce, with no refund. The Safe hashes it too.
-	upgradeData := settlementAbi.PackUpgradeToAndCall(implementation, []byte{})
-	tx := safeTransaction{To: upgrade.settlement, Value: new(big.Int), Data: upgradeData, SafeTxGas: new(big.Int), BaseGas: new(big.Int), GasPrice: new(big.Int), Nonce: nonce}
-	domain, message, hash := safeTransactionHash(mainnetEvmChainId, upgrade.safe, tx)
-	values, err = upgradeView(ctx, chain, upgrade.safe, upgradeSafeAbi, "getTransactionHash", tx.To, tx.Value, tx.Data, tx.Operation, tx.SafeTxGas, tx.BaseGas, tx.GasPrice, tx.GasToken, tx.RefundReceiver, tx.Nonce)
-	if err != nil {
-		return result, err
-	}
-	if values[0].([32]byte) != hash {
-		return result, upgradeRefusal(fmt.Sprintf("the Safe hashes the transaction as %x, not %s", values[0], hash.Hex()))
-	}
-	signature := upgradeOwnerSignature(owners[0])
-	execData, err := upgradeSafeAbi.Pack("execTransaction", tx.To, tx.Value, tx.Data, tx.Operation, tx.SafeTxGas, tx.BaseGas, tx.GasPrice, tx.GasToken, tx.RefundReceiver, signature)
+	// the proxy, at the Safe's nonce, with no refund.
+	upgradeData := stabi.NewSTSettlement2().PackUpgradeToAndCall(implementation, []byte{})
+	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, upgrade.safe, owner, nonce, upgrade.settlement, upgradeData,
+		"upgradeToAndCall(address,bytes)", map[string]string{"newImplementation": implementation.Hex(), "data": "0x"})
 	if err != nil {
 		return result, err
 	}
@@ -558,41 +618,27 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 	// Once the implementation exists, the owner's execTransaction must succeed.
 	preflight := settlement2UpgradePreflight{Result: "not run: the implementation does not exist yet; create it, then review again before signing"}
 	if len(created) != 0 {
-		output, err := chain.call(ctx, &owners[0], upgrade.safe, execData)
-		if err != nil {
+		if err := preflightOwnerCall(ctx, chain, owner, upgrade.safe, execData); err != nil {
 			return result, err
-		}
-		success, unpackErr := upgradeSafeAbi.Unpack("execTransaction", output)
-		if unpackErr != nil || len(success) != 1 || success[0] != true {
-			return result, upgradeRefusal(fmt.Sprintf("the owner's execTransaction answered 0x%x, not true", output))
 		}
 		preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
 	}
 
-	zero := common.Address{}.Hex()
 	result = settlement2UpgradeReview{
 		Schema:    settlement2UpgradeReviewSchema,
 		ChainId:   mainnetEvmChainId,
-		HeadBlock: uint64(head),
+		HeadBlock: head,
 		Implementation: settlement2UpgradeCreation{
 			Factory: upgradeCreate2Factory.Hex(), Salt: upgrade.salt.Hex(), Address: implementation.Hex(),
 			CreationBytes: len(upgrade.artifact.creation), CreationKeccak: crypto.Keccak256Hash(upgrade.artifact.creation).Hex(),
 			RuntimeBytes: len(expected), RuntimeCodeHash: crypto.Keccak256Hash(expected).Hex(), Created: len(created) != 0,
 			CreateTo: upgradeCreate2Factory.Hex(), CreateValueWei: "0", CreateData: hexutil.Encode(createData), CreateDataKeccak: crypto.Keccak256Hash(createData).Hex(),
 		},
-		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: owner.Hex(), CurrentImplementation: current.Hex()},
+		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: upgrade.safe.Hex(), CurrentImplementation: current.Hex()},
 		Safe:        safe,
-		SafeTx: settlement2UpgradeSafeTx{
-			To: tx.To.Hex(), ValueWei: "0", Data: hexutil.Encode(tx.Data), Operation: tx.Operation, SafeTxGas: "0", BaseGas: "0", GasPrice: "0",
-			GasToken: zero, RefundReceiver: zero, Nonce: nonce.String(), Function: "upgradeToAndCall(address,bytes)",
-			Args:            map[string]string{"newImplementation": implementation.Hex(), "data": "0x"},
-			DomainSeparator: domain.Hex(), MessageHash: message.Hex(), SafeTxHash: hash.Hex(),
-		},
-		OwnerTx: settlement2UpgradeOwnerTx{
-			From: owners[0].Hex(), To: upgrade.safe.Hex(), ValueWei: "0", Data: hexutil.Encode(execData), DataKeccak: crypto.Keccak256Hash(execData).Hex(),
-			Function: "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)", Signature: hexutil.Encode(signature),
-		},
-		Preflight: preflight,
+		SafeTx:      safeTx,
+		OwnerTx:     ownerTx,
+		Preflight:   preflight,
 	}
 	return result, ctx.Err()
 }

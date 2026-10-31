@@ -61,6 +61,17 @@ func newUpgradeTestChain(t *testing.T) *upgradeTestChain {
 	t.Helper()
 	safeOwner := newE2EActor("safe-owner")
 	self := &upgradeTestChain{e2eFixture: newE2EDeployment(t, e2eDefaultFirst, safeOwner), safeOwner: safeOwner}
+	self.installSafe(t)
+	return self
+}
+
+// installSafe deploys the pinned Safe 1.4.1 SafeL2 behind its proxy with the
+// Safe owner alone at threshold one, hands it STSettlement2's ownership, sets
+// the deterministic deployment proxy's code at its canonical address and
+// writes the implementation's forge artifact for review.
+func (self *upgradeTestChain) installSafe(t *testing.T) {
+	t.Helper()
+	safeOwner := self.safeOwner
 	pin, _, members := safeReleaseTestInputs(t, "1.4.1", "SafeL2")
 	_, singleton, proxy := safeExecutionOracleArtifacts(t, pin, "SafeL2", members)
 	var err error
@@ -86,7 +97,22 @@ func newUpgradeTestChain(t *testing.T) *upgradeTestChain {
 	if err := os.WriteFile(self.artifact, self.phaseC.raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return self
+}
+
+// upgrade creates the implementation and sends the owner's execTransaction
+// exactly as review prints it, and returns the implementation.
+func (self *upgradeTestChain) upgrade(t *testing.T) common.Address {
+	t.Helper()
+	review, code, stderr := self.review()
+	if code != 0 {
+		t.Fatalf("review: exit %d\n%s", code, stderr)
+	}
+	self.must(self.anyone, upgradeCreate2Factory, nil, hexutil.MustDecode(review.Implementation.CreateData))
+	if review, code, stderr = self.review(); code != 0 || !review.Preflight.Ran {
+		t.Fatalf("review after the creation: exit %d\n%s", code, stderr)
+	}
+	self.must(self.safeOwner, self.safe, nil, hexutil.MustDecode(review.OwnerTx.Data))
+	return common.HexToAddress(review.Implementation.Address)
 }
 
 // review runs the command over the chain's inputs, each flag named in changes
