@@ -302,3 +302,46 @@ All of this is from read-only EXPLAINs and stats on main.
   whole-window read.
 - **On 11-06:** watch the epoch-4 read (log line, duration, horizon age).
 - **This document:** in sn main.
+
+## Funding facts on chain (added 2026-10-31)
+
+These are read from snow's Finney archive at finalized block 9405583 (about
+18:15Z), and the DB mirror (`st_epoch`, `st_publish`, `pending_task`) agrees.
+They correct the consequence above in two ways:
+- **Epoch 3 is pending, not yet carry.** vault1 shows epoch 3 *Funded with no
+  root*: 4,132.715621039 α, which covers about two weeks of emission, because
+  epoch 2 was deferred into it. It becomes carry only when the queued
+  `StFinalizePoke` runs `finalizeOperatorEpoch(3, 1)` at about **2026-11-01
+  18:25Z**. That is expected and loses nothing.
+- **Epoch 1's 3,482.257057872 α has been in operator 1's v1 carry since
+  10-18.** No v1 root has ever been committed (`rootCommitments(e, 1)` is zero
+  for epochs 0–4), and vault1's `totalPaid` is 0. After 11-01, `carry(1)` is
+  expected to be 7,614.972678911 α. Escrow conservation holds.
+
+**What recovery takes:**
+- **Epoch 4's v2 root cannot take v1 money.** vault2 binds each root's total to
+  its own `fundedThrough`.
+- **An epoch-3 root would mean backdating,** which is not allowed.
+- **The planned Phase C sweep is the route** (VERSION2-FINAL.md §§12.2 and 16).
+  - Already deployed: vault1 and the v1 coordinator functions,
+    `vault2.absorbStake`, and `vault2.assignSurplus`.
+  - Missing:
+    - an `STSettlement2` upgrade adding `assignSurplus`, through the owner
+      Safe with the Ledger;
+    - the server sweep path (`stLedgerV1SweepEpoch` is still a stub);
+    - a reader exception for the sweep root;
+    - if missed-root funding is allocated by source-epoch rows, the ledger
+      "recovery component".
+- **The sweep can run early.** No v1 entitlement was ever finalized, so
+  nothing waits on claim expiry.
+
+**Owner decisions:**
+- the allocation rule: (a) roll into the next v2 epoch's earners, (b) allocate
+  by source-epoch rows (the plan of record), or (c) v1 rules;
+- the sweep timing;
+- signatures for the upgrade.
+
+**Data to preserve:** usage rows are retained in `st_provider_usage_archive`
+for about 52 weeks. The 30-day `client_reliability` floor starts dropping epoch
+1's rows around 11-08 and epoch 3's around 11-22, which matters only for
+option (c).
