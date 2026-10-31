@@ -82,6 +82,7 @@ The default URLs are:
 
 Usage:
     validator storage-prepare <storage_arguments>...
+    validator configure [<configure-options>...]
     validator storage-inspect --durable-volumes=<path> --durable-volumes-sha256=<hash> --directory=<path>...
     validator auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>] | --hotkey_seed_file=<path>) [-f]
         [--api_url=<api_url> | --operator=<domain> [--operators-url=<url>] [--state_dir=<path>]]
@@ -247,6 +248,15 @@ func Run(args []string) {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 		if code := runValidatorStoragePrepare(ctx, args[1:], os.Stdout, os.Stderr); code != 0 {
+			stop()
+			os.Exit(code)
+		}
+		return
+	}
+	if len(args) != 0 && args[0] == "configure" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		if code := runConfigureCommand(ctx, args[1:], os.Stdout, os.Stderr); code != 0 {
 			stop()
 			os.Exit(code)
 		}
