@@ -1690,6 +1690,7 @@ forge coverage --ir-minimum --report lcov \
 | S-10 | A hostile implementation cannot finalize early, finalize with an open demand, commit a wrong total or assign more than the surplus (pattern: `evm/test/ReleaseSettlement.t.sol:277-350`) |
 | S-EV | Every event, with its exact fields |
 | S-SIZE | `STSettlement2`'s size and margin, from the release build |
+| SC-1 to SC-16 | The phase C upgrade, `STSettlement2PhaseC` (§16): `assignSurplus` (owner only; an unregistered pool; only the pool's next unfunded epoch, so a close that lands first refuses it; once per surplus; nothing without absorbed surplus), `recordV1Sweep` (owner only; a registered pool and a v2 epoch; exactly the committed single-leaf root with its artifact hash; once per pool), the upgrade from phase A (every slot and approval kept, writes only past the gap, initializers disabled, owner only, size) and the whole sweep from the v1 close to the next v2 snapshot (`evm/test/V2SettlementPhaseC.t.sol`) |
 
 ### 15.5 Invariants (I)
 
@@ -1765,6 +1766,7 @@ exact release bytecode.
 | R-5 | Approvals from an auditor address; a demand paying `demandFeeWei`, and its answer |
 | R-6 | Gas used and gas limit needed, at depth 29, for a claim, a demand, an approval, a capturing close, a close deferring one epoch and one deferring many, a commit, an answer and a finalize; the operator's transactions, a capturing close with a few deferred epochs included, fit the re-signed operator gas policy (§8.1, §13) |
 | R-7 | Batched claims (§10.2), at depth 29: the block gas limit and the most gas one transaction may name, exactly 13/15 of it less 1,500 gas whatever the calldata; the gas used and the least gas limit of single claims and of batches of 1, 5, 10, 20, 32 and the most one transaction holds, each batch capped at the default gas per claim and paying every item; a batch whose broken proof and claim below the transfer floor are each refused alone, with exact events, while the claims around them pay |
+| R-8 | The phase C upgrade (§16) on the runtime mainnet runs, now 486: the implementation created through the deterministic deployment proxy's exact code; `upgradeToAndCall(implementation, 0x)` from the owner, keeping every slot and a pending root's approval; the sweep epoch closed on v1 and v2 at one boundary; the single-leaf v1 root finalized and claimed to vault2's coldkey, absorbed, recorded and assigned to the next epoch; refusals of a stranger, another artifact, an uncommitted epoch, a second record, a later epoch, an unregistered pool, more than the surplus and a second assignment; the approved root finalizing and paying through the new implementation |
 
 ### 15.9 Guarantee traceability
 
@@ -1835,7 +1837,23 @@ activation"). It never signs or sends.
      `EntitlementFinalized`: `total × share_bps / 10,000 − Claimed`.
   4. Claim the leaf, then `vault2.absorbStake(v1 escrow hotkey)`.
   5. The phase C `STSettlement2` upgrade adds an `assignSurplus` wrapper and
-     a sweep-epoch record for replay readers.
+     a sweep-epoch record for replay readers. It is
+     `evm/src/STSettlement2PhaseC.sol`, which inherits `STSettlement2` and
+     appends one mapping after its gap (`evm/layout/STSettlement2PhaseC.json`).
+     Both calls are owner only:
+     - `assignSurplus(noId, epoch, amount)` requires `epoch` to be the pool's
+       next unfunded epoch, the one whose funding snapshot receives the
+       surplus. A close that lands first makes the call revert instead of
+       funding a later epoch.
+     - `recordV1Sweep(noId, epoch, artifactHash)` records the pool's one sweep.
+       It requires the v1 coordinator's committed root for `epoch`, a v2 epoch
+       of the pool, to be exactly the single leaf paying vault2's coldkey
+       10,000 bps, with that artifact hash. `v1Sweep(noId)` reads it.
+
+     The upgrade goes out as a creation through the deterministic deployment
+     proxy and the Safe's `upgradeToAndCall(implementation, 0x)`, which
+     `sn-mainnet upgrade-settlement2 review` builds and preflights
+     (`mainnet/BOOTSTRAP-CONTRACTS.md`).
   6. The next v2 root carries a recovery component. Expired remainders are
      allocated pro rata. Missed-root, deferred and reveal-lag captures are
      allocated by their source epoch's rows. Phase C allocation uses

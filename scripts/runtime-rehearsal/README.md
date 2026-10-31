@@ -645,3 +645,60 @@ Captured-Wasm execution proves only the locally executed `Core_version` and
 `Metadata_metadata` results; its retained raw shutdown-task message and owned
 cleanup are documented in the review. Fresh finalized runtime/code/metadata
 observations and production approvals remain required before deployment.
+
+## Runtime 486: the phase C upgrade (R-8)
+
+Mainnet ran runtime 486 at finalized block 9,405,583 (2026-10-31). The phase C
+upgrade of `STSettlement2` (`VERSION2-FINAL.md` §16) was rehearsed on 486 on
+2026-10-31. Only R-8 ran; the rest of the R battery has not been rerun on 486.
+
+The node was built from source `d665b0eb4c95809f985ddf0c5a100253b496a74e`,
+tree `2e5c57e38129232f8dbe625399de82c14c0be3e2`, the tree of upstream tag
+`v486` (merge commit `72323e13249c9e25c7e792a2b3c08502c84651d5`), whose spec
+version is 486. It used `build.sh`'s cargo invocation with
+`metadata-hash fast-runtime`. `build.sh` itself still pins 482. The build ran
+natively on macOS 27 (Xcode 27.2, `ld-27106.1`).
+
+That linker left one host proc-macro dylib, `libsqlx_macros` (sqlx-macros
+0.8.6, used only by rustc to compile Frontier's SQL client backend), with its
+LINKEDIT string pool 4 bytes off 8-byte alignment. The cause was an odd
+indirect-symbol count. dyld refused it with "mis-aligned LINKEDIT string pool".
+The fix:
+
+- Its string pool was moved 4 bytes up, into the zero padding before its code
+  signature, and `LC_SYMTAB.stroff` was set to match.
+- It was re-signed ad hoc.
+- Nothing in the runtime Wasm, the EVM or the node source is built from it.
+
+The resulting fast-runtime Wasm has these hashes, and the dev chain's genesis
+`:code` is that Wasm byte for byte:
+
+- SHA-256 `dc7fc0918700e1a6ef9d253a122e5767eb81817dd96a853702469ee184ac720f`
+- BLAKE2b-256 `ef2dc33ade2025a2ca7dc4da6ffab9fa36cdc911096d32cb8642393d13be513a`
+
+```sh
+RUNTIME_REHEARSAL_NODE=/path/to/target/release/node-subtensor \
+  go test -tags runtime_rehearsal -count=1 -v -timeout=90m -run '^TestR8PhaseCUpgrade$' ./rehearsal/
+```
+
+It passed in 327.885s. The node-start line named
+`node-subtensor/486, reviewed source d665b0eb4c95809f985ddf0c5a100253b496a74e`.
+
+As on mainnet, the sweep epoch was the pool's first v2 epoch. v1 and v2 both
+closed it at one boundary. Then, in order:
+
+1. The v2 root was committed and approved.
+2. The single-leaf v1 sweep root was committed.
+3. The implementation was created through the deterministic deployment
+   proxy's exact code, using 2,238,297 gas for 9,968 runtime bytes.
+4. The owner's `upgradeToAndCall(implementation, 0x)` used 37,253 gas. It kept
+   every slot 0–50 and the pending root's approval.
+5. The v1 root finalized, and its claim paid vault2's coldkey.
+6. `absorbStake` turned that into surplus.
+7. `recordV1Sweep` used 134,314 gas.
+8. `assignSurplus` used 68,773 gas for 37,505,621,562 rao to epoch 2.
+9. The approved root finalized and paid through the new implementation.
+10. Epoch 2's close snapshotted the surplus with its own capture.
+
+Every refusal R-8 names reverted with its own error on the runtime.
+
