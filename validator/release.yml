@@ -7,6 +7,9 @@
 # Deployment/runtime/policy pins and validator-specific activation/approval
 # references must be supplied by the reviewed mainnet release profile before
 # this document can authorize production. Do not substitute synthetic values.
+# Use `validator configure --help` to combine the bundled current public
+# mainnet-profile.json with your own identity, keys and paths, then pass the
+# resulting configuration explicitly to activation and run. See README.md.
 schema_version: 3
 production: true
 release: "1.0"

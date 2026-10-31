@@ -125,10 +125,10 @@
     "runtime_code_hash": "0x49781ac4cfda0ac6cf6e53cfceea7c728394d9c28da7881f47e3fbfbc239800f",
     "runtime_metadata_hash": "0x0c83083856fbfe771d449c5534001d91e1ce2c3032cc9ccb93c1ea356bc116af",
     "rpc": [
-      "https://entrypoint-finney.opentensor.ai"
+      "https://archive.chain.opentensor.ai"
     ],
     "substrate": [
-      "wss://entrypoint-finney.opentensor.ai"
+      "wss://archive.chain.opentensor.ai"
     ],
     "controlled_no_ids": [],
     "trail_depth": 8,
