@@ -5,6 +5,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IERC1967} from "@openzeppelin/contracts/interfaces/IERC1967.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {V2StackBase} from "./utils/V2StackBase.sol";
 import {V2TreeHelper} from "./utils/V2TreeHelper.sol";
@@ -439,6 +440,45 @@ contract V2SettlementPhaseCTest is V2StackBase {
     function test_SC15_implementationFitsTheCodeSizeLimits() public {
         assertLt(address(new STSettlement2PhaseC()).code.length, 24_576);
         assertLt(type(STSettlement2PhaseC).creationCode.length, 49_152);
+    }
+
+    // SC-17, S-9: the phase C implementation stays a UUPS implementation. A
+    // later upgrade from it (SC-12 back to phase A, SC-13 to another phase C)
+    // goes only through the proxy, only from the owner (SC-13) and only to a
+    // contract whose proxiableUUID is the ERC-1967 implementation slot.
+    function test_SC17_laterUpgradesGoThroughTheProxyToUUPSImplementationsOnly() public {
+        address implementation =
+            address(uint160(uint256(vm.load(address(settlement), ERC1967Utils.IMPLEMENTATION_SLOT))));
+        STSettlement2PhaseC direct = STSettlement2PhaseC(payable(implementation));
+        assertEq(direct.proxiableUUID(), ERC1967Utils.IMPLEMENTATION_SLOT);
+        vm.expectRevert(UUPSUpgradeable.UUPSUnauthorizedCallContext.selector);
+        phaseC.proxiableUUID();
+
+        STSettlement2PhaseC next = new STSettlement2PhaseC();
+        vm.prank(owner);
+        vm.expectRevert(UUPSUpgradeable.UUPSUnauthorizedCallContext.selector);
+        direct.upgradeToAndCall(address(next), "");
+
+        vm.startPrank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC1967Utils.ERC1967InvalidImplementation.selector, address(vault2))
+        );
+        phaseC.upgradeToAndCall(address(vault2), "");
+        vm.expectRevert();
+        phaseC.upgradeToAndCall(stranger, "");
+        assertEq(
+            address(uint160(uint256(vm.load(address(settlement), ERC1967Utils.IMPLEMENTATION_SLOT)))),
+            implementation
+        );
+        vm.expectEmit(true, true, true, true, address(settlement));
+        emit IERC1967.Upgraded(address(next));
+        phaseC.upgradeToAndCall(address(next), "");
+        vm.stopPrank();
+        assertEq(
+            address(uint160(uint256(vm.load(address(settlement), ERC1967Utils.IMPLEMENTATION_SLOT)))),
+            address(next)
+        );
+        assertEq(phaseC.owner(), owner);
     }
 
     // ------------------------------------------------------------------
