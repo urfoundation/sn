@@ -3,6 +3,7 @@ package ledger
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -307,6 +308,27 @@ func TestScheduledRecovery(t *testing.T) {
 	} {
 		if err := original.CheckSource(c.epoch, c.status, uint256.NewInt(c.funded)); !errors.Is(err, ErrRecoverySource) {
 			t.Fatalf("source %d status %d funded %d: %v", c.epoch, c.status, c.funded, err)
+		}
+	}
+}
+
+// Every schedule recovers ascending, distinct source epochs with positive
+// amounts, at most one schedule per vault2 pool, scanned from a nonzero
+// block.
+func TestRecoverySchedulesWellFormed(t *testing.T) {
+	seen := map[[28]byte]bool{}
+	for i, schedule := range recoverySchedules {
+		var key [28]byte
+		copy(key[:20], schedule.Vault[:])
+		binary.BigEndian.PutUint64(key[20:], schedule.NoID)
+		if seen[key] || schedule.Vault == ([20]byte{}) || schedule.FromBlock == 0 || len(schedule.Sources) == 0 {
+			t.Fatalf("schedule %d %+v", i, schedule)
+		}
+		seen[key] = true
+		for j, source := range schedule.Sources {
+			if source.Amount == 0 || (j > 0 && source.Epoch <= schedule.Sources[j-1].Epoch) {
+				t.Fatalf("schedule %d source %d %+v", i, j, source)
+			}
 		}
 	}
 }
