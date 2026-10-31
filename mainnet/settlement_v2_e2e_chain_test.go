@@ -951,6 +951,27 @@ func (self *e2eChain) rpc(method string, params []json.RawMessage) (any, *e2eRPC
 			return nil, e2eExecutionError(err)
 		}
 		return hexutil.Encode(out), nil
+	case "eth_getCode":
+		var address common.Address
+		if err := param(0, &address); err != nil {
+			return nil, e2eInvalidParams(err)
+		}
+		number, ok, err := block(1)
+		if err != nil || !ok {
+			return nil, e2eInvalidParams(fmt.Errorf("block %v", err))
+		}
+		return hexutil.Encode(self.stateLocked(number).GetCode(address)), nil
+	case "eth_getStorageAt":
+		var address common.Address
+		var slot common.Hash
+		if err := errors.Join(param(0, &address), param(1, &slot)); err != nil {
+			return nil, e2eInvalidParams(err)
+		}
+		number, ok, err := block(2)
+		if err != nil || !ok {
+			return nil, e2eInvalidParams(fmt.Errorf("block %v", err))
+		}
+		return self.stateLocked(number).GetState(address, slot).Hex(), nil
 	case "eth_sendRawTransaction":
 		return self.acceptLocked(params)
 	case "eth_getTransactionReceipt":

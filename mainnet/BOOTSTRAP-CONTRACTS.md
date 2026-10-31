@@ -1014,3 +1014,80 @@ on the in-repo end-to-end chain, PR-6 with each shape of the node's answer.
 R-4 (`rehearsal/r4_registration_test.go`) registers its pool through them on
 the rehearsal node, and `TestR4RegistrationRefusals` drives the node's real
 reverts, `OutOfFund` and a reverted view through them.
+
+## Settlement v2 phase C upgrade
+
+The phase C upgrade of `STSettlement2` (`VERSION2-FINAL.md` §16) replaces the
+proxy's implementation with `STSettlement2PhaseC`. Every phase A function,
+event and storage slot is kept. Two owner calls are added: `assignSurplus`
+and `recordV1Sweep`. The upgrade goes out in two transactions:
+
+1. Anyone creates the implementation through the canonical deterministic
+   deployment proxy, `0x4e59b44847b379578588920ca78fbf26c0b4956c`. That
+   fixes its address before it exists: the CREATE2 address of the salt and
+   the exact creation code. The creation needs no authority, and creating
+   the same code again changes nothing.
+2. The governance Safe's owner sends the Safe's direct call
+   `upgradeToAndCall(implementation, 0x)` to the proxy as its own
+   `execTransaction`. The signature is the owner's approved-hash form:
+   `r` is the owner, `s` is zero and `v` is 1. This is how the launch's Safe
+   calls went.
+
+`upgrade-settlement2 review` builds both from the forge artifact of
+`STSettlement2PhaseC`. It neither signs nor sends. Every flag is required.
+Its reads are `eth_chainId` and `eth_blockNumber`, then `eth_call`,
+`eth_getCode` and `eth_getStorageAt`, all at that head:
+
+```sh
+sn-mainnet upgrade-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --salt 0x0000000000000000000000000000000000000000000000000000000000000000 \
+  --artifact evm/out/STSettlement2PhaseC.sol/STSettlement2PhaseC.json
+```
+
+Before any read, it rejects with exit 2:
+
+- a missing flag;
+- an artifact that does not declare `assignSurplus(uint256,uint256,uint256)`,
+  `recordV1Sweep(uint256,uint256,bytes32)` and `v1Sweep(uint256)`;
+- an artifact with an immutable other than UUPS's `__self`, or with code
+  past the EIP-170/3860 limits.
+
+It refuses with exit 3:
+
+- a route that is not EVM chain 964;
+- a factory whose code is not the deterministic deployment proxy's;
+- code at the implementation's address that is not exactly the artifact's
+  runtime, with `__self` holding that address;
+- an STSettlement2 owner other than the Safe;
+- a proxy without an implementation, or one already on the implementation;
+- a Safe that is not 1.4.1 with one owner at threshold one, no modules and
+  no guard;
+- a Safe whose own `getTransactionHash` differs from the EIP-712 hash review
+  computes;
+- any call the chain ran and failed, named by its revert, such as a Safe
+  `GS0xx` code.
+
+Its result, schema `urnetwork-mainnet-settlement-v2-upgrade-review-v1`, has
+these sections:
+
+- `implementation`: the factory, the salt, the address, the creation and
+  runtime sizes, `creation_keccak256`, `runtime_code_hash` and `created`,
+  plus the creation call (`create_to`, `create_value_wei`, `create_data`).
+- `settlement2`: the proxy, its owner and its current implementation.
+- `safe`: its version, threshold, owners, nonce, modules, guard and fallback
+  handler.
+- `safe_transaction`: `to`, `value_wei`, `data`, `operation` and the refund
+  fields, all zero, plus the Safe nonce, the decoded function and arguments,
+  and the EIP-712 `domain_separator`, `message_hash` and `safe_tx_hash`.
+- `owner_transaction`: `from` (the owner), `to` (the Safe), `value_wei`,
+  `data`, `data_keccak256` and `signature`.
+- `preflight`.
+
+Until the implementation exists, the preflight does not run. Create it, then
+review again. Once it exists, review runs the owner's `execTransaction` as an
+`eth_call` from the owner, and it must return true. The owner sends exactly
+`owner_transaction` while `safe.nonce` is still the Safe's nonce. Any other
+Safe transaction first changes the hash, so review again.
+`mainnet/evm_v2_upgrade_test.go` runs both transactions through the pinned
+Safe 1.4.1 SafeL2 on the e2e chain (UP-1 to UP-3). R-8 runs the creation and
+the upgrade on the rehearsal runtime (`scripts/runtime-rehearsal/README.md`).

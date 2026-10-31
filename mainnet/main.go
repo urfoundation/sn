@@ -216,6 +216,9 @@ func runMainWithMonitorHooks(ctx context.Context, args []string, stdout, stderr 
 	if len(args) != 0 && args[0] == "register-operator-pool" {
 		return runRegisterOperatorPoolCommand(ctx, args[1:], stdout, stderr)
 	}
+	if len(args) != 0 && args[0] == "upgrade-settlement2" {
+		return runUpgradeSettlement2Command(ctx, args[1:], stdout, stderr)
+	}
 	if len(args) != 0 && args[0] == "bootstrap" {
 		return runBootstrapRootCommand(ctx, args, stdout, stderr)
 	}
