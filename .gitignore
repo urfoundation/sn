@@ -10,3 +10,4 @@ evm/lib
 sim-testnet/runs/
 sim-testnet/build/
 /build/
+/validator/build/

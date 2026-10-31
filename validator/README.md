@@ -108,6 +108,10 @@ mode 0600 and reuses existing seeds. It also creates or reuses the independent
 approval seed. A newly created hotkey still needs native
 registration, stake and a permit before production startup.
 
+The native hotkey reader accepts a raw 32-byte seed or a 64-character hex seed
+with an optional `0x` prefix. Supply a seed file, rather than an encrypted wallet
+JSON file. The measurement seed written by `init` is a raw 32-byte Ed25519 seed.
+
 The approval key reader accepts a raw 32-byte seed or its 64-character hex
 encoding. Keep it available for the activation setup, then keep it offline;
 `validator run` does not need it.
