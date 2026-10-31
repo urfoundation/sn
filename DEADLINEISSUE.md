@@ -1,10 +1,11 @@
 # DEADLINEISSUE: epoch 3 missed its payout root window (2026-10-30)
 
-For review. On mainnet, epoch 3's close never produced a payout root, and its
+On mainnet, epoch 3's close never produced a payout root, and its
 commit window passed. The cause is a census read that cannot finish in time at
-production scale. A fix is on a server branch, tested but not merged or
-deployed. Epoch 4 will hit the same wall unless the fix is deployed before
-**2026-11-06 about 18:00Z**.
+production scale. The census fix is merged into server main; the deployment
+record is in Status below. Epoch 4 ends on **2026-11-06 about 18:25Z** and
+will test the projected runtime at production scale. The independent deadline
+monitor added during review still requires deployment.
 
 ## Summary
 
@@ -12,11 +13,14 @@ deployed. Epoch 4 will hit the same wall unless the fix is deployed before
   taskworker's 3 h limit, inside the closed-work census read. No root was
   built, so `StCommitRoot` never ran. The commit deadline (block 9399628,
   about 4 h after the epoch boundary) passed with no root.
-- **Consequence (D-11):** epoch 3 finalizes root-missed. Per PLAN.md D-11, "A
-  missed commit rolls that pool's total into the next epoch": the funding
-  carries to the operator's next root, and epoch 3's providers receive no
-  entitlement from epoch 3 itself. No root was backdated or invented, and none
-  should be.
+- **Consequence (D-11 and the v2 cutover):** epoch 3 finalizes root-missed,
+  leaving its funding in the operator's **v1 vault carry**. Epoch 4 is the
+  first v2 epoch, so its root does **not** automatically consume that carry.
+  Recovery requires the planned Phase C sweep in VERSION2-FINAL.md §§12.2
+  and 16; that sweep is not implemented or enabled. Epoch 3's providers gain
+  no entitlement from epoch 3 itself, but the planned recovery would allocate
+  missed-root funding using its source epoch's rows. Preserve those rows.
+  No root should be backdated or invented.
 - **Cause:** the census statement materializes every credited contract in the
   window (about 404M rows for epoch 3) and reads them in index order, one
   random heap fetch per row. That takes about 3 h before the first row
@@ -24,8 +28,9 @@ deployed. Epoch 4 will hit the same wall unless the fix is deployed before
   discards at this scale.
 - **Fix:** the server branch `fix/st-census-speed`. Above the census record
   cap, it reads the same SQL in one bitmap-ordered pass with no report reads.
-  Same results, about 25–30 min for epoch 3 and about 45–65 min projected for
-  epoch 4.
+  The equivalence tests support the same results. Reader runtime is projected
+  at about 25–30 min for epoch 3 and about 45–65 min for epoch 4; neither is
+  a completed production measurement.
 
 ## How the close is supposed to work
 
@@ -46,8 +51,9 @@ In code:
 - **v2 path (epoch 4 onward):** `st_ledger_v2_activation.first_epoch = 4`, so
   epoch 4's payout reads usage in the v2 epoch step (`stLedgerV2NewEpochRows` →
   `GetStEpochProviderUsageAtEpoch`). That is the plain usage statement, with the
-  same slow plan, inside a step limited to 2 h. **Without the fix, epoch 4
-  misses too.**
+  same slow plan, inside a step limited to 2 h. Without the fix, epoch 4 is
+  at risk of the same timeout. That budget also covers wallet selection,
+  ledger construction, publication and the commit, not just the usage read.
 
 ## Timeline (UTC)
 
@@ -102,7 +108,7 @@ All of this is from read-only EXPLAINs and stats on main.
    `finalized` in `st_epoch`. So this was the first run of this path at
    production scale.
 
-## Fix: server `fix/st-census-speed` (pushed, not merged)
+## Fix: server `fix/st-census-speed` (merged)
 
 - **e173a4ae0 "Read whole epoch usage windows in one block-ordered pass" (the
   core fix):**
@@ -179,21 +185,47 @@ All of this is from read-only EXPLAINs and stats on main.
 - **Environment:** run against disposable release-gate containers
   (`local/release-gate-services.sh`), because the run-local launcher was down.
 
-### Expected runtime
+### Projected reader runtime (not measured end to end)
 
-| Window | Old read | Core fix | With 00ca2a97e |
+| Window | Old read | Core projection | With workers, projection |
 |---|---|---|---|
-| Epoch 3 (about 404M rows) | about 3 h just to fill `usage_rows` | about 25–30 min | about 10–17 min |
-| Epoch 4 (projected 0.7–0.9B rows) | over 6 h | about 45–65 min | about 20–40 min |
+| Epoch 3 (about 404M rows) | timed out at 3 h while filling `usage_rows` | about 25–30 min | about 10–17 min |
+| Epoch 4 (projected 0.7–0.9B rows) | over 6 h projected | about 45–65 min | about 20–40 min |
 
 - **Probe:** about 5–10 s.
 - **Database side:**
   - the bitmap phase reads about 2M index leaf pages;
   - the heap phase reads about 37M pages for epoch 3.
-- **Client side:** decode and checks take about 3.5–4.5 µs per row on main
-  (estimated), so the core fix is client-bound.
-- **Fit:** all of this fits inside v2's 2 h step and v1's 3 h close. The
-  horizon is held only for the read.
+- **Client side:** decode and checks are estimated at about 3.5–4.5 µs per
+  row on main; these estimates would make the core fix client-bound.
+- **Fit remains unverified:** these estimates suggest headroom for the read,
+  but no completed full-scale production read or end-to-end v2 step has
+  demonstrated it. The optional workers' production gain is also unmeasured.
+  Wallet selection, ledger construction, publication and commit must all fit
+  in the remaining v2 budget. The transaction holds the horizon until the
+  read and its client-side processing finish.
+
+## Review follow-ups
+
+- **Carry:** `controller/st_ledger_v2_driver.go`'s `stLedgerV1SweepEpoch`
+  currently returns `(0, false)`. The epoch-4 v2 root cannot recover epoch-3
+  v1 carry by itself; the Phase C sweep remains separate future work.
+- **Deadline alert:** the old log alert in `StCommitEpochRoot` could run only
+  after leaves existed, so a stalled census could never reach it. The v1
+  settlement monitor warned only in the last 300 blocks (about one hour),
+  with Sustain 2. The server follow-up adds the independent
+  `subnet-root-deadline` monitor (SIGNALS.md §22.7.1): PAGE, Sustain 1, from
+  600 remaining blocks (about two hours at 12 s/block), checked every five
+  minutes against finalized chain state. It resolves each operator's v1/v2
+  cutover and observes v2 pending or finalized roots. It needs neither leaves,
+  task completion, artifacts nor history replay. A recorded v2 close with no
+  funding above the finalized total is exempt; an absent close is not.
+  Missing sources report unknown coverage. The page continues after a miss
+  until a root is observed or the next epoch becomes due.
+- **Validation:** deterministic synthetic chain tests reproduce the missing
+  T-2h alert and cover both versions, cutover, zero funding, deadline
+  boundaries, confirmed roots and failed or reorged reads. These monitor
+  changes require deployment before they provide operational coverage.
 
 ## Epoch 4 deadlines
 
@@ -201,7 +233,7 @@ All of this is from read-only EXPLAINs and stats on main.
 - **Commit deadline:** block 9450028, about **2026-11-06 22:25Z**.
 - **Basis:** a measured 12.0 s/block, ±1–2 min.
 
-## Deployment plan
+## Original taskworker deployment plan
 
 1. **Deploy a taskworker with this fix before about 11-06 18:00Z.** Both the v2
    epoch step and any v1 close run in taskworker.
@@ -241,12 +273,12 @@ All of this is from read-only EXPLAINs and stats on main.
    Its gain is unmeasured on main.
 3. **Error choice:** is the possible difference in which refusal is named,
    with two or more refusals, acceptable?
-4. **Epoch 3:** is any remediation wanted beyond the D-11 carry? Its providers
-   get nothing from epoch 3 itself.
-5. **Alerting:** PLAN.md calls for an alert at T-2h when the root is
-   unconfirmed. I did not see one. My monitor snapshots at 19:46Z and 22:17Z
-   bracket that time, and only the second showed anything: the settlement WARN
-   after the window closed. Should a close still running at T-2h page?
+4. **Epoch 3:** schedule the Phase C sweep separately if recovery is wanted;
+   v1 carry will not enter the epoch-4 v2 root automatically. Preserve the
+   original usage rows needed for the planned recovery allocation.
+5. **Alerting:** a close still running at T-2h must page independently of
+   computation. The review follow-up above implements that check; deploy the
+   monitor change as well as the taskworker optimization.
 6. **Pre-boundary work:** should part of the close (for example, the reliability
    reads) move before the boundary, where that is provably equivalent?
 
