@@ -77,6 +77,7 @@ protocol state, and run subsequent commands as the account that will own that
 state:
 
 ```sh
+VALIDATOR_ID=1
 RUNTIME_DIR=/srv/urnetwork-validator/runtime
 STATE_DIR="$RUNTIME_DIR/state"
 EVIDENCE_DIR="$RUNTIME_DIR/evidence"
@@ -218,6 +219,22 @@ commands require a separate owner-local declaration and journal; do not use
 the daemon declaration for them. An existing eligible hotkey can skip those
 operations completely.
 
+## Authenticate the configured operator
+
+After storage preparation, authenticate with the initial signed configuration.
+This writes the credential to the exact production path, leaving authentication
+out of the final activation epoch's startup work:
+
+```sh
+./validator auth --config="$INITIAL_CONFIG" --no_id=1
+```
+
+The current mainnet profile includes operator 1. Its measurement state is
+isolated under `STATE_DIR/no-1`; the selected measurement seed stays at
+`KEY_DIR/no-1/client.key`. Fresh activation permits the configured JWT files,
+and the rendered successor uses the same credential paths. The global
+`~/.urnetwork/jwt` used by measurement-only commands is separate.
+
 ## Activate and start
 
 After preparing the daemon's durable storage, set `DURABLE_VOLUMES` and
@@ -249,19 +266,11 @@ Rendered configuration and approval files stay under the declared runtime root
 at `ACTIVATION_DIR`, alongside state and evidence. The original signed setup
 configuration and all private keys remain outside that fresh root.
 
-After activation has rendered `RUN_CONFIG`, authenticate the configured
-operator. This writes the credential to the exact production path:
+After activation renders `RUN_CONFIG`, start promptly. The first steering
+decision must use the native epoch printed by final activation; starting the
+process in that epoch is insufficient if preparation crosses its boundary.
 
-```sh
-./validator auth --config="$RUN_CONFIG" --no_id=1
-```
-
-The current mainnet profile includes operator 1. Its measurement state is
-isolated under `STATE_DIR/no-1`; the selected measurement seed stays at
-`KEY_DIR/no-1/client.key`. The global `~/.urnetwork/jwt` used by measurement-only
-commands is not the production credential store.
-
-Start the validator with the rendered configuration:
+Start with the rendered configuration:
 
 ```sh
 ./validator run --config="$RUN_CONFIG" \
@@ -277,6 +286,28 @@ normal restarts.
 The whole steering operation has a 30-minute default budget. Override it with
 `--steering-operation-timeout=30m` or a longer appropriate duration; the minimum
 is five minutes. This does not change native deadlines or HTTP timeouts.
+
+If that first native epoch is missed **before the first daemon run**, keep the
+same original configuration, keys, evidence, preparation and volume declaration.
+While the original approval remains valid, repeat activation with unused
+successor configuration and approval filenames:
+
+```sh
+RUN_CONFIG="$ACTIVATION_DIR/validator-retry.yml"
+./validator activate --config="$INITIAL_CONFIG" \
+  --rendered-config="$RUN_CONFIG" \
+  --successor-approval="$ACTIVATION_DIR/activation-approval-retry.json" \
+  --original-authority="$ACTIVATION_DIR/initial-authority.json" \
+  --approval-key-file="$APPROVAL_KEY_FILE" \
+  --durable-volumes="$DURABLE_VOLUMES" \
+  --durable-volumes-sha256="$DURABLE_VOLUMES_SHA256" --apply
+```
+
+The already published activations need no new relayer transaction. Reuse the
+unchanged original authority file, and choose unused successor filenames again
+if another boundary is selected. Start the daemon with the new `RUN_CONFIG`
+immediately. Once a daemon has retained an intent, preserve its state and use
+restart/reconciliation; this before-first-run procedure does not apply.
 
 ## Check that the validator is working
 
