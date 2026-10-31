@@ -20,8 +20,10 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/urfoundation/sn/clientauth"
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urnetwork/connect/durablevolume"
+	"golang.org/x/sys/unix"
 )
 
 // Signed synthetic configuration has private keys outside the empty runtime
@@ -124,12 +126,12 @@ func TestValidatorStorageRequestDirectorySyncFailureReturnsNoReference(t *testin
 	}
 }
 
-// Signed input and the complete operator census flow through every public
-// command. Activation must admit each actually published target checkpoint.
-func TestValidatorStoragePublicRequestPlanApplyReachesFreshActivation(t *testing.T) {
-	f := newValidatorStorageCommandTestFixture(t)
+// Both composed controls retain the actual declaration returned by the public
+// commands; no test substitutes a prepared ledger or admission result.
+func (self *validatorStorageCommandTestFixture) prepare(t *testing.T) context.Context {
+	t.Helper()
 	var output, diagnostic bytes.Buffer
-	if code := runValidatorStoragePrepare(f.ctx, append([]string{"request"}, f.args...), &output, &diagnostic); code != 0 {
+	if code := runValidatorStoragePrepare(self.ctx, append([]string{"request"}, self.args...), &output, &diagnostic); code != 0 {
 		t.Fatalf("public request failed: %s", diagnostic.String())
 	}
 	var request durablevolume.Reference
@@ -137,29 +139,44 @@ func TestValidatorStoragePublicRequestPlanApplyReachesFreshActivation(t *testing
 		t.Fatal(err)
 	}
 	output.Reset()
-	if code := runValidatorStoragePrepare(f.ctx, []string{"plan", "--request=" + request.Path, "--request-sha256=" + request.Sha256}, &output, &diagnostic); code != 0 {
+	if code := runValidatorStoragePrepare(self.ctx, []string{"plan", "--request=" + request.Path, "--request-sha256=" + request.Sha256}, &output, &diagnostic); code != 0 {
 		t.Fatalf("public plan failed: %s", diagnostic.String())
 	}
 	plan := bytes.Clone(output.Bytes())
-	planPath := filepath.Join(f.metadata, "command-plan.json")
+	planPath := filepath.Join(self.metadata, "command-plan.json")
 	if err := os.WriteFile(planPath, plan, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	output.Reset()
-	if code := runValidatorStoragePrepare(f.ctx, []string{"apply", "--plan=" + planPath, "--plan-sha256=" + validatorPreparationDigest(plan)}, &output, &diagnostic); code != 0 {
+	if code := runValidatorStoragePrepare(self.ctx, []string{"apply", "--plan=" + planPath, "--plan-sha256=" + validatorPreparationDigest(plan)}, &output, &diagnostic); code != 0 {
 		t.Fatalf("public apply failed: %s", diagnostic.String())
 	}
 	var result durablevolume.PreparationResult
 	if err := json.Unmarshal(output.Bytes(), &result); err != nil || result.RestartAuthorized || result.Declaration.Path == "" {
 		t.Fatal("public preparation result changed", err, output.String())
 	}
-	ctx := durablevolume.WithReference(f.ctx, result.Declaration)
+	return durablevolume.WithReference(self.ctx, result.Declaration)
+}
+
+// Signed input and the complete operator census flow through every public
+// command. Activation must admit each actually published target checkpoint.
+func TestValidatorStoragePublicRequestPlanApplyReachesFreshActivation(t *testing.T) {
+	f := newValidatorStorageCommandTestFixture(t)
+	ctx := f.prepare(t)
+	var output bytes.Buffer
 	parent, err := openValidatorDurableDirectory(ctx, f.cfg.StateDir, durablevolume.ReadWrite, false)
 	if err != nil {
 		t.Fatal("prepared parent cannot be retained by production", err)
 	}
 	if err := parent.Close(); err != nil {
 		t.Fatal(err)
+	}
+	// Authentication may happen after storage preparation but before activation.
+	// Its configured credential is not retained validator measurement history.
+	for _, operator := range f.cfg.Operators {
+		if err := clientauth.WriteNetworkTokenWithContext(t.Context(), operator.NetworkJWTFile, "synthetic-network-credential"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	members := []ReleaseActivationMemberV2{}
 	noIds := []uint64{}
@@ -265,6 +282,74 @@ func TestValidatorStoragePublicRequestPlanApplyReachesFreshActivation(t *testing
 		}
 		if err := ledger.Close(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+// Only the configured token writer's empty private lock is harmless. The
+// real checkpoint inspector remains enabled for every refusal and recovery.
+func TestValidatorFreshActivationRefusesUnsafeNetworkCredentialCompanions(t *testing.T) {
+	f := newValidatorStorageCommandTestFixture(t)
+	ctx := f.prepare(t)
+	operator := f.cfg.Operators[0]
+	lockPath := operator.NetworkJWTFile + ".registration.lock"
+	member := ReleaseActivationMemberV2{NoID: operator.NoID, ValidatorUID: 0}
+	copy(member.Activation.VPK[:], f.keys[operator.NoID].Public().(ed25519.PublicKey))
+	members := []ReleaseActivationMemberV2{member}
+	if err := clientauth.WriteNetworkTokenWithContext(t.Context(), operator.NetworkJWTFile, "synthetic-network-credential"); err != nil {
+		t.Fatal(err)
+	}
+	if admitted, err := requireFreshReleaseOperatorState(ctx, f.cfg, members); err != nil || !slices.Equal(admitted, []uint64{operator.NoID}) {
+		t.Fatal("real sign-in companion failed its healthy control", admitted, err)
+	}
+	for _, fault := range []string{"nonempty", "shared-mode", "symlink", "directory", "fifo", "hardlink", "foreign-name", "outside-configured-path"} {
+		extra := filepath.Join(f.metadata, "lock-witness")
+		cfg := *f.cfg
+		cfg.Operators = slices.Clone(f.cfg.Operators)
+		var err error
+		switch fault {
+		case "nonempty":
+			err = os.WriteFile(lockPath, []byte("synthetic retained state"), 0o600)
+		case "shared-mode":
+			err = os.Chmod(lockPath, 0o644)
+		case "symlink", "directory", "fifo":
+			if err = os.Remove(lockPath); err == nil {
+				switch fault {
+				case "symlink":
+					if err = os.WriteFile(extra, nil, 0o600); err == nil {
+						err = os.Symlink(extra, lockPath)
+					}
+				case "directory":
+					err = os.Mkdir(lockPath, 0o700)
+				case "fifo":
+					err = unix.Mkfifo(lockPath, 0o600)
+				}
+			}
+		case "hardlink":
+			err = os.Link(lockPath, extra)
+		case "foreign-name":
+			extra = filepath.Join(operator.StateDir, "unconfigured.registration.lock")
+			err = os.WriteFile(extra, nil, 0o600)
+		case "outside-configured-path":
+			cfg.Operators[0].NetworkJWTFile = filepath.Join(f.metadata, filepath.Base(operator.NetworkJWTFile))
+		}
+		if err != nil {
+			t.Fatal(fault, err)
+		}
+		if _, err := requireFreshReleaseOperatorState(ctx, &cfg, members); err == nil {
+			t.Fatal("fresh activation admitted unsafe credential companion", fault)
+		}
+		if err := os.Remove(extra); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(fault, err)
+		}
+		if err := os.Remove(lockPath); err != nil {
+			t.Fatal(fault, err)
+		}
+		if err := clientauth.WriteNetworkTokenWithContext(t.Context(), operator.NetworkJWTFile, "synthetic-network-credential"); err != nil {
+			t.Fatal(fault, err)
+		}
+		if _, err := requireFreshReleaseOperatorState(ctx, f.cfg, members); err != nil {
+			t.Fatal("refused companion poisoned the genuine credential or ledger", fault, err)
 		}
 	}
 }

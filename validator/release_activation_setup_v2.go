@@ -28,6 +28,7 @@ import (
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/sys/unix"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/miner/onchain"
@@ -316,6 +317,8 @@ func releaseActivationLedgerIdentity(cfg *ReleaseConfig, member ReleaseActivatio
 // The one exception is storage-prepare's output for a fresh durable root: an
 // empty attempt ledger whose receipts, backend and published custody checkpoint
 // name exactly this member's ledger identity, which `validator run` requires.
+// Configured credentials and a verified empty sign-in lock are not retained
+// measurement history.
 func requireFreshReleaseOperatorState(ctx context.Context, cfg *ReleaseConfig, members []ReleaseActivationMemberV2) ([]uint64, error) {
 	var admitted []uint64
 	for _, operator := range cfg.Operators {
@@ -330,6 +333,40 @@ func requireFreshReleaseOperatorState(ctx context.Context, cfg *ReleaseConfig, m
 		for _, entry := range entries {
 			name := entry.Name()
 			if name == filepath.Base(operator.ClientKeySeedFile) || name == filepath.Base(operator.NetworkJWTFile) || name == filepath.Base(operator.ClientJWTFile) {
+				continue
+			}
+			// Explicit sign-in leaves this exact, empty advisory-lock companion.
+			// It carries no measurements, but a suffix match cannot authorize
+			// foreign files, unsafe custody or nonempty retained state.
+			if filepath.Join(operator.StateDir, name) == operator.NetworkJWTFile+".registration.lock" {
+				if err := func() (resultErr error) {
+					parent, err := openAttemptPrivateDirectory(operator.StateDir, ctx)
+					if err != nil {
+						return err
+					}
+					defer func() { resultErr = errors.Join(resultErr, parent.close()) }()
+					before, err := parent.stat(name)
+					if err != nil {
+						return err
+					}
+					file, err := parent.openFile(name, unix.O_RDONLY, 0)
+					if err != nil {
+						return err
+					}
+					defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
+					privateErr := attemptPreparationPrivate(file, false)
+					opened, statErr := statAttemptPrivateFile(file)
+					after, afterErr := parent.stat(name)
+					if err := errors.Join(privateErr, statErr, afterErr); err != nil {
+						return err
+					}
+					if opened.size != 0 || opened != before || opened != after {
+						return errors.New("network token registration lock is not an unchanged empty private file")
+					}
+					return errors.Join(ctx.Err(), parent.check())
+				}(); err != nil {
+					return nil, fmt.Errorf("operator no_id %d network token registration lock: %w", operator.NoID, err)
+				}
 				continue
 			}
 			if name == attemptLedgerStoreName || name == attemptLedgerImportName || name == attemptLedgerReadyName {
