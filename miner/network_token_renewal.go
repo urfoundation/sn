@@ -110,10 +110,11 @@ func (self *networkTokenRenewalSettings) renewalFraction(draw float64) float64 {
 	return min(start+(end-start)*draw, end)
 }
 
-// The point of a token in its renewal window, in [0, 1): a hash of the token's
-// id (`jti`), or of its signature when it has none, read as a fraction, as the
-// SDK takes it (jwtRefreshDraw). The point is uniform across tokens, each new
-// token has its own, and a restarted process takes the same one; a point
+// The point of a token in its renewal window, in [0, 1): a hash of the
+// token's id (`jti`), else of its signature, else of its whole text (an
+// unsigned token without an id, or text that is not a JWT), as a fraction, as
+// the SDK takes it (jwtRefreshDraw). Points are uniform across tokens, each
+// new token has its own, and a restarted process takes the same one; a point
 // drawn afresh by each process renewed a token early whenever its new point
 // had passed, in one burst on a fleet restart.
 func networkTokenRenewalDraw(token string) float64 {
