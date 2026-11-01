@@ -31,14 +31,13 @@ import (
 	"github.com/urfoundation/sn/clientauth"
 )
 
-// networkTokenRenewalSettings tunes a networkTokenRenewer. A scheduled
-// renewal falls at a point of the token's lifetime, from `iat` to `exp`, that
-// each token draws uniformly from the renewal window: the window of the SDK's
-// token refreshes (sdk device_token_manager.go, apiTokenRefreshSettings). The
-// window ends at the half-life, so a token keeps at least half its life for
-// the retries after a failed renewal. Every pass waits at least a second
-// (run), so no wait below, however small or non-positive, makes the renewer
-// spin.
+// Tunes a networkTokenRenewer. A scheduled renewal falls at a point of the
+// token's lifetime, from `iat` to `exp`, that each token draws uniformly from
+// the renewal window: the window of the SDK's token refreshes (sdk
+// device_token_manager.go, apiTokenRefreshSettings). The window ends at the
+// half-life, so a token keeps at least half its life for the retries after a
+// failed renewal. Every pass waits at least a second (run), so no wait below,
+// however small or non-positive, makes the renewer spin.
 type networkTokenRenewalSettings struct {
 	// The start of the renewal window, as a fraction of the token's lifetime.
 	// 0.4 spreads providers that renewed together over the last tenth of the
@@ -90,9 +89,9 @@ func defaultNetworkTokenRenewalSettings() *networkTokenRenewalSettings {
 	}
 }
 
-// renewalFraction is the point of a token's lifetime that a window draw
-// selects: draw 0 is the window's start and 1 its end. A draw outside [0, 1]
-// is clamped, so no draw falls after the window's end.
+// The point of a token's lifetime that a window draw selects: draw 0 is the
+// window's start and 1 its end. A draw outside [0, 1] is clamped, so no draw
+// falls after the window's end.
 func (self *networkTokenRenewalSettings) renewalFraction(draw float64) float64 {
 	start := max(self.RenewalWindowStart, 0)
 	end := max(self.RenewalWindowEnd, start)
@@ -105,8 +104,8 @@ func (self *networkTokenRenewalSettings) renewalFraction(draw float64) float64 {
 	return min(start+(end-start)*draw, end)
 }
 
-// networkTokenDueAtOnce reports a token to renew now, while the server still
-// accepts it: one without a readable expiration, or an expired one.
+// Reports a token to renew now, while the server still accepts it: one
+// without a readable expiration, or an expired one.
 func networkTokenDueAtOnce(byJwt string, now time.Time) bool {
 	claims := gojwt.MapClaims{}
 	if _, _, err := gojwt.NewParser().ParseUnverified(byJwt, claims); err != nil {
@@ -116,8 +115,8 @@ func networkTokenDueAtOnce(byJwt string, now time.Time) bool {
 	return err != nil || expiration == nil || !now.Before(expiration.Time)
 }
 
-// networkTokenRenewalTime is when the scheduled renewal of a network token
-// falls, for a window draw in [0, 1]: now for a token due at once, and any
+// When the scheduled renewal of a network token falls, for a window draw in
+// [0, 1]: now for a token due at once, and any
 // other at its drawn point of the lifetime from `iat` (from now without a
 // sensible `iat`), which is in the past for a token read late in its life.
 // The renewer holds each renewal to at least RenewalFloor after the previous
@@ -310,7 +309,7 @@ func (self *networkTokenRenewer) pass(ctx context.Context) time.Duration {
 	return self.renew(ctx, token, now)
 }
 
-// renewalDue is the scheduled token's next renewal: its drawn point, held to
+// The scheduled token's next renewal: its drawn point, held to
 // the end of a failure's backoff or an anomaly's spacing, and to at least
 // RenewalFloor after the previous renewal. A renewal answers a fresh token
 // whose point is a window away, but one already past its point (a clock far
