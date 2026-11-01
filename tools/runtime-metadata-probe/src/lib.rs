@@ -25,6 +25,7 @@ use sp_version::RuntimeVersion;
 use std::{error::Error, fmt, fs, path::Path};
 
 /// The exact polkadot-sdk revision whose executor semantics this tool uses.
+/// Its two Wasmtime crates carry upstream's Wasmtime 36 port; see `vendor/`.
 pub const POLKADOT_SDK_REVISION: &str = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a";
 
 /// Release-bound runtime identity and exact artifact digests.

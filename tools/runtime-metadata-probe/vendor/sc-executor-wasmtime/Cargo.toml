@@ -1,11 +1,13 @@
-# The pinned SDK's Wasmtime backend, vendored so that it can be patched.
+# The pinned SDK's Wasmtime backend, ported from Wasmtime 8.0.1 to 36.
 #
-# The sources are RaoFoundation/polkadot-sdk
-# cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a
-# substrate/client/executor/wasmtime, byte for byte. Only this manifest is
-# rewritten: its workspace keys are spelled out and the SDK crates point at the
-# pinned revision. The probe's Cargo.toml patches the pinned revision's crate
-# with this one; every other SDK crate stays at the pinned revision.
+# The sources are paritytech/polkadot-sdk 13bc266c3f3cb337a36998cfdc5940ca559051c9
+# ("Upgrade wasmtime (#8714)"), which equal the pinned
+# RaoFoundation/polkadot-sdk cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a sources
+# plus that one upstream port. Upstream moved from Wasmtime 35 to 36 without a
+# source change (#11793). Only this manifest is rewritten: its workspace keys
+# are spelled out, the SDK crates point at the pinned revision, and Wasmtime is
+# 36.0.19. The probe's Cargo.toml patches the pinned revision's crate with this
+# one; every other SDK crate stays at the pinned revision.
 [package]
 name = "sc-executor-wasmtime"
 version = "0.39.0"
@@ -40,12 +42,16 @@ sc-allocator = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev 
 sc-executor-common = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sp-runtime-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sp-wasm-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a", features = ["wasmtime"] }
-wasmtime = { version = "8.0.1", default-features = false, features = [
+wasmtime = { version = "36.0.19", default-features = false, features = [
+	"addr2line",
 	"cache",
 	"cranelift",
-	"jitdump",
+	"demangle",
+	"gc",
+	"gc-null",
 	"parallel-compilation",
 	"pooling-allocator",
+	"threads",
 ] }
 
 # Here we include the rustix crate in the exactly same semver-compatible version as used by
@@ -54,7 +60,7 @@ wasmtime = { version = "8.0.1", default-features = false, features = [
 # By default rustix directly calls the appropriate syscalls completely bypassing libc;
 # this doesn't have any actual benefits for us besides making it harder to debug memory
 # problems (since then `mmap` etc. cannot be easily hooked into).
-rustix = { version = "0.36.7", default-features = false, features = ["fs", "mm", "param", "std", "use-libc"] }
+rustix = { version = "1.0.3", default-features = false, features = ["fs", "mm", "param", "std", "use-libc"] }
 
 [dev-dependencies]
 cargo_metadata = { version = "0.15.4" }
