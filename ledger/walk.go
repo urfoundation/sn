@@ -84,6 +84,22 @@ func (w *walk) step(ctx context.Context, f *uint256.Int, rows []protocol.LedgerU
 	return uint256.Int{}, nil, nil
 }
 
+// recover allocates a recovery component's amount over its source epoch's
+// rows (§6.3) and adds the deltas to the root's sums. It reports false, with
+// no deltas, when the rows have no eligible usage, leaving the amount to the
+// covered epoch's ordinary funding. The walk's carry is not touched.
+func (w *walk) recover(ctx context.Context, amount *uint256.Int, rows []protocol.LedgerUsageRow) (bool, []protocol.LedgerDelta, error) {
+	deltas, err := protocol.AllocateLedgerEpoch(ctx, amount, rows)
+	if errors.Is(err, protocol.ErrNoEligibleUsage) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	w.sum = addDeltas(w.sum, deltas)
+	return true, deltas, nil
+}
+
 // addDeltas merges two lists in ascending coldkey order, summing the deltas
 // of a coldkey in both.
 func addDeltas(a, b []protocol.LedgerDelta) []protocol.LedgerDelta {
