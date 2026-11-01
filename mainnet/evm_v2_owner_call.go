@@ -6,9 +6,9 @@
 //
 // owner-call review checks the call against the chain at one head (the record
 // against the v1 commitment, the assignment against the pool's next unfunded
-// epoch and vault2's surplus), builds the Safe transaction and the owner's
-// execTransaction exactly as upgrade-settlement2 review does, and preflights
-// it from the owner. It neither signs nor sends.
+// epoch, vault2's surplus and the pool's scheduled recovery), builds the Safe
+// transaction and the owner's execTransaction exactly as upgrade-settlement2
+// review does, and preflights it from the owner. It neither signs nor sends.
 package main
 
 import (
@@ -18,13 +18,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 
+	"github.com/urfoundation/sn/ledger"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -131,6 +136,76 @@ func runSettlement2OwnerCallCommand(ctx context.Context, args []string, stdout, 
 	return 0
 }
 
+// settlement2RecoverySchedule returns a pool's recovery schedule; tests
+// replace it.
+var settlement2RecoverySchedule = ledger.ScheduledRecovery
+
+// reviewSettlement2Recovery guards a pool's scheduled recovery (§16 step 6).
+// The recovery is the first part of the pool's assigned surplus through the
+// schedule's last epoch (ledger.PlanRecovery). While part of it is unplaced,
+// an assignment must place all of it in one call, to an epoch the schedule
+// still covers: a short or split one would spread it across roots, and one
+// after the schedule's last epoch would be ordinary funding. The pool's
+// SurplusAssigned logs are read from the schedule's first block to the head.
+// A pool without a schedule, or whose recovery is placed, is not limited.
+func reviewSettlement2Recovery(ctx context.Context, chain *upgradeChain, head uint64, vault2 common.Address, call settlement2OwnerCall, firstEpoch uint64, facts map[string]string) error {
+	schedule := settlement2RecoverySchedule(vault2, call.noId)
+	if schedule == nil {
+		return nil
+	}
+	surplus := map[uint64]uint256.Int{}
+	topics := []any{[]common.Hash{settlement2SurplusAssignedTopic}, []common.Hash{common.BigToHash(new(big.Int).SetUint64(call.noId))}}
+	vaultAbi := stabi.NewSTSettlementVault2()
+	for from := schedule.FromBlock; from <= head; from += settlement2LogChunkBlocks {
+		var logs []types.Log
+		filter := map[string]any{"address": vault2.Hex(), "fromBlock": hexutil.EncodeUint64(from), "toBlock": hexutil.EncodeUint64(min(from+settlement2LogChunkBlocks-1, head)), "topics": topics}
+		if err := chain.client.callUpgradeRead(ctx, "eth_getLogs", []any{filter}, &logs); err != nil {
+			return fmt.Errorf("vault2 SurplusAssigned logs from block %d: %w", from, err)
+		}
+		for i := range logs {
+			event, err := vaultAbi.UnpackSurplusAssignedEvent(&logs[i])
+			if err != nil || logs[i].Address != vault2 || !event.NoId.IsUint64() || event.NoId.Uint64() != call.noId || !event.Epoch.IsUint64() {
+				return upgradeRefusal(fmt.Sprintf("vault2 log %d of block %d is not a SurplusAssigned of pool %d", logs[i].Index, logs[i].BlockNumber, call.noId))
+			}
+			amount, overflow := uint256.FromBig(event.Amount)
+			if overflow {
+				return upgradeRefusal(fmt.Sprintf("vault2 log %d of block %d assigns 2^256 or more", logs[i].Index, logs[i].BlockNumber))
+			}
+			total := surplus[event.Epoch.Uint64()]
+			surplus[event.Epoch.Uint64()] = *total.Add(&total, amount)
+		}
+	}
+	unplaced := ledger.RecoveryRemaining(schedule, surplus, firstEpoch, call.epoch)
+	facts["recovery_unplaced"], facts["recovery_through_epoch"] = unplaced.Dec(), fmt.Sprint(schedule.ThroughEpoch)
+	if unplaced.IsZero() {
+		return nil
+	}
+	if call.epoch > schedule.ThroughEpoch {
+		return upgradeRefusal(fmt.Sprintf("pool %d's scheduled recovery is placed only through epoch %d and %s rao of it stay unplaced; an assignment to epoch %d is ordinary funding", call.noId, schedule.ThroughEpoch, unplaced.Dec(), call.epoch))
+	}
+	after := maps.Clone(surplus)
+	amount, _ := uint256.FromBig(call.amount)
+	total := after[call.epoch]
+	after[call.epoch] = *total.Add(&total, amount)
+	if left := ledger.RecoveryRemaining(schedule, after, firstEpoch, call.epoch); !left.IsZero() {
+		return upgradeRefusal(fmt.Sprintf("assigning %s leaves %s rao of the scheduled recovery unplaced; assign at least %s in one call", call.amount, left.Dec(), unplaced.Dec()))
+	}
+	return nil
+}
+
+// settlement2LogChunkBlocks is the widest eth_getLogs span asked for, the
+// public endpoint's maximum.
+const settlement2LogChunkBlocks = 1_000
+
+// settlement2SurplusAssignedTopic is vault2's SurplusAssigned event ID.
+var settlement2SurplusAssignedTopic = func() common.Hash {
+	parsed, err := stabi.STSettlementVault2MetaData.ParseABI()
+	if err != nil {
+		panic(err)
+	}
+	return parsed.Events["SurplusAssigned"].ID
+}()
+
 // ownerCallView is upgradeView for a contract binding's packed call.
 func ownerCallView[T any](ctx context.Context, chain *upgradeChain, to common.Address, data []byte, unpack func([]byte) (T, error)) (T, error) {
 	var value T
@@ -207,6 +282,9 @@ func reviewSettlement2OwnerCall(ctx context.Context, client *rpcClient, call set
 		}
 		if call.amount.Cmp(surplus) > 0 {
 			return result, upgradeRefusal(fmt.Sprintf("the amount %s exceeds vault2's surplus %s", call.amount, surplus))
+		}
+		if err := reviewSettlement2Recovery(ctx, chain, head, vault2, call, pool.FirstEpoch, facts); err != nil {
+			return result, err
 		}
 		data, err = settlement2PhaseCAbi.Pack("assignSurplus", noId, epoch, call.amount)
 		if err != nil {

@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/urfoundation/sn/ledger"
 	"github.com/urfoundation/sn/merkle"
 )
 
@@ -140,6 +141,63 @@ func TestOwnerCallSettlement2ThroughTheSafe(t *testing.T) {
 	}
 	if _, code, stderr := f.ownerCall("--function", "assignSurplus", "--no-id", "1", "--epoch", "2", "--amount", "1"); code != 3 || !strings.Contains(stderr, "exceeds vault2's surplus 0") {
 		t.Fatalf("a second assignment: exit %d\n%s", code, stderr)
+	}
+	f.requireConservation()
+}
+
+// §16 step 6: while a pool's scheduled recovery is not placed, review refuses
+// an assignment that would leave part of it unplaced, and one to an epoch
+// after the schedule's last; an assignment that places the rest in one call
+// passes, and once the recovery is placed the guard no longer applies.
+func TestOwnerCallSettlement2GuardsTheRecovery(t *testing.T) {
+	safeOwner := newE2EActor("safe-owner")
+	f := &upgradeTestChain{e2eFixture: newE2EFixture(t, e2eDefaultFirst, safeOwner), safeOwner: safeOwner}
+	f.installSafe(t)
+	f.upgrade(t)
+	f.chain.rollTo(f.end(f.firstEpoch))
+	f.chain.emit(f.escrowV1, f.vault2Coldkey, e2eRao(5_000_000_000))
+	f.must(f.anyone, f.vault2, nil, e2eVault2Binding.PackAbsorbStake(f.escrowV1))
+	surplus := new(big.Int).Sub(e2eView(f.e2eFixture, f.vault2, e2eVault2Binding.PackLiveEscrowStake(), e2eVault2Binding.UnpackLiveEscrowStake), f.vault2Counter(e2eVault2Binding.PackEscrowAccounted))
+	recovery := new(big.Int).Sub(surplus, big.NewInt(1_000))
+	if !recovery.IsUint64() || recovery.Sign() <= 0 {
+		t.Fatalf("surplus %s", surplus)
+	}
+	schedule := &ledger.RecoverySchedule{Vault: f.vault2, NoID: e2eNoID, Sources: []ledger.Recovery{{Epoch: 1, Amount: recovery.Uint64()}}, FromBlock: 1, ThroughEpoch: 3}
+	settlement2RecoverySchedule = func(vault [20]byte, noID uint64) *ledger.RecoverySchedule {
+		if vault == schedule.Vault && noID == schedule.NoID {
+			copied := *schedule
+			return &copied
+		}
+		return nil
+	}
+	t.Cleanup(func() { settlement2RecoverySchedule = ledger.ScheduledRecovery })
+
+	short := new(big.Int).Sub(recovery, common.Big1)
+	if _, code, stderr := f.ownerCall("--function", "assignSurplus", "--no-id", "1", "--epoch", "2", "--amount", short.String()); code != 3 || !strings.Contains(stderr, "leaves 1 rao of the scheduled recovery unplaced; assign at least "+recovery.String()+" in one call") {
+		t.Fatalf("a short assignment: exit %d\n%s", code, stderr)
+	}
+	bounded := *schedule
+	bounded.ThroughEpoch = 1
+	settlement2RecoverySchedule = func(vault [20]byte, noID uint64) *ledger.RecoverySchedule {
+		copied := bounded
+		return &copied
+	}
+	if _, code, stderr := f.ownerCall("--function", "assignSurplus", "--no-id", "1", "--epoch", "2", "--amount", surplus.String()); code != 3 || !strings.Contains(stderr, "is placed only through epoch 1") {
+		t.Fatalf("an assignment after the schedule's last epoch: exit %d\n%s", code, stderr)
+	}
+	settlement2RecoverySchedule = func(vault [20]byte, noID uint64) *ledger.RecoverySchedule {
+		copied := *schedule
+		return &copied
+	}
+	review, code, stderr := f.ownerCall("--function", "assignSurplus", "--no-id", "1", "--epoch", "2", "--amount", recovery.String())
+	if code != 0 || review.Chain["recovery_unplaced"] != recovery.String() {
+		t.Fatalf("an assignment placing the recovery: exit %d %+v\n%s", code, review.Chain, stderr)
+	}
+	f.must(f.safeOwner, f.safe, nil, hexutil.MustDecode(review.OwnerTx.Data))
+	// The recovery is placed: a further assignment of what is left passes.
+	review, code, stderr = f.ownerCall("--function", "assignSurplus", "--no-id", "1", "--epoch", "2", "--amount", "1000")
+	if code != 0 || review.Chain["recovery_unplaced"] != "0" {
+		t.Fatalf("an assignment after the recovery: exit %d %+v\n%s", code, review.Chain, stderr)
 	}
 	f.requireConservation()
 }

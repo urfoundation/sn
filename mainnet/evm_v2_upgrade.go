@@ -350,7 +350,7 @@ func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, st
 // The upgrade review reads only these methods; it cannot send.
 func (self *rpcClient) callUpgradeRead(ctx context.Context, method string, params []any, result any) error {
 	switch method {
-	case "eth_chainId", "eth_blockNumber", "eth_call", "eth_getCode", "eth_getStorageAt":
+	case "eth_chainId", "eth_blockNumber", "eth_call", "eth_getCode", "eth_getStorageAt", "eth_getLogs":
 		return self.callAdmittedRead(ctx, method, params, result, false, maxRpcReplyBytes)
 	}
 	return errors.New("method is outside the settlement2 upgrade read profile")
