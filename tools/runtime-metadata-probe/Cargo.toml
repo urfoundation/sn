@@ -6,9 +6,11 @@ publish = false
 default-run = "runtime-metadata-probe"
 
 # Keep this audit tool independent from any Cargo workspace that may later be
-# added above it in the repository.
+# added above it in the repository. The vendored SDK crates are patches, not
+# members, so their own dev-dependencies stay out of this lock.
 [workspace]
 resolver = "2"
+exclude = ["vendor"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(substrate_runtime)"] }
@@ -38,3 +40,10 @@ scale-info = "=2.11.6"
 
 [dev-dependencies]
 wat = "=1.0.70"
+
+# Only these two pinned SDK crates name Wasmtime. Each is replaced by a vendored
+# copy of its pinned source so that its Wasmtime can be upgraded; every other
+# SDK crate stays at the pinned revision.
+[patch."https://github.com/RaoFoundation/polkadot-sdk.git"]
+sc-executor-wasmtime = { path = "vendor/sc-executor-wasmtime" }
+sp-wasm-interface = { path = "vendor/sp-wasm-interface" }

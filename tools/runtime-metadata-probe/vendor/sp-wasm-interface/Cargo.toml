@@ -1,0 +1,46 @@
+# The pinned SDK's host/Wasm interface, vendored so that it can be patched.
+#
+# The sources are RaoFoundation/polkadot-sdk
+# cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a
+# substrate/primitives/wasm-interface, byte for byte. Only this manifest is
+# rewritten: its workspace keys are spelled out. The probe's Cargo.toml patches
+# the pinned revision's crate with this one.
+[package]
+name = "sp-wasm-interface"
+version = "22.0.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://paritytech.github.io/polkadot-sdk/"
+repository = "https://github.com/paritytech/polkadot-sdk.git"
+description = "Types and traits for interfacing between the host and the wasm runtime."
+documentation = "https://docs.rs/sp-wasm-interface"
+readme = "README.md"
+publish = false
+
+[lints.rust]
+suspicious_double_ref_op = { level = "allow", priority = 2 }
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(build_opt_level, values("3"))',
+	'cfg(build_profile, values("debug", "release"))',
+	'cfg(enable_alloc_error_handler)',
+	'cfg(fuzzing)',
+	'cfg(ignore_flaky_test)',
+	'cfg(substrate_runtime)',
+] }
+
+[dependencies]
+anyhow = { version = "1.0.81", default-features = false, optional = true }
+codec = { version = "3.7.5", default-features = false, features = ["derive"], package = "parity-scale-codec" }
+impl-trait-for-tuples = { version = "0.2.2" }
+log = { version = "0.4.22", optional = true }
+wasmtime = { version = "8.0.1", default-features = false, optional = true }
+
+[features]
+default = ["std"]
+std = [
+	"anyhow?/std",
+	"codec/std",
+	"log/std",
+]
+wasmtime = ["anyhow", "dep:wasmtime"]

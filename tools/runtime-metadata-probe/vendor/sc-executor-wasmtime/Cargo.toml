@@ -1,0 +1,66 @@
+# The pinned SDK's Wasmtime backend, vendored so that it can be patched.
+#
+# The sources are RaoFoundation/polkadot-sdk
+# cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a
+# substrate/client/executor/wasmtime, byte for byte. Only this manifest is
+# rewritten: its workspace keys are spelled out and the SDK crates point at the
+# pinned revision. The probe's Cargo.toml patches the pinned revision's crate
+# with this one; every other SDK crate stays at the pinned revision.
+[package]
+name = "sc-executor-wasmtime"
+version = "0.39.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2021"
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+homepage = "https://paritytech.github.io/polkadot-sdk/"
+repository = "https://github.com/paritytech/polkadot-sdk.git"
+description = "Defines a `WasmRuntime` that uses the Wasmtime JIT to execute."
+readme = "README.md"
+publish = false
+
+[lints.rust]
+suspicious_double_ref_op = { level = "allow", priority = 2 }
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(build_opt_level, values("3"))',
+	'cfg(build_profile, values("debug", "release"))',
+	'cfg(enable_alloc_error_handler)',
+	'cfg(fuzzing)',
+	'cfg(ignore_flaky_test)',
+	'cfg(substrate_runtime)',
+] }
+
+[dependencies]
+log = { version = "0.4.22" }
+parking_lot = { version = "0.12.1" }
+
+# When bumping wasmtime do not forget to also bump rustix
+# to exactly the same version as used by wasmtime!
+anyhow = { version = "1.0.81", default-features = false }
+sc-allocator = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sc-executor-common = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-runtime-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-wasm-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a", features = ["wasmtime"] }
+wasmtime = { version = "8.0.1", default-features = false, features = [
+	"cache",
+	"cranelift",
+	"jitdump",
+	"parallel-compilation",
+	"pooling-allocator",
+] }
+
+# Here we include the rustix crate in the exactly same semver-compatible version as used by
+# wasmtime and enable its 'use-libc' flag.
+#
+# By default rustix directly calls the appropriate syscalls completely bypassing libc;
+# this doesn't have any actual benefits for us besides making it harder to debug memory
+# problems (since then `mmap` etc. cannot be easily hooked into).
+rustix = { version = "0.36.7", default-features = false, features = ["fs", "mm", "param", "std", "use-libc"] }
+
+[dev-dependencies]
+cargo_metadata = { version = "0.15.4" }
+codec = { version = "3.7.5", package = "parity-scale-codec" }
+paste = { version = "1.0.15" }
+sc-runtime-test = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-io = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+tempfile = { version = "3.8.1" }
+wat = { version = "1.0.0" }
