@@ -120,7 +120,7 @@ func newRenewalTestFixture(t *testing.T, token string) *renewalTestFixture {
 	self.renewer.jitter = func(time.Duration) time.Duration { return 0 }
 	// the end of each token's renewal window, its half-life, so each schedule
 	// is in whole days; tests of the draw install their own
-	self.renewer.draw = func() float64 { return 1 }
+	self.renewer.draw = func(string) float64 { return 1 }
 	return self
 }
 
@@ -160,7 +160,7 @@ func renewalTestAnswer(byJwt string) func(string) (*sdk.RefreshJwtResult, error)
 	return func(string) (*sdk.RefreshJwtResult, error) { return &sdk.RefreshJwtResult{ByJwt: byJwt}, nil }
 }
 
-// A token renews at its drawn point of the window, 40% to 50% of its lifetime
+// A token renews at its point of the window, 40% to 50% of its lifetime
 // from `iat` (from now without a sensible `iat`); expired, legacy and
 // unreadable tokens renew now. A point in the past is overdue.
 func TestNetworkTokenRenewalTime(t *testing.T) {

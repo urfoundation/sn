@@ -8,16 +8,20 @@ package miner
 // client (a new slot, an interrupted registration), and under
 // provide --all-operators the supervisor's hourly hotkey wallet upkeep sends
 // it. It expires 30 days after its sign-in, so the provide process that owns
-// the state directory renews it (POST /auth/network-refresh) at a point drawn
+// the state directory renews it (POST /auth/network-refresh) at its point
 // from 40% to 50% of its lifetime, never later than its half-life: the
-// schedule the SDK uses for the apps' tokens. Each renewal draws again, so
-// providers that renewed together, after an outage or a fleet restart, do not
-// stay in lockstep (owner decision, 2026-11-01). The renewal is written with
+// schedule the SDK uses for the apps' tokens. The point comes from a hash of
+// the token's id, so each renewal has its own, spreading providers that
+// renewed together (after an outage or a fleet restart) instead of keeping
+// them in lockstep, and a restarted process takes the same point for the same
+// token (owner decision, 2026-11-01). The renewal is written with
 // clientauth.RenewNetworkToken, which keeps every revoked client blocked
 // (clientauth/network_token.go).
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	mathrand "math/rand"
 	"net/http"
@@ -32,8 +36,9 @@ import (
 )
 
 // Tunes a networkTokenRenewer. A scheduled renewal falls at a point of the
-// token's lifetime, from `iat` to `exp`, that each token draws uniformly from
-// the renewal window: the window of the SDK's token refreshes (sdk
+// token's lifetime, from `iat` to `exp`, in the renewal window, taken from a
+// hash of the token's id (networkTokenRenewalDraw): the window of the SDK's
+// token refreshes (sdk
 // device_token_manager.go, apiTokenRefreshSettings). The window ends at the
 // half-life, so a token keeps at least half its life for the retries after a
 // failed renewal. Every pass waits at least a second (run), so no wait below,
@@ -46,14 +51,15 @@ type networkTokenRenewalSettings struct {
 	// window at `iat`.
 	RenewalWindowStart float64
 	// The end of the renewal window, as a fraction of the token's lifetime: the
-	// half-life, 0.5, which no drawn point passes. At or below
+	// half-life, 0.5, which no token's point passes. At or below
 	// RenewalWindowStart, every token renews at the window's start.
 	RenewalWindowEnd float64
 	// The least time from one renewal to the next scheduled one, like the
 	// SDK's MinRefreshTimeout: a schedule derived from a server or clock value
 	// needs a floor, or it is one change away from a hot loop. It wins over the
 	// window: a lifetime shorter than twice the floor renews after the floor.
-	// Non-positive disables it.
+	// Non-positive is for tests only: nothing then spaces the renewals, so a
+	// renewal that answers a token already due renews again without a wait.
 	RenewalFloor time.Duration
 	// The token file is read again at least this often, so a sign-in that
 	// replaced it is scheduled within this long.
@@ -104,6 +110,27 @@ func (self *networkTokenRenewalSettings) renewalFraction(draw float64) float64 {
 	return min(start+(end-start)*draw, end)
 }
 
+// The point of a token in its renewal window, in [0, 1): a hash of the token's
+// id (`jti`), or of its signature when it has none, read as a fraction, as the
+// SDK takes it (jwtRefreshDraw). The point is uniform across tokens, each new
+// token has its own, and a restarted process takes the same one; a point
+// drawn afresh by each process renewed a token early whenever its new point
+// had passed, in one burst on a fleet restart.
+func networkTokenRenewalDraw(token string) float64 {
+	seed := "token:" + token
+	claims := gojwt.MapClaims{}
+	if _, parts, err := gojwt.NewParser().ParseUnverified(token, claims); err == nil {
+		if id, ok := claims["jti"].(string); ok && id != "" {
+			seed = "jti:" + id
+		} else if 3 <= len(parts) && parts[2] != "" {
+			seed = "signature:" + parts[2]
+		}
+	}
+	sum := sha256.Sum256([]byte(seed))
+	// the top 53 bits, the precision of a float64 fraction
+	return float64(binary.BigEndian.Uint64(sum[:8])>>11) / float64(uint64(1)<<53)
+}
+
 // Reports a token to renew now, while the server still accepts it: one
 // without a readable expiration, or an expired one.
 func networkTokenDueAtOnce(byJwt string, now time.Time) bool {
@@ -117,7 +144,7 @@ func networkTokenDueAtOnce(byJwt string, now time.Time) bool {
 
 // When the scheduled renewal of a network token falls, for a window draw in
 // [0, 1]: now for a token due at once, and any
-// other at its drawn point of the lifetime from `iat` (from now without a
+// other at its point of the lifetime from `iat` (from now without a
 // sensible `iat`), which is in the past for a token read late in its life.
 // The renewer holds each renewal to at least RenewalFloor after the previous
 // one.
@@ -206,8 +233,9 @@ type networkTokenRenewer struct {
 	settings *networkTokenRenewalSettings
 	clock    networkTokenRenewalClock
 	jitter   func(time.Duration) time.Duration
-	// draws a token's point in its renewal window, in [0, 1)
-	draw func() float64
+	// a token's point in its renewal window, in [0, 1)
+	// (networkTokenRenewalDraw)
+	draw func(token string) float64
 	// tests observe each completed pass and its wait
 	afterPass func(wait time.Duration)
 	// set a token the renewal call rejects (401) aside instead of stopping,
@@ -247,7 +275,7 @@ func newNetworkTokenRenewer(path string, refresh func(context.Context, string) (
 		settings: defaultNetworkTokenRenewalSettings(),
 		clock:    systemNetworkTokenRenewalClock{},
 		jitter:   networkTokenRenewalJitter,
-		draw:     mathrand.Float64,
+		draw:     networkTokenRenewalDraw,
 	}
 }
 
@@ -287,12 +315,11 @@ func (self *networkTokenRenewer) pass(ctx context.Context) time.Duration {
 	}
 	self.stoppedToken = ""
 	if token != self.scheduledToken {
-		// another sign-in replaced the file: schedule its token once (it draws
-		// its point once, and a token without iat has a lifetime relative to
-		// the time it is read, which would recede if it were read again on
-		// every pass)
+		// another sign-in replaced the file: schedule its token once (a token
+		// without iat has a lifetime relative to the time it is read, which
+		// would recede if it were read again on every pass)
 		self.scheduledToken = token
-		self.scheduledTime = networkTokenRenewalTime(token, now, self.draw(), self.settings)
+		self.scheduledTime = networkTokenRenewalTime(token, now, self.draw(token), self.settings)
 		self.failures, self.anomalies, self.notBefore = 0, 0, time.Time{}
 		self.lastRenewalTime = time.Time{}
 		self.pending, self.pendingFor = "", ""
@@ -309,8 +336,8 @@ func (self *networkTokenRenewer) pass(ctx context.Context) time.Duration {
 	return self.renew(ctx, token, now)
 }
 
-// The scheduled token's next renewal: its drawn point, held to
-// the end of a failure's backoff or an anomaly's spacing, and to at least
+// The scheduled token's next renewal: its point, held to the end of a
+// failure's backoff or an anomaly's spacing, and to at least
 // RenewalFloor after the previous renewal. A renewal answers a fresh token
 // whose point is a window away, but one already past its point (a clock far
 // ahead of the server's, a lifetime shorter than the floor) would be due again
@@ -428,9 +455,9 @@ func (self *networkTokenRenewer) renew(ctx context.Context, token string, now ti
 	}
 	self.failures = 0
 	self.output.observe(providerNetworkTokenRenewed, 0, false, nil, 0, nil)
-	// the renewal draws its own point
+	// the renewal has its own point
 	self.scheduledToken = renewed
-	self.scheduledTime = networkTokenRenewalTime(renewed, now, self.draw(), self.settings)
+	self.scheduledTime = networkTokenRenewalTime(renewed, now, self.draw(renewed), self.settings)
 	self.notBefore = time.Time{}
 	self.lastRenewalTime = now
 	if networkTokenDueAtOnce(renewed, now) {

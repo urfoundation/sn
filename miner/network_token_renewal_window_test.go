@@ -8,19 +8,21 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	gojwt "github.com/golang-jwt/jwt/v5"
 )
 
 // The renewal window (networkTokenRenewalSettings): each network token renews
-// at a point drawn from 40% to 50% of its lifetime, never later than its
-// half-life, never sooner than the floor after the previous renewal. At
-// exactly the half-life, providers that renewed together stayed in lockstep
-// every cycle (owner decision, 2026-11-01).
+// at its point from 40% to 50% of its lifetime, taken from a hash of its id,
+// never later than its half-life, never sooner than the floor after the
+// previous renewal. At exactly the half-life, providers that renewed together
+// stayed in lockstep every cycle (owner decision, 2026-11-01).
 
 // installs the window draws a test's renewals take, in order
 func (self *renewalTestFixture) drawWindow(t *testing.T, draws ...float64) func() int {
 	var drawLock sync.Mutex
 	count := 0
-	self.renewer.draw = func() float64 {
+	self.renewer.draw = func(string) float64 {
 		drawLock.Lock()
 		defer drawLock.Unlock()
 		if len(draws) <= count {
@@ -111,18 +113,35 @@ func TestNetworkTokenRenewalTimeDrawsWithinTheWindow(t *testing.T) {
 	}
 }
 
-// The production draw, with no hook installed, keeps every point in [40%, 50%)
-// of the lifetime and spreads them over the window.
+// A network token with an id (`jti`), as the server mints each token.
+func renewalTestJwtWithId(t *testing.T, issued time.Time, expires time.Time, id string) string {
+	t.Helper()
+	token, err := gojwt.NewWithClaims(gojwt.SigningMethodNone, gojwt.MapClaims{
+		"network_id": renewalTestNetworkId,
+		"user_id":    renewalTestUserId,
+		"iat":        issued.Unix(),
+		"exp":        expires.Unix(),
+		"jti":        id,
+	}).SignedString(gojwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+// The production draw, with no hook installed, takes each token's point from
+// its id: 2000 tokens issued in the same second spread over the whole window,
+// every point in [40%, 50%) of the lifetime.
 func TestNetworkTokenRenewalDefaultDrawStaysWithinTheWindow(t *testing.T) {
 	now := renewalTestBase
 	lifetime := 30 * 24 * time.Hour
-	token := renewalTestJwt(t, now, now.Add(lifetime), "default-draw")
 	renewer := newNetworkTokenRenewer("jwt", nil, nil)
 	windowStart := now.Add(time.Duration(0.4 * float64(lifetime)))
 	halfLife := now.Add(lifetime / 2)
 	earliest, latest := halfLife, windowStart
-	for i := 0; i < 10000; i += 1 {
-		got := networkTokenRenewalTime(token, now, renewer.draw(), renewer.settings)
+	for i := 0; i < 2000; i += 1 {
+		token := renewalTestJwtWithId(t, now, now.Add(lifetime), fmt.Sprintf("00000000-0000-4000-8000-%012d", i))
+		got := networkTokenRenewalTime(token, now, renewer.draw(token), renewer.settings)
 		if got.Before(windowStart) || !got.Before(halfLife) {
 			t.Fatalf("renews at %s, outside [%s, %s)", got, windowStart, halfLife)
 		}
@@ -133,8 +152,95 @@ func TestNetworkTokenRenewalDefaultDrawStaysWithinTheWindow(t *testing.T) {
 			latest = got
 		}
 	}
-	if latest.Sub(earliest) < 2*24*time.Hour {
-		t.Fatalf("10000 draws spread over only %s of the 3-day window", latest.Sub(earliest))
+	if latest.Sub(earliest) < 2*24*time.Hour+23*time.Hour {
+		t.Fatalf("2000 tokens spread over only %s of the 3-day window", latest.Sub(earliest))
+	}
+}
+
+// A token's point is a function of the token, the SDK's (jwtRefreshDraw): a
+// restarted process takes the same point, tokens with other ids take other
+// points, and claims beside the id do not move it. Points are uniform over
+// tokens (chi-square of 10000 ids in 20 bins below 43.8, the 0.001 critical
+// value for 19 degrees of freedom).
+func TestNetworkTokenRenewalDrawIsTheTokens(t *testing.T) {
+	now := renewalTestBase
+	day := 24 * time.Hour
+	token := renewalTestJwtWithId(t, now, now.Add(30*day), "id-1")
+	if networkTokenRenewalDraw(token) != networkTokenRenewalDraw(token) {
+		t.Fatal("one token took two points")
+	}
+	if networkTokenRenewalDraw(renewalTestJwtWithId(t, now, now.Add(30*day), "id-2")) == networkTokenRenewalDraw(token) {
+		t.Fatal("tokens with different ids took the same point")
+	}
+	if networkTokenRenewalDraw(renewalTestJwtWithId(t, now.Add(time.Hour), now.Add(31*day), "id-1")) != networkTokenRenewalDraw(token) {
+		t.Fatal("claims beside the id moved the point")
+	}
+
+	const tokenCount = 10000
+	const binCount = 20
+	bins := make([]int, binCount)
+	for i := 0; i < tokenCount; i += 1 {
+		draw := networkTokenRenewalDraw(renewalTestJwtWithId(t, now, now.Add(30*day), fmt.Sprintf("00000000-0000-4000-8000-%012d", i)))
+		if draw < 0 || 1 <= draw {
+			t.Fatalf("draw %v is outside [0, 1)", draw)
+		}
+		bins[int(draw*binCount)] += 1
+	}
+	expected := float64(tokenCount) / binCount
+	chiSquare := 0.0
+	for _, count := range bins {
+		chiSquare += (float64(count) - expected) * (float64(count) - expected) / expected
+	}
+	if 43.8 < chiSquare {
+		t.Fatalf("points are not uniform over tokens: chi-square %.1f, bins %v", chiSquare, bins)
+	}
+}
+
+// A restarted provide process takes the same point for the token in the file,
+// with the production draw: it renews a token 45% into its life exactly when
+// the first process would have, at once if its point has passed and at the
+// point otherwise. A point drawn afresh by each process made a fleet restart
+// renew the tokens whose new point had passed in one burst, and frequent
+// restarts renew early.
+func TestNetworkTokenRenewerRestartKeepsTheTokensPoint(t *testing.T) {
+	day := 24 * time.Hour
+	pastCount := 0
+	for i := 0; i < 8; i += 1 {
+		// 13.5 of 30 days old: 45% of its lifetime
+		signIn := renewalTestJwtWithId(t, renewalTestBase.Add(-13*day-12*time.Hour), renewalTestBase.Add(16*day+12*time.Hour), fmt.Sprintf("sign-in-%d", i))
+		point := networkTokenRenewalTime(signIn, renewalTestBase, networkTokenRenewalDraw(signIn), defaultNetworkTokenRenewalSettings())
+		fixture := newRenewalTestFixture(t, signIn)
+		fixture.renewer.draw = networkTokenRenewalDraw
+		fixture.refresh.answer = renewalTestAnswer(renewalTestJwt(t, renewalTestBase, renewalTestBase.Add(30*day), "renewed"))
+		for _, process := range []string{"first", "restarted"} {
+			renewer := fixture.renewer
+			if process == "restarted" {
+				renewer = newNetworkTokenRenewer(fixture.path, fixture.refresh.refresh, fixture.renewer.output)
+				renewer.clock = fixture.clock
+				renewer.jitter = func(time.Duration) time.Duration { return 0 }
+			}
+			if !point.After(renewalTestBase) {
+				// past its point: the first process renews it; the file then
+				// holds the renewal, which the restarted process schedules
+				if process == "first" {
+					renewer.pass(t.Context())
+					fixture.event(t)
+					if fixture.refresh.count() != 1 {
+						t.Fatalf("token %d past its point was not renewed at once", i)
+					}
+					pastCount += 1
+				}
+				continue
+			}
+			renewer.pass(t.Context())
+			if fixture.refresh.count() != 0 || !renewer.scheduledTime.Equal(point) {
+				t.Fatalf("token %d, %s process: renews at %s after %d calls, want %s", i, process, renewer.scheduledTime, fixture.refresh.count(), point)
+			}
+		}
+	}
+	// half of the window is behind a token 45% into its life
+	if pastCount == 0 || pastCount == 8 {
+		t.Fatalf("%d of 8 tokens past their point; the points do not spread", pastCount)
 	}
 }
 
