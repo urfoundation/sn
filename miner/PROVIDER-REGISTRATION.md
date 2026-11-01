@@ -109,9 +109,14 @@ slot, an interrupted registration) and by the supervisor's hourly hotkey wallet
 upkeep. So every `provide` process renews its state directory's network JWT
 (`miner/network_token_renewal.go`):
 
-- **When:** at the token's half-life, never sooner than 5 minutes after the
-  schedule is read. A token without an expiration, or an expired one, is
-  renewed at once while the server still accepts it.
+- **When:** at a point drawn uniformly between 40% and 50% of the token's
+  lifetime, measured from its `iat`, so never later than its half-life: the
+  schedule of the SDK's token refreshes. Each renewal draws again, so providers
+  that renewed together (after an outage or a fleet restart) spread out
+  instead of renewing in lockstep. A token read past its point is renewed at
+  once, and a renewal is never sooner than 5 minutes after the previous one.
+  A token without an expiration, or an expired one, is renewed at once while
+  the server still accepts it.
 - **How:** `POST /auth/network-refresh` with the network JWT, over the first
   provider's transport (direct, or the first proxy). The renewal must name the
   same network, user, roles and principal, and no client.

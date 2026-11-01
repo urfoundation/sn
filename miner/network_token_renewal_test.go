@@ -118,6 +118,9 @@ func newRenewalTestFixture(t *testing.T, token string) *renewalTestFixture {
 	self.renewer = newNetworkTokenRenewer(self.path, self.refresh.refresh, newProviderDiagnosticTestOwner(t, self.sink))
 	self.renewer.clock = self.clock
 	self.renewer.jitter = func(time.Duration) time.Duration { return 0 }
+	// the end of each token's renewal window, its half-life, so each schedule
+	// is in whole days; tests of the draw install their own
+	self.renewer.draw = func() float64 { return 1 }
 	return self
 }
 
@@ -157,51 +160,63 @@ func renewalTestAnswer(byJwt string) func(string) (*sdk.RefreshJwtResult, error)
 	return func(string) (*sdk.RefreshJwtResult, error) { return &sdk.RefreshJwtResult{ByJwt: byJwt}, nil }
 }
 
-func TestNetworkTokenRenewalTimeout(t *testing.T) {
+// A token renews at its drawn point of the window, 40% to 50% of its lifetime
+// from `iat` (from now without a sensible `iat`); expired, legacy and
+// unreadable tokens renew now. A point in the past is overdue.
+func TestNetworkTokenRenewalTime(t *testing.T) {
 	day := 24 * time.Hour
 	now := renewalTestBase
+	settings := defaultNetworkTokenRenewalSettings()
 	for name, c := range map[string]struct {
 		token string
+		draw  float64
 		want  time.Duration
 	}{
-		"half-life":      {renewalTestJwt(t, now, now.Add(30*day), ""), 15 * day},
-		"past half-life": {renewalTestJwt(t, now.Add(-20*day), now.Add(10*day), ""), networkTokenRenewalFloor},
-		"near expiry":    {renewalTestJwt(t, now.Add(-30*day), now.Add(time.Minute), ""), networkTokenRenewalFloor},
-		"expired":        {renewalTestJwt(t, now.Add(-40*day), now.Add(-10*day), ""), 0},
-		"no expiration":  {renewalTestJwt(t, now, time.Time{}, ""), 0},
-		"no issued time": {renewalTestJwt(t, time.Time{}, now.Add(30*day), ""), 15 * day},
-		"issued after":   {renewalTestJwt(t, now.Add(40*day), now.Add(30*day), ""), 15 * day},
-		"not a jwt":      {"network-jwt", 0},
-		"short lifetime": {renewalTestJwt(t, now, now.Add(4*time.Minute), ""), networkTokenRenewalFloor},
+		"the window's start":       {renewalTestJwt(t, now, now.Add(30*day), ""), 0, 12 * day},
+		"the middle of the window": {renewalTestJwt(t, now, now.Add(30*day), ""), 0.5, 13*day + 12*time.Hour},
+		"half-life":                {renewalTestJwt(t, now, now.Add(30*day), ""), 1, 15 * day},
+		"a draw past the window":   {renewalTestJwt(t, now, now.Add(30*day), ""), 2, 15 * day},
+		"a draw before the window": {renewalTestJwt(t, now, now.Add(30*day), ""), -1, 12 * day},
+		"past its point":           {renewalTestJwt(t, now.Add(-13*day), now.Add(17*day), ""), 0, -day},
+		"past half-life":           {renewalTestJwt(t, now.Add(-20*day), now.Add(10*day), ""), 1, -5 * day},
+		"near expiry":              {renewalTestJwt(t, now.Add(-30*day), now.Add(time.Minute), ""), 1, -15*day + 30*time.Second},
+		"expired":                  {renewalTestJwt(t, now.Add(-40*day), now.Add(-10*day), ""), 1, 0},
+		"no expiration":            {renewalTestJwt(t, now, time.Time{}, ""), 1, 0},
+		"no issued time":           {renewalTestJwt(t, time.Time{}, now.Add(30*day), ""), 1, 15 * day},
+		"issued after":             {renewalTestJwt(t, now.Add(40*day), now.Add(30*day), ""), 1, 15 * day},
+		"not a jwt":                {"network-jwt", 1, 0},
+		"short lifetime":           {renewalTestJwt(t, now, now.Add(4*time.Minute), ""), 0, 96 * time.Second},
 	} {
-		if got := networkTokenRenewalTimeout(c.token, now); got != c.want {
-			t.Errorf("%s: timeout = %s, want %s", name, got, c.want)
+		got := networkTokenRenewalTime(c.token, now, c.draw, settings).Sub(now)
+		if diff := got - c.want; diff < -time.Microsecond || time.Microsecond < diff {
+			t.Errorf("%s: renews in %s, want %s", name, got, c.want)
 		}
 	}
 }
 
 func TestNetworkTokenRenewalBackoffsAreBoundedAndFloored(t *testing.T) {
+	settings := defaultNetworkTokenRenewalSettings()
 	full := func(interval time.Duration) time.Duration { return interval }
 	none := func(time.Duration) time.Duration { return 0 }
 	wild := func(time.Duration) time.Duration { return -time.Hour }
 	previous := time.Duration(0)
 	for failures := 1; failures <= 64; failures++ {
-		got := networkTokenRenewalRetryTimeout(failures, full)
-		if got < previous || got > networkTokenRenewalMinimumRetry+networkTokenRenewalMaximumRetry {
+		got := networkTokenRenewalRetryTimeout(failures, full, settings)
+		if got < previous || got > settings.MinimumRetryTimeout+settings.MaximumRetryJitter {
 			t.Fatalf("failures %d: retry %s after %s", failures, got, previous)
 		}
 		previous = got
-		if floor := networkTokenRenewalRetryTimeout(failures, none); floor != networkTokenRenewalMinimumRetry {
+		if floor := networkTokenRenewalRetryTimeout(failures, none, settings); floor != settings.MinimumRetryTimeout {
 			t.Fatalf("failures %d: retry without jitter = %s", failures, floor)
 		}
-		if negative := networkTokenRenewalRetryTimeout(failures, wild); negative != networkTokenRenewalMinimumRetry {
+		if negative := networkTokenRenewalRetryTimeout(failures, wild, settings); negative != settings.MinimumRetryTimeout {
 			t.Fatalf("failures %d: a negative jitter shortened the retry to %s", failures, negative)
 		}
 	}
-	if networkTokenRenewalRetryTimeout(1, full) != networkTokenRenewalMinimumRetry+networkTokenRenewalJitterBase {
+	if networkTokenRenewalRetryTimeout(1, full, settings) != settings.MinimumRetryTimeout+settings.RetryJitterBase {
 		t.Fatal("the first retry interval is not the jitter base")
 	}
-	if networkTokenRenewalAnomalyTimeout(1) != networkTokenRenewalFloor || networkTokenRenewalAnomalyTimeout(2) != 2*networkTokenRenewalFloor || networkTokenRenewalAnomalyTimeout(64) != networkTokenRenewalMaximumAnomaly {
+	if networkTokenRenewalAnomalyTimeout(1, settings) != settings.RenewalFloor || networkTokenRenewalAnomalyTimeout(2, settings) != 2*settings.RenewalFloor || networkTokenRenewalAnomalyTimeout(64, settings) != settings.MaximumAnomalyTimeout {
 		t.Fatal("anomaly spacing does not double from the floor to its bound")
 	}
 	for i := 0; i < 64; i++ {
@@ -236,7 +251,7 @@ func TestNetworkTokenRenewerRenewsAtTheHalfLifeAndPersists(t *testing.T) {
 	renewed := renewalTestJwt(t, renewalTestBase.Add(15*day), renewalTestBase.Add(45*day), "renewed")
 	fixture.refresh.answer = renewalTestAnswer(renewed)
 
-	if wait := fixture.renewer.pass(t.Context()); wait != networkTokenRenewalMaximumWait || fixture.refresh.count() != 0 {
+	if wait := fixture.renewer.pass(t.Context()); wait != fixture.renewer.settings.MaximumWait || fixture.refresh.count() != 0 {
 		t.Fatalf("a fresh sign-in renewed early: wait %s, %d calls", wait, fixture.refresh.count())
 	}
 	fixture.clock.now = renewalTestBase.Add(15*day - time.Hour)
@@ -255,7 +270,7 @@ func TestNetworkTokenRenewerRenewsAtTheHalfLifeAndPersists(t *testing.T) {
 	if code, _ := fixture.event(t); code != "network_sign_in_renewed" {
 		t.Fatalf("event = %s", code)
 	}
-	if wait != networkTokenRenewalMaximumWait || !fixture.renewer.scheduledTime.Equal(fixture.clock.now.Add(15*day)) {
+	if wait != fixture.renewer.settings.MaximumWait || !fixture.renewer.scheduledTime.Equal(fixture.clock.now.Add(15*day)) {
 		t.Fatalf("next renewal at %s (wait %s)", fixture.renewer.scheduledTime, wait)
 	}
 	// the renewal is not read as another sign-in
@@ -292,7 +307,7 @@ func TestNetworkTokenRenewerStopsOnARejectedSignIn(t *testing.T) {
 	fixture.refresh.answer = func(string) (*sdk.RefreshJwtResult, error) {
 		return nil, &connect.HttpStatusError{StatusCode: http.StatusUnauthorized}
 	}
-	if wait := fixture.renewer.pass(t.Context()); wait != networkTokenRenewalRecheck {
+	if wait := fixture.renewer.pass(t.Context()); wait != fixture.renewer.settings.RecheckTimeout {
 		t.Fatalf("wait after a rejection = %s", wait)
 	}
 	code, guidance := fixture.event(t)
@@ -315,12 +330,8 @@ func TestNetworkTokenRenewerStopsOnARejectedSignIn(t *testing.T) {
 	}
 	renewed := renewalTestJwt(t, fixture.clock.now, fixture.clock.now.Add(30*day), "renewed")
 	fixture.refresh.answer = renewalTestAnswer(renewed)
+	// past its half-life, and never renewed: at once
 	fixture.renewer.pass(t.Context())
-	if fixture.token(t) == newSignIn {
-		// past its half-life it is renewed at the floor
-		fixture.clock.now = fixture.clock.now.Add(networkTokenRenewalFloor)
-		fixture.renewer.pass(t.Context())
-	}
 	if fixture.token(t) != renewed || fixture.refresh.calls[len(fixture.refresh.calls)-1] != newSignIn {
 		t.Fatal("the new sign-in was not renewed")
 	}
@@ -374,7 +385,7 @@ func TestNetworkTokenRenewerBacksOffFailures(t *testing.T) {
 		if code, _ := fixture.event(t); code != "network_sign_in_renewal_retry" {
 			t.Fatalf("event %s", code)
 		}
-		if wait < networkTokenRenewalMinimumRetry || wait < previous {
+		if wait < fixture.renewer.settings.MinimumRetryTimeout || wait < previous {
 			t.Fatalf("attempt %d: wait %s after %s", attempt, wait, previous)
 		}
 		// a pass before the retry time sends nothing
@@ -424,7 +435,7 @@ func TestNetworkTokenRenewerRetriesOnlyTheWriteWhileBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait := fixture.renewer.pass(t.Context())
-	if code, _ := fixture.event(t); code != "network_sign_in_renewal_retry" || wait < networkTokenRenewalMinimumRetry || fixture.token(t) != signIn {
+	if code, _ := fixture.event(t); code != "network_sign_in_renewal_retry" || wait < fixture.renewer.settings.MinimumRetryTimeout || fixture.token(t) != signIn {
 		t.Fatalf("busy renewal: event %s wait %s", code, wait)
 	}
 	if err := lock.Close(); err != nil {
@@ -473,11 +484,11 @@ func TestNetworkTokenRenewerSpacesRenewalsDueAtOnce(t *testing.T) {
 		count++
 		return &sdk.RefreshJwtResult{ByJwt: renewalTestJwt(t, fixture.clock.now, time.Time{}, fmt.Sprintf("renewed %d", count))}, nil
 	}
-	want := networkTokenRenewalFloor
+	want := fixture.renewer.settings.RenewalFloor
 	for renewal := 1; renewal <= 6; renewal++ {
 		wait := fixture.renewer.pass(t.Context())
 		fixture.event(t)
-		if fixture.refresh.count() != renewal || wait != min(want, networkTokenRenewalMaximumWait) {
+		if fixture.refresh.count() != renewal || wait != min(want, fixture.renewer.settings.MaximumWait) {
 			t.Fatalf("renewal %d: calls %d wait %s, want %s", renewal, fixture.refresh.count(), wait, want)
 		}
 		fixture.clock.now = fixture.clock.now.Add(want - time.Second)
@@ -492,7 +503,7 @@ func TestNetworkTokenRenewerSpacesRenewalsDueAtOnce(t *testing.T) {
 
 func TestNetworkTokenRenewerLeavesApiKeysAndMissingFilesAlone(t *testing.T) {
 	fixture := newRenewalTestFixture(t, "")
-	if wait := fixture.renewer.pass(t.Context()); wait != networkTokenRenewalRecheck || fixture.refresh.count() != 0 {
+	if wait := fixture.renewer.pass(t.Context()); wait != fixture.renewer.settings.RecheckTimeout || fixture.refresh.count() != 0 {
 		t.Fatalf("missing file: wait %s calls %d", wait, fixture.refresh.count())
 	}
 	fixture.noEvent(t)
