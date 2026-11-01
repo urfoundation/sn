@@ -659,7 +659,12 @@ func observeFoundryVersion() (string, string, error) {
 }
 
 func protocolSourceHash(snRoot string) (string, error) {
-	names, err := trackedFilesUnder(snRoot, []string{"protocol", "docs/spec"}, classifyProtocolReleasePath)
+	// The probe's Cargo manifest patches sc-executor-wasmtime and
+	// sp-wasm-interface to path crates under vendor/. Cargo.lock records path
+	// crates without a source revision or checksum, so walk the vendored tree
+	// like the protocol roots: every reviewed file is bound and an unreviewed
+	// or ignored one refuses the lock.
+	names, err := trackedFilesUnder(snRoot, []string{"protocol", "docs/spec", "tools/runtime-metadata-probe/vendor"}, classifyProtocolReleasePath)
 	if err != nil {
 		return "", err
 	}

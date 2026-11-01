@@ -51,7 +51,10 @@ Wasmtime 36.0.19, because the pinned Wasmtime 8.0.1 is out of support and has
 Cranelift miscompilation advisories. The port keeps the executor's Wasm
 features, heap limits and 1 MiB native stack. Native frame sizes differ, so a
 recursion that nearly exhausts that stack can trap at a slightly different
-depth.
+depth. Cargo.lock records these path crates without a source or checksum, so
+the release lock's `protocol_source_hash` binds every reviewed file under
+`vendor/` with the probe's manifest, lock and entry points. An unreviewed or
+ignored file there refuses the lock.
 
 Current resource limits are 96 MiB JSON, 8192 distinct proof nodes / 24 MiB total
 decoded proof, 8 MiB runtime code before / 32 MiB after decompression, 8 MiB block
