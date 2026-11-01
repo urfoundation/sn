@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -39,10 +40,21 @@ var (
 type settlementV2AuditChain struct {
 	chain *ChainClient
 	vault common.Address
+	// settlementVault is the v1 vault, whose entitlements the recovery
+	// sources are checked against.
+	settlementVault common.Address
 	// deployBlock is the coordinator's deploy block: no event of either
 	// contract precedes it.
 	deployBlock uint64
 	fleet       settlementV2FleetIndex
+	// schedule returns a pool's recovery schedule; nil is
+	// ledger.ScheduledRecovery.
+	schedule func(vault [20]byte, noID uint64) *ledger.RecoverySchedule
+	// surplus holds each scheduled pool's SurplusAssigned index.
+	surplus map[uint64]*settlementV2SurplusIndex
+	// sources holds the recovered source epochs, by pool, whose vault1
+	// entitlement checked: RootMissed is terminal, so a check holds for good.
+	sources map[[2]uint64]bool
 }
 
 // poolState reads the pool, and for a registered pool its pending root; with
@@ -370,6 +382,123 @@ func (self *settlementV2AuditChain) demandHistory(ctx context.Context, state *se
 	}
 	slices.Sort(again)
 	return doublings, slices.Compact(again), nil
+}
+
+// recoveries plans the pending root's recovery components (§16 step 6) with
+// ledger.PlanRecovery from the pool's SurplusAssigned totals through the
+// pending commit, after which no epoch the root covers can receive surplus,
+// read through the pool's checkpointed index; each placed source's amount must
+// be vault1's RootMissed entitlement of it at the pinned block. A pool
+// without a schedule reads nothing.
+func (self *settlementV2AuditChain) recoveries(ctx context.Context, state *settlementV2PoolState) (map[uint64][]ledger.Recovery, error) {
+	lookup := self.schedule
+	if lookup == nil {
+		lookup = ledger.ScheduledRecovery
+	}
+	schedule := lookup(self.vault, state.noID)
+	if schedule == nil {
+		return nil, nil
+	}
+	if self.surplus == nil {
+		self.surplus, self.sources = map[uint64]*settlementV2SurplusIndex{}, map[[2]uint64]bool{}
+	}
+	index := self.surplus[state.noID]
+	if index == nil {
+		index = &settlementV2SurplusIndex{from: max(schedule.FromBlock, self.deployBlock), surplus: map[uint64]uint256.Int{}}
+		self.surplus[state.noID] = index
+	}
+	if err := index.extend(ctx, self.chain, self.vault, state.noID, state.pending.CommittedBlock); err != nil {
+		return nil, err
+	}
+	p := state.firstEpoch - 1
+	if state.previous != nil {
+		p = state.previous.Epoch
+	}
+	plan := ledger.PlanRecovery(schedule, index.surplus, state.firstEpoch, p, state.pending.Epoch)
+	for _, components := range plan {
+		for _, component := range components {
+			key := [2]uint64{state.noID, component.Epoch}
+			if self.sources[key] {
+				continue
+			}
+			values, err := self.chain.settlementV2ViewAtHashContext(ctx, self.settlementVault, &stabi.STSettlementVaultMetaData, "entitlement", []any{new(big.Int).SetUint64(component.Epoch), new(big.Int).SetUint64(state.noID)}, state.block, state.blockHash)
+			if err != nil {
+				return nil, fmt.Errorf("vault1 entitlement of epoch %d of pool %d at block %d: %w", component.Epoch, state.noID, state.block, err)
+			}
+			entitlement := *abi.ConvertType(values[0], new(stabi.STSettlementVaultEntitlement)).(*stabi.STSettlementVaultEntitlement)
+			funded, overflow := uint256.FromBig(entitlement.Funded)
+			if overflow {
+				return nil, fmt.Errorf("vault1 entitlement of epoch %d funds 2^256 or more", component.Epoch)
+			}
+			if err := schedule.CheckSource(component.Epoch, entitlement.Status, funded); err != nil {
+				return nil, err
+			}
+			self.sources[key] = true
+		}
+	}
+	return plan, nil
+}
+
+// settlementV2SurplusIndex holds a pool's vault2 SurplusAssigned totals by
+// epoch from its schedule's first block through scannedThrough. Each scan
+// first reads the block it scans to with eth_getBlockByNumber: a node serves
+// a block's logs once it serves the block, and every block before it, so a
+// node whose log index lags fails the scan, which is retried, instead of
+// answering a range short. The checkpoint's hash is checked against the
+// chain before a scan resumes from it.
+type settlementV2SurplusIndex struct {
+	from           uint64
+	scannedThrough uint64
+	scannedHash    [32]byte
+	surplus        map[uint64]uint256.Int
+}
+
+// extend scans the pool's SurplusAssigned logs after the checkpoint, or from
+// the first block, through block to.
+func (self *settlementV2SurplusIndex) extend(ctx context.Context, chain *ChainClient, vault common.Address, noID, to uint64) error {
+	if to < self.from || (self.scannedThrough != 0 && to <= self.scannedThrough) {
+		return nil
+	}
+	toHash, err := chain.BlockHashContext(ctx, to)
+	if err != nil {
+		return fmt.Errorf("block %d before its SurplusAssigned scan: %w", to, err)
+	}
+	from := self.from
+	if self.scannedThrough != 0 {
+		hash, err := chain.BlockHashContext(ctx, self.scannedThrough)
+		if err != nil {
+			return err
+		}
+		if hash != self.scannedHash {
+			return fmt.Errorf("SurplusAssigned scan checkpoint %d is no longer canonical", self.scannedThrough)
+		}
+		from = self.scannedThrough + 1
+	}
+	surplus := maps.Clone(self.surplus)
+	topics := [][]common.Hash{{settlementV2VaultABI.Events["SurplusAssigned"].ID}, {common.BigToHash(new(big.Int).SetUint64(noID))}}
+	for start := from; start <= to; start += getLogsChunkBlocks {
+		logs, err := readSettlementV2Logs(ctx, chain, vault, topics, start, min(start+getLogsChunkBlocks-1, to))
+		if err != nil {
+			return fmt.Errorf("vault2 surplus: %w", err)
+		}
+		for i := range logs {
+			event, err := settlementV2Vault.UnpackSurplusAssignedEvent(&logs[i])
+			if err != nil {
+				return fmt.Errorf("vault2 log %d of block %d: %w", logs[i].Index, logs[i].BlockNumber, err)
+			}
+			if !event.NoId.IsUint64() || event.NoId.Uint64() != noID || !event.Epoch.IsUint64() {
+				return fmt.Errorf("vault2 SurplusAssigned log %d of block %d names another pool or epoch", logs[i].Index, logs[i].BlockNumber)
+			}
+			amount, overflow := uint256.FromBig(event.Amount)
+			if overflow {
+				return fmt.Errorf("vault2 SurplusAssigned log %d of block %d has an amount of 2^256 or more", logs[i].Index, logs[i].BlockNumber)
+			}
+			total := surplus[event.Epoch.Uint64()]
+			surplus[event.Epoch.Uint64()] = *total.Add(&total, amount)
+		}
+	}
+	self.surplus, self.scannedThrough, self.scannedHash = surplus, to, toHash
+	return nil
 }
 
 // settlementV2Objects reads ledger objects from an operator's public

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net/url"
 	"slices"
@@ -236,11 +237,15 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	fmt.Printf("  pending root:      seq %d, epoch %d, committed at block %d, %d open demands\n", pending.Seq, pending.Epoch, pending.CommittedBlock, pending.OpenDemands)
 	fmt.Printf("                     root 0x%x, total %s, %d accounts, ledger %v\n", pending.Root, formatAlpha(pending.Total), pending.LeafCount, ledger.Ref(pending.LedgerHash))
 	objects := v2Objects{api: api}
+	// A watcher has neither vault1 nor the pool's surplus history: it takes
+	// the header's recovery components as declared (§16 step 6) and checks
+	// their rows, allocation and fit within the funding; the auditors check
+	// them against the chain.
 	in := ledger.VerifyInput{
 		NoID: noID, FirstEpoch: state.firstEpoch, Seq: pending.Seq,
 		Pending:       v2LedgerRoot(pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash),
 		FundedThrough: state.funded, Fetcher: objects, Custody: ledger.NewMemoryCustody(),
-		MaxFetchBytes: ledger.DefaultMaxFetchBytes,
+		MaxFetchBytes: ledger.DefaultMaxFetchBytes, RecoveriesUnchecked: true,
 	}
 	if latest := state.latest; latest != nil {
 		fmt.Printf("  finalized root:    index %d, epoch %d, root 0x%x, total %s, %d accounts\n", state.latestIndex, latest.Epoch, latest.Root, formatAlpha(latest.Total), latest.LeafCount)
@@ -345,6 +350,12 @@ func reportV2Audit(res *ledger.Result) {
 		fmt.Printf("  audit:             %v\n", res.Action())
 	} else {
 		fmt.Printf("  audit:             %v (%v check: %v)\n", res.Action(), res.Check, res.Err)
+	}
+	epochs := slices.Sorted(maps.Keys(res.Recoveries))
+	for _, epoch := range epochs {
+		for _, component := range res.Recoveries[epoch] {
+			fmt.Printf("  recovery:          epoch %d recovers epoch %d: %s, as declared; the auditors check it against the chain\n", epoch, component.Epoch, formatAlpha(new(big.Int).SetUint64(component.Amount)))
+		}
 	}
 	for _, ref := range res.Missing {
 		fmt.Printf("  object missing:    %v\n", ref)

@@ -5,21 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {STCoordinator} from "../../src/STCoordinator.sol";
-import {STSettlement2} from "../../src/STSettlement2.sol";
+import {STSettlement2PhaseC} from "../../src/STSettlement2PhaseC.sol";
 import {STSettlementVault2} from "../../src/STSettlementVault2.sol";
 import {ISTSettlementVault2} from "../../src/interfaces/ISTSettlementVault2.sol";
 import {LedgerTree} from "../../src/LedgerTree.sol";
 import {ISTAKING_ADDRESS} from "../../src/interfaces/stakingV2.sol";
 import {MockStakingV2} from "../mocks/PrecompileMocks.sol";
 import {V2TreeHelper} from "./V2TreeHelper.sol";
-
-/// @dev STSettlement2 with the phase C wrapper for vault2's assignSurplus
-///      (VERSION2-FINAL.md §16), as a test upgrade.
-contract STSettlement2Surplus is STSettlement2 {
-    function assignSurplus(uint256 noId, uint256 amount) external onlyOwner {
-        ISTSettlementVault2(vault).assignSurplus(noId, amount);
-    }
-}
 
 /// @dev Drives pools 1 and 2 through the whole settlement v2 stack in random
 ///      order for the I suite (VERSION2-FINAL.md §15.5): captures and
@@ -84,7 +76,7 @@ contract V2LifecycleHandler is Test {
     bytes32 internal constant FOREIGN = keccak256("v1-escrow-hotkey");
     MockStakingV2 internal constant STAKING = MockStakingV2(ISTAKING_ADDRESS);
 
-    STSettlement2Surplus internal immutable settlement;
+    STSettlement2PhaseC internal immutable settlement;
     STSettlementVault2 internal immutable vault;
     STCoordinator internal immutable v1;
     bytes32 internal immutable escrow;
@@ -132,7 +124,7 @@ contract V2LifecycleHandler is Test {
     uint256 public absorbs;
     uint256 public assigns;
 
-    constructor(STSettlement2Surplus settlement_) {
+    constructor(STSettlement2PhaseC settlement_) {
         settlement = settlement_;
         vault = STSettlementVault2(settlement_.vault());
         v1 = STCoordinator(payable(settlement_.v1Coordinator()));
@@ -256,13 +248,14 @@ contract V2LifecycleHandler is Test {
         _disarmMove(armed);
     }
 
-    /// @dev The owner assigns surplus through the test upgrade, at most one
-    ///      rao more than there is.
+    /// @dev The owner assigns surplus through the phase C upgrade to the pool's
+    ///      next unfunded epoch, at most one rao more than there is.
     function assignSurplus(uint256 poolSeed, uint256 amountSeed) external {
         uint256 noId = _pool(poolSeed);
         uint256 amount = 1 + amountSeed % (ghostSurplus + 1);
+        uint256 epoch = vault.lastFundedEpoch(noId) + 1;
         vm.prank(owner);
-        try settlement.assignSurplus(noId, amount) {
+        try settlement.assignSurplus(noId, epoch, amount) {
             ghostCaptured[noId] += amount;
             ghostSurplus = amount > ghostSurplus ? 0 : ghostSurplus - amount;
             assigns++;

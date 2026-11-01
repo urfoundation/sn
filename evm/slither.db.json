@@ -5,5 +5,12 @@
     "confidence": "High",
     "id": "4973ce9e54083c717c6ee0975736e48e5c4b663a58c077e06d2c33964a4bb701",
     "description": "Contract locking ether found:\n\tContract STSubnetProbe (src/probe/STSubnetProbe.sol#42-324) has payable functions:\n\t - STSubnetProbe.receive() (src/probe/STSubnetProbe.sol#110)\n\t - STSubnetProbe.seedFromTao(bytes32,uint256) (src/probe/STSubnetProbe.sol#256-261)\n\tBut does not have a function to withdraw the ether\n"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "1d318660f5e0e453f5f82b0f899bc650fb6c73f229d96727c0c774c3fe8de86c",
+    "description": "STSettlement2PhaseC.recordV1Sweep(uint256,uint256,bytes32) (src/STSettlement2PhaseC.sol#69-85) ignores return value by (payoutRoot,committedArtifact,None,None) = v1.rootCommitments(epoch,noId) (src/STSettlement2PhaseC.sol#78)\n"
   }
 ]

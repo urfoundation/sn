@@ -2,13 +2,14 @@
 pragma solidity 0.8.24;
 
 import {V2StackBase} from "./utils/V2StackBase.sol";
-import {V2LifecycleHandler, STSettlement2Surplus} from "./utils/V2LifecycleHandler.sol";
+import {V2LifecycleHandler} from "./utils/V2LifecycleHandler.sol";
+import {STSettlement2PhaseC} from "../src/STSettlement2PhaseC.sol";
 import {ISTSettlementVault2} from "../src/interfaces/ISTSettlementVault2.sol";
 
 /// @dev The settlement v2 invariants (VERSION2-FINAL.md §15.5) over random
 ///      lifecycles of pools 1 and 2 through the whole stack, with the auditor
-///      set at quorum 2 of 3 and STSettlement2 upgraded to expose
-///      assignSurplus. Registration collateral is locked on the escrow and on
+///      set at quorum 2 of 3 and STSettlement2 upgraded to its phase C
+///      implementation, which exposes assignSurplus. Registration collateral is locked on the escrow and on
 ///      pool 2's hotkey (A3). One campaign checks all six invariants after
 ///      every call: Foundry would replay the identical campaign for each
 ///      invariant function. The default profile runs it short and the
@@ -29,7 +30,7 @@ contract V2InvariantTest is V2StackBase {
         _registerV2Pool(NO2, V2_POOL2, V2_POOL2_UID);
         address[] memory auditors = new address[](3);
         (auditors[0], auditors[1], auditors[2]) = (auditor1, makeAddr("auditor-2"), makeAddr("auditor-3"));
-        STSettlement2Surplus upgrade = new STSettlement2Surplus();
+        STSettlement2PhaseC upgrade = new STSettlement2PhaseC();
         vm.startPrank(owner);
         settlement.setAuditors(auditors, 2);
         settlement.upgradeToAndCall(address(upgrade), "");
@@ -39,7 +40,7 @@ contract V2InvariantTest is V2StackBase {
         staking.setStake(V2_POOL2, V2_SELF, 1_000);
         staking.setCollateral(V2_POOL2, V2_SELF, 1_000);
 
-        handler = new V2LifecycleHandler(STSettlement2Surplus(payable(address(settlement))));
+        handler = new V2LifecycleHandler(STSettlement2PhaseC(payable(address(settlement))));
         bytes4[] memory selectors = new bytes4[](14);
         selectors[0] = V2LifecycleHandler.close.selector;
         selectors[1] = V2LifecycleHandler.commit.selector;

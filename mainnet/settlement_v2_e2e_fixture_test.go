@@ -74,10 +74,12 @@ var (
 	e2eSinkBinding        = stabi.NewSTReserveSink()
 )
 
-// e2eArtifact is a contract's ABI and exact creation bytecode.
+// e2eArtifact is a contract's ABI and exact creation bytecode, and for a forge
+// build its whole artifact.
 type e2eArtifact struct {
 	abi      abi.ABI
 	creation []byte
+	raw      []byte
 }
 
 var e2eArtifacts sync.Map
@@ -107,10 +109,10 @@ func e2eCatalogArtifact(t testing.TB, name string) *e2eArtifact {
 	return nil
 }
 
-// e2eForgeSources are the test contracts the suite reads from a Foundry build
-// of sn/evm: the test coordinator upgrade.
+// e2eForgeSources are the contracts the suite reads from a Foundry build of
+// sn/evm: the phase C coordinator upgrade.
 var e2eForgeSources = []struct{ source, name string }{
-	{"test/utils/V2LifecycleHandler.sol", "STSettlement2Surplus"},
+	{"src/STSettlement2PhaseC.sol", "STSettlement2PhaseC"},
 }
 
 // e2eForgeBuild builds those sources once per test binary in a private
@@ -150,7 +152,7 @@ var e2eForgeBuild = sync.OnceValue(func() error {
 		if err != nil {
 			return err
 		}
-		loaded := &e2eArtifact{abi: parsed, creation: common.FromHex(artifact.Bytecode.Object)}
+		loaded := &e2eArtifact{abi: parsed, creation: common.FromHex(artifact.Bytecode.Object), raw: raw}
 		if len(loaded.creation) == 0 {
 			return fmt.Errorf("forge artifact %s has no creation bytecode", contract.name)
 		}
