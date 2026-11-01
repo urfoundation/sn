@@ -730,6 +730,94 @@ func TestGeneratedABIHashBindsFleetBatcher(t *testing.T) {
 	}
 }
 
+// The probe's Cargo manifest patches sc-executor-wasmtime and
+// sp-wasm-interface to path crates under vendor/, so Cargo.lock no longer pins
+// their source by Git revision. Every reviewed vendored byte must move
+// protocol_source_hash, and unreviewed vendored bytes must refuse the lock.
+func TestProtocolSourceHashBindsVendoredProbeCrates(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	const vendor = "tools/runtime-metadata-probe/vendor/"
+	vendored := []string{
+		vendor + "sc-executor-wasmtime/Cargo.toml",
+		vendor + "sc-executor-wasmtime/build.rs",
+		vendor + "sc-executor-wasmtime/src/runtime.rs",
+		vendor + "sc-executor-wasmtime/src/test-guard-page-skip.wat",
+		vendor + "sp-wasm-interface/Cargo.toml",
+		vendor + "sp-wasm-interface/src/lib.rs",
+	}
+	files := map[string]string{
+		"protocol/protocol.go": "package protocol\n",
+		"docs/spec/spec.md":    "# spec\n",
+		"WHITEPAPER.md":        "whitepaper\n",
+		"VALIDATOR.md":         "validator\n",
+		"stabi/generate.sh":    "#!/bin/sh\n",
+		"scripts/check-runtime-metadata-artifacts.sh":      "#!/bin/sh\n",
+		"scripts/check-runtime-v454-source.sh":             "#!/bin/sh\n",
+		"scripts/test-release-1.0-local.sh":                "#!/bin/sh\n",
+		"scripts/test-release-1.0-producer-gate.sh":        "#!/bin/sh\n",
+		"tools/runtime-metadata-probe/Cargo.lock":          "version = 4\n",
+		"tools/runtime-metadata-probe/Cargo.toml":          "[patch.\"https://github.com/RaoFoundation/polkadot-sdk.git\"]\n",
+		"tools/runtime-metadata-probe/rust-toolchain.toml": "[toolchain]\n",
+		"tools/runtime-metadata-probe/src/lib.rs":          "pub fn probe() {}\n",
+		"tools/runtime-metadata-probe/src/main.rs":         "fn main() {}\n",
+	}
+	for _, name := range vendored {
+		files[name] = "// reviewed " + name + "\n"
+	}
+	write := func(name, content string) {
+		t.Helper()
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range files {
+		write(name, content)
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review protocol sources")
+	baseline, err := protocolSourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range vendored {
+		write(name, files[name]+"// drift\n")
+		changed, err := protocolSourceHash(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed == baseline {
+			t.Errorf("vendored probe source %s did not change protocol_source_hash", name)
+		}
+		write(name, files[name])
+		restored, err := protocolSourceHash(root)
+		if err != nil || restored != baseline {
+			t.Fatalf("restoring %s did not restore protocol_source_hash: %s %s %v", name, baseline, restored, err)
+		}
+	}
+
+	added := vendor + "sp-wasm-interface/src/wasmtime.rs"
+	write(added, "pub struct Added;\n")
+	runTestGit(t, root, "add", added)
+	withAdded, err := protocolSourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withAdded == baseline {
+		t.Error("a newly reviewed vendored probe source did not change protocol_source_hash")
+	}
+
+	unreviewed := vendor + "sc-executor-wasmtime/src/unreviewed.rs"
+	write(unreviewed, "pub struct Unreviewed;\n")
+	if _, err := protocolSourceHash(root); err == nil || !strings.Contains(err.Error(), `"`+unreviewed+`" is not a reviewed Git file`) {
+		t.Fatalf("unreviewed vendored probe source entered protocol_source_hash: %v", err)
+	}
+}
+
 func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	serverRoot := t.TempDir()
 	runTestGit(t, serverRoot, "init", "-q")
