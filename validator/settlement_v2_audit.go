@@ -148,18 +148,10 @@ type settlementV2Audit struct {
 	// contracts (§13); the audit runs no pass before it succeeds once. Nil
 	// once confirmed.
 	confirm func(context.Context) error
-	// planned holds each pending root's recovery components, read once: they
-	// are fixed once its epochs are funded.
-	planned map[settlementV2PlanKey]map[uint64][]ledger.Recovery
-}
-
-// settlementV2PlanKey names a pool's pending root.
-type settlementV2PlanKey struct {
-	noID, seq uint64
 }
 
 func newSettlementV2Audit(reader settlementV2AuditReader, custody *settlementV2Custody, sender settlementV2AuditSender, pools []settlementV2AuditPool, maxBytes uint64) *settlementV2Audit {
-	return &settlementV2Audit{reader: reader, custody: custody, sender: sender, pools: pools, maxBytes: maxBytes, random: rand.Reader, planned: map[settlementV2PlanKey]map[uint64][]ledger.Recovery{}}
+	return &settlementV2Audit{reader: reader, custody: custody, sender: sender, pools: pools, maxBytes: maxBytes, random: rand.Reader}
 }
 
 // errSettlementV2Unconfirmed: the release runtime has not yet confirmed the
@@ -300,17 +292,13 @@ func (self *settlementV2Audit) audit(ctx context.Context, pool settlementV2Audit
 
 // verify runs ledger.Verify with what is left of the root's byte budget and
 // records what it fetched. The recovery components the chain calls for are
-// read once per pending root.
+// planned again on every pass, from the reader's checkpointed surplus index,
+// so a plan is never kept from a read that could have lagged.
 func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord) (*ledger.Result, error) {
 	pending := &state.pending
-	key := settlementV2PlanKey{noID: state.noID, seq: pending.Seq}
-	recoveries, planned := self.planned[key]
-	if !planned {
-		var err error
-		if recoveries, err = self.reader.recoveries(ctx, state); err != nil {
-			return nil, fmt.Errorf("settlement v2 recovery plan of pool %d seq %d: %w", state.noID, pending.Seq, err)
-		}
-		self.planned[key] = recoveries
+	recoveries, err := self.reader.recoveries(ctx, state)
+	if err != nil {
+		return nil, fmt.Errorf("settlement v2 recovery plan of pool %d seq %d: %w", state.noID, pending.Seq, err)
 	}
 	in := ledger.VerifyInput{
 		NoID: state.noID, FirstEpoch: state.firstEpoch, Seq: pending.Seq,

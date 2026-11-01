@@ -61,6 +61,12 @@ type settlementV2AuditTestChain struct {
 	served func([]types.Log) []types.Log
 	// entitlements holds the v1 vault's entitlement(epoch, 1) answers.
 	entitlements map[uint64]stabi.STSettlementVaultEntitlement
+	// mappedThrough, when set, is the last block the node has indexed, as a
+	// Frontier node whose log index lags: it serves neither a later block's
+	// header by number nor its logs.
+	mappedThrough uint64
+	// queries records every eth_getLogs filter.
+	queries []settlementV2AuditTestLogQuery
 }
 
 // settlementV2AuditTestV1Vault is the v1 vault the recovery reads.
@@ -158,7 +164,7 @@ func (self *settlementV2AuditTestChain) GetBlockByNumber(number gethrpc.BlockNum
 	}
 	self.lock.Lock()
 	defer self.lock.Unlock()
-	if uint64(number) > self.latest {
+	if uint64(number) > self.latest || (self.mappedThrough != 0 && uint64(number) > self.mappedThrough) {
 		return nil, nil
 	}
 	return map[string]any{"number": hexutil.Uint64(number), "hash": settlementV2TestBlockHash(uint64(number))}, nil
@@ -191,10 +197,11 @@ func (self *settlementV2AuditTestChain) GetLogs(query settlementV2AuditTestLogQu
 	}
 	self.lock.Lock()
 	defer self.lock.Unlock()
+	self.queries = append(self.queries, query)
 	from, to := query.FromBlock.ToInt().Uint64(), query.ToBlock.ToInt().Uint64()
 	out := []types.Log{}
 	for _, log := range self.logs {
-		matches := log.BlockNumber >= from && log.BlockNumber <= to && slices.Contains(query.Address, log.Address)
+		matches := log.BlockNumber >= from && log.BlockNumber <= to && slices.Contains(query.Address, log.Address) && (self.mappedThrough == 0 || log.BlockNumber <= self.mappedThrough)
 		for i, alternatives := range query.Topics {
 			matches = matches && (len(alternatives) == 0 || i < len(log.Topics) && slices.Contains(alternatives, log.Topics[i]))
 		}

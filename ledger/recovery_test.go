@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/big"
+	mrand "math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -224,12 +227,17 @@ func TestHeaderRecoveryRefusals(t *testing.T) {
 	}
 }
 
-// The receiving epoch is the first epoch at or after the pool's first whose
-// own assigned surplus reaches the scheduled total; a root carries the
-// recovery only when it covers that epoch.
+// The recovery is the first part of the pool's assigned surplus, in epoch
+// order from the pool's first epoch through the schedule's last: each epoch
+// with surplus places as much of the still unplaced amount as its own
+// surplus holds, sources in ascending order. A root carries the part placed in
+// the epochs it covers, so a split assignment is placed across epochs, a
+// partial one waits for more surplus, and once the whole amount is placed no
+// later surplus is recovery.
 func TestPlanRecovery(t *testing.T) {
-	schedule := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 3, Amount: 100}}}
-	two := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 1, Amount: 30}, {Epoch: 3, Amount: 70}}}
+	schedule := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 3, Amount: 100}}, ThroughEpoch: 8}
+	two := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 1, Amount: 30}, {Epoch: 3, Amount: 70}}, ThroughEpoch: 8}
+	bounded := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 3, Amount: 100}}, ThroughEpoch: 6}
 	surplus := func(pairs ...uint64) map[uint64]uint256.Int { return funded(pairs...) }
 	at := func(epoch uint64, sources ...Recovery) map[uint64][]Recovery {
 		return map[uint64][]Recovery{epoch: sources}
@@ -243,19 +251,23 @@ func TestPlanRecovery(t *testing.T) {
 	}{
 		{"no schedule", nil, surplus(5, 1000), 4, 5, nil},
 		{"no surplus", schedule, nil, 4, 5, nil},
-		{"surplus below the total", schedule, surplus(5, 99), 4, 5, nil},
 		{"exactly the total", schedule, surplus(5, 100), 4, 5, at(5, Recovery{3, 100})},
 		{"above the total", schedule, surplus(5, 7_615), 4, 5, at(5, Recovery{3, 100})},
 		{"covered among several epochs", schedule, surplus(6, 100), 4, 7, at(6, Recovery{3, 100})},
-		{"first epoch to reach it", schedule, surplus(5, 100, 6, 500), 4, 6, at(5, Recovery{3, 100})},
-		{"an earlier small surplus does not count", schedule, surplus(5, 99, 6, 100), 4, 6, at(6, Recovery{3, 100})},
-		{"split surplus never reaches it", schedule, surplus(5, 60, 6, 60), 4, 6, nil},
-		{"already covered by a finalized root", schedule, surplus(5, 100), 5, 6, nil},
+		{"the first surplus places it all", schedule, surplus(5, 100, 6, 500), 4, 6, at(5, Recovery{3, 100})},
+		{"below the total: placed as far as it goes", schedule, surplus(5, 99), 4, 5, at(5, Recovery{3, 99})},
+		{"a split assignment across two epochs", schedule, surplus(5, 60, 6, 60), 4, 6, map[uint64][]Recovery{5: {{3, 60}}, 6: {{3, 40}}}},
+		{"the root after a partial one completes it", schedule, surplus(5, 60, 6, 60), 5, 6, at(6, Recovery{3, 40})},
+		{"a small surplus before the sweep counts first", schedule, surplus(5, 1, 6, 100), 4, 6, map[uint64][]Recovery{5: {{3, 1}}, 6: {{3, 99}}}},
+		{"already placed under a finalized root", schedule, surplus(5, 100), 5, 6, nil},
 		{"not yet covered", schedule, surplus(6, 100), 4, 5, nil},
 		{"a later root after the receiving one", schedule, surplus(5, 100, 7, 100), 6, 7, nil},
 		{"before the pool's first epoch", schedule, surplus(3, 100), 3, 5, nil},
 		{"two sources together", two, surplus(5, 100), 4, 5, at(5, Recovery{1, 30}, Recovery{3, 70})},
-		{"two sources, not enough", two, surplus(5, 99), 4, 5, nil},
+		{"two sources, partly", two, surplus(5, 99), 4, 5, at(5, Recovery{1, 30}, Recovery{3, 69})},
+		{"two sources split across epochs", two, surplus(5, 20, 6, 500), 4, 6, map[uint64][]Recovery{5: {{1, 20}}, 6: {{1, 10}, {3, 70}}}},
+		{"after the schedule's last epoch", bounded, surplus(7, 100), 4, 7, nil},
+		{"the bound stops a split", bounded, surplus(6, 60, 7, 60), 4, 7, at(6, Recovery{3, 60})},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -270,6 +282,32 @@ func TestPlanRecovery(t *testing.T) {
 	}
 }
 
+// RecoveryRemaining is what the surplus through an epoch leaves unplaced, so
+// a planner can say when a recovery is incomplete.
+func TestRecoveryRemaining(t *testing.T) {
+	schedule := &RecoverySchedule{NoID: 1, Sources: []Recovery{{Epoch: 1, Amount: 30}, {Epoch: 3, Amount: 70}}, ThroughEpoch: 6}
+	for _, c := range []struct {
+		surplus map[uint64]uint256.Int
+		e       uint64
+		want    uint64
+	}{
+		{nil, 9, 100},
+		{funded(5, 40), 5, 60},
+		{funded(5, 40), 4, 100},
+		{funded(5, 40, 6, 50), 6, 10},
+		{funded(5, 40, 6, 70), 6, 0},
+		{funded(5, 40, 7, 70), 9, 60},
+		{funded(3, 100), 9, 100},
+	} {
+		if got := RecoveryRemaining(schedule, c.surplus, 4, c.e); got.Uint64() != c.want {
+			t.Fatalf("surplus %v through %d leaves %s, want %d", c.surplus, c.e, got.Dec(), c.want)
+		}
+	}
+	if got := RecoveryRemaining(nil, funded(5, 1), 4, 9); !got.IsZero() {
+		t.Fatalf("no schedule leaves %s", got.Dec())
+	}
+}
+
 // The mainnet schedule: pool 1 of the mainnet vault2 recovers exactly epoch
 // 3's v1 funding; every other pool and vault has none.
 func TestScheduledRecovery(t *testing.T) {
@@ -278,7 +316,7 @@ func TestScheduledRecovery(t *testing.T) {
 		mainnet = schedule.Vault
 	}
 	schedule := ScheduledRecovery(mainnet, 1)
-	if schedule == nil || schedule.NoID != 1 || !slices.Equal(schedule.Sources, []Recovery{{Epoch: 3, Amount: recoveryEpoch3}}) || schedule.FromBlock != 9_386_659 {
+	if schedule == nil || schedule.NoID != 1 || !slices.Equal(schedule.Sources, []Recovery{{Epoch: 3, Amount: recoveryEpoch3}}) || schedule.FromBlock != 9_386_659 || schedule.ThroughEpoch != 8 {
 		t.Fatalf("mainnet schedule %+v", schedule)
 	}
 	if ScheduledRecovery(mainnet, 2) != nil || ScheduledRecovery([20]byte{1}, 1) != nil {
@@ -321,7 +359,7 @@ func TestRecoverySchedulesWellFormed(t *testing.T) {
 		var key [28]byte
 		copy(key[:20], schedule.Vault[:])
 		binary.BigEndian.PutUint64(key[20:], schedule.NoID)
-		if seen[key] || schedule.Vault == ([20]byte{}) || schedule.FromBlock == 0 || len(schedule.Sources) == 0 {
+		if seen[key] || schedule.Vault == ([20]byte{}) || schedule.FromBlock == 0 || len(schedule.Sources) == 0 || schedule.ThroughEpoch <= schedule.Sources[len(schedule.Sources)-1].Epoch {
 			t.Fatalf("schedule %d %+v", i, schedule)
 		}
 		seen[key] = true
@@ -773,4 +811,242 @@ func TestRecoveryCheckName(t *testing.T) {
 		t.Fatalf("CheckRecovery %d %q", CheckRecovery, CheckRecovery)
 	}
 	_ = merkle.LedgerAccount{}
+}
+
+// A split assignment: the surplus of epochs 11 and 12 together holds the
+// recovery. Epoch 11 places what its surplus holds and epoch 12 the rest,
+// each part allocated by the same source rows, and the parts sum to the
+// scheduled amount exactly. The validator approves the root, records the
+// source rows once, and the root after it carries nothing.
+func TestBuildRecoverySplitAcrossEpochs(t *testing.T) {
+	s := newRecoveryScenario(t)
+	const first, second = 3_000_000_000_000, 4_629_732_373_750
+	f10 := at(s.funded, 10)
+	s.funded[11] = rao(f10 + 599_997 + first)
+	s.funded[12] = rao(at(s.funded, 11) + 900_000 + second)
+	schedule := &RecoverySchedule{NoID: testNoID, Sources: []Recovery{{Epoch: recoverySource, Amount: recoveryEpoch3}}, ThroughEpoch: 20}
+	plan := PlanRecovery(schedule, funded(11, first, 12, second), testFirst, 10, 12)
+	if want := (map[uint64][]Recovery{11: {{recoverySource, first}}, 12: {{recoverySource, recoveryEpoch3 - first}}}); !reflect.DeepEqual(plan, want) {
+		t.Fatalf("plan %v, want %v", plan, want)
+	}
+	component := func(k uint64) []RecoveryInput {
+		return []RecoveryInput{{Recovery: plan[k][0], Rows: s.sourceRows}}
+	}
+	l, err := s.buildWith(t, component(11), component(12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var total uint64
+	for _, epoch := range l.Epochs {
+		for _, part := range epoch.Recovery {
+			if sum := sumDeltas(part.Deltas); sum.Uint64() != part.Amount {
+				t.Fatalf("epoch %d part sums to %s, not %d", epoch.Epoch, sum.Dec(), part.Amount)
+			}
+			total += part.Amount
+		}
+	}
+	if total != recoveryEpoch3 {
+		t.Fatalf("parts sum to %d", total)
+	}
+	if l.Epochs[0].Amount.Uint64() != 599_997 && l.Epochs[0].Allocated {
+		t.Fatalf("epoch 11 ordinary amount %s", l.Epochs[0].Amount.Dec())
+	}
+	in := s.scenario.input(l.Commit, l.Objects)
+	in.Recoveries = plan
+	expectPass(t, mustVerify(t, in))
+	if chunks, ok, _ := s.custody.ValidRows(context.Background(), testNoID, recoverySource); !ok || !slices.Equal(chunks, l.Epochs[0].Recovery[0].Providers) {
+		t.Fatal("source rows not recorded")
+	}
+	// Listing the whole amount at epoch 12 instead is refused: epoch 11
+	// omits its part.
+	whole, err := s.buildWith(t, nil, []RecoveryInput{{Recovery: Recovery{Epoch: recoverySource, Amount: recoveryEpoch3}, Rows: s.sourceRows}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := s.scenario.input(whole.Commit, whole.Objects)
+	refused.Recoveries = plan
+	expectFailure(t, mustVerify(t, refused), CheckRecovery, ActionRefuse, ErrRecoveryMissing)
+	// So is listing the parts with the amounts swapped.
+	swapped, err := s.buildWith(t, []RecoveryInput{{Recovery: Recovery{Epoch: recoverySource, Amount: recoveryEpoch3 - first}, Rows: s.sourceRows}}, []RecoveryInput{{Recovery: Recovery{Epoch: recoverySource, Amount: first}, Rows: s.sourceRows}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused = s.scenario.input(swapped.Commit, swapped.Objects)
+	refused.Recoveries = plan
+	expectFailure(t, mustVerify(t, refused), CheckRecovery, ActionRefuse, ErrRecoveryAmount)
+}
+
+// The root after the receiving root: its plan is empty, the validator decodes
+// the receiving root's header as the previous root (check 2), and a root that
+// pays the recovery again is refused (reviewer's end-to-end case).
+func TestVerifyRootAfterRecovery(t *testing.T) {
+	s := newRecoveryScenario(t)
+	receiving := s.honest(t)
+	expectPass(t, mustVerify(t, s.input(receiving.Commit, receiving.Objects)))
+	schedule := &RecoverySchedule{NoID: testNoID, Sources: []Recovery{{Epoch: recoverySource, Amount: recoveryEpoch3}}, ThroughEpoch: 20}
+	surplus := funded(12, recoveryEpoch3+recoveryEpoch1+recoveryReveal)
+	if plan := PlanRecovery(schedule, surplus, testFirst, 12, 13); len(plan) != 0 {
+		t.Fatalf("plan after the receiving root %v", plan)
+	}
+	f13 := map[uint64]uint256.Int{13: rao(at(s.funded, 12) + 1_400_000)}
+	next, err := Build(context.Background(), BuildInput{NoID: testNoID, Epoch: 13, Previous: &Previous{Root: receiving.Commit, Accounts: receiving.Accounts},
+		Epochs: []EpochInput{{Epoch: 13, Rows: epoch12Rows()}}, FundedThrough: f13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects := maps.Clone(receiving.Objects)
+	maps.Copy(objects, next.Objects)
+	previous := receiving.Commit
+	in := VerifyInput{NoID: testNoID, FirstEpoch: testFirst, Pending: next.Commit, Seq: 3, Previous: &previous, FundedThrough: f13,
+		Fetcher: objects, Custody: NewMemoryCustody(), Heads: s.heads, MaxFetchBytes: DefaultMaxFetchBytes}
+	expectPass(t, mustVerify(t, in))
+	// A next root that pays the recovery again.
+	f13again := map[uint64]uint256.Int{13: rao(at(s.funded, 12) + 1_400_000 + recoveryEpoch3)}
+	again, err := Build(context.Background(), BuildInput{NoID: testNoID, Epoch: 13, Previous: &Previous{Root: receiving.Commit, Accounts: receiving.Accounts},
+		Epochs: []EpochInput{{Epoch: 13, Rows: epoch12Rows(), Recovery: []RecoveryInput{{Recovery: Recovery{Epoch: recoverySource, Amount: recoveryEpoch3}, Rows: s.sourceRows}}}}, FundedThrough: f13again})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(objects, again.Objects)
+	in.Pending, in.FundedThrough, in.Custody = again.Commit, f13again, NewMemoryCustody()
+	expectFailure(t, mustVerify(t, in), CheckRecovery, ActionRefuse, ErrRecoveryUnexpected)
+}
+
+// A watcher without vault1 or the surplus history takes the header's
+// recovery components as declared: it still checks their rows, their
+// allocation and that they fit the epoch's funding, so it reports a correct
+// receiving root as passing and still refuses moved leaves.
+func TestVerifyRecoveryWatcherMode(t *testing.T) {
+	s := newRecoveryScenario(t)
+	l := s.honest(t)
+	watcher := func(root Root, objects Objects) VerifyInput {
+		in := s.scenario.input(root, objects)
+		in.Custody = s.withoutSourceRows()
+		in.RecoveriesUnchecked = true
+		return in
+	}
+	expectPass(t, mustVerify(t, watcher(l.Commit, l.Objects)))
+	// The amount is the validator's to check: a watcher passes a consistent
+	// root with another amount.
+	other, err := s.buildWith(t, nil, []RecoveryInput{{Recovery: Recovery{Epoch: recoverySource, Amount: recoveryEpoch3 + 1}, Rows: s.sourceRows}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectPass(t, mustVerify(t, watcher(other.Commit, other.Objects)))
+	// Moved leaves are still refused.
+	pub := publish(t, l)
+	accounts := slices.Clone(l.Accounts)
+	from, to := accountIndex(t, accounts, 31), accountIndex(t, accounts, 33)
+	accounts[from].Cumulative.SubUint64(&accounts[from].Cumulative, 1_000)
+	accounts[to].Cumulative.AddUint64(&accounts[to].Cumulative, 1_000)
+	pub.setAccounts(t, accounts)
+	expectFailure(t, mustVerify(t, watcher(pub.seal(t), pub.objects)), CheckAllocation, ActionRefuse, ErrAccountDelta)
+	// Components beyond the epoch's funding are the operator's fault here.
+	pub = publish(t, l)
+	pub.header.Epochs[1].Recovery[0].Amount = at(s.funded, 12)
+	expectFailure(t, mustVerify(t, watcher(pub.seal(t), pub.objects)), CheckRecovery, ActionRefuse, ErrRecoveryFunding)
+}
+
+// The allocation rule is exact at production scale: 300,000 rows over 60,000
+// coldkeys with no-wallet and head-excluded rows, equal weights, and weights
+// near 2^64. Every delta is floor or floor + 1 of its exact share, the extra
+// rao go to the largest remainders with ties to the ascending coldkey, and
+// the deltas sum to the amount (reviewer's property test).
+func TestRecoveryAllocationExact(t *testing.T) {
+	rng := mrand.New(mrand.NewSource(7))
+	n := 300_000
+	rows := make([]protocol.LedgerUsageRow, n)
+	for i := range rows {
+		rows[i] = protocol.LedgerUsageRow{ClientID: exactClient(i + 1), Coldkey: exactColdkey(rng.Intn(60_000)), UsageBytes: uint64(rng.Int63n(1<<40)) + 1, HeadExcluded: rng.Intn(50) == 0}
+		if rng.Intn(40) == 0 {
+			rows[i].Coldkey = [32]byte{}
+		}
+	}
+	for _, a := range []uint64{recoveryEpoch3, 1, 59_999, ^uint64(0)} {
+		checkExactAllocation(t, uint256.NewInt(a), rows)
+	}
+	tie := make([]protocol.LedgerUsageRow, 1000)
+	for i := range tie {
+		tie[i] = protocol.LedgerUsageRow{ClientID: exactClient(i + 1), Coldkey: exactColdkey(1000 - i), UsageBytes: 7}
+	}
+	checkExactAllocation(t, uint256.NewInt(recoveryEpoch3), tie)
+	near := []protocol.LedgerUsageRow{{ClientID: exactClient(1), Coldkey: exactColdkey(1), UsageBytes: 1<<63 - 1}, {ClientID: exactClient(2), Coldkey: exactColdkey(2), UsageBytes: 1 << 63}}
+	checkExactAllocation(t, uint256.NewInt(^uint64(0)), near)
+}
+
+func exactClient(i int) [16]byte {
+	var id [16]byte
+	id[12], id[13], id[14], id[15] = byte(i>>24), byte(i>>16), byte(i>>8), byte(i)
+	id[0] = 1
+	return id
+}
+
+func exactColdkey(i int) [32]byte {
+	var k [32]byte
+	k[28], k[29], k[30], k[31] = byte(i>>24), byte(i>>16), byte(i>>8), byte(i)
+	k[0] = 0x55
+	return k
+}
+
+func checkExactAllocation(t *testing.T, amount *uint256.Int, rows []protocol.LedgerUsageRow) {
+	t.Helper()
+	deltas, err := protocol.AllocateLedgerEpoch(context.Background(), amount, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	weights := map[[32]byte]*big.Int{}
+	total := new(big.Int)
+	for _, r := range rows {
+		if r.Coldkey == ([32]byte{}) || r.HeadExcluded || r.UsageBytes == 0 {
+			continue
+		}
+		w := weights[r.Coldkey]
+		if w == nil {
+			w = new(big.Int)
+			weights[r.Coldkey] = w
+		}
+		w.Add(w, new(big.Int).SetUint64(r.UsageBytes))
+		total.Add(total, new(big.Int).SetUint64(r.UsageBytes))
+	}
+	if len(deltas) != len(weights) {
+		t.Fatalf("%d deltas for %d coldkeys", len(deltas), len(weights))
+	}
+	a, sum := amount.ToBig(), new(big.Int)
+	type remainder struct {
+		coldkey [32]byte
+		r       *big.Int
+		extra   int
+	}
+	var remainders []remainder
+	for i, d := range deltas {
+		if i > 0 && bytes.Compare(deltas[i-1].Coldkey[:], d.Coldkey[:]) >= 0 {
+			t.Fatal("deltas not ascending")
+		}
+		q, r := new(big.Int).QuoRem(new(big.Int).Mul(a, weights[d.Coldkey]), total, new(big.Int))
+		got := d.Delta.ToBig()
+		diff := new(big.Int).Sub(got, q)
+		if diff.Sign() < 0 || diff.Cmp(big.NewInt(1)) > 0 {
+			t.Fatalf("delta %s not within floor %s + 1", got, q)
+		}
+		remainders = append(remainders, remainder{d.Coldkey, r, int(diff.Int64())})
+		sum.Add(sum, got)
+	}
+	if sum.Cmp(a) != 0 {
+		t.Fatalf("sum %s, not %s", sum, a)
+	}
+	sort.SliceStable(remainders, func(i, j int) bool {
+		if c := remainders[i].r.Cmp(remainders[j].r); c != 0 {
+			return c > 0
+		}
+		return bytes.Compare(remainders[i].coldkey[:], remainders[j].coldkey[:]) < 0
+	})
+	extra := 0
+	for _, x := range remainders {
+		extra += x.extra
+	}
+	for i, x := range remainders {
+		if want := map[bool]int{true: 1, false: 0}[i < extra]; x.extra != want {
+			t.Fatalf("remainder rank %d got +%d, want +%d", i, x.extra, want)
+		}
+	}
 }

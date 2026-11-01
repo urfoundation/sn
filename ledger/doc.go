@@ -109,10 +109,15 @@
 //
 // Which source epochs a pool recovers is the owner's decision, fixed in
 // code (ScheduledRecovery, keyed by vault2 and no_id; mainnet pool 1
-// recovers epoch 3). Where it lands is a fact of the chain: PlanRecovery
-// places it at the first epoch at or after firstEpoch whose own vault2
-// SurplusAssigned amounts reach the scheduled total, and a root carries it
-// only when it covers that epoch. Builder and verifier both check each
+// recovers epoch 3 through epoch 8). Where it lands is a fact of the chain:
+// PlanRecovery makes the recovery the first part of the pool's vault2
+// SurplusAssigned amounts, in epoch order from firstEpoch through the
+// schedule's last epoch, so each epoch places as much of the unplaced total
+// as its own surplus holds. One assignment of the swept surplus places it in
+// one epoch; a split or short one is placed across epochs, never dropped;
+// once the total is placed no later surplus is recovery; and
+// RecoveryRemaining says what is still unplaced. A root carries the parts
+// placed in the epochs it covers. Builder and verifier both check each
 // source's amount against vault1's terminal RootMissed entitlement
 // (RecoverySchedule.CheckSource).
 //
@@ -172,7 +177,10 @@
 // recovery dispute is therefore found with the root reproduced, and leads
 // to a refusal, not a demand. VerifyInput.Recoveries holds the components
 // the chain calls for, per covered epoch; the header must list exactly
-// those (check 10).
+// those (check 10). A watcher without vault1 or the surplus history sets
+// VerifyInput.RecoveriesUnchecked instead: the header's components are
+// taken as declared, and only their rows, allocation and fit within the
+// epoch's funding (ErrRecoveryFunding, check 10) are checked.
 //
 // The Result also says what §9.3 needs. Previous and PreviousAccounts are
 // the finalized root's verified tree and accounts. Accounts and Tree are the

@@ -219,6 +219,12 @@ type VerifyInput struct {
 	// each amount checked against vault1 (RecoverySchedule.CheckSource). The
 	// header must list exactly these. Nil calls for none.
 	Recoveries map[uint64][]Recovery
+	// RecoveriesUnchecked takes the header's recovery components as
+	// declared and skips check 10, for a watcher without vault1 or the
+	// surplus history, such as snclaim. Their rows, allocation and fit within
+	// the epoch's funding are still checked; whether they are the scheduled
+	// ones is the auditors' check. A validator never sets it.
+	RecoveriesUnchecked bool
 }
 
 // Fault is a previous account that the pending root's published account
@@ -254,6 +260,9 @@ type Result struct {
 	Faults []Fault
 	// FetchedBytes counts the bytes fetched for objects not in custody.
 	FetchedBytes uint64
+	// Recoveries holds the recovery components the pending root's header
+	// declares, per covered epoch, once the header is read.
+	Recoveries map[uint64][]Recovery
 }
 
 // Action is the §9.3 response to a result.
@@ -391,8 +400,10 @@ func (v *verifier) run() error {
 	if err := v.accounts(header); err != nil {
 		return err
 	}
-	if err := v.recoveryDeclarations(header); err != nil {
-		return err
+	if !v.in.RecoveriesUnchecked {
+		if err := v.recoveryDeclarations(header); err != nil {
+			return err
+		}
 	}
 	held, heldRecovery, err := v.fixedInputs(header)
 	if err != nil {
@@ -534,6 +545,12 @@ func (v *verifier) header(p uint64) (*Header, error) {
 	for i := range h.Epochs {
 		if h.Epochs[i].Epoch != p+1+uint64(i) {
 			return nil, fail(CheckHeader, fmt.Errorf("%w: entry %d is epoch %d", ErrCoveredEpochs, i, h.Epochs[i].Epoch))
+		}
+		for _, component := range h.Epochs[i].Recovery {
+			if v.res.Recoveries == nil {
+				v.res.Recoveries = map[uint64][]Recovery{}
+			}
+			v.res.Recoveries[h.Epochs[i].Epoch] = append(v.res.Recoveries[h.Epochs[i].Epoch], Recovery{Epoch: component.Epoch, Amount: component.Amount})
 		}
 	}
 	return h, nil
@@ -756,6 +773,10 @@ func (v *verifier) recovery(epoch *HeaderEpoch, w *walk, f *uint256.Int, held []
 		total.AddUint64(&total, component.Amount)
 	}
 	if total.Gt(f) {
+		// Declared components the chain did not check are the root's fault.
+		if v.in.RecoveriesUnchecked {
+			return ordinary, fail(CheckRecovery, fmt.Errorf("%w: epoch %d recovers %s of funding %s", ErrRecoveryFunding, epoch.Epoch, total.Dec(), f.Dec()))
+		}
 		return ordinary, fmt.Errorf("%w: epoch %d recovers %s of funding %s", ErrFunding, epoch.Epoch, total.Dec(), f.Dec())
 	}
 	for j := range epoch.Recovery {

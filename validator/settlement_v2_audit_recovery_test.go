@@ -8,6 +8,8 @@
 package validator
 
 import (
+	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"strings"
@@ -96,7 +98,7 @@ func (self *settlementV2AuditTestFixture) useRecoverySchedule() {
 		if vault != settlementV2TestVault || noID != settlementV2AuditTestNoID {
 			return nil
 		}
-		return &ledger.RecoverySchedule{Vault: vault, NoID: noID, Sources: []ledger.Recovery{{Epoch: settlementV2RecoverySource, Amount: settlementV2RecoveryAmount}}, FromBlock: 300}
+		return &ledger.RecoverySchedule{Vault: vault, NoID: noID, Sources: []ledger.Recovery{{Epoch: settlementV2RecoverySource, Amount: settlementV2RecoveryAmount}}, FromBlock: 300, ThroughEpoch: 8}
 	}
 }
 
@@ -273,4 +275,84 @@ func TestSettlementV2AuditRecoveryNeedsChainFacts(t *testing.T) {
 			t.Fatal("vault1 read for a pool without a schedule")
 		}
 	})
+}
+
+// surplusQueries returns the from blocks of the eth_getLogs filters for
+// SurplusAssigned.
+func (self *settlementV2AuditTestChain) surplusQueries() []uint64 {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	var froms []uint64
+	for _, query := range self.queries {
+		if len(query.Topics) > 0 && slices.Contains(query.Topics[0], settlementV2VaultABI.Events["SurplusAssigned"].ID) {
+			froms = append(froms, query.FromBlock.ToInt().Uint64())
+		}
+	}
+	return froms
+}
+
+// A node whose log index lags the finalized head neither serves the commit
+// block nor its logs: the audit then decides nothing, rather than refuse a
+// correct root for a recovery it could not see, and approves once the node
+// has caught up.
+func TestSettlementV2AuditRecoveryWaitsForALaggingLogIndex(t *testing.T) {
+	t.Parallel()
+	fixture := newSettlementV2AuditTestFixture(t)
+	f := settlementV2AuditTestF(t)
+	p := settlementV2RecoveryP(t, f, settlementV2RecoveryComponent(settlementV2RecoveryRows()))
+	fixture.useRecovery(t, f, p, p.Objects)
+	fixture.chain.lock.Lock()
+	fixture.chain.mappedThrough = 540
+	fixture.chain.lock.Unlock()
+	if err := fixture.pass(t); err == nil || !strings.Contains(err.Error(), "SurplusAssigned") {
+		t.Fatalf("pass over a lagging node: %v", err)
+	}
+	var record settlementV2AuditRecord
+	if ok, err := fixture.audit.custody.readJSON(fixture.audit.custody.path("audits", fmt.Sprintf("%d-%d.json", settlementV2AuditTestNoID, 2)), &record); err != nil || (ok && record.Decision != "") || len(fixture.sentCalls(t)) != 0 {
+		t.Fatalf("decided %q over a lagging node: %v", record.Decision, err)
+	}
+	fixture.chain.lock.Lock()
+	fixture.chain.mappedThrough = 0
+	fixture.chain.lock.Unlock()
+	fixture.mustPass(t)
+	fixture.requireApproved(t, fixture.sentCalls(t), 2, p.Commit)
+}
+
+// The surplus index scans once and keeps a checkpoint: a later pass over the
+// same root reads no logs, and a later root scans only the blocks after the
+// checkpoint, from the block after the earlier root's commit.
+func TestSettlementV2AuditRecoveryScansFromItsCheckpoint(t *testing.T) {
+	t.Parallel()
+	fixture := newSettlementV2AuditTestFixture(t)
+	f := settlementV2AuditTestF(t)
+	p := settlementV2RecoveryP(t, f, settlementV2RecoveryComponent(settlementV2RecoveryRows()))
+	// One provider chunk is withheld, so the first pass waits for it.
+	withheld := p.Epochs[0].Providers[0]
+	objects := maps.Clone(p.Objects)
+	delete(objects, withheld)
+	fixture.useRecovery(t, f, p, objects)
+	fixture.mustPass(t)
+	if record := fixture.record(t, 2); record.Decision != "" {
+		t.Fatalf("decided %q without the chunk", record.Decision)
+	}
+	if froms := fixture.chain.surplusQueries(); !slices.Equal(froms, []uint64{300}) {
+		t.Fatalf("surplus scans from %v", froms)
+	}
+	fixture.objects.publish(ledger.Objects{withheld: p.Objects[withheld]})
+	fixture.mustPass(t)
+	fixture.requireApproved(t, fixture.sentCalls(t), 2, p.Commit)
+	if froms := fixture.chain.surplusQueries(); !slices.Equal(froms, []uint64{300}) {
+		t.Fatalf("the second pass scanned again: %v", froms)
+	}
+	// A replacement root committed later scans only what is new.
+	fixture.committed(t, 705, 3, p.Commit, 2)
+	fixture.chain.advanceTo(709)
+	fixture.setPool(settlementV2AuditTestPending(3, p.Commit, 705), f.Commit)
+	fixture.mustPass(t)
+	if froms := fixture.chain.surplusQueries(); !slices.Equal(froms, []uint64{300, 606}) {
+		t.Fatalf("surplus scans from %v", froms)
+	}
+	if record := fixture.record(t, 3); record.Decision != settlementV2DecisionApprove {
+		t.Fatalf("record %+v", record)
+	}
 }

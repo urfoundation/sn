@@ -9,11 +9,16 @@ package ledger
 //
 // Which source epochs a pool recovers is the owner's decision, fixed here in
 // code so that the validator's configuration, and with it its config_hash,
-// does not change. Where the recovery lands is a fact of the chain: the
-// first epoch whose own assigned surplus reaches the recovered total. Both
-// the operator's builder and the validator compute it with PlanRecovery from
-// vault2's SurplusAssigned events, and both check each source's amount
-// against vault1's terminal RootMissed entitlement (CheckSource).
+// does not change. Where the recovery lands is a fact of the chain: it is
+// the first part of the pool's assigned surplus, in epoch order from the
+// pool's first epoch through the schedule's last, so each epoch's surplus
+// places as much of the still unplaced total as it holds. A single
+// assignment of the swept surplus places it all in one epoch; a split or
+// short one is placed across epochs, never dropped; and once the total is
+// placed no later surplus is recovery. Both the operator's builder and the
+// validator compute it with PlanRecovery from vault2's SurplusAssigned
+// events, and both check each source's amount against vault1's terminal
+// RootMissed entitlement (CheckSource).
 
 import (
 	"errors"
@@ -100,6 +105,10 @@ type RecoverySchedule struct {
 	// FromBlock is a block no SurplusAssigned event of the pool precedes:
 	// vault2 assigns surplus only to a registered pool.
 	FromBlock uint64
+	// ThroughEpoch is the last epoch whose surplus places the recovery.
+	// Surplus assigned to a later epoch is ordinary funding, so a recovery
+	// never placed cannot be set off by an unrelated assignment long after.
+	ThroughEpoch uint64
 }
 
 // recoverySchedules are the owner's recovery decisions.
@@ -112,11 +121,13 @@ var recoverySchedules = []RecoverySchedule{
 		// vault1 entitlement(1,1), had essentially no consented rows and is
 		// ordinary funding of the receiving epoch, as is the rest of the
 		// swept surplus (the reveal-lag capture, transfer rounding). The pool
-		// was registered at block 9,386,659.
-		Vault:     mainnetVault2,
-		NoID:      1,
-		Sources:   []Recovery{{Epoch: 3, Amount: 4_132_715_621_039}},
-		FromBlock: 9_386_659,
+		// was registered at block 9,386,659. The sweep assigns the surplus to
+		// epoch 5, or 6 if it slips; epochs 7 and 8 are margin.
+		Vault:        mainnetVault2,
+		NoID:         1,
+		Sources:      []Recovery{{Epoch: 3, Amount: 4_132_715_621_039}},
+		FromBlock:    9_386_659,
+		ThroughEpoch: 8,
 	},
 }
 
@@ -157,36 +168,87 @@ func (s *RecoverySchedule) CheckSource(epoch uint64, status uint8, funded *uint2
 	return nil
 }
 
+// placeRecovery walks the epochs from firstEpoch through the earlier of e
+// and the schedule's last epoch that hold surplus, in order, and places in
+// each as much of the sources' still unplaced amounts as its surplus holds,
+// sources in ascending order. It calls place for every epoch that places
+// something and returns what stays unplaced.
+func placeRecovery(schedule *RecoverySchedule, surplus map[uint64]uint256.Int, firstEpoch, e uint64, place func(k uint64, components []Recovery)) uint256.Int {
+	remaining := make([]uint64, len(schedule.Sources))
+	for i, source := range schedule.Sources {
+		remaining[i] = source.Amount
+	}
+	last := min(e, schedule.ThroughEpoch)
+	epochs := make([]uint64, 0, len(surplus))
+	for k := range surplus {
+		if firstEpoch <= k && k <= last {
+			epochs = append(epochs, k)
+		}
+	}
+	slices.Sort(epochs)
+	for _, k := range epochs {
+		available := surplus[k]
+		var components []Recovery
+		for i, source := range schedule.Sources {
+			if remaining[i] == 0 {
+				continue
+			}
+			if available.IsZero() {
+				break
+			}
+			take := remaining[i]
+			if available.Lt(uint256.NewInt(take)) {
+				take = available.Uint64()
+			}
+			components = append(components, Recovery{Epoch: source.Epoch, Amount: take})
+			remaining[i] -= take
+			available.SubUint64(&available, take)
+		}
+		if len(components) > 0 {
+			place(k, components)
+		}
+	}
+	var unplaced uint256.Int
+	for _, amount := range remaining {
+		unplaced.AddUint64(&unplaced, amount)
+	}
+	return unplaced
+}
+
 // PlanRecovery returns the recovery components that the covered epochs p+1 …
 // e of a root must carry. surplus holds, per epoch, the total of vault2's
-// SurplusAssigned amounts for the pool. The recovery lands in the first epoch
-// k at or after firstEpoch whose own surplus reaches the scheduled total,
-// since vault2 adds each assignment to epoch k's funding, f_k. A root
-// carries it only when it covers k; an earlier root that covered k carried it
-// already. A nil schedule, or no such epoch, plans nothing.
+// SurplusAssigned amounts for the pool; vault2 adds each assignment to that
+// epoch's funding, f_k, so a component never exceeds its epoch's funding.
+// The recovery is the first part of the pool's surplus from firstEpoch
+// through the schedule's last epoch (placeRecovery), and a root carries the
+// part placed in the epochs it covers; an earlier root carried the rest. A
+// nil schedule plans nothing.
 func PlanRecovery(schedule *RecoverySchedule, surplus map[uint64]uint256.Int, firstEpoch, p, e uint64) map[uint64][]Recovery {
 	if schedule == nil || len(schedule.Sources) == 0 {
 		return nil
 	}
-	total := schedule.total()
-	epochs := make([]uint64, 0, len(surplus))
-	for k := range surplus {
-		epochs = append(epochs, k)
+	var plan map[uint64][]Recovery
+	placeRecovery(schedule, surplus, firstEpoch, e, func(k uint64, components []Recovery) {
+		if k > p {
+			if plan == nil {
+				plan = map[uint64][]Recovery{}
+			}
+			plan[k] = components
+		}
+	})
+	return plan
+}
+
+// RecoveryRemaining returns the part of the schedule's total that the pool's
+// surplus through epoch e does not place, zero once the recovery is whole
+// and for a nil schedule. A planner raises it: surplus assigned without
+// placing the whole recovery means a split or short assignment, and an
+// amount still unplaced after the schedule's last epoch is never placed.
+func RecoveryRemaining(schedule *RecoverySchedule, surplus map[uint64]uint256.Int, firstEpoch, e uint64) uint256.Int {
+	if schedule == nil {
+		return uint256.Int{}
 	}
-	slices.Sort(epochs)
-	for _, k := range epochs {
-		if k < firstEpoch || k > e {
-			continue
-		}
-		if assigned := surplus[k]; assigned.Lt(&total) {
-			continue
-		}
-		if k <= p {
-			return nil
-		}
-		return map[uint64][]Recovery{k: slices.Clone(schedule.Sources)}
-	}
-	return nil
+	return placeRecovery(schedule, surplus, firstEpoch, e, func(uint64, []Recovery) {})
 }
 
 // checkRecoveryInputs checks a covered epoch's recovery components for Build

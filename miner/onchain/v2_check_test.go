@@ -1337,3 +1337,47 @@ func TestV2CheckDemandReceiptRoot(t *testing.T) {
 		t.Fatalf("demand receipt on another root: %v", err)
 	}
 }
+
+// §16 step 6: a watcher has neither vault1 nor the surplus history, so it
+// takes a pending root's recovery components as declared, says so, and
+// still checks their rows and allocation: a correct receiving root passes
+// with no extra chain read, and nothing is sent.
+func TestV2CheckRecoveryRootAsDeclared(t *testing.T) {
+	s := newV2CheckScenario(t)
+	funded := v2Funded(10, 1_000_003, 11, 1_600_000, 12, 2_500_000)
+	source := []protocol.LedgerUsageRow{v2Row(20, 9, 700), v2Row(21, 0, 50), v2Row(22, 10, 300)}
+	p, err := ledger.Build(context.Background(), ledger.BuildInput{NoID: v2TestPool, Epoch: 12, FirstEpoch: 10, FundedThrough: funded, Previous: &ledger.Previous{Root: s.f.Commit, Accounts: s.f.Accounts}, Epochs: []ledger.EpochInput{
+		{Epoch: 11, Rows: []protocol.LedgerUsageRow{v2Row(1, 1, 250), v2Row(3, 2, 250), v2Row(5, 3, 100), v2Row(8, 5, 300), v2Row(10, 0, 50)}},
+		{Epoch: 12, Rows: []protocol.LedgerUsageRow{v2Row(3, 2, 500), v2Row(11, 7, 500), v2Row(12, 5, 10), v2Row(13, 8, 7)},
+			Recovery: []ledger.RecoveryInput{{Recovery: ledger.Recovery{Epoch: 9, Amount: 500_000}, Rows: source}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(s.c.objects, p.Objects)
+	s.c.pending = stabi.ISTSettlementVault2Pending{Seq: 2, Root: p.Commit.Root, Total: p.Commit.Total.ToBig(), LeafCount: p.Commit.LeafCount, Epoch: p.Commit.Epoch, LedgerHash: p.Commit.LedgerHash, CommittedBlock: v2TestHead - 1_000}
+	output, err := s.c.run(s.c.checkArgv("--challenge", "--demand", "--chain_id=945"))
+	reads := "eth_call:fundedThrough=2 eth_call:pending=1 eth_call:pools=1 eth_call:rootCount=1 eth_call:roots=1 eth_chainId=1 eth_getBlockByNumber:finalized=1"
+	if err != nil || !strings.Contains(output, "  audit:             approve\n") || s.c.observed() != reads || len(s.c.transactions()) != 0 {
+		t.Fatalf("recovery root: %v\n%s\nobserved %s", err, output, s.c.observed())
+	}
+	if want := "  recovery:          epoch 12 recovers epoch 9: 0.000500000 α (500000 rao), as declared; the auditors check it against the chain\n"; !strings.Contains(output, want) {
+		t.Fatalf("output\n%s\nwant a line\n%s", output, want)
+	}
+	// A component the epoch's funding cannot hold is refused, with nothing sent.
+	header, err := ledger.DecodeHeader(p.Header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header.Epochs[1].Recovery[0].Amount = 900_001
+	data, err := ledger.EncodeHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.c.objects[ledger.RefOf(data)] = data
+	s.c.pending.LedgerHash = ledger.RefOf(data)
+	output, err = s.c.run(s.c.checkArgv("--chain_id=945"))
+	if err != nil || !strings.Contains(output, "refuse (recovery check") || len(s.c.transactions()) != 0 {
+		t.Fatalf("overfunded recovery: %v\n%s", err, output)
+	}
+}
