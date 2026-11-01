@@ -6,6 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {IERC1967} from "@openzeppelin/contracts/interfaces/IERC1967.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {V2StackBase} from "./utils/V2StackBase.sol";
 import {V2TreeHelper} from "./utils/V2TreeHelper.sol";
@@ -231,7 +232,7 @@ contract V2SettlementPhaseCTest is V2StackBase {
         phaseC.recordV1Sweep(NO1, sweep, ARTIFACT);
         (, bytes32[] memory writes) = vm.accesses(address(settlement));
 
-        _assertSweep(NO1, uint64(sweep), _sweepRoot(), ARTIFACT);
+        _assertSweep(NO1, SafeCast.toUint64(sweep), _sweepRoot(), ARTIFACT);
         _assertSweep(NO2, 0, bytes32(0), bytes32(0));
         (address vault_, bytes32 hotkey, uint8 version) = phaseC.settlementAt(NO1, sweep);
         assertEq(vault_, address(vault2));
@@ -322,7 +323,7 @@ contract V2SettlementPhaseCTest is V2StackBase {
         phaseC.recordV1Sweep(NO1, right + 1, ARTIFACT);
         phaseC.recordV1Sweep(NO1, right, ARTIFACT);
         vm.stopPrank();
-        _assertSweep(NO1, uint64(right), _sweepRoot(), ARTIFACT);
+        _assertSweep(NO1, SafeCast.toUint64(right), _sweepRoot(), ARTIFACT);
     }
 
     // SC-11: a pool records one sweep, ever: the same epoch again and any later
@@ -529,7 +530,7 @@ contract V2SettlementPhaseCTest is V2StackBase {
         emit ISTSettlementVault2.SurplusAssigned(NO1, next, 5_070);
         phaseC.assignSurplus(NO1, next, 5_070);
         vm.stopPrank();
-        _assertSweep(NO1, uint64(sweep), _sweepRoot(), ARTIFACT);
+        _assertSweep(NO1, SafeCast.toUint64(sweep), _sweepRoot(), ARTIFACT);
 
         _accrueV2(V2_POOL1, 400);
         _closeV2(next, NO1);
