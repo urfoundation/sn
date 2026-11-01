@@ -36,7 +36,9 @@ import (
 // each token draws uniformly from the renewal window: the window of the SDK's
 // token refreshes (sdk device_token_manager.go, apiTokenRefreshSettings). The
 // window ends at the half-life, so a token keeps at least half its life for
-// the retries after a failed renewal.
+// the retries after a failed renewal. Every pass waits at least a second
+// (run), so no wait below, however small or non-positive, makes the renewer
+// spin.
 type networkTokenRenewalSettings struct {
 	// The start of the renewal window, as a fraction of the token's lifetime.
 	// 0.4 spreads providers that renewed together over the last tenth of the
