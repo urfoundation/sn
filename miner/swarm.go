@@ -519,7 +519,7 @@ func swarmMemberDeviceSettings(
 	// One process runs every swarm member, and a host holds one extender
 	// identity and binds the carrier ports once, so no member runs the
 	// provider extender role (connect/EXTENDER.md G1, G2). A standalone
-	// provider's direct slot is the shape that becomes an extender.
+	// provider's extender slot is the shape that becomes an extender.
 	deviceSettings.ProvideExtenderEnabled = false
 	deviceSettings.KeyMaterial = keyMaterial
 	deviceSettings.ProviderDialContextSettings = dialSettings
