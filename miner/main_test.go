@@ -264,6 +264,27 @@ func TestMainUsageFleetLifecycle(t *testing.T) {
 	}
 }
 
+// docopt sets a flag per word, so a longer command that reuses "status" also sets
+// that flag. Since b3ba024e the status screen answered provider fleet status and
+// provider wallet hotkey status, so neither command ever ran.
+func TestFrontCommandLeavesLongerStatusCommandsAlone(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"status"}, want: "status"},
+		{args: []string{"doctor"}, want: "doctor"},
+		{args: []string{"service", "status"}, want: "service"},
+		{args: []string{"fleet", "status", "--manifest=fleet.json", "--client_id=0x01", "--substrate=ws://one", "--rpc=http://one"}, want: ""},
+		{args: []string{"wallet", "hotkey", "status"}, want: ""},
+		{args: []string{"fleet", "manifest", "--manifest=fleet.json"}, want: ""},
+	} {
+		if got := selectedFrontCommand(parseArgsForTest(t, test.args)); got != test.want {
+			t.Fatalf("%v chose %q, want %q", test.args, got, test.want)
+		}
+	}
+}
+
 func TestMainUsageChooseNetwork(t *testing.T) {
 	opts := parseArgsForTest(t, []string{"choose_network", "https://example.com", "wss://example.com"})
 	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
