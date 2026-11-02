@@ -955,10 +955,15 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
 		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := ProviderDeviceSettings(self.closeReportDomainHash)
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, proxySettings)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
+		if hooks, ok := proxyCtx.Value(providerRegistrationHooksKey{}).(providerRegistrationHooks); ok && hooks.beforeDevice != nil {
+			if err := hooks.beforeDevice(providerRegistrationSlot(proxySettings), settings); err != nil {
+				return err
+			}
+		}
 		device, err := newProviderDeviceLocal(
 			proxyCtx,
 			networkSpace,
