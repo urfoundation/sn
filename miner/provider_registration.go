@@ -24,6 +24,7 @@ type providerRegistrationHooks struct {
 	additionalAttemptError func(error) error
 	afterAuthenticated     func(string, connect.Id, []byte) error
 	afterWallet            func(error) error
+	beforeDevice           func(string, *sdk.DeviceLocalSettings) error
 	afterApiJoined         func()
 }
 

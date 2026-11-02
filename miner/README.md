@@ -99,6 +99,9 @@ checks again every five minutes.
   without a status port.
 - With `--all-operators`, the first provider process to take TCP 443 serves the
   extender for the host.
+- A provider with a proxy file runs no extender, with or without
+  `--all-operators`: only a provider without proxies, the direct slot, runs it.
+  The proxy slots provide as usual.
 
 
 ## Hotkey payout across operators
