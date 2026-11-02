@@ -39,6 +39,8 @@ type releaseMeasurementV2TestFixture struct {
 	legacy    *ReleaseMeasurementArtifact
 	want      *VerifiedReleaseMeasurement
 	operators map[uint64]*releaseMeasurementV2TestOperator
+	// EMA state the fold starts from, as earlier tempos would have left it.
+	headEMAPriorKVs map[FleetScoreKey]*big.Rat
 }
 
 // No fixture raises the original 128-record/16-trail durable bounds. The
@@ -237,6 +239,9 @@ func (self *releaseMeasurementV2TestFixture) rebuildLegacy(t testing.TB) {
 	store, err := NewHeadEMAStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
+	}
+	for key, prior := range self.headEMAPriorKVs {
+		store.values[key.String()] = headEMAEntry{Key: key, Numerator: prior.Num().String(), Denominator: prior.Denom().String()}
 	}
 	_, head, err := store.PreviewForEpoch(legacy.SubnetEpoch, releaseRawHeadScores(fleets), legacy.Policy.Steering.HeadScoreEMA)
 	if err != nil {

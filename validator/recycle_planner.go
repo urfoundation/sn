@@ -23,6 +23,10 @@ const ownerRecycleSourceCommit470 = "923fd1fa7d6eadad3ec16f3941826b86c9c3aa1d"
 // than one subnet; this is a planner resource limit, not a runtime storage cap.
 const maximumOwnerRecycleCensusEntries = 65536
 
+// Every caller refuses a positive recipient that rounds to zero in u16. Only
+// the treasury measured row reads this one apart, to leave out a head fleet.
+var errOwnerRecycleQuantizationLoss = errors.New("owner-recycle quantization loses a positive recipient")
+
 // Independently reviewed pins must eventually be matched by authenticated reads.
 // A runtime number alone never selects or approves this source profile.
 type OwnerRecycleRuntimePin struct {
@@ -354,7 +358,7 @@ func completeOwnerRecycleRow(preview *OwnerRecyclePreview, parent protocol.Polic
 		return err
 	}
 	if len(wireUids) != len(preview.Uids) {
-		return errors.New("owner-recycle quantization loses a positive recipient")
+		return errOwnerRecycleQuantizationLoss
 	}
 	var wireSum, providerSum uint64
 	for i, uid := range wireUids {
