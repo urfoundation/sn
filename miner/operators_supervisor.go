@@ -8,7 +8,9 @@ package miner
 //     child; its jwt is checked again every 5 minutes. With --auto-register
 //     the hotkey signs in to the operator and writes the jwt instead.
 //   - a child that exits restarts after a backoff, 30s doubling to 10m. A
-//     child that ran for 10m starts the doubling over.
+//     child that ran for 10m starts the doubling over. A restarted child is
+//     told how its last run ended, which its activations report to the
+//     operator (operatorChildPreviousExitEnv).
 //   - the child of a delisted operator, or one whose urls or memory share
 //     changed, gets SIGTERM and SIGKILL 60s later. The state directory stays.
 //   - SIGINT, SIGTERM and SIGQUIT are forwarded to every child, and the
@@ -52,6 +54,32 @@ const operatorRestartMinimumDelay = 30 * time.Second
 const operatorRestartMaximumDelay = 10 * time.Minute
 const operatorStopGrace = 60 * time.Second
 const operatorAuthRecheckInterval = 5 * time.Minute
+
+// Tells a restarted child how its last run ended, in the words of the extender
+// activation's previous_exit (connect EXTENDER.md G3). connect reads it when
+// the child starts (connect.ExtenderPreviousExitEnv), so the operator's rows
+// say why this child's process restarted. Named here rather than taken from
+// connect so that each builds alone, and a host with a connect that does not
+// read it is unharmed.
+const operatorChildPreviousExitEnv = "URNETWORK_PREVIOUS_EXIT"
+
+// The previous_exit word of each signal that can end a child. These are the
+// signals every platform's syscall package names.
+var operatorChildExitSignals = map[syscall.Signal]string{
+	syscall.SIGHUP:  "sighup",
+	syscall.SIGINT:  "sigint",
+	syscall.SIGQUIT: "sigquit",
+	syscall.SIGILL:  "sigill",
+	syscall.SIGTRAP: "sigtrap",
+	syscall.SIGABRT: "sigabrt",
+	syscall.SIGBUS:  "sigbus",
+	syscall.SIGFPE:  "sigfpe",
+	syscall.SIGKILL: "sigkill",
+	syscall.SIGSEGV: "sigsegv",
+	syscall.SIGPIPE: "sigpipe",
+	syscall.SIGALRM: "sigalrm",
+	syscall.SIGTERM: "sigterm",
+}
 
 // After a child set a rejected network sign-in aside, the next automatic
 // sign-in is at once for the first rejection in a while, then waits this long
@@ -150,6 +178,9 @@ type operatorState struct {
 	restartAt          time.Time
 	// consecutive runs shorter than the maximum backoff
 	failures int
+	// how the child's last run ended, for the next child; empty until a run
+	// has ended, and when its end could not be read
+	previousExit string
 }
 
 // From the goroutine that waited on a child.
@@ -571,15 +602,20 @@ func (self *operatorSupervisor) childArgs(spec operatorChildSpec) []string {
 }
 
 // The supervisor's environment with the operator's state directory in place
-// of any inherited one.
-func operatorChildEnv(environ []string, directory string) []string {
-	env := make([]string, 0, len(environ)+1)
+// of any inherited one, and how the child's last run ended, when one has: an
+// inherited value describes no run of this child, so it never passes through.
+func operatorChildEnv(environ []string, directory string, previousExit string) []string {
+	env := make([]string, 0, len(environ)+2)
 	for _, entry := range environ {
-		if !strings.HasPrefix(entry, "URNETWORK_STATE_DIR=") {
+		if !strings.HasPrefix(entry, "URNETWORK_STATE_DIR=") && !strings.HasPrefix(entry, operatorChildPreviousExitEnv+"=") {
 			env = append(env, entry)
 		}
 	}
-	return append(env, "URNETWORK_STATE_DIR="+directory)
+	env = append(env, "URNETWORK_STATE_DIR="+directory)
+	if previousExit != "" {
+		env = append(env, operatorChildPreviousExitEnv+"="+previousExit)
+	}
+	return env
 }
 
 // A child that cannot start counts as one that exited at once.
@@ -593,7 +629,7 @@ func (self *operatorSupervisor) start(domain string, state *operatorState, spec 
 		return self.hooks.start(operatorChildCommand{
 			path: self.settings.executable,
 			args: self.childArgs(spec),
-			env:  operatorChildEnv(os.Environ(), directory),
+			env:  operatorChildEnv(os.Environ(), directory, state.previousExit),
 		})
 	}()
 	if err != nil {
@@ -631,6 +667,7 @@ func (self *operatorSupervisor) childExited(exit operatorChildExit) {
 		return
 	}
 	state.child = nil
+	state.previousExit = operatorChildPreviousExit(exit.err, state.stopping)
 	if state.stopping {
 		state.stopping = false
 		state.killed = false
@@ -659,6 +696,36 @@ func (self *operatorSupervisor) childExited(exit operatorChildExit) {
 		cause = fmt.Sprintf("exited: %v", exit.err)
 	}
 	fmt.Fprintf(self.log, "operator %s: provider (pid %d) %s; restarting in %s\n", exit.domain, exit.child.Pid(), cause, delay)
+}
+
+// How a child's run ended, in the words of the activation's previous_exit
+// (connect EXTENDER.md G3): "stop" when this supervisor stopped it, whichever
+// way it went, so that a stop that had to be forced does not read as a kill
+// from outside; else the signal that ended it, or its exit code. Empty when
+// the wait failed for another reason, which says nothing of how it ended. This
+// reads no kernel log: the kernel's out of memory killer reads as sigkill, and
+// the go runtime running out of memory as exit-2.
+func operatorChildPreviousExit(err error, stopped bool) string {
+	if stopped {
+		return "stop"
+	}
+	if err == nil {
+		return "exit-0"
+	}
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) {
+		return ""
+	}
+	if status, ok := exited.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		if word, ok := operatorChildExitSignals[status.Signal()]; ok {
+			return word
+		}
+		return "signal"
+	}
+	if code := exited.ExitCode(); 0 <= code && code <= 255 {
+		return fmt.Sprintf("exit-%d", code)
+	}
+	return ""
 }
 
 // operatorChildQuarantined reports a child that exited because it set its

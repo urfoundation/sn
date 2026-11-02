@@ -977,6 +977,181 @@ func TestOperatorAutomaticSignInDoublesUpToADay(t *testing.T) {
 }
 
 // A real child process's exit status carries the quarantine.
+// How the child's environment says its last run ended, "" for no variable.
+func (self *testOperatorChild) previousExit(t *testing.T) string {
+	t.Helper()
+	values := []string{}
+	for _, entry := range self.command.env {
+		if value, ok := strings.CutPrefix(entry, "URNETWORK_PREVIOUS_EXIT="); ok {
+			values = append(values, value)
+		}
+	}
+	if 1 < len(values) {
+		t.Fatalf("the child got %d previous exits: %v", len(values), values)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+// The error a child's wait returns when a shell runs `script`, which is what a
+// real child's exit looks like.
+func testOperatorChildExit(t *testing.T, script string) error {
+	t.Helper()
+	err := exec.Command("sh", "-c", script).Run()
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) {
+		t.Fatalf("%q ended with %v, want an exit error", script, err)
+	}
+	return err
+}
+
+// A restarted child is told how the run before it ended, each restart its own
+// run's end, and the first child of a supervisor has no run behind it.
+func TestOperatorSupervisorTellsARestartedProviderHowItsLastRunEnded(t *testing.T) {
+	fixture := newTestOperatorFixture(t)
+	fixture.authenticate("alpha.example")
+	fixture.publish(testListedOperator("alpha.example"))
+	fixture.run()
+	child := fixture.nextStart()
+	if previousExit := child.previousExit(t); previousExit != "" {
+		t.Fatalf("the first child was told %q", previousExit)
+	}
+
+	var offset time.Duration
+	delay := operatorRestartMinimumDelay
+	for _, c := range []struct {
+		exit     error
+		expected string
+	}{
+		{exit: testOperatorChildExit(t, "kill -KILL $$"), expected: "sigkill"},
+		{exit: testOperatorChildExit(t, "exit 2"), expected: "exit-2"},
+		{exit: nil, expected: "exit-0"},
+		// a wait that failed says nothing of how the run ended, and the word
+		// of the run before it does not stand in
+		{exit: errors.New("wait failed"), expected: ""},
+		{exit: testOperatorChildExit(t, "kill -TERM $$"), expected: "sigterm"},
+	} {
+		from := fixture.journal.length()
+		child.exit <- c.exit
+		fixture.journal.wait(t, from, "idle "+(offset+delay).String())
+		offset += delay
+		delay *= 2
+		fixture.clock.set(offset)
+		child = fixture.nextStart()
+		if previousExit := child.previousExit(t); previousExit != c.expected {
+			t.Fatalf("after %v the child was told %q, want %q", c.exit, previousExit, c.expected)
+		}
+	}
+	fixture.stop(syscall.SIGTERM, child)
+}
+
+// A child this supervisor stopped reads "stop", even when it took the kill that
+// follows the grace period: the operator must not read the supervisor's own
+// restarts as kills from outside.
+func TestOperatorSupervisorTellsAProviderItStoppedThatItWasStopped(t *testing.T) {
+	fixture := newTestOperatorFixture(t)
+	fixture.authenticate("alpha.example")
+	fixture.publish(testListedOperator("alpha.example"))
+	fixture.run()
+	alpha := fixture.nextStart()
+
+	moved := testListedOperator("alpha.example")
+	moved.ApiUrl = "https://api-two.alpha.example"
+	fixture.publish(moved)
+	if received := testOperatorReceive(t, alpha.signals, "url change stop"); received != syscall.SIGTERM {
+		t.Fatalf("changed child got %v", received)
+	}
+	alpha.exit <- testOperatorChildExit(t, "kill -TERM $$")
+	restarted := fixture.nextStart()
+	if previousExit := restarted.previousExit(t); previousExit != "stop" {
+		t.Fatalf("a child stopped by sigterm left %q, want stop", previousExit)
+	}
+
+	from := fixture.journal.length()
+	movedAgain := testListedOperator("alpha.example")
+	movedAgain.ApiUrl = "https://api-three.alpha.example"
+	fixture.publish(movedAgain)
+	if received := testOperatorReceive(t, restarted.signals, "second url change stop"); received != syscall.SIGTERM {
+		t.Fatalf("changed child got %v", received)
+	}
+	fixture.journal.wait(t, from, "idle 1m0s")
+	fixture.clock.set(operatorStopGrace)
+	if received := testOperatorReceive(t, restarted.signals, "kill after the grace"); received != os.Kill {
+		t.Fatalf("changed child got %v after the grace period", received)
+	}
+	restarted.exit <- testOperatorChildExit(t, "kill -KILL $$")
+	last := fixture.nextStart()
+	if previousExit := last.previousExit(t); previousExit != "stop" {
+		t.Fatalf("a child killed after the grace left %q, want stop", previousExit)
+	}
+	fixture.stop(syscall.SIGTERM, last)
+}
+
+func TestOperatorChildPreviousExitReadsTheExitStatus(t *testing.T) {
+	for _, c := range []struct {
+		script   string
+		expected string
+	}{
+		{script: "kill -KILL $$", expected: "sigkill"},
+		{script: "kill -TERM $$", expected: "sigterm"},
+		{script: "kill -INT $$", expected: "sigint"},
+		// a signal the operator has no word of its own for
+		{script: "kill -USR1 $$", expected: "signal"},
+		{script: "exit 1", expected: "exit-1"},
+		{script: "exit 2", expected: "exit-2"},
+		{script: "exit 137", expected: "exit-137"},
+		{script: "exit 255", expected: "exit-255"},
+	} {
+		err := testOperatorChildExit(t, c.script)
+		if previousExit := operatorChildPreviousExit(err, false); previousExit != c.expected {
+			t.Errorf("%q read as %q, want %q", c.script, previousExit, c.expected)
+		}
+		// whatever it died of, a child this supervisor stopped was stopped
+		if previousExit := operatorChildPreviousExit(err, true); previousExit != "stop" {
+			t.Errorf("%q, stopped, read as %q", c.script, previousExit)
+		}
+	}
+	if previousExit := operatorChildPreviousExit(nil, false); previousExit != "exit-0" {
+		t.Errorf("a clean exit read as %q", previousExit)
+	}
+	if previousExit := operatorChildPreviousExit(errors.New("wait failed"), false); previousExit != "" {
+		t.Errorf("a failed wait read as %q", previousExit)
+	}
+	// every word fits the activation's previous_exit, which is 16 wide
+	for _, word := range operatorChildExitSignals {
+		if 16 < len(word) {
+			t.Errorf("%q is too long", word)
+		}
+	}
+}
+
+// The variable a host sets replaces an inherited one, so a value that describes
+// no run of this child never reaches its activations, and the name is the
+// contract with connect (connect.ExtenderPreviousExitEnv).
+func TestOperatorChildEnvCarriesOnlyThisChildsPreviousExit(t *testing.T) {
+	if operatorChildPreviousExitEnv != "URNETWORK_PREVIOUS_EXIT" {
+		t.Fatalf("the variable is %q, which connect does not read", operatorChildPreviousExitEnv)
+	}
+	environ := []string{
+		"PATH=/bin",
+		"URNETWORK_STATE_DIR=/inherited",
+		"URNETWORK_PREVIOUS_EXIT=inherited",
+	}
+	for _, c := range []struct {
+		previousExit string
+		expected     []string
+	}{
+		{previousExit: "", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state"}},
+		{previousExit: "sigkill", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state", "URNETWORK_PREVIOUS_EXIT=sigkill"}},
+	} {
+		if env := operatorChildEnv(environ, "/state", c.previousExit); !slices.Equal(env, c.expected) {
+			t.Errorf("env for %q = %v, want %v", c.previousExit, env, c.expected)
+		}
+	}
+}
+
 func TestOperatorChildQuarantinedReadsTheExitStatus(t *testing.T) {
 	err := exec.Command("sh", "-c", fmt.Sprintf("exit %d", providerQuarantinedExitCode)).Run()
 	if !operatorChildQuarantined(err) {
