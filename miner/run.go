@@ -106,6 +106,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--pprof=<addr>]
         [-v...]
     provider auth-provide ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
 		[--close-report-domain=<path>]
@@ -120,6 +121,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--pprof=<addr>]
         [-v...]
     provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
         [--api_url=<api_url>]
@@ -230,6 +232,13 @@ Options:
     				                 password anyways, if you don't specify it using this option.
     -p --port=<port>                 Status server port [default: 0].
     --max-memory=<mem>               Set the maximum amount of memory in bytes, or the suffixes b, kib, mib, gib may be used [This is a soft limit].
+    --pprof=<addr>                   Serve Go profiles at http://<addr>/debug/pprof/ (CPU profile, goroutine,
+                                     heap and more) to diagnose CPU and memory use. Off by default. A bare port
+                                     such as 6060 listens on 127.0.0.1 only; another host, such as 0.0.0.0:6060,
+                                     must be given, and anyone who can reach it can read the profiles.
+                                     Separately, on Linux and macOS, kill -USR1 <pid> writes a goroutine dump to
+                                     stderr (miner.log when provider start runs in a terminal) and the miner
+                                     keeps running.
     --wallet-from-epoch=<epoch>     First prospective earning epoch in the signed provider mapping.
     --wallet-through-epoch=<epoch>  Last inclusive earning epoch; at most 65536 epochs.
                                      Omit both to use the next epoch through the finite 65536-epoch window.
@@ -340,6 +349,28 @@ Options:
 // the argument slice (os.Args[1:]) so it can be driven from tests. The miner is
 // the subnet's provider: it runs the provide/proxy/auth flows plus the on-chain
 // wallet / claim / fleet actions (formerly connect/provider).
+// selectedFrontCommand names the operator command the parsed arguments choose,
+// or "" for the rest of the command line. docopt sets one flag per word, so a
+// longer command that reuses a word sets that word's flag too: service status,
+// fleet status and wallet hotkey status all set "status". Each of those goes to
+// its own command, never to the provider's status screen.
+func selectedFrontCommand(opts docopt.Opts) string {
+	if service, _ := opts.Bool("service"); service {
+		return "service"
+	}
+	for _, owner := range []string{"fleet", "wallet"} {
+		if chosen, _ := opts.Bool(owner); chosen {
+			return ""
+		}
+	}
+	for _, name := range []string{"setup", "status", "doctor", "update"} {
+		if chosen, _ := opts.Bool(name); chosen {
+			return name
+		}
+	}
+	return ""
+}
+
 func Run(args []string) {
 	defer recoverCliPanic(args, os.Stderr)
 	if code, done := minerServiceRun(args); done {
@@ -384,20 +415,17 @@ func Run(args []string) {
 		}
 	}
 
-	for _, command := range []struct {
-		name string
-		run  func(docopt.Opts, io.Writer, io.Writer) int
-	}{
-		// service first: its subcommands reuse the words status and start
-		{"service", serviceCmd},
-		{"setup", setupCmd},
-		{"status", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return statusCmd(opts, stdout) }},
-		{"doctor", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return doctorCmd(opts, stdout) }},
-		{"update", updateCmd},
-	} {
-		if chosen, _ := opts.Bool(command.name); chosen {
-			os.Exit(command.run(opts, os.Stdout, os.Stderr))
-		}
+	switch selectedFrontCommand(opts) {
+	case "service":
+		os.Exit(serviceCmd(opts, os.Stdout, os.Stderr))
+	case "setup":
+		os.Exit(setupCmd(opts, os.Stdout, os.Stderr))
+	case "status":
+		os.Exit(statusCmd(opts, os.Stdout))
+	case "doctor":
+		os.Exit(doctorCmd(opts, os.Stdout))
+	case "update":
+		os.Exit(updateCmd(opts, os.Stdout, os.Stderr))
 	}
 
 	if proxy, _ := opts.Bool("proxy"); proxy {
@@ -650,6 +678,10 @@ func provideWith(opts docopt.Opts, start bool) {
 	if !providePreflight(opts, start, os.Stdin, os.Stdout, os.Stderr) {
 		os.Exit(minerExitNeedsSetup)
 	}
+	// opt-in diagnostics (provider_pprof.go): --pprof, and SIGUSR1 dumps
+	pprofServer := startProvidePprof(opts)
+	defer pprofServer.close()
+	defer startGoroutineDumpSignal(os.Stderr)()
 	var ui *startTerminalUi
 	if start && cliIsTerminal(os.Stdout) && cliIsTerminal(os.Stderr) && cliVerbosity(os.Args[1:]) == 0 && os.Getenv("PROVIDER_DEBUG") == "" {
 		ui = newStartTerminalUi(os.Stdout)
@@ -942,10 +974,15 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
 		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := ProviderDeviceSettings(self.closeReportDomainHash)
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, proxySettings)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
+		if hooks, ok := proxyCtx.Value(providerRegistrationHooksKey{}).(providerRegistrationHooks); ok && hooks.beforeDevice != nil {
+			if err := hooks.beforeDevice(providerRegistrationSlot(proxySettings), settings); err != nil {
+				return err
+			}
+		}
 		device, err := newProviderDeviceLocal(
 			proxyCtx,
 			networkSpace,

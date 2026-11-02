@@ -6,9 +6,11 @@ publish = false
 default-run = "runtime-metadata-probe"
 
 # Keep this audit tool independent from any Cargo workspace that may later be
-# added above it in the repository.
+# added above it in the repository. The vendored SDK crates are patches, not
+# members, so their own dev-dependencies stay out of this lock.
 [workspace]
 resolver = "2"
+exclude = ["vendor"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(substrate_runtime)"] }
@@ -23,7 +25,7 @@ serde_json = "=1.0.151"
 sc-executor = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sc-executor-common = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sp-wasm-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a", features = ["wasmtime"] }
-wasmtime = { version = "=8.0.1", default-features = false }
+wasmtime = { version = "=36.0.19", default-features = false }
 sp-core = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sp-io = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sp-state-machine = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
@@ -38,3 +40,12 @@ scale-info = "=2.11.6"
 
 [dev-dependencies]
 wat = "=1.0.70"
+
+# The pinned SDK runs Wasmtime 8.0.1, whose advisories include Cranelift
+# miscompilation (GHSA-897f-g5gm-fmxm, GHSA-mghf-wjfp-p5xm, fixed in 36.0.19).
+# Only these two pinned SDK crates name Wasmtime. Each is replaced by a vendored
+# copy that carries upstream's own Wasmtime port and is otherwise the pinned
+# source; every other SDK crate stays at the pinned revision.
+[patch."https://github.com/RaoFoundation/polkadot-sdk.git"]
+sc-executor-wasmtime = { path = "vendor/sc-executor-wasmtime" }
+sp-wasm-interface = { path = "vendor/sp-wasm-interface" }

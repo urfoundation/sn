@@ -235,7 +235,10 @@ provider operators [--operators-url=<url>] [-v...]
 - **Old path inside a child.** Each child keeps today's single-operator behavior unchanged: the mining key from that
   directory's `jwt` via `/network/auth-client`, client JWT refresh, and provider custody.
 - **Restarts and list changes.**
-  - A child that exits restarts with backoff (30s doubling to a 10m cap).
+  - A child that exits restarts with backoff (30s doubling to a 10m cap). A restarted child gets
+    `URNETWORK_PREVIOUS_EXIT`, how its last run ended: the signal (`sigkill`), the exit code (`exit-2`), or `stop` when the
+    supervisor stopped it. Its extender activations report it (connect `EXTENDER.md` G3). The first child of a supervisor
+    has none.
   - A delisted operator's child gets SIGTERM, then is waited for with a 60s grace period before SIGKILL. Its state
     directory is kept.
   - A changed URL restarts that child.
@@ -248,8 +251,9 @@ provider operators [--operators-url=<url>] [-v...]
   - with `--auto-register`, `hotkeyauth.SignIn` runs and writes it;
   - otherwise the supervisor logs `operator <domain> is awaiting auth: provider auth --operator=<domain>`, checks again at
     least every 5 minutes, and does not start that child.
-- **Network JWT renewal.** Each child renews its operator directory's `jwt` at its half-life
-  (`POST /auth/network-refresh`, miner/PROVIDER-REGISTRATION.md "Network sign-in renewal"); the supervisor never renews.
+- **Network JWT renewal.** Each child renews its operator directory's `jwt` at the token's point between 40% and 50% of
+  its lifetime, never later than its half-life (`POST /auth/network-refresh`, miner/PROVIDER-REGISTRATION.md "Network sign-in
+  renewal"); the supervisor never renews.
   The hourly hotkey wallet upkeep reads the renewed file. An operator that answers the upkeep with 401 logs
   `operator <domain>: the network sign-in was rejected or has expired; run `provider auth --operator=<domain>` to sign in
   again`.

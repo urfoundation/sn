@@ -44,6 +44,18 @@ trie error and can return the old root. Root equality alone would therefore not
 prove that all required write paths were present. Missing reads, child roots,
 child nodes and write paths refuse; authenticated absence remains distinct.
 
+The executor's two Wasmtime crates are the one exception to that pin.
+`vendor/` holds the pinned `sc-executor-wasmtime` and `sp-wasm-interface` with
+upstream's own port to Wasmtime 36 (polkadot-sdk `13bc266c3f3c`), running
+Wasmtime 36.0.19, because the pinned Wasmtime 8.0.1 is out of support and has
+Cranelift miscompilation advisories. The port keeps the executor's Wasm
+features, heap limits and 1 MiB native stack. Native frame sizes differ, so a
+recursion that nearly exhausts that stack can trap at a slightly different
+depth. Cargo.lock records these path crates without a source or checksum, so
+the release lock's `protocol_source_hash` binds every reviewed file under
+`vendor/` with the probe's manifest, lock and entry points. An unreviewed or
+ignored file there refuses the lock.
+
 Current resource limits are 96 MiB JSON, 8192 distinct proof nodes / 24 MiB total
 decoded proof, 8 MiB runtime code before / 32 MiB after decompression, 8 MiB block
 body, 16384 extrinsics, 64 KiB headers, 64 digest items, 64 MiB Wasm memory,

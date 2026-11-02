@@ -429,6 +429,10 @@ func (self *settlementV2AuditTestReader) demandHistory(context.Context, *settlem
 	return 0, nil, nil
 }
 
+func (self *settlementV2AuditTestReader) recoveries(context.Context, *settlementV2PoolState) (map[uint64][]ledger.Recovery, error) {
+	return nil, nil
+}
+
 // VA-2: the audit loop reports a pool whose pass failed, goes on with the
 // other pools, and ends only with its context.
 func TestSettlementV2AuditRunReportsAndContinues(t *testing.T) {
