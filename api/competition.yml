@@ -28,14 +28,31 @@ info:
     local record keeps private_score separate from public score/published/winner.
     Its bounded refresh lane automatically fetches feedback for pre-upgrade
     completed records and probes ambiguous completed cache-hit admissions.
-    Missing status is not success; known failed/canceled jobs are not refreshed.
+    Missing status is not success; submission failures and canceled jobs are not
+    refreshed. A separate bounded owner-probe lane can discover an explicitly
+    operator-authorized recovery of a cached infrastructure failure. It reserves
+    a per-job refresh interval before HTTP, shares that backoff across cached
+    associations and restarts, and alternates with ordinary polling. A probe
+    alone never authorizes another evaluation or changes a terminal failure.
     The lane alternates with ordinary FIFO polling and backs off old replicas
     that still omit private feedback. Feedback stops routine per-job polling;
     only existing public result reconciliation can establish winner/reward state.
     Update Apex consumers before rollout: old consumers may reject production
-    score feedback, and old adapter binaries cannot read newly persisted
-    private_score/refresh fields. Do not roll an old binary back onto new state.
-    Identical canonical patch bytes in one round map to one durable job/result.
+    score feedback or recovery metadata, and old adapter binaries cannot read
+    newly persisted private_score/refresh/reevaluation/history fields. Do not
+    roll an old binary back onto new state.
+    Identical canonical patch bytes in one round map to one durable job. The
+    optional reevaluation marker identifies at most one separately authorized,
+    bounded recovery cycle of that same job after a proved evaluator defect.
+    Its canonical receipt binds scope, the original terminal failure, incident
+    evidence and the qualified fixed runtime; it is not a cryptographic signature
+    or a new public authorization endpoint. Authorization provenance is the
+    authenticated API and its append-only operator audit. Original terminal
+    history and the expired original budget remain immutable. Existing job and
+    status_url identities, frozen evaluator inputs and publication gates remain
+    unchanged. Clients must reject a missing, malformed, conflicting, stale or
+    wrongly scoped marker after observing a recovery cycle; they must not clear
+    a cached failure merely because the API now says queued or running.
     Before production epoch one, an operator may run an independently numbered
     staging era beginning at epoch zero. Staging submissions are fee-free but
     traverse the same durable FIFO and evaluator as production. Each staging
@@ -445,6 +462,9 @@ paths:
         authority. Other submitters, anonymous readers and control-plane roles
         cannot read the job. Ownership is per credential, not per miner behind a
         shared credential; Apex must enforce its own miner-to-submission mapping.
+        An optional reevaluation receipt identifies a separately authorized
+        single recovery cycle of this same job; it does not publish the old or
+        new outcome or extend the original execution budget.
         Responses, including failures, use Cache-Control no-store.
       parameters:
         - name: jobId
@@ -546,6 +566,8 @@ paths:
         full error text, arbitrary diagnostics and review decisions stay sealed.
         This additive feedback does not amend the round's frozen evaluator,
         scoring policy, source/OpenAPI evidence or public decision contract.
+        Optional reevaluation metadata is a same-job, single-cycle operator
+        recovery receipt, not a new admission, publication or reward decision.
         Anonymous readers, other credential owners and control-plane/operator
         roles are denied. Apex must map a shared credential's feedback to the
         authenticated individual miner. All responses use Cache-Control no-store.
@@ -2116,6 +2138,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CompetitionEvaluationFailure"
             - type: "null"
+        reevaluation:
+          description: Optional message-free, authenticated same-job recovery marker. Omitted for the original cycle, including all historical responses without a recovery. A valid cycle can replace only its bound original infrastructure failure, never completed scoring or an ordinary gate failure. Consumers pin its immutable canonical receipt and retain the original failure. This field does not change owner authorization, public embargoes or the frozen evaluator request schema.
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionJobReevaluationCycle"
+            - type: "null"
         submitted_at:
           type: string
           format: date-time
@@ -2155,6 +2182,97 @@ components:
       type: string
       description: completed is the legacy completion marker before public publication; it may carry private owner score feedback and must never be interpreted as publication or winner approval.
       enum: [queued, running, completed, succeeded, failed, canceled]
+
+    CompetitionJobReevaluationCycle:
+      type: object
+      additionalProperties: false
+      description: |
+        One backend-verified, operator-authorized recovery cycle of the same
+        admitted job. The receipt SHA-256 is the canonical JSON digest of this
+        object with receipt_sha256 empty and started_at omitted. It detects
+        inconsistent or replayed metadata but is not an authorization signature;
+        trust its provenance only through the authenticated job endpoint.
+        Every other field is immutable and bound by that digest. started_at may
+        advance only from absent to the first claim timestamp, then remains
+        immutable. The new cycle owns the normal three-hour execution budget;
+        the original job's start, deadline, terminal outcome and audit remain
+        unchanged. Neither the receipt nor private feedback grants publication,
+        winner approval, source approval, payment, or another recovery cycle.
+      required:
+        - schema
+        - environment
+        - competition_id
+        - season_id
+        - job_id
+        - round_id
+        - patch_sha256
+        - round_policy_sha256
+        - baseline_sha256
+        - cycle
+        - receipt_sha256
+        - authorization_sha256
+        - evidence_sha256
+        - previous_terminal_sha256
+        - previous_failure
+        - runtime_qualification_sha256
+        - fixed_source_commit
+        - fixed_worker_sha256
+        - fixed_worker_image_digest
+        - api_image_digest
+        - authorized_at
+        - execution_timeout_seconds
+      properties:
+        schema: {type: integer, const: 1}
+        environment:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        competition_id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        season_id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        job_id: {type: string, format: uuid}
+        round_id: {type: string, format: uuid}
+        patch_sha256: {$ref: "#/components/schemas/Sha256"}
+        round_policy_sha256: {$ref: "#/components/schemas/Sha256"}
+        baseline_sha256: {$ref: "#/components/schemas/Sha256"}
+        cycle:
+          type: integer
+          const: 1
+          description: Exactly one recovery is permitted; original-cycle responses omit reevaluation.
+        receipt_sha256: {$ref: "#/components/schemas/Sha256"}
+        authorization_sha256: {$ref: "#/components/schemas/Sha256"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        previous_terminal_sha256: {$ref: "#/components/schemas/Sha256"}
+        previous_failure:
+          allOf:
+            - $ref: "#/components/schemas/CompetitionEvaluationFailure"
+            - type: object
+              properties:
+                kind: {const: infrastructure}
+                code:
+                  enum: [artifact_archive_failed, evaluation_time_budget_exhausted]
+          description: Exact original message-free failure bound by backend-verified incident authority. An infrastructure code alone does not prove eligibility or authorize another evaluation.
+        runtime_qualification_sha256: {$ref: "#/components/schemas/Sha256"}
+        fixed_source_commit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: Control-program source commit containing the qualified remediation, not a replacement for the round's frozen evaluated repository commits.
+        fixed_worker_sha256: {$ref: "#/components/schemas/Sha256"}
+        fixed_worker_image_digest: {$ref: "#/components/schemas/ImageDigest"}
+        api_image_digest:
+          allOf:
+            - $ref: "#/components/schemas/ImageDigest"
+          description: API image identity recorded by the recovery qualification. It does not change the original admission's API identity or freeze subsequent main API releases.
+        authorized_at: {type: string, format: date-time}
+        started_at:
+          oneOf:
+            - {type: string, format: date-time}
+            - {type: "null"}
+        execution_timeout_seconds:
+          type: integer
+          const: 10800
 
     CompetitionEvaluationStatus:
       type: string
