@@ -235,7 +235,10 @@ provider operators [--operators-url=<url>] [-v...]
 - **Old path inside a child.** Each child keeps today's single-operator behavior unchanged: the mining key from that
   directory's `jwt` via `/network/auth-client`, client JWT refresh, and provider custody.
 - **Restarts and list changes.**
-  - A child that exits restarts with backoff (30s doubling to a 10m cap).
+  - A child that exits restarts with backoff (30s doubling to a 10m cap). A restarted child gets
+    `URNETWORK_PREVIOUS_EXIT`, how its last run ended: the signal (`sigkill`), the exit code (`exit-2`), or `stop` when the
+    supervisor stopped it. Its extender activations report it (connect `EXTENDER.md` G3). The first child of a supervisor
+    has none.
   - A delisted operator's child gets SIGTERM, then is waited for with a 60s grace period before SIGKILL. Its state
     directory is kept.
   - A changed URL restarts that child.
