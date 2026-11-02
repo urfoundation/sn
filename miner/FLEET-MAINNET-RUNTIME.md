@@ -32,6 +32,12 @@ The document is a strict JSON object, at most 16 KiB, with these fields:
 | `runtime_code_hash` | Exact reviewed `:code` BLAKE2b-256, lowercase nonzero `0x` plus 64 hex digits |
 | `runtime_metadata_hash` | Exact reviewed SCALE metadata BLAKE2b-256, same hash grammar |
 
+[`mainnet/fleet-runtime-authority/README.md`](../mainnet/fleet-runtime-authority/README.md)
+says how a document gets reviewed, approved and published, and which source
+checks each value. None is approved yet. `urnetwork-mainnet-fleet-runtime-authority-v2`
+(`miner/fleet_runtime_catalog.go`) instead lists up to 8 reviewed runtimes, each with
+the purposes it is reviewed for.
+
 The review must establish source-to-Wasm provenance and bind those exact code
 and metadata bytes. It must cover the consumed signed extensions, account and
 registration storage/calls, fee quotation, commitment encoding/storage, finality
@@ -92,6 +98,15 @@ signers must use that same retained state directory. Changing or deleting the
 state directory, restoring an older backup, or independently operating the same
 keys elsewhere is outside this local custody guarantee. Use a filesystem with
 working exclusive locks and file/directory fsync; failures stop the command.
+
+That directory must be a root of an owner-local durable declaration
+(`urnetwork-owner-local-volumes-v2`), named on every write with `--durable-volumes`
+and `--durable-volumes-sha256`; without them a write stops with "explicit
+durable-volume declaration and hash are required". The declaration comes from
+`sn-mainnet storage-owner-prepare plan` and `apply`, with an owner of kind
+`fleet-recovery` ([the public sequence](../mainnet/OWNER-CUSTODY-PREPARATION.md#public-plan-and-apply)).
+`sn-mainnet` is not in the provider release, so today an operator builds it from this
+repository. `fleet status` and `fleet sign` open no journal and need no declaration.
 
 Before the first send, the owner durably stores the exact signed transaction,
 actor, nonce, transaction hash, native finalized checkpoint, original approved
