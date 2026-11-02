@@ -703,8 +703,10 @@ func (self *operatorSupervisor) childExited(exit operatorChildExit) {
 // way it went, so that a stop that had to be forced does not read as a kill
 // from outside; else the signal that ended it, or its exit code. Empty when
 // the wait failed for another reason, which says nothing of how it ended. This
-// reads no kernel log: the kernel's out of memory killer reads as sigkill, and
-// the go runtime running out of memory as exit-2.
+// reads no kernel log, so neither word is about memory: sigkill is a kill this
+// supervisor survived, whoever sent it, and an out of memory kill that takes
+// the whole service with it leaves no supervisor to report it; exit-2 is any go
+// panic or fatal runtime error, out of memory among them.
 func operatorChildPreviousExit(err error, stopped bool) string {
 	if stopped {
 		return "stop"

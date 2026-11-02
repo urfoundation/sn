@@ -976,7 +976,6 @@ func TestOperatorAutomaticSignInDoublesUpToADay(t *testing.T) {
 	}
 }
 
-// A real child process's exit status carries the quarantine.
 // How the child's environment says its last run ended, "" for no variable.
 func (self *testOperatorChild) previousExit(t *testing.T) string {
 	t.Helper()
@@ -1152,6 +1151,7 @@ func TestOperatorChildEnvCarriesOnlyThisChildsPreviousExit(t *testing.T) {
 	}
 }
 
+// A real child process's exit status carries the quarantine.
 func TestOperatorChildQuarantinedReadsTheExitStatus(t *testing.T) {
 	err := exec.Command("sh", "-c", fmt.Sprintf("exit %d", providerQuarantinedExitCode)).Run()
 	if !operatorChildQuarantined(err) {
