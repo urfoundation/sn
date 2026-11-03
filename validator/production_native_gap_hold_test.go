@@ -145,7 +145,7 @@ func TestProductionNativeGapHoldResetsAndKeepsTheBudget(t *testing.T) {
 		return local
 	}, func() bool { return true }, nativeGapHoldTestProgress())
 	var limit *releaseSteeringFailureLimitError
-	if !errors.As(err, &limit) || polls != 2*releaseSteeringFailureLimit-1 {
+	if !errors.As(err, &limit) || polls != 2*releaseSteeringFailureLimit {
 		t.Fatalf("the hold changed the budget of real failures: %d polls: %v", polls, err)
 	}
 }
@@ -216,8 +216,8 @@ func TestProductionNativeGapHoldKeepsCancellation(t *testing.T) {
 	}
 }
 
-// Every health signal keeps reporting a failure, and the operator gets the
-// values a bridge needs once per native epoch, without the private intent file.
+// Every health signal keeps reporting a failure, and each look gives the operator
+// the values a bridge needs, without the private intent file.
 func TestProductionNativeGapHoldTellsTheOperator(t *testing.T) {
 	output := &releaseDiagnosticCapture{written: make(chan struct{}, 64)}
 	ctx, owner, err := newReleaseDiagnostics(t.Context(), output, time.Now)
@@ -231,11 +231,19 @@ func TestProductionNativeGapHoldTellsTheOperator(t *testing.T) {
 	failed := nativeGapHoldTestRefused()
 	failed.lastStatus, failed.nativeEpoch = "failed", later.nativeEpoch+1
 	sequence := []*productionNativeGapHold{first, first, later, failed}
-	polls := 0
+	polls, drained := 0, 0
 	err = runReleaseProductionSteeringLoopWithWait(ctx, func() error {
 		polls++
 		return sequence[polls-1]
-	}, func() bool { return polls < len(sequence) }, progress)
+	}, func() bool {
+		// A look fits the bounded domain, and a real look is a minute away.
+		if drained < polls {
+			<-output.written
+			<-output.written
+			drained = polls
+		}
+		return polls < len(sequence)
+	}, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,25 +253,75 @@ func TestProductionNativeGapHoldTellsTheOperator(t *testing.T) {
 	text := output.String()
 	hash := first.lastArtifactHash
 	for _, want := range []string{
-		"validator steering hold: native epoch 26075 does not follow the applied intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; steering resumes after a restart with the edge last_native_epoch=26073 last_artifact_hash=" + hash + " first_native_epoch=26076 or later\n",
-		"validator steering hold: native epoch 26076 does not follow the applied intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; steering resumes after a restart with the edge last_native_epoch=26073 last_artifact_hash=" + hash + " first_native_epoch=26077 or later\n",
-		"validator steering hold: native epoch 26077 does not follow the failed intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; a bridge edge needs an applied predecessor, so this one needs an operator's review\n",
+		"validator steering hold: compact head EMA epoch jumped: native epoch 26075 does not follow the applied intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; steering resumes after a restart with the edge last_native_epoch=26073 last_artifact_hash=" + hash + " first_native_epoch=26076 or later\n",
+		"validator steering hold: compact head EMA epoch jumped: native epoch 26076 does not follow the applied intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; steering resumes after a restart with the edge last_native_epoch=26073 last_artifact_hash=" + hash + " first_native_epoch=26077 or later\n",
+		"validator steering hold: compact head EMA epoch jumped: native epoch 26077 does not follow the failed intent at native epoch 26073 (" + hash + ") and no bridge edge admits it; trails and settlement keep running; a bridge edge needs an applied predecessor, so this one needs an operator's review\n",
 		"validator diagnostic: domain=steering code=hard_error native_epoch=26075 epoch_known=true attempt=1 phase=unknown cause=hard_error",
-		"validator diagnostic: domain=steering code=native_gap_hold native_epoch=26076 epoch_known=true attempt=0 phase=unknown cause=hard_error",
-		"validator steering causes: code=hard_error attempt=1 leaves=1 distinct=1: 1x ",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %q", want, text)
 		}
-	}
-	if count := strings.Count(text, "validator steering hold: native epoch 26075 "); count != 1 {
-		t.Fatalf("the hold line repeated within its native epoch: %d times in %q", count, text)
 	}
 	if count := strings.Count(text, "code=hard_error native_epoch="); count != len(sequence) {
 		t.Fatalf("each look must count toward SnValidatorSteeringFailing: %d in %q", count, text)
 	}
 	if value := progress.value.Steering; value == nil || value.Outcome != "hard_error" || value.Current || value.NativeEpoch != 26077 || !value.EpochKnown {
 		t.Fatalf("progress lost the hold: %+v", value)
+	}
+}
+
+// An attempt that failed before head admission names its own causes, and its
+// drain reads as a wait; neither is the refusal's line.
+func TestProductionNativeGapHoldNamesAnEarlierFailure(t *testing.T) {
+	output := &releaseDiagnosticCapture{written: make(chan struct{}, 8)}
+	ctx, owner, err := newReleaseDiagnostics(t.Context(), output, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	progress := nativeGapHoldTestProgress()
+	hold := nativeGapHoldTestRefused()
+	failed := hold.attemptFailed(errors.New("attempt upload response status is 403"))
+	polls := 0
+	err = runReleaseProductionSteeringLoopWithWait(ctx, func() error {
+		polls++
+		return failed
+	}, func() bool {
+		<-output.written
+		<-output.written
+		return false
+	}, progress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.value.Steering.Outcome != "hard_error" {
+		t.Fatalf("an earlier failure stopped reading as one: %+v", progress.value.Steering)
+	}
+	drain := hold.attemptFailed(errAttemptCutPending)
+	polls = 0
+	err = runReleaseProductionSteeringLoopWithWait(ctx, func() error {
+		polls++
+		return drain
+	}, func() bool {
+		<-output.written
+		return false
+	}, progress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.value.Steering.Outcome != "read_wait" {
+		t.Fatalf("a drain read as a failure: %+v", progress.value.Steering)
+	}
+	if err := owner.close(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"attempt upload response status is 403", "code=preparation_pending native_epoch=26075"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in %q", want, text)
+		}
+	}
+	if strings.Contains(text, "validator steering hold:") {
+		t.Fatalf("the refusal's line named an attempt that did not reach it: %q", text)
 	}
 }
 

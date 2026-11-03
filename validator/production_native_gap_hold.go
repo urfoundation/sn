@@ -64,6 +64,8 @@ func productionSteeringNativeGapHoldOf(err error) *productionNativeGapHold {
 
 // A cut wait is the attempt's own drain, not a failure. Everything else in a
 // hold reads as the hard error it is, so SnValidatorSteeringFailing stays on.
+// A look offers two records, what the bounded domain holds: the scalar event,
+// then the refusal's line or an earlier failure's causes.
 func observeProductionNativeGapHold(ctx context.Context, progress *releaseProgress, hold *productionNativeGapHold, err error) {
 	known := hold.nativeEpoch != 0
 	if hold.cause != nil && productionSteeringCutWait(hold.cause) {
@@ -73,21 +75,24 @@ func observeProductionNativeGapHold(ctx context.Context, progress *releaseProgre
 	}
 	progress.observeSteering(hold.nativeEpoch, known, "hard_error", false)
 	releaseDiagnostic(ctx, "steering", "hard_error", hold.nativeEpoch, known, 1, releaseDiagnosticFacts{cause: releaseDiagnosticHardError})
-	releaseDiagnostic(ctx, "steering", "native_gap_hold", hold.nativeEpoch, known, 0, releaseDiagnosticFacts{cause: releaseDiagnosticHardError})
-	releaseDiagnosticCauses(ctx, "steering", "hard_error", 1, err)
+	if hold.cause != nil || !known {
+		releaseDiagnosticCauses(ctx, "steering", "hard_error", 1, err)
+		return
+	}
+	releaseDiagnosticNativeGapHold(ctx, hold)
 }
 
-// What an operator needs, once per native epoch, without reading the private
-// intent file: the applied predecessor and the rule's first native epoch.
+// What an operator needs without reading the private intent file: the refusal
+// the runbook names, the predecessor and the rule's first native epoch.
 func releaseDiagnosticNativeGapHold(ctx context.Context, hold *productionNativeGapHold) {
 	self := releaseDiagnosticOwner(ctx)
-	if self == nil || hold.nativeEpoch == 0 {
+	if self == nil {
 		return
 	}
 	resume := fmt.Sprintf("steering resumes after a restart with the edge last_native_epoch=%d last_artifact_hash=%s first_native_epoch=%d or later", hold.lastEpoch, hold.lastArtifactHash, hold.nativeEpoch+1)
 	if hold.lastStatus != "applied" {
 		resume = "a bridge edge needs an applied predecessor, so this one needs an operator's review"
 	}
-	self.exporter.Offer("steering", []byte(fmt.Sprintf("validator steering hold: native epoch %d does not follow the %s intent at native epoch %d (%s) and no bridge edge admits it; trails and settlement keep running; %s\n",
-		hold.nativeEpoch, hold.lastStatus, hold.lastEpoch, hold.lastArtifactHash, resume)))
+	self.exporter.Offer("steering", []byte(fmt.Sprintf("validator steering hold: %v: native epoch %d does not follow the %s intent at native epoch %d (%s) and no bridge edge admits it; trails and settlement keep running; %s\n",
+		errReleaseHeadEMANativeGap, hold.nativeEpoch, hold.lastStatus, hold.lastEpoch, hold.lastArtifactHash, resume)))
 }
