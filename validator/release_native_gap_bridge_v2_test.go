@@ -869,9 +869,9 @@ func TestNativeGapBridgeStartupReplayAcceptsCrossedHistory(t *testing.T) {
 
 // The incident's shape: the last applied intent is native epoch 25730, the
 // crash loop let 25731 pass with no intent, and the validator resumes at
-// 25732 or later. Without an edge every poll is the same hard error until the
-// failure limit, and a restart reads the same head EMA state, so the halt is
-// permanent. One edge from 25730 to 25732, the smallest gap a bridge names,
+// 25732 or later. Without an edge every poll is the same refusal, and a restart
+// reads the same head EMA state, so steering holds until an edge exists. One edge
+// from 25730 to 25732, the smallest gap a bridge names,
 // admits 25732 and any later epoch, here 25736, at the idle check, the head
 // EMA, the intent successor and the artifact lineage, and still refuses a
 // second gap.
