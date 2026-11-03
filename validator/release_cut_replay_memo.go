@@ -1,7 +1,7 @@
 //go:build linux || darwin
 
 // One steering operation replays the same two cuts about 14 times, and every
-// poll of a retained intent replays them twice more: the seal, the decision, the
+// attempt replays the retained intent's cuts twice more: the seal, the decision, the
 // production stage, the envelope, intent admission, the lineage join and each
 // lifecycle write each verify the artifact from nothing. A replay reads and
 // authenticates every record of the settlement epoch, so that work grows with

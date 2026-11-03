@@ -444,3 +444,50 @@ func TestSubmitOnceV2HoldsBeforeItReplaysAndAfterItCuts(t *testing.T) {
 	at = position("gatherHeadV2", at)
 	position("beginV2", at)
 }
+
+// Through the real steering operation on a retained applied intent: a stored
+// refusal answers at once, and reads no attempt object and no retained head.
+func TestSubmitOnceV2ReturnsAStoredRefusalWithoutReplaying(t *testing.T) {
+	fixture := newProductionContinuationTestFixture(t)
+	native := installProductionContinuationNative(t, fixture)
+	pending := fixture.beginAndLoseAcknowledgement(t, native)
+	native.receiptNumber, fixture.production.head = 101, 102
+	fixture.production.extrinsicsKVs = map[uint64][]string{101: {pending.Prepared.ExtrinsicHex}}
+	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.Is(err, ErrSteeringAlreadyFinal) {
+		t.Fatalf("the original receipt did not reconcile: %v", err)
+	}
+	native.applied = true
+	fixture.production.head = max(uint64(102), pending.Prepared.RevealBlock)
+	var transition *productionSteeringTransition
+	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.As(err, &transition) || transition.revealWait {
+		t.Fatalf("the row did not apply: %v", err)
+	}
+	preparation := &releaseProductionPreparation{requested: make(chan struct{}), ready: make(chan struct{})}
+	preparation.readyOnce.Do(func() { close(preparation.ready) })
+	fixture.runtime.preparation = preparation
+	fixture.runtime.nativeGapHeld = new(atomic.Pointer[productionNativeGapHold])
+	current, err := fixture.steerer.intents.currentV2(t.Context())
+	if err != nil || current == nil || current.Status != "applied" {
+		t.Fatalf("no applied intent: %v", err)
+	}
+	reads := fixture.artifactReads.Load()
+	// The fresh snapshot pairs this head with the fixture's EVM block.
+	fixture.production.head = 102
+	// The epoch the fixture's chain reports is what the stored refusal must name.
+	observe := &productionNativeGapHold{lastEpoch: current.SubnetEpoch, lastStatus: current.Status, lastArtifactHash: current.MeasurementArtifactHash}
+	for epoch := current.SubnetEpoch; epoch <= current.SubnetEpoch+1; epoch++ {
+		held := *observe
+		held.nativeEpoch = epoch
+		fixture.runtime.nativeGapHeld.Store(&held)
+		err := fixture.steerer.submitOnceV2(t.Context())
+		t.Logf("epoch %d: %v", epoch, err)
+		var returned *productionNativeGapHold
+		if errors.As(err, &returned) {
+			if returned.nativeEpoch != epoch || fixture.artifactReads.Load() != reads {
+				t.Fatalf("the stored refusal replayed: epoch %d, %d object reads", returned.nativeEpoch, fixture.artifactReads.Load()-reads)
+			}
+			return
+		}
+	}
+	t.Fatalf("no stored refusal matched the fixture's native epoch; last head %d, %d object reads", fixture.production.head, fixture.artifactReads.Load()-reads)
+}
