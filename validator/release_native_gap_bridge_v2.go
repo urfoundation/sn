@@ -354,7 +354,7 @@ func (self *HeadEMAStore) refusesNativeEpochGap(epoch uint64) bool {
 // This native epoch's completed refusal, while its predecessor is still current.
 // A restart, a later epoch or a moved intent has none and runs a whole attempt.
 func (self *releaseRuntimeV2) heldNativeGap(current *SteeringIntent, nativeEpoch uint64) *productionNativeGapHold {
-	if self == nil || current == nil {
+	if self == nil || current == nil || self.nativeGapHeld == nil {
 		return nil
 	}
 	held := self.nativeGapHeld.Load()
@@ -362,4 +362,11 @@ func (self *releaseRuntimeV2) heldNativeGap(current *SteeringIntent, nativeEpoch
 		return nil
 	}
 	return held
+}
+
+// A runtime built without the owner runs a whole attempt every time.
+func (self *releaseRuntimeV2) holdNativeGap(hold *productionNativeGapHold) {
+	if self != nil && self.nativeGapHeld != nil {
+		self.nativeGapHeld.Store(hold)
+	}
 }

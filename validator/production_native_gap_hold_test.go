@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -369,13 +370,18 @@ func TestNativeGapHoldRuleMatchesHeadAdmission(t *testing.T) {
 // whole attempt again, and a runtime without a refusal holds nothing.
 func TestHeldNativeGapBelongsToOneEpochAndPredecessor(t *testing.T) {
 	t.Parallel()
-	runtime := &releaseRuntimeV2{}
 	current := &SteeringIntent{SubnetEpoch: 26073, MeasurementArtifactHash: nativeGapHoldTestRefused().lastArtifactHash}
+	held := nativeGapHoldTestRefused()
+	ownerless := &releaseRuntimeV2{}
+	ownerless.holdNativeGap(held)
+	if ownerless.heldNativeGap(current, 26075) != nil {
+		t.Fatal("a runtime without the owner remembered a refusal")
+	}
+	runtime := &releaseRuntimeV2{nativeGapHeld: new(atomic.Pointer[productionNativeGapHold])}
 	if runtime.heldNativeGap(current, 26075) != nil {
 		t.Fatal("no refusal is stored yet")
 	}
-	held := nativeGapHoldTestRefused()
-	runtime.nativeGapHeld.Store(held)
+	runtime.holdNativeGap(held)
 	if runtime.heldNativeGap(current, 26075) != held {
 		t.Fatal("the same epoch and predecessor must not redo the attempt")
 	}

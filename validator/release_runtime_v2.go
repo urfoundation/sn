@@ -49,7 +49,7 @@ type releaseRuntimeV2 struct {
 	nativeReservations   map[uint64]uint64                       // no_id -> native epoch, owned by gate
 	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2 // one unpublished/adopting cut per operator, owned by gate
 	settlementV2Verified bool                                    // the settlement_v2 identity check passed, owned by gate
-	nativeGapHeld        atomic.Pointer[productionNativeGapHold] // this native epoch's completed refusal
+	nativeGapHeld        *atomic.Pointer[productionNativeGapHold] // this native epoch's completed refusal
 }
 
 // Semantic startup is called while the complete disk census is still dormant.
@@ -96,7 +96,7 @@ func newReleaseRuntimeV2WithRuntime(ctx context.Context, cfg *ReleaseConfig, cha
 		disk.states[participant.NoID].uploadSource = sources[participant.NoID]
 	}
 	self := &releaseRuntimeV2{receiptCache: &productionReceiptCacheState{}, ctx: ctx, cfg: history.cfg, chain: chain, native: native, hotkey: ownHotkey, disk: disk, history: history, origins: slices.Clone(origins), sources: sources,
-		gate: make(chan struct{}, 1), publications: maps.Clone(history.terminals), publicationContexts: maps.Clone(history.terminalContexts)}
+		gate: make(chan struct{}, 1), publications: maps.Clone(history.terminals), publicationContexts: maps.Clone(history.terminalContexts), nativeGapHeld: new(atomic.Pointer[productionNativeGapHold])}
 	if isOwnerRecycleProductionConfig(cfg) {
 		self.preparation = &releaseProductionPreparation{requested: make(chan struct{}), ready: make(chan struct{})}
 	}
