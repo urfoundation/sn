@@ -20,16 +20,40 @@ func ProviderDeviceSettings(domainHash [32]byte) *sdk.DeviceLocalSettings {
 	return settings
 }
 
-// The device settings of one slot of a provider run. Only the direct slot runs
-// the provider extender role (connect/EXTENDER.md G1, G2). A host holds one
-// extender identity and binds the carrier ports once, and every slot has the
-// same .provider.extender.key under a client of its own, so each slot that
-// activated the key would take the operator's row for it from the one before.
-// A proxy slot otherwise provides exactly as the direct slot does.
-func providerSlotDeviceSettings(domainHash [32]byte, proxySettings *connect.ProxySettings) *sdk.DeviceLocalSettings {
+// The device settings of one slot of a provider run. One slot runs the provider
+// extender role (connect/EXTENDER.md G1, G2), the one providerExtenderSlot names.
+// A host holds one extender identity and binds the carrier ports once, and every
+// slot has the same .provider.extender.key under a client of its own, so each
+// slot that activated the key would take the operator's row for it from the one
+// before. A slot otherwise provides the same with or without the role.
+func providerSlotDeviceSettings(domainHash [32]byte, extenderSlot bool) *sdk.DeviceLocalSettings {
 	settings := ProviderDeviceSettings(domainHash)
-	settings.ProvideExtenderEnabled = proxySettings == nil
+	settings.ProvideExtenderEnabled = extenderSlot
 	return settings
+}
+
+// The slot of a provider run that holds the extender role: the direct slot when
+// the run has one, otherwise the proxy slot whose name sorts first. A run with a
+// proxy file has only proxy slots. The name comes from the proxy's network and
+// address alone, so restarts, the file's order and rotated credentials leave the
+// role where it is, and only removing that proxy or adding one that sorts first
+// moves it.
+//
+// The role runs from the host whichever slot holds it: its activations and its
+// forward dials leave out the slot's proxy, so the operator dials back to the host
+// that holds the ports.
+func providerExtenderSlot(providers []*connect.ProxySettings) string {
+	extenderSlot := ""
+	for _, proxySettings := range providers {
+		slot := providerRegistrationSlot(proxySettings)
+		if proxySettings == nil {
+			return slot
+		}
+		if extenderSlot == "" || slot < extenderSlot {
+			extenderSlot = slot
+		}
+	}
+	return extenderSlot
 }
 
 // Reads the optional launch artifact once. Both the real CLI and a launcher

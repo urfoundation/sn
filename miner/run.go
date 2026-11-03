@@ -886,6 +886,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	})
 	defer func() { returnErr = errors.Join(returnErr, stopRenewal()) }()
 
+	extenderSlot := providerExtenderSlot(providers)
 	provideWithProxy := func(index uint64, proxySettings *connect.ProxySettings) (returnErr error) {
 		defer func() {
 			// Registered first, this runs after every real cleanup below.
@@ -974,7 +975,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
 		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := providerSlotDeviceSettings(self.closeReportDomainHash, proxySettings)
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, providerRegistrationSlot(proxySettings) == extenderSlot)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
