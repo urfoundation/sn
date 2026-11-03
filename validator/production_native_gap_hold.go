@@ -38,10 +38,12 @@ func (self *productionNativeGapHold) Error() string {
 	return fmt.Sprintf("%v: native epoch %d does not follow applied intent %d", errReleaseHeadEMANativeGap, self.nativeEpoch, self.lastEpoch)
 }
 
-// Nil keeps an ordinary attempt's error exactly as it was, and so does a pure
-// cancellation or expiry: shutdown and the operation budget keep their meaning.
+// Nil keeps an ordinary attempt's error exactly as it was. So do a pure
+// cancellation or expiry, whose meaning shutdown and the operation budget own, and
+// a cut wait, whose own bound still ends a stuck drain: new trails wait on it, and
+// only a restart clears one.
 func (self *productionNativeGapHold) attemptFailed(cause error) error {
-	if self == nil || releaseOnlyErrors(cause, context.Canceled, context.DeadlineExceeded) {
+	if self == nil || releaseOnlyErrors(cause, context.Canceled, context.DeadlineExceeded) || productionSteeringCutWait(cause) {
 		return cause
 	}
 	return &productionNativeGapHold{lastEpoch: self.lastEpoch, lastStatus: self.lastStatus, lastArtifactHash: self.lastArtifactHash, nativeEpoch: self.nativeEpoch, cause: cause}
@@ -62,17 +64,11 @@ func productionSteeringNativeGapHoldOf(err error) *productionNativeGapHold {
 	return nil
 }
 
-// A cut wait is the attempt's own drain, not a failure. Everything else in a
-// hold reads as the hard error it is, so SnValidatorSteeringFailing stays on.
+// A hold reads as the hard error it is, so SnValidatorSteeringFailing stays on.
 // A look offers two records, what the bounded domain holds: the scalar event,
 // then the refusal's line or an earlier failure's causes.
 func observeProductionNativeGapHold(ctx context.Context, progress *releaseProgress, hold *productionNativeGapHold, err error) {
 	known := hold.nativeEpoch != 0
-	if hold.cause != nil && productionSteeringCutWait(hold.cause) {
-		progress.observeSteering(hold.nativeEpoch, known, "read_wait", false)
-		releaseDiagnostic(ctx, "steering", "preparation_pending", hold.nativeEpoch, known, 0, releaseDiagnosticFacts{phase: productionReadPreparation})
-		return
-	}
 	progress.observeSteering(hold.nativeEpoch, known, "hard_error", false)
 	releaseDiagnostic(ctx, "steering", "hard_error", hold.nativeEpoch, known, 1, releaseDiagnosticFacts{cause: releaseDiagnosticHardError})
 	if hold.cause != nil || !known {
