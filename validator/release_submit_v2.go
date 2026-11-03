@@ -534,7 +534,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	head, err := self.gatherHeadV2(ctx, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids, inputs, options)
 	if err != nil {
 		if nativeGap != nil && releaseOnlyErrors(err, errReleaseHeadEMANativeGap) {
-			self.runtimeV2.nativeGapHeld.Store(nativeGap)
+			self.runtimeV2.holdNativeGap(nativeGap)
 			return nativeGap
 		}
 		return nativeGap.attemptFailed(err)
