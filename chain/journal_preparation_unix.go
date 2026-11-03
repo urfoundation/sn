@@ -5,12 +5,17 @@
 package chain
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urnetwork/connect/durablevolume"
 	"golang.org/x/sys/unix"
 )
@@ -155,4 +160,120 @@ func BuildFreshNativeJournalPreparationCheckpoint(ctx context.Context, root *os.
 		return nil, err
 	}
 	return encoded, nil
+}
+
+// FreshNativeJournalPreparationScope is the one capacity vector validate admits,
+// so a request can name it without repeating its numbers.
+func FreshNativeJournalPreparationScope() NativeJournalPreparationScope {
+	return NativeJournalPreparationScope{Schema: NativeJournalPreparationSchema, MaximumJournalBytes: 16 * 1024 * 1024, MaximumRawBytes: 64 * 1024 * 1024, MaximumRawMembers: 10000, MaximumRawRecordBytes: 1024 * 1024}
+}
+
+// Public inputs are one strict object, with nothing after it.
+func nativePreparationDecode(raw []byte, target any) error {
+	if err := protocol.ValidateUniqueJsonKeys(raw); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return errors.New("native preparation input has trailing JSON")
+	}
+	return nil
+}
+
+// BuildFreshNativeJournalPreparation is the native journal's entry in a fixed
+// owner registry, shared by every command that prepares one. It creates only
+// public empty staging bytes, which the base planner reads and binds itself.
+func BuildFreshNativeJournalPreparation(ctx context.Context, staging *os.File, name string, owner durablevolume.PreparationOwner) (durablevolume.PreparationOwnerPlan, error) {
+	if owner.Kind != NativeJournalPreparationKind || owner.Purpose != "fresh" || owner.RelativePath != "." {
+		return durablevolume.PreparationOwnerPlan{}, errors.New("fixed preparation supports explicitly fresh custody only")
+	}
+	var scope NativeJournalPreparationScope
+	if err := nativePreparationDecode(owner.Inputs, &scope); err != nil {
+		return durablevolume.PreparationOwnerPlan{}, err
+	}
+	files, err := NativeJournalPreparationLayout(scope)
+	if err != nil {
+		return durablevolume.PreparationOwnerPlan{}, err
+	}
+	raw, err := json.Marshal(scope)
+	if err != nil {
+		return durablevolume.PreparationOwnerPlan{}, err
+	}
+	if err := nativePreparationStage(ctx, staging, name, files); err != nil {
+		return durablevolume.PreparationOwnerPlan{}, err
+	}
+	return durablevolume.PreparationOwnerPlan{Owner: owner, StagingName: name, Files: files, Census: raw,
+		Attributes: []durablevolume.PreparationAttributeSpec{{Path: ".", Name: NativeJournalCustodyAttribute}}}, nil
+}
+
+// InspectFreshNativeJournalPreparation derives the only permitted format again
+// from the original request, then observes the published members for its checkpoint.
+func InspectFreshNativeJournalPreparation(ctx context.Context, root *os.File, owner durablevolume.PreparationOwnerPlan) ([]durablevolume.PreparedAttribute, error) {
+	if owner.Owner.Kind != NativeJournalPreparationKind || owner.Owner.Purpose != "fresh" || owner.Owner.RelativePath != "." {
+		return nil, errors.New("fixed preparation cannot reinterpret retained or restored custody as fresh")
+	}
+	var scope, census NativeJournalPreparationScope
+	if err := errors.Join(nativePreparationDecode(owner.Owner.Inputs, &scope), nativePreparationDecode(owner.Census, &census)); err != nil {
+		return nil, err
+	}
+	if scope != census {
+		return nil, errors.New("native preparation census changed its reviewed capacity vector")
+	}
+	files, err := NativeJournalPreparationLayout(scope)
+	if err != nil {
+		return nil, err
+	}
+	spec := durablevolume.PreparationAttributeSpec{Path: ".", Name: NativeJournalCustodyAttribute}
+	if !reflect.DeepEqual(files, owner.Files) || len(owner.Attributes) != 1 || owner.Attributes[0] != spec {
+		return nil, errors.New("fresh owner plan changed its fixed member or checkpoint census")
+	}
+	raw, err := BuildFreshNativeJournalPreparationCheckpoint(ctx, root, scope)
+	if err != nil {
+		return nil, err
+	}
+	return []durablevolume.PreparedAttribute{{Spec: spec, Raw: raw}}, nil
+}
+
+// Exclusive and private: every member is created new under a new directory.
+func nativePreparationStage(ctx context.Context, parent *os.File, name string, files []durablevolume.PreparationFile) (resultErr error) {
+	if ctx == nil || parent == nil || name == "" || name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsRune(name, 0) {
+		return errors.New("fresh owner staging requires its named borrowed parent")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := unix.Mkdirat(int(parent.Fd()), name, 0700); err != nil {
+		return err
+	}
+	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	directory := os.NewFile(uintptr(fd), name)
+	defer func() { resultErr = errors.Join(resultErr, directory.Close()) }()
+	for _, member := range files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		flags := unix.O_RDWR | unix.O_CREAT | unix.O_EXCL | unix.O_NOFOLLOW | unix.O_CLOEXEC
+		if member.Kind == "directory" {
+			if err := unix.Mkdirat(fd, member.Path, member.Mode); err != nil {
+				return err
+			}
+			flags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+		}
+		child, err := unix.Openat(fd, member.Path, flags, member.Mode)
+		if err != nil {
+			return err
+		}
+		file := os.NewFile(uintptr(child), member.Path)
+		if err := errors.Join(file.Sync(), file.Close()); err != nil {
+			return err
+		}
+	}
+	return errors.Join(directory.Sync(), parent.Sync(), ctx.Err())
 }

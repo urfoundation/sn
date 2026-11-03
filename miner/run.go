@@ -176,6 +176,13 @@ Usage:
         [--mainnet-runtime-authority=<path> --mainnet-runtime-authority-sha256=<hex>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
+    provider fleet storage request --mount_path=<path> --filesystem_uuid=<uuid> --filesystem_type=<type>
+        --former-writers-stopped --no-previous-owner-state --evidence=<text>
+        [-v...]
+    provider fleet storage plan --request=<path> --request-sha256=<hash>
+        [-v...]
+    provider fleet storage apply --plan=<path> --plan-sha256=<hash>
+        [-v...]
     provider proxy auth add [<key>] <proxy_user> <proxy_password> [-f]
     provider proxy auth remove [<key>] [--all]
     provider proxy add [<key_address>...] [--proxy_file=<proxy_file>] [-f]
@@ -192,7 +199,8 @@ Options:
 	--original-contract-capture=<path>  Exact approved original request/admission source profile with prepared private custody.
 	--original-contract-capture-sha256=<hash>  Independently reviewed sha256: digest of the original contract source profile.
 	--require-original-contract-capture  Refuse startup without the complete original contract source profile and retained provider identity.
-    --durable-volumes=<path>          Exact external storage declaration; fleet writes require the owner-local schema.
+    --durable-volumes=<path>          Exact external storage declaration; fleet writes require the owner-local schema,
+                                      which provider fleet storage prepares.
     --durable-volumes-sha256=<hash>   Reviewed sha256: digest; claim daemons require the daemon-volume schema.
     --auth-code-file=<path>          With setup, read the auth code from this file instead of asking.
     --yes                            With setup, take the default answer to every question (no prompts).
@@ -328,6 +336,20 @@ Options:
 	--valid_to_epoch=<e>               Last settlement epoch in which a binding is active.
 	--effective_epoch=<e>              Future epoch at which a fleet revocation takes effect.
 	--relayer_key_file=<path>          EVM transaction relayer key; it receives no binding ownership.
+	--mount_path=<path>                fleet storage request: the exact mount point of the filesystem holding the
+	                                   state directory. On macOS the data volume is /System/Volumes/Data, so set
+	                                   URNETWORK_STATE_DIR to the physical path below it.
+	--filesystem_uuid=<uuid>           fleet storage request: that filesystem's uuid, in lowercase.
+	--filesystem_type=<type>           fleet storage request: ext4 or xfs on Linux, apfs on macOS.
+	--former-writers-stopped           fleet storage request: you state that nothing else writes these journal
+	                                   directories and no other machine signs with this fleet's keys.
+	--no-previous-owner-state          fleet storage request: you state that these signers have no earlier mainnet
+	                                   fleet journal anywhere. A retained journal can't be prepared as new.
+	--evidence=<text>                  fleet storage request: what you checked to say both; kept in the request files.
+	--request=<path>                   fleet storage plan: the request file fleet storage request printed.
+	--request-sha256=<hash>            fleet storage plan: its sha256: digest, as printed.
+	--plan=<path>                      fleet storage apply: the plan file fleet storage plan printed.
+	--plan-sha256=<hash>               fleet storage apply: its sha256: digest, as printed.
     --key_file=<key_file>            Path to a hex-encoded 32-byte secp256k1 EVM private key. When given,
                                      claim signs and submits the settlement-vault claim (via the
                                      sn/miner/onchain path) instead of only printing the calldata.
