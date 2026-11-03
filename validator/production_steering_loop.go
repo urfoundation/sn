@@ -53,6 +53,9 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 	// The current run of consecutive cut waits; any other outcome ends it.
 	var cutWaitSince time.Time
 	cutWaits := 0
+	// The native epoch whose gap hold the operator was last told about.
+	var heldEpoch uint64
+	heldAnnounced := false
 	for {
 		if err := ctx.Err(); err != nil {
 			return releaseRuntimeError(ctx, errors.Join(pendingErr, err))
@@ -67,6 +70,7 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 		preparation := releaseErrorMarker[*productionPreparationPending](err)
 		authentication := releaseErrorMarker[*productionOperatorAuthenticationPending](err)
 		cutWait := productionSteeringCutWait(err)
+		gapHold := productionSteeringNativeGapHoldOf(err)
 		if !cutWait {
 			cutWaitSince, cutWaits = time.Time{}, 0
 		} else if cutWaitSince.IsZero() {
@@ -100,6 +104,25 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 			progress.observeSteering(transition.nativeEpoch, true, outcome, true)
 			if !transition.revealWait {
 				failures, pendingErr = 0, nil
+			}
+		case gapHold != nil:
+			// Nothing here can change the refusal, so it spends no failures and
+			// the failures before it cannot end a process that has nothing left
+			// to retry. The hold still reads as a failure on every health signal.
+			failures, pendingErr = 0, nil
+			if !heldAnnounced || heldEpoch != gapHold.nativeEpoch {
+				heldAnnounced, heldEpoch = true, gapHold.nativeEpoch
+				releaseDiagnosticNativeGapHold(ctx, gapHold)
+			}
+			observeProductionNativeGapHold(ctx, progress, gapHold, err)
+			if gapHold.cause == nil {
+				// This epoch's cut is done. Trails, settlement and the audit run
+				// on; steering looks again at its slower pace.
+				for range productionNativeGapHoldPolls - 1 {
+					if !wait() {
+						return releaseRuntimeError(ctx, pendingErr)
+					}
+				}
 			}
 		case cutWait && now().Sub(cutWaitSince) <= cutWaitLimit:
 			// The drain keeps the failure budget: it neither spends nor

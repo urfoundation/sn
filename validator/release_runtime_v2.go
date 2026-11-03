@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -48,6 +49,7 @@ type releaseRuntimeV2 struct {
 	nativeReservations   map[uint64]uint64                       // no_id -> native epoch, owned by gate
 	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2 // one unpublished/adopting cut per operator, owned by gate
 	settlementV2Verified bool                                    // the settlement_v2 identity check passed, owned by gate
+	nativeGapHeld        atomic.Pointer[productionNativeGapHold] // this native epoch's completed refusal
 }
 
 // Semantic startup is called while the complete disk census is still dormant.
