@@ -129,28 +129,27 @@ func TestProviderSwarmMemberDisablesTheExtenderRole(t *testing.T) {
 	}
 }
 
-// Only the direct slot of a provider run asks for the provider extender role
-// (G1, G2): every slot has the same extender key under a client of its own, and
-// each slot that activated it took the operator's row from the one before. A
-// proxy slot keeps everything else the miner sets on a provider's device.
-func TestProviderSlotDeviceSettingsKeepTheExtenderRoleOnTheDirectSlot(t *testing.T) {
+// One slot of a provider run asks for the provider extender role (G1, G2): every
+// slot has the same extender key under a client of its own, and each slot that
+// activated it took the operator's row from the one before. The other slots keep
+// everything else the miner sets on a provider's device.
+func TestProviderSlotDeviceSettingsAskForTheExtenderRoleInTheExtenderSlot(t *testing.T) {
 	if !sdk.DefaultDeviceLocalSettings().ProvideExtenderEnabled {
 		t.Fatal("the sdk default is off, so the slot setting proves nothing")
 	}
-	proxySettings := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.30:1080"}
 	for _, domainHash := range [][32]byte{{}, {71}} {
-		if !providerSlotDeviceSettings(domainHash, nil).ProvideExtenderEnabled {
-			t.Fatalf("domain %x: the direct slot does not run the extender role", domainHash[:1])
+		if !providerSlotDeviceSettings(domainHash, true).ProvideExtenderEnabled {
+			t.Fatalf("domain %x: the extender slot does not run the extender role", domainHash[:1])
 		}
-		settings := providerSlotDeviceSettings(domainHash, proxySettings)
+		settings := providerSlotDeviceSettings(domainHash, false)
 		if settings.ProvideExtenderEnabled {
-			t.Fatalf("domain %x: a proxy slot runs the extender role", domainHash[:1])
+			t.Fatalf("domain %x: another slot runs the extender role", domainHash[:1])
 		}
 		if !settings.AllowProvider {
-			t.Fatalf("domain %x: a proxy slot does not provide", domainHash[:1])
+			t.Fatalf("domain %x: a slot without the role does not provide", domainHash[:1])
 		}
 		if settings.ClientSettings.ContractManagerSettings.CloseReportDomainHash != domainHash {
-			t.Fatalf("domain %x: a proxy slot lost its close report domain", domainHash[:1])
+			t.Fatalf("domain %x: a slot without the role lost its close report domain", domainHash[:1])
 		}
 	}
 }

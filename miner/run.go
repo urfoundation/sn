@@ -349,6 +349,28 @@ Options:
 // the argument slice (os.Args[1:]) so it can be driven from tests. The miner is
 // the subnet's provider: it runs the provide/proxy/auth flows plus the on-chain
 // wallet / claim / fleet actions (formerly connect/provider).
+// selectedFrontCommand names the operator command the parsed arguments choose,
+// or "" for the rest of the command line. docopt sets one flag per word, so a
+// longer command that reuses a word sets that word's flag too: service status,
+// fleet status and wallet hotkey status all set "status". Each of those goes to
+// its own command, never to the provider's status screen.
+func selectedFrontCommand(opts docopt.Opts) string {
+	if service, _ := opts.Bool("service"); service {
+		return "service"
+	}
+	for _, owner := range []string{"fleet", "wallet"} {
+		if chosen, _ := opts.Bool(owner); chosen {
+			return ""
+		}
+	}
+	for _, name := range []string{"setup", "status", "doctor", "update"} {
+		if chosen, _ := opts.Bool(name); chosen {
+			return name
+		}
+	}
+	return ""
+}
+
 func Run(args []string) {
 	defer recoverCliPanic(args, os.Stderr)
 	if code, done := minerServiceRun(args); done {
@@ -393,20 +415,17 @@ func Run(args []string) {
 		}
 	}
 
-	for _, command := range []struct {
-		name string
-		run  func(docopt.Opts, io.Writer, io.Writer) int
-	}{
-		// service first: its subcommands reuse the words status and start
-		{"service", serviceCmd},
-		{"setup", setupCmd},
-		{"status", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return statusCmd(opts, stdout) }},
-		{"doctor", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return doctorCmd(opts, stdout) }},
-		{"update", updateCmd},
-	} {
-		if chosen, _ := opts.Bool(command.name); chosen {
-			os.Exit(command.run(opts, os.Stdout, os.Stderr))
-		}
+	switch selectedFrontCommand(opts) {
+	case "service":
+		os.Exit(serviceCmd(opts, os.Stdout, os.Stderr))
+	case "setup":
+		os.Exit(setupCmd(opts, os.Stdout, os.Stderr))
+	case "status":
+		os.Exit(statusCmd(opts, os.Stdout))
+	case "doctor":
+		os.Exit(doctorCmd(opts, os.Stdout))
+	case "update":
+		os.Exit(updateCmd(opts, os.Stdout, os.Stderr))
 	}
 
 	if proxy, _ := opts.Bool("proxy"); proxy {
@@ -867,6 +886,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	})
 	defer func() { returnErr = errors.Join(returnErr, stopRenewal()) }()
 
+	extenderSlot := providerExtenderSlot(providers)
 	provideWithProxy := func(index uint64, proxySettings *connect.ProxySettings) (returnErr error) {
 		defer func() {
 			// Registered first, this runs after every real cleanup below.
@@ -955,7 +975,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
 		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := providerSlotDeviceSettings(self.closeReportDomainHash, proxySettings)
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, providerRegistrationSlot(proxySettings) == extenderSlot)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
