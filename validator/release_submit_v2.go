@@ -534,6 +534,11 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	head, err := self.gatherHeadV2(ctx, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids, inputs, options)
 	if err != nil {
 		if nativeGap != nil && releaseOnlyErrors(err, errReleaseHeadEMANativeGap) {
+			// After this epoch's cut, so the first fold across the edge measures
+			// one tempo, exactly as it does across a pinned edge.
+			if err := self.recordNativeGapEdge(ctx, current, nativeGap, nativeHash); err != nil {
+				return err
+			}
 			self.runtimeV2.holdNativeGap(nativeGap)
 			return nativeGap
 		}
