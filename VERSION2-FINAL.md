@@ -120,8 +120,10 @@ showed something that was not visible at decision time.
   orphan every existing consent. Production also refuses a policy succession
   (`validator/recycle_approval.go:128-131`). Policy v1 therefore stays in
   force; §13 lists its fields that are inert for v2 epochs. Any later policy
-  change, including a priced deposit policy, faces the same consent-domain
-  constraint and needs its own design.
+  change faces the same consent-domain constraint and needs its own design. A
+  priced deposit is not a policy change: rates come from the signed price
+  sheet, so the policy document and its hash do not change when prices change,
+  and those consents stay valid (§9.4).
 - **The validator does not verify wallet consent chains in phase A.** The v1
   validator does not either; only the offline economic-conservation tool does
   (`mainnet/economic_conservation_provider_originals.go:249-404`). Checking a
@@ -1156,10 +1158,11 @@ operator published or demands anyone left unanswered (§4.2 G2). The window's
 end stops the demands. A send refused because another transaction already
 did the work is done (§5).
 
-A refused or deleted root does not change the operator's pool weight while
-there is one operator. Zeroing the pool would hand the pool channel to head
-fleets (`validator/release_math.go:44-51`), punishing providers for the
-operator's fault.
+A refused or deleted root does not by itself change the operator's pool
+weight while there is one operator. Zeroing the pool would hand the pool
+channel to head fleets (`validator/release_math.go:44-51`), punishing
+providers for the operator's fault. The deposit audit is a separate rule
+(§9.4).
 
 ### 9.4 Evidence journal and deposit audit
 
@@ -1167,7 +1170,34 @@ operator's fault.
   existing activation and the v1 evidence journal keep working
   (`evm/src/STValidatorEvidence.sol:92-177`), and CLOSED_CENSUS continues.
 - **Deposit audit.** DEPOSIT_AUDIT stays dormant at zero price. A priced
-  policy needs its own v2 deposit design (§16).
+  deposit needs no policy change (§2.2):
+  - **Rates.** Rates and the per-epoch cap come from the signed price sheet
+    at `https://ur.xyz/price.yml` (`WHITEPAPER.md` §7.1). With no signed entry
+    in force the signed policy's schedule stays in force, and a signed entry
+    of all zero rates returns to zero price.
+  - **Caps.** The coordinator's own epoch cap, set through `schedulePolicy`
+    under the same policy hash, must be at least the cap in force, the
+    entry's or the signed policy's, and its campaign cap at least the larger
+    of the signed policy's campaign cap and that epoch cap, or validators stop
+    on the mismatch.
+  - **Usage.** v2 has no payout artifact, so for each epoch from E_s the
+    operator publishes a signed usage statement after the epoch's root
+    commit. The artifact key signs it, and the public `/sn/evidence` routes
+    serve it as kind `epoch-usage-v1`, run `<noId>-<epoch>`. The validator
+    uses the statement that names the provider chunks the committed header
+    lists for the epoch; their rows must sum to its `total_usage_bytes`, and
+    two statements that verify for the same chunks with different totals are
+    equivocation. `total_users` remains an operator attestation, priced
+    by the deposit but not independently verified. A statement adds to the
+    ledger and changes none of its bytes, so a dispute over users cannot hold
+    up settlement. A source epoch before E_s keeps the payout artifact.
+  - **Timing.** The audit runs at every steering pass. From the start of each
+    priced epoch until the source epoch's usage is committed on chain, its
+    totals are published and the deposit has landed, the pool carries no
+    weight. The audit uses the latest root committed in the source epoch's
+    root window, which ends `rootCommitWindowBlocks` after the epoch's end
+    block under `policyAt` of that epoch, and a later replacement of that
+    root does not change it (§9.3).
 
 ## 10. Claims and provider tooling
 
@@ -1506,8 +1536,9 @@ epochs and the sweep:
 - `shares_total_bps`, `rounding` and `missed_root_action`;
 - `close_grace_blocks` and `finalize_offset_blocks`: v2 closes inside the
   commit window and finalizes 14,400 blocks after the commit;
-- `deposit.usage_artifact`, and `verify.reliability_a_min` as a payment
-  input.
+- `deposit.usage_artifact`: a v2 epoch's deposit usage comes from its signed
+  usage statement (§9.4);
+- `verify.reliability_a_min` as a payment input.
 
 **Governance constraint on the v1 policy schedule.** Every v1 policy that
 applies to a v2 epoch must keep
@@ -1891,8 +1922,6 @@ activation"). It never signs or sends.
   - A second operator, with an auditor set per pool and the weight remedy.
   - An approval quorum as a fraction of the auditor set.
   - Operator bonds.
-  - A priced deposit policy, which must also respect the consent-domain
-    constraint (§2.2).
 - **Null consensus:** a separate track, unchanged from
   VERSION2-REVIEW-RESPONSE.md §13.
 - **Optional.** Daemon self-checks; a third-party mirror

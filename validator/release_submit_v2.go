@@ -170,7 +170,7 @@ func newReleaseSteererV2Context(ctx context.Context, cfg *ReleaseConfig, chain *
 	ema.v2.provisionalEpochGaps = runtime.history != nil && runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&ownedCfg)
 	ema.v2.historyAdoption = runtime.history.historyAdoption
 	ema.v2.nativeGapBridge = runtime.history.nativeGapBridge
-	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg)}
+	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg), depositPrices: newReleaseDepositPrices(&ownedCfg), depositUsageMemo: newReleaseDepositUsageMemo()}
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err
 	}
@@ -431,6 +431,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	if err := self.validatePinnedChains(ctx, snapshot, nativeState, nativeHash); err != nil {
 		return err
 	}
+	self.pruneDepositUsageV2(ctx, snapshot)
 	var hotkeyUids map[[32]byte]uint16
 	loadHotkeyUids := func() error {
 		if hotkeyUids != nil {
@@ -562,7 +563,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		PolicyHash: strings.ToLower(self.cfg.PolicyHash), Policy: self.cfg.Policy,
 		PreviousArtifactHash: previousArtifactHash, ControlledNOIDs: controlledNoIds,
 		Inputs: head.Inputs, Bindings: head.Bindings, HeadEMA: head.HeadEMA,
-		SelfUID: selfUid,
+		SelfUID: selfUid, DepositPriceEntry: newReleaseDepositPriceEntry(self.depositPrices.entryAt(snapshot.Epoch.Uint64())),
 	}
 	closure, err := self.runtimeV2.closureForDecision(ctx, snapshot.Epoch.Uint64())
 	if err != nil {

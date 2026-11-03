@@ -663,8 +663,8 @@ version 2 lifecycle (`VERSION2-FINAL.md` §5), in blocks after the epoch's end b
                      vault2 refuses any commit within 14,400 blocks of the pool's previous commit.
 ```
 
-Deposits, emission weighting, and dividend capture happen continuously across the epoch at tempo
-cadence; only **settlement** waits for the epoch boundary + windows.
+Emission weighting, dividend capture and the deposit audit happen continuously across the epoch at tempo
+cadence (§7.1); only **settlement** waits for the epoch boundary + windows.
 
 ---
 
@@ -921,6 +921,9 @@ upgradeable proxy. The reserve is publicly auditable every finalized block:
   finalizes a root only after an auditor quorum (at launch the validator alone) approves it, and the
   coordinator's pause also stops v2 closes, commits and finalization, never claims, approvals, challenges
   or demands.
+- **Prices.** On SN25 the key pinned to sign the price sheet (§7.1) is the sole owner of the launch Safe. A
+  signed entry can set any price up to the coordinator's on‑chain cap, for all operators; it moves no funds
+  and does not change the policy.
 - **Treasury:** the 18% owner cut accrues to SN25's owner coldkey, the `ur‑owner` native multisig, not to
   the Safe (a governance treasury later, §6.4.3). The native treasury `ur‑reserve`, a separate 2‑of‑3
   multisig, receives the miner allocation beyond the providers' momentum share (9/10 at launch) through its
@@ -974,17 +977,79 @@ is *the α actually deposited*. A NO stages α on its isolated deposit hotkey an
 The **"global fixed rate"** survives as an **off‑chain published reference** — now a **schedule of
 deposit rates per conviction tier** (§7.3): `rate(tier)` has **two components**, `rate_gib` (α per GiB of
 real usage) and `rate_user` (α per distinct user), over one shared denominator, and a NO's required
-deposit for an epoch is `floor(bytes × rate_gib / GiB + users × rate_user)`, capped per epoch. `bytes` and
-`users` are the totals of the NO's **signed payout artifact** for the previous epoch (`total_usage_bytes`
-and `total_users` — the latter the same distinct‑users figure its public stats feed publishes per block),
-so the reported usage is signed and audited against the deposit (§8.1), but it still enters no on‑chain
+deposit for an epoch is `floor(bytes × rate_gib / GiB + users × rate_user)`, capped per epoch. The rates
+and the cap are those in force for that epoch, and they price the previous epoch's usage. `bytes` and
+`users` are the totals of the NO's **signed usage** for the previous epoch (`total_usage_bytes`
+and `total_users` — the latter the same distinct‑users figure its public stats feed publishes per block).
+An "active user" means `total_users`: a distinct top‑level client with contract usage in the epoch window.
+The reported usage is signed and audited against the deposit (§8.1), but it still enters no on‑chain
 computation. In release 1.0 (D25) this schedule is read by **the validators** (who set the weights, §8.1)
 as well as by NOs (to size their deposits); it is **never a value the contract consumes**. This keeps a
 whole subsystem (`setRates`, on‑chain rate storage, the TAO/USD feed) and a trusted input out of the
 contract.
 
-**Zero price — the launch mode.** The published schedule may be **entirely zero** (every component of
-every tier), but only when the signed policy says so explicitly: `zero_rate_action: equal_demand`. The
+**The signed price sheet.** Rates come from the signed price sheet published at
+`https://ur.xyz/price.yml`; the owner's steps for turning prices on are in `mainnet/DEPOSIT-PRICES.md`. Each
+entry in its `signed_schedule` is signed (EIP‑191 `personal_sign`) by a key
+pinned in the software, over one line of plain text that names its chain, subnet, effective epoch, cap and
+every tier's rates, so a person signing on a hardware wallet reads exactly what they approve:
+
+```
+UR price sheet v1: chain <chain>, sn <netuid>, from epoch <epoch>, cap <cap> alpha per epoch, tier <threshold> alpha <rate_gib> per GiB <rate_user> per user
+```
+
+The line has one `tier` clause per tier, and every amount in it is an exact decimal of α. On SN25 the pinned
+key is the sole owner of the Safe that owns the coordinator, the same authority that schedules its
+policy (§6.4.1). An entry applies from its effective epoch until a later one takes effect. The owner's signing
+tool refuses an effective epoch earlier than the next one; readers do not check this. A signed entry is
+permanent, so only a later entry can correct it. NOs and validators read the sheet the same way. An
+unverified file is never used: a reader keeps the last good sheet, and it refuses a file that drops or
+changes a signed entry or adds one before an entry it holds. A reader that has never verified a sheet and
+cannot fetch one has no price from it: an NO pays nothing until it can verify one, and a validator steers
+that pass under the signed policy's schedule and logs the problem, so an outage cannot stop steering. The top‑level `tiered_per_block_demand_deposits` is an unsigned mirror
+for people and has no authority.
+
+**With no signed entry in force, the signed policy's schedule stays in force.** At launch that is the
+explicit zero‑price mode below. A deployment with no pinned key, such as the testnet, has no published price
+and stays on its signed policy's schedule. The signed policy document and its hash do not change when prices
+change, so consents signed under the client‑key history domain stay valid (`VERSION2-FINAL.md` §2.2). An entry
+replaces the schedule and the cap; the policy's usage lag, tier snapshot and mismatch action still apply.
+
+**Caps.** An entry names the per‑epoch cap the formula uses. The coordinator's own on‑chain cap
+(`epochDepositCapRao`), set through `schedulePolicy` under the same policy hash, must be at least the cap in
+force: the entry's, or the signed policy's while no entry is in force. Its lifetime `campaignDepositCapRao`,
+which the same call sets, must be at least the larger of the signed policy's campaign cap and that on‑chain
+epoch cap. Otherwise validators stop on the mismatch, as they stop on other policy mismatches.
+`schedulePolicy` takes effect only from a later epoch, so a higher on‑chain cap must be scheduled to take
+effect no later than the entry. A deposit reverts once the campaign cap is used up.
+
+**Usage.** Epochs before `E_s` keep the signed payout artifact. Settlement v2 has no payout artifact, so for
+each epoch from `E_s` the NO publishes a signed **usage statement** (schema `urnetwork-epoch-usage-v1`,
+`docs/spec/epoch-usage-v1.schema.json`): its
+artifact key signs it, and its public `/sn/evidence` routes serve it as kind `epoch-usage-v1`, run
+`<noId>-<epoch>`. The NO publishes it after the epoch's root commit, built from the provider chunks the
+committed header lists, with the user count taken at the epoch boundary. Validators take the latest root
+committed for the epoch in its root window (§11.1); a later replacement of that root does not change the audit.
+They use the statement that names that root's chunks for the epoch. Its rows, eligible or not, must match its
+`provider_rows` and sum to its `total_usage_bytes`, so the bytes can be checked against the ledger; the rows
+themselves stay operator‑attested (§8.2). Two statements that verify for the same chunks with different totals
+leave the pool without weight. `total_users` remains an operator attestation, as in a payout artifact: priced by
+the deposit but not independently verified. A statement adds to the ledger and changes none of its bytes, so
+a dispute over users cannot hold up settlement. Only a signed entry in force switches the audit to the statement;
+a deployment priced by its signed policy alone keeps the payout artifact.
+
+**Timing.** A deposit for epoch `e` prices epoch `e−1`'s usage and must land before `e`'s end block, because a
+deposit counts toward the epoch it lands in. It is audited at every steering pass, not only at the end: until
+the deposit so far this epoch equals the amount owed, the pool has no weight on that pass, and overpaying
+fails too. So the NO pays as early in `e` as it can, once `e−1`'s root is committed and its statement
+published, and retries until the deposit lands; the end of the epoch is only the backstop. From the start of each priced epoch until the
+source epoch's usage is committed on chain, its totals are published and the deposit has landed, the pool
+carries no weight, and its share goes as §8.5 says for an empty tier. A commit late in the 1,200‑block root
+window (≈4 h, §5.2) lengthens that gap.
+
+**Zero price — the launch mode.** The schedule in force may be **entirely zero** (every component of
+every tier), but only when that is explicit: the signed policy says `zero_rate_action: equal_demand`, or a
+signed entry of all zero rates returns to this mode. The policy
 default (`halt`) rejects an all‑zero schedule, and a schedule with zero rates in *some* tiers only is
 always invalid, so a zero price can never happen by accident. While the price is zero, NOs make **no
 demand deposits**: none are required and none are audited. Every registered pool is given the **same
@@ -992,14 +1057,14 @@ implied demand** (exactly 1, §8.1), so the validators' measured quality alone s
 voluntary deposit or conviction lock neither helps nor hurts a pool. The head channel, θ, the quality
 clamp and the cede rule are unchanged. This is a deliberate launch mode used while bugs are flushed out
 of the network. Version 2 settles each pool's epochs from E_s through the v2 ledger rather than a payout
-artifact, and the signed policy's `deposit.usage_artifact` field is inert for those epochs. The deposit
-audit stays dormant at zero price, and a priced policy needs its own v2 deposit design
-(`VERSION2-FINAL.md` §9.4).
+artifact, and the signed policy's `deposit.usage_artifact` field is inert for those epochs, whose usage comes
+from the usage statement. The deposit audit stays dormant at zero price and starts with the first signed
+entry that has nonzero rates, which takes no policy change (`VERSION2-FINAL.md` §9.4).
 
 ### 7.2 A deposit is conviction stake (D25)
 
 The deposit anchors the claim: `D_n` (α) is the NO's costly, on‑chain input, and validators audit it
-against the usage the NO's signed payout artifact reports and weight that usage, priced at the
+against the usage the NO signed for the previous epoch (§7.1) and weight that usage, priced at the
 conviction‑zero rate (§8.1). The protocol
 never verifies GB — infeasible and a non‑goal. The deposit is a **costly signal** funded by the NO's
 **real customer revenue**, and it is **conviction stake**: staked into the locked reserve (§7.4) and
@@ -1023,7 +1088,9 @@ onboarding + long‑term‑alignment lever (change #4, D25). Governance publishe
   up‑front α to signal the same usage. A brand‑new NO can either start small at the baseline rate, or
   **pre‑stake conviction** to jump to a better tier from day one.
 - Each component's rate is **non‑increasing with conviction**, and a component is priced in **every tier
-  or in none**. The schedule is governance‑set and published off‑chain (§7.1), read by validators. A
+  or in none**. The schedule is governance‑set and published off‑chain in the signed price sheet (§7.1),
+  read by validators and NOs. A signed entry holds one to eight tiers, begins at conviction zero and has
+  strictly increasing thresholds, and a file with an entry that breaks these rules or has no cap is refused. A
   schedule that is **zero in every tier** is the explicit **zero‑price launch mode** (§7.1): no deposit is
   required or audited and every pool carries the same implied demand. Because validators price the
   *audited usage* rather than dividing the deposit by the rate, a zero rate no longer implies unbounded
@@ -1040,9 +1107,13 @@ buy‑and‑**lock**, `COMPARISON.md`): usage revenue is converted to α and per
 supply, rather than recycled to participants who would re‑sell it.
 
 - **The flow.** The NO funds deposits by **buying α on‑market** from customer revenue — the buy leg is
-  the actual demand pressure, and a sourcing commitment is to be published alongside the §7.1 rate schedule
-  once deposits are priced (the zero‑price `price.yml` carries none; on‑chain code cannot see where α came
-  from, and the commitment makes the buyback claim falsifiable).
+  the actual demand pressure. No contract or validator enforces that purchase: on‑chain code cannot see where
+  α came from, and a correct deposit may come from any source of α. A sourcing commitment, which makes the
+  buyback claim falsifiable, is to be published alongside the §7.1 price sheet once deposits are priced; the
+  sheet's signed entries name only prices and carry none. The reference server's demand deposit task pays from
+  its alpha wallet, which is the coordinator's deposit signer. When that wallet cannot pay in full, the task
+  can convert USDC from a Solana wallet to SN25 α over an on‑chain route (Jupiter, a LayerZero OFT, wTAO, the
+  staking precompile). That route is a choice of operator software, not a protocol rule.
   `deposit(noId, amount)` stages the **full amount** plus a two‑rao rounding allowance, `moveStake`s it to the
   **reserve hotkey** — the owner's validator hotkey (§6.3) — and transfers it into the immutable sink
   coldkey. The two destination share-pool views may each floor one rao; finalized sink credit must still
@@ -1074,8 +1145,9 @@ supply, rather than recycled to participants who would re‑sell it.
 `seed/INCENTIVES.md`: "NO publishes list of their deposits and signs with wallet." No extra commitment is
 needed: each deposit is already an **on‑chain event** (`Deposit(noId,e,funder,amount,policyHash,nonce)`)
 authorized by the scoped deposit signer, so a NO's per‑epoch deposits and cumulative conviction are publicly and authoritatively
-**summable straight from the event log** — that *is* the signed, published deposit list. Validators read
-the coordinator's counters that these events increment, at a hash‑pinned finalized block (§8.1): this
+**summable straight from the event log** — that *is* the signed, published deposit list. At every steering
+pass validators read the coordinator's counters that these events increment, at a hash‑pinned finalized
+block (§8.1): this
 epoch's deposit total for the deposit audit, and cumulative conviction less this epoch's deposits and added
 conviction for the tier (the policy's `conviction_before_epoch` snapshot). The coordinator stores only
 nonces and cap/audit totals, not a weighting oracle (D25); the finalized logs reproduce those totals for
@@ -1090,17 +1162,18 @@ independent replayers.
 **The contract does no weighting.** Independent validators (§9–§10) compute each NO miner‑pool UID's
 score **themselves**, from **published data**, and submit it as Yuma weights; Yuma medians/clips the
 scores and emits to the pool UIDs — so the miners' reward *is* the validators' evaluation. Each validator
-reads, per NO `n`, straight off chain state and its own trails:
+reads, per NO `n`, straight off chain state, signed published data and its own trails:
 
-- **`epoch_deposit_n`** — this epoch's deposit, read from the coordinator (§7.5), together with the NO's
-  signed payout artifact for the previous epoch and its audited **`bytes_n`** and **`users_n`**: the
+- **`epoch_deposit_n`** — this epoch's deposit so far, read from the coordinator (§7.5), together with the
+  NO's signed usage for the previous epoch (§7.1: its payout artifact before `E_s`, its usage statement from
+  `E_s`) and its audited **`bytes_n`** and **`users_n`**: the
   deposit must equal `floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n))`, capped, or
-  the pool is zero‑weighted (the deposit audit). This is the release 1.0 audit, dormant at zero price;
-  epochs from `E_s` have no signed payout artifact, so a priced policy needs its own v2 deposit design
-  (`VERSION2-FINAL.md` §9.4);
+  the pool is zero‑weighted on that steering pass (the deposit audit, §7.1). The audit is dormant at zero
+  price (`VERSION2-FINAL.md` §9.4);
 - **`tier_n`** — the NO's conviction tier, from its cumulative locked α before the epoch (§7.2, §7.5), and the
   published
-  two‑component **`rate(tier_n)`** (§7.3);
+  two‑component **`rate(tier_n)`** (§7.3), at the rates in force for this epoch (§7.1), which price the
+  previous epoch's usage;
 - **`Q_n`** — the pool's aggregate provider quality, from the validator's own `VALIDATOR.md` trails.
 
 and sets
@@ -1110,7 +1183,7 @@ weight_n  ∝  implied_demand_n × clamp(Q_n)                                  #
                                                                             # bounds, [0.75, 1] at launch (§12.3)
 implied_demand_n = (bytes_n × rate_gib(0) / GiB + users_n × rate_user(0))   # audited usage priced at the conviction-zero tier
                    × min(1, cap / owed_n)                                   # truncated exactly as the capped deposit was
-implied_demand_n = 1                                                        # while the published price is zero (§7.1)
+implied_demand_n = 1                                                        # while the price in force is zero (§7.1)
 ```
 
 **Implied demand, not raw deposit** (decision A, D25): the audited usage is priced at the **baseline
@@ -1222,9 +1295,9 @@ the pool's, so only an existing account can be demanded, each at most once per r
 withholding the newest root's ledger cannot shield an older root's accounts. A withheld or garbage node can
 never be opened, so a demanded account is protected even when the tree is not published. A root still
 unfinalized at the end of the next epoch can be replaced, and its epochs' funding stays for the replacement.
-A refused or deleted root does not change the pool's weight while there is one operator: zeroing the pool
+A refused or deleted root does not by itself change the pool's weight while there is one operator: zeroing the pool
 would hand the pool channel to the head (§8.5), or with no head fleet on SN25 the whole row to `ur‑reserve`,
-punishing providers for the operator's fault.
+punishing providers for the operator's fault. The deposit audit is a separate rule (§10).
 
 **Claims are cumulative and permissionless**, and the contract derives the α from **on‑chain state**:
 
@@ -1546,8 +1619,8 @@ mechanism). The contract computes nothing (D25):
 for validator v:
     # TAIL — NO pools: implied-usage × quality (D25)
     for each NO pool p (miner-pool UID of NO n):
-        implied_usage_n = usage_n × rate(0) × min(1, cap / owed_n)   // usage from the signed payout artifact; the deposit must pay owed_n = usage_n × rate(tier_n) (§7.5, §8.1)
-                                                                     // = 1 while the published price is zero (§7.1)
+        implied_usage_n = usage_n × rate(0) × min(1, cap / owed_n)   // usage the NO signed for the previous epoch (§7.1); the deposit must pay owed_n = usage_n × rate(tier_n) (§7.5, §8.1)
+                                                                     // = 1 while the price in force is zero (§7.1)
         pool[p] = implied_usage_n · clamp(quality_v(p))    // §9.4 aggregate, clamped to the policy's [0.75, 1], 0 at 0;
                                                            // = 0 if v declares it controls NO n (self-mask)
     # HEAD — top-level miners: split-adjusted routable-IP breadth (§8.4, D27)
@@ -1571,10 +1644,12 @@ UR's pool), a validator resolves it with `STSettlement2.settlementAt(n, epoch)`,
 registered in vault2 (`STSettlementVault2`). The validator checks that hotkey against vault2's own
 `pools(n)` record and refuses a mismatch, so an upgrade cannot redirect emission. For earlier epochs it uses the v1 coordinator's `operatorAt`, so
 replay never calls a contract that did not yet exist. Live steering and replay share this one resolver, and from
-E_s the v1 pool hotkey is no longer consulted. A refused or deleted v2 payout root (§11.3) does not change the
+E_s the v1 pool hotkey is no longer consulted. A refused or deleted v2 payout root (§11.3) does not by itself change the
 pool's weight while there is one operator: zeroing the pool would hand the pool channel to the head fleets,
 or with no head fleet on SN25 the whole row to `ur‑reserve` (§8.5), punishing providers for the operator's
-fault.
+fault. The deposit audit is a separate rule: at a nonzero price it checks the usage statement against the
+latest root committed in the source epoch's root window, and a later replacement of that root does not change it
+(§7.1).
 
 Yuma combines the validators' vectors with their stake:
 
@@ -1624,6 +1699,8 @@ therefore mandatory release gates.
 | auditor set, quorum and per-root approvals | `STSettlement2` (owner-upgradeable) | admission: a pending root finalizes only with a quorum of approvals of its exact commit (§11.3) |
 | validator activation anchors and write-once validator/operator evidence hashes | coordinator's pool namespace | domain-bound consent and immutable closed-epoch census/audit commitments, independent of payout-root publication |
 | v1 payout artifacts, v2 ledger objects (header, provider and account chunks) and completed-trail/statistics artifacts | **server API + content-addressed `server/blob` MinIO** | canonical bulk inputs; publicly retrievable by SHA-256 and independently reproducible; the validator also retains each v2 ledger it audits |
+| signed price sheet | **`https://ur.xyz/price.yml`**; readers keep the last good copy | deposit rates and cap by epoch; only entries signed by the pinned key count, so the file itself is not trusted (§7.1) |
+| signed usage statements (epochs from E_s) | **the NO's public `/sn/evidence` routes** | the bytes and users a deposit prices; bytes are checked against the committed ledger, users are attested (§7.1) |
 | fleet manifest hash | **commitments pallet + finalized coordinator mirror** | hotkey-authorized native anchor used by every binding member |
 
 This directly answers `seed/INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
@@ -1767,6 +1844,10 @@ to dispute), pool amounts are read from chain state, and effort claims do not ex
 - **Bad payout artifact/share (epochs before E_s).** The operator API and validators reject any artifact that
   does not reproduce its content hash/root or exactly allocate 10,000 bps. Independently, every claim proves
   `(coldkey,share)` against the immutable entitlement and the vault cannot pay more than its total.
+- **Bad usage statement (epochs from E_s).** Validators use only a statement that names the committed chunks
+  and verifies; with none, or with two that disagree, the pool has no weight on that steering pass (§7.1).
+  `total_users` stays attested, and a statement changes no ledger bytes, so a dispute over users cannot hold
+  up settlement.
 - **Bad `client_id ⇄ hotkey` binding.** Invalid consent never enters state: the coordinator checks the
   complete replay-bound payload, Ed25519 and sr25519 signatures, matching finalized commitment, validity
   interval and live UID before recording a future-effective version (§11.4). Client-signed revocation
@@ -1932,6 +2013,11 @@ designs, §9.3/§13.6) is an open post‑launch question, not a committed roadma
   at 1M providers (`VERSION2-FINAL.md` §3). A third party can also raise that cost: by filling vault2's own
   staking-hotkey list (up to 128 entries, each costing it a transfer above the floor) it makes every claim
   use about 1.26M gas instead of 0.15M, about 1 α at the same prices.
+- **Not secured by the deposit audit:** it uses the latest root committed in the source epoch's root window, and a later
+  replacement does not change it, so an operator could commit a deflated root it expects to be refused, pay the smaller
+  deposit, and replace the root while it is still unfinalized at the end of the next epoch (§7.1). Both commits are
+  visible on chain; this is accepted while the subnet owner runs the only operator and is to be revisited before other
+  operators are admitted.
 - **Outside any contract** (chain-level powers that the release 1.0 vault faces too): the SN25 owner key
   or root can **freeze every claim** by disabling stake transfers (§6.4), though it cannot take or
   redirect a balance; and SN25 can be **dissolved**. A new subnet registration at the subnet limit
@@ -2059,7 +2145,7 @@ from day one — we ramp its *strength*, we do not defer the mechanism.
 **v2 settlement confines quality to this cross-operator weight** (§13.1). From `E_s` the within-pool split
 is by usage alone, with no per-provider reliability factor (cf. §8.2), so the validator's measurement no
 longer gates which providers inside a pool are paid. Root approval is an objective ledger check, not a
-quality lever: while there is one operator, a refused or deleted root leaves the pool weight unchanged,
+quality lever: while there is one operator, a refused or deleted root by itself leaves the pool weight unchanged,
 because zeroing the pool would hand the pool channel to the head fleets, or with no head fleet on SN25 the
 whole row to `ur‑reserve` (§8.5), and punish providers for the operator's fault (owner decisions,
 October 11).
@@ -2070,8 +2156,9 @@ Because per‑GB / per‑user usage is self‑reported and unverifiable on‑cha
 enforcement power. The objective on-chain input is *α deposited*; validators check it against the
 signed usage priced at the governance-published conviction-tier rate, and weight that usage at the
 baseline rate (§7.1, §8.1). v1 therefore has **no
-oracle**: the rate schedule is a signed, content-addressed off-chain policy that NOs use to size deposits
-and validators independently use to reproduce weights.
+oracle**: the rate schedule is the signed price sheet, or the signed, content-addressed off-chain policy while
+no signed entry is in force (§7.1), and NOs use it to size deposits and validators independently use it to
+reproduce weights.
 (If a future version ever needs an on‑chain α/USD value — e.g. to denominate the deposit fee in USD —
 the `0x808` α price is already trustless and only TAO/USD would need a committed validator‑median feed.)
 
@@ -2198,7 +2285,7 @@ pruned v2 pool hotkey through `registerPoolUid`, paying the burn.
 | Challenge window (v2) | `CHALLENGE_BLOCKS` | **14,400 blocks** (≈ 48 h) from the commit, a constant of vault2 | no v2 root finalizes earlier or with a path demand open; needs `T_epoch` ≥ commit window + 14,400 (mainnet's 50,400 holds; testnet's 360-block cadence does not), checked at pool registration; every later v1 policy must keep it, which no contract checks (§5). v1 instead finalizes 14,400 blocks after the epoch end |
 | Demand fee (v2) | `demandFeeWei` | 750,000 rao (7.5·10^14 wei): one answer's gas at the planning fee, 149,074 gas at 5 gwei, rounded up; a nonzero multiple of 10^9 wei | immutable in vault2 and kept by it, never paid to the answerer; the runtime moves only whole rao of a call's value. The rehearsal measured an answer at depth 29 at 149,074 gas and a demand at 98,268. Each account of each finalized root can be demanded once per pending root, so the possible demands grow with the number of roots, each paying the fee |
 | Root approval (v2) | — | owner-admitted auditor addresses (≤ 16); **quorum 1 at launch** (the validator); approve before the end of epoch `e+1` | a root still unfinalized at the end of epoch `e+1` can be replaced by the next commit, and its epochs' funding stays for that root (§13.1) |
-| Claim expiry | — | v1: `claim_ttl_epochs` 8 + `claim_grace_epochs` 1; **v2: never** | policy v1 stays in force: `claim_ttl_epochs`, `claim_grace_epochs`, `expired_claim_action`, `shares_total_bps`, `rounding` and `deposit.usage_artifact` keep their meaning for v1 epochs and the v1 carry sweep and are **inert for v2 epochs**, which allocate in rao by `coldkey_usage_largest_remainder_rao_v1` |
+| Claim expiry | — | v1: `claim_ttl_epochs` 8 + `claim_grace_epochs` 1; **v2: never** | policy v1 stays in force: `claim_ttl_epochs`, `claim_grace_epochs`, `expired_claim_action`, `shares_total_bps`, `rounding` and `deposit.usage_artifact` keep their meaning for v1 epochs and the v1 carry sweep and are **inert for v2 epochs**, which allocate in rao by `coldkey_usage_largest_remainder_rao_v1` and take deposit usage from the signed usage statement (§7.1) |
 | Ledger bounds (v2) | — | ≤ 96 covered epochs per root; header ≤ 256 KiB (about 3,500 chunk references); 131,072 rows per chunk (48-byte account rows, 6 MiB; 57-byte provider rows, ≈ 7.1 MiB); ≤ 2^29 accounts per pool in vault2's tree | design target and activation gate: ≥ 1,000,000 providers per pool; the validator fetches at most `--ledger_max_bytes` of new objects per root (default 2 GiB, a runtime flag) |
 | Reserve hotkey | — | the owner‑validator hotkey, fixed when the reserve sink is created (an immutable of `STReserveSink`) | the buyback reserve's staking target (§7.4); run its delegate **take = 0** so reserve yield compounds whole |
 | `φ` / `ω` / effort‑claim deadline / dispute window | — | — | **out of scope** — parked bounty design (§9.3/§13.6, D29) |
@@ -2206,7 +2293,8 @@ pruned v2 pool hotkey through `registerPoolUid`, paying the burn.
 | **Momentum** (provider share) | `μ` | 1/10 on SN25 at launch, pinned by the signed treasury policy | the providers' share of the native miner allocation; `1 − μ` goes in equal parts to `ur‑reserve`'s recipient UIDs 170 and 250, and the whole row when no provider has weight; changing it takes a newly signed treasury policy (§8.5) |
 | Coverage weighting | — | (parked bounty design only) | up‑weights under‑sampled / weak providers (§9.3) — not in v1 (D29) |
 | Validator min stake | — | governance | permit qualifier + Sybil ante (§9.7) |
-| **Deposit‑rate schedule per conviction tier** | `rate(tier)` | governance, **off‑chain published**; zero tier = baseline; each component priced in every tier or in none; all zero only under `zero_rate_action: equal_demand`, the launch mode (§7.1) | α‑per‑usage by conviction; validators read it to weight (§7.3, §8.1). Staking lowers the rate — the onboarding/alignment lever (D25). |
+| **Deposit‑rate schedule per conviction tier** | `rate(tier)` | governance, **off‑chain published** in the signed price sheet, with the signed policy's schedule in force until a signed entry takes effect; zero tier = baseline; each component priced in every tier or in none; all zero only under `zero_rate_action: equal_demand`, the launch mode, or a signed entry of all zero rates (§7.1) | α‑per‑usage by conviction; validators read it to weight (§7.3, §8.1). Staking lowers the rate — the onboarding/alignment lever (D25). |
+| **Per‑epoch deposit cap** | `cap` | named by the signed entry in force, else the signed policy's `epoch_cap_rao_per_operator` | caps the formula per operator; the coordinator's `epochDepositCapRao`, set through `schedulePolicy`, must be at least this, or validators stop (§7.1) |
 | **Egress‑IP‑hash granularity** (head IP‑score) | — | **configurable subnet param**; default /29 IPv4, /48 IPv6 | the "distinct routable IP" unit for the head score (§8.4, D27); trails hash egress IPs at this prefix (`VALIDATOR.md` §8) |
 | **Validator measurement rate** | — | **validator‑configurable; guardrails off by default** (D26) | each validator drives its own trail cadence; only a loose hard per‑IP DoS backstop remains (`VALIDATOR.md` §5.3/§9) |
 | Upgrade / param timelock | — | ≥ 1 epoch (target 2 ≈ 14 d) | Phase 1, §6.4.2 |
@@ -2244,7 +2332,7 @@ key (which would trigger the post-Spec-421 `miner_burned` penalty).
    October 7). The release remains one mechanism. **Top-level miners self-`register_limit`** their own
    (provider-owned, not contract-owned) UIDs with a locally approved ceiling and publish the §11.4 binding.
 3. **Validator software (independent).** Stake α; run `VALIDATOR.md` trails; each tempo score **both tiers** (pools `implied_usage × quality` —
-   implied usage = audited usage at the baseline rate, the deposit audited off the published deposit events;
+   implied usage = audited usage at the baseline rate, the deposit audited from the coordinator's finalized counters at each pass;
    head on its **routable‑IP breadth score**), read the `client_id ⇄ hotkey` binding (§11.4), split the
    providers' share by θ (on SN25 the signed treasury policy gives providers 1/10 of the row and `ur‑reserve`'s
    recipient UIDs 9/10, §8.5), and submit
@@ -2253,11 +2341,14 @@ key (which would trigger the post-Spec-421 `miner_burned` penalty).
    the +48h window. (No trail‑proof submission — the effort bounty is out of scope, §9.3/D29.)
 4. **Network‑Operator software.** Runs the privacy servers + the `VALIDATOR.md` `/verify` server
    (SEED/EXTEND/FINAL, poisoning, idempotency, the four Ed25519 signatures, the egress‑IP index);
-   while the published price is nonzero, stages and `deposit`s each epoch through its isolated hotkey/signer
+   while the price in force is nonzero, stages and `deposit`s through its isolated hotkey/signer as early in each
+   epoch as it can, retrying until the deposit lands
    (conviction stake; no contract weighting, D25; none at the zero‑price launch, §7.1); for release 1.0 epochs
    (before E_s), computes provider reliability + payout list, publishes a
    content-addressed artifact, commits the **`payoutRoot`** (fractional shares) and serves leaves; from E_s it builds
-   and publishes the v2 ledger instead (item 8). (No validator pool — it co‑signs trails as the `/verify` server.)
+   and publishes the v2 ledger instead (item 8), and after each epoch's root commit a signed usage statement built
+   from the committed header's provider chunks, with the user count taken at the epoch boundary; it sizes the next
+   deposit from that statement (§7.1). (No validator pool — it co‑signs trails as the `/verify` server.)
 5. **Provider software.** Carries ingress/egress; registers a `client_id`; for release 1.0 epochs, verifies its
    payout leaf against `payoutRoot` and calls the immutable vault's `claim` (from E_s its coldkey's account is
    claimed from vault2, item 8). **If it reaches the top ~200:**
@@ -2428,8 +2519,8 @@ the Go harness in `rehearsal/`), not testnet: testnet's 360-block cadence cannot
 - **Later version 2 phases** (`VERSION2-FINAL.md` §16). Roster and evidence (signed work requests; the
   validator verifies consent chains); phase B, measurement (sampling frame, VRF cohort, stratified
   estimator, head budget, validator state bounds); phase C, the v1 carry sweep into vault2 at or after
-  `E_s + 8`, once the last v1 expiry has passed, plus a second operator, a fractional approval quorum,
-  operator bonds and a priced deposit policy.
+  `E_s + 8`, once the last v1 expiry has passed, plus a second operator, a fractional approval quorum and
+  operator bonds.
 
 ### 16.4 Pre‑launch verification checklist (load‑bearing live values)
 
@@ -2491,7 +2582,7 @@ starts at least two days after the last one passes.
 |---|---|
 | **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Release 1.0 commits a 32-byte Merkle root plus artifact hash per NO/epoch in the coordinator; immutable entitlement state gates claims; canonical bulk bytes live in `server/blob` MinIO and are served by the public server API. Each provider verifies an `O(log N)` proof (§11). From E_s, version 2 instead commits the root of a Merkle **sum tree** over the pool's cumulative accounts, with its total, leaf count and ledger-header hash, into vault2 through `STSettlement2`; the ledger objects are served at `/sn/ledger/object`, and each account verifies an `O(log n)` proof of `(hash, sum)` siblings. The commitments pallet anchors fleet manifests, not payout bulk data. |
 | **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24: chain 945 testnet and 964 mainnet. Subtensor precompiles let the contracts stake/transfer α and verify binding identities; validators submit CRv4 through native Substrate extrinsics (§2.5). |
-| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = audited usage priced at the baseline rate, the deposit audited from finalized events + signed policy — contracts weigh nothing, D25) on per-NO miner-pool UIDs; the chain delivers emission to vault-owned pools (re-split by Merkle claim) and native dividends to validators. A second head tier holds provider-owned UIDs and receives native emission by split-adjusted routable-prefix breadth under θ (§8.4–8.5). |
+| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = audited usage priced at the baseline rate, the deposit audited from the coordinator's finalized counters + the signed price sheet — contracts weigh nothing, D25) on per-NO miner-pool UIDs; the chain delivers emission to vault-owned pools (re-split by Merkle claim) and native dividends to validators. A second head tier holds provider-owned UIDs and receives native emission by split-adjusted routable-prefix breadth under θ (§8.4–8.5). |
 
 ---
 
@@ -2536,6 +2627,12 @@ starts at least two days after the last one passes.
   lowers the deposit and, below the cap, leaves the weight tracking real usage rather than raw α; at the
   cap the demand is `cap × baseline_n / owed_n` (with one priced component, `cap × rate(0) / rate(tier_n)`),
   so a lower rate raises it.
+- **Price sheet / signed entry / price in force** — the file at `https://ur.xyz/price.yml`. Only the entries of
+  its `signed_schedule`, each signed by the pinned key, set rates and the cap; the **price in force** for an
+  epoch is the latest entry effective by then, or the signed policy's schedule when there is none (§7.1).
+- **Usage statement** — a NO's signed statement of one epoch's provider chunks, `total_usage_bytes` and
+  `total_users` (kind `epoch-usage-v1`): the usage that sizes and audits the next epoch's deposit, for epochs
+  from E_s (§7.1).
 - **Effort bounty** — a fee‑funded reward that *would* pay ∝ verified, coverage‑weighted, server‑assigned
   completed trails; **out of v1 scope** and **not a committed phase** — a parked future‑iteration candidate
   (§9.3, §13.6, D29).

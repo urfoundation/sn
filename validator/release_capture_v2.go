@@ -283,7 +283,7 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 			if err != nil {
 				return nil, err
 			}
-			expected, path, err := releaseArtifactHttpRequestV2(cfg, options.Hotkey, artifact, audit.NoID, audit.SourceEpoch, reader)
+			expected, path, err := releaseDepositObservationRequestV2(cfg, options.Hotkey, artifact, audit, reader)
 			if err != nil {
 				return nil, err
 			}
@@ -292,8 +292,14 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 			if err != nil {
 				return nil, err
 			}
-			if _, err := decodeArtifactHttpObservationV2(ctx, encoded, maximum, expected); err != nil {
+			observation, err := decodeArtifactHttpObservationV2(ctx, encoded, maximum, expected)
+			if err != nil {
 				return nil, err
+			}
+			if audit.UsageEvidence != "" {
+				if err := emitDepositUsageObjectsV2(ctx, cfg.StateDir, operator.APIURL, audit, observation.Exchanges, emit); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

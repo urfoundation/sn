@@ -28,7 +28,7 @@ over one year of 10× usage growth.
 
 ## 3. Rate card
 
-The peg converts the USD targets into the two on-chain rates:
+The peg converts the USD targets into the two signed rates of the price sheet:
 
 | Meter | USDC rate | α rate (at $0.8047 peg) |
 |---|---|---|
@@ -89,7 +89,7 @@ A(t) = $2,500 × M(t) / $0.8047        →  A(1) = 3,107 α   …   A(52) = 31,0
 
 ## 7. Peg vs market price
 
-The on-chain rates are fixed **in α**, so an NO's *realized* USD cost per block is
+The signed rates are fixed **in α**, so an NO's *realized* USD cost per block is
 `A(t) × market price`, which equals the $-target only while market ≈ peg:
 
 - **α appreciates above peg** → NOs overpay in USD terms (and deposits become stronger buy pressure);
