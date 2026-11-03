@@ -442,6 +442,8 @@ func TestSubmitOnceV2HoldsBeforeItReplaysAndAfterItCuts(t *testing.T) {
 	at = position("nativeGapHoldFor", at)
 	at = position("collect", at)
 	at = position("gatherHeadV2", at)
+	at = position("recordNativeGapEdge", at)
+	at = position("holdNativeGap", at)
 	position("beginV2", at)
 }
 
