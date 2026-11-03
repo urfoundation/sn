@@ -137,57 +137,6 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 	}
 	endpoint := self.endpoint
 	endpoint.RawQuery = url.Values{"kind": {kind}, "hash": {contentHash}}.Encode()
-	started := time.Now()
-	var failures []error
-	for attempt := 0; ; attempt++ {
-		body, err := self.openOnce(ctx, endpoint.String(), kind, size, expected, started)
-		if err == nil {
-			return body, nil
-		}
-		failures = append(failures, err)
-		if attempt+1 == attemptStreamV2HTTPOpenAttempts || ctx.Err() != nil || !RetryableEvidenceTransportError(err) {
-			return nil, errors.Join(failures...)
-		}
-		delay := attemptStreamV2HTTPOpenRetryDelays[attempt]
-		if status := releaseErrorMarker[*attemptStreamHttpStatusError](err); status != nil {
-			delay = max(delay, min(status.retryAfter, attemptStreamV2HTTPOpenRetryAfterLimit))
-		}
-		if time.Since(started)+delay >= attemptStreamV2HttpReadIoTimeout {
-			return nil, errors.Join(failures...)
-		}
-		wait := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			wait.Stop()
-			return nil, errors.Join(append(failures, context.Cause(ctx))...)
-		case <-wait.C:
-		}
-	}
-}
-
-// An attempt object is an immutable, content-addressed GET, so an open that
-// fails on its transport before the caller sees any body byte is tried again.
-// Each try is a fresh connection, since doReleaseApiHttpRequest gives every
-// request its own transport, and a fresh lookup of the origin. All tries share
-// one I/O allowance. A canceled caller, any status but 408, 425, 429 and 5xx,
-// and every refused response end the open at once. On 11-03 (06:11:45 and
-// 06:20:58) one such failed open, out of hundreds, failed a whole measurement
-// stage while the edge serving it stalled for about 16 s.
-const attemptStreamV2HTTPOpenAttempts = 3
-
-// The pause before the second and the third try.
-var attemptStreamV2HTTPOpenRetryDelays = [attemptStreamV2HTTPOpenAttempts - 1]time.Duration{500 * time.Millisecond, 2 * time.Second}
-
-// A Retry-After hint can lengthen a pause up to this, never shorten it.
-const attemptStreamV2HTTPOpenRetryAfterLimit = 5 * time.Second
-
-// One GET on its own request context. The I/O allowance started with the
-// open's first try; the body inherits what is left of it.
-func (self *HTTPAttemptStreamV2Reader) openOnce(ctx context.Context, target, kind string, size uint64, expected [32]byte, started time.Time) (io.ReadCloser, error) {
-	remainingIO := attemptStreamV2HttpReadIoTimeout - time.Since(started)
-	if remainingIO <= 0 {
-		return nil, context.DeadlineExceeded
-	}
 	requestCtx, cancel := context.WithCancelCause(ctx)
 	transferred := false
 	defer func() {
@@ -195,7 +144,7 @@ func (self *HTTPAttemptStreamV2Reader) openOnce(ctx context.Context, target, kin
 			cancel(nil)
 		}
 	}()
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, target, nil)
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -205,10 +154,11 @@ func (self *HTTPAttemptStreamV2Reader) openOnce(ctx context.Context, target, kin
 	}
 	request.Header.Set("Accept", contentType)
 	request.Header.Set("Accept-Encoding", "identity")
-	stopDeadline := attemptStreamV2HTTPDeadline(cancel, remainingIO)
+	started := time.Now()
+	stopDeadline := attemptStreamV2HTTPDeadline(cancel, attemptStreamV2HttpReadIoTimeout)
 	response, err := doReleaseApiHttpRequest(self.client, request)
 	stopDeadline()
-	remainingIO = attemptStreamV2HttpReadIoTimeout - time.Since(started)
+	remainingIO := attemptStreamV2HttpReadIoTimeout - time.Since(started)
 	if remainingIO <= 0 {
 		cancel(context.DeadlineExceeded)
 	}
