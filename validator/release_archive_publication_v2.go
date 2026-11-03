@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -182,7 +183,7 @@ func (self *ReleaseEvidenceV2Archive) auditPublicationV2(ctx context.Context, ar
 		if err != nil {
 			return nil, err
 		}
-		if payload.Audit != artifact.DepositAudits[index] || payload.Decision != decision {
+		if payload.Audit != artifact.DepositAudits[index] || payload.Decision != decision || !reflect.DeepEqual(payload.DepositPriceEntry, artifact.DepositPriceEntry) {
 			return nil, errors.New("archive signed deposit payload differs from independently replayed source observations")
 		}
 		if payload.Audit.HttpObservationHash != "" {
@@ -203,7 +204,7 @@ func (self *ReleaseEvidenceV2Archive) auditPublicationV2(ctx context.Context, ar
 			if err != nil {
 				return nil, err
 			}
-			_, path, err := releaseArtifactHttpRequestV2(&self.owner.cfg, self.inputs[index].Context.Activation.Hotkey, artifact, payload.Audit.NoID, payload.Audit.SourceEpoch, reader)
+			_, path, err := releaseDepositObservationRequestV2(&self.owner.cfg, self.inputs[index].Context.Activation.Hotkey, artifact, payload.Audit, reader)
 			if err != nil {
 				return nil, err
 			}
