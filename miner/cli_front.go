@@ -118,8 +118,8 @@ var cliCommandHelp = map[string]struct {
 	"wallet": {
 		summary: "Set the wallet your rewards are paid to: a Bittensor coldkey address (ss58,\nstarts with 5). You prove you own it by signing a challenge, either here with\nthe seed file or on another device.",
 		examples: []string{
-			"provider wallet challenge 5Grw...utQY      # print the text to sign elsewhere",
-			"provider wallet set 5Grw...utQY --message=\"$(cat challenge.txt)\" --signature=0x...",
+			"provider wallet challenge 5Grw...utQY      # print the text to sign elsewhere, and save it",
+			"provider wallet set 5Grw...utQY --message-file=<the file it names> --signature=0x...",
 			"provider wallet set 5Grw...utQY --coldkey_seed_file=$HOME/.keys/cold.seed",
 		},
 	},

@@ -123,7 +123,7 @@ Usage:
         [--max-memory=<mem>]
         [--pprof=<addr>]
         [-v...]
-    provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
+    provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | (--message=<text> | --message-file=<path>) --signature=<hex>]
         [--api_url=<api_url>]
         [-v...]
     provider wallet challenge <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>]
@@ -133,7 +133,7 @@ Usage:
         [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--operators-url=<url>]
         [-v...]
     provider wallet hotkey set <coldkey_ss58> --hotkey_seed_file=<path>
-        [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
+        [--coldkey_seed_file=<path> | (--message=<text> | --message-file=<path>) --signature=<hex>]
         [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--operators-url=<url>]
         [-v...]
     provider wallet hotkey status [--hotkey_seed_file=<path>] [--operators-url=<url>] [-v...]
@@ -268,6 +268,9 @@ Options:
     --message=<text>                 With --wallet / wallet set: the challenge printed by "provider wallet challenge",
                                      signed elsewhere (a literal \n stands for a newline). Needs --signature.
                                      With wallet hotkey set: the statement "provider wallet hotkey challenge" printed.
+    --message-file=<path>            With wallet set / wallet hotkey set: read the message from this file, the one
+                                     "provider wallet challenge" or "provider wallet hotkey challenge" saves it in,
+                                     so no shell changes it on the way. Instead of --message; needs --signature.
     --signature=<hex>                The coldkey's 64-byte sr25519 signature over --message, hex (0x optional), made
                                      in the "substrate" signing context over the exact UTF-8 text (LF line endings,
                                      no trailing newline) or over that text wrapped in <Bytes>...</Bytes> (what a
