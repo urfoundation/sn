@@ -360,3 +360,116 @@ func TestProductionNativeGapHoldNamesTheRefusedEdge(t *testing.T) {
 		t.Fatalf("the refusal's reason is missing: %q", output.String())
 	}
 }
+
+// The rule's chain read, through the real slot decoder on a retained applied
+// intent: the slot its finalized write left admits the edge, and the record ends
+// the process. A slot that cannot be read holds, retries and records nothing.
+func TestRecordNativeGapEdgeReadsTheRealSourceSlot(t *testing.T) {
+	fixture := newProductionContinuationTestFixture(t)
+	native := installProductionContinuationNative(t, fixture)
+	pending := fixture.beginAndLoseAcknowledgement(t, native)
+	native.receiptNumber, fixture.production.head = 101, 102
+	fixture.production.extrinsicsKVs = map[uint64][]string{101: {pending.Prepared.ExtrinsicHex}}
+	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.Is(err, ErrSteeringAlreadyFinal) {
+		t.Fatalf("the original receipt did not reconcile: %v", err)
+	}
+	native.applied = true
+	fixture.production.head = max(uint64(102), pending.Prepared.RevealBlock)
+	var transition *productionSteeringTransition
+	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.As(err, &transition) || transition.revealWait {
+		t.Fatalf("the row did not apply: %v", err)
+	}
+	current, err := fixture.steerer.intents.currentV2(t.Context())
+	if err != nil || current == nil || current.Status != "applied" {
+		t.Fatalf("no applied intent: %v", err)
+	}
+	path := filepath.Join(fixture.steerer.cfg.StateDir, releaseNativeGapOwnEdgesName)
+	hold := &productionNativeGapHold{lastEpoch: current.SubnetEpoch, lastStatus: current.Status, lastArtifactHash: current.MeasurementArtifactHash, nativeEpoch: current.SubnetEpoch + 2}
+	var failed *productionNativeGapHold
+	if err := fixture.steerer.recordNativeGapEdge(t.Context(), current, hold, fixture.production.block(current.FinalizedBlock+1)); !errors.As(err, &failed) || failed.cause == nil || failed.nativeEpoch != hold.nativeEpoch {
+		t.Fatalf("a slot that cannot be read must hold and retry: %v", err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an edge was recorded without a slot read: %v", err)
+	}
+	err = fixture.steerer.recordNativeGapEdge(t.Context(), current, hold, fixture.production.block(current.FinalizedBlock))
+	var recorded *productionNativeGapEdgeRecorded
+	if !errors.As(err, &recorded) || hold.edgeRefused != "" {
+		t.Fatalf("the slot its own write left did not admit the edge: refused %q: %v", hold.edgeRefused, err)
+	}
+	want := ReleaseNativeGapBridgeEdge{LastNativeEpoch: current.SubnetEpoch, LastArtifactHash: current.MeasurementArtifactHash, FirstNativeEpoch: current.SubnetEpoch + 3}
+	if recorded.edge != want {
+		t.Fatalf("recorded %+v, want %+v", recorded.edge, want)
+	}
+	own, err := readReleaseNativeGapOwnEdges(fixture.steerer.cfg.StateDir)
+	if err != nil || !slices.Equal(own.Edges(), []ReleaseNativeGapBridgeEdge{want}) {
+		t.Fatalf("the file does not hold the edge: %v %v", own, err)
+	}
+	if own.ChainID != fixture.steerer.cfg.ChainID || own.DeploymentID != fixture.steerer.cfg.DeploymentID || own.ValidatorID != fixture.steerer.cfg.ValidatorID {
+		t.Fatal("the file names another owner than its config, which the next start's configure refuses")
+	}
+}
+
+// idle-fleet-fix's shape: an idle fleet's row refuses a whole tempo, which writes
+// no intent and no fold, so the next tempo is a gap. One recorded edge covers it,
+// and every further refused tempo too: it admits any epoch from its first on until
+// an intent crosses, so the hold does not return and no second edge is written.
+// When the fleet comes back, the next fold takes the applied predecessor's state.
+func TestNativeGapOwnEdgeOutlastsRefusedTempos(t *testing.T) {
+	t.Parallel()
+	limits := headEMAStoreV2TestLimits()
+	budget := releaseHeadV2Budget{limit: limits.MaxControlBytes}
+	alpha := protocol.Rational{Numerator: 1, Denominator: 4}
+	key := FleetScoreKey{FleetID: [32]byte{1}, Hotkey: [32]byte{2}, Generation: 1, UID: 145}
+	store, err := NewHeadEMAStoreV2(t.Context(), newReleaseHeadV2TestStateDir(t), limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L := nativeGapOwnTestLast
+	if _, _, err := store.FoldForEpochV2(t.Context(), L, map[FleetScoreKey]*big.Rat{key: big.NewRat(8, 1)}, alpha); err != nil {
+		t.Fatal(err)
+	}
+	// L+1 refused its row: nothing was written. L+2 is the gap.
+	current := nativeGapOwnTestCurrent()
+	if !store.refusesNativeEpochGap(L + 2) {
+		t.Fatal("a refused tempo must leave a gap")
+	}
+	if refusal := releaseNativeGapOwnEdgeRefusal(true, current, L+2, nativeGapOwnTestApproved(26990), nativeGapOwnTestSlot()); refusal != "" {
+		t.Fatalf("a refused tempo's gap was not bridged: %s", refusal)
+	}
+	cfg := nativeGapOwnTestConfig(t)
+	edge := ReleaseNativeGapBridgeEdge{LastNativeEpoch: L, LastArtifactHash: current.MeasurementArtifactHash, FirstNativeEpoch: L + 3}
+	if err := recordReleaseNativeGapOwnEdge(cfg, edge); err != nil {
+		t.Fatal(err)
+	}
+	own, err := readReleaseNativeGapOwnEdges(cfg.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fleet stays idle through L+3 to L+8: each start sees the edge pending,
+	// and each epoch is admitted without another hold or edge.
+	for epoch := L + 3; epoch <= L+8; epoch++ {
+		owner, err := own.matchHistory(t.Context(), []*SteeringIntent{current})
+		if err != nil || owner.crossed {
+			t.Fatalf("epoch %d: a start refused the pending edge: %v", epoch, err)
+		}
+		if err := owner.requireFirstEpoch(current, epoch); err != nil {
+			t.Fatalf("epoch %d idled: %v", epoch, err)
+		}
+		store.v2.nativeGapBridge = owner
+		if store.refusesNativeEpochGap(epoch) {
+			t.Fatalf("epoch %d needs another edge", epoch)
+		}
+		if err := store.admitReleaseHeadV2Known(t.Context(), epoch, alpha, limits.MaxEntries, budget); err != nil {
+			t.Fatalf("epoch %d head admission: %v", epoch, err)
+		}
+	}
+	// The fleet returns at L+9.
+	_, records, err := store.FoldForEpochV2(t.Context(), L+9, map[FleetScoreKey]*big.Rat{key: big.NewRat(4, 1)}, alpha)
+	if err != nil || len(records) != 1 || records[0].Prior.Numerator != "8" || records[0].Next.Numerator != "7" {
+		t.Fatalf("the returning fleet's fold: %+v %v", records, err)
+	}
+	if !slices.Equal(own.Edges(), []ReleaseNativeGapBridgeEdge{edge}) {
+		t.Fatalf("refused tempos wrote more edges: %v", own.Edges())
+	}
+}
