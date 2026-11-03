@@ -336,9 +336,9 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 // seats, EMA and the head result are untouched. A lost pool, or a top fleet that
 // is lost alone and with it the whole channel, still refuses.
 //
-// Leaving a fleet out only raises the others' wire values, so whether a prefix
-// loses anybody is monotonic, and a binary search keeps the rebuilds few however
-// many fleets are idle.
+// Leaving a fleet out never lowers another fleet's wire value, so whether a
+// prefix loses a fleet is monotonic and a binary search keeps the rebuilds few
+// however many fleets are idle. Every prefix kept passed the shared arithmetic.
 func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, policy protocol.Policy, verified *VerifiedReleaseMeasurement, owners map[uint16]bool) (*OwnerRecyclePreview, []uint16, error) {
 	pools := make([]ExactWeightInput, 0, len(verified.Pools))
 	for _, pool := range verified.Pools {
