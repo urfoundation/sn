@@ -34,8 +34,10 @@ flow is [`diagrams/mechanism.png`](diagrams/mechanism.png).
 
 ![Deposits move one way into the immutable reserve sink; conviction sets the rate tier](diagrams/readme/03-deposits.svg)
 
-Each NO deposits α sized to its real usage, taken from its signed payout artifact for the
-**previous** epoch, at an **off‑chain published rate** (no on‑chain oracle). The NO stakes
+Each NO deposits α sized to its real usage for the **previous** epoch, taken from its signed
+usage statement (its signed payout artifact for epochs before settlement version 2), at the rate in
+the **signed price sheet** published at <https://ur.xyz/price.yml> (no on‑chain oracle;
+[`WHITEPAPER.md`](WHITEPAPER.md) §7.1). The NO stakes
 the α on its own deposit hotkey; its deposit signer then calls `deposit` on `STCoordinator`,
 which moves the exact amount into the immutable `STReserveSink`, staked on the fixed reserve
 hotkey. The reserve hotkey is the **owner‑validator hotkey**, set at initialize
@@ -45,14 +47,24 @@ validator's consensus weight.
 
 A NO's cumulative locked α (its **conviction**) sets its **tier**, and the tier sets its
 **rate**: zero conviction pays the baseline rate, and more conviction lowers it. The tier is
-snapshotted before each epoch. A missing or mismatched deposit sets that NO's pool weight to 0.
+snapshotted before each epoch. The deposit is audited at every steering pass: until the deposit
+so far this epoch equals the amount owed, that NO's pool weight is 0 on that pass, and overpaying
+fails too. So the NO pays as early in the epoch as it can. From the start of each priced epoch until
+the previous epoch's usage is committed on chain, its totals are published and the deposit has
+landed, the pool carries no weight.
 Deposits are the costly signal of real demand, and the NO is expected to fund them by buying α
-on the market from revenue (the buyback, §7.4). That purchase is off‑chain and not enforced.
+on the market from revenue (the buyback, §7.4). That purchase is off‑chain and not enforced: no
+contract or validator checks where the α came from, and a correct deposit may come from any source
+of α. The reference server's route for converting USDC to α is a choice of operator software, not a
+protocol rule.
 
-**Policy modes.** The signed policy chooses how usage is priced (`rao_per_gib` today; per‑user
-pricing is a schema option) and what a zero rate means. With
+**Policy modes.** Each entry of the price sheet is signed by a key pinned in the software, and sets
+the rates and the per‑epoch cap from its effective epoch without changing the signed policy or its
+hash. With no signed entry in force, the signed policy's schedule applies: it chooses how usage is
+priced (`rao_per_gib` today; per‑user pricing is a schema option) and what a zero rate means. With
 `zero_rate_action: equal_demand`, no deposits are required or audited and every pool carries
-the same implied demand, so measured quality alone steers the pool channel. The shipped
+the same implied demand, so measured quality alone steers the pool channel. That is the launch
+mode, and a signed entry of all zero rates returns to it. The shipped
 testnet policy ([`deploy/testnet/policy-v2.yml`](deploy/testnet/policy-v2.yml)) is bytes‑only
 and halts on a zero rate.
 
@@ -175,7 +187,7 @@ The UR Subnet follows the Bittensor core almost everywhere and diverges only del
 Of the major design decisions, **12 are aligned** with prevailing practice, **2 are
 divergent** (reward settlement/custody and the worker‑payout trust model — both *toward*
 trustlessness), and **2 are genuinely novel bets**: coupling miner reward to real,
-revenue‑backed demand (`implied_usage × quality`, inactive while the published price is
+revenue‑backed demand (`implied_usage × quality`, inactive while the price in force is
 zero) and tiering miners into a trust‑minimized pooled tail plus a directly‑paid head.
 
 ![UR Subnet vs. the Bittensor norm — design‑decision alignment matrix](diagrams/comparison_matrix.png)
@@ -280,6 +292,8 @@ the finite UID budget and undermine the intended ~200-member head.
 | **Q_n** | Pool quality: exposure‑weighted liveness and latency of a NO's tail providers. |
 | **implied_usage** | A NO's audited usage priced at the baseline rate; 1 for every pool at zero price. |
 | **Conviction** | A NO's cumulative locked deposits; sets its rate tier. |
+| **Price sheet** | The file at <https://ur.xyz/price.yml>. Only its signed entries set rates and the per‑epoch cap. |
+| **Usage statement** | A NO's signed statement of one epoch's bytes and users, which sizes and audits the next epoch's deposit. |
 | **Routable‑IP breadth** | Split‑adjusted count of distinct /29 or /48 egress‑prefix hashes a fleet routed. |
 | **Payout root** | Merkle root of `(coldkey, share bps)` leaves splitting one NO's pool for one epoch. |
 | **Epoch** | The 7‑day settlement period (50,400 blocks on mainnet). |
