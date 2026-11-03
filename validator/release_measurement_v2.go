@@ -422,12 +422,7 @@ func verifyOwnedReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasu
 	var settlementReplayKVs map[uint64]AttemptCutV2ReplayResult
 	if artifact.SettlementClosureV2 != nil {
 		operation := &attemptSettlementV2Operation{closure: artifact.SettlementClosureV2, options: *options.Settlement}
-		terminal, err := operation.replay(ctx, func(noID uint64, record AttemptRecord) error {
-			if checkpoint := terminalCheckpoints[noID]; checkpoint != nil {
-				return checkpoint.visit(record)
-			}
-			return nil
-		}, false)
+		terminal, err := operation.replayOnce(ctx, terminalCheckpoints)
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, fmt.Errorf("compact terminal closure: %w", err)
 		}
@@ -447,15 +442,11 @@ func verifyOwnedReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasu
 	replayedKVs := make(map[uint64]AttemptCutV2ReplayResult, len(artifact.Inputs))
 	for _, input := range artifact.Inputs {
 		operator := options.Operators[input.NoID]
-		var visit func(AttemptRecord) error
-		if checkpoint := checkpoints[input.NoID]; checkpoint != nil {
-			visit = checkpoint.visit
-		}
 		replayPolicy, err := releaseMeasurementReplayPolicy(options)
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, err
 		}
-		projection, err := verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, replayPolicy, operator.Bounds, operator.Measurement, visit)
+		projection, err := verifyReleaseStatsAndHeadOnce(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, replayPolicy, operator.Bounds, operator.Measurement, checkpoints[input.NoID])
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, fmt.Errorf("compact operator %d: %w", input.NoID, err)
 		}

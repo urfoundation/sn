@@ -273,7 +273,7 @@ func (self *ReleaseSteerer) gatherHeadV2(ctx context.Context, snapshot *ReleaseS
 				operator.Measurement.CurrentBindingKVs[clientID] = key
 			}
 		}
-		verified, err := VerifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, draft.Policy, operator.Bounds, operator.Measurement)
+		verified, err := verifyReleaseStatsAndHeadOnce(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, draft.Policy, operator.Bounds, operator.Measurement, nil)
 		if err != nil {
 			return result, fmt.Errorf("compact live head no_id %d complete replay: %w", input.NoID, err)
 		}

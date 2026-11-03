@@ -46,9 +46,9 @@ type releaseRuntimeV2 struct {
 	publishEpoch         func(uint64)
 	progress             *releaseProgress
 	preparation          *releaseProductionPreparation
-	nativeReservations   map[uint64]uint64                       // no_id -> native epoch, owned by gate
-	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2 // one unpublished/adopting cut per operator, owned by gate
-	settlementV2Verified bool                                    // the settlement_v2 identity check passed, owned by gate
+	nativeReservations   map[uint64]uint64                        // no_id -> native epoch, owned by gate
+	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2  // one unpublished/adopting cut per operator, owned by gate
+	settlementV2Verified bool                                     // the settlement_v2 identity check passed, owned by gate
 	nativeGapHeld        *atomic.Pointer[productionNativeGapHold] // this native epoch's completed refusal
 }
 
