@@ -1272,7 +1272,7 @@ and why from `GET /sn/claim-relay` through the SDK.
 | Rule | Value |
 | --- | --- |
 | Automatic claim | a balance worth 0.0125 TAO: 1.9 α at the §3 price |
-| "Claim now" | a balance over the transfer floor, 0.0001 TAO of value, at most once per coldkey per 30 days |
+| "Claim now" | a balance over the transfer floor, 0.0001 TAO of value, at most once per coldkey per 30 days, counted from a paid claim the relay would not have sent by itself |
 | Daily cap | 0.01 TAO, per UTC day; past it claims wait, and credit never expires |
 | Gas price ceiling | 10 gwei |
 | Stop | a preflight over 400,000 gas stops the pass; a finalized claim over that, or one that burned its whole gas limit, stops the UTC day (§7.3) |
@@ -1283,8 +1283,10 @@ at 2,600,000 gas. That floor keeps a claim alive when vault2's list grows after
 the estimate, but at 5 gwei it needs 0.013 TAO on hand and burns it if the runtime
 refuses the claim, more than the whole day's cap. At the estimate plus 20% the
 most a transaction can cost is known before it is sent, so the cap holds; a list
-lengthened after the estimate costs one reverted claim and trips the stop. Claims
-batch through the claim batcher with each item capped the same way. A device's own
+lengthened after the estimate costs one reverted claim and trips the stop. The cap
+counts the next transaction at its limit and fee cap with both of the engine's
+12.5% replacements, which on the relay never follow a higher quote. Claims batch
+through the claim batcher with each item capped the same way. A device's own
 claim (§11) stays as the fallback, and it keeps the floor.
 
 ## 11. Apps and SDK
