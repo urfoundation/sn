@@ -852,6 +852,17 @@ func runReleaseWithStartupAndProgressV2(ctx context.Context, configPath string, 
 			return err
 		}
 	}
+	// Edges this validator recorded itself join any pinned ones. Only a plain
+	// production run has them; provisional and adopted history never reach this.
+	if isOwnerRecycleProductionConfig(cfg) && retainedSetup == nil && adoption == nil {
+		own, err := readReleaseNativeGapOwnEdges(cfg.StateDir)
+		if err != nil {
+			return err
+		}
+		if bridge, err = mergeReleaseNativeGapBridges(bridge, own); err != nil {
+			return err
+		}
+	}
 	if bridge != nil {
 		if retainedSetup != nil || adoption != nil {
 			return errors.New("native gap bridge cannot select provisional startup or history adoption")

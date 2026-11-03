@@ -66,6 +66,9 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 			}
 			return releaseRuntimeError(ctx, errors.Join(pendingErr, err, ctx.Err()))
 		}
+		if recorded := releaseErrorMarker[*productionNativeGapEdgeRecorded](err); recorded != nil && releaseOnlyErrors(err, recorded) {
+			return recorded
+		}
 		readWait := releaseErrorMarker[*productionSteeringReadWait](err)
 		originalPending := releaseErrorMarker[*productionPendingReconciliation](err)
 		transition := releaseErrorMarker[*productionSteeringTransition](err)

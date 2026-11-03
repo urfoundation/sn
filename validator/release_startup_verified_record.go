@@ -175,10 +175,12 @@ type releaseStartupVerifiedFile struct {
 //     adds versions, which cannot make a verified record fail.
 //
 // What is then not proved again for a remembered unit: the public origin still
-// serving that cut, the archive node still serving that historical state, and
-// a remembered intent's chain sources and lineage. The retained files are
-// still read and matched to the content hashes the intents and journals pin,
-// every local structural and successor rule still runs, and everything not
+// serving that cut, the archive node still serving that historical state, a
+// remembered intent's chain sources and lineage, and the per-record hash and
+// signature of a remembered attempt-ledger prefix. The retained files are
+// still read and matched to the content hashes the intents and journals pin, a
+// ledger prefix's records to its digest over their exact bytes, every local
+// structural, lifecycle and successor rule still runs, and everything not
 // remembered is verified in full.
 func releaseStartupVerifiedAccepts(file *releaseStartupVerifiedFile, authority releaseStartupVerifiedAuthority) error {
 	if file.Schema != releaseStartupVerifiedSchema || file.Verifier != releaseStartupVerifiedVerifier {

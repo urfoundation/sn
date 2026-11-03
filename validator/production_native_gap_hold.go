@@ -29,6 +29,8 @@ type productionNativeGapHold struct {
 	lastArtifactHash string
 	nativeEpoch      uint64
 	cause            error
+	// Why the validator did not record this edge itself, a closed label.
+	edgeRefused string
 }
 
 func (self *productionNativeGapHold) Error() string {
@@ -46,7 +48,7 @@ func (self *productionNativeGapHold) attemptFailed(cause error) error {
 	if self == nil || releaseOnlyErrors(cause, context.Canceled, context.DeadlineExceeded) || productionSteeringCutWait(cause) {
 		return cause
 	}
-	return &productionNativeGapHold{lastEpoch: self.lastEpoch, lastStatus: self.lastStatus, lastArtifactHash: self.lastArtifactHash, nativeEpoch: self.nativeEpoch, cause: cause}
+	return &productionNativeGapHold{lastEpoch: self.lastEpoch, lastStatus: self.lastStatus, lastArtifactHash: self.lastArtifactHash, nativeEpoch: self.nativeEpoch, cause: cause, edgeRefused: self.edgeRefused}
 }
 
 // Only a graph that is wholly this refusal holds. A local file error or any
@@ -89,6 +91,10 @@ func releaseDiagnosticNativeGapHold(ctx context.Context, hold *productionNativeG
 	if hold.lastStatus != "applied" {
 		resume = "a bridge edge needs an applied predecessor, so this one needs an operator's review"
 	}
-	self.exporter.Offer("steering", []byte(fmt.Sprintf("validator steering hold: %v: native epoch %d does not follow the %s intent at native epoch %d (%s) and no bridge edge admits it; trails and settlement keep running; %s\n",
-		errReleaseHeadEMANativeGap, hold.nativeEpoch, hold.lastStatus, hold.lastEpoch, hold.lastArtifactHash, resume)))
+	refused := ""
+	if hold.edgeRefused != "" {
+		refused = "automatic edge refused: " + hold.edgeRefused + "; "
+	}
+	self.exporter.Offer("steering", []byte(fmt.Sprintf("validator steering hold: %v: native epoch %d does not follow the %s intent at native epoch %d (%s) and no bridge edge admits it; trails and settlement keep running; %s%s\n",
+		errReleaseHeadEMANativeGap, hold.nativeEpoch, hold.lastStatus, hold.lastEpoch, hold.lastArtifactHash, refused, resume)))
 }
