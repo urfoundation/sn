@@ -1257,8 +1257,8 @@ run the unchanged v1 daemon in the same process with the same relayer key:
 | `withdraw --vault v1` | `withdrawClaimCredit` for v1 credits |
 
 UR runs `snclaim v2 check --all --challenge --demand` as an independent
-watcher, on a host other than the validator's. A UR sweep relayer is
-optional and can be added later without touching vault2.
+watcher, on a host other than the validator's. UR also relays claims for every
+consented coldkey (§10.3), which touches nothing in vault2.
 
 **Claim batcher.** `STClaimBatcher` (`evm/src/STClaimBatcher.sol`) is an
 optional, immutable, ownerless helper with no storage, persistent or
@@ -1289,6 +1289,35 @@ limit grows by about 150,000 per claim, where each single claim is signed at
 2,600,000 or more (§8.1). A batch of one costs 6% more than a claim alone, so
 the tools send a lone claim directly. The deployment phase can create the
 batcher (§8.5).
+
+### 10.3 UR's claim relay
+
+vault2's `claim` is open to anyone and pays the leaf's coldkey (G3), so UR claims
+for every consented coldkey, wallet or app key, and pays the gas: a taskworker
+task of the operator server (server `controller/sn_claim_relay.go`), with its own
+EVM key holding only operating TAO. With no key it does nothing and says so. It
+covers the accounts of `st_ledger_v2_account`, and the apps read what is pending
+and why from `GET /sn/claim-relay` through the SDK.
+
+| Rule | Value |
+| --- | --- |
+| Automatic claim | a balance worth 0.0125 TAO: 1.9 α at the §3 price |
+| "Claim now" | a balance over the transfer floor, 0.0001 TAO of value, at most once per coldkey per 30 days, counted from a paid claim the relay would not have sent by itself |
+| Daily cap | 0.01 TAO, per UTC day; past it claims wait, and credit never expires |
+| Gas price ceiling | 10 gwei |
+| Stop | a preflight over 400,000 gas stops the pass; a finalized claim over that, or one that burned its whole gas limit, stops the UTC day (§7.3) |
+
+The thresholds are in TAO value, since gas is paid in TAO. One thing differs from
+every other sender (§8.1): the relay signs a claim at its estimate plus 20%, not
+at 2,600,000 gas. That floor keeps a claim alive when vault2's list grows after
+the estimate, but at 5 gwei it needs 0.013 TAO on hand and burns it if the runtime
+refuses the claim, more than the whole day's cap. At the estimate plus 20% the
+most a transaction can cost is known before it is sent, so the cap holds; a list
+lengthened after the estimate costs one reverted claim and trips the stop. The cap
+counts the next transaction at its limit and fee cap with both of the engine's
+12.5% replacements, which on the relay never follow a higher quote. Claims batch
+through the claim batcher with each item capped the same way. A device's own
+claim (§11) stays as the fallback, and it keeps the floor.
 
 ## 11. Apps and SDK
 
@@ -1895,7 +1924,7 @@ activation"). It never signs or sends.
   - Operator bonds.
 - **Null consensus:** a separate track, unchanged from
   VERSION2-REVIEW-RESPONSE.md §13.
-- **Optional.** A UR sweep relayer; daemon self-checks; a third-party mirror
+- **Optional.** Daemon self-checks; a third-party mirror
   of the ledger objects.
 
 ## 17. Risks
@@ -1917,7 +1946,7 @@ activation"). It never signs or sends.
 | App users without a paying consent stay unpaid | Network payout consent in the SDK and every app (§11.1), independent of phase A. Epochs before a network's first consent stay unpaid |
 | The owner's availability for Ledger-signed steps | Plan steps 2, 3 and 5 of §12.1 with the owner |
 | Treasury approval expiry about 2026-12-17 UTC | A separate successor after adoption (§13) |
-| Small balances are uneconomic to claim | Accrual never expires; the threshold is published; an optional UR subsidy |
+| Small balances are uneconomic to claim | Accrual never expires; the threshold is published; UR relays claims under a daily cap (§10.3) |
 | The escrow hotkey earns emission and its share price rises: Yuma pays by stake in a tempo in which no validator sets weights, and a future consensus change could pay it too | Yuma pays the escrow nothing while a validator sets weights, which the validator does every tempo. Escrow earnings are surplus, and claims accept a destination one rao short. The Null track must revisit this |
 | A later v1 policy breaks `epochBlocks >= rootCommitWindowBlocks + 14,400` for v2 epochs | A governance constraint on the v1 policy schedule (§13); `registerOperatorPool` checks only the first epoch's policy |
 

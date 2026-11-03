@@ -1,8 +1,8 @@
 //go:build linux || darwin
 
 // Which slot of the actual provider run asks for the provider extender role.
-// The run test stops before each device, since a direct slot's device would
-// bind tcp 443 on the test host; the device test builds a proxy slot's.
+// The run test stops before each device, since the slot with the role would
+// bind tcp 443 on the test host; the device test builds a proxy slot without it.
 package miner
 
 import (
@@ -18,17 +18,23 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/proxy"
+
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 )
 
-// Each slot the run starts reaches its device with the role asked for in the
-// direct slot and in no proxy slot. A run with a proxy file starts proxy slots
-// alone (readProxySettings), so it asks for no role at all; a run without one
-// is the direct slot alone, which keeps the role.
-func TestProviderRunAsksForTheExtenderRoleOnlyInTheDirectSlot(t *testing.T) {
+// Each slot the run starts reaches its device, and exactly one asks for the role.
+// A run with a proxy file starts proxy slots alone (readProxySettings), and one
+// of them holds the role, so the host still has its extender. The file's order
+// doesn't choose which, since readProxySettings reads a map.
+func TestProviderRunAsksForTheExtenderRoleInOneSlot(t *testing.T) {
 	first := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.30:1080"}
 	second := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.31:1080"}
+	holder, other := first, second
+	if providerRegistrationSlot(second) < providerRegistrationSlot(first) {
+		holder, other = second, first
+	}
 	for _, c := range []struct {
 		name    string
 		members []*connect.ProxySettings
@@ -42,8 +48,16 @@ func TestProviderRunAsksForTheExtenderRoleOnlyInTheDirectSlot(t *testing.T) {
 			name:    "a proxy file",
 			members: []*connect.ProxySettings{first, second},
 			expect: map[string]bool{
-				providerRegistrationSlot(first):  false,
-				providerRegistrationSlot(second): false,
+				providerRegistrationSlot(holder): true,
+				providerRegistrationSlot(other):  false,
+			},
+		},
+		{
+			name:    "a proxy file in the other order",
+			members: []*connect.ProxySettings{second, first},
+			expect: map[string]bool{
+				providerRegistrationSlot(holder): true,
+				providerRegistrationSlot(other):  false,
 			},
 		},
 		{
@@ -116,7 +130,7 @@ func TestProviderProxySlotDeviceProvidesWithoutTheExtenderRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := providerSlotDeviceSettings([32]byte{}, proxySettings)
+	settings := providerSlotDeviceSettings([32]byte{}, false)
 	settings.KeyMaterial = providerDeviceKeyMaterial(bytes.Repeat([]byte{19}, ed25519.SeedSize), nil, nil, extenderKeySeed)
 	settings.ProviderDialContextSettings = dialSettings
 	// a loopback platform names its own pump ingress: the sdk default is a
@@ -156,5 +170,70 @@ func TestProviderProxySlotDeviceProvidesWithoutTheExtenderRole(t *testing.T) {
 	status := device.GetExtenderProvideStatus()
 	if status.State != sdk.ExtenderProvideStateNotProviding || status.Enabled || status.Listening {
 		t.Fatalf("status = %+v, expected the role held off", status)
+	}
+}
+
+// The role stays with one slot across restarts and the file's order, since the
+// operator's row for the host's key follows whichever client last activated it.
+// Credentials aren't part of a slot's name, so rotating them doesn't move it.
+func TestProviderExtenderSlotHoldsAcrossOrderAndCredentials(t *testing.T) {
+	a := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.40:1080"}
+	b := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.41:1080"}
+	c := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.42:1080"}
+	chosen := providerExtenderSlot([]*connect.ProxySettings{a, b, c})
+	if chosen == "" || chosen == "direct" {
+		t.Fatalf("a run of proxy slots chose %q", chosen)
+	}
+	holders := 0
+	for _, member := range []*connect.ProxySettings{a, b, c} {
+		if providerRegistrationSlot(member) == chosen {
+			holders += 1
+		}
+	}
+	if holders != 1 {
+		t.Fatalf("%d slots hold the role, expected 1", holders)
+	}
+	for _, members := range [][]*connect.ProxySettings{
+		{a, c, b}, {b, a, c}, {b, c, a}, {c, a, b}, {c, b, a},
+	} {
+		if actual := providerExtenderSlot(members); actual != chosen {
+			t.Fatalf("the file's order moved the role to %q from %q", actual, chosen)
+		}
+	}
+
+	rotate := func(member *connect.ProxySettings) *connect.ProxySettings {
+		return &connect.ProxySettings{
+			Network: member.Network,
+			Address: member.Address,
+			Auth:    &proxy.Auth{User: "rotated", Password: "rotated"},
+		}
+	}
+	if actual := providerExtenderSlot([]*connect.ProxySettings{rotate(a), rotate(b), rotate(c)}); actual != chosen {
+		t.Fatalf("rotated credentials moved the role to %q from %q", actual, chosen)
+	}
+
+	// a slot that leaves the file only moves the role if it held it
+	for _, member := range []*connect.ProxySettings{a, b, c} {
+		var rest []*connect.ProxySettings
+		for _, other := range []*connect.ProxySettings{a, b, c} {
+			if other != member {
+				rest = append(rest, other)
+			}
+		}
+		actual := providerExtenderSlot(rest)
+		if providerRegistrationSlot(member) == chosen {
+			if actual == chosen {
+				t.Fatal("the role stayed with a slot that left the file")
+			}
+		} else if actual != chosen {
+			t.Fatalf("a slot without the role left, and the role moved to %q", actual)
+		}
+	}
+
+	if actual := providerExtenderSlot([]*connect.ProxySettings{a, nil, b}); actual != "direct" {
+		t.Fatalf("a run with a direct slot chose %q", actual)
+	}
+	if actual := providerExtenderSlot(nil); actual != "" {
+		t.Fatalf("a run with no slots chose %q", actual)
 	}
 }

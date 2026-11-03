@@ -2262,8 +2262,7 @@ components:
         fixed_worker_sha256: {$ref: "#/components/schemas/Sha256"}
         fixed_worker_image_digest: {$ref: "#/components/schemas/ImageDigest"}
         api_image_digest:
-          allOf:
-            - $ref: "#/components/schemas/ImageDigest"
+          $ref: "#/components/schemas/ImageDigest"
           description: API image identity recorded by the recovery qualification. It does not change the original admission's API identity or freeze subsequent main API releases.
         authorized_at: {type: string, format: date-time}
         started_at:
