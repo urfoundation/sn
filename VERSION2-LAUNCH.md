@@ -480,7 +480,7 @@ steps 5, 8, 10 and 15 (VERSION2-FINAL.md §13, §17).
 | O10 | The auditor key and its EVM address | one address, quorum 1 at launch; the same key runs with `--ledger_auditor_key_file` | 8, 10 | BOOTSTRAP-CONTRACTS.md:750-754; VERSION2-FINAL.md §2.1 decision 2 |
 | O11 | Whether to create the claim batcher | optional sixth action | 8, 13 | VERSION2-FINAL.md §8.5 |
 | O12 | The demand fee | decided: 750,000 rao, 750,000,000,000,000 wei (owner decision, 2026-10-12); the command has no default | 8 | VERSION2-FINAL.md §7.1; BOOTSTRAP-CONTRACTS.md:734-739 |
-| O13 | The re-signed operator gas policy: `revision`, `previous_policy_sha256`, `maximum_gas`, `maximum_intent_liability_wei`, `maximum_lifetime_liability_wei`, the validity window and the attempt caps | `maximum_gas` about 3.5M, and at least 3,200,000, the floor of every v1 and v2 close; intent liability at least 3 × `maximum_gas` × `maximum_fee_per_gas_wei`, 3.15·10^17 wei at 3.5M and 30 gwei; `maximum_lifetime_liability_wei` at least 2·10^19 once deposits are priced; `maximum_intent_attempts` at most 3; same bindings (step 5) | 5 | VERSION2-FINAL.md §8.1, §13; `server/local/sn25golive/gas.go:26-28`; `server/model/st_transaction_gas_model.go:95-112,332-368` |
+| O13 | The re-signed operator gas policy: `revision`, `previous_policy_sha256`, `maximum_gas`, `maximum_intent_liability_wei`, `maximum_lifetime_liability_wei`, the validity window and the attempt caps | `maximum_gas` about 3.5M, and at least 3,200,000, the floor of every v1 and v2 close; intent liability at least 3 × `maximum_gas` × `maximum_fee_per_gas_wei`, 3.15·10^17 wei at 3.5M and 30 gwei; `maximum_lifetime_liability_wei` 2.5–3·10^19 or more once deposits are priced, with the validity window checked; `maximum_intent_attempts` at most 3; same bindings (step 5) | 5 | VERSION2-FINAL.md §8.1, §13; `server/local/sn25golive/gas.go:26-28`; `server/model/st_transaction_gas_model.go:95-112,332-368` |
 | O14 | The treasury re-sign inputs: the input file and the unsigned policy plan the live approval was drafted from, with their SHA-256, and the approval key's signature | unchanged; only `config_hash` may change. The written sequence is [mainnet/SETTLEMENT-V2-ADOPTION.md](mainnet/SETTLEMENT-V2-ADOPTION.md) | 10 | `mainnet/treasury_approval_test.go:534-557`; `validator/production_authority_history.go:368-388` |
 | O15 | The adopted validator config: its absolute path, the predecessor's retained authority bundle, the progress file, the durable-volume declaration, and how the service command line gains `--ledger_auditor_key_file` | all paths absolute; on snow the flag comes from xops `group_vars/validator.yml`, which renders it into `sn-validator.service`'s `ExecStart`; for a unit this repository renders, through the systemd drop-in [mainnet/validator-ledger-auditor.example.conf](mainnet/validator-ledger-auditor.example.conf) (step 10) | 10 | `validator/treasury_approval_draft.go:71-77`; `validator/run.go:112-117`; SETTLEMENT-V2-EXAMPLES.md:102-123 |
 | O16 | The v2 pool hotkey (`poolHotkeyV2`) | new; nonzero; not the escrow hotkey; not used by another pool | 15 | `evm/src/STSettlementVault2.sol:166-171`; VERSION2-FINAL.md §12.1 |
@@ -984,9 +984,11 @@ liability is at least 3.15·10^17 wei at 3.5M and 30 gwei.
      - `maximum_lifetime_liability_wei`, the validity window and the attempt
        caps: checked against v2 traffic (O13; §13). Until the native-fee
        policy below settles them, every send counts at its full ceiling.
-       Once deposits are priced, the lifetime liability is at least 2·10^19
-       wei: a year of floored closes, stagings and deposits at 30 gwei comes
-       to about 1.5·10^19 (VERSION2-HANDOFF.md, section 3, item 2).
+       Once deposits are priced, re-sign the policy with a lifetime liability
+       of 2.5–3·10^19 wei or more, and check its validity window: at one
+       conversion per epoch, a year of sends, each counted at its 30 gwei
+       ceiling, comes to about 1.9·10^19 (VERSION2-HANDOFF.md, section 3,
+       item 2).
 
      Keep `chain_id`, `genesis_hash`, `no_id`, `coordinator`, `policy_hash` and
      `accounts` ("re-signed with the same bindings", §13).
@@ -2586,7 +2588,7 @@ Found while writing this runbook:
 | The repair and activation controllers refuse the adopted validator, and the rendered unit starts the pre-adoption config without the auditor key | Restart the unit with its drop-in. Around a controller run, remove the drop-in and reinstall it (step 10) |
 | `preview` cannot tell a wrong but well-formed owner input, and it checks `native_chain` and `specName` only for being non-empty | The comparison step of `mainnet/SETTLEMENT-V2-FILL.md`, read against the owner inputs, and the by-eye review of step 8.3 |
 | The claim daemon's state directory is not a prepared durable root | The `provider-claim-queue` preparation of step 13 |
-| A deposit's staging transfer reserved but not signed before its epoch rolled stays refused on the deposit key ("st: retained deposit intent belongs to another immutable operation"), and the key's later sends stop at it. Signing it would move stake, so the engine does not. No operator step frees it; it needs a change to the engine | Dormant while deposits are at zero price, since the deposit task then sends nothing. An expired deposit reserved but not signed no longer blocks the key: server `ed453384d` to `adc257c06`, merged as `d43dd4af1`, which run 5's server head contains (VERSION2-HANDOFF.md, section 3, item 12) |
+| A deposit's staging transfer reserved but not signed before its epoch rolled stayed refused on the deposit key ("st: retained deposit intent belongs to another immutable operation"), and the key's later sends stopped at it. Signing it would move stake, so the engine does not | Resolved: the server retires the unsigned reservation with a self-transfer at the same nonce, and starts no staging transfer or conversion within 150 blocks of the deposit's deadline. An expired deposit reserved but not signed no longer blocks the key either: server `ed453384d` to `adc257c06`, merged as `d43dd4af1`, which run 5's server head contains (VERSION2-HANDOFF.md, section 3, item 12) |
 | An intent of a replaced deployment that holds an unsigned execution reservation blocks its key: its cancellation is refused while the reservation stands | Pre-existing; the expired-deposit fix does not cover it (VERSION2-HANDOFF.md, section 3, item 12) |
 | A validator downgraded below the launch's release after that release wrote its v2 request checkpoint refuses the record and fails closed | Never downgrade it below that release (section 6.1, row 7) |
 
@@ -2624,8 +2626,6 @@ Open owner decisions and work that the repositories leave open:
    unpaid until the epoch after it signs.
 7. **The Windows v2 Claim colour**, blue or lime (STATE.md:200).
 8. **Tooling gaps** marked above:
-   - an engine change that frees a deposit's staging transfer reserved but
-     not signed before its epoch rolled (section 7);
    - a tool that writes and signs the native-fee denomination policy, and
      a decision on its native authority for 478 (step 5);
    - a rendered validator unit that names the adopted config and the auditor
@@ -2667,7 +2667,10 @@ Open owner decisions and work that the repositories leave open:
    - the release gate's failing tests, each fixed and merged
      (VERSION2-HANDOFF.md, sections 1 and 2);
    - the deposit key's fix for a deposit reserved but not signed before its
-     deadline (server `d43dd4af1`; section 7).
+     deadline (server `d43dd4af1`; section 7);
+   - the server's retirement of a deposit's staging transfer reserved but not
+     signed before its epoch rolled, by a self-transfer at the same nonce
+     (section 7).
 9. **The open product issues** of VERSION2-HANDOFF.md, section 5: the proxy
    stall at a contract rollover, the speed-test echo that closes H1, and the
    server suite fixture's missing GeoLite2 database.

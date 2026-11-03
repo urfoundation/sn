@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urnetwork.io/schemas/epoch-usage-v1.schema.json",
+  "title": "UR Subnet epoch usage statement v1",
+  "description": "An operator's signed usage for one epoch from its pool's switch epoch E_s, published on its /sn/evidence routes as kind epoch-usage-v1, run <no_id>-<epoch>, in at most 1 MiB. Its total_usage_bytes and total_users size and audit the operator's demand deposit in the next epoch (WHITEPAPER.md section 7.1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "deployment_id", "chain_id", "genesis_hash", "netuid", "coordinator", "vault_v2", "policy_hash", "no_id", "epoch", "start", "end", "provider_chunks", "provider_rows", "total_usage_bytes", "total_users", "signer", "signature"],
+  "properties": {
+    "schema": {"const": "urnetwork-epoch-usage-v1"},
+    "deployment_id": {"type": "string", "minLength": 1}, "chain_id": {"type": "integer", "minimum": 1}, "genesis_hash": {"type": "string", "minLength": 1},
+    "netuid": {"type": "integer", "minimum": 1, "maximum": 65535}, "coordinator": {"$ref": "#/$defs/address"}, "vault_v2": {"$ref": "#/$defs/address"},
+    "policy_hash": {"type": "string", "minLength": 1}, "no_id": {"type": "integer", "minimum": 1}, "epoch": {"type": "integer", "minimum": 0},
+    "start": {"$ref": "#/$defs/block", "description": "The epoch's finalized start block."},
+    "end": {"$ref": "#/$defs/block", "description": "The epoch's finalized end block. Its number must be greater than start's."},
+    "provider_chunks": {"type": ["array", "null"], "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "description": "The epoch's provider chunks, which must be those the committed ledger header lists for the epoch."},
+    "provider_rows": {"type": "integer", "minimum": 0, "description": "The number of rows in those chunks, eligible or not."},
+    "total_usage_bytes": {"type": "integer", "minimum": 0, "description": "The sum of the usage bytes of those rows, eligible or not, as a payout artifact's total_usage_bytes."},
+    "total_users": {"type": "integer", "minimum": 0, "description": "The operator's attested count of distinct top-level clients with contract usage in the epoch window, as a payout artifact's total_users. It is not independently verified."},
+    "signer": {"$ref": "#/$defs/address", "description": "The address of the operator's artifact key."},
+    "signature": {"type": "string", "pattern": "^0x[0-9a-f]{130}$", "description": "The artifact key's secp256k1 signature, with a recovery id of 0 or 1, over the SHA-256 of the statement without this field, encoded as Go's encoding/json writes it: compact, with the fields in the order listed here."}
+  },
+  "$defs": {
+    "address": {"type": "string", "pattern": "^0x[0-9a-f]{40}$", "not": {"const": "0x0000000000000000000000000000000000000000"}},
+    "block": {"type": "object", "additionalProperties": false, "required": ["number", "hash"], "properties": {"number": {"type": "integer", "minimum": 0}, "hash": {"type": "string", "minLength": 1}}}
+  }
+}

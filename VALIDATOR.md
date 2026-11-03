@@ -1011,9 +1011,9 @@ normalize head so Σ head = θ
 
 # TAIL — NO pools, implied-demand × quality (D25)
 for each NO-pool UID n:
-    audit  deposit_n == floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n)), capped   # signed payout artifact; else pool[n] = 0
+    audit  deposit_n == floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n)), capped   # usage signed for the previous epoch; else pool[n] = 0
     implied_demand_n = (bytes_n × rate_gib(0) / GiB + users_n × rate_user(0)) × min(1, cap / owed_n)  # audited usage at the conviction-zero tier
-    implied_demand_n = 1                                                                         # while the signed policy's price is zero
+    implied_demand_n = 1                                                                         # while the price in force is zero
     pool[n] = implied_demand_n × Q_n       # §11.1; = 0 if n is in this validator's controlled_no_ids (self-mask)
 normalize pool so Σ pool = 1 − θ
 
@@ -1038,19 +1038,51 @@ Until the runtime restores a native cap, this convention depends on the same
 honest stake-majority as θ and the scoring rules and cannot constrain a
 non-conforming validator by itself.
 
-**Where the pool inputs come from (D25).** The validator reads each NO's `epoch_deposit_n`
-and cumulative conviction by **summing finalized `Deposit` and `ConvictionAdded` events**
-(`WHITEPAPER.md` §7.5) — coordinator counters enforce caps but compute no weight — reads the
-NO's signed payout artifact for the previous epoch (`total_usage_bytes`, `total_users`), and
-reads the two‑component `rate(tier_n)` from the **signed policy's tier→rate schedule**
-(`WHITEPAPER.md` §7.3). The deposit must equal the artifact's usage priced at the NO's own
-tier; the weight prices the same usage at the conviction‑zero tier, so below the per‑epoch cap a
-NO that staked into a lower tier posts less α for the same usage and earns the same weight (the
-stake is a discount). A capped NO's demand is truncated to `cap × rate(0) / rate(tier_n)` with one
-priced component, so at the cap a lower tier raises its weight. Under the zero‑price launch
-mode (`zero_rate_action: equal_demand`, every rate 0)
-no deposit is required or audited: each active NO's audit is recorded as `zero_price` /
-`zero_price_no_deposit_required` from chain state alone, every pool's implied demand is
+**Where the pool inputs come from (D25).** At every steering pass, at a hash-pinned finalized
+block, the validator reads each NO's `epoch_deposit_n`, cumulative conviction and conviction
+added this epoch from the **coordinator's counters**, which finalized `Deposit` and
+`ConvictionAdded` events reproduce (`WHITEPAPER.md` §7.5); the counters enforce caps but compute
+no weight. The tier comes from the conviction before the epoch. The validator reads the NO's
+signed usage for the previous epoch (`total_usage_bytes`, `total_users`): the payout artifact for
+a source epoch before the pool's switch epoch `E_s` (`WHITEPAPER.md` §5.2), and from `E_s` the
+usage statement on the operator's public `/sn/evidence` routes (kind `epoch-usage-v1`, run
+`<noId>-<epoch>`, signed by the artifact key). Only a signed entry in force switches a source epoch
+from `E_s` to the statement; a deployment priced by its signed policy alone keeps the payout
+artifact. For such an epoch the validator takes the latest root committed for it in its root window,
+from the epoch's end block to `rootCommitWindowBlocks` after it under `policyAt` of that epoch; a
+refused, deleted or later root does not change that choice. Of the
+operator's statements for the epoch it uses the one whose provider chunks are those that root's
+header lists, and its rows must match its `provider_rows` and sum to its `total_usage_bytes`.
+`total_users` remains an operator attestation. The validator reads the two‑component
+`rate(tier_n)` and the cap in force for this epoch from the **signed price sheet** at
+`https://ur.xyz/price.yml`, or from the signed policy's tier→rate schedule while no signed entry is
+in force (`WHITEPAPER.md` §7.1, §7.3). It reads the sheet at most every five minutes, waits at most
+ten seconds for it, and never uses an unverified file. It keeps the last good sheet in its state
+directory, replacing a stored copy that no longer verifies with the next verified one; a failed read
+is logged, and with no sheet ever verified the signed policy's schedule applies. Each measurement
+artifact carries the signed entry it priced with, so anyone can check its rates offline under the
+deployment's pinned signer. If the coordinator's epoch cap is below the cap in force, or its
+campaign cap below the larger of the signed policy's campaign cap and that epoch cap, the validator
+stops, as it stops on other policy mismatches.
+
+The deposit so far this epoch must equal that usage priced at the NO's own tier, or the pool has no
+weight on that pass, and overpaying fails too. A missing commit, ledger object or statement leaves
+the audit `artifact_pending` until the source epoch's root window closes and `artifact_unavailable`
+after it, as does a root whose ledger objects pass the per-root byte budget (`--ledger_max_bytes`),
+or a read cut short by the audit's time budget: one per audit for all its reads of the operator's
+answers, three minutes and never more than half of what the pass has left. A header, chunk, history
+or statement that fails its checks, or an object already held that exceeds its size bound, is
+`artifact_invalid`. Two statements that verify for the same chunks with different totals, or a
+history of more than eight, are `artifact_equivocation`. Each of these costs only that pool its
+weight on that pass: nothing an operator controls can stop steering. From the start of each priced
+epoch until the source epoch's usage is committed on chain, its totals are published and the deposit
+has landed, the pool carries no weight. The weight prices the same usage at the conviction‑zero tier,
+so below the per‑epoch cap a NO that staked into a lower tier posts less α for the same usage and earns the same
+weight (the stake is a discount). A capped NO's demand is truncated to `cap × rate(0) / rate(tier_n)`
+with one priced component, so at the cap a lower tier raises its weight. Under the zero‑price launch
+mode (`zero_rate_action: equal_demand`, every rate 0), to which a signed entry of all zero rates
+returns, no deposit is required or audited: each active NO's audit is recorded as `zero_price` /
+`zero_price_no_deposit_required` with no usage read, every pool's implied demand is
 exactly 1, and `Q_n` alone steers the tail; the head, θ and the cede rule are unchanged.
 
 Because Yuma clips each validator to the κ-stake-weighted median, **θ, the rate schedule,

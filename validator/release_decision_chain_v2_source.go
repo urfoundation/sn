@@ -22,7 +22,7 @@ func validateReleaseDecisionChainV2Policy(query releaseDecisionChainV2Query, act
 	}
 	initial := actual.EpochBlocks == policy.Settlement.EpochBlocks && actual.RootCommitWindowBlocks == policy.Settlement.RootCommitWindowBlocks && actual.FinalizeOffsetBlocks == policy.Settlement.FinalizeOffsetBlocks && actual.CloseGraceBlocks == policy.Settlement.CloseGraceBlocks
 	production := actual.EpochBlocks == policy.ProductionCadence.EpochBlocks && actual.RootCommitWindowBlocks == policy.ProductionCadence.RootCommitWindowBlocks && actual.FinalizeOffsetBlocks == policy.ProductionCadence.FinalizeOffsetBlocks && actual.CloseGraceBlocks == policy.ProductionCadence.CloseGraceBlocks && actual.EffectiveEpoch >= policy.ProductionCadence.AfterAcceleratedEpochs
-	if (!initial && !production) || actual.ClaimTTLEpochs != policy.Settlement.ClaimTTLEpochs || actual.ClaimGraceEpochs != policy.Settlement.ClaimGraceEpochs || actual.MaximumBindingValidityEpochs != policy.Binding.MaximumValidityEpochs || actual.EpochDepositCapRao.Cmp(new(big.Int).SetUint64(policy.Deposit.EpochCapRaoPerOperator)) != 0 || actual.CampaignDepositCapRao.Cmp(new(big.Int).SetUint64(policy.Deposit.TotalTestCampaignCapRao)) != 0 {
+	if (!initial && !production) || actual.ClaimTTLEpochs != policy.Settlement.ClaimTTLEpochs || actual.ClaimGraceEpochs != policy.Settlement.ClaimGraceEpochs || actual.MaximumBindingValidityEpochs != policy.Binding.MaximumValidityEpochs || !releaseDepositCapsSuffice(actual.EpochDepositCapRao, actual.CampaignDepositCapRao, policy.Deposit, query.priceEntry) {
 		return errors.New("decision on-chain policy fields differ from canonical configuration")
 	}
 	return nil
@@ -80,6 +80,9 @@ func readReleaseDecisionChainV2Source(ctx context.Context, chain *ChainClient, q
 			return errors.New("decision source root differs from its historical operator authority")
 		}
 		observed.operators[index].sourceVersion, observed.operators[index].commitment = version, commitment
+	}
+	if err := readReleaseDecisionUsageCommitsV2(ctx, chain, query, observed); err != nil {
+		return err
 	}
 	for _, boundary := range []struct {
 		block uint64

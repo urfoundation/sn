@@ -65,7 +65,7 @@ func (self *releaseEvidenceCaptureBudgetV2) emit(source ReleaseEvidenceV2Capture
 	}
 	class := uint8(2)
 	classRemaining := self.controlRemaining
-	if source.Kind == AttemptStreamV2Records || source.Kind == AttemptStreamV2Proofs {
+	if source.Kind == AttemptStreamV2Records || source.Kind == AttemptStreamV2Proofs || source.Kind == releaseUsageLedgerObjectCaptureKind {
 		class, classRemaining = 1, self.dataRemaining
 	}
 	seenClasses := self.content[hash]
