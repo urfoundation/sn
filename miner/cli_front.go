@@ -142,7 +142,10 @@ var cliCommandHelp = map[string]struct {
 		summary: "Claim each account automatically once its balance passes a threshold.",
 	},
 	"fleet": {
-		summary: "Head-tier fleet management: manifests, registration, bindings and revocation.\nRegistration is a dry run unless --apply is given.",
+		summary: "Head-tier fleet management: manifests, registration, bindings and revocation.\nRegistration is a dry run unless --apply is given. On mainnet the writes need the\nstorage declaration that provider fleet storage prepares.",
+	},
+	"fleet storage": {
+		summary: "Prepare this machine for mainnet fleet writes: two private journal directories below\nthe state directory, and the one declaration that names them. Every\nfleet register, publish, bind and revoke takes it as --durable-volumes and\n--durable-volumes-sha256. Nothing here reads a key or touches the chain.\nEach step takes the exact file and digest the last one printed:\n\n    request  says what to prepare, from what you state about this machine\n    plan     checks that against the filesystem; the journal directories don't change\n    apply    prepares them durably; if interrupted, run the same command again",
 	},
 	"proxy": {
 		summary: "Add or remove SOCKS5 exits. Each exit gets its own provider slot.",

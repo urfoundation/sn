@@ -172,6 +172,10 @@ func fleetCommand(opts docopt.Opts) error {
 	if mustBoolOpt(opts, "init") {
 		return fleetInit(opts, os.Stdout, fleetInitRandom)
 	}
+	// storage prepares what the writes below need, from no fleet at all.
+	if mustBoolOpt(opts, "storage") {
+		return fleetStorage(context.Background(), opts, os.Stdout, os.Stderr)
+	}
 	ctx := minerStorageContext(context.Background(), opts)
 	manifest, err := loadFleetManifest(fleetOpt(opts, "--manifest"))
 	if err != nil {
