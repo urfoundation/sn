@@ -17,7 +17,9 @@ package miner
 //     signs it locally. The seed never leaves the host.
 //   - --message=<text> --signature=<hex>: a challenge printed by
 //     `provider wallet challenge <coldkey_ss58>` and signed elsewhere (btcli,
-//     a hardware wallet, a browser extension).
+//     a hardware wallet, a browser extension). --message-file=<path> passes
+//     the file that command saves the challenge in instead, with no shell
+//     between it and wallet set.
 //
 // Signing format, byte for byte what the server verifies
 // (server/model/auth_bittensor.go VerifyBittensorSignature): an sr25519
@@ -37,6 +39,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -47,6 +51,7 @@ import (
 	"github.com/urnetwork/sdk"
 
 	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/ss58"
 )
 
@@ -80,7 +85,8 @@ func (self *snWalletProof) unsigned() bool {
 	return self == nil || (self.SeedFile == "" && self.Message == "" && self.Signature == "")
 }
 
-// snWalletProofFromOpts reads --coldkey_seed_file, --message and --signature.
+// snWalletProofFromOpts reads --coldkey_seed_file, --message or
+// --message-file, and --signature.
 func snWalletProofFromOpts(opts docopt.Opts) (*snWalletProof, error) {
 	proof := &snWalletProof{credentials: snCredentialsFromOpts(opts)}
 	if proof.credentials.legacyNetwork && proof.credentials.jwtFile != "" {
@@ -91,6 +97,14 @@ func snWalletProofFromOpts(opts docopt.Opts) (*snWalletProof, error) {
 	}
 	if message, err := opts.String("--message"); err == nil {
 		proof.Message = message
+	}
+	if path, err := opts.String("--message-file"); err == nil && path != "" {
+		if proof.Message != "" {
+			return nil, errors.New("use either --message or --message-file, not both")
+		}
+		if proof.Message, err = snReadWalletMessageFile(path); err != nil {
+			return nil, err
+		}
 	}
 	if signature, err := opts.String("--signature"); err == nil {
 		proof.Signature = strings.TrimSpace(signature)
@@ -210,6 +224,37 @@ func snUnescapeMessage(message string) string {
 	return strings.ReplaceAll(message, `\n`, "\n")
 }
 
+// snWalletChallengeFile is where provider wallet challenge saves the message
+// to sign, beside the selected credential. --message-file passes it to wallet
+// set with no shell in between: Windows PowerShell 5.1 drops the double quotes
+// of a message given as an argument, and cmd.exe doesn't take POSIX quoting.
+func snWalletChallengeFile(tokenPath string) string {
+	return tokenPath + ".wallet-challenge.txt"
+}
+
+// snReadWalletMessageFile reads --message-file: the message as provider wallet
+// challenge saved it. CRLF line endings and a final line break, which an
+// editor may add, are taken off; a challenge has neither.
+func snReadWalletMessageFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("--message-file: %w", err)
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, 2*protocol.MaxWalletMappingMessageBytes+2))
+	if err != nil {
+		return "", fmt.Errorf("--message-file %s: %w", path, err)
+	}
+	message := strings.TrimSuffix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	switch {
+	case message == "":
+		return "", fmt.Errorf("--message-file %s is empty", path)
+	case protocol.MaxWalletMappingMessageBytes < len(message):
+		return "", fmt.Errorf("--message-file %s is larger than a wallet challenge", path)
+	}
+	return message, nil
+}
+
 // snWalletSetArgs turns the proof into the `POST /sn/wallet` body, fetching
 // and signing the challenge for the seed-file form.
 func snWalletSetArgs(ctx context.Context, api *sdk.Api, coldkeySs58 string, pubkey [32]byte, proof *snWalletProof) (*sdk.SnSetWalletArgs, error) {
@@ -301,17 +346,27 @@ func snSetWallet(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 
 // snWalletChallengeText is what `provider wallet challenge` prints: the exact
 // bytes to sign, how to sign them, and the command that submits the result.
-func snWalletChallengeText(coldkeySs58 string, challenge *sdk.AuthWalletChallengeResult, selectionOptions ...string) string {
+// With messageFile, where the message is saved, the command passes that file;
+// without, the message itself in POSIX quotes.
+func snWalletChallengeText(coldkeySs58 string, challenge *sdk.AuthWalletChallengeResult, messageFile string, selectionOptions ...string) string {
 	message := challenge.MessageTemplate
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sign this message with the coldkey %s: sr25519, \"substrate\" signing context.\n", coldkeySs58)
 	fmt.Fprintf(&b, "The bytes to sign are the UTF-8 text between the markers exactly as printed (LF line endings, no trailing newline);\n")
 	fmt.Fprintf(&b, "a Polkadot extension signRaw of type \"bytes\", which wraps them in <Bytes>...</Bytes>, is accepted too.\n")
+	fmt.Fprintf(&b, "A signing tool that takes hex can sign the message bytes (hex) below instead: they are the same message.\n")
 	fmt.Fprintf(&b, "The challenge is single-use, bound to this coldkey, and expires in %d seconds.\n", challenge.ExpiresIn)
 	fmt.Fprintf(&b, "\n----- message -----\n%s\n----- end -----\n", message)
 	fmt.Fprintf(&b, "message bytes (hex): 0x%s\n", hex.EncodeToString([]byte(message)))
+	if messageFile != "" {
+		fmt.Fprintf(&b, "The message is saved, exactly, in %s\n", messageFile)
+	}
 	fmt.Fprintf(&b, "\nThen, within that window, submit the 64-byte signature as hex:\n")
-	fmt.Fprintf(&b, "  provider wallet set %s --message='%s' --signature=0x<128 hex chars>", coldkeySs58, snEscapeMessage(message))
+	if messageFile != "" {
+		fmt.Fprintf(&b, "  provider wallet set %s --message-file=%s --signature=0x<128 hex chars>", coldkeySs58, snWalletShellValue(messageFile))
+	} else {
+		fmt.Fprintf(&b, "  provider wallet set %s --message='%s' --signature=0x<128 hex chars>", coldkeySs58, snEscapeMessage(message))
+	}
 	for _, option := range selectionOptions {
 		fmt.Fprintf(&b, " %s", option)
 	}
@@ -319,9 +374,33 @@ func snWalletChallengeText(coldkeySs58 string, challenge *sdk.AuthWalletChalleng
 	return b.String()
 }
 
+// Characters that POSIX shells, Windows PowerShell 5.1 and 7, and cmd.exe all
+// pass to a program as they are, without splitting the argument there.
+var snWalletShellBare = regexp.MustCompile(`^[A-Za-z0-9._/:=+-]+$`)
+
+// On Windows a backslash is a path separator, not an escape.
+var snWalletShellBareWindows = regexp.MustCompile(`^[A-Za-z0-9._/:=+\\-]+$`)
+
 // Preserve the selected endpoint and private file even when a shell path
 // contains spaces or quotes. This is display text, never executed locally.
+// A value no shell changes is printed bare, so the command runs as printed in
+// any shell. Another is quoted for this platform's shells: double quotes on
+// Windows, which cmd.exe and PowerShell both take (PowerShell's literal single
+// quotes when the value holds a character PowerShell expands in double
+// quotes), POSIX single quotes elsewhere.
 func snWalletShellValue(value string) string {
+	if runtime.GOOS == "windows" {
+		if snWalletShellBareWindows.MatchString(value) {
+			return value
+		}
+		if !strings.ContainsAny(value, "\"$`") {
+			return `"` + value + `"`
+		}
+		return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	}
+	if snWalletShellBare.MatchString(value) {
+		return value
+	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
@@ -339,7 +418,41 @@ func snPrintWalletChallenge(ctx context.Context, clientStrategy *connect.ClientS
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(out, snWalletChallengeText(coldkeySs58, challenge, "--legacy-network-wallet", "--api_url="+snWalletShellValue(apiUrl)))
+	_, err = io.WriteString(out, snWalletChallengeText(coldkeySs58, challenge, "", "--legacy-network-wallet", "--api_url="+snWalletShellValue(apiUrl)))
+	return err
+}
+
+// snPrintProviderWalletChallenge implements `provider wallet challenge
+// <coldkey_ss58>` for the selected provider: a canonical consent to sign. The
+// message is also saved beside the credential, and the printed command passes
+// that file, so no shell carries the message's quotes and line break.
+func snPrintProviderWalletChallenge(ctx context.Context, clientStrategy *connect.ClientStrategy, apiUrl string, coldkeySs58 string, proof *snWalletProof, out io.Writer) error {
+	pubkey, err := ss58.DecodeWithPrefix(coldkeySs58, ss58.BittensorPrefix)
+	if err != nil {
+		return err
+	}
+	token, clientId, err := readSnCredentials(proof.credentials)
+	if err != nil {
+		return err
+	}
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.CloseAndWait(context.Background())
+	api.SetByJwt(token)
+	message, err := snRequestWalletMapping(ctx, api, token, coldkeySs58, pubkey, clientId, proof)
+	if err != nil {
+		return err
+	}
+	path, err := snCredentialPath(proof.credentials)
+	if err != nil {
+		return err
+	}
+	messageFile := snWalletChallengeFile(path)
+	if err := writeFileAtomic(messageFile, []byte(message)); err != nil {
+		// a read-only credential folder still gets the message to sign
+		fmt.Fprintf(out, "The message couldn't be saved beside the credential (%v); the command below passes it as text.\n", err)
+		messageFile = ""
+	}
+	_, err = io.WriteString(out, snWalletChallengeText(coldkeySs58, &sdk.AuthWalletChallengeResult{MessageTemplate: message, ExpiresIn: 300}, messageFile, "--provider-jwt="+snWalletShellValue(path), "--api_url="+snWalletShellValue(apiUrl)))
 	return err
 }
 
@@ -394,27 +507,7 @@ func walletChallenge(opts docopt.Opts) {
 		if proof.credentials.legacyNetwork {
 			return snPrintWalletChallenge(ctx, clientStrategy, apiUrl, coldkeySs58, os.Stdout)
 		}
-		pubkey, err := ss58.DecodeWithPrefix(coldkeySs58, ss58.BittensorPrefix)
-		if err != nil {
-			return err
-		}
-		token, clientId, err := readSnCredentials(proof.credentials)
-		if err != nil {
-			return err
-		}
-		api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-		defer api.CloseAndWait(context.Background())
-		api.SetByJwt(token)
-		message, err := snRequestWalletMapping(ctx, api, token, coldkeySs58, pubkey, clientId, proof)
-		if err != nil {
-			return err
-		}
-		path, err := snCredentialPath(proof.credentials)
-		if err != nil {
-			return err
-		}
-		_, err = io.WriteString(os.Stdout, snWalletChallengeText(coldkeySs58, &sdk.AuthWalletChallengeResult{MessageTemplate: message, ExpiresIn: 300}, "--provider-jwt="+snWalletShellValue(path), "--api_url="+snWalletShellValue(apiUrl)))
-		return err
+		return snPrintProviderWalletChallenge(ctx, clientStrategy, apiUrl, coldkeySs58, proof, os.Stdout)
 	}
 	if err := printChallenge(); err != nil {
 		fmt.Printf("subnet wallet challenge not issued: %s\n", err)

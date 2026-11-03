@@ -65,6 +65,10 @@ const hotkeyWalletAnswerBytes = 16 * 1024 * 1024
 // Keeps every computed interval end within uint64.
 const hotkeyWalletMaximumEpoch = math.MaxUint64 - 4*(hotkeyWalletIntervalEpochs+1)
 
+// Beside the store's files, the pending statement's message as it is signed,
+// for --message-file. The store never reads it.
+const hotkeyWalletMessageFileName = "pending-message.txt"
+
 func hotkeyWalletStore(base string) hotkeywallet.Store {
 	return hotkeywallet.Store{Directory: filepath.Join(base, hotkeyWalletDirectoryName)}
 }
@@ -509,8 +513,21 @@ func hotkeyWalletChallenge(ctx context.Context, opts docopt.Opts, out io.Writer)
 	fmt.Fprintf(out, "It stays pending in %s until it is set or replaced.\n", filepath.Join(store.Directory, "pending.json"))
 	fmt.Fprintf(out, "\n----- message -----\n%s\n----- end -----\n", message)
 	fmt.Fprintf(out, "message bytes (hex): 0x%s\n", hex.EncodeToString([]byte(message)))
+	// the command passes the saved message, so no shell carries its quotes
+	// and line break (Windows PowerShell 5.1 drops a quoted argument's quotes)
+	messageFile := filepath.Join(store.Directory, hotkeyWalletMessageFileName)
+	if err := writeFileAtomic(messageFile, []byte(message)); err != nil {
+		fmt.Fprintf(out, "The message couldn't be saved (%v); the command below passes it as text.\n", err)
+		messageFile = ""
+	} else {
+		fmt.Fprintf(out, "The message is saved, exactly, in %s\n", messageFile)
+	}
 	fmt.Fprintf(out, "\nThen submit the 64-byte signature as hex:\n")
-	fmt.Fprintf(out, "  provider wallet hotkey set %s --hotkey_seed_file=%s --message='%s' --signature=0x<128 hex chars>", coldkeySs58, snWalletShellValue(seedPath), snEscapeMessage(message))
+	if messageFile != "" {
+		fmt.Fprintf(out, "  provider wallet hotkey set %s --hotkey_seed_file=%s --message-file=%s --signature=0x<128 hex chars>", coldkeySs58, snWalletShellValue(seedPath), snWalletShellValue(messageFile))
+	} else {
+		fmt.Fprintf(out, "  provider wallet hotkey set %s --hotkey_seed_file=%s --message='%s' --signature=0x<128 hex chars>", coldkeySs58, snWalletShellValue(seedPath), snEscapeMessage(message))
+	}
 	if operatorsUrl, _ := opts.String("--operators-url"); operatorsUrl != "" {
 		fmt.Fprintf(out, " --operators-url=%s", snWalletShellValue(operatorsUrl))
 	}
@@ -538,6 +555,14 @@ func hotkeyWalletSet(ctx context.Context, opts docopt.Opts, out io.Writer) error
 	}
 	seedFile, _ := opts.String("--coldkey_seed_file")
 	message, _ := opts.String("--message")
+	if path, _ := opts.String("--message-file"); path != "" {
+		if message != "" {
+			return errors.New("use either --message or --message-file, not both")
+		}
+		if message, err = snReadWalletMessageFile(path); err != nil {
+			return err
+		}
+	}
 	signatureHex, _ := opts.String("--signature")
 	if seedFile == "" && message == "" {
 		return errors.New("the coldkey's signature is required: --coldkey_seed_file=<path>, or --message and --signature for the statement provider wallet hotkey challenge printed")
