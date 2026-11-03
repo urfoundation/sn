@@ -942,6 +942,7 @@ func runReleaseWithStartupAndProgressV2(ctx context.Context, configPath string, 
 	if production {
 		verified = newReleaseStartupVerified()
 		ctx = withReleaseStartupVerified(ctx, verified)
+		ctx = withReleaseCutReplayMemo(ctx, newReleaseCutReplayMemo())
 		defer func() {
 			if err := verified.flush(); err != nil {
 				fmt.Fprintf(os.Stderr, "validator: startup verified progress record not written: %v\n", err)

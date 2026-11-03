@@ -39,6 +39,8 @@ type VerifiedAttemptCutV2Measurement struct {
 // Uses the same admission and per-record primitives as standalone statistics
 // and head replay. The private visitor invokes both against every authenticated
 // record; no external callback, cached verdict or second history scan is used.
+// Only a production run's measurement path remembers a completed replay of the
+// same inputs (release_cut_replay_memo.go); this standalone call never does.
 func VerifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2MeasurementOptions) (VerifiedAttemptCutV2Measurement, error) {
 	return verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, measurement, cut, expected, policy, bounds, options, nil)
 }

@@ -331,3 +331,42 @@ func (self *releaseNativeGapBridgeV2) requireFirstEpoch(current *SteeringIntent,
 	}
 	return nil
 }
+
+// The refusal head admission will give this native epoch, from the same store
+// state and edge check, or nil when it follows or an edge admits it.
+func (self *ReleaseSteerer) nativeGapHoldFor(current *SteeringIntent, nativeEpoch uint64) *productionNativeGapHold {
+	if self == nil || self.headEMA == nil || current == nil || !self.headEMA.refusesNativeEpochGap(nativeEpoch) {
+		return nil
+	}
+	return &productionNativeGapHold{lastEpoch: current.SubnetEpoch, lastStatus: current.Status, lastArtifactHash: current.MeasurementArtifactHash, nativeEpoch: nativeEpoch}
+}
+
+// The same rule as compact head admission, without its budget.
+func (self *HeadEMAStore) refusesNativeEpochGap(epoch uint64) bool {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.lastSubnetEpoch == nil || epoch <= *self.lastSubnetEpoch || *self.lastSubnetEpoch != ^uint64(0) && epoch == *self.lastSubnetEpoch+1 {
+		return false
+	}
+	return !self.allowsHeadEMAEpochGapTo(epoch)
+}
+
+// This native epoch's completed refusal, while its predecessor is still current.
+// A restart, a later epoch or a moved intent has none and runs a whole attempt.
+func (self *releaseRuntimeV2) heldNativeGap(current *SteeringIntent, nativeEpoch uint64) *productionNativeGapHold {
+	if self == nil || current == nil || self.nativeGapHeld == nil {
+		return nil
+	}
+	held := self.nativeGapHeld.Load()
+	if held == nil || held.lastEpoch != current.SubnetEpoch || held.lastArtifactHash != current.MeasurementArtifactHash || held.nativeEpoch != nativeEpoch {
+		return nil
+	}
+	return held
+}
+
+// A runtime built without the owner runs a whole attempt every time.
+func (self *releaseRuntimeV2) holdNativeGap(hold *productionNativeGapHold) {
+	if self != nil && self.nativeGapHeld != nil {
+		self.nativeGapHeld.Store(hold)
+	}
+}

@@ -206,6 +206,13 @@ func runReleaseOperatorWorkers(ctx context.Context, cancel context.CancelFunc, c
 	runtimeErrors := make(chan error, 2*len(runtimes)+5)
 	var workers sync.WaitGroup
 	defer func() {
+		// RunRelease calls cancel only after this returns, so ctx has ended
+		// before this teardown only when the owner stopped the run (SIGTERM
+		// ends event.Ctx() in runReleaseConfig). That stop cancels work still in
+		// flight, such as a tunnel identity's final retirement, and a close
+		// that reports only that cancellation is then a clean stop. A file,
+		// ledger or any other close error stays in the result.
+		stopRequested := ctx.Err() != nil
 		cancel()
 		workers.Wait()
 		// Each admitted producer sends at most one result. After joining them,
@@ -215,7 +222,11 @@ func runReleaseOperatorWorkers(ctx context.Context, cancel context.CancelFunc, c
 			returnErr = errors.Join(returnErr, err)
 		}
 		for index, runtime := range runtimes {
-			returnErr = errors.Join(returnErr, releaseStageError(fmt.Sprintf("validator no_id %d shutdown", cfg.Operators[index].NoID), runtime.close()))
+			closeErr := runtime.close()
+			if stopRequested {
+				closeErr = releaseRuntimeError(ctx, closeErr)
+			}
+			returnErr = errors.Join(returnErr, releaseStageError(fmt.Sprintf("validator no_id %d shutdown", cfg.Operators[index].NoID), closeErr))
 		}
 	}()
 	if operations.providerRequests != nil {
