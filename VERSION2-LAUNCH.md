@@ -2588,7 +2588,7 @@ Found while writing this runbook:
 | The repair and activation controllers refuse the adopted validator, and the rendered unit starts the pre-adoption config without the auditor key | Restart the unit with its drop-in. Around a controller run, remove the drop-in and reinstall it (step 10) |
 | `preview` cannot tell a wrong but well-formed owner input, and it checks `native_chain` and `specName` only for being non-empty | The comparison step of `mainnet/SETTLEMENT-V2-FILL.md`, read against the owner inputs, and the by-eye review of step 8.3 |
 | The claim daemon's state directory is not a prepared durable root | The `provider-claim-queue` preparation of step 13 |
-| A deposit's staging transfer reserved but not signed before its epoch rolled stayed refused on the deposit key ("st: retained deposit intent belongs to another immutable operation"), and the key's later sends stopped at it. Signing it would move stake, so the engine does not | Resolved: the server retires the unsigned reservation with a self-transfer at the same nonce, and starts no staging transfer or conversion within 150 blocks of the deposit's deadline. An expired deposit reserved but not signed no longer blocks the key either: server `ed453384d` to `adc257c06`, merged as `d43dd4af1`, which run 5's server head contains (VERSION2-HANDOFF.md, section 3, item 12) |
+| A deposit's staging transfer reserved but not signed before its epoch rolled stayed refused on the deposit key ("st: retained deposit intent belongs to another immutable operation"), and the key's later sends stopped at it. Signing it would move stake, so the engine does not | Resolved: the server retires the unsigned reservation with a self-transfer at the same nonce, and starts no staging transfer or conversion within 150 blocks of the deposit's deadline (server `6e098952b`, merged as `fa06458db`). An expired deposit reserved but not signed no longer blocks the key either: server `ed453384d` to `adc257c06`, merged as `d43dd4af1`, which run 5's server head contains (VERSION2-HANDOFF.md, section 3, item 12) |
 | An intent of a replaced deployment that holds an unsigned execution reservation blocks its key: its cancellation is refused while the reservation stands | Pre-existing; the expired-deposit fix does not cover it (VERSION2-HANDOFF.md, section 3, item 12) |
 | A validator downgraded below the launch's release after that release wrote its v2 request checkpoint refuses the record and fails closed | Never downgrade it below that release (section 6.1, row 7) |
 
@@ -2670,7 +2670,7 @@ Open owner decisions and work that the repositories leave open:
      deadline (server `d43dd4af1`; section 7);
    - the server's retirement of a deposit's staging transfer reserved but not
      signed before its epoch rolled, by a self-transfer at the same nonce
-     (section 7).
+     (server `6e098952b`, merged as `fa06458db`; section 7).
 9. **The open product issues** of VERSION2-HANDOFF.md, section 5: the proxy
    stall at a contract rollover, the speed-test echo that closes H1, and the
    server suite fixture's missing GeoLite2 database.

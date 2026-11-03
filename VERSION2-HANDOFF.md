@@ -150,7 +150,7 @@ and the key's later sends go out.
   reverts it (`DeadlineExpired`) before it moves any stake, and the revert
   frees the key (server `ed453384d` to `adc257c06`, merged as `d43dd4af1`).
   A deposit's staging transfer reserved but not signed before its epoch
-  rolled no longer blocks the key either (section 3, item 12). One case still
+  rolled no longer blocks the key either (section 3, item 12; server `6e098952b`, merged as `fa06458db`). One case still
   does: an intent of a replaced deployment that holds an unsigned execution
   reservation.
 
@@ -603,7 +603,7 @@ gate runs again.
       before its epoch rolled no longer blocks the key. The server retires
       the unsigned reservation with a self-transfer at the same nonce, and
       starts no staging transfer or conversion within 150 blocks of the
-      deposit's deadline. Before, it stayed refused ("st: retained deposit
+      deposit's deadline (server `6e098952b`, merged as `fa06458db`). Before, it stayed refused ("st: retained deposit
       intent belongs to another immutable operation"), and the key's later
       sends stopped at it;
     - pre-existing and adjacent: an intent of a replaced deployment that
