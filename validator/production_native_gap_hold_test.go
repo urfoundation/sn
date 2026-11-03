@@ -112,7 +112,6 @@ func TestProductionNativeGapHoldPace(t *testing.T) {
 		{"refused", nativeGapHoldTestRefused(), productionNativeGapHoldPolls},
 		{"plain refusal", errReleaseHeadEMANativeGap, productionNativeGapHoldPolls},
 		{"attempt failed first", nativeGapHoldTestRefused().attemptFailed(errors.New(`attempt upload response status is 403: "Validator reserved upload is unavailable or ambiguous."`)), 1},
-		{"drain", nativeGapHoldTestRefused().attemptFailed(errAttemptCutPending), 1},
 	} {
 		polls, waits := 0, 0
 		err := runReleaseProductionSteeringLoopWithWait(t.Context(), func() error {
@@ -179,9 +178,9 @@ func TestProductionNativeGapHoldLeavesRealFailuresHard(t *testing.T) {
 func TestProductionNativeGapHoldKeepsCancellation(t *testing.T) {
 	t.Parallel()
 	hold := nativeGapHoldTestRefused()
-	for _, cause := range []error{context.Canceled, context.DeadlineExceeded, errors.Join(context.Canceled, context.DeadlineExceeded)} {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded, errors.Join(context.Canceled, context.DeadlineExceeded), errAttemptCutPending, errAttemptCutSnapshotStale, errors.Join(errAttemptCutPending, errAttemptSettlementSnapshotStale)} {
 		if err := hold.attemptFailed(cause); err != cause {
-			t.Fatalf("attempt cancellation became a hold: %v", err)
+			t.Fatalf("%v became a hold: %v", cause, err)
 		}
 	}
 	var none *productionNativeGapHold
@@ -271,8 +270,24 @@ func TestProductionNativeGapHoldTellsTheOperator(t *testing.T) {
 	}
 }
 
-// An attempt that failed before head admission names its own causes, and its
-// drain reads as a wait; neither is the refusal's line.
+// A drain inside a hold keeps its own bound: past it each wait is a hard failure,
+// so a stuck cut, which refuses every new trail, still ends in a restart.
+func TestProductionNativeGapHoldKeepsTheDrainBound(t *testing.T) {
+	t.Parallel()
+	hold := nativeGapHoldTestRefused()
+	progress := productionCutWaitProgress()
+	polls := 0
+	err := runReleaseProductionSteeringLoopWithCutWait(t.Context(), func() error {
+		polls++
+		return hold.attemptFailed(errAttemptCutPending)
+	}, func() bool { return true }, progress, productionCutWaitClock(time.Minute), 5*time.Minute)
+	if !errors.Is(err, errAttemptCutPending) || polls <= releaseSteeringFailureLimit || polls > releaseSteeringFailureLimit+6 {
+		t.Fatalf("a stuck drain inside a hold never surfaced: %d polls: %v", polls, err)
+	}
+}
+
+// An attempt that failed before head admission names its own causes, not the
+// refusal's line, and spends no failures.
 func TestProductionNativeGapHoldNamesAnEarlierFailure(t *testing.T) {
 	output := &releaseDiagnosticCapture{written: make(chan struct{}, 8)}
 	ctx, owner, err := newReleaseDiagnostics(t.Context(), output, time.Now)
@@ -297,29 +312,12 @@ func TestProductionNativeGapHoldNamesAnEarlierFailure(t *testing.T) {
 	if progress.value.Steering.Outcome != "hard_error" {
 		t.Fatalf("an earlier failure stopped reading as one: %+v", progress.value.Steering)
 	}
-	drain := hold.attemptFailed(errAttemptCutPending)
-	polls = 0
-	err = runReleaseProductionSteeringLoopWithWait(ctx, func() error {
-		polls++
-		return drain
-	}, func() bool {
-		<-output.written
-		return false
-	}, progress)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if progress.value.Steering.Outcome != "read_wait" {
-		t.Fatalf("a drain read as a failure: %+v", progress.value.Steering)
-	}
 	if err := owner.close(); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"attempt upload response status is 403", "code=preparation_pending native_epoch=26075"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("missing %q in %q", want, text)
-		}
+	if !strings.Contains(text, "attempt upload response status is 403") {
+		t.Fatalf("the failure's cause is missing from %q", text)
 	}
 	if strings.Contains(text, "validator steering hold:") {
 		t.Fatalf("the refusal's line named an attempt that did not reach it: %q", text)
