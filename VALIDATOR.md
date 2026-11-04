@@ -358,6 +358,23 @@ Draw with a CSPRNG (`crypto/rand`). Let `n = |eligible(trail)|` at the draw; rec
 `1/n` (§7.3). Without replacement guarantees each trail exercises `M` *distinct*
 providers (path diversity) and lets a failure be attributed to a single provider.
 
+**Dead-hop probation (server, owner decision 2026-11-04).** A provider with no
+confirmation of at least 50 assignments over the trailing 24 h of its §7 rollup is
+on probation. The draw skips it, except once every 4 h (a probe, an ordinary
+assignment), so a provider that comes back can confirm again. Its first
+confirmation in the window ends probation, and so does a window with no assignment
+of it. From 2026-10-28 to 11-03, 68 of 296 providers confirmed none of their
+assignments and took 20.8% of them; each such hop ends its trail. A 24 h window
+leaves providers that are only down for a few hours alone: in that week a 6 h window
+would also have caught 13 providers that confirm 60–67% of their hops, a fleet down
+together for about 7 hours. Probation reads `a_Y` and `c_Y` and never writes them,
+and a skipped draw is not an assignment or a miss. With no confirmation, a
+provider's Wilson bound (§7.3), and with it its payout reliability, is 0 at any
+exposure, so for a provider with no confirmation in the payout epoch skipping it
+moves no reward. One that confirmed earlier in the epoch keeps the reliability of
+the assignments it actually got. `n` still counts providers on probation, as the v1
+server counts members without a token (§7.4). Server: `model/verify_dead_hop.go`.
+
 > **Anti-precomputation:** the ASSIGN for hop `k+1` is computed and returned **only
 > after** hop `k` is confirmed, and is bound to `server_nonce`. The validator
 > therefore cannot see, grind, or pre-position the path beyond the current hop.
