@@ -1454,7 +1454,7 @@ components:
       additionalProperties: false
       required: [kind, active, expected_revision, idempotency_key, reason_code, public_explanation, evidence_sha256]
       properties:
-        kind: {type: string, enum: [admission, evaluation, source_activation, reward_delivery, finalization], description: Finalization pauses only new seals and first elections in the exact environment/competition/season; intake and grading continue, and existing seals retain their authorized publication time.}
+        kind: {type: string, enum: [admission, evaluation, source_activation, reward_delivery, finalization], description: "Finalization pauses only new seals and first elections in the exact environment/competition/season; intake and grading continue, and existing seals retain their authorized publication time."}
         active: {type: boolean}
         expected_revision: {type: integer, minimum: 0}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
