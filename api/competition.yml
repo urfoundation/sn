@@ -675,6 +675,13 @@ paths:
         expected replacement is only a consistency check. Approving the current
         recipient creates a genuine review, not a second reward entitlement.
         Source-only deferral does not imply reward disqualification.
+        Every new review in every epoch requires production_benefit_addendum
+        with the exact published version/hash. Its omission remains readable
+        and accepted only for an exact historical idempotency replay, not a new
+        insert. NO_PRODUCTION_BENEFIT rejects reward/source eligibility under
+        workload_generalization without alleging fraud or malicious intent.
+        Missing production-path or causal evidence holds review; numerical gate
+        success alone does not prove useful production-client benefit.
       parameters:
         - {name: roundId, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -1135,11 +1142,70 @@ components:
         - contains: {type: object, required: [model, criterion], properties: {model: {const: gemma-4-26b-a4b}, criterion: {const: source_safety}}}
           minContains: 1
           maxContains: 1
+    CompetitionProductionBenefitAddendum:
+      type: object
+      additionalProperties: false
+      required: [version, sha256]
+      properties:
+        version: {type: string, const: production-benefit/1}
+        sha256: {type: string, const: 6e2246f2cdef9f8d4348da95578b8f8a1676ce7afc7b5dc747ca5ce5c774ce32}
+      description: Separately published production-client-benefit eligibility rule. It changes neither frozen scores/gates nor provider membership and does not reopen immutable approvals. Native checks authenticate policy identity, not the truth of causal claims.
     CompetitionIntegrityReviewRequest:
       type: object
       additionalProperties: false
       required: [idempotency_key, expected_revision, job_id, patch_sha256, base_source_lock_sha256, score_sha256, baseline_sha256, artifact_manifest_sha256, criteria_version, reward_disposition, source_disposition, reason_codes, public_explanation, withheld_evidence_explanation, private_evidence_sha256, findings]
       allOf:
+        - if:
+            anyOf:
+              - required: [reason_codes]
+                properties:
+                  reason_codes: {contains: {const: NO_PRODUCTION_BENEFIT}}
+              - required: [findings]
+                properties:
+                  findings:
+                    contains:
+                      required: [reason_code]
+                      properties: {reason_code: {const: NO_PRODUCTION_BENEFIT}}
+          then:
+            required: [production_benefit_addendum]
+            properties:
+              reward_disposition: {const: disqualified}
+              source_disposition: {const: rejected}
+              reason_codes: {contains: {const: NO_PRODUCTION_BENEFIT}}
+              findings:
+                contains:
+                  required: [criterion, disposition, reason_code]
+                  properties:
+                    criterion: {const: workload_generalization}
+                    disposition: {const: fail}
+                    reason_code: {const: NO_PRODUCTION_BENEFIT}
+                items:
+                  if:
+                    required: [reason_code]
+                    properties: {reason_code: {const: NO_PRODUCTION_BENEFIT}}
+                  then:
+                    properties:
+                      criterion: {const: workload_generalization}
+                      disposition: {const: fail}
+        - if:
+            required: [production_benefit_addendum]
+            anyOf:
+              - properties: {reward_disposition: {enum: [approved, restored]}}
+              - properties: {source_disposition: {const: approved}}
+          then:
+            properties:
+              findings:
+                contains:
+                  required: [criterion, disposition]
+                  properties:
+                    criterion: {const: workload_generalization}
+                    disposition: {const: pass}
+                items:
+                  if:
+                    required: [criterion]
+                    properties: {criterion: {const: workload_generalization}}
+                  then:
+                    properties: {disposition: {const: pass}}
         - if:
             required: [reviewer_model]
             properties:
@@ -1196,6 +1262,7 @@ components:
         baseline_sha256: {$ref: "#/components/schemas/Sha256"}
         artifact_manifest_sha256: {$ref: "#/components/schemas/Sha256"}
         criteria_version: {type: string, maxLength: 128}
+        production_benefit_addendum: {$ref: "#/components/schemas/CompetitionProductionBenefitAddendum"}
         reward_disposition: {type: string, enum: [approved, disqualified, restored, unchanged]}
         source_disposition: {type: string, enum: [approved, rejected, deferred, unchanged]}
         reason_codes: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
