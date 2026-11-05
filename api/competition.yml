@@ -783,6 +783,37 @@ paths:
         "409": {$ref: "#/components/responses/CompetitionConflict"}
         "503": {$ref: "#/components/responses/CompetitionUnavailable"}
 
+  /competition/v2/source-handoffs:
+    post:
+      operationId: CompetitionV2SourceHandoff
+      tags: [Competition operator]
+      summary: Record explicit operator approval or rejection of the selected product source
+      description: |
+        Requires the separately scoped source_handoff role. Automated source
+        publishers, reviewers, schedulers and legacy operators cannot use it.
+        This additional human gate binds the current election, reviewed patch
+        and selected product source lock, not the trusted instrument overlay.
+        An exact same-actor replay returns the original receipt; a stale revision
+        or changed current decision/review/source is a conflict. Approval does
+        not publish source, start intake, grant worker readiness, reset a job
+        clock or release payment. A no-winner carry cannot invent a winner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoffArgs"}
+      responses:
+        "200":
+          description: Append-only operator handoff receipt.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoff"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
   /competition/v2/holds:
     post:
       operationId: CompetitionV2Hold
@@ -838,7 +869,7 @@ components:
       description: |
         Opaque competition token. Legacy submitter/operator roles retain their
         original v1 authority. V2 scheduler, reviewer, settlement and
-        source_promoter are distinct roles scoped to environment, competition_id
+        source_promoter and source_handoff are distinct roles scoped to environment, competition_id
         and season_id. Legacy operators never inherit v2 privileges. Revoked
         credentials fail immediately on the next request.
 
@@ -1426,6 +1457,54 @@ components:
         settlement_receipts: {type: array, items: {$ref: "#/components/schemas/CompetitionSettlementReceipt"}}
         incidents: {type: array, items: {$ref: "#/components/schemas/CompetitionAutomationIncident"}}
         invalidated: {type: boolean}
+    CompetitionSourceOperatorHandoffArgs:
+      type: object
+      additionalProperties: false
+      required: [target_epoch, expected_revision, reward_decision_sha256, product_source_lock_sha256, disposition, idempotency_key, evidence_sha256]
+      description: Exact human decision on the currently elected and genuinely reviewed product source. Digests bind retained evidence but are not substitutes for authenticated operator authority.
+      properties:
+        target_epoch: {type: integer, minimum: 2, maximum: 6}
+        expected_revision: {type: integer, format: int64, minimum: 0, maximum: 9223372036854775806}
+        reward_decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        selected_job_id: {type: string, format: uuid}
+        patch_sha256: {$ref: "#/components/schemas/Sha256"}
+        review_id: {type: string, format: uuid}
+        review_decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        product_source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
+        disposition: {type: string, enum: [approve_promotion, reject_promotion, approve_no_winner_carry]}
+        idempotency_key: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+      allOf:
+        - if:
+            required: [disposition]
+            properties:
+              disposition: {enum: [approve_promotion, reject_promotion]}
+          then:
+            required: [selected_job_id, patch_sha256, review_id, review_decision_sha256]
+          else:
+            not:
+              anyOf:
+                - required: [selected_job_id]
+                - required: [patch_sha256]
+                - required: [review_id]
+                - required: [review_decision_sha256]
+
+    CompetitionSourceOperatorHandoff:
+      type: object
+      additionalProperties: false
+      required: [schema, kind, environment, competition_id, season_id, revision, actor_id, request, request_sha256, created_at]
+      properties:
+        schema: {type: integer, const: 1}
+        kind: {type: string, const: source-operator-handoff/v1}
+        environment: {type: string}
+        competition_id: {type: string}
+        season_id: {type: string}
+        revision: {type: integer, format: int64, minimum: 1}
+        actor_id: {type: string, description: Authenticated operator token identity, never the raw credential.}
+        request: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoffArgs"}
+        request_sha256: {$ref: "#/components/schemas/Sha256"}
+        created_at: {type: string, format: date-time}
+
     CompetitionSourceActivation:
       type: object
       required: [target_round_id]
@@ -1594,7 +1673,7 @@ components:
       type: object
       additionalProperties: false
       required: [intake_ready, grading_ready, publication_held]
-      description: Mutable infrastructure and durable-hold status; never an assertion that calibration or reviewer qualification passed. intake_ready means infrastructure eligible for admission, not that the submission window is open; clients must also check the round status and opens_at/closes_at.
+      description: Mutable infrastructure and durable-hold status; never an assertion that calibration or reviewer qualification passed. intake_ready means infrastructure eligible for admission, not that the submission window is open; clients must also check the round status and opens_at/closes_at. Explicit prospective intake-first epochs can admit queued submissions after real source/image/rules publication and API acknowledgment while grading_ready remains false. Candidate clocks remain unstarted until actual runtime acknowledgments, host admission and the immutable same-round R9 baseline are ready. publication_held remains true during this preparation; no readiness receipt or grading permission is fabricated.
       properties:
         intake_ready: {type: boolean}
         grading_ready: {type: boolean}
