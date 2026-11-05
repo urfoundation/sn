@@ -2405,11 +2405,13 @@ components:
 
     CompetitionWorkCoveragePolicy:
       type: object
-      required: [kind]
-      description: Complete independently approved seeded-crawl coverage contract, frozen verbatim in source intent, instrument approval/build receipt, round, baseline and score. Numeric tolerance fields belong to that explicitly approved version; this transport schema does not choose a tolerance. Equality is over the full object, not only kind. Absence preserves historical scorer/1 or scorer/2; JSON null is not absence.
+      required: [kind, minimum_page_coverage_ratio, minimum_byte_coverage_ratio]
+      description: Approved relative coverage floors, frozen verbatim in source intent, instrument approval/build receipt, round, baseline and score. Each dimension must retain at least 95% of its own baseline coverage; an 80% baseline requires 76%, not 75%. There is no upper-volume bound or absolute coverage minimum. Intentional traffic suppression remains prohibited regardless of these tolerances. Absence preserves historical scorer/1 or scorer/2; JSON null is not absence. Source validation alone does not establish runtime qualification.
       properties:
         kind: {type: string, const: seeded-crawl-coverage/v1}
-      additionalProperties: true
+        minimum_page_coverage_ratio: {type: number, const: 0.95}
+        minimum_byte_coverage_ratio: {type: number, const: 0.95}
+      additionalProperties: false
 
     CompetitionWorkCoverageSummary:
       type: object
