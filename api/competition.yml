@@ -1430,7 +1430,14 @@ components:
       type: object
       required: [target_round_id]
       description: Separately authorized reviewed source intent; public projection omits raw manifest and private Git refs.
+      allOf:
+        - if:
+            required: [work_coverage_policy]
+          then:
+            required: [g2_volume_policy]
       properties:
+        work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+        g2_volume_policy: {type: string, enum: [minimum-work/1]}
         staging:
           type: boolean
           default: false
@@ -1618,13 +1625,22 @@ components:
             required: [evaluation_policy]
             properties:
               evaluation_policy:
-                required: [g2_volume_policy]
+                required: [work_coverage_policy]
           then:
             properties:
-              scorer_version: {const: sim-latency-score/2}
+              scorer_version: {const: sim-latency-score/3}
           else:
-            properties:
-              scorer_version: {const: sim-latency-score/1}
+            if:
+              required: [evaluation_policy]
+              properties:
+                evaluation_policy:
+                  required: [g2_volume_policy]
+            then:
+              properties:
+                scorer_version: {const: sim-latency-score/2}
+            else:
+              properties:
+                scorer_version: {const: sim-latency-score/1}
       required:
         - competition_id
         - enabled
@@ -1649,8 +1665,8 @@ components:
           const: 1
         scorer_version:
           type: string
-          enum: [sim-latency-score/1, sim-latency-score/2]
-          description: Frozen implementation version. Omitted evaluation_policy.g2_volume_policy requires scorer/1; explicit minimum-work/1 requires scorer/2. The score document schema remains 1.
+          enum: [sim-latency-score/1, sim-latency-score/2, sim-latency-score/3]
+          description: Frozen implementation version. No G2 or coverage policy means scorer/1; minimum-work/1 alone means scorer/2; an explicit work_coverage_policy requires minimum-work/1 and scorer/3. The score document schema remains 1.
         base_sha:
           $ref: "#/components/schemas/GitSha"
         evaluator_image_digest:
@@ -1754,7 +1770,12 @@ components:
     CompetitionEvaluationPolicy:
       type: object
       additionalProperties: false
-      description: Frozen for each round. Current production epoch one and historical policies omit g2_volume_policy and retain both inclusive 95–105% workload bands. The approved production epoch-two transition and later rounds explicitly select minimum-work/1; no current round or historical result is rejudged.
+      description: Frozen for each round. Production epoch one and historical policies retain their original G1/G2 and scorer versions. A prospective independently approved work_coverage_policy adds G7 and scorer/3 to minimum-work/1 without changing raw p95, G1 or the G2 lower floors. No current round or historical result is rejudged.
+      allOf:
+        - if:
+            required: [work_coverage_policy]
+          then:
+            required: [g2_volume_policy]
       required:
         - hardware_id
         - host_qualification_sha256
@@ -1785,10 +1806,11 @@ components:
         - queue_limit
         - score_timeout_seconds
       properties:
+        work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
         g2_volume_policy:
           type: string
           enum: [minimum-work/1]
-          description: Optional versioned G2 contract. Omission means scorer/1 and inclusive 95–105% request-count and received-byte median bands. minimum-work/1 means scorer/2 and candidate median requests and received bytes each at least 95% of the corresponding baseline median, inclusively, with neither upper bound. All other gates, significance, takeover margin, R=9 and the 10800-second submission budget remain unchanged.
+          description: Optional versioned G2 contract. Omission means scorer/1 and inclusive 95–105% attempted-request-count and received-byte median bands. minimum-work/1 alone means scorer/2; with work_coverage_policy it means scorer/3. Either minimum-work instrument requires candidate median requests and received bytes each at least 95% of the corresponding baseline median, inclusively, with neither upper bound. A separate G7 requires the complete approved coverage policy; G2 does not itself authorize intentional traffic suppression.
         hardware_id:
           type: string
           minLength: 1
@@ -2236,7 +2258,7 @@ components:
           $ref: "#/components/schemas/ImageDigest"
           description: Exact main worker container content identity for the current or terminal attempt; control-plane provenance, not a scoring input.
         score:
-          description: Completed production scores are available privately to the owning credential before public release while state remains completed. The projection keeps the typed score/significance, only G1_success/G2_volume/G3_path_integrity/G4_matchmaking/G5_stability/G6_resources identifiers and reviewed numeric/bool gate details, plus known numeric baseline/candidate/replicate summaries. Unknown keys, all free-form diagnostic strings, evaluation IDs, findings, secrets and review decisions are omitted. Full published/staging documents retain their existing publication gates; private feedback is not a winner or approval.
+          description: Completed production scores are available privately to the owning credential before public release while state remains completed. The projection keeps typed score/significance, G1_success/G2_volume/G3_path_integrity/G4_matchmaking/G5_stability/G6_resources and, only for coverage rounds, G7_work_coverage. Gate details and baseline/candidate/replicate summaries retain reviewed numeric/bool fields. Coverage feedback also retains the validated public work_coverage_policy and fixed scorer/G2 version labels; nested gate policy and hidden work-plan identities are omitted. Unknown keys, free-form diagnostic strings, evaluation IDs, findings, secrets and review decisions are omitted. Private feedback is not a stored eligibility input, winner or approval.
           oneOf:
             - $ref: "#/components/schemas/CompetitionScoreResult"
             - type: "null"
@@ -2381,10 +2403,60 @@ components:
           type: boolean
           const: false
 
+    CompetitionWorkCoveragePolicy:
+      type: object
+      required: [kind]
+      description: Complete independently approved seeded-crawl coverage contract, frozen verbatim in source intent, instrument approval/build receipt, round, baseline and score. Numeric tolerance fields belong to that explicitly approved version; this transport schema does not choose a tolerance. Equality is over the full object, not only kind. Absence preserves historical scorer/1 or scorer/2; JSON null is not absence.
+      properties:
+        kind: {type: string, const: seeded-crawl-coverage/v1}
+      additionalProperties: true
+
+    CompetitionWorkCoverageSummary:
+      type: object
+      additionalProperties: false
+      required: [plan_sha256, offered_roots, expected_pages, expected_bytes, completed_pages, completed_bytes, page_coverage, byte_coverage]
+      description: Independent seeded offered-work census, not a denominator reconstructed from attempted requests. Missing or pruned descendants retain expected work and earn no completion credit. Public retained evidence includes the plan identity; private owner feedback omits this nested summary.
+      properties:
+        plan_sha256: {$ref: "#/components/schemas/Sha256"}
+        offered_roots: {type: integer, minimum: 1}
+        expected_pages: {type: integer, minimum: 1}
+        expected_bytes: {type: integer, minimum: 1}
+        completed_pages: {type: integer, minimum: 0}
+        completed_bytes: {type: integer, minimum: 0}
+        page_coverage: {type: number, minimum: 0, maximum: 1}
+        byte_coverage: {type: number, minimum: 0, maximum: 1}
+
     CompetitionScoreResult:
       type: object
       additionalProperties: false
       required: [score_schema, placeable, gates, significance]
+      allOf:
+        - if:
+            anyOf:
+              - required: [diagnostics]
+                properties:
+                  diagnostics:
+                    required: [work_coverage_policy]
+              - required: [diagnostics]
+                properties:
+                  diagnostics:
+                    required: [scorer_version]
+                    properties:
+                      scorer_version: {const: sim-latency-score/3}
+              - required: [gates]
+                properties:
+                  gates:
+                    required: [G7_work_coverage]
+          then:
+            required: [diagnostics]
+            properties:
+              diagnostics:
+                required: [work_coverage_policy, g2_volume_policy, scorer_version]
+                properties:
+                  scorer_version: {const: sim-latency-score/3}
+                  g2_volume_policy: {const: minimum-work/1}
+              gates:
+                required: [G7_work_coverage]
       properties:
         score_schema:
           type: integer
@@ -2405,13 +2477,47 @@ components:
           description: True only when correctness gates, the epoch margin, and the per-candidate shared-control significance test all pass; production additionally requires honesty review. Staging records this diagnostic but does not require it to name its best placeable winner.
         gates:
           type: object
+          properties:
+            G7_work_coverage:
+              allOf:
+                - $ref: "#/components/schemas/CompetitionGate"
+                - properties:
+                    details:
+                      properties:
+                        policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+                        baseline:
+                          oneOf:
+                            - $ref: "#/components/schemas/CompetitionWorkCoverageSummary"
+                            - type: "null"
+                        candidate:
+                          oneOf:
+                            - $ref: "#/components/schemas/CompetitionWorkCoverageSummary"
+                            - type: "null"
           additionalProperties:
             $ref: "#/components/schemas/CompetitionGate"
         significance:
           $ref: "#/components/schemas/CompetitionScoreSignificance"
         diagnostics:
           type: object
-          description: Private pre-publication owner feedback includes only reviewed numeric/bool fields and numeric baseline/candidate/replicate summaries. No free-form strings, artifact identities, evaluation IDs or findings. Publicly released documents retain their historical diagnostics contract.
+          description: Private owner feedback retains reviewed numeric/bool fields and, for coverage rounds, the validated public coverage policy and fixed scorer/G2 labels. It omits hidden plan identities, nested work summaries, free-form strings, artifact/evaluation IDs and findings. Publicly released evidence may additionally retain full work_coverage summaries.
+          properties:
+            work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+            g2_volume_policy: {type: string, enum: [minimum-work/1]}
+            scorer_version: {type: string, enum: [sim-latency-score/1, sim-latency-score/2, sim-latency-score/3]}
+            baseline:
+              type: object
+              properties:
+                work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
+            candidate:
+              type: object
+              properties:
+                work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
+            replicates:
+              type: array
+              items:
+                type: object
+                properties:
+                  work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
           additionalProperties: true
 
     CompetitionScoreSignificance:
