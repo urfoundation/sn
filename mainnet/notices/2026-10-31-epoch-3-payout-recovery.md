@@ -57,3 +57,21 @@ own schedule (close around November 6, 18:25–22:25; claims from around Novembe
 
 Nothing. Recovered payouts are claimed the same way as regular v2 payouts once
 their epoch's claims open.
+
+## Update, November 6
+
+- **Step 1 is done.** The recovery root was committed at the end of epoch 4,
+  at block 9,449,041
+  ([transaction](https://evm.taostats.io/tx/0x1731a110aba17ae0827a502896f84ba82b0e2d9e45792e8a380dd3f4f838662a)).
+  The funds reach the v2 vault after its 48-hour challenge period, around
+  **November 8, 18:25**.
+- **The signed upgrade of the v2 settlement contract is in place.**
+- **Changes to the v2 settlement contract now wait 72 hours** behind a public
+  timelock, which has owned the contract since November 6, 17:43
+  ([transaction](https://evm.taostats.io/tx/0x832da70ea60d269ee5a8542c3d42e56378f665f045481aae818e8ea3e4ccebea)).
+  Adding the recovered funds to epoch 5's payout is one such change. It will
+  be scheduled by **November 10, 18:25**, so that it takes effect before epoch
+  5 closes.
+- **The schedule is unchanged:** the funds are paid out with epoch 5, with
+  claims from around November 15. If the addition misses epoch 5, the payout
+  moves to epoch 6 and we will update this notice.
