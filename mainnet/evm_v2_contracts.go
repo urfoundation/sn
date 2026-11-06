@@ -161,7 +161,9 @@ func contractSettlement2Storage(initializer contractSettlement2Initializer, vers
 }
 
 // STSettlement2's public state through either address, plus OpenZeppelin's
-// interface version, a constant in both execution contexts.
+// interface version, a constant in both execution contexts. The owner is the
+// initializer's: readback reads the receipt's block, so a later transfer, as
+// the Safe's to the timelock on 2026-11-06, leaves it as reviewed.
 func contractSettlement2Getters(initializer contractSettlement2Initializer, version uint64) []contractGetter {
 	contract := stabi.NewSTSettlement2()
 	addresses, _ := abi.NewType("address[]", "", nil)

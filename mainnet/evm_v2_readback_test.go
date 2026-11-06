@@ -310,6 +310,36 @@ func TestEvmV2ReadbackRefusesEachMismatch(t *testing.T) {
 	}
 }
 
+// SV-8: completion reads back at the binding's canonical inclusion, so a later
+// transfer of STSettlement2's ownership, as the Safe's to the timelock on
+// 2026-11-06, leaves the deployment record as reviewed: the completed binding
+// still revalidates online with the initializer's owner, while the same
+// readback of the current state finds the new owner.
+func TestEvmV2ReadbackKeepsTheInitializerOwnerAfterATransfer(t *testing.T) {
+	f := newEvmV2ChainFixture(t)
+	for _, id := range evmV2ActionIds() {
+		f.completeV2Action(id)
+	}
+	link, err := selectEvmCreatePlan(t.Context(), f.plan, "vault2-link", f.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timelock := common.HexToAddress("0x5529dfe070f73A96C14b5aFCf4fb3DdeA6122fAc")
+	f.state.SetState(link.Proxy.Address, common.HexToHash(contractOwnableSlot), common.BytesToHash(timelock.Bytes()))
+	if result := f.finishV2Action("vault2-link"); !result.InstallationComplete || result.Settlement2Initializer == nil || result.Settlement2Initializer.Owner != evmV2TestOwner {
+		t.Fatalf("revalidation after the transfer: %+v", result)
+	}
+	client, err := newRpcClient(f.server.URL, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.httpClient.CloseIdleConnections)
+	owner := "0x" + hex.EncodeToString(stabi.NewSTSettlement2().PackOwner())
+	if err := (&evmOwnedChain{client: client}).readbackSettlement2(t.Context(), link, "pending"); err == nil || err.Error() != "initialized settlement2 proxy readback getter "+owner+" differs" {
+		t.Fatalf("readback of the current state: %v", err)
+	}
+}
+
 // SV-8: the binding's admission needs a registered, unbound vault2 and the
 // exact proxy and implementation at both the canonical head and pending state.
 // A coordinator that is already fixed prevents the send.

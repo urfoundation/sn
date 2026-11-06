@@ -819,6 +819,10 @@ the authenticated canonical inclusion:
   coordinator, vault2, the auditor count with each auditor from
   `keccak256(2)`, the quorum and version 1 in slots zero to four. The
   implementation's runtime and storage are read again at the same block.
+  Like every readback, it reads the receipt's block, so the expected owner
+  there stays the initializer's after a later `transferOwnership`, such as
+  the Safe's to the timelock on 2026-11-06 (see
+  [STSettlement2's timelock](#stsettlement2s-timelock)).
 - `vault2-link`: one `CoordinatorFixed` event, then the completion readback,
   all at the binding's canonical inclusion: vault2's runtime, getters and
   storage words with `coordinator` the proxy, `escrowRegistered` true and the
@@ -1034,9 +1038,11 @@ and `recordV1Sweep`. The upgrade goes out in two transactions:
    calls went.
 
 `upgrade-settlement2 review` builds both from the forge artifact of
-`STSettlement2PhaseC`. It neither signs nor sends. Every flag is required.
-Its reads are `eth_chainId` and `eth_blockNumber`, then `eth_call`,
-`eth_getCode` and `eth_getStorageAt`, all at that head:
+`STSettlement2PhaseC`. It neither signs nor sends. Every flag shown is
+required; the timelock's are optional (see
+[STSettlement2's timelock](#stsettlement2s-timelock)). Its reads are
+`eth_chainId` and `eth_blockNumber`, then `eth_call`, `eth_getCode` and
+`eth_getStorageAt`, all at that head:
 
 ```sh
 sn-mainnet upgrade-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
@@ -1058,7 +1064,8 @@ It refuses with exit 3:
 - a factory whose code is not the deterministic deployment proxy's;
 - code at the implementation's address that is not exactly the artifact's
   runtime, with `__self` holding that address;
-- an STSettlement2 owner other than the Safe;
+- an STSettlement2 owner other than the Safe, naming one that answers
+  `getMinDelay()` as a timelock to pass with `--timelock`;
 - a proxy without an implementation, or one already on the implementation;
 - a Safe that is not 1.4.1 with one owner at threshold one, no modules and
   no guard;
@@ -1132,3 +1139,85 @@ It then builds the Safe transaction and the owner's `execTransaction` as
 prints the facts it checked under `chain`.
 `mainnet/evm_v2_owner_call_test.go` (UP-4) records and assigns through the
 pinned Safe on the e2e chain.
+
+## STSettlement2's timelock
+
+Since 2026-11-06 an OpenZeppelin 5.6.1 `TimelockController` owns the
+STSettlement2 proxy. The Ledger deployer created it at
+`0x5529dfe070f73A96C14b5aFCf4fb3DdeA6122fAc` (block 9,448,589), and the
+Safe's `execTransaction` of `transferOwnership(timelock)` landed at block
+9,448,608. Its settings:
+
+- minimum delay 72 h (259,200 s), longer than vault2's 14,400-block
+  challenge window;
+- `PROPOSER_ROLE` and `CANCELLER_ROLE`: the Safe alone;
+- `EXECUTOR_ROLE`: the zero address, so anyone executes a ready call;
+- `DEFAULT_ADMIN_ROLE`: the timelock alone.
+
+So every owner call takes two steps: the Safe's `schedule`, then at least
+72 h later the timelock's `execute`. Both reviews take `--timelock ADDRESS`
+for this, with `--timelock-salt 0xSALT` (zero when omitted; the upgrade
+review's `--salt` stays the CREATE2 salt) and `--execute` for the second
+step. Every other flag and check is unchanged:
+
+```sh
+sn-mainnet owner-call-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --timelock "$SETTLEMENT2_TIMELOCK" \
+  --no-id 1 --epoch "$K" --function assignSurplus --amount "$AMOUNT_RAO"
+# once the operation is ready:
+sn-mainnet owner-call-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --timelock "$SETTLEMENT2_TIMELOCK" \
+  --no-id 1 --epoch "$K" --function assignSurplus --amount "$AMOUNT_RAO" --execute
+```
+
+With `--timelock`, review also refuses with exit 3:
+
+- an STSettlement2 owner other than that timelock;
+- runtime code whose keccak256 is not `0xe3a14af1…b880`, the mainnet
+  timelock's: sn/evm's build of the pinned OpenZeppelin 5.6.1 at `a03d119d`.
+  Its metadata hashes the absolute paths of the directory it was built in,
+  so `evm/test/V2SettlementTimelock.t.sol` (TL-1) pins the build's
+  executable bytes and, with the mainnet metadata, this hash;
+- a minimum delay under 72 h;
+- a Safe without `PROPOSER_ROLE` or `CANCELLER_ROLE`;
+- an executor that is neither the zero address nor the Safe;
+- a `hashOperation` that differs from the operation id review computes;
+- a schedule of an operation that is already waiting, ready or done (the
+  same call again needs another `--timelock-salt`), and an execute of one
+  that is not ready;
+- a call that fails as an `eth_call` from the timelock at the head, so a
+  schedule whose execution would revert is refused up front.
+
+The schedule step's `safe_transaction` is the Safe's call of
+`schedule(settlement2, 0, call, 0x0, salt, minDelay)` on the timelock,
+hashed, built and preflighted from the owner as before. With open execution,
+the execute step has no Safe transaction: any funded key sends
+`timelock.execute_transaction`, which review preflights as an `eth_call`. A
+timelock that only the Safe executes gets the Safe's `execTransaction` of
+the same call instead. The upgrade's preflights still wait for the
+implementation, except the execute step's.
+
+The result's schema is `urnetwork-mainnet-settlement-v2-upgrade-review-v2`
+or `…-owner-call-review-v2`. `settlement2.owner` is the timelock, and the
+`timelock` section has:
+
+- `address`, `code_hash` and `min_delay_seconds`;
+- `roles`, which of the Safe, the zero address and the timelock hold each
+  role (the contract keeps no member list), and `executor`, `open` or
+  `safe`;
+- `step`, `call` (the owner call), `predecessor` (zero), `salt`,
+  `operation_id` and `operation_state` (`unset`, `waiting`, `ready` or
+  `done`);
+- `earliest_execution` and `earliest_execution_unix`: for a schedule, the
+  head's time plus the delay (the schedule lands later, so the operation is
+  ready later still); for a scheduled operation, its `getTimestamp`;
+- `execute_transaction`: `to` (the timelock), `value_wei`, `data` and
+  `data_keccak256` of `execute(settlement2, 0, call, 0x0, salt)`;
+- `call_preflight`, the call run from the timelock.
+
+Its reads add `eth_getBlockByNumber` of the head, for its time.
+`mainnet/evm_v2_timelock_test.go` runs both steps on the e2e chain against
+the mainnet timelock's exact code: the sweep's record and assignment with
+open execution, executed by a stranger (UP-5); the upgrade through a
+timelock only the Safe executes (UP-6); and each refusal (UP-7).
+`register-operator-pool review` still preflights a direct Safe call.

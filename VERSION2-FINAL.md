@@ -216,7 +216,8 @@ week at 100k providers and after about 10.5 weeks at 1M.
 
 | Actor | Can | Cannot |
 | --- | --- | --- |
-| **Owner Safe** (1-of-1) | Set the auditor set; register pools; upgrade `STSettlement2`; pause and unpause v1 settlement, and with it v2 settlement | Finalize a root that is challenged, has an open demand, or is younger than the window; change a finalized root; stop claims through the contracts |
+| **Owner Safe** (1-of-1) | Set the auditor set; register pools; upgrade `STSettlement2`, each since 2026-11-06 only through the timelock below; pause and unpause v1 settlement, and with it v2 settlement | Finalize a root that is challenged, has an open demand, or is younger than the window; change a finalized root; stop claims through the contracts |
+| **Timelock** (OpenZeppelin `TimelockController`, `STSettlement2`'s owner since 2026-11-06) | Run an owner call the Safe scheduled at least 72 h earlier; anyone executes a ready call, and the Safe alone schedules and cancels (`mainnet/BOOTSTRAP-CONTRACTS.md`) | Run a call before its delay has passed, or one the Safe did not schedule |
 | **SN25 owner key** (`ur-owner`, a native multisig) | Disable stake transfers on SN25 (`sudo_set_toggle_transfer`). Every `transferStake` then fails `TransferDisallowed`, which freezes every v1 and v2 claim until transfers are enabled again. The chain's root holds the same switch and can also dissolve SN25 (§17) | Redirect a payment; change a root. The switch does not stop captures, which move stake without the transfer check |
 | **Guardian** | Pause v1, and with it v2, settlement (`evm/src/STCoordinator.sol:914-922`) | Unpause; anything else |
 | **Operator** (UR server: root signer, ledger publisher) | Close epochs; commit roots; answer demands | Finalize without a quorum of approvals |
@@ -709,7 +710,9 @@ The contract is `evm/src/STSettlement2.sol`, behind an `ERC1967Proxy`.
 
 **Reads from the v1 proxy**: operators (`operatorAt`), windows (`policyAt`),
 boundaries (`epochEndBlock`, `currentEpoch`), the v1 vault
-(`settlementVault`) and `paused`. The owner is the governance Safe.
+(`settlementVault`) and `paused`. The owner was the governance Safe until
+2026-11-06; since then it is a `TimelockController` with a 72 h delay, to
+which the Safe alone proposes (§4.1, `mainnet/BOOTSTRAP-CONTRACTS.md`).
 
 **State**:
 
@@ -1751,6 +1754,7 @@ forge coverage --ir-minimum --report lcov \
 | S-EV | Every event, with its exact fields |
 | S-SIZE | `STSettlement2`'s size and margin, from the release build |
 | SC-1 to SC-16 | The phase C upgrade, `STSettlement2PhaseC` (§16): `assignSurplus` (owner only; an unregistered pool; only the pool's next unfunded epoch, so a close that lands first refuses it; once per surplus; nothing without absorbed surplus), `recordV1Sweep` (owner only; a registered pool and a v2 epoch; exactly the committed single-leaf root with its artifact hash; once per pool), the upgrade from phase A (every slot and approval kept, writes only past the gap, initializers disabled, owner only, size) and the whole sweep from the v1 close to the next v2 snapshot (`evm/test/V2SettlementPhaseC.t.sol`) |
+| TL-1 to TL-6 | The owner as mainnet's `TimelockController` (since 2026-11-06): the build's executable bytes and, with the mainnet metadata, code hash are the mainnet timelock's; its delay and roles; the Safe can no longer upgrade, set auditors, make an owner call, take the ownership back, shorten the delay, grant a role or schedule below the delay; a scheduled call cannot run early, a stranger cannot cancel it and the Safe can; the carry's `assignSurplus` and a reviewed upgrade land after the delay, executed by anyone, once (`evm/test/V2SettlementTimelock.t.sol`) |
 
 ### 15.5 Invariants (I)
 
