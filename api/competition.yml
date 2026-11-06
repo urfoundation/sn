@@ -2221,6 +2221,34 @@ components:
         - api_image_digest
         - authorized_at
         - execution_timeout_seconds
+      oneOf:
+        - not: {required: [incident_class]}
+          properties:
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {enum: [artifact_archive_failed, evaluation_time_budget_exhausted]}
+        - required: [incident_class]
+          properties:
+            incident_class: {const: operator_authorized_heartbeat_budget_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
+        - required: [incident_class]
+          properties:
+            incident_class: {const: operator_authorized_backing_service_v1}
+            previous_failure:
+              properties:
+                kind: {const: submission}
+                code: {const: run_unstable}
+        - required: [incident_class]
+          properties:
+            incident_class: {const: operator_authorized_interrupted_budget_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
       properties:
         schema: {type: integer, const: 1}
         environment:
@@ -2245,15 +2273,13 @@ components:
         authorization_sha256: {$ref: "#/components/schemas/Sha256"}
         evidence_sha256: {$ref: "#/components/schemas/Sha256"}
         previous_terminal_sha256: {$ref: "#/components/schemas/Sha256"}
+        incident_class:
+          type: string
+          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1]
+          description: Optional explicit operator incident exception. Older archive recoveries omit it. A backing-service exception retains the original submission/run_unstable failure. An interrupted-budget exception binds separately retained operator-stop evidence and real claim/terminal history, not a fabricated heartbeat diagnosis. No exception reclassifies the old result or makes all unstable or expired runs eligible.
         previous_failure:
-          allOf:
-            - $ref: "#/components/schemas/CompetitionEvaluationFailure"
-            - type: object
-              properties:
-                kind: {const: infrastructure}
-                code:
-                  enum: [artifact_archive_failed, evaluation_time_budget_exhausted]
-          description: Exact original message-free failure bound by backend-verified incident authority. An infrastructure code alone does not prove eligibility or authorize another evaluation.
+          $ref: "#/components/schemas/CompetitionEvaluationFailure"
+          description: Exact original message-free failure, constrained by incident_class above and bound by backend-verified operator authority. Neither a terminal code nor candidate-produced log content alone proves eligibility or authorizes another evaluation.
         runtime_qualification_sha256: {$ref: "#/components/schemas/Sha256"}
         fixed_source_commit:
           type: string
