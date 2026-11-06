@@ -13,7 +13,8 @@
 // identically; and the owner's execTransaction. Once the implementation
 // exists, review requires its exact code and preflights the owner's
 // execTransaction as an eth_call. It neither signs nor sends, and every read is
-// pinned to one head block.
+// pinned to one head block. Since 2026-11-06 a timelock owns the proxy; with
+// --timelock, review schedules the same call through it (evm_v2_timelock.go).
 package main
 
 import (
@@ -207,21 +208,24 @@ func upgradeOwnerSignature(owner common.Address) []byte {
 // One upgrade review request.
 type settlement2Upgrade struct {
 	settlement common.Address
-	safe       common.Address
+	governance settlement2Governance
 	salt       common.Hash
 	artifact   upgradeArtifact
 }
 
-// The review's result. Every amount is a decimal string; data is hex.
+// The review's result. Every amount is a decimal string; data is hex. Only a
+// review in timelock mode has the timelock section, and the execute step of an
+// open executor has no Safe transaction.
 type settlement2UpgradeReview struct {
 	Schema         string                      `json:"schema"`
 	ChainId        uint64                      `json:"chain_id"`
 	HeadBlock      uint64                      `json:"head_block"`
 	Implementation settlement2UpgradeCreation  `json:"implementation"`
 	Settlement2    settlement2UpgradeProxy     `json:"settlement2"`
-	Safe           settlement2UpgradeSafe      `json:"safe"`
-	SafeTx         settlement2UpgradeSafeTx    `json:"safe_transaction"`
-	OwnerTx        settlement2UpgradeOwnerTx   `json:"owner_transaction"`
+	Timelock       *settlement2UpgradeTimelock `json:"timelock,omitempty"`
+	Safe           *settlement2UpgradeSafe     `json:"safe,omitempty"`
+	SafeTx         *settlement2UpgradeSafeTx   `json:"safe_transaction,omitempty"`
+	OwnerTx        *settlement2UpgradeOwnerTx  `json:"owner_transaction,omitempty"`
 	Preflight      settlement2UpgradePreflight `json:"preflight"`
 }
 
@@ -294,8 +298,9 @@ type settlement2UpgradePreflight struct {
 // wrong, and preflights the owner's execTransaction once the implementation
 // exists.
 func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	const usage = "usage: upgrade-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --artifact FORGE-ARTIFACT.json --salt 0xSALT [--timelock ADDRESS [--timelock-salt 0xSALT] [--execute]]"
 	if len(args) == 0 || args[0] != "review" {
-		fmt.Fprintln(stderr, "usage: upgrade-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --artifact FORGE-ARTIFACT.json --salt 0xSALT")
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	flags := flag.NewFlagSet("upgrade-settlement2 review", flag.ContinueOnError)
@@ -303,20 +308,24 @@ func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, st
 	var settlement, safe, artifactPath, salt string
 	rpcUrl := flags.String("rpc", "", "explicit owned HTTP(S) EVM JSON-RPC URL")
 	flags.StringVar(&settlement, "settlement2", "", "the STSettlement2 proxy")
-	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2")
+	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2 or proposes to the timelock that does")
 	flags.StringVar(&artifactPath, "artifact", "", "the forge artifact of STSettlement2PhaseC (evm/out/STSettlement2PhaseC.sol/STSettlement2PhaseC.json)")
 	flags.StringVar(&salt, "salt", "", "the CREATE2 salt: 0x and 32 bytes of hex")
+	timelocked := settlement2TimelockFlags(flags)
 	complete := flags.Parse(args[1:]) == nil && flags.NArg() == 0
 	set := map[string]bool{}
 	flags.Visit(func(given *flag.Flag) { set[given.Name] = true })
-	flags.VisitAll(func(defined *flag.Flag) { complete = complete && set[defined.Name] })
+	for _, required := range []string{"rpc", "settlement2", "safe", "artifact", "salt"} {
+		complete = complete && set[required]
+	}
 	var upgrade settlement2Upgrade
 	var settlementOk, safeOk bool
 	upgrade.settlement, settlementOk = poolAddress(settlement)
-	upgrade.safe, safeOk = poolAddress(safe)
+	upgrade.governance.safe, safeOk = poolAddress(safe)
 	upgrade.salt = common.HexToHash(salt)
-	if !complete || !settlementOk || !safeOk || !validHash(salt) {
-		fmt.Fprintln(stderr, "upgrade-settlement2 review requires every flag: nonzero 0x addresses, an artifact path and a 0x 32-byte salt")
+	if !complete || !settlementOk || !safeOk || !validHash(salt) || !timelocked(set, &upgrade.governance) {
+		fmt.Fprintln(stderr, "upgrade-settlement2 review requires --rpc, --settlement2, --safe, --artifact and --salt: nonzero 0x addresses, an artifact path and a 0x 32-byte salt; --timelock-salt (0x and 32 bytes) and --execute only with --timelock, another nonzero 0x address")
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	raw, err := os.ReadFile(artifactPath)
@@ -350,7 +359,7 @@ func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, st
 // The upgrade review reads only these methods; it cannot send.
 func (self *rpcClient) callUpgradeRead(ctx context.Context, method string, params []any, result any) error {
 	switch method {
-	case "eth_chainId", "eth_blockNumber", "eth_call", "eth_getCode", "eth_getStorageAt", "eth_getLogs":
+	case "eth_chainId", "eth_blockNumber", "eth_getBlockByNumber", "eth_call", "eth_getCode", "eth_getStorageAt", "eth_getLogs":
 		return self.callAdmittedRead(ctx, method, params, result, false, maxRpcReplyBytes)
 	}
 	return errors.New("method is outside the settlement2 upgrade read profile")
@@ -446,9 +455,11 @@ func openUpgradeChain(ctx context.Context, client *rpcClient) (*upgradeChain, ui
 	return &upgradeChain{client: client, head: hexutil.EncodeUint64(uint64(head))}, uint64(head), nil
 }
 
-// readSettlement2Proxy requires the Safe to own the proxy and returns the
-// proxy's current implementation, which must exist.
-func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement, safe common.Address) (common.Address, error) {
+// readSettlement2Proxy requires the Safe, or with --timelock the timelock, to
+// own the proxy and returns the proxy's current implementation, which must
+// exist. Another owner that answers getMinDelay() is named as a timelock to
+// review through.
+func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement common.Address, governance settlement2Governance) (common.Address, error) {
 	settlementAbi := stabi.NewSTSettlement2()
 	ownerOutput, err := chain.call(ctx, nil, settlement, settlementAbi.PackOwner())
 	if err != nil {
@@ -458,7 +469,13 @@ func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement, 
 	if err != nil {
 		return common.Address{}, upgradeRefusal(fmt.Sprintf("owner() of %s answered 0x%x", settlement.Hex(), ownerOutput))
 	}
-	if owner != safe {
+	if owner != governance.owner() {
+		switch {
+		case governance.timelocked():
+			return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the timelock %s", owner.Hex(), governance.timelock.Hex()))
+		case settlement2LooksLikeTimelock(ctx, chain, owner):
+			return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe; it answers getMinDelay() as a TimelockController does: review the call through it with --timelock %s", owner.Hex(), owner.Hex()))
+		}
 		return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe", owner.Hex()))
 	}
 	slot, err := chain.word(ctx, settlement, common.HexToHash(contractImplementationSlot))
@@ -593,38 +610,16 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 	}
 	createData := append(upgrade.salt.Bytes(), upgrade.artifact.creation...)
 
-	// The proxy: owned by the Safe, not yet on the implementation.
-	current, err := readSettlement2Proxy(ctx, chain, upgrade.settlement, upgrade.safe)
+	// The proxy: owned by the Safe or the timelock, not yet on the
+	// implementation.
+	current, err := readSettlement2Proxy(ctx, chain, upgrade.settlement, upgrade.governance)
 	if err != nil {
 		return result, err
 	}
 	if current == implementation {
 		return result, upgradeRefusal("the proxy already runs the phase C implementation")
 	}
-	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, upgrade.safe)
-	if err != nil {
-		return result, err
-	}
-
-	// The Safe transaction: a call of upgradeToAndCall(implementation, 0x) on
-	// the proxy, at the Safe's nonce, with no refund.
-	upgradeData := stabi.NewSTSettlement2().PackUpgradeToAndCall(implementation, []byte{})
-	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, upgrade.safe, owner, nonce, upgrade.settlement, upgradeData,
-		"upgradeToAndCall(address,bytes)", map[string]string{"newImplementation": implementation.Hex(), "data": "0x"})
-	if err != nil {
-		return result, err
-	}
-
-	// Once the implementation exists, the owner's execTransaction must succeed.
-	preflight := settlement2UpgradePreflight{Result: "not run: the implementation does not exist yet; create it, then review again before signing"}
-	if len(created) != 0 {
-		if err := preflightOwnerCall(ctx, chain, owner, upgrade.safe, execData); err != nil {
-			return result, err
-		}
-		preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
-	}
-
-	result = settlement2UpgradeReview{
+	review := settlement2UpgradeReview{
 		Schema:    settlement2UpgradeReviewSchema,
 		ChainId:   mainnetEvmChainId,
 		HeadBlock: head,
@@ -634,11 +629,49 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 			RuntimeBytes: len(expected), RuntimeCodeHash: crypto.Keccak256Hash(expected).Hex(), Created: len(created) != 0,
 			CreateTo: upgradeCreate2Factory.Hex(), CreateValueWei: "0", CreateData: hexutil.Encode(createData), CreateDataKeccak: crypto.Keccak256Hash(createData).Hex(),
 		},
-		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: upgrade.safe.Hex(), CurrentImplementation: current.Hex()},
-		Safe:        safe,
-		SafeTx:      safeTx,
-		OwnerTx:     ownerTx,
-		Preflight:   preflight,
+		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: upgrade.governance.owner().Hex(), CurrentImplementation: current.Hex()},
 	}
-	return result, ctx.Err()
+
+	// The owner call: upgradeToAndCall(implementation, 0x) on the proxy.
+	upgradeData := stabi.NewSTSettlement2().PackUpgradeToAndCall(implementation, []byte{})
+	function, args := "upgradeToAndCall(address,bytes)", map[string]string{"newImplementation": implementation.Hex(), "data": "0x"}
+	notCreated := "not run: the implementation does not exist yet; create it, then review again before signing"
+
+	// Through the timelock, the Safe schedules the call. Its preflights wait
+	// for the implementation, except the execute step's, which then refuse.
+	if upgrade.governance.timelocked() {
+		call := settlement2TimelockCall{Target: upgrade.settlement.Hex(), ValueWei: "0", Data: hexutil.Encode(upgradeData), Function: function, Args: args}
+		timelocked, err := reviewSettlement2Timelock(ctx, chain, upgrade.governance, upgrade.settlement, call, upgradeData, len(created) != 0 || upgrade.governance.execute)
+		if err != nil {
+			return result, err
+		}
+		if !timelocked.preflight.Ran {
+			timelocked.preflight.Result, timelocked.timelock.CallPreflight.Result = notCreated, notCreated
+		}
+		review.Schema, review.Timelock, review.Preflight = settlement2UpgradeTimelockReviewSchema, &timelocked.timelock, timelocked.preflight
+		review.Safe, review.SafeTx, review.OwnerTx = timelocked.safe, timelocked.safeTx, timelocked.ownerTx
+		return review, ctx.Err()
+	}
+
+	// The Safe transaction: the call on the proxy, at the Safe's nonce, with
+	// no refund.
+	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, upgrade.governance.safe)
+	if err != nil {
+		return result, err
+	}
+	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, upgrade.governance.safe, owner, nonce, upgrade.settlement, upgradeData, function, args)
+	if err != nil {
+		return result, err
+	}
+
+	// Once the implementation exists, the owner's execTransaction must succeed.
+	review.Preflight = settlement2UpgradePreflight{Result: notCreated}
+	if len(created) != 0 {
+		if err := preflightOwnerCall(ctx, chain, owner, upgrade.governance.safe, execData); err != nil {
+			return result, err
+		}
+		review.Preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
+	}
+	review.Safe, review.SafeTx, review.OwnerTx = &safe, &safeTx, &ownerTx
+	return review, ctx.Err()
 }

@@ -110,9 +110,11 @@ func e2eCatalogArtifact(t testing.TB, name string) *e2eArtifact {
 }
 
 // e2eForgeSources are the contracts the suite reads from a Foundry build of
-// sn/evm: the phase C coordinator upgrade.
+// sn/evm: the phase C coordinator upgrade, and the pinned OpenZeppelin
+// TimelockController that owns STSettlement2 on mainnet since 2026-11-06.
 var e2eForgeSources = []struct{ source, name string }{
 	{"src/STSettlement2PhaseC.sol", "STSettlement2PhaseC"},
+	{"lib/openzeppelin-contracts/contracts/governance/TimelockController.sol", "TimelockController"},
 }
 
 // e2eForgeBuild builds those sources once per test binary in a private

@@ -116,22 +116,22 @@ func (self *upgradeTestChain) upgrade(t *testing.T) common.Address {
 }
 
 // review runs the command over the chain's inputs, each flag named in changes
-// replaced by the value after it.
+// replaced by the value after it, or added when it is not one of them.
 func (self *upgradeTestChain) review(changes ...string) (settlement2UpgradeReview, int, string) {
 	self.t.Helper()
 	inputs := [][2]string{{"rpc", self.chain.server.URL}, {"settlement2", self.settlement.Hex()}, {"safe", self.safe.Hex()},
 		{"artifact", self.artifact}, {"salt", common.Hash{}.Hex()}}
 	for i := 0; i+1 < len(changes); i += 2 {
-		for k := range inputs {
-			if inputs[k][0] == changes[i] {
-				inputs[k][1] = changes[i+1]
-			}
+		if k := slices.IndexFunc(inputs, func(input [2]string) bool { return input[0] == changes[i] }); k >= 0 {
+			inputs[k][1] = changes[i+1]
+		} else {
+			inputs = append(inputs, [2]string{changes[i], changes[i+1]})
 		}
 	}
 	args := []string{"review"}
 	for _, input := range inputs {
 		if input[1] != "" {
-			args = append(args, "--"+input[0], input[1])
+			args = append(args, "--"+input[0]+"="+input[1])
 		}
 	}
 	var stdout, stderr bytes.Buffer
