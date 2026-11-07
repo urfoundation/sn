@@ -338,7 +338,7 @@ func (self buildConfig) validate() error {
 	if err != nil || relative == "." || filepath.IsLocal(relative) {
 		return errors.New("build output must be outside the source workspace")
 	}
-	wanted := map[string]string{"sn": "sn", "server": "server", "proxy": "proxy", "glog": "glog", "goidenticons": "goidenticons", "userwireguard": "userwireguard", "warp": "warp", "forge-std": "sn/evm/lib/forge-std", "openzeppelin-contracts": "sn/evm/lib/openzeppelin-contracts", "openzeppelin-contracts-upgradeable": "sn/evm/lib/openzeppelin-contracts-upgradeable"}
+	wanted := map[string]string{"sn": "sn", "server": "server", "proxy": "proxy", "glog": "glog", "goidenticons": "goidenticons", "sidecar": "sidecar", "userwireguard": "userwireguard", "warp": "warp", "forge-std": "sn/evm/lib/forge-std", "openzeppelin-contracts": "sn/evm/lib/openzeppelin-contracts", "openzeppelin-contracts-upgradeable": "sn/evm/lib/openzeppelin-contracts-upgradeable"}
 	if self.dependencyMode() == "local" {
 		for _, name := range []string{"connect", "sdk", "gvisor"} {
 			wanted[name] = name

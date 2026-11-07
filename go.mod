@@ -172,6 +172,8 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/goidenticons v0.0.0 // indirect
 	github.com/urnetwork/proxy v0.0.0 // indirect
+	github.com/urnetwork/sidecar v0.0.0 // indirect
+	github.com/urnetwork/sidecar/smtpproof v0.0.0 // indirect
 	github.com/urnetwork/userwireguard v0.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
@@ -205,6 +207,11 @@ require (
 replace github.com/urnetwork/connect => ../connect
 
 replace github.com/urnetwork/sdk => ../sdk
+
+// The SDK and Server require these; dependency replaces are not inherited.
+replace github.com/urnetwork/sidecar => ../sidecar
+
+replace github.com/urnetwork/sidecar/smtpproof => ../sidecar/smtpproof
 
 // A dependency's replaces are ignored, so select the sibling SCTP fork here too.
 replace github.com/pion/sctp => ../connect/sctp

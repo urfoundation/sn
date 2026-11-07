@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ import (
 // census repositories.
 func buildFixtureConfig(mode string) buildConfig {
 	config := buildConfig{Schema: buildSchema, CandidateId: "synthetic", Version: "synthetic", SourceDateEpoch: 1, Workspace: "/synthetic/workspace", Output: "/synthetic/output", DependencyMode: mode}
-	names := []string{"sn", "server", "proxy", "glog", "goidenticons", "userwireguard", "warp"}
+	names := []string{"sn", "server", "proxy", "glog", "goidenticons", "sidecar", "userwireguard", "warp"}
 	if mode == "local" {
 		names = append(names, "connect", "sdk", "gvisor")
 	}
@@ -87,6 +88,48 @@ func TestReleaseBuildDependencyModeSelectsItsCensus(t *testing.T) {
 			if err := config.validate(); err == nil {
 				t.Errorf("local mode accepted a %s %s census repository", change, name)
 			}
+		}
+	}
+}
+
+// SN and server replace sidecar and its nested smtpproof module with the sibling
+// in both modes, so a config that leaves the checkout out of its census is refused
+// before the build, and both modules are owned by the one census entry.
+func TestReleaseBuildCensusHoldsSidecarInBothModes(t *testing.T) {
+	for _, mode := range []string{"pinned", "local"} {
+		config := buildFixtureConfig(mode)
+		index := slices.IndexFunc(config.Repositories, func(repo repositoryPin) bool { return repo.Name == "sidecar" })
+		if index < 0 {
+			t.Fatalf("%s census fixture holds no sidecar repository", mode)
+		}
+		config.Repositories = slices.Delete(config.Repositories, index, index+1)
+		if err := config.validate(); err == nil {
+			t.Errorf("%s mode accepted a census without sidecar", mode)
+		}
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	config := buildConfig{Workspace: workspace, Output: t.TempDir(), Git: toolPin{Path: git}, Repositories: []repositoryPin{{Name: "sidecar", Path: "sidecar"}}}
+	root := filepath.Join(workspace, "sidecar")
+	if err := os.MkdirAll(filepath.Join(root, "smtpproof"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, module := range []string{"go.mod", "smtpproof/go.mod"} {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(module)), []byte("module modules.example/"+filepath.Dir(module)+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "--", "go.mod", "smtpproof/go.mod"}} {
+		if _, err := buildQuery(t.Context(), root, buildEnvironment(config.Output), git, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{root, filepath.Join(root, "smtpproof")} {
+		if owner, err := buildModuleRepository(t.Context(), config, directory); err != nil || owner.Name != "sidecar" {
+			t.Fatalf("%s is not owned by the sidecar census entry: %+v, %v", directory, owner, err)
 		}
 	}
 }

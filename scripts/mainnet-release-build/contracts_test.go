@@ -182,7 +182,7 @@ func TestReleaseBuildFreshCaptureRequiresHistoricalExport(t *testing.T) {
 
 func TestReleaseBuildCatalogueModeIsExplicit(t *testing.T) {
 	config := buildConfig{Schema: buildSchema, CandidateId: "synthetic-candidate", Version: "synthetic-v1", SourceDateEpoch: 1, Workspace: "/synthetic/source", Output: "/synthetic/output"}
-	for _, name := range []string{"sn", "server", "proxy", "glog", "goidenticons", "userwireguard", "warp", "forge-std", "openzeppelin-contracts", "openzeppelin-contracts-upgradeable"} {
+	for _, name := range []string{"sn", "server", "proxy", "glog", "goidenticons", "sidecar", "userwireguard", "warp", "forge-std", "openzeppelin-contracts", "openzeppelin-contracts-upgradeable"} {
 		path := name
 		if strings.HasPrefix(name, "openzeppelin-") || name == "forge-std" {
 			path = "sn/evm/lib/" + name

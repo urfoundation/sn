@@ -73,6 +73,14 @@ func TestClientauthSourceGraphSelectsSdkSiblingOrPin(t *testing.T) {
 	requireSiblingOrPin(t, "clientauth SDK", "github.com/urnetwork/sdk", "sdk", "github.com/urnetwork/sdk", "v0.0.0-20261001021058-5d37be3876e5")
 }
 
+// Go does not inherit a dependency's replaces, so SN repeats the sidecar and
+// smtpproof ones that SDK and server declare. Both stay sibling checkouts in
+// either build mode: the build census binds them, and neither is pinned.
+func TestSidecarSourceGraphSelectsItsSiblingCheckouts(t *testing.T) {
+	requireSiblingOrPin(t, "sidecar", "github.com/urnetwork/sidecar", "sidecar", "", "")
+	requireSiblingOrPin(t, "smtpproof", "github.com/urnetwork/sidecar/smtpproof", "sidecar/smtpproof", "", "")
+}
+
 // Redirect ownership and exhaustion causes require the matching Connect
 // source: the Connect sibling, or the reviewed Connect pin.
 func TestClientauthSourceGraphSelectsConnectSiblingOrPin(t *testing.T) {

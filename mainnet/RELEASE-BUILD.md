@@ -46,9 +46,11 @@ The config schema is `urnetwork-mainnet-release-build-v1`. Required fields are
 the `go`, `forge`, `solc` and `git` tool objects (`path`, `sha256`), and
 `repositories`. Each repository object supplies `name`, workspace-relative
 `path`, full Git `commit` and `tree`. The exact repository census is SN, server,
-proxy, glog, goidenticons, userwireguard, warp, and the three Solidity libraries
-forge-std, openzeppelin-contracts and openzeppelin-contracts-upgradeable. Local
-dependency mode adds connect, sdk and gvisor. The code repositories use their
+proxy, glog, goidenticons, sidecar, userwireguard, warp, and the three Solidity
+libraries forge-std, openzeppelin-contracts and openzeppelin-contracts-upgradeable.
+Sidecar is there because SN and server replace `github.com/urnetwork/sidecar` and
+its `smtpproof` module with that sibling in both modes. Local dependency mode adds
+connect, sdk and gvisor. The code repositories use their
 repository name as path; libraries use
 `sn/evm/lib/<name>`. Tool paths must identify real executable files, not symlinks.
 The caller must provision reviewed module/compiler dependencies before the
