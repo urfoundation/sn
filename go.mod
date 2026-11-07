@@ -246,3 +246,9 @@ replace github.com/centrifuge/go-substrate-rpc-client/v4 => ./third_party/go-sub
 replace gopkg.in/natefinch/npipe.v2 => ./third_party/npipe
 
 replace gvisor.dev/gvisor => ../gvisor
+
+// gnark's go.mod names this tool, and nothing here builds it. Its module cannot be
+// fetched, from the proxy or its origin, so go list -m all could not load the complete
+// graph. A dependency's exclude does not reach this module, so each main module that
+// reaches gnark repeats this one.
+exclude github.com/consensys/gnark-solidity-checker v0.2.0
