@@ -187,20 +187,6 @@ type v2Account struct {
 	PendingCumulative *string `json:"pending_cumulative"`
 }
 
-// v2Get opens the body of a 200 answer to GET u. The request is built
-// from the parsed URL, which leaves nothing to refuse.
-func v2Get(ctx context.Context, u *url.URL) (io.ReadCloser, error) {
-	response, err := v2HTTP.Do((&http.Request{Method: http.MethodGet, URL: u, Header: http.Header{}}).WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return nil, fmt.Errorf("GET %s: %s", u, response.Status)
-	}
-	return response.Body, nil
-}
-
 // fetchV2Accounts reads the coldkey's accounts from GET /sn/ledger/account,
 // within the time of a chain call.
 func fetchV2Accounts(ctx context.Context, api *url.URL, coldkey [32]byte) ([]v2Account, error) {
