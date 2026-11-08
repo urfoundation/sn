@@ -47,7 +47,7 @@ unset URNETWORK_NATIVE_CAPTURE_ENGINE URNETWORK_NATIVE_EXECUTION_ENGINE URNETWOR
 
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)
+release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config)
 source "$sn_repo/scripts/test-storage.sh"
 sn_test_storage_init
 source "$sn_repo/scripts/release-gate-jobs.sh"

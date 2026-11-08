@@ -398,7 +398,7 @@ func TestReleaseSourceFreezeLocalModeKeepsModuleChecksWithoutProvenance(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if explicit, _, err := freeze("--dependency-mode", "pinned"); err != nil || explicit != pinned || len(strings.Split(strings.TrimSpace(pinned), "\n")) != 13 {
+	if explicit, _, err := freeze("--dependency-mode", "pinned"); err != nil || explicit != pinned || len(strings.Split(strings.TrimSpace(pinned), "\n")) != 14 {
 		t.Fatalf("explicit pinned mode differs from the default: %v\n%s\n%s", err, explicit, pinned)
 	}
 	if err := os.WriteFile(filepath.Join(workspace, "server", "README.md"), []byte("working change\n"), 0o600); err != nil {

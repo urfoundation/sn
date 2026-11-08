@@ -765,7 +765,7 @@ first exist.
   anything runs (`scripts/test-release-1.0-local.sh`:16-24):
   - the source freeze's provenance checks: clean, origin, upstream, fetch and
     at-origin at the start, and the final snapshot with its comparison
-    (`scripts/check-release-source-freeze.sh`:203-209,242-247);
+    (`scripts/check-release-source-freeze.sh`:216-222,255-260);
   - `TestReleaseLockMatchesCheckout`, by name in every job that would run
     it, and as the final fence
     (`scripts/test-release-1.0-local.sh`:174-184,1182-1191). So the release
@@ -785,7 +785,7 @@ first exist.
   printed skips and the named tests to this list (:3-5).
 - **It never touches a vault.** The source freeze and patch hygiene skip the
   vault checkout, its Git metadata included
-  (`scripts/check-release-source-freeze.sh`:132-145;
+  (`scripts/check-release-source-freeze.sh`:145-158;
   `scripts/test-release-1.0-local.sh`:1172-1180), and no test that would
   read it runs (above). The two named skips reach every job since sn
   `v2/gate-mainnet-shards` merged (`a47111d6`). Before that,
@@ -798,14 +798,14 @@ first exist.
   its reason (`scripts/test-release-1.0-local.sh`:16-24). Then "source
   freeze: local mode checks the module inventory and tidiness of the working
   checkouts, not their provenance"
-  (`scripts/check-release-source-freeze.sh`:208), and "[release-1.0] runtime
+  (`scripts/check-release-source-freeze.sh`:221), and "[release-1.0] runtime
   source and metadata artifact attestations skipped (local mode)" and
   "[release-1.0] final release-lock and source-freeze checkouts skipped
   (local mode)" (`scripts/test-release-1.0-local.sh`:85,1183).
 - **The workspace:** sn, server, connect, sdk, glog, goidenticons, proxy,
-  userwireguard, warp, gvisor, xops and config, each a Git checkout beside
-  sn (`scripts/test-release-1.0-local.sh`:50;
-  `scripts/check-release-source-freeze.sh`:132-145). Local mode needs no
+  userwireguard, warp, gvisor, sidecar, xops and config, each a Git checkout
+  beside sn (`scripts/test-release-1.0-local.sh`:50;
+  `scripts/check-release-source-freeze.sh`:145-158). Local mode needs no
   vault (above). The `xops` job runs that repository's infrastructure tests
   (`scripts/test-release-1.0-local.sh`:1141-1152).
 - **The generated files at mode 644**: the fifteen ABI and binding files of

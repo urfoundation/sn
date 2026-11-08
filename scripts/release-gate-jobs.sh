@@ -179,7 +179,7 @@ release_gate_preflight_status() {
 # aggregate gate's local dependency mode passes local: it never reads a vault.
 release_gate_diagnostic_inventory() {
   local repo result=0 mode="${1:-pinned}"
-  for repo in sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config; do
+  for repo in sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config; do
     if [[ "$mode" == local && "$repo" == vault ]]; then
       continue
     fi

@@ -24,11 +24,15 @@ case "$dependency_mode" in
 esac
 workspace="${1:-$(dirname "$sn_repo")}"
 
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)
+release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config)
 # A module is live when a released binary or library builds from it: a release
 # build's main module, or a module whose packages one links. connect/sctp backs
 # every github.com/pion/sctp replacement, and SN's substrate RPC fork backs
-# SN's and the server's replacement of the centrifuge client.
+# SN's and the server's replacement of the centrifuge client. The server links
+# the sidecar module, and sidecar/smtpproof backs SN's and the server's
+# replacement of the sidecar's mail prover module. They require it ahead of
+# the first package that links it, so its go.mod already takes part in their
+# version selection.
 live_modules=(
   connect
   connect/sctp
@@ -40,6 +44,8 @@ live_modules=(
   sdk/cgo
   sdk/js
   server
+  sidecar
+  sidecar/smtpproof
   sn
   sn/third_party/go-substrate-rpc-client
   sn/third_party/npipe
@@ -57,12 +63,18 @@ live_modules=(
 # - sdk/packaging builds and publishes the language packages around sdk/cgo.
 # - server/connect/sim-latency/baseline is a separate dataset. Its module
 #   boundary keeps preserved analysis inputs out of executable server packages.
+# - sidecar/cli builds the ur binary, which the sidecar's own release publishes.
+# - sidecar/mlsinterop holds the differential MLS and git test peers.
+# - sidecar/sidecarctl builds the operations binary.
 non_release_modules=(
   connect/tools/flightgate-devices
   connect/vlessinterop
   sdk/cgo/build
   sdk/packaging
   server/connect/sim-latency/baseline
+  sidecar/cli
+  sidecar/mlsinterop
+  sidecar/sidecarctl
 )
 
 # Release builds compile the gVisor fork through the gvisor.dev/gvisor
@@ -77,7 +89,7 @@ expected_upstream() {
   case "$1" in
     glog | userwireguard) printf 'origin/master\n' ;;
     gvisor) printf 'origin/go\n' ;;
-    sn | server | connect | sdk | goidenticons | proxy | warp | vault | xops | config) printf 'origin/main\n' ;;
+    sn | server | connect | sdk | goidenticons | proxy | warp | sidecar | vault | xops | config) printf 'origin/main\n' ;;
     *) return 1 ;;
   esac
 }
@@ -94,6 +106,7 @@ expected_origin() {
     userwireguard) printf 'github.com/urnetwork/userwireguard\n' ;;
     warp) printf 'github.com/urnetwork/warp\n' ;;
     gvisor) printf 'github.com/urnetwork/gvisor\n' ;;
+    sidecar) printf 'github.com/urnetwork/sidecar\n' ;;
     vault) printf 'github.com/urnetwork/vault\n' ;;
     xops) printf 'github.com/urnetwork/xops\n' ;;
     config) printf 'github.com/urnetwork/config\n' ;;

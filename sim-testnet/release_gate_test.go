@@ -1422,7 +1422,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	if err := verifyReleaseGatePrivateServiceProfile(script); err != nil {
 		t.Fatal(err)
 	}
-	const repositories = "release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)"
+	const repositories = "release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config)"
 	if !strings.Contains(script, repositories) || !strings.Contains(script, `for repo in "${release_repos[@]}"`) {
 		t.Fatal("local release gate does not check every release repository")
 	}
@@ -1737,13 +1737,15 @@ func TestReleaseGatesExerciseContractSenderRoleDiagnostic(t *testing.T) {
 // the others.
 var releaseSourceFreezeLiveModules = []string{
 	"connect", "connect/sctp", "glog", "goidenticons", "proxy", "sdk", "sdk/build",
-	"sdk/cgo", "sdk/js", "server", "sn", "sn/third_party/go-substrate-rpc-client",
-	"sn/third_party/npipe", "userwireguard", "warp", "xops/echo",
+	"sdk/cgo", "sdk/js", "server", "sidecar", "sidecar/smtpproof", "sn",
+	"sn/third_party/go-substrate-rpc-client", "sn/third_party/npipe", "userwireguard",
+	"warp", "xops/echo",
 }
 
 var releaseSourceFreezeNonReleaseModules = []string{
 	"connect/tools/flightgate-devices", "connect/vlessinterop", "sdk/cgo/build",
-	"sdk/packaging", "server/connect/sim-latency/baseline",
+	"sdk/packaging", "server/connect/sim-latency/baseline", "sidecar/cli",
+	"sidecar/mlsinterop", "sidecar/sidecarctl",
 }
 
 // The gVisor fork reaches release binaries through local replacements: its
@@ -1760,7 +1762,7 @@ func releaseSourceFreezeModuleArray(t *testing.T, script, name string) []string 
 	return strings.Fields(declarations[0][1])
 }
 
-// Construct all thirteen repositories and every classified Go module without
+// Construct all fourteen repositories and every classified Go module without
 // making ordinary tests depend on the developer's current dirty worktree.
 func releaseSourceFreezeFixture(t *testing.T) string {
 	t.Helper()
@@ -1781,13 +1783,14 @@ func releaseSourceFreezeFixture(t *testing.T) string {
 	branches := map[string]string{
 		"sn": "main", "server": "main", "connect": "main", "sdk": "main",
 		"glog": "master", "goidenticons": "main", "proxy": "main", "userwireguard": "master",
-		"warp": "main", "gvisor": "go", "vault": "main", "xops": "main", "config": "main",
+		"warp": "main", "gvisor": "go", "sidecar": "main", "vault": "main", "xops": "main", "config": "main",
 	}
 	origins := map[string]string{
 		"sn": "urfoundation/sn", "server": "urnetwork/server",
 		"connect": "urnetwork/connect", "sdk": "urnetwork/sdk", "glog": "urnetwork/glog",
 		"goidenticons": "urnetwork/goidenticons", "proxy": "urnetwork/proxy", "userwireguard": "urnetwork/userwireguard",
-		"warp": "urnetwork/warp", "gvisor": "urnetwork/gvisor", "vault": "urnetwork/vault", "xops": "urnetwork/xops", "config": "urnetwork/config",
+		"warp": "urnetwork/warp", "gvisor": "urnetwork/gvisor", "sidecar": "urnetwork/sidecar",
+		"vault": "urnetwork/vault", "xops": "urnetwork/xops", "config": "urnetwork/config",
 	}
 	modules := slices.Concat(releaseSourceFreezeLiveModules, releaseSourceFreezeNonReleaseModules, releaseSourceFreezeForkModules)
 	for repo, branch := range branches {
@@ -1859,7 +1862,7 @@ func releaseSourceFreezeFixture(t *testing.T) string {
 }
 
 // The freeze command accepts a complete clean fixture and emits an exact
-// thirteen-repository revision/upstream snapshot.
+// fourteen-repository revision/upstream snapshot.
 func TestReleaseSourceFreezeRecordsCompleteCleanWorkspace(t *testing.T) {
 	workspace := releaseSourceFreezeFixture(t)
 	command := exec.Command("../scripts/check-release-source-freeze.sh", workspace)
@@ -1868,14 +1871,15 @@ func TestReleaseSourceFreezeRecordsCompleteCleanWorkspace(t *testing.T) {
 		t.Fatalf("clean source freeze: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) != 13 {
-		t.Fatalf("source freeze recorded %d repositories, want 13: %s", len(lines), output)
+	if len(lines) != 14 {
+		t.Fatalf("source freeze recorded %d repositories, want 14: %s", len(lines), output)
 	}
 	expectedOrigins := map[string]string{
 		"sn": "github.com/urfoundation/sn", "server": "github.com/urnetwork/server",
 		"connect": "github.com/urnetwork/connect", "sdk": "github.com/urnetwork/sdk", "glog": "github.com/urnetwork/glog",
 		"goidenticons": "github.com/urnetwork/goidenticons", "proxy": "github.com/urnetwork/proxy", "userwireguard": "github.com/urnetwork/userwireguard",
-		"warp": "github.com/urnetwork/warp", "gvisor": "github.com/urnetwork/gvisor", "vault": "github.com/urnetwork/vault", "xops": "github.com/urnetwork/xops", "config": "github.com/urnetwork/config",
+		"warp": "github.com/urnetwork/warp", "gvisor": "github.com/urnetwork/gvisor", "sidecar": "github.com/urnetwork/sidecar",
+		"vault": "github.com/urnetwork/vault", "xops": "github.com/urnetwork/xops", "config": "github.com/urnetwork/config",
 	}
 	seen := map[string]bool{}
 	for _, line := range lines {
@@ -2006,6 +2010,89 @@ func TestReleaseSourceFreezeRequiresGvisorProvenance(t *testing.T) {
 	runTestGit(t, gvisorRoot, "add", "README.md")
 	runTestGit(t, gvisorRoot, "commit", "-qm", "unpublished gVisor source")
 	run("is not reachable from origin/go")
+}
+
+// SN and the server compile the sidecar checkout through their local
+// replacements of the sidecar module and its smtpproof module, so the freeze
+// holds it to every repository's provenance: present, clean, the reviewed
+// origin and published on origin/main. It verifies those two modules tidy and
+// only inventories the ur binary's, the test peers' and sidecarctl's.
+func TestReleaseSourceFreezeRequiresSidecarProvenance(t *testing.T) {
+	workspace := releaseSourceFreezeFixture(t)
+	sidecarRoot := filepath.Join(workspace, "sidecar")
+	for _, module := range []string{"sidecar/cli", "sidecar/mlsinterop", "sidecar/sidecarctl"} {
+		releaseSourceFreezeUntidyModule(t, workspace, module)
+	}
+	var stderr strings.Builder
+	command := exec.Command("../scripts/check-release-source-freeze.sh", workspace)
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("published sidecar checkout was refused: %v\n%s", err, stderr.String())
+	}
+	if !regexp.MustCompile(`(?m)^sidecar\t[0-9a-f]{40}\torigin/main\tgithub\.com/urnetwork/sidecar$`).Match(output) {
+		t.Fatalf("source freeze did not record the sidecar checkout's provenance:\n%s", output)
+	}
+	verified := []string{}
+	for _, match := range regexp.MustCompile(`(?m)^verify tidy Go module: (sidecar.*)$`).FindAllStringSubmatch(stderr.String(), -1) {
+		verified = append(verified, match[1])
+	}
+	if !slices.Equal(verified, []string{"sidecar", "sidecar/smtpproof"}) {
+		t.Fatalf("source freeze verified %q of the sidecar's modules tidy, want the module and smtpproof", verified)
+	}
+	run := func(want string) {
+		t.Helper()
+		output, err := exec.Command("../scripts/check-release-source-freeze.sh", workspace).CombinedOutput()
+		if err == nil || !strings.Contains(string(output), want) {
+			t.Fatalf("sidecar source admission wanted %q: %v\n%s", want, err, output)
+		}
+	}
+	retained := filepath.Join(workspace, ".retained-sidecar")
+	if err := os.Rename(sidecarRoot, retained); err != nil {
+		t.Fatal(err)
+	}
+	run("release repository is missing or not a Git checkout: " + sidecarRoot)
+	inventory, err := exec.Command("bash", "-c", `set -euo pipefail; source ../scripts/release-gate-jobs.sh; workspace="$1"; release_gate_diagnostic_inventory`, "bash", workspace).CombinedOutput()
+	if err == nil || !strings.Contains(string(inventory), "incomplete diagnostic Git checkout: sidecar") {
+		t.Fatalf("diagnostic inventory omitted the missing sidecar checkout: %v\n%s", err, inventory)
+	}
+	if err := os.Rename(retained, sidecarRoot); err != nil {
+		t.Fatal(err)
+	}
+	readme := filepath.Join(sidecarRoot, "README.md")
+	if err := os.WriteFile(readme, []byte("modified\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("tracked, staged, or untracked changes: sidecar")
+	if err := os.WriteFile(readme, []byte("fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, sidecarRoot, "config", "remote.origin.url", "git@github.com:someone/sidecar.git")
+	run("origin github.com/someone/sidecar, want github.com/urnetwork/sidecar")
+	runTestGit(t, sidecarRoot, "config", "remote.origin.url", "git@github.com:urnetwork/sidecar.git")
+	if err := os.WriteFile(readme, []byte("unpublished\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, sidecarRoot, "add", "README.md")
+	runTestGit(t, sidecarRoot, "commit", "-qm", "unpublished sidecar source")
+	run("is not reachable from origin/main")
+	// Published, the module itself is still verified tidy: one that requires a
+	// module it never imports is refused at the sidecar module.
+	manifest := "module example.invalid/sidecar\n\ngo 1.24\n\nrequire example.invalid/glog v0.0.0\n\nreplace example.invalid/glog => ../glog\n"
+	if err := os.WriteFile(filepath.Join(sidecarRoot, "go.mod"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, sidecarRoot, "commit", "-qam", "leave the sidecar module untidy")
+	runTestGit(t, sidecarRoot, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runTestGit(t, sidecarRoot, "push", "-q", "--force", "origin", "HEAD:refs/heads/main")
+	untidy, err := exec.Command("../scripts/check-release-source-freeze.sh", workspace).CombinedOutput()
+	if err == nil || !strings.Contains(string(untidy), "-require example.invalid/glog v0.0.0") {
+		t.Fatalf("untidy sidecar module was accepted or refused without its tidy difference: %v\n%s", err, untidy)
+	}
+	stopped := regexp.MustCompile(`(?m)^verify tidy Go module: (.+)$`).FindAllStringSubmatch(string(untidy), -1)
+	if len(stopped) == 0 || stopped[len(stopped)-1][1] != "sidecar" {
+		t.Fatalf("source freeze did not stop at the untidy sidecar module:\n%s", untidy)
+	}
 }
 
 // Cleanliness and provenance must be established before a tracked verifier can
@@ -2289,10 +2376,10 @@ func releaseSourceFreezeUntidyModule(t *testing.T, workspace, module string) {
 	runTestGit(t, root, "push", "-q", "--force", "origin", "HEAD:refs/heads/"+branch)
 }
 
-// The two modules that back a release replacement are live: the freeze refuses
-// either one untidy, at that module, before it reaches the next.
+// The nested modules that back a release replacement are live: the freeze
+// refuses each one untidy, at that module, before it reaches the next.
 func TestReleaseSourceFreezeRejectsUntidyReplacementModule(t *testing.T) {
-	for _, module := range []string{"connect/sctp", "sn/third_party/go-substrate-rpc-client"} {
+	for _, module := range []string{"connect/sctp", "sidecar/smtpproof", "sn/third_party/go-substrate-rpc-client"} {
 		t.Run(module, func(t *testing.T) {
 			workspace := releaseSourceFreezeFixture(t)
 			releaseSourceFreezeUntidyModule(t, workspace, module)
@@ -2327,8 +2414,8 @@ func TestReleaseSourceFreezeDoesNotTidyNonReleaseModules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("untidy non-release modules were refused: %v\n%s", err, stderr.String())
 	}
-	if lines := strings.Split(strings.TrimSpace(string(output)), "\n"); len(lines) != 13 {
-		t.Fatalf("source freeze recorded %d repositories, want 13: %s", len(lines), output)
+	if lines := strings.Split(strings.TrimSpace(string(output)), "\n"); len(lines) != 14 {
+		t.Fatalf("source freeze recorded %d repositories, want 14: %s", len(lines), output)
 	}
 	verified := []string{}
 	for _, match := range regexp.MustCompile(`(?m)^verify tidy Go module: (.+)$`).FindAllStringSubmatch(stderr.String(), -1) {
@@ -2855,7 +2942,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 // repository set. The retired operator-proxy module is no longer checked out,
 // tested or frozen by any of them.
 func TestReleaseGatesFenceOneRepositorySetWithoutOperatorProxy(t *testing.T) {
-	const repositories = "sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config"
+	const repositories = "sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config"
 	declaration := "release_repos=(" + repositories + ")"
 	for _, gate := range []struct {
 		path        string

@@ -6,7 +6,7 @@ export WARP_TEST_ENV_FAIL_FAST=1
 
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)
+release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config)
 source "$sn_repo/scripts/test-storage.sh"
 sn_test_storage_init
 source "$sn_repo/scripts/release-gate-jobs.sh"
