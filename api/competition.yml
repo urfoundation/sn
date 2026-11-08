@@ -847,6 +847,35 @@ paths:
         "409": {$ref: "#/components/responses/CompetitionConflict"}
         "503": {$ref: "#/components/responses/CompetitionUnavailable"}
 
+  /competition/v2/official-review-imports:
+    post:
+      operationId: CompetitionV2OfficialReviewImport
+      tags: [Competition operator]
+      summary: Import an exact operator-authorized epoch-one official review
+      description: >-
+        Requires the separately scoped review_operator capability and an exact
+        official_review_import_sha256 grant deployed by the operator. Only
+        production epoch one is supported. Records Astra/max provenance and
+        explicit native-qualification/calibration waivers without impersonating
+        Snow, resetting an old review deadline, changing scores, or releasing
+        reward/source holds. Ordinary review submission rejects this override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionOfficialReviewImport"}
+      responses:
+        "200":
+          description: Append-only official integrity review; exact same-actor replay retains the original record.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionIntegrityReviewResult"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
   /competition/v2/holds:
     post:
       operationId: CompetitionV2Hold
@@ -1342,13 +1371,50 @@ components:
           description: Required by each elected-winner policy; binds the exact current reward decision and durable review window.
         reviewer_model:
           type: string
-          enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol]
+          enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol, gpt-6-astra]
           description: Required broker provenance pinned by the frozen policy. New Snow v2 reviews require both Qwen and Gemma; historical v1 retains three members. These aggregates and historical mini/xhigh or Sol/max tuples cannot be mixed or relabeled. Not independent model attestation.
         reviewer_reasoning: {type: string, enum: [provider-default, xhigh, max]}
         handoff_id:
           type: string
           format: uuid
           description: Present only on an exact native pending proposal imported by review_operator; ordinary review submission rejects this field.
+        official_review_override:
+          $ref: "#/components/schemas/CompetitionOfficialReviewOverride"
+          description: Accepted only through the independently pinned official-review import, never the ordinary or native Snow review routes.
+    CompetitionOfficialReviewOverride:
+      type: object
+      additionalProperties: false
+      required: [authorization_sha256, completed_at, native_qualification_waived, unaccepted_calibration_acknowledged]
+      properties:
+        authorization_sha256: {$ref: "#/components/schemas/Sha256"}
+        completed_at: {type: string, format: date-time, description: Actual external review completion, not a native handoff timestamp.}
+        native_qualification_waived: {type: boolean, enum: [true]}
+        unaccepted_calibration_acknowledged: {type: boolean, enum: [true]}
+    CompetitionOfficialReviewImport:
+      type: object
+      additionalProperties: false
+      required: [round_id, review]
+      properties:
+        round_id: {type: string, format: uuid}
+        review:
+          $ref: "#/components/schemas/CompetitionIntegrityReviewRequest"
+          description: Exact six affirmative criteria with gpt-6-astra/max attribution and the production-benefit addendum. The full canonical request digest must equal the deployed grant.
+          required: [official_review_override, expected_decision_sha256, reviewer_model, reviewer_reasoning, production_benefit_addendum]
+          properties:
+            reviewer_model: {const: gpt-6-astra}
+            reviewer_reasoning: {const: max}
+            reward_disposition: {const: approved}
+            source_disposition: {const: approved}
+            reason_codes: {type: array, minItems: 1, maxItems: 1, items: {const: APPROVED}}
+            findings:
+              type: array
+              minItems: 6
+              maxItems: 6
+              items:
+                properties:
+                  model: {const: ""}
+                  disposition: {const: pass}
+                  reason_code: {const: APPROVED}
     CompetitionIntegrityReviewResult:
       type: object
       additionalProperties: false
