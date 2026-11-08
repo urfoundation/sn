@@ -814,6 +814,39 @@ paths:
         "409": {$ref: "#/components/responses/CompetitionConflict"}
         "503": {$ref: "#/components/responses/CompetitionUnavailable"}
 
+  /competition/v2/review-handoff-imports:
+    post:
+      operationId: CompetitionV2ReviewHandoffImport
+      tags: [Competition operator]
+      summary: Import the exact completed model proposal after explicit operator review
+      description: |
+        Requires the independent, fully scoped review_operator capability. Model
+        reviewers, schedulers, source publishers and legacy operators cannot use
+        this endpoint. A prospective database-owned Qwen/Gemma multi-pass run
+        must have completed all calls within its original, non-renewable window.
+        This operation imports precisely the retained proposal, never edited
+        findings or a backdated insertion. A proposal may approve or disqualify
+        the elected candidate; inspect it before authorizing import. Current
+        election and exact proposal/evidence digests must still match. Exact
+        same-actor replay returns the original record. This does not release
+        reward/source holds, publish source or satisfy the source_handoff gate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionReviewHandoffImport"}
+      responses:
+        "200":
+          description: Append-only integrity review with separate model-completion and operator-insertion times.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionIntegrityReviewResult"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
   /competition/v2/holds:
     post:
       operationId: CompetitionV2Hold
@@ -869,7 +902,7 @@ components:
       description: |
         Opaque competition token. Legacy submitter/operator roles retain their
         original v1 authority. V2 scheduler, reviewer, settlement and
-        source_promoter and source_handoff are distinct roles scoped to environment, competition_id
+        source_promoter, source_handoff and review_operator are distinct roles scoped to environment, competition_id
         and season_id. Legacy operators never inherit v2 privileges. Revoked
         credentials fail immediately on the next request.
 
@@ -1312,6 +1345,10 @@ components:
           enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol]
           description: Required broker provenance pinned by the frozen policy. New Snow v2 reviews require both Qwen and Gemma; historical v1 retains three members. These aggregates and historical mini/xhigh or Sol/max tuples cannot be mixed or relabeled. Not independent model attestation.
         reviewer_reasoning: {type: string, enum: [provider-default, xhigh, max]}
+        handoff_id:
+          type: string
+          format: uuid
+          description: Present only on an exact native pending proposal imported by review_operator; ordinary review submission rejects this field.
     CompetitionIntegrityReviewResult:
       type: object
       additionalProperties: false
@@ -1321,6 +1358,10 @@ components:
         round_id: {type: string, format: uuid}
         actor_id: {type: string}
         created_at: {type: string, format: date-time}
+        model_completed_at:
+          type: string
+          format: date-time
+          description: Native immutable completion time for a handoff import, never a caller-supplied or backdated created_at. Omitted for legacy records.
         request: {$ref: "#/components/schemas/CompetitionIntegrityReviewRequest"}
         request_sha256: {$ref: "#/components/schemas/Sha256"}
         reward_decision: {$ref: "#/components/schemas/CompetitionRewardDecision"}
@@ -1333,6 +1374,7 @@ components:
         round_id: {type: string, format: uuid}
         actor_id: {type: string, const: ""}
         created_at: {type: string, format: date-time}
+        model_completed_at: {type: string, format: date-time}
         request_sha256: {$ref: "#/components/schemas/Sha256"}
         reward_decision: {$ref: "#/components/schemas/CompetitionRewardDecision"}
         request:
@@ -1345,6 +1387,7 @@ components:
             expected_decision_sha256: {$ref: "#/components/schemas/Sha256"}
             reviewer_model: {type: string, enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol]}
             reviewer_reasoning: {type: string, enum: [provider-default, xhigh, max]}
+            handoff_id: {type: string, format: uuid}
             job_id: {type: string, format: uuid}
             patch_sha256: {$ref: "#/components/schemas/Sha256"}
             base_source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
@@ -1489,6 +1532,18 @@ components:
                 - required: [review_id]
                 - required: [review_decision_sha256]
 
+    CompetitionReviewHandoffImport:
+      type: object
+      additionalProperties: false
+      required: [handoff_id, round_id, decision_sha256, proposal_sha256, evidence_sha256, disposition]
+      properties:
+        handoff_id: {type: string, format: uuid}
+        round_id: {type: string, format: uuid}
+        decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        proposal_sha256: {$ref: "#/components/schemas/Sha256"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        disposition: {type: string, const: publish_exact_model_proposal}
+
     CompetitionSourceOperatorHandoff:
       type: object
       additionalProperties: false
@@ -1573,6 +1628,7 @@ components:
       additionalProperties: false
       required: [round_id, job_id, reward_revision, reward_decision_sha256, started_at, deadline]
       properties:
+        handoff_id: {type: string, format: uuid, description: Optional identity of the prospective immutable multi-pass owner; absent for legacy checkpoints.}
         round_id: {type: string, format: uuid}
         job_id: {type: string, format: uuid}
         reward_revision: {type: integer, minimum: 1}
