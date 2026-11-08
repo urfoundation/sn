@@ -55,6 +55,7 @@ var releaseRepositoryObservedKeys = []string{
 	"goidenticons_go_source_hash",
 	"proxy_go_source_hash",
 	"userwireguard_go_source_hash",
+	"sidecar_go_source_hash",
 	"sdk_mobile_build_tree_hash",
 	"protocol_source_hash",
 	"platform_config_source_hash",
@@ -92,6 +93,24 @@ var releaseRepositoryRetiredKeys = []string{
 	"operator_proxy_go_source_hash",
 	"operator_proxy_commit",
 }
+
+// Observed fields of repositories that joined the release after archived
+// approvals were made. Those approvals bind lock bytes rendered without them,
+// so historical admission accepts their absence and holds a present value to
+// its canonical form, as for a retired field. Current authority, an
+// observation and a fresh rendering require them.
+var releaseRepositoryIntroducedKeys = []string{
+	"sidecar_go_source_hash",
+}
+
+// The Go modules beside SN that the lock hashes, each as <name>_go_source_hash.
+// SN and the server are hashed from their configured roots. The sidecar's
+// field covers its nested modules too, smtpproof among them.
+var releaseHashedSiblingModules = []string{"connect", "sdk", "glog", "goidenticons", "proxy", "userwireguard", "sidecar"}
+
+// Local modules that the observation fences in its clean snapshot without a
+// hashed field, so retained lock bytes need no field for them.
+var releaseAdmissionOnlySiblingModules = []string{"warp"}
 
 type releaseRepository struct {
 	Name string
@@ -187,7 +206,7 @@ func releaseObservationRepositories(cfg *ResolvedConfig) ([]releaseRepository, e
 		{Name: "vault", Root: cfg.Repos.Vault},
 		{Name: "platform-config", Root: cfg.Repos.PlatformConfig},
 	}
-	for _, name := range []string{"connect", "sdk", "glog", "goidenticons", "proxy", "userwireguard", "warp"} {
+	for _, name := range slices.Concat(releaseHashedSiblingModules, releaseAdmissionOnlySiblingModules) {
 		root, err := moduleRoot(parent, name)
 		if err != nil {
 			return nil, err
@@ -340,9 +359,24 @@ func validateReleaseLockStatic(lock *ReleaseLock) error {
 	return validateReleaseLockStaticFields(lock)
 }
 
-// Current and archived approvals retain identical image, schema and build
-// checks after their separate runtime identity admission.
+// Current approvals and fresh renderings require every observed field.
 func validateReleaseLockStaticFields(lock *ReleaseLock) error {
+	return validateReleaseLockStaticFieldsForRepositories(lock, releaseRepositoryObservedKeys, releaseRepositoryRetiredKeys)
+}
+
+// Archived approvals may predate an introduced field. Everything else is
+// checked as for a current approval.
+func validateArchivedReleaseLockStaticFields(lock *ReleaseLock) error {
+	required := slices.DeleteFunc(slices.Clone(releaseRepositoryObservedKeys), func(key string) bool {
+		return slices.Contains(releaseRepositoryIntroducedKeys, key)
+	})
+	return validateReleaseLockStaticFieldsForRepositories(lock, required, slices.Concat(releaseRepositoryRetiredKeys, releaseRepositoryIntroducedKeys))
+}
+
+// Current and archived approvals retain identical image, schema and build
+// checks after their separate runtime identity admission. They differ only in
+// which repository fields are required and which are optional.
+func validateReleaseLockStaticFieldsForRepositories(lock *ReleaseLock, requiredRepositoryKeys, optionalRepositoryKeys []string) error {
 	if !releaseImageDigest.MatchString(lock.Runtime.Image) || strings.Contains(strings.ToLower(lock.Runtime.Image), "placeholder") {
 		return errors.New("runtime image is not digest-pinned")
 	}
@@ -360,7 +394,7 @@ func validateReleaseLockStaticFields(lock *ReleaseLock) error {
 	if err := validateReleaseLockSectionSchema("evm_build", lock.EVMBuild, releaseEVMObservedKeys, releaseEVMAnnotationKeys, nil); err != nil {
 		return err
 	}
-	if err := validateReleaseLockSectionSchema("repositories", lock.Repositories, releaseRepositoryObservedKeys, releaseRepositoryAnnotationKeys, releaseRepositoryRetiredKeys); err != nil {
+	if err := validateReleaseLockSectionSchema("repositories", lock.Repositories, requiredRepositoryKeys, releaseRepositoryAnnotationKeys, optionalRepositoryKeys); err != nil {
 		return err
 	}
 	if err := validateReleaseLockSectionSchema("interfaces", lock.Interfaces, releaseInterfaceObservedKeys, nil, nil); err != nil {

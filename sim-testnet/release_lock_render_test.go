@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -293,7 +294,7 @@ func releaseObservationWorkspaceTest(t *testing.T) (string, *ResolvedConfig) {
 	workspace := t.TempDir()
 	for _, relative := range []string{
 		"sn", "server", "vault", "config", "connect", "sdk", "glog",
-		"goidenticons", "proxy", "userwireguard", "warp", "xops", "sn/evm/lib/forge-std",
+		"goidenticons", "proxy", "userwireguard", "sidecar", "warp", "xops", "sn/evm/lib/forge-std",
 		"sn/evm/lib/openzeppelin-contracts", "sn/evm/lib/openzeppelin-contracts-upgradeable",
 	} {
 		root := filepath.Join(workspace, filepath.FromSlash(relative))
@@ -334,7 +335,7 @@ func TestReleaseLockObservationDoesNotRequireOperatorProxy(t *testing.T) {
 	}
 	expected := []string{
 		"sn", "server", "vault", "platform-config", "connect", "sdk", "glog", "goidenticons", "proxy",
-		"userwireguard", "warp", "xops", "forge-std", "openzeppelin-contracts", "openzeppelin-contracts-upgradeable",
+		"userwireguard", "sidecar", "warp", "xops", "forge-std", "openzeppelin-contracts", "openzeppelin-contracts-upgradeable",
 	}
 	for _, name := range expected {
 		if !names[name] {
@@ -407,6 +408,137 @@ func TestReleaseLockObservationFencesAdmissionOnlyWarp(t *testing.T) {
 	}
 	if _, err := releaseObservationRepositories(cfg); err == nil || !strings.Contains(err.Error(), "github.com/urnetwork/warp") {
 		t.Fatalf("wrong Warp module identity was accepted: %v", err)
+	}
+}
+
+// Each hashed module has its observed Go source field and each such field
+// names a hashed module, so the sidecar's field is observed from its checkout
+// and is never only demanded of the lock.
+func TestReleaseLockHashesEveryObservedGoModule(t *testing.T) {
+	hashed := slices.Concat([]string{"sn", "server"}, releaseHashedSiblingModules)
+	observed := []string{}
+	for _, key := range releaseRepositoryObservedKeys {
+		if name, found := strings.CutSuffix(key, "_go_source_hash"); found {
+			observed = append(observed, name)
+		}
+	}
+	slices.Sort(hashed)
+	slices.Sort(observed)
+	if !slices.Equal(hashed, observed) {
+		t.Fatalf("the lock hashes %q and observes Go source fields for %q", hashed, observed)
+	}
+	if !slices.Contains(releaseHashedSiblingModules, "sidecar") {
+		t.Fatal("the release lock does not hash the sidecar module")
+	}
+	for _, name := range releaseAdmissionOnlySiblingModules {
+		if slices.Contains(observed, name) {
+			t.Errorf("admission-only module %s has an observed field", name)
+		}
+	}
+}
+
+// The sidecar checkout is fenced like every hashed repository: the observation
+// requires its exact module identity and a clean checkout, and its one hash
+// binds the nested smtpproof module that SN and the server compile as well.
+func TestReleaseLockObservationFencesSidecar(t *testing.T) {
+	workspace, cfg := releaseObservationWorkspaceTest(t)
+	sidecarRoot := filepath.Join(workspace, "sidecar")
+	repositories, err := releaseObservationRepositories(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(repositories, func(repository releaseRepository) bool {
+		return repository.Name == "sidecar" && repository.Root == sidecarRoot
+	}) {
+		t.Fatalf("release observation omitted the sidecar checkout: %+v", repositories)
+	}
+	prover := filepath.Join(sidecarRoot, "smtpproof", "prover.go")
+	if err := os.MkdirAll(filepath.Dir(prover), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sidecarRoot, "smtpproof", "go.mod"), []byte("module github.com/urnetwork/sidecar/smtpproof\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prover, []byte("package smtpproof\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, sidecarRoot, "add", ".")
+	runTestGit(t, sidecarRoot, "commit", "-qm", "add the prover module")
+	before, err := goReleaseSourceHash(sidecarRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prover, []byte("package smtpproof\n\nconst Version = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, sidecarRoot, "commit", "-qam", "change the prover")
+	after, err := goReleaseSourceHash(sidecarRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before == after {
+		t.Fatal("the sidecar's source hash does not bind its smtpproof module")
+	}
+	if _, err := cleanReleaseRepositorySnapshot(repositories); err != nil {
+		t.Fatal(err)
+	}
+	untracked := filepath.Join(sidecarRoot, "untracked.go")
+	if err := os.WriteFile(untracked, []byte("package sidecar\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanReleaseRepositorySnapshot(repositories); err == nil || !strings.Contains(err.Error(), "release repository sidecar:") {
+		t.Fatalf("dirty sidecar checkout reached the observation: %v", err)
+	}
+	if err := os.Remove(untracked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sidecarRoot, "go.mod"), []byte("module example.invalid/sidecar\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := releaseObservationRepositories(cfg); err == nil || !strings.Contains(err.Error(), "github.com/urnetwork/sidecar") {
+		t.Fatalf("wrong sidecar module identity was accepted: %v", err)
+	}
+}
+
+// Archived approvals bind locks rendered before the sidecar joined the
+// release. Current authority and an observation require the sidecar's hash,
+// while historical admission accepts an archive without it, refuses a present
+// value that is not canonical, and still requires every other field.
+func TestReleaseLockRequiresSidecarHashOnlyForCurrentAuthority(t *testing.T) {
+	current := testReleaseLockFixture(t)
+	if err := validateReleaseLockStatic(current); err != nil {
+		t.Fatal(err)
+	}
+	archived := testReleaseLockFixture(t)
+	delete(archived.Repositories, "sidecar_go_source_hash")
+	if err := validateReleaseLockStatic(archived); err == nil || !strings.Contains(err.Error(), "sidecar_go_source_hash is missing") {
+		t.Fatalf("current authority accepted a lock without the sidecar hash: %v", err)
+	}
+	if raw, err := canonicalReleaseLockBytes(archived); err == nil || raw != nil {
+		t.Fatal("a lock without the sidecar hash rendered as a current lock")
+	}
+	if err := validateValidatorEvidenceHistoricalReleaseLock(archived); err != nil {
+		t.Fatalf("historical admission refused an archive made before the sidecar joined: %v", err)
+	}
+	if raw, err := canonicalFinalHistoricalReleaseLockBytes(archived); err != nil || bytes.Contains(raw, []byte("sidecar")) {
+		t.Fatalf("an archive made before the sidecar joined lost its exact canonical bytes: %v", err)
+	}
+	for _, value := range []string{"", "sha256:not-a-hash", "placeholder"} {
+		malformed := testReleaseLockFixture(t)
+		malformed.Repositories["sidecar_go_source_hash"] = value
+		if err := validateValidatorEvidenceHistoricalReleaseLock(malformed); err == nil {
+			t.Errorf("historical admission accepted the sidecar hash %q", value)
+		}
+	}
+	stripped := testReleaseLockFixture(t)
+	delete(stripped.Repositories, "server_go_source_hash")
+	if err := validateValidatorEvidenceHistoricalReleaseLock(stripped); err == nil || !strings.Contains(err.Error(), "server_go_source_hash is missing") {
+		t.Fatalf("historical admission accepted an archive without the server hash: %v", err)
+	}
+	observation := testReleaseLockObservation(t, current)
+	delete(observation.Repositories, "sidecar_go_source_hash")
+	if err := validateReleaseLockObservation(observation); err == nil || !strings.Contains(err.Error(), "sidecar_go_source_hash is missing") {
+		t.Fatalf("an observation without the sidecar hash was accepted: %v", err)
 	}
 }
 

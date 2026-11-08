@@ -855,7 +855,7 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 
 	parent := filepath.Dir(cfg.Repos.SN)
 	modules := map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server}
-	for _, name := range []string{"connect", "sdk", "glog", "goidenticons", "proxy", "userwireguard"} {
+	for _, name := range releaseHashedSiblingModules {
 		root, rootErr := moduleRoot(parent, name)
 		if rootErr != nil {
 			return nil, rootErr

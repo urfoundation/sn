@@ -1296,12 +1296,14 @@ shortfall without persisting or broadcasting transaction bytes.
   volumes and containers carry the same complete release/config hash, and stale
   or unlabelled volumes are rejected instead of silently reusing old init hooks.
 - The locked `sn`, `server`, `vault`, platform `config`, `connect`, `sdk`,
-  `glog`, `goidenticons`, `proxy`, `userwireguard`, and `xops` repositories
-  checked out beneath one parent. Repository discovery uses Go module identity
-  plus required resource files; `--sn-repo`, `--server-repo`, `--vault-repo`,
-  and `--platform-config-repo` are available when the layout differs. The
-  executable Go sources and non-secret operator config tree are content-locked
-  as documented in `release.lock.yml`. The retired `operator-proxy` repository
+  `glog`, `goidenticons`, `proxy`, `userwireguard`, `sidecar`, and `xops`
+  repositories checked out beneath one parent. Repository discovery uses Go
+  module identity plus required resource files; `--sn-repo`, `--server-repo`,
+  `--vault-repo`, and `--platform-config-repo` are available when the layout
+  differs. The executable Go sources and non-secret operator config tree are
+  content-locked as documented in `release.lock.yml`. The sidecar's hash binds
+  its nested modules too, and an archived approval whose lock predates it is
+  still admitted without it. The retired `operator-proxy` repository
   is not required: its `--operator-proxy-repo` override is gone, and its inert
   `operator_proxy` config key and release-lock pins remain readable only so
   existing deployment hashes stay valid. A fresh release-lock rendering drops

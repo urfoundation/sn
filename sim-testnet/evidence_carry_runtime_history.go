@@ -56,5 +56,7 @@ func validateValidatorEvidenceHistoricalReleaseLock(lock *ReleaseLock) error {
 			return errors.New("validator evidence archived runtime identity is not a reviewed companion release")
 		}
 	}
-	return validateReleaseLockStaticFields(lock)
+	// An approval made before the sidecar joined the release binds a lock
+	// without its hash, whichever runtime it names.
+	return validateArchivedReleaseLockStaticFields(lock)
 }
