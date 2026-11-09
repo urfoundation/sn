@@ -73,6 +73,10 @@ type ReleaseSteerer struct {
 	// The source epoch whose retention last ran, so that it runs once an epoch.
 	depositUsagePruned      bool
 	depositUsagePrunedEpoch uint64
+
+	// How far the finalized intent's application look-back has read. Nil reads
+	// only the first step after the reveal block on every poll.
+	applicationHistory *productionApplicationHistoryMemo
 }
 
 func releaseAttemptClaimMatchesBinding(claim AttemptEgressClaim, binding stabi.STCoordinatorBindingRecord, uid uint16) bool {
