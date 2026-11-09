@@ -45,7 +45,9 @@ type productionContinuationNativeTestClient struct {
 	appliedAt func(uint64) bool
 	// Weight-row reads by selected height, when not nil.
 	weightReads map[uint64]int
-	call        func(context.Context, any, string, ...any) error
+	// A weight-row read at one of these heights fails with its error.
+	weightErrorKVs map[uint64]error
+	call           func(context.Context, any, string, ...any) error
 }
 
 // The weight fallback's reserve-shaped row: one target the intent does not
@@ -185,6 +187,9 @@ func installProductionContinuationNative(t *testing.T, fixture *productionContin
 			if args[0] == weightsKey && (self.applied || self.appliedAt != nil) {
 				if self.weightReads != nil {
 					self.weightReads[selected]++
+				}
+				if err := self.weightErrorKVs[selected]; err != nil {
+					return err
 				}
 				if self.appliedAt != nil && !self.appliedAt(selected) {
 					return assign(codec.HexEncodeToString(productionContinuationReplacedRow(t, prepared)))

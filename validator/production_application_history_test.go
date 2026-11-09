@@ -86,3 +86,31 @@ func TestProductionApplicationNeverCountsRowsBeforeReveal(t *testing.T) {
 		}
 	}
 }
+
+// The look-back only adds evidence. A history read that fails, even with a
+// hard cause, leaves the head's own verdict, a reveal wait, and spends no
+// steering failure; the next poll reads that height again.
+func TestProductionApplicationHistoryFailureStaysRevealWait(t *testing.T) {
+	fixture, native, finalized := finalizeProductionApplicationHistoryFixture(t, 200)
+	reveal := finalized.RevealBlock
+	native.appliedAt = func(number uint64) bool { return number >= reveal+2 && number <= reveal+4 }
+	native.weightErrorKVs = map[uint64]error{reveal + 1: errors.New("synthetic malformed weight row")}
+	fixture.production.head = reveal + 8
+
+	err := fixture.steerer.submitOnceV2(t.Context())
+	var transition *productionSteeringTransition
+	if !errors.As(err, &transition) || !transition.revealWait {
+		t.Fatalf("a failed history read replaced the head's reveal wait: %v", err)
+	}
+	if current := fixture.restart(t); current.Status != "finalized" || current.ApplicationBlock != 0 {
+		t.Fatalf("a failed history read recorded an application: status=%s block=%d", current.Status, current.ApplicationBlock)
+	}
+
+	native.weightErrorKVs = nil
+	if err := fixture.steerer.submitOnceV2(t.Context()); !errors.As(err, &transition) || transition.revealWait {
+		t.Fatalf("the next poll did not read the failed height again: %v", err)
+	}
+	if applied := fixture.restart(t); applied.Status != "applied" || applied.ApplicationBlock != reveal+2 {
+		t.Fatalf("application after the retried read: status=%s block=%d", applied.Status, applied.ApplicationBlock)
+	}
+}

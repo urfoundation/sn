@@ -205,7 +205,11 @@ func (self *ReleaseSteerer) observeProductionApplicationV2(ctx context.Context, 
 		var found bool
 		number, hash, found, err = self.observeProductionApplicationHistoryV2(ctx, &native, current, uid, head)
 		if err != nil {
-			return err
+			// The look-back only adds evidence. A failed read leaves the head's
+			// verdict, spends no steering failure and names its causes; the next
+			// poll reads from the same height again.
+			releaseDiagnosticCauses(ctx, "steering", "application_history", 0, err)
+			return wait
 		}
 		if !found {
 			return wait
