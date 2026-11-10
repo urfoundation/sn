@@ -334,3 +334,11 @@ records the earlier pinned revisions and the original module-resolution
 regression tests.
 The [incremental composition record](mainnet/evidence/incremental-source-composition-20260929.md)
 retains the completed SDK/MG06 checks and explicitly pending broad SDK race run.
+
+---
+
+## Security contributions
+
+Report vulnerabilities privately, as described at [ur.xyz/vdp](https://ur.xyz/vdp). With their consent, we credit reporters here.
+
+- Settlement vault restatement issue (F2) reported by James (τ68) & Mochi — fixed on 2026‑11‑06: the settlement v2 contract is now owned by a 72‑hour timelock, and every dispute and governance event pages the team.
