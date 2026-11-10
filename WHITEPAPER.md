@@ -1513,7 +1513,9 @@ the providers' eligible usage as if the traffic had not happened.
 
 **Same‑network traffic** is the other case that no third party serves. A contract between two clients of
 one network counts today as provider usage: its receiving client is the egress participant and earns pool
-weight like any provider (§8.2), though no one outside the network served it.
+weight like any provider (§8.2), though no one outside the network served it. It is also free: the server
+creates it without escrow, so it charges no balance and draws on no data allowance, yet it still settles
+with a usage snapshot that credits its receiving client.
 
 That under‑credits what extenders do. They keep the platform reachable everywhere, for every client,
 whether or not a given client went through one. And as products such as **sidecar** (§8.6.6) move work
@@ -1527,7 +1529,7 @@ For NO `n` and every covered epoch `k ≥ E_x`:
 z_c       =  the part of contract c's completed bytes b_c that no provider earns:
                b_c, if no participant is left once n's platform endpoints are removed       (intra-platform)
                else the even shares held by c's participants on the origin's network        (intra-network)
-Z_{n,k}   =  Σ z_c over n's contracts c that closed in k's earning window, free and paid alike  (extender pool bytes)
+Z_{n,k}   =  Σ z_c over n's funded contracts c that closed in k's earning window, free and paid alike (pool bytes)
 Z'        =  min(Z, ζ · W_k),   ζ = 1        W_k = the epoch's eligible provider usage, after the rule below  (cap, M3)
 U_{n,k}   =  the units holding at least one of n's eligible extenders for k, by unit hash ascending;  M = |U_{n,k}|
 z_j       =  floor(Z' / M) + (1 if j < Z' mod M, else 0)      for the j-th unit, j = 0 … M−1         (Σ z_j = Z')
@@ -1579,8 +1581,14 @@ payout bytes like any other; from `E_x` it does not.
 usage that every contract's credit already uses: the lower of the two completed reports, capped by the
 contract's capacity, or the report a dispute resolved to. Then:
 
-- **Free and paid alike** (owner decision). A free‑plan byte counts toward `Z` exactly as it counts toward
-  provider usage (§8.2), so a contract's `z_c` counts whether or not a paid balance funds it.
+- **Funded by the payer's data balance, free or paid alike** (owner decisions).
+  - Every intra‑network and intra‑platform contract escrows from the payer network's data balance, the free
+    plan's included, exactly like other traffic.
+  - Same‑network contracts therefore stop being free from `E_x` (§8.6.7).
+  - A free‑plan byte counts toward `Z` exactly as it counts toward provider usage (§8.2).
+  - A contract that no balance funded, such as one made by the degradation valve's zero‑escrow fallback for an
+    exhausted payer, adds nothing to `Z`.
+  - So in each epoch a network adds to `Z` at most what its balance funded.
 - **Never the operator's own measurement or test traffic.** A contract whose payer network the operator
   declares for measurement or testing never counts toward `Z`: validators' trail clients, the qualityprobe,
   the operator's probes, the proxy‑test account. The exclusion is from the extender pool only. Providers
@@ -1589,8 +1597,8 @@ contract's capacity, or the report a dispute resolved to. Then:
   candidate to add, once its usage records are published each epoch.
 
 Each contract's usage snapshot records the split: its providers (the cross‑network participants, with their
-shares), its intra‑platform or intra‑network bytes `z_c`, the origin's network and whether its payer is a
-declared measurement network. This is a new snapshot version: today a snapshot cannot carry bytes without a
+shares), its intra‑platform or intra‑network bytes `z_c`, the origin's network, whether a balance funded it,
+and whether its payer is a declared measurement network. This is a new snapshot version: today a snapshot cannot carry bytes without a
 provider.
 
 **Eligible extender.** An extender `x` of NO `n` is eligible for epoch `k` when all of these hold:
@@ -1687,41 +1695,48 @@ and the decided rule adds no minimum age or uptime threshold (E1). The options:
 and the weightings of S4 are later options, by signed entry (§8.6.7), if one operator's share of units keeps
 growing.
 
-**Manufactured traffic.** Free bytes count toward `Z` as they do toward provider usage (owner decision), so
-anyone with free accounts can raise `Z`. The cheapest way is same‑network traffic: two clients of one free
-network, or a client and the network's own provider, exchanging data. A same‑network contract carries no
-charge, so it draws on no plan's allowance, not even a free one's. It costs only the manufacturer's own
-bandwidth and the effort of driving it. Sidecar's edges, the platform endpoints at `E_x`, are a second path,
-within whatever quotas sidecar's free tier allows.
+**Manufactured traffic.** Every intra‑network and intra‑platform contract now draws on the payer network's
+data balance (owner decision), so manufacturing `Z` takes funded balance. Free and paid balance count alike,
+so free networks can still raise `Z`, each by at most what its plan funds. At today's allowances that is:
 
-**How much this widens the attack.** Under the earlier paid‑only rule, every manufactured byte cost a paid
-plan. Now it costs bandwidth:
+- **Free:** 30 GiB a day, at most 210 GiB an epoch.
+- **Pro:** 10 TiB a month, granted at the start of the month. That is about 2.6 TB an epoch on average,
+  though one network can spend its whole month's grant in a single epoch.
+
+The cheapest route is same‑network traffic between a network's own devices, spending its allowance.
+Sidecar's edges, the platform endpoints at `E_x`, are a second route, drawing on the same balance.
+
+**How much this bounds the attack:**
 
 - **Who gains.** `Z` is spread over every unit, so a manufacturer who holds `k` of the `M` units gains only
   about `k/M` of the weight it adds. The rest goes to everyone else's extenders. So manufacturing pays in
   proportion to the share of units already held: the Sybil and manufacturing attacks compound.
-- **Who loses.** The weight comes out of the providers' share of the pool. Free traffic alone can push the
-  extenders to the cap. At epoch 4's scale that takes `Z` equal to its 19.01 TB of eligible provider usage:
-  about 31 MB/s, or 250 Mbit/s, sustained over the epoch, within reach of one well‑connected pair of hosts.
-- **Compared with today, for a self‑dealer, it narrows.** Today the same same‑network bytes already count in
-  full for the self‑dealer's own provider (§8.2). From `E_x` that provider earns nothing for them, and the
-  self‑dealer gets back only `k/M` through `Z`.
-- **The cross‑network route is unchanged and still the better one.** Routing free bytes through its own
-  provider on a second network gains all of them, today and from `E_x` alike.
+- **What reaching the cap takes.** At epoch 4's scale, `Z'` reaches the cap at its 19.01 TB of eligible
+  provider usage. That takes about 85 free networks, each spending its whole daily grant on same‑network or
+  platform traffic every day of the epoch, or the grants of about 8 Pro networks sustained epoch after epoch
+  (one Pro network's whole month covers about 58% of the cap in one epoch). Without the balance rule, one
+  well‑connected pair of hosts would have been enough, because same‑network contracts were free.
+- **Compared with today, for a same‑network self‑dealer, it narrows.** Today its own provider earns full
+  credit for those bytes, and no balance is spent (§8.2, §8.6.1). From `E_x` the bytes cost allowance, the
+  provider earns nothing for them, and the self‑dealer gets back only `k/M` through `Z`.
+- **The cross‑network route is unchanged.** Routing balance‑funded bytes through its own provider on a second
+  network still earns all of them. Contracts to a provider in friends‑and‑family mode are, like
+  same‑network contracts today, created without escrow. They stay free cross‑network provider usage, which
+  this amendment does not change.
 
-So the new exposure is not a better route for any one attacker. It is that anyone's free same‑network
-traffic, at almost no cost, can now move up to half of a pool from every provider to the extenders.
+So the new exposure is that tens of funded networks, or a few Pro subscriptions, can move up to half of a
+pool from every provider to the extenders. None of it is a better route for any one attacker than the
+cross‑network routes that already exist.
 
 **What bounds it:**
 
 - **(M1) The deposit.** `Z` counts in `total_usage_bytes` (owner decision), so at a nonzero price the NO
   deposits for every byte of it, free bytes included, as for any usage (§7.1). Manufactured `Z` then costs the
-  NO, which has its own reason to limit free platform and same‑network traffic. At zero price, the launch mode,
-  M1 does nothing.
-- (M2, paid bytes only, is withdrawn: free bytes count, owner decision.)
+  NO as well. At zero price, the launch mode, M1 does nothing.
+- **(M2) Funded bytes only** (owner decision; this replaces the withdrawn paid‑only rule). A network adds to
+  `Z` only what its own data balance funded, free plan or paid, and unfunded contracts add nothing.
 - **(M3) A cap on `Z`'s weight** (owner decision). `Z` enters the allocation as at most the epoch's eligible
-  provider usage (`ζ = 1`), so extenders take at most half a pool, however much is manufactured. With M2
-  gone, the cap is what keeps the provider channel at least half of each pool.
+  provider usage (`ζ = 1`), so extenders take at most half a pool, however much is manufactured.
 - **The units.** Only spreading across /29 and /48 blocks raises a manufacturer's share.
 - **E5** keeps the NO's declared fleet from collecting it.
 - **(M4) Audit.** The statement publishes `Z` split into its intra‑platform and intra‑network parts, with the
@@ -1733,20 +1748,22 @@ therefore only moves funding from providers to extenders within the pool, and M3
 
 **Collusion between an NO and extenders.** The NO attests everything the extender pool rests on:
 
-- `Z`, and with it which contracts are intra‑platform, intra‑network or measurement;
+- `Z`, and with it which contracts are intra‑platform, intra‑network, funded or measurement;
 - the active pool at `end(k)`;
 - the extenders' wallets;
 - its own declared networks.
 
 No validator can check any of it. The extender directory is built so that no one learns every extender's
 address at once, and so the census cannot be sampled (§8.6.4). An NO could therefore inflate `Z`, count
-measurement traffic, list extenders that are down, omit independent ones, or run its own extenders under
-networks it does not declare. Each of these moves pool funding to extenders it chooses.
+unfunded or measurement traffic, list extenders that are down, omit independent ones, or run its own
+extenders under networks it does not declare. Each of these moves pool funding to extenders it chooses.
 
 What remains to bound it:
 
 - **E5** keeps the NO's *declared* fleet out. Undeclared networks are not caught.
 - **The cap** (M3, `ζ = 1`) keeps extenders, honest or not, to at most half of each epoch's pool funding.
+- **M2** ties `Z` to balances the NO's own billing debited. That is visible to the NO's customers, but it is
+  still attested to everyone else.
 - **M1** makes inflated `Z` cost a deposit, once the price is nonzero.
 - **Publication** puts the census and `Z`, with its parts, contract counts and payer counts, in the epoch's
   evidence. The census uses keyed prefix hashes, never addresses. Anyone can see the totals,
@@ -1801,7 +1818,7 @@ The census is therefore published as keyed prefix hashes, never addresses. Sever
 operator‑attested:
 
 - membership of the active pool;
-- the classification of contracts as intra‑platform, intra‑network or measurement;
+- the classification of contracts as intra‑platform, intra‑network, funded or measurement;
 - the wallets;
 - the declared networks.
 
@@ -1889,14 +1906,20 @@ Sidecar, the end‑to‑end encrypted substrate under recURd and burner email, i
 `sidecar` branches and has not shipped (`sidecar/DESIGN.md`). Nearly all of its traffic runs between a
 customer's devices and the operator's own services:
 
-- **No contract:** control traffic, storage, keys, sockets, DNS and certificates go over HTTPS to platform
-  hosts, and pushes travel as control frames or a long‑poll.
+- **No contract (today's design):** control traffic, storage, keys, sockets, DNS and certificates go over
+  HTTPS to platform hosts, and pushes travel as control frames or a long‑poll.
 - **Service‑mode contracts** connect a customer sidecar to the operator's edges (TLS, SMTP and MX). One end
-  of each is a platform client in the operator's edge network; such a contract carries no IP and pays no
-  one.
+  of each is a platform client in the operator's edge network. The design has them carry no IP and escrow
+  nothing.
 - **Relayed contracts** carry peer data between a customer's own sidecars, relay‑only through the
   platform's connect relays and never peer to peer. Both ends are on one network, so from `E_x` their bytes
   are intra‑network (§8.6.2).
+
+**The transfer client is the base of every sidecar feature** (owner decision). So sidecar's traffic is
+ordinary contracts, which escrow from the payer network's data balance and settle exactly as other contracts
+do. That holds for edge and relayed contracts alike, and it replaces the design's separate no‑escrow service
+debits. What sidecar moves onto contracts with the platform's endpoints is intra‑platform. What still goes
+over plain HTTPS stays out of `Z` until it is contracted or its usage records are published (§8.6.2).
 - **No egress by default:** a sidecar declares no egress, is refused public provider contracts, and agents
   leave only through exits the customer runs. Its required hosts are the operator's own api, auth, storage,
   key, connect, sockets and DNS hosts.
@@ -1936,18 +1959,19 @@ path open.
 
 | Component | Change | Effort | Needed for |
 |---|---|---|---|
-| server: same‑network rule (amends §8.2 from `E_x`) | The epoch reader classifies each contract from its live row (origin network, payer). It moves same‑network shares out of the provider rows and into `Z`, free and paid alike, and skips declared measurement and test networks. The 35‑day contract horizon keeps every contract of an epoch live through its build, so settlement does not change. | 2–3 days | epoch 8 |
+| server: billing of intra traffic (owner decision) | Network (same‑network) contracts leave the no‑escrow path. Today the connect controller sends network‑mode contracts to `createContractNoEscrowInTx`, with no `transfer_escrow` row, no `payer_network_id` and no balance change, settling through the no‑escrow close. From the change they escrow from the payer network's data balance like other contracts, and platform contracts escrow the same way. The degradation valve's zero‑escrow fallback for exhausted balances stays as it is. Contracts to friends‑and‑family providers share today's no‑escrow branch and are left unchanged. | 2–4 days | epoch 8 |
+| server: same‑network rule (amends §8.2 from `E_x`) | The epoch reader classifies each contract from its live row (origin network, payer, escrow). It moves same‑network shares out of the provider rows, adds those of funded contracts to `Z`, free and paid alike, and skips unfunded contracts and declared measurement and test networks. The 35‑day contract horizon keeps every contract of an epoch live through its build, so settlement does not change. | 2–3 days | epoch 8 |
 | server: extender census | Captured once at the end boundary, with the users count: the active pool (E1); units from the policy's egress‑prefix setting and key; E3 deduplication; E5 flags; the payout identity through the provider‑row wallet selection; and head flags. | 3–4 days | epoch 8 |
 | server: epoch builder | `Z` and `Z'` per epoch, eligibility, the two‑level split, share rows, the census object, header v3 and statement v2. Metrics and alerts for `Z` and its parts, `M`, `N` and the extenders' share of the pool. | 4–5 days | epoch 8 |
-| server: contracts | A registry of platform endpoints (sidecar's edges), the intra‑platform class set at contract creation, and usage snapshot v2 (providers, `z_c`, the origin's network, the measurement flag). Settlement and the deadline close accept the new snapshot. | 5–7 days | sidecar |
+| server: contracts | A registry of platform endpoints (sidecar's edges), the intra‑platform class set at contract creation, and usage snapshot v2 (providers, `z_c`, the origin's network, the funded and measurement flags). Settlement and the deadline close accept the new snapshot. | 5–7 days | sidecar |
 | sn: `ledger`, `protocol` | Header v3, the census and share‑row codecs, the two‑level split and the cap, the new Build and Verify check with fixed inputs, and GL‑style mutation tests, including million‑row fixtures. The server's builder uses this package, so it lands first. | 5–7 days | epoch 8 |
 | sn: `demand/usage` | Statement v2, its JSON schema, and the deposit audit reading `Z` (dormant at zero price). | 1–2 days | epoch 8 |
 | sn: the amendment entry | The signed line format, its file beside the price sheet, and the readers in the server, the validator and `snclaim`, as the price sheet's readers work (§7.1). | 1–2 days | epoch 8 |
 | sn: validator and `snclaim` | Header v3 decoding, the arithmetic recompute (census form, head flags, units, split, cap), reading `E_x` from the amendment entry, and the approval path. `snclaim v2 check` gets the same audit through `ledger.Verify`. UR's watcher demands on any root it cannot rebuild, so it ships with the validator. | 3–5 days | epoch 8 |
-| docs | This section made normative, with cross‑references in §7.1, §8.2, §11.1, §11.3, §12.3 and §15.2. §8.2 and `VERSION2-FINAL.md` §6.2 say that from `E_x` same‑network participants are not providers. §15.2 says one granularity sets both the head unit and the extender unit. The same‑network rule of `mainnet/PRELAUNCH-FIXES.md` is marked superseded for SN credit from `E_x`. Also the ledger check in `VALIDATOR.md`, an addendum to `VERSION2-FINAL.md`, the README glossary, `docs/spec/epoch-usage-v2.schema.json`, and `EXTENDER.md` J and §6. | 3–5 days | with the release |
+| docs | This section made normative, with cross‑references in §7.1, §8.2, §11.1, §11.3, §12.3 and §15.2. §8.2 and `VERSION2-FINAL.md` §6.2 say that from `E_x` same‑network participants are not providers. §15.2 says one granularity sets both the head unit and the extender unit. The same‑network rule of `mainnet/PRELAUNCH-FIXES.md` is marked superseded for SN credit from `E_x`. Also the ledger check in `VALIDATOR.md`, an addendum to `VERSION2-FINAL.md`, the README glossary, `docs/spec/epoch-usage-v2.schema.json`, and `EXTENDER.md` J and §6. For the billing change: the server's comments on network contracts as no‑escrow; the "no customer charge" note on same‑network contracts in `mainnet/PRELAUNCH-FIXES.md`; sidecar's no‑escrow service debits and Service mode in `sidecar/DESIGN.md`; and the apps' and support articles' description of what uses the data allowance. | 3–5 days | with the release |
 
-The whole set is about 5–7 engineer‑weeks. The part needed for epoch 8 is about 4–5 engineer‑weeks: 9–12
-days of server work and 10–16 of sn. The critical path runs through the sn `ledger` codec and then the server
+The whole set is about 5.5–7.5 engineer‑weeks. The part needed for epoch 8 is about 4.5–5.5 engineer‑weeks:
+11–16 days of server work and 10–16 of sn. The critical path runs through the sn `ledger` codec and then the server
 builder, about 9–12 working days. Sidecar's per‑customer extender switch belongs to sidecar's own plan and
 is not counted here. vault2 and `STSettlement2` do not change: they commit only `(root, total, leafCount,
 ledgerHash)`.
@@ -1969,9 +1993,10 @@ goes out to partners.
 - Its root must be approved before `end(9)`, about 2026‑12‑11 18:30Z.
 
 *What epoch 8 carries.* Unless sidecar is live by then, epoch 8's `Z` comes from same‑network contracts
-alone. Free bytes count, so all of those shares move from the provider rows into `Z`. They are rare, so `Z`
-will be small. The activation mainly moves same‑network shares from providers to extenders, and publishes the
-first census.
+alone. From the billing change they are funded from their networks' balances, free or paid, so their shares
+move from the provider rows into `Z`. They are rare, so `Z` will be small. The activation mainly moves
+same‑network shares from providers to extenders, starts charging same‑network traffic to data balances, and
+publishes the first census.
 
 *What has to ship, and by when* (the rows marked "epoch 8" above):
 
@@ -1983,6 +2008,14 @@ first census.
      signing tool refuses an entry for an epoch that has started.
    - The notice on the mainnet timeline. The same‑network change applies to every contract that closes in
      epoch 8's window, and what some providers earn changes with it.
+   - **The billing change, deployed just before the boundary** (recommended ship point), so that every
+     contract created in epoch 8 escrows. Same‑network contracts opened before it close unfunded, and add
+     nothing to `Z`.
+     - *Why not later:* `Z` must be bounded by funded balance from its first epoch.
+     - *Why not earlier:* nothing in the pool needs it before `E_x`, and one user notice can then cover both
+       changes.
+   - **A user notice in the apps and on the site.** Device‑to‑device traffic, between a network's own
+     clients and providers, will now use the network's data allowance.
 4. **By about 12‑01:** the validator and `snclaim` release with header v3, the recompute and the entry reader,
    deployed when the validator is idle. It follows the partner validator release that is going out now,
    rather than being folded into it.
@@ -2033,8 +2066,8 @@ credit it earned.
 
 #### 8.6.8 Owner decisions and open questions
 
-**Decided (owner, 2026‑11‑10, with follow‑ups at about 23:00Z).** The question numbers are those of the first
-draft.
+**Decided (owner, 2026‑11‑10, with follow‑ups at about 23:00Z and 23:10Z).** The question numbers are those of
+the first draft.
 
 1. **The unit (Q3).**
    - /29 IPv4 and /48 IPv6 prefix units are the base rule from `E_x`, under the granularity setting of
@@ -2042,7 +2075,8 @@ draft.
    - Each unit counts once, and its share is split evenly among the eligible extenders in it.
    - Per‑coldkey caps (S3) stay out.
 2. **Free bytes count (Q2).** Free and paid bytes count toward `Z` exactly as they count toward provider
-   usage, symmetrically everywhere. This reverses the earlier paid‑only decision, and M2 is withdrawn.
+   usage, symmetrically everywhere. This reverses the earlier paid‑only decision. M2 now means funded bytes
+   (decision 12).
 3. **E5 (Q4).** The NO's own extenders are excluded: the gated fleet (`durable_network_ids`), canaries and
    declared networks.
 4. **An empty set (Q6).** With `N = 0`, `Z` is dropped: it enters no weight, and the epoch allocates as it
@@ -2051,6 +2085,8 @@ draft.
    - Sidecar uses connect's client strategy as it is, with its existing extender fallback.
    - Extenders are allowed by default, with a per‑customer switch to turn them off.
    - Platform contracts that an extender carried keep crediting that extender (J3).
+   - Connect's transfer client is the base of every sidecar feature, so sidecar's traffic is ordinary
+     contracts that escrow and settle as all others do (decision 12).
 6. **Which traffic counts (Q10, and Q11's second half).**
    - Platform endpoints are sidecar's edge platform clients (tlsedge, smtpedge and mxedge), registered by
      the operator.
@@ -2073,6 +2109,12 @@ draft.
 11. **The start (Q12).** Epoch 8, while a new validator release goes out to partners. This replaces the
     earlier "epoch 6, ideally". The owner did not choose the mechanism separately. The draft's signed amendment
     entry, which epoch 8 leaves time for, fixes `E_x` (§8.6.7).
+12. **The manufactured‑traffic bound (23:10Z).** Option A: a network's intra traffic counts only up to what
+    its plan's data allowance funds.
+    - All intra‑network and intra‑platform traffic counts against the network's data balance, free plan or
+      paid, through ordinary escrow.
+    - This ends the free no‑escrow treatment of same‑network contracts.
+    - The billing change ships with `E_x` (§8.6.7).
 
 **Still open.**
 
@@ -3325,13 +3367,15 @@ starts at least two days after the last one passes.
   payer's own network it earns nothing.
 - **Intra‑platform contract** (draft §8.6.2) — a contract whose service endpoint is one of the NO's
   registered platform endpoints, and which has no participant once those endpoints are removed. The NO is
-  not a miner in its own pool, so the contract has no provider participant. All of its completed bytes count
-  toward `Z`, free or paid.
+  not a miner in its own pool, so the contract has no provider participant. It escrows from the payer's data
+  balance like any contract, and all of its completed bytes count toward `Z`, free or paid.
 - **Intra‑network share** (draft §8.6.2) — the even share of a contract's bytes held by a participant on the
   origin's own network: the receiving client of a same‑network contract, or a same‑network intermediary or
-  extender. From `E_x` it is not provider usage, which amends §8.2, and it counts toward `Z`, free or paid.
-- **Extender pool bytes `Z`** (draft §8.6.2) — an epoch's intra‑platform and intra‑network bytes, free and paid
-  alike, leaving out the operator's own measurement and test traffic. `Z` counts in `total_usage_bytes`.
+  extender. From `E_x` it is not provider usage, which amends §8.2. Same‑network contracts escrow from the
+  payer's data balance, and their shares count toward `Z`, free or paid.
+- **Extender pool bytes `Z`** (draft §8.6.2) — an epoch's funded intra‑platform and intra‑network bytes, free and
+  paid alike, leaving out the operator's own measurement and test traffic. A network adds at most what its
+  data balance funded. `Z` counts in `total_usage_bytes`.
   - For weight it is capped at the epoch's eligible provider usage (`Z'`, `ζ = 1`), so extenders take at
     most half a pool.
   - `Z'` is split evenly over the extender units, then evenly over the eligible extenders in each unit.
