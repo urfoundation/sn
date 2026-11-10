@@ -116,6 +116,9 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/mjl-/adns v0.0.0-20260809141028-22f885debe71 // indirect
+	github.com/mjl-/flate v0.0.0-20250221133712-6372d09eb978 // indirect
+	github.com/mjl-/mox v0.0.17 // indirect
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1 // indirect
 	github.com/mozillazg/go-unidecode v0.2.0 // indirect
 	github.com/mr-tron/base58 v1.3.0 // indirect
