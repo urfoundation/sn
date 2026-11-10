@@ -1688,27 +1688,29 @@ and the weightings of S4 are later options, by signed entry (§8.6.7), if one op
 growing.
 
 **Manufactured traffic.** Free bytes count toward `Z` as they do toward provider usage (owner decision), so
-anyone with free accounts can raise `Z`. The cheapest way is same‑network traffic: two free clients of one
-network, or a client and the network's own provider, exchanging data through the platform. It costs
-bandwidth, a free account and the effort of driving it. Sidecar's edges, the platform endpoints at `E_x`, are
-a second path, within whatever quotas sidecar's free tier allows.
+anyone with free accounts can raise `Z`. The cheapest way is same‑network traffic: two clients of one free
+network, or a client and the network's own provider, exchanging data. A same‑network contract carries no
+charge, so it draws on no plan's allowance, not even a free one's. It costs only the manufacturer's own
+bandwidth and the effort of driving it. Sidecar's edges, the platform endpoints at `E_x`, are a second path,
+within whatever quotas sidecar's free tier allows.
 
 **How much this widens the attack.** Under the earlier paid‑only rule, every manufactured byte cost a paid
-plan. Now it costs about nothing:
+plan. Now it costs bandwidth:
 
 - **Who gains.** `Z` is spread over every unit, so a manufacturer who holds `k` of the `M` units gains only
   about `k/M` of the weight it adds. The rest goes to everyone else's extenders. So manufacturing pays in
   proportion to the share of units already held: the Sybil and manufacturing attacks compound.
 - **Who loses.** The weight comes out of the providers' share of the pool. Free traffic alone can push the
-  extenders to the cap. At epoch 4's scale that takes `Z` equal to its 19.01 TB of eligible provider usage,
-  about 31 MB/s sustained over the epoch.
-- **What it replaces.** From `E_x`, a client's own provider on the same network earns nothing for this
-  traffic. Before `E_x`, the same bytes counted as that provider's usage.
-- **The existing route is still better for a self‑dealer.** Routing free bytes through its own provider on a
-  second network gains all of them, today and from `E_x` alike, while the extender pool gains only `k/M`.
+  extenders to the cap. At epoch 4's scale that takes `Z` equal to its 19.01 TB of eligible provider usage:
+  about 31 MB/s, or 250 Mbit/s, sustained over the epoch, within reach of one well‑connected pair of hosts.
+- **Compared with today, for a self‑dealer, it narrows.** Today the same same‑network bytes already count in
+  full for the self‑dealer's own provider (§8.2). From `E_x` that provider earns nothing for them, and the
+  self‑dealer gets back only `k/M` through `Z`.
+- **The cross‑network route is unchanged and still the better one.** Routing free bytes through its own
+  provider on a second network gains all of them, today and from `E_x` alike.
 
-So the new exposure is less a better route for any one attacker than a cheaper way for anyone to move up to
-half of a pool from providers to extenders.
+So the new exposure is not a better route for any one attacker. It is that anyone's free same‑network
+traffic, at almost no cost, can now move up to half of a pool from every provider to the extenders.
 
 **What bounds it:**
 
