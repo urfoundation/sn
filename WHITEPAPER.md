@@ -1462,17 +1462,17 @@ mechanism" posture as the bootstrap quality-swing cap, §12.3 / D14). Hard const
 **lowest-paid top miner ≥ the highest-paid pool provider**, or graduation is a pay cut and the head thrashes
 against the tail.
 
-### 8.6 Intra‑platform traffic credited to extenders — DRAFT amendment (not in force)
+### 8.6 Intra‑platform traffic credited to extenders — amendment (approved 2026‑11‑10)
 
-> **DRAFT for owner review, 2026‑11‑10. Not in force.** Nothing in this section changes settlement, the
-> ledger, the usage statement or the validator until the owner adopts it and fixes an activation epoch
-> `E_x` (§8.6.7). It amends settlement v2 only (epochs from `E_s`), and from `E_x` it also amends §8.2's
-> provider usage for same‑network traffic (§8.6.2); release 1.0 epochs and their `share_bps` leaves are
-> untouched. The base rule is the owner's request of 2026‑11‑10: contracts that settle with zero
-> participants, because the data was between the network operator and a client, spread their traffic
-> weight evenly across all extenders, since extenders make the api and platform surface reachable from
-> anywhere. The owner's decisions of the same day are folded in (§8.6.8); the target is `E_x = 8`. Everything
-> marked *option* below is an alternative with trade‑offs, not a replacement.
+> **Amendment approved by the owner on 2026‑11‑10.** It takes effect from epoch 8 (`E_x = 8`) once the
+> signed amendment entry is published (§8.6.7), and the billing change in §8.6.7 goes live with its deploy.
+> It amends settlement v2 only (epochs from `E_s`). From `E_x` it also amends §8.2's provider usage for
+> same‑network traffic (§8.6.2). Release 1.0 epochs and their `share_bps` leaves are untouched. The base rule
+> is the owner's request of 2026‑11‑10: contracts that settle with zero participants, because the data was
+> between the network operator and a client, spread their traffic weight evenly across all extenders, since
+> extenders make the api and platform surface reachable from anywhere. The owner's decisions of the same day
+> are folded in (§8.6.8), and one question (Q7) stays open. Everything marked *option* below is an
+> alternative with trade‑offs, not a replacement.
 
 **Extenders, as built** (`connect/EXTENDER.md`). An extender is a relay that a provider runs on TCP and UDP
 443 and a DNS carrier. It forwards only to its operator's own api and connect hosts, behind camouflage meant
@@ -3372,53 +3372,53 @@ starts at least two days after the last one passes.
   snapshotted TTL+grace into carry (§8.2–8.3, §11.2). Version 2 replaces them with accounts that never
   expire.
 
-*Draft terms (§8.6, not in force; for owner review):*
+*Terms of §8.6 (amendment approved 2026‑11‑10; in effect from `E_x = 8`):*
 
 - **Extender** — a relay a provider runs on TCP and UDP 443 and a DNS carrier. It forwards only to its NO's
   own api and connect hosts, so a client that cannot reach the platform directly can reach it through one
   (`connect/EXTENDER.md`). Its record names the network that first stored its key and the provider client
-  that activated it last. It earns as a contract party (J2–J3) and, under draft §8.6, its unit's share of
+  that activated it last. It earns as a contract party (J2–J3) and, under §8.6, its unit's share of
   its NO's extender pool bytes `Z`.
 - **Extender party** — an active extender on either endpoint's connected connections when a contract is
   created. It joins the contract's participants with one equal hop share (`EXTENDER.md` J2–J3); on the
   payer's own network it earns nothing.
-- **Intra‑platform contract** (draft §8.6.2) — a contract whose service endpoint is one of the NO's
+- **Intra‑platform contract** (§8.6.2) — a contract whose service endpoint is one of the NO's
   registered platform endpoints, and which has no participant once those endpoints are removed. The NO is
   not a miner in its own pool, so the contract has no provider participant. It escrows from the payer's data
   balance like any contract, and all of its completed bytes count toward `Z`, free or paid.
-- **Intra‑network share** (draft §8.6.2) — the even share of a contract's bytes held by a participant on the
+- **Intra‑network share** (§8.6.2) — the even share of a contract's bytes held by a participant on the
   origin's own network: the receiving client of a same‑network contract, or a same‑network intermediary or
   extender. From `E_x` it is not provider usage, which amends §8.2. Same‑network contracts escrow from the
   payer's data balance, and their shares count toward `Z`, free or paid.
-- **Extender pool bytes `Z`** (draft §8.6.2) — an epoch's funded intra‑platform and intra‑network bytes, free and
+- **Extender pool bytes `Z`** (§8.6.2) — an epoch's funded intra‑platform and intra‑network bytes, free and
   paid alike, leaving out the operator's own measurement and test traffic. A network adds at most what its
   data balance funded. `Z` counts in `total_usage_bytes`.
   - For weight it is capped at the epoch's eligible provider usage (`Z'`, `ζ = 1`), so extenders take at
     most half a pool.
   - `Z'` is split evenly over the extender units, then evenly over the eligible extenders in each unit.
   - With no eligible extender, `Z` is dropped.
-- **Platform endpoint** (draft §8.6.2) — a client identity the NO itself runs to serve a platform feature.
+- **Platform endpoint** (§8.6.2) — a client identity the NO itself runs to serve a platform feature.
   At `E_x` these are sidecar's edge platform clients: tlsedge, smtpedge and mxedge. The operator registers
   them, they are recorded on a contract when the contract is created, and they never hold a share.
-- **Extender unit** (draft §8.6.2) — the keyed /29 IPv4 or /48 IPv6 prefix hash of an eligible extender's
+- **Extender unit** (§8.6.2) — the keyed /29 IPv4 or /48 IPv6 prefix hash of an eligible extender's
   active IPv4 address, or of its IPv6 address if it has no active IPv4 address. It is §8.4's scoring unit,
   under the same granularity setting. Each unit holding an eligible extender takes an even share of `Z'`.
-- **Active pool** (draft §8.6.2, E1) — the NO's extenders whose records are active and unrevoked, with at
+- **Active pool** (§8.6.2, E1) — the NO's extenders whose records are active and unrevoked, with at
   least one address the five‑minute challenge has not deactivated. The census takes it once, at the
   epoch's end boundary.
-- **Eligible extender** (draft §8.6.2) — for one epoch, an extender that meets these:
+- **Eligible extender** (§8.6.2) — for one epoch, an extender that meets these:
   - E1, in the active pool at `end(k)`;
   - E3, one record per provider client and per address, in one unit;
   - E4, its provider client has a payout coldkey and no head binding;
   - E5, not on the NO's own networks.
 
   (E2, an uptime record, was removed by owner decision.)
-- **Extender census / extender share row** (draft §8.6.2) — the census is the NO's per‑epoch,
+- **Extender census / extender share row** (§8.6.2) — the census is the NO's per‑epoch,
   content‑addressed list of its extenders, each with its unit and its eligibility flags. It is
   operator‑attested and published as keyed prefix hashes, never addresses. A share row is the 57‑byte row
   that gives one eligible extender its bytes in the epoch's allocation: its unit's `Z'/M`, split among the
   unit's extenders.
-- **`E_x`** (draft §8.6.7) — the amendment's activation epoch: epoch 8, by the owner's decision. It is fixed by
+- **`E_x`** (§8.6.7) — the amendment's activation epoch: epoch 8, by the owner's decision. It is fixed by
   a signed amendment entry, which must be signed before epoch 8 starts, and later changes go by entry too. It
   must be a future epoch whose provider rows no root has built yet, and earlier epochs keep their fixed
   inputs.
