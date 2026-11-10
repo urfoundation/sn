@@ -1572,9 +1572,10 @@ its own network. On every contract, in any product, the even shares that the spl
 the origin's network are **not provider usage** from `E_x`. Those participants are the receiving client of a
 same‑network contract, and any same‑network intermediary or extender on any contract. Their shares leave
 the provider rows and become intra‑network bytes in `z_c`. The other participants' shares do not change: the
-split still counts every hop, just as the monetary settlement does, which omits same‑network shares rather
-than transferring them. Until `E_x`, §8.2 counts these participants as providers, their bytes being settled
-payout bytes like any other; from `E_x` it does not.
+split still counts every hop, and no same‑network share passes to another participant. (The server's billing
+split, `allocateContractParticipantPayouts`, also leaves these shares out, but it is customer‑billing
+bookkeeping, which the SN ledger ignores.) Until `E_x`, §8.2 counts these participants as providers, their
+bytes being settled payout bytes like any other; from `E_x` it does not.
 
 **What counts toward `Z`.** A contract counts when it closed in the earning window with a credited outcome
 (`settled`, `dispute_resolved_to_source` or `dispute_resolved_to_destination`). Its `b_c` is the completed
@@ -1723,11 +1724,13 @@ Sidecar's edges, the platform endpoints at `E_x`, are a second route, drawing on
 - **Compared with today, for a same‑network self‑dealer, it narrows.** Today its own provider earns full
   credit for those bytes, and no balance is spent (§8.2, §8.6.1). Once billed, the bytes cost allowance. From
   `E_x` the provider also earns nothing for them, and the self‑dealer gets back only `k/M` through `Z`.
-- **The free route to provider credit closes.** Contracts to a provider in friends‑and‑family mode, today
-  created without escrow like same‑network contracts, now reserve escrow from the sender's (dialing
-  network's) transfer balance, as public contracts do (owner decision). Routing bytes through one's own
-  provider on a second network still earns all of them, but only for balance it funds, as any cross‑network
-  contract does.
+- **The unmetered route to provider credit closes.** Contracts to a provider in friends‑and‑family mode are
+  created today without escrow, like same‑network contracts, so no balance limits them. From the billing
+  change they reserve escrow from the sender's (dialing network's) transfer balance, as public contracts do
+  (owner decision). That is the only change. Their bytes count as provider usage like all other traffic,
+  paid or free (§8.2), and the sender's payment status changes no provider's credit. Routing bytes through
+  one's own provider on a second network still earns provider credit for all of them, but the sender's
+  balance now pays for them, as on any cross‑network contract.
 
 **Accepted risk (owner decision).** All of a network's traffic shares its one transfer balance, and there is
 no separate per‑network limit on `Z`. So tens of funded networks, or a few Pro subscriptions, can move up to
@@ -2012,8 +2015,8 @@ same‑network shares from providers to extenders, and publishes the first censu
      balance, so every traffic kind draws on that one balance.
    - Contracts opened before the deploy close unfunded through the no‑escrow path.
    - Until `E_x`, nothing else changes in settlement credit. Same‑network bytes stay provider usage under
-     §8.2, now paid for from the sender's balance, and friends‑and‑family bytes stay provider usage as
-     before.
+     §8.2, now paid for from the sender's balance. Friends‑and‑family bytes stay provider usage, before and
+     after `E_x`, paid or free alike.
    - The user notice goes out with the deploy: device‑to‑device traffic between a network's own clients and
      providers, and traffic to friends‑and‑family providers, now use the sender's data allowance.
    - The extender pool still starts at epoch 8. By then every contract created since the deploy is funded,
@@ -2128,7 +2131,10 @@ the first draft.
     only bound on a network's contribution to `Z` is its one transfer balance. The rest is the accepted risk
     of §8.6.3.
 14. **Friends‑and‑family contracts escrow (23:25Z).** They reserve escrow from the sender's (dialing
-    network's) transfer balance, as public contracts do. That closes the free route to provider credit.
+    network's) transfer balance, as public contracts do, which closes the unmetered route to provider credit.
+    Nothing else changes for them. As the owner confirmed on 2026‑11‑10, "all traffic counts as paid
+    traffic": their bytes count as provider usage like any other, paid or free, and only the sender's
+    balance now pays for the data.
 15. **Billing as soon as possible (23:25Z).** The billing change goes live as soon as it deploys, before
     `E_x`. Contracts opened before the deploy close unfunded, and the extender pool still starts at epoch 8
     (§8.6.7).
