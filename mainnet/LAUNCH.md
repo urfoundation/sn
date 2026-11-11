@@ -331,7 +331,7 @@ deleting journals or issuing another signature casually.
 
 ### Contract graph: exact action requests
 
-Build the CLI from the reviewed checkout with the pinned Go 1.27.3 toolchain.
+Build the CLI from the reviewed checkout with the pinned Go 1.27.4 toolchain.
 It runs on Linux (amd64/arm64) and macOS (arm64/amd64); on macOS, custody
 volumes follow [MACOS.md](MACOS.md). Retain the binary's SHA-256 and
 `go version -m` output with the other launch locks:
