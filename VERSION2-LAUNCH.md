@@ -553,8 +553,8 @@ first exist.
   2. Run step 4's gate on those checkouts. If it fails, fix, commit, merge,
      push and pull, and run it again, until it passes (O28). The heads it
      passes on are O1.
-  3. Build `sn-mainnet` with Go 1.27.3. The pin is the `go` line of `go.mod`
-     (`go.mod:3`, `go 1.27.3`; the server's `go.mod:3` is the same). Under
+  3. Build `sn-mainnet` with Go 1.27.4. The pin is the `go` line of `go.mod`
+     (`go.mod:3`, `go 1.27.4`; the server's `go.mod:3` is the same). Under
      `GOTOOLCHAIN=local` an older local toolchain is refused: "go: go.mod
      requires go >= 1.27.2 (running go …; GOTOOLCHAIN=local)". The command is
      [mainnet/MACOS.md](mainnet/MACOS.md):24-29's:

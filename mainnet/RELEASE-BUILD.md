@@ -7,8 +7,8 @@ an image or deploys. The output directory must be new and outside the source
 workspace. Keep scratch, compiler caches and output on a capacity-checked build
 volume, such as `/mnt/data`; do not consume the small system volume implicitly.
 
-The pinned toolchain is Go 1.27.3: `go.mod` in SN and server requires it
-(`go 1.27.3`). The build names no Go version of its own. It pins the config's
+The pinned toolchain is Go 1.27.4: `go.mod` in SN and server requires it
+(`go 1.27.4`). The build names no Go version of its own. It pins the config's
 `go` executable by SHA-256 and runs it with `GOTOOLCHAIN=local`
 (`scripts/mainnet-release-build/main.go:168,297`), so a local toolchain older
 than `go.mod` requires is refused. Use

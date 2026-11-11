@@ -1270,7 +1270,7 @@ shortfall without persisting or broadcasting transaction bytes.
 
 ## Host prerequisites
 
-- Linux amd64, Go 1.27.3, Git, and a running user systemd manager.
+- Linux amd64, Go 1.27.4, Git, and a running user systemd manager.
 - Both `net.core.rmem_max` and `net.core.wmem_max` at least 7 MiB, matching
   quic-go's release socket requirement. `doctor` fails closed below that floor;
   on Linux set a 16 MiB margin before launch with

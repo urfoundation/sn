@@ -453,7 +453,7 @@ gate runs again.
    - On Windows, confirm the long consent link opens in the https browser that
      holds Talisman, and that wallet sign-in still works (sign-in sessions are
      now final once cancelled).
-6. **Step 1 and the release build** use Go 1.27.3 (`go.mod`) with
+6. **Step 1 and the release build** use Go 1.27.4 (`go.mod`) with
    `dependency_mode: local`.
    - The census includes connect, sdk and gvisor.
    - gvisor is a checkout beside sn, cloned from

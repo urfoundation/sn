@@ -72,7 +72,7 @@ the sibling checkouts.
 
 ## Making a build version
 
-You need Go 1.27.3 (`pin.sh` runs with the toolchain `go.mod` selects, under
+You need Go 1.27.4 (`pin.sh` runs with the toolchain `go.mod` selects, under
 `GOTOOLCHAIN=local`), git, python3 and HTTPS access to proxy.golang.org and
 sum.golang.org, or to github.com (see below). The frozen commits must be pushed.
 The build workspace holds fresh physical clones of the census that
