@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
@@ -31,6 +32,10 @@ type SettlementV2RuntimeOptions struct {
 	// Optional whole steering-operation budget. Zero selects
 	// DefaultReleaseSteeringSettings; negative values are invalid.
 	SteeringOperationTimeout time.Duration
+	// --amendments-fallback, the configured amendment lines read from it, one
+	// per line (settlement_v2_amendments.go): the fallback where no signed
+	// entry is in force. Empty configures none.
+	AmendmentsFallback string
 }
 
 type settlementV2RuntimeOptionsKey struct{}
@@ -72,5 +77,10 @@ func settlementV2RuntimeOptionsFromOpts(opts docopt.Opts) (SettlementV2RuntimeOp
 			return options, fmt.Errorf("--ledger_auditor_key_file: %w", err)
 		}
 	}
+	lines, err := readSettlementV2AmendmentsFallback(expandHome(optString(opts, "--amendments-fallback", "")))
+	if err != nil {
+		return options, err
+	}
+	options.AmendmentsFallback = strings.Join(lines, "\n")
 	return options, nil
 }

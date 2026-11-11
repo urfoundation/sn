@@ -260,6 +260,12 @@ type VerifyInput struct {
 	// component, and no other epoch may (check 11). Version 1 of the entry
 	// has no end, so the epochs it covers are exactly those from E_x.
 	ExtendersFrom uint64
+	// ExtendersUnchecked takes the header's extender components as declared
+	// and skips check 11's first part, which epochs carry one, for a watcher
+	// without the amendments file, such as snclaim. Each component's census,
+	// head flags and share rows are still checked; whether the amendment
+	// covers its epoch is the auditors' check. A validator never sets it.
+	ExtendersUnchecked bool
 }
 
 // Fault is a previous account that the pending root's published account

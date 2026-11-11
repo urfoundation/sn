@@ -48,6 +48,7 @@ import (
 	"io"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -138,6 +139,9 @@ type settlementV2AuditPool struct {
 type settlementV2Audit struct {
 	reader  settlementV2AuditReader
 	custody *settlementV2Custody
+	// amendments say which covered epochs carry an extender component; nil
+	// covers none (settlement_v2_amendments.go).
+	amendments *settlementV2Amendments
 	// sender is nil without --ledger_auditor_key_file.
 	sender   settlementV2AuditSender
 	pools    []settlementV2AuditPool
@@ -204,6 +208,13 @@ func newReleaseSettlementV2Audit(ctx context.Context, cfg *ReleaseConfig, chain 
 	}
 	reader := &settlementV2AuditChain{chain: chain, vault: addresses.Vault, settlementVault: common.HexToAddress(cfg.SettlementVault), deployBlock: cfg.DeployBlock}
 	audit := newSettlementV2Audit(reader, custody, sender, pools, options.LedgerMaxBytes)
+	var fallback []string
+	if options.AmendmentsFallback != "" {
+		fallback = strings.Split(options.AmendmentsFallback, "\n")
+	}
+	if audit.amendments, err = newSettlementV2Amendments(cfg.ChainID, cfg.Netuid, cfg.StateDir, fallback); err != nil {
+		return nil, err
+	}
 	audit.confirm = confirm
 	return audit, nil
 }
@@ -306,9 +317,17 @@ func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2Audi
 		FundedThrough: state.funded, Fetcher: pool.objects, Custody: self.custody, Heads: self.reader.headOracle(state),
 		MaxFetchBytes: self.remainingBytes(record), Recoveries: recoveries,
 	}
+	covered := state.firstEpoch - 1
 	if previous := state.previous; previous != nil {
 		root := settlementV2LedgerRoot(previous.Epoch, previous.Root, previous.Total, previous.LeafCount, previous.LedgerHash)
 		in.Previous = &root
+		covered = previous.Epoch
+	}
+	// Unknown amendments decide nothing: the audit retries.
+	if self.amendments != nil {
+		if in.ExtendersFrom, err = self.amendments.extendersFrom(ctx, state.noID, covered+1, pending.Epoch); err != nil {
+			return nil, fmt.Errorf("settlement v2 amendments of pool %d seq %d: %w", state.noID, pending.Seq, err)
+		}
 	}
 	res, err := ledger.Verify(ctx, in)
 	if err != nil {

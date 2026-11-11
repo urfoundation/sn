@@ -114,6 +114,21 @@ func TestVerifyExtendersBoundary(t *testing.T) {
 	both := s.buildExtenders(t, &ExtenderInput{Bytes: 5, Census: census12()}, &ExtenderInput{Bytes: z12, Census: census12()})
 	expectPass(t, mustVerify(t, s.extendersFrom(both.Commit, both.Objects, 11)))
 
+	// A watcher without the amendments file takes the components as
+	// declared, and still checks their arithmetic.
+	for _, root := range []*Ledger{l, s.p, both} {
+		s.custody = cloneCustodyAfterF(t, s)
+		in := s.extendersFrom(root.Commit, root.Objects, 0)
+		in.ExtendersUnchecked = true
+		expectPass(t, mustVerify(t, in))
+	}
+	s.custody = cloneCustodyAfterF(t, s)
+	pub := publish(t, l)
+	pub.header.Epochs[1].Extenders.Bytes = z12 + 1
+	in := s.extendersFrom(pub.seal(t), pub.objects, 0)
+	in.ExtendersUnchecked = true
+	expectFailure(t, mustVerify(t, in), CheckExtenders, ActionRefuse, ErrExtenderRows)
+
 	// An unrecoverable epoch at or after E_x carries none.
 	s.custody = cloneCustodyAfterF(t, s)
 	declared, err := buildOver(s.f, []EpochInput{{Epoch: 11, Null: true}, {Epoch: 12, Rows: epoch12Rows(), Extenders: &ExtenderInput{Bytes: z12, Census: census12()}}}, s.funded)

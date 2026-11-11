@@ -23,6 +23,9 @@ import (
 // accounts are read, as check 10 does, so a dispute over which epochs the
 // amendment covers is a refusal with the root reproduced, never a demand.
 func (v *verifier) extenderDeclarations(h *Header) error {
+	if v.in.ExtendersUnchecked {
+		return nil
+	}
 	from := v.in.ExtendersFrom
 	for i := range h.Epochs {
 		epoch := &h.Epochs[i]

@@ -113,7 +113,7 @@ Usage:
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
     validator run [--config=<path>] [--progress-file=<path>]
-        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>]
+        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--amendments-fallback=<path>]
         [--steering-operation-timeout=<duration>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [(--native-gap-bridge=<path> --native-gap-bridge-sha256=<hash>)] [--startup-verified-progress]
@@ -149,6 +149,10 @@ Options:
                                  approvals, challenges and demands. Without it none is sent.
     --ledger_max_bytes=<n>       Ledger objects new to custody that the settlement v2 audit fetches
                                  per root, in bytes; raised operationally [default: 2147483648].
+    --amendments-fallback=<path>  Configured settlement amendment lines, one per line, the fallback
+                                 where no signed entry of amendments.yml is in force (WHITEPAPER.md
+                                 §8.6.7). Every reader must configure the same lines; the signed
+                                 configuration is unchanged.
     --approval-key-file=<path>   Private raw32 or bare64-hex Ed25519 seed for the configured approval
                                  signer. Signs activation's exact successor message; never copied into
                                  the rendered configuration. init creates a private raw seed if absent,
