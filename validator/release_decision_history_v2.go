@@ -171,7 +171,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 	if err != nil {
 		return result, err
 	}
-	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg), priceEntry: priceEntry}
+	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg), priceEntry: priceEntry, ctf: releaseCtfResolves(artifact)}
 	if uint64(len(self.participants)) > bounds.MaxOperators {
 		return result, errors.New("historical decision operator census exceeds its bound")
 	}

@@ -650,7 +650,7 @@ func (self *settlementV2ResolverTestFixture) registerCtfPool(noID, firstEpoch ui
 func (self *settlementV2ResolverTestFixture) ctfReplay(t *testing.T, addresses SettlementV2Addresses) ([]ReleasePoolMeasurement, error) {
 	t.Helper()
 	query := self.query
-	query.settlementV2 = addresses
+	query.settlementV2, query.ctf = addresses, true
 	observed, err := self.chain.readReleaseDecisionChainV2Context(t.Context(), query)
 	if err != nil {
 		return nil, err

@@ -253,6 +253,12 @@ func releaseCtfPoolsExpected(ctf *ReleaseCaptureTheFlag, resolved []ReleasePoolM
 	return pools
 }
 
+// releaseCtfResolves is whether replaying artifact must resolve CTF pools: only
+// a decision that weights capture the flag has any to compare.
+func releaseCtfResolves(artifact *ReleaseMeasurementArtifact) bool {
+	return artifact.CaptureTheFlag != nil && artifact.CaptureTheFlag.Support
+}
+
 // verifyReleaseCtfPools requires artifact's CTF pools to be exactly those of
 // resolved, the CTF pools independently resolved at its snapshot, that its
 // entries and setting select. An artifact without capture the flag carries
