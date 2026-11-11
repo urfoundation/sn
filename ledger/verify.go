@@ -731,25 +731,9 @@ func (v *verifier) fixedInputs(h *Header) ([]bool, [][]bool, error) {
 
 // checkAccounts runs check 8.
 func (v *verifier) checkAccounts() error {
-	if len(v.res.Faults) > 0 {
-		fault := v.res.Faults[0]
-		if fault.Kind == merkle.LedgerFaultLowerValue {
-			return fail(CheckAccounts, fmt.Errorf("%w: account %d", ErrAccountLowered, fault.Index))
-		}
-		return fail(CheckAccounts, fmt.Errorf("%w: account %d", ErrAccountMoved, fault.Index))
-	}
-	accounts := v.res.Accounts
-	order, duplicate := coldkeyOrder(accounts)
-	if duplicate >= 0 {
-		return fail(CheckAccounts, fmt.Errorf("%w: account %d", ErrAccountDuplicate, duplicate))
-	}
-	for i := len(v.res.PreviousAccounts); i < len(accounts); i++ {
-		if i > len(v.res.PreviousAccounts) && bytes.Compare(accounts[i-1].Coldkey[:], accounts[i].Coldkey[:]) > 0 {
-			return fail(CheckAccounts, fmt.Errorf("%w: account %d", ErrAccountUnsorted, i))
-		}
-		if accounts[i].Cumulative.IsZero() {
-			return fail(CheckAccounts, fmt.Errorf("%w: account %d", ErrAccountZeroDelta, i))
-		}
+	order, err := checkAccountRows(v.res.PreviousAccounts, v.res.Accounts, v.res.Faults)
+	if err != nil {
+		return fail(CheckAccounts, err)
 	}
 	v.order = order
 	return nil
@@ -915,31 +899,8 @@ func (v *verifier) providerRows(epoch uint64, providers []Ref, label string) ([]
 // positive delta has an account. Check 8 has passed, so increases are not
 // negative and each coldkey has at most one account.
 func (v *verifier) checkDeltas(sum []protocol.LedgerDelta) error {
-	accounts, previous, order := v.res.Accounts, v.res.PreviousAccounts, v.order
-	// expected[pos] is the delta of the account at pos.
-	expected := make([]uint256.Int, len(accounts))
-	k := 0
-	for i := range sum {
-		d := &sum[i]
-		for k < len(order) && bytes.Compare(accounts[order[k]].Coldkey[:], d.Coldkey[:]) < 0 {
-			k++
-		}
-		if k < len(order) && accounts[order[k]].Coldkey == d.Coldkey {
-			expected[order[k]] = d.Delta
-			continue
-		}
-		if !d.Delta.IsZero() {
-			return fail(CheckAllocation, fmt.Errorf("%w: coldkey %x", ErrAccountOmitted, d.Coldkey))
-		}
-	}
-	for i := range accounts {
-		increase := accounts[i].Cumulative
-		if i < len(previous) {
-			increase.Sub(&increase, &previous[i].Cumulative)
-		}
-		if !increase.Eq(&expected[i]) {
-			return fail(CheckAllocation, fmt.Errorf("%w: account %d increased %s, delta %s", ErrAccountDelta, i, increase.Dec(), expected[i].Dec()))
-		}
+	if err := checkAccountDeltas(v.res.PreviousAccounts, v.res.Accounts, v.order, sum); err != nil {
+		return fail(CheckAllocation, err)
 	}
 	return nil
 }

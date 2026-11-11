@@ -249,6 +249,14 @@
 // and Previous.Proof(i)); ActionRefuse otherwise. A budget too small to
 // read the pending accounts also leads to ActionDemand.
 //
+// # Shared account rules
+//
+// Every v2 pool commits cumulative per-coldkey accounts the same way, the
+// capture the flag pool (package ctf) included. ApplyDeltas applies a root's
+// deltas to the previous root's accounts as Build does; CheckAccountRows and
+// CheckAccountDeltas are checks 8 and 7 over published accounts, as Verify
+// runs them.
+//
 // # Demands (validator, snclaim)
 //
 // demandPath and checkPath take the index of the finalized root an account
