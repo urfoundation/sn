@@ -171,7 +171,13 @@ func newE2EServer(t testing.TB, f *e2eFixture) *e2eServer {
 	if !controller.InstallStLedgerBuilder() {
 		t.Fatal("the server installed no ledger builder")
 	}
+	// The end-to-end chain borrows mainnet's identity, so it would read the
+	// signed amendments published for mainnet; it publishes none of its own,
+	// and its epochs are built as before the extender pool (WHITEPAPER.md
+	// §8.6).
+	restoreAmendments := controller.Testing_SetStAmendments("", common.Address{}, 0, 0)
 	t.Cleanup(func() {
+		restoreAmendments()
 		controller.SetStLedgerBuilder(nil)
 		controller.SetStLedgerV2ObjectStore(nil)
 		controller.SetStConfig(nil)
