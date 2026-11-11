@@ -94,9 +94,9 @@ with deregistration churn running that tournament. Both tiers share **one** mech
 (§14); a governance split **θ** sets how much of the providers' share of the 41% miner emission flows to
 the head vs. the pools (§8.4–8.5). On SN25 that share, the **momentum** `μ`, is 1/10 at launch, and the
 native treasury multisig `ur‑reserve` receives the rest (§8.5). From epoch 8 (`E_c`) three fixed shares
-replace θ: the pools take 4/10, the head 5/10 (the pools' while no fleet is weighted), and 1/10 funds each NO's
-**capture the flag** pool, a per‑country lottery that pays miners for being present in every country (§8.5,
-§8.7).
+replace θ: the pools take 4/10, the head 5/10 (the pools' while no fleet is weighted), and 1/10 funds the NOs'
+**capture the flag** pools, split by their pools' weights: a per‑country lottery that pays miners for being
+present in every country (§8.5, §8.7).
 
 The subnet **launches centralized‑but‑bounded** — an upgradeable policy coordinator owned by a dedicated
 testnet key and, on mainnet, a Safe multisig (1-of-1 at the SN25 launch; a Safe transaction can add owners and
@@ -220,9 +220,9 @@ Money flows in three coupled channels, all in α:
    distinct routable egress-IP count**, as their own native UIDs), and `1−θ` to the NO pools above. On SN25
    that share, the **momentum** `μ`, is 1/10 at launch: the signed treasury policy has validators weight
    the other 9/10 to two recipient UIDs of `ur‑reserve`, a native treasury multisig separate from the
-   buyback reserve (§8.5). From `E_c` (epoch 8) a tenth of the providers' share instead funds each NO's
-   **capture the flag** pool, its second vault‑owned UID, and the pools and the head share the rest 4 : 5
-   (§8.5, §8.7). Validator emission (41%) flows **natively** to the independent validators
+   buyback reserve (§8.5). From `E_c` (epoch 8) a tenth of the providers' share instead funds the NOs'
+   **capture the flag** pools, each NO's second vault‑owned UID, split by their pools' weights, and the pools
+   and the head share the rest 4 : 5 (§8.5, §8.7). Validator emission (41%) flows **natively** to the independent validators
    ∝ stake × vtrust.
 
 3. **Settlement (contract).** Over a 7‑day epoch the contract accrues the **captured miner emission**,
@@ -1471,8 +1471,8 @@ zeroes its CTF pool too. The cede rules apply in this order:
 
 On SN25 with no head fleet, the row (pool, CTF, the two recipients) is [9/100, 1/100, 9/20, 9/20], about u16
 [13107, 1456, 65535, 65535]. Once fleets are weighted it is pool 4/100, CTF 1/100, head 5/100 and the
-recipients 9/20 each. Every entry stays far under the 32768 cap, and the treasury policy (μ = 1/10, cap
-32768) is unchanged. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
+recipients 9/20 each. The pool, CTF and head entries stay far under the 32768 cap, the recipients stay at 9/20
+each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
 scale the CTF pools get about 119.58 α an epoch and the pool about 1,076.26 α. Once fleets are weighted, the
 pool gets about 478.34 α and the head about 597.92 α.
 
@@ -2259,9 +2259,9 @@ numbers are those of the first draft.
 > (`E_c = 8`), the extender pool's first epoch too, once the signed amendment entry v2 is published (§8.7.5).
 > From `E_c` it amends §8.5's split and adds a second settlement v2 pool per network operator, with its own UID
 > (§14). vault2, the provider pool's ledger and the extender pool do not change. This section summarizes the
-> design. `CAPTURETHEFLAG.md` specifies it, with its formats, amounts, attacks, evidence and deployment plan,
-> and governs where the two differ. The contracts are in `VERSION2-FINAL.md` §19, and the public routes in
-> `sn/api/operator.yml`. The owner's decisions are listed in §8.7.6.
+> design, and `CAPTURETHEFLAG.md` gives it in full, with its formats, amounts, attacks, evidence and deployment
+> plan. The contracts are in `VERSION2-FINAL.md` §19, and the public routes in `api/operator.yml`. The owner's
+> decisions are listed in §8.7.6.
 
 **Why.** The provider pool pays for usage (§8.2), the head for routable breadth (§8.4), and from epoch 8 the
 extender pool spreads platform traffic evenly over prefix units (§8.6). None of them pays for being present in
@@ -2352,10 +2352,14 @@ and role, so the first miner to reach a thin country earns far more than one mor
   per CTF pool. Once the root finalizes, anyone calls `recycle`. It claims that account and moves the α
   straight back onto the CTF pool hotkey, where the next close captures it with the epoch's emission. It
   records each return under the epoch whose close captures it (`recycledFor`), so the ledger tells returned
-  carry from fresh funding. It holds stake only inside a call.
+  carry from fresh funding. It holds stake only until the next recycle, which returns everything it holds.
 - **Pending awards.** If the carry has not come back before an epoch's close (a late root, or the relay down),
   the epoch is not matured. Its winners take their slot amounts at once and their pot shares as pending awards,
-  paid in full in the first matured epoch, so a winner never loses its pot share to a delay.
+  paid in full in the first matured epoch, so a delay does not cost a winner its pot share.
+- **An open risk.** Third parties can fill the carry contract's staking‑hotkey list, after which the runtime
+  refuses every claim of its account, and the contract cannot clear the list. The carry could then not return,
+  and pending awards would wait. This is open for the owner's decision before the carry contract is created
+  (`VERSION2-FINAL.md` §19.4).
 
 At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
 is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
@@ -2371,14 +2375,17 @@ takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
   channel as empty (§8.5, rule 3).
 - **Yuma decides what is paid.** Each CTF UID's incentive is the κ‑stake‑weighted median of the validators'
   weights for it, so a CTF pool is paid only while validators holding more than half of the active stake
-  support it. Either way the gap is about 1/100 of the row, so the vtrust cost of disagreeing is small. Partner
+  support it. Validators that support CTF while consensus does not have their CTF weight clipped, and those
+  that do not while consensus does are clipped where they overweight the pool or head. Either way the gap is
+  about 1/100 of the row, so the vtrust cost is small. Partner
   validators need nothing for epoch 8: until a release of theirs supports CTF, Yuma clips their weights by
   about 1/100 of the row. `weights_version_key` is not bumped, since support is each validator's choice.
 - **Resolving the UID.** A validator finds NO `n`'s CTF pool with `STSettlement2.ctfSettlementAt(n, epoch)` and
   checks the hotkey against vault2's own `pools(2^32 + n)` record, as it does for the provider pool (§10). An
   unregistered or pruned CTF pool leaves the channel empty for that NO.
-- **The audit is arithmetic.** vault2 finalizes a CTF root only with auditor approval, and at launch the auditor
-  key is the validator's. Before approving, the validator recomputes from public objects and chain state: the
+- **The audit is arithmetic.** A CTF root finalizes only with auditor approval, which `STSettlement2` requires
+  (§8.3), and at launch the auditor key is the validator's. Before approving, the validator recomputes from
+  public objects and chain state: the
   census against its commitment, the seed from the drand pulse, the draw, the amounts and the accounts. It is
   the same kind of check it runs on the extender census, not a measurement. Presence, the checks behind P1 and
   X1, the countries, units and address dedupe, the wallets and the declared networks are attested and not
@@ -2386,7 +2393,7 @@ takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
 - **Claims.** Apps claim a CTF account beside the pool account, in the same claim flow. Each entry of
   `GET /sn/ledger/account` gains `kind` (`pool` or `ctf`) and `label`. Old apps show a CTF account as
   "Pool 4294967297" and claim it like any pool.
-- **Inspection.** The census, the draw, the awards and the pots are public objects. `sn/api/operator.yml`
+- **Inspection.** The census, the draw, the awards and the pots are public objects. `api/operator.yml`
   documents the routes under `/sn/ctf` that the ur.xyz `/ctf` page reads, and a miner can see its own status and
   the reason with `GET /sn/ctf/client`.
 
@@ -3314,7 +3321,7 @@ pool earns nothing, and leaves the CTF channel empty for its NO, until anyone re
 | `φ` / `ω` / effort‑claim deadline / dispute window | — | — | **out of scope** — parked bounty design (§9.3/§13.6, D29) |
 | **Head share** | `θ` | governance; start ~0.3, ramp | fraction of the providers' share `μ` of the 41% miner emission to top-level miners; `1−θ` to pools — **the load-bearing new dial** (§8.5); from `E_c` the three shares below replace it |
 | **Capture the flag shares** (from `E_c`) | `s_pool` / `s_ctf` / `s_head` | **4/10 / 1/10 / 5/10** of `μ` | fixed by the signed amendment entry v2, not by the policy; CTF gets exactly 1/10 when its channel is non‑empty, and while no head fleet is weighted the head's share goes to the pools only (§8.5, §8.7) |
-| **CTF slots** (from `E_c`) | `S` | 5 provider and 5 extender slots in each of the 249 ISO 3166‑1 countries: **2,490** | each worth the epoch's fresh CTF funding ÷ 2,490; candidates present for at least half of the epoch; one ticket per /29 or /48 unit; drawn on the first drand quicknet round 60 s after the census commitment; unwon slots carry, and each winner takes its slot and a fifth of its pot (§8.7) |
+| **CTF slots** (from `E_c`) | `S` | 5 provider and 5 extender slots in each of the 249 ISO 3166‑1 countries: **2,490** | each worth the epoch's fresh CTF funding ÷ 2,490; candidates present for at least half of the epoch; one ticket per /29 or /48 unit; drawn on the first drand quicknet round at least 60 s after the census commitment; unwon slots carry, and each winner takes its slot and a fifth of its pot (§8.7) |
 | **Momentum** (provider share) | `μ` | 1/10 on SN25 at launch, pinned by the signed treasury policy | the providers' share of the native miner allocation; `1 − μ` goes in equal parts to `ur‑reserve`'s recipient UIDs 170 and 250, and the whole row when no provider has weight; changing it takes a newly signed treasury policy (§8.5) |
 | Coverage weighting | — | (parked bounty design only) | up‑weights under‑sampled / weak providers (§9.3) — not in v1 (D29) |
 | Validator min stake | — | governance | permit qualifier + Sybil ante (§9.7) |

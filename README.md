@@ -96,9 +96,9 @@ governance value, not per‑validator discretion. If no head fleet exists, the �
 the pools (`empty_channel: cede_to_nonempty`).
 
 From epoch 8 (`E_c`), three fixed shares replace θ: the provider pools take 4/10 of the
-providers' share, each NO's **capture the flag** pool 1/10 and the head 5/10, which goes to the
-pools while no head fleet is weighted. A signed amendment entry fixes them, not the policy
-([`WHITEPAPER.md`](WHITEPAPER.md) §8.5).
+providers' share, the NOs' **capture the flag** pools 1/10 between them and the head 5/10, which
+goes to the pools while no head fleet is weighted. A signed amendment entry fixes them, not the
+policy ([`WHITEPAPER.md`](WHITEPAPER.md) §8.5).
 
 > **Mainnet launch.** [`mainnet/MAINNET.md`](mainnet/MAINNET.md) records the SN25 launch.
 > Provider weights fill the **momentum** share of the native miner allocation, **10%** at
@@ -163,8 +163,8 @@ validator consensus mature. Hard constraint: the lowest‑paid top miner must ea
 highest‑paid pool provider, or graduating is a pay cut (§8.5).
 
 **Capture the flag (from epoch 8).** Beside its provider pool, each NO has a second
-vault‑owned pool UID, its **CTF pool**, paid a tenth of the providers' share. Each epoch, every
-one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender **slots** of equal value. The
+vault‑owned pool UID, its **CTF pool**. The CTF pools share a tenth of the providers' share, by
+their pools' weights. Each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender **slots** of equal value. The
 NO lists the providers and extenders that were online, passing its checks and in one country
 for at least half of the epoch, and active at its end. It commits that **census** on chain,
 and a drand round published after it draws up to five winners per country and role, with one
@@ -314,7 +314,7 @@ the finite UID budget and undermine the intended ~200-member head.
 | **Routable‑IP breadth** | Split‑adjusted count of distinct /29 or /48 egress‑prefix hashes a fleet routed. |
 | **Payout root** | Merkle root of `(coldkey, share bps)` leaves splitting one NO's pool for one epoch. |
 | **Capture the flag (CTF)** | From epoch 8, a per‑country coverage lottery beside the provider pool: each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the NO's eligible miners there ([`CAPTURETHEFLAG.md`](CAPTURETHEFLAG.md)). |
-| **CTF pool** | A NO's second vault‑owned pool, vault2 pool `2^32 + n` (UR's is 4294967297), with its own UID. It gets 1/10 of the providers' share, settles and is claimed like the provider pool, and pays winners to the payout wallet the provider pool already uses. |
+| **CTF pool** | A NO's second vault‑owned pool, vault2 pool `2^32 + n` (UR's is 4294967297), with its own UID. The CTF pools share 1/10 of the providers' share, by their pools' weights. Each settles and is claimed like the provider pool, and pays winners to the payout wallet the provider pool already uses. |
 | **Slot** | One CTF prize: a country, a role (provider or extender) and a rank 1–5, 2,490 in all. Each is worth the CTF pool's fresh funding for the epoch ÷ 2,490. |
 | **Pot** | What a country's unwon slots of one role carry forward. Each winner takes its own slot and a fifth of the pot, and the rest keeps carrying. |
 | **Census** | A NO's per‑epoch list of its CTF candidates, one row per candidate (role, country, keyed /29 or /48 unit, client id), committed on chain by hash before the drand round that draws the winners. The extender pool's census lists its extenders ([`WHITEPAPER.md`](WHITEPAPER.md) §8.6.2). |

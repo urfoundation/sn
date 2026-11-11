@@ -2033,7 +2033,7 @@ the amounts, the CTF ledger and its audit are specified in CAPTURETHEFLAG.md
 - **Consents.** Payout consents name the operator
   (`ClientKeyHistoryDomain.NoID`), not a vault2 pool, so one consent covers
   both of operator `n`'s pools, and a winner is paid to the coldkey that the
-  provider rows' wallet selection gives its client (§11.1). No miner signs
+  provider rows' wallet selection gives its client (§3). No miner signs
   anything new.
 - **No policy change.** As in phase A (§2.2), a successor policy would
   orphan every existing consent. `E_c`, the shares and the CTF parameters
@@ -2077,12 +2077,12 @@ O means owner, the `TimelockController`, and R the root signer of
 | Function | Caller | Behaviour |
 | --- | --- | --- |
 | `registerCtfPool(noId, maximumBurnRao, firstEpoch)` | O, payable | `registerOperatorPool`'s checks (the v1 operator active now, `firstEpoch > currentEpoch()`, the cadence check), and `noId < 2^32` (`NoIdOutOfRange`) with `noId`'s provider pool registered in vault2 (`UnknownPool`). Derives the pool hotkey `keccak256(abi.encode(proxy, 2^32 + noId, block.number, blockhash(block.number − 1)))`, calls `vault.registerPool(2^32 + noId, hotkey, maximumBurnRao, firstEpoch)` with `msg.value`, and refunds vault2's burn surplus to the caller. vault2 emits `PoolRegistered` and refuses a second registration (`InvalidConfiguration`) |
-| `registerOperatorPool(noId, hotkey, maximumBurnRao, firstEpoch)` | O, payable | As §7.2, and refuses `noId ≥ 2^32` (`NoIdOutOfRange`), so no provider pool can take a CTF pool's id |
-| `commitDistribution(e, noId, prevRootCount, commitment)` | R, not paused | As §7.2, except that for a pool id `noId ≥ 2^32` the caller must be the root signer of `operatorAt(noId − 2^32, e)` |
-| `commitCtfCensus(epoch, noId, censusHash)` | R, not paused | Records `censusHash`, the sha256 of the epoch's census header, once per `(noId, epoch)`. Requires operator `noId`'s CTF pool registered with `epoch ≥ firstEpoch` (`UnknownPool`, `InvalidEpoch`), a block in `[end(epoch), end(epoch) + rootCommitWindowBlocks / 2]`, 600 blocks on mainnet (`InvalidWindow`), a nonzero hash (`InvalidCensusHash`) and none committed yet (`CensusAlreadyCommitted`). Emits `CtfCensusCommitted` with the block |
+| `registerOperatorPool(noId, hotkey, maximumBurnRao, firstEpoch)` | O, payable | As §7.2, and refuses `noId >= 2^32` (`NoIdOutOfRange`), so no provider pool can take a CTF pool's id |
+| `commitDistribution(e, noId, prevRootCount, commitment)` | R, not paused | As §7.2, except that for a pool id `noId >= 2^32` the caller must be the root signer of `operatorAt(noId − 2^32, e)` |
+| `commitCtfCensus(epoch, noId, censusHash)` | R, not paused | Records `censusHash`, the sha256 of the epoch's census header, once per `(noId, epoch)`. Requires operator `noId`'s CTF pool registered with `epoch >= firstEpoch` (`UnknownPool`, `InvalidEpoch`), a block in `[end(epoch), end(epoch) + rootCommitWindowBlocks / 2]`, 600 blocks on mainnet (`InvalidWindow`), a nonzero hash (`InvalidCensusHash`) and none committed yet (`CensusAlreadyCommitted`). Emits `CtfCensusCommitted` with the block |
 | `ctfCensus(noId, epoch)` | view | `(censusHash, blockNumber)`; zeros while none is committed |
-| `ctfSettlementAt(noId, epoch)` | view | `(vault, hotkey, firstEpoch)` once vault2 holds pool `2^32 + noId` and `epoch ≥ firstEpoch`; otherwise zeros, also for `noId ≥ 2^32` |
-| `ctfPoolId(noId)` | pure | `2^32 + noId`; reverts `NoIdOutOfRange` for `noId ≥ 2^32` |
+| `ctfSettlementAt(noId, epoch)` | view | `(vault, hotkey, firstEpoch)` once vault2 holds pool `2^32 + noId` and `epoch >= firstEpoch`; otherwise zeros, also for `noId >= 2^32` |
+| `ctfPoolId(noId)` | pure | `2^32 + noId`; reverts `NoIdOutOfRange` for `noId >= 2^32` |
 | `closeOperatorEpoch`, `approveDistribution`, `finalizeDistribution`, `assignSurplus` and the views | as before | They take vault2 pool ids, so they serve the CTF pool unchanged |
 
 **The census.** While the v1 coordinator is paused, `commitCtfCensus`
@@ -2133,7 +2133,8 @@ function recycle(uint256 rootIndex, LedgerTree.Account calldata account, LedgerT
     external returns (uint256 epoch, uint256 amount);
 function recycledFor(uint256 epoch) external view returns (uint256);
 
-// Immutables, read from vault2 at creation; vault2 never changes them.
+// Immutables. netuid, escrowHotkey, poolHotkey and vaultColdkey are read from
+// vault2 at creation, and vault2 never changes them; coldkey is this contract's own.
 function vault() external view returns (address);
 function poolId() external view returns (uint256);
 function netuid() external view returns (uint16);
@@ -2154,7 +2155,7 @@ error Reentrancy();
 
 `recycle` is open to anyone:
 
-1. If `account.coldkey` is nonzero, it must be `coldkey()`. While
+1. If `account.coldkey` is nonzero, it must be `coldkey()`. If
    `vault2.claimed(poolId, account.index) < account.cumulative`, it claims
    the account from root `rootIndex` with `proof`, and vault2 pays this
    contract's coldkey on the escrow hotkey. A claim anyone else already made
@@ -2240,21 +2241,26 @@ first epoch whose carry is back.
 
 ### 19.6 Activation
 
-CAPTURETHEFLAG.md §11.2 is the plan. In order:
+CAPTURETHEFLAG.md §11.2 is the plan. By date:
 
-1. The two contracts and their rehearsal on the live runtime (R-9).
-2. The Safe schedules the one operation by about 2026-11-22. It is ready,
+1. Before `end(6)`, about 2026-11-20: the server's presence sampler for
+   providers and extenders, so that epoch 7 is a full shadow epoch.
+2. By about 2026-11-21: the two contracts and their rehearsal on the live
+   runtime.
+3. By about 2026-11-22: the Safe schedules the one operation. It is ready,
    and executed, about 2026-11-25, before epoch 8 starts at block 9,600,028.
-3. The carry contract is created, and the entry v2 is signed and published
-   during epoch 7.
-4. UR's validator weights the CTF pool from epoch 8's first tempo. It holds
-   the stake majority, so it alone makes CTF paid.
-5. The server samples presence from before `end(6)`, and epoch 7 runs in
-   shadow, unsigned and uncommitted.
-6. Epoch 8's census is committed by block 9,651,028 and its root, with the
-   provider pool's, by block 9,651,628.
-7. The first CTF claims open about 2026-12-07, once the root is approved and
-   its window has passed.
+4. During epoch 7, after the operation: the carry contract is created, and
+   the entry v2 is signed and published.
+5. From epoch 8's first tempo, about 2026-11-27: UR's validator weights the
+   CTF pool. It holds the stake majority, so it alone makes CTF paid.
+6. After `end(7)`: the shadow run, which builds epoch 7's census, draw and
+   ledger without committing them and publishes an unsigned report.
+7. By about 2026-12-01: the validator's CTF audit and approval, and
+   `snclaim v2 check`.
+8. After `end(8)`: epoch 8's census, committed by block 9,651,028, and its
+   root, with the provider pool's, by block 9,651,628.
+9. About 2026-12-07: the first CTF claims, once the root is approved and its
+   window has passed.
 
 No key changes: the census commitment and the CTF roots use operator 1's
 root signer, and the auditor set is unchanged.
