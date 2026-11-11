@@ -2,9 +2,11 @@ package api
 
 // operator_test.go holds operator.yml to its own contract. The server holds
 // its routes to the document (its api/spec_conformance_test.go maps the
-// /sn/ctf routes to operator.yml, as it maps /competition to
-// competition.yml); this side keeps the document itself sound for the
-// server, the SDK, the apps and the ur.xyz /ctf page that build on it:
+// routes operator.yml documents to it, /sn/ctf and /sn/openapi.yml, as it
+// maps /competition to competition.yml; the ledger route is listed in
+// connect/api/bringyour.yml too); this side keeps the document itself sound
+// for the server, the SDK, the apps and the ur.xyz /ctf page that build on
+// it:
 //
 //   - its operations are exactly the pinned list, each with an operationId,
 //     a summary, one defined tag and explicit security;
@@ -21,9 +23,12 @@ package api
 //     min(1, 5/entries), the estimates follow from the pots and the slot
 //     amount, the pots carry from epoch to epoch, the epoch's amounts
 //     balance, and every ss58 address encodes its coldkey;
+//   - no default win is claimed without a draw: the draw figures are null
+//     together when last epoch had none;
 //   - the ledger route keeps every field connect/api/bringyour.yml gives it,
-//     and no /sn/ctf route is listed there, when the connect checkout is
-//     beside this one.
+//     and no route operator.yml owns is listed there, when the connect
+//     checkout is beside this one. Once bringyour.yml describes `kind`, it
+//     must describe every field here.
 //
 // Lint it with redocly too: npx -y @redocly/cli lint api/operator.yml
 
@@ -354,7 +359,7 @@ func TestOperatorExamples(t *testing.T) {
 // example's undeclared property is a problem rather than ignored.
 
 var (
-	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	uuidPattern         = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	knownSchemaKeywords = map[string]bool{
 		"$ref": true, "type": true, "const": true, "enum": true, "properties": true, "required": true,
 		"additionalProperties": true, "items": true, "oneOf": true, "anyOf": true, "allOf": true,
@@ -621,6 +626,9 @@ func TestOperatorConventions(t *testing.T) {
 		case status == "429":
 			// the load balancer's own page
 		case status >= "400":
+			if status == "401" && headers["WWW-Authenticate"] == nil {
+				t.Errorf("%s 401: no WWW-Authenticate", operation)
+			}
 			if len(content) != 1 || schemaOf(content["application/problem+json"]) != "#/components/schemas/Problem" {
 				t.Errorf("%s %s: an error that is not a problem document", operation, status)
 			}
@@ -719,9 +727,16 @@ func TestOperatorExampleArithmetic(t *testing.T) {
 		if answer == nil || answer["unit"] == nil {
 			continue
 		}
+		// the slot amount and whether last epoch had a draw, when the answer
+		// carries them (GET /sn/ctf, /country, /top)
 		var slot int64 = -1
-		if last := asMap(answer["last_epoch"]); last != nil {
+		last := asMap(answer["last_epoch"])
+		if last != nil {
 			slot = raoOf(t, asMap(last["amounts"])["slot"])
+		}
+		drawn := last != nil && last["drawn"] == true
+		if totals := asMap(answer["totals"]); totals != nil && (totals["not_fully_captured"] == nil) == drawn {
+			t.Errorf("totals: not_fully_captured is null exactly without a draw last epoch (drawn %v)", drawn)
 		}
 		var countries []map[string]any
 		for _, c := range asSlice(answer["countries"]) {
@@ -734,9 +749,9 @@ func TestOperatorExampleArithmetic(t *testing.T) {
 		if c := asMap(answer["country"]); c != nil {
 			countries = append(countries, c)
 		}
-		for _, c := range countries {
-			if c["available"] != nil && slot >= 0 {
-				checkCountryState(t, c, slot)
+		if _, ok := answer["current_epoch"]; ok {
+			for _, c := range countries {
+				checkCountryState(t, c, slot, drawn)
 			}
 		}
 		if role, ok := answer["role"].(string); ok {
@@ -775,16 +790,34 @@ func checkShapes(t *testing.T, path string, m map[string]any) {
 		}
 	}
 	if has("units", "entries", "chance_to_win") {
-		units, entries := intOf(t, m["units"]), intOf(t, m["entries"])
-		if entries != units+1 {
-			t.Errorf("%s: entries %d for %d units", path, entries, units)
+		// a role's draw figures: null together without a draw last epoch
+		figures := []string{"slots", "units", "near_misses", "entries", "chance_to_win"}
+		nulls := 0
+		for _, key := range figures {
+			if m[key] == nil {
+				nulls++
+			}
 		}
-		chance, _ := number(m["chance_to_win"])
-		if want := math.Min(1, 5/float64(entries)); math.Abs(chance-want) > 1e-15 {
-			t.Errorf("%s: chance_to_win %v, want min(1, 5/%d) = %v", path, chance, entries, want)
+		if nulls != 0 && nulls != len(figures) {
+			t.Errorf("%s: the draw figures %v are null together or not at all", path, figures)
 		}
-		if won := intOf(t, asMap(m["slots"])["won"]); (won < 5) != (chance == 1) {
-			t.Errorf("%s: %d won and a chance of %v: a role not fully captured, and only that, is won by default", path, won, chance)
+		if nulls == 0 {
+			units, entries := intOf(t, m["units"]), intOf(t, m["entries"])
+			if entries != units+1 {
+				t.Errorf("%s: entries %d for %d units", path, entries, units)
+			}
+			chance, _ := number(m["chance_to_win"])
+			if want := math.Min(1, 5/float64(entries)); math.Abs(chance-want) > 1e-15 {
+				t.Errorf("%s: chance_to_win %v, want min(1, 5/%d) = %v", path, chance, entries, want)
+			}
+			if won := intOf(t, asMap(m["slots"])["won"]); (won < 5) != (chance == 1) {
+				t.Errorf("%s: %d won and a chance of %v: a role not fully captured, and only that, is won by default", path, won, chance)
+			}
+		}
+	}
+	if has("epoch", "census_hash", "census_block", "round") {
+		if (m["census_hash"] == nil) != (m["census_block"] == nil) || (m["census_hash"] == nil) != (m["round"] == nil) {
+			t.Errorf("%s: a pending draw's census and round are null together", path)
 		}
 	}
 	if has("funding", "returned", "owed", "matured", "fresh", "slot", "paid", "pending_in", "pending", "carried_in", "carried") {
@@ -833,22 +866,44 @@ func checkShapes(t *testing.T, path string, m map[string]any) {
 }
 
 // A country's row: the estimates follow from the pots and the slot amount.
-func checkCountryState(t *testing.T, c map[string]any, slot int64) {
+// slot is last epoch's slot amount, -1 before the first root; drawn says
+// whether last epoch had a draw.
+func checkCountryState(t *testing.T, c map[string]any, slot int64, drawn bool) {
 	t.Helper()
 	p, x := asMap(c["providers"]), asMap(c["extenders"])
 	for _, role := range []map[string]any{p, x} {
+		if (role["slots"] != nil) != drawn {
+			t.Errorf("%v: the draw figures are set exactly when last epoch had a draw (drawn %v)", c["code"], drawn)
+			return
+		}
+		if slot < 0 {
+			if role["win_estimate"] != nil || raoOf(t, role["pot"]) != 0 {
+				t.Errorf("%v: before the first root the pots are empty and the estimates null", c["code"])
+			}
+			continue
+		}
 		if want := slot + raoOf(t, role["pot"])/5; raoOf(t, role["win_estimate"]) != want {
 			t.Errorf("%v: win_estimate %v, want a slot and a fifth of the pot, %d", c["code"], role["win_estimate"], want)
 		}
-		if intOf(t, asMap(role["slots"])["won"]) == 5 && raoOf(t, role["pot"]) != 0 {
+		if drawn && intOf(t, asMap(role["slots"])["won"]) == 5 && raoOf(t, role["pot"]) != 0 {
 			t.Errorf("%v: five winners leave a pot", c["code"])
 		}
 	}
-	if want := raoOf(t, p["pot"]) + raoOf(t, x["pot"]) + 10*slot; raoOf(t, c["available"]) != want {
+	if slot < 0 {
+		if c["available"] != nil {
+			t.Errorf("%v: an estimate before the first root", c["code"])
+		}
+	} else if want := raoOf(t, p["pot"]) + raoOf(t, x["pot"]) + 10*slot; raoOf(t, c["available"]) != want {
 		t.Errorf("%v: available %v, want both pots and ten slots, %d", c["code"], c["available"], want)
 	}
 	if raoOf(t, c["awarded"]) != raoOf(t, p["awarded"])+raoOf(t, x["awarded"]) {
 		t.Errorf("%v: awarded is not both roles'", c["code"])
+	}
+	if !drawn {
+		if c["near_misses"] != nil || c["flag_held"] != false {
+			t.Errorf("%v: without a draw, no near misses and no flag held", c["code"])
+		}
+		return
 	}
 	if intOf(t, c["near_misses"]) != intOf(t, p["near_misses"])+intOf(t, x["near_misses"]) {
 		t.Errorf("%v: near_misses is not both roles'", c["code"])
@@ -859,19 +914,29 @@ func checkCountryState(t *testing.T, c map[string]any, slot int64) {
 	}
 }
 
-// GET /sn/ctf/top: ranked by the open pot, largest first, then by code.
+// GET /sn/ctf/top: countries with a role not fully captured at last epoch's
+// draw, ranked by the open pot, largest first, then by code.
 func checkTop(t *testing.T, answer map[string]any, role string) {
 	t.Helper()
+	open := func(state any) bool {
+		slots := asMap(asMap(state)["slots"])
+		return slots != nil && intOf(t, slots["open"]) > 0
+	}
 	var previous map[string]any
 	for i, entry := range asSlice(answer["countries"]) {
 		entry := asMap(entry)
 		c := asMap(entry["country"])
 		pot := raoOf(t, asMap(c["providers"])["pot"]) + raoOf(t, asMap(c["extenders"])["pot"])
+		listed := open(c["providers"]) || open(c["extenders"])
 		if role != "any" {
 			pot = raoOf(t, asMap(c[role+"s"])["pot"])
+			listed = open(c[role+"s"])
 		}
-		if raoOf(t, entry["open_pot"]) != pot || pot == 0 {
-			t.Errorf("top %v: open_pot %v, want the %s pot %d, above zero", c["code"], entry["open_pot"], role, pot)
+		if !listed {
+			t.Errorf("top %v: listed, but its %s slots were all won or not drawn", c["code"], role)
+		}
+		if raoOf(t, entry["open_pot"]) != pot {
+			t.Errorf("top %v: open_pot %v, want the %s pot %d", c["code"], entry["open_pot"], role, pot)
 		}
 		if intOf(t, entry["rank"]) != int64(i+1) {
 			t.Errorf("top %v: rank %v at %d", c["code"], entry["rank"], i)
@@ -1116,6 +1181,10 @@ func TestOperatorLedgerKeepsBringyourFields(t *testing.T) {
 		s := d.deref(asMap(schema))
 		return fmt.Sprint(s["type"])
 	}
+	// Until connect describes the new fields, they are logged; once it
+	// describes `kind`, it has to describe all of them.
+	theirAccount, _ := bringyour.ref("#/components/schemas/SnLedgerAccount")
+	updated := asMap(asMap(theirAccount)["properties"])["kind"] != nil
 	for _, name := range []string{"SnLedgerAccountResult", "SnLedgerAccount", "SnLedgerProofNode"} {
 		their, _ := bringyour.ref("#/components/schemas/" + name)
 		our, _ := doc.ref("#/components/schemas/" + name)
@@ -1136,7 +1205,11 @@ func TestOperatorLedgerKeepsBringyourFields(t *testing.T) {
 			}
 		}
 		for property := range ourProperties {
-			if asMap(their["properties"])[property] == nil {
+			switch {
+			case asMap(their["properties"])[property] != nil:
+			case updated:
+				t.Errorf("connect/api/bringyour.yml describes kind but not %s.%s", name, property)
+			default:
 				t.Logf("connect/api/bringyour.yml does not yet describe %s.%s", name, property)
 			}
 		}

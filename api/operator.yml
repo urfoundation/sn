@@ -39,12 +39,23 @@ info:
       account already uses, through the CTF pool's settlement v2 ledger, and
       claimed like any pool account (`GET /sn/ledger/account`).
 
-    Vocabulary: **last epoch** is the latest epoch with a committed CTF root,
-    whose root may still be pending; **this epoch** is the one in progress,
-    whose draw is next; a role is **not fully captured** where at least one of
-    its five slots went unclaimed last epoch, so a newcomer who meets the
-    presence rule wins by default; a country's **flag is held** where all ten
-    of its slots were won last epoch.
+    Vocabulary:
+
+    - **Last epoch** is the latest epoch with a committed CTF root, whose
+      root may still be pending. Its draw is the basis of the per-country
+      draw figures: slots won, units, near misses and the chance to win.
+    - **This epoch** is the one in progress. For the few hours after an
+      epoch ends, until its root is committed, `pending_draw` reports its
+      census and drand round, and last epoch is the one before it.
+    - **Pots** are carried out of last epoch into **the next draw**: this
+      epoch's, or the pending one while `pending_draw` is set.
+    - A role is **not fully captured** where at least one of its five slots
+      went unclaimed at last epoch's draw, so a newcomer who meets the
+      presence rule wins by default. Without a draw last epoch (before the
+      first root, or when no census was committed in time) there is no such
+      basis, and the draw figures are null rather than zero.
+    - A country's **flag is held** where all ten of its slots were won at
+      last epoch's draw.
 
     ## Conventions
 
@@ -59,7 +70,8 @@ info:
       data last changed: the server rebuilds it when an epoch starts, when a
       census or a root is committed, and when a root is finalized. Between
       those events the body, its `ETag` and `as_of` stay the same, and
-      `Last-Modified` carries `as_of` as an HTTP date. Times of future
+      `Last-Modified` carries `as_of` as an HTTP date. A census commitment
+      shows in `pending_draw`. Times of future
       blocks are estimates at 12 seconds per block.
     - **Countries** are lowercase ISO 3166-1 alpha-2 codes (`is`), the 249
       codes of the standard. Kosovo (`xk`) is not one. Names are English and
@@ -69,20 +81,26 @@ info:
     - **Chance to win** is a fraction from 0 to 1, the draw's exact odds for
       a newcomer: `min(1, 5 / entries)`, where `entries` are last epoch's
       eligible units in the role plus the newcomer. It is 1 at five entries
-      or fewer. Each answer that carries it also carries its `definitions`.
+      or fewer, and null without a draw last epoch. Each answer that carries
+      it also carries its `definitions`.
     - **Errors** are RFC 9457 problem details (`application/problem+json`),
       with a `code` member for programs. Errors the load balancer produces
       itself are not: a 429 for the per-address rate limit, and a 502 or
       504 when the api cannot be reached.
-    - **Headers**. Every answer carries exactly one
-      `Access-Control-Allow-Origin`, so a page on any origin can read it:
-      `*`, or the request's own origin when it is one of the operator's own
-      sites, which the load balancer answers for. Every answer except the
-      document itself carries `Link: </sn/openapi.yml>; rel="service-desc"`.
-      Each route states its `Cache-Control`. The cacheable JSON answers
-      carry a strong `ETag` of the exact body and `Last-Modified`, the
-      document carries an `ETag`, and a request whose `If-None-Match` names
-      the current tag is answered 304 without a body.
+    - **CORS**. Every answer from the api carries exactly one
+      `Access-Control-Allow-Origin`: `*`, or the request's own origin when it
+      is one of the operator's own sites, which the load balancer answers
+      for. So a page on any origin can read the public answers with a plain
+      GET. `GET /sn/ctf/client` takes an `Authorization` header, whose
+      preflight only the operator's own sites pass. The load balancer's own
+      errors carry the header only for those sites.
+    - **Link**. Every 200 answer except the document itself carries
+      `Link: </sn/openapi.yml>; rel="service-desc"; type="application/yaml"`.
+    - **Caching**. Each route states its `Cache-Control`. The cacheable JSON
+      answers carry a strong `ETag` of the exact body and `Last-Modified`,
+      and the document carries an `ETag`. A request whose `If-None-Match`
+      names the current tag is answered 304 without a body.
+      `If-Modified-Since` is not used: revalidate with the tag.
     - **Compatibility**. Fields and enum values are only ever added, never
       removed or repurposed. Clients ignore fields they do not know, and
       treat an enum value they do not know as the nearest general case the
@@ -117,14 +135,17 @@ paths:
         epoch's amounts and slot counts, the counts the ur.xyz `/ctf` page
         filters on, and one row per country of the 249, in code order. A row
         gives, per role, the slots won last epoch, the units in last epoch's
-        draw, the pot carried into this epoch, a newcomer's estimated take and
-        chance to win, and the near misses; and for the country, the estimate
-        of what its draw holds this epoch and the epochs since it last had a
-        winner.
+        draw, the pot carried into the next draw, a newcomer's estimated take
+        and chance to win, and the near misses; and for the country, the
+        estimate of what its next draw holds and the epochs since it last had
+        a winner.
 
-        Before the pool's first epoch has a committed root, `last_epoch` is
-        null and every row shows no slots won, no units, empty pots and a
-        null estimate.
+        Without a draw last epoch the draw figures are null: every role's
+        slots, units, near misses, entries and chance to win, and the
+        not-fully-captured counts. Before the pool's first root `last_epoch`
+        is null too, the pots are empty and the estimates null. While an
+        ended epoch's root is pending, `pending_draw` names its census and
+        drand round.
 
         `Cache-Control: public, max-age=60`. The page refreshes it every five
         minutes and shows "unavailable", never zeros, when it cannot be read.
@@ -146,6 +167,8 @@ paths:
               examples:
                 epoch10:
                   $ref: "#/components/examples/CtfState"
+                firstDrawPending:
+                  $ref: "#/components/examples/CtfStateFirstDrawPending"
         "304":
           $ref: "#/components/responses/NotModified"
         "429":
@@ -203,7 +226,8 @@ paths:
         pool's first, newest first, per role, the units in the draw, the
         slots won, the pot carried in and out, what was awarded, the median
         award and the share of entries that won. The ur.xyz country page
-        `/ctf/{cc}` is built from it.
+        `/ctf/{cc}` is built from it, with `GET /sn/ctf` for the country
+        picker and the other big pots.
 
         `Cache-Control: public, max-age=60`.
       parameters:
@@ -243,21 +267,22 @@ paths:
       security: []
       summary: The largest open pots
       description: |
-        The countries with the largest pots carried into this epoch, largest
-        first, then by code. Five winners empty a role's pot, so every country
-        listed had an open slot last epoch in a role it ranks by, which a
-        newcomer who meets the presence rule wins by default.
+        The countries where a role was not fully captured at last epoch's
+        draw, so a newcomer who meets the presence rule wins by default,
+        largest pot first, then by code.
 
-        - `role=provider` or `role=extender` ranks by that role's pot and
-          lists the countries where it is above zero.
-        - `role=any`, the default, ranks by the provider and extender pots
-          together, as the page's "not fully captured" views do, and lists
-          the countries where either is above zero.
+        - `role=provider` or `role=extender` lists the countries where that
+          role was not fully captured, ranked by its pot.
+        - `role=any`, the default, lists the countries where either role was
+          not fully captured, ranked by the provider and extender pots
+          together, as the page's "not fully captured" views do. Five winners
+          empty a role's pot, so that is the open roles' pots.
 
         The seven territories without a permanent population (`aq`, `bv`,
         `gs`, `hm`, `io`, `tf`, `um`) are left out unless
         `include_uninhabited=true`: their pots grow every epoch and are
-        unlikely ever to be won. Before the first draw the list is empty.
+        unlikely ever to be won. Without a draw last epoch the list is
+        empty.
 
         `Cache-Control: public, max-age=60`.
       parameters:
@@ -306,14 +331,16 @@ paths:
         behind these figures are named in `objects` and served by
         `GET /sn/ledger/object`, which checks each against its hash.
 
-        An epoch is served once a committed root covers it: its census, draw
-        and awards are fixed then. An epoch with no committed census has no
-        draw: null `census` and `draw`, no awards, and every slot carried.
+        An epoch is served once a committed root covers it. Its census and
+        draw are fixed by then, and its awards are final once the root is
+        finalized. An epoch with no committed census has no draw: null
+        `census` and `draw`, no awards, and every slot carried.
 
         `Cache-Control: public, max-age=31536000, immutable` once the root is
-        finalized, and `public, max-age=60` while it is pending, since a
-        pending root can still be replaced by a later one (the epoch's
-        census, draw and awards stay the same).
+        finalized, and `public, max-age=60` while it is pending: a pending
+        root can still be replaced by a later one, and after an auditor
+        refuses one, the operator can rebuild the epoch's awards (its census
+        and drand round stay fixed).
       parameters:
         - $ref: "#/components/parameters/Epoch"
         - $ref: "#/components/parameters/IfNoneMatch"
@@ -436,14 +463,17 @@ paths:
         and the other pools are answered. A client shows such a pool as
         unavailable, never as zero. Even then the answer is a 502 when the
         server cannot tell which pools to answer, because its record of the
-        coldkey's accounts cannot be read.
+        coldkey's accounts cannot be read. From the first CTF root a fault in
+        either pool's ledger answers a request without `partial=true` with a
+        502, the operator's pool's balance included, so a client that knows
+        `unavailable_pools` sends `partial=true`.
 
         Public: a proof only reveals published data, and a claim always pays
         the leaf's coldkey. `Cache-Control: no-store`.
 
         connect/api/bringyour.yml lists this operation too, for the
-        generated clients and the API reference; the two descriptions of it
-        agree.
+        generated clients and the API reference, and describes the same
+        fields: every field it gives the answer is here, with the same type.
       parameters:
         - $ref: "#/components/parameters/Coldkey"
         - $ref: "#/components/parameters/Partial"
@@ -680,7 +710,10 @@ components:
         the load balancer's own page, not a problem document. Retry after a
         pause.
       headers:
-        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+        Access-Control-Allow-Origin:
+          description: Only for the operator's own sites, whose origin the load balancer echoes.
+          schema:
+            type: string
       content:
         text/html:
           schema:
@@ -732,6 +765,12 @@ components:
       description: The bearer token is missing or invalid, or names no client (a network JWT or an API key).
       headers:
         Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+        WWW-Authenticate:
+          description: The scheme the route takes.
+          schema:
+            type: string
+            pattern: "^Bearer( |$)"
+          example: Bearer
       content:
         application/problem+json:
           schema:
@@ -868,14 +907,15 @@ components:
             carried_in: {alpha: "92.689523909", rao: 92689523909}
             carried: {alpha: "174.974222340", rao: 174974222340}
           slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
         totals:
           countries: 249
           flags_held: 6
           not_fully_captured: {providers: 175, extenders: 243}
         definitions:
-          chance_to_win: "A newcomer's chance to win one of a role's five slots in this epoch's draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default."
-          win_estimate: "What a newcomer who wins a slot of the role this epoch would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
-          available: "An estimate of what a country's draw holds this epoch: its provider and extender pots plus ten slots at last epoch's slot amount."
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
           eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
         links:
           page: https://ur.xyz/ctf
@@ -883,6 +923,7 @@ components:
         countries:
           - code: de
             name: Germany
+            sentence_name: Germany
             inhabited: true
             flag_held: false
             open_epochs: 0
@@ -909,6 +950,7 @@ components:
               chance_to_win: 1
           - code: is
             name: Iceland
+            sentence_name: Iceland
             inhabited: true
             flag_held: false
             open_epochs: 0
@@ -935,6 +977,7 @@ components:
               chance_to_win: 1
           - code: tm
             name: Turkmenistan
+            sentence_name: Turkmenistan
             inhabited: true
             flag_held: false
             open_epochs: 2
@@ -959,6 +1002,72 @@ components:
               win_estimate: {alpha: "0.144076980", rao: 144076980}
               entries: 1
               chance_to_win: 1
+
+    CtfStateFirstDrawPending:
+      summary: Epoch 8's draw pending, before the pool's first root
+      description: The first epoch has ended and its census is committed, but no root is committed yet, so there is no last epoch and no draw figures. Abridged to one of the 249 countries.
+      value:
+        as_of: "2026-12-04T19:07:24Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        pool:
+          no_id: 1
+          pool_id: 4294967297
+          vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+          carry_contract: "0x981cfe73af944cc61589cdf6f51ccfac4cbd5f54"
+          carry_coldkey: "0x48cb91133081290b45bc8350c49f03041e4a4d948e43419f011e636674a2ce57"
+          first_epoch: 8
+          countries_version: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+        current_epoch:
+          epoch: 9
+          start_block: 9650428
+          end_block: 9700827
+          draw_at: "2026-12-11T18:30:24Z"
+        last_epoch: null
+        pending_draw:
+          epoch: 8
+          census_hash: "sha256:dcc3b0bc5e6da359da19da0855805825c000d7da16b69a58ef5d9612c5ee8846"
+          census_block: 9650612
+          round: 34535980
+        totals:
+          countries: 249
+          flags_held: 0
+          not_fully_captured: null
+        definitions:
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
+          eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
+        links:
+          page: https://ur.xyz/ctf
+          chance_to_win: https://ur.xyz/ctf#chance-to-win
+        countries:
+          - code: is
+            name: Iceland
+            sentence_name: Iceland
+            inhabited: true
+            flag_held: false
+            open_epochs: 0
+            near_misses: null
+            available: null
+            awarded: {alpha: "0.000000000", rao: 0}
+            providers:
+              slots: null
+              units: null
+              near_misses: null
+              pot: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: null
+              entries: null
+              chance_to_win: null
+            extenders:
+              slots: null
+              units: null
+              near_misses: null
+              pot: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: null
+              entries: null
+              chance_to_win: null
 
     CtfCountryResult:
       summary: Iceland, as of epoch 10
@@ -1004,10 +1113,11 @@ components:
             carried_in: {alpha: "92.689523909", rao: 92689523909}
             carried: {alpha: "174.974222340", rao: 174974222340}
           slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
         definitions:
-          chance_to_win: "A newcomer's chance to win one of a role's five slots in this epoch's draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default."
-          win_estimate: "What a newcomer who wins a slot of the role this epoch would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
-          available: "An estimate of what a country's draw holds this epoch: its provider and extender pots plus ten slots at last epoch's slot amount."
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
           eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
         links:
           page: https://ur.xyz/ctf/is
@@ -1015,6 +1125,7 @@ components:
         country:
           code: is
           name: Iceland
+          sentence_name: Iceland
           inhabited: true
           flag_held: false
           open_epochs: 0
@@ -1118,12 +1229,13 @@ components:
             carried_in: {alpha: "92.689523909", rao: 92689523909}
             carried: {alpha: "174.974222340", rao: 174974222340}
           slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
         role: provider
         include_uninhabited: false
         definitions:
-          chance_to_win: "A newcomer's chance to win one of a role's five slots in this epoch's draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default."
-          win_estimate: "What a newcomer who wins a slot of the role this epoch would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
-          available: "An estimate of what a country's draw holds this epoch: its provider and extender pots plus ten slots at last epoch's slot amount."
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
           eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
         links:
           page: https://ur.xyz/ctf
@@ -1134,6 +1246,7 @@ components:
             country:
               code: ad
               name: Andorra
+              sentence_name: Andorra
               inhabited: true
               flag_held: false
               open_epochs: 2
@@ -1163,6 +1276,7 @@ components:
             country:
               code: ag
               name: Antigua and Barbuda
+              sentence_name: Antigua and Barbuda
               inhabited: true
               flag_held: false
               open_epochs: 2
@@ -1662,7 +1776,7 @@ components:
 
     CtfCurrentEpoch:
       type: object
-      description: This epoch, the one in progress, whose draw is next.
+      description: This epoch, the one in progress, whose draw follows its end. While `pending_draw` is set, the pending draw comes first.
       required: [epoch, start_block, end_block, draw_at]
       properties:
         epoch:
@@ -1758,6 +1872,36 @@ components:
           $ref: "#/components/schemas/Amount"
           description: The pots after the epoch, which carry into the next one.
 
+    CtfPendingDraw:
+      type: object
+      description: |
+        An epoch that has ended and whose root is not committed yet: its
+        census and drand round, as far as they have happened. Its winners
+        and pots appear when its root is committed and it becomes last
+        epoch. The three census and round fields are null together, until
+        the census is committed.
+      required: [epoch, census_hash, census_block, round]
+      properties:
+        epoch:
+          type: integer
+        census_hash:
+          description: The census committed on chain; null until it is.
+          oneOf:
+            - $ref: "#/components/schemas/Sha256Ref"
+            - type: "null"
+        census_block:
+          type: [integer, "null"]
+          description: The block of the census commitment.
+        round:
+          type: [integer, "null"]
+          description: The drand quicknet round that draws it, the first at least 60 seconds after the census block's timestamp.
+
+    NullablePendingDraw:
+      description: An ended epoch whose root is pending; null otherwise.
+      oneOf:
+        - $ref: "#/components/schemas/CtfPendingDraw"
+        - type: "null"
+
     CtfLastEpoch:
       type: object
       description: Last epoch, the latest with a committed CTF root.
@@ -1777,58 +1921,75 @@ components:
 
     CtfRoleState:
       type: object
-      description: One role in one country, from last epoch's draw, and what it holds this epoch.
+      description: |
+        One role in one country: last epoch's draw, and what the next draw
+        holds. The draw figures (`slots`, `units`, `near_misses`, `entries`
+        and `chance_to_win`) are null together, without a draw last epoch.
       required: [slots, units, near_misses, pot, awarded, win_estimate, entries, chance_to_win]
       properties:
         slots:
-          $ref: "#/components/schemas/CtfSlots"
+          description: Last epoch's draw's slots; null without a draw last epoch.
+          oneOf:
+            - $ref: "#/components/schemas/CtfSlots"
+            - type: "null"
         units:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
-          description: The eligible units in last epoch's draw, one ticket each.
+          description: The eligible units in last epoch's draw, one ticket each; null without a draw last epoch.
         near_misses:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
           description: |
             The miners in the country that last epoch's census left out only
             for too little presence or a change of country: they passed
-            every other rule.
+            every other rule. Null without a draw last epoch.
         pot:
           $ref: "#/components/schemas/Amount"
-          description: The pot carried into this epoch. Five winners empty it, so a pot above zero means the role was not fully captured.
+          description: |
+            The pot carried out of last epoch into the next draw. Five winners
+            empty it, so a pot above zero after a draw means the role was not
+            fully captured. Zero before the first root.
         awarded:
           $ref: "#/components/schemas/Amount"
-          description: What last epoch's winners won, slots and pot shares.
+          description: What last epoch's winners won, slots and pot shares; zero without a draw.
         win_estimate:
           $ref: "#/components/schemas/NullableAmount"
           description: |
-            What a newcomer who wins a slot this epoch would take: one slot
-            at last epoch's slot amount plus a fifth of `pot`, rounded down
-            to the rao. Null before the first draw.
+            What a newcomer who wins a slot in the next draw would take: one
+            slot at last epoch's slot amount plus a fifth of `pot`, rounded
+            down to the rao. Null before the first root.
         entries:
-          type: integer
+          type: [integer, "null"]
           minimum: 1
-          description: The entries of `chance_to_win`, `units` + 1.
+          description: The entries of `chance_to_win`, `units` + 1; null without a draw last epoch.
         chance_to_win:
-          type: number
+          type: [number, "null"]
           minimum: 0
           maximum: 1
           description: |
-            min(1, 5 / `entries`), the draw's exact odds for a newcomer. It is
-            1 exactly where the role was not fully captured, so a newcomer
-            who meets the presence rule wins by default; the page shows a
-            percentage only where all five slots were won.
+            min(1, 5 / `entries`), the draw's exact odds for a newcomer,
+            estimated from last epoch's draw. It is 1 exactly where the role
+            was not fully captured, so a newcomer who meets the presence rule
+            wins by default; the page shows a percentage only where all five
+            slots were won. Null without a draw last epoch, when there is no
+            basis for either.
 
     CtfCountryState:
       type: object
       description: One country's row.
-      required: [code, name, inhabited, flag_held, open_epochs, near_misses, available, awarded, providers, extenders]
+      required: [code, name, sentence_name, inhabited, flag_held, open_epochs, near_misses, available, awarded, providers, extenders]
       properties:
         code:
           $ref: "#/components/schemas/CountryCode"
         name:
           type: string
           description: The English name, the ISO 3166-1 common name where it has one.
+        sentence_name:
+          type: string
+          description: |
+            The name as an English sentence uses it, with "the" where the
+            name takes one: "Iceland", "the United States", "the DR Congo".
+            Strip a leading "the " for a heading or a breadcrumb.
         inhabited:
           type: boolean
           description: |
@@ -1837,24 +1998,24 @@ components:
             and pots.
         flag_held:
           type: boolean
-          description: All ten slots were won last epoch.
+          description: All ten slots were won at last epoch's draw; false without one.
         open_epochs:
           type: integer
           minimum: 0
           description: The consecutive epochs, up to and including last epoch, with no winner in either role; 0 when last epoch had one.
         near_misses:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
-          description: Both roles' near misses.
+          description: Both roles' near misses; null without a draw last epoch.
         available:
           $ref: "#/components/schemas/NullableAmount"
           description: |
-            An estimate of what the country's draw holds this epoch: both
-            pots plus ten slots at last epoch's slot amount. Null before the
-            first draw.
+            An estimate of what the country's next draw holds: both pots plus
+            ten slots at last epoch's slot amount. Null before the first
+            root.
         awarded:
           $ref: "#/components/schemas/Amount"
-          description: What last epoch's winners in the country won, both roles.
+          description: What last epoch's winners in the country won, both roles; zero without a draw.
         providers:
           $ref: "#/components/schemas/CtfRoleState"
         extenders:
@@ -1871,18 +2032,23 @@ components:
         flags_held:
           type: integer
           minimum: 0
-          description: Countries whose ten slots were all won.
+          description: Countries whose ten slots were all won at last epoch's draw.
         not_fully_captured:
-          type: object
-          description: Countries where at least one of the role's five slots went unclaimed.
-          required: [providers, extenders]
-          properties:
-            providers:
-              type: integer
-              minimum: 0
-            extenders:
-              type: integer
-              minimum: 0
+          description: |
+            Countries where at least one of the role's five slots went
+            unclaimed at last epoch's draw, so a newcomer wins by default.
+            Null without a draw last epoch.
+          oneOf:
+            - type: object
+              required: [providers, extenders]
+              properties:
+                providers:
+                  type: integer
+                  minimum: 0
+                extenders:
+                  type: integer
+                  minimum: 0
+            - type: "null"
 
     CtfDefinitions:
       type: object
@@ -1915,7 +2081,7 @@ components:
     CtfState:
       type: object
       description: The answer of `GET /sn/ctf`.
-      required: [as_of, unit, pool, current_epoch, last_epoch, totals, definitions, links, countries]
+      required: [as_of, unit, pool, current_epoch, last_epoch, pending_draw, totals, definitions, links, countries]
       properties:
         as_of:
           $ref: "#/components/schemas/Timestamp"
@@ -1930,6 +2096,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CtfLastEpoch"
             - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
         totals:
           $ref: "#/components/schemas/CtfTotals"
         definitions:
@@ -1975,7 +2143,7 @@ components:
           description: What the role's winners won, slots and pot shares.
         median_award:
           $ref: "#/components/schemas/NullableAmount"
-          description: The median of the winners' awards (slot and pot share); null without winners.
+          description: The lower median of the winners' awards (slot and pot share), the ⌈W/2⌉-th smallest of W; null without winners.
         winning_share:
           type: [number, "null"]
           minimum: 0
@@ -2005,7 +2173,7 @@ components:
     CtfCountryResult:
       type: object
       description: The answer of `GET /sn/ctf/country/{cc}`.
-      required: [as_of, unit, pool, current_epoch, last_epoch, definitions, links, country, history]
+      required: [as_of, unit, pool, current_epoch, last_epoch, pending_draw, definitions, links, country, history]
       properties:
         as_of:
           $ref: "#/components/schemas/Timestamp"
@@ -2020,6 +2188,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CtfLastEpoch"
             - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
         definitions:
           $ref: "#/components/schemas/CtfDefinitions"
         links:
@@ -2049,7 +2219,7 @@ components:
     CtfTopResult:
       type: object
       description: The answer of `GET /sn/ctf/top`.
-      required: [as_of, unit, current_epoch, last_epoch, role, include_uninhabited, definitions, links, countries]
+      required: [as_of, unit, current_epoch, last_epoch, pending_draw, role, include_uninhabited, definitions, links, countries]
       properties:
         as_of:
           $ref: "#/components/schemas/Timestamp"
@@ -2062,6 +2232,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CtfLastEpoch"
             - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
         role:
           type: string
           enum: [provider, extender, any]
