@@ -37,9 +37,11 @@ type settlementV2ResolverTestFixture struct {
 	metagraph  [][32]byte
 	pools      map[uint64]stabi.ISTSettlementVault2Pool
 	identities map[uint64]stabi.SettlementAtOutput
-	pending    stabi.ISTSettlementVault2Pending
-	raw        map[string][]byte
-	v2Calls    map[string][]uint64
+	// ctfIdentities are ctfSettlementAt's answers, by operator.
+	ctfIdentities map[uint64]releaseCtfTestIdentity
+	pending       stabi.ISTSettlementVault2Pending
+	raw           map[string][]byte
+	v2Calls       map[string][]uint64
 }
 
 // Both operators are active in epoch 1; neither pool is registered in vault2
@@ -50,7 +52,7 @@ func newSettlementV2ResolverTestFixture(t *testing.T) *settlementV2ResolverTestF
 	base := newReleaseDecisionV2TestFixture(t)
 	fixture := &settlementV2ResolverTestFixture{releaseDecisionV2TestFixture: base,
 		addresses: SettlementV2Addresses{Settlement: common.HexToAddress("0x5e77100000000000000000000000000000000002"), Vault: common.HexToAddress("0x7a17000000000000000000000000000000000002")},
-		head:      base.finalized, pools: map[uint64]stabi.ISTSettlementVault2Pool{}, identities: map[uint64]stabi.SettlementAtOutput{}, raw: map[string][]byte{}, v2Calls: map[string][]uint64{}}
+		head:      base.finalized, pools: map[uint64]stabi.ISTSettlementVault2Pool{}, identities: map[uint64]stabi.SettlementAtOutput{}, ctfIdentities: map[uint64]releaseCtfTestIdentity{}, raw: map[string][]byte{}, v2Calls: map[string][]uint64{}}
 	fixture.setMetagraph(chainBatchHotkey(0), chainBatchHotkey(1), chainBatchHotkey(2), settlementV2TestPoolHotkey)
 	coordinator := base.chain.coordinator
 	for _, operator := range base.query.operators {
@@ -131,6 +133,14 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 		return nil, errors.Join(errors.New("settlement v2 test block or ABI is unknown"), err)
 	}
 	method, err := contractABI.MethodById(call["input"])
+	if err != nil && metadata == &stabi.STSettlement2MetaData {
+		// STSettlement2Ctf's view, which the upgrade adds.
+		ctfABI, ctfErr := releaseCtfSettlementMetaData.ParseABI()
+		if ctfErr != nil {
+			return nil, ctfErr
+		}
+		method, err = ctfABI.MethodById(call["input"])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +167,9 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	case "settlementAt":
 		identity := self.identities[noID]
 		encoded, err = method.Outputs.Pack(identity.Vault, identity.Hotkey, identity.Version)
+	case "ctfSettlementAt":
+		identity := self.ctfIdentities[noID]
+		encoded, err = method.Outputs.Pack(identity.vault, identity.hotkey, identity.firstEpoch)
 	case "pending":
 		encoded, err = method.Outputs.Pack(self.pending)
 	case "approvalCount":

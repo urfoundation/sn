@@ -274,6 +274,13 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 			return empty, err
 		}
 	}
+	if ctf := artifact.CaptureTheFlag; ctf != nil {
+		for _, pool := range ctf.Pools {
+			if err := checkProvider(pool.UID, pool.PoolHotkey); err != nil {
+				return empty, err
+			}
+		}
+	}
 	for _, binding := range artifact.Bindings {
 		if binding.LiveUIDFound {
 			if err := checkProvider(binding.LiveUID, binding.Hotkey); err != nil {
@@ -320,6 +327,8 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 // reproduce an empty allocation. A missing provider row alone is no proof: any
 // positive unmasked pool or head weight refuses the reserve-only row. Every
 // pool score counts; ineligible and controlled pools carry zero or a mask.
+// Capture the flag changes no answer here: its channel is empty whenever the
+// pool channel is (BuildWeightVectorCtf, rule 3).
 func requireEmptyProviderAllocation(verified *VerifiedReleaseMeasurement, theta protocol.Rational) error {
 	if verified == nil {
 		return errors.New("treasury reserve-only row lacks its verified provider measurement")

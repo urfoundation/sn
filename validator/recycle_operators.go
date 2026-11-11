@@ -219,8 +219,9 @@ func ObserveOwnerRecycleMeasurementOperators(ctx context.Context, authority *Own
 			return nil, errors.New("owner-recycle native and decision EVM hotkey/UID mappings differ")
 		}
 	}
-	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || len(artifact.DepositAudits) != len(observed.operators) {
-		return nil, errors.New("owner-recycle measured operator, binding, pool or deposit census differs from chain")
+	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || len(artifact.DepositAudits) != len(observed.operators) ||
+		verifyReleaseCtfPools(artifact, observed.ctfPools) != nil {
+		return nil, errors.New("owner-recycle measured operator, binding, pool, CTF pool or deposit census differs from chain")
 	}
 	for index, actual := range observed.bindings {
 		claimed := artifact.Bindings[index]

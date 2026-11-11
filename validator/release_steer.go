@@ -63,6 +63,9 @@ type ReleaseSteerer struct {
 	// The signed deposit price sheet. Nil for a deployment with no pinned signer,
 	// and for legacy steering, whose transcript cannot carry a signed price.
 	depositPrices *releaseDepositPrices
+	// The settlement amendments, which fix capture the flag's start and split. Nil
+	// for legacy steering, whose transcript cannot carry capture the flag.
+	amendments *releaseAmendments
 	// What live steering verified of each priced source epoch's committed rows, so
 	// later passes need not read them again. Nil verifies them on every pass.
 	depositUsageMemo *releaseDepositUsageMemo
@@ -167,8 +170,9 @@ func (s *ReleaseSteerer) validatePinnedChains(ctx context.Context, snapshot *Rel
 		snapshot.Policy.CloseGraceBlocks == s.cfg.Policy.ProductionCadence.CloseGraceBlocks &&
 		snapshot.Policy.EffectiveEpoch >= s.cfg.Policy.ProductionCadence.AfterAcceleratedEpochs
 	// The one read of the published price in a steering pass. The rest of the pass
-	// takes its price from this refresh.
+	// takes its price from this refresh, and its amendments from the next.
 	s.depositPrices.refresh(ctx)
+	s.amendments.refresh(ctx)
 	priceEntry, err := s.depositPrices.entryAtEpoch(snapshot.Epoch)
 	if err != nil {
 		return err

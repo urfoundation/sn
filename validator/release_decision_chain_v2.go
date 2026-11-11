@@ -80,7 +80,10 @@ type releaseDecisionChainV2Observation struct {
 	hotkeyUIDs       map[[32]byte]uint16
 	bindings         []ReleaseBindingMeasurement
 	pools            []ReleasePoolMeasurement
-	operators        []releaseDecisionChainV2Operator
+	// ctfPools are the active operators' CTF pools that resolve at the decision
+	// (releaseCtfPoolsContext), whether or not capture the flag is in force.
+	ctfPools  []ReleasePoolMeasurement
+	operators []releaseDecisionChainV2Operator
 	// The query's signed price, and the finalized head it read vault2's pools at.
 	priceEntry    *pricesheet.Entry
 	finalized     uint64
@@ -458,6 +461,10 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	}
 	if len(observed.pools) < query.policy.Safety.MinimumHealthyNOCount {
 		return nil, errors.New("decision active operator census is below the policy minimum")
+	}
+	observed.ctfPools, err = chain.releaseCtfPoolsContext(ctx, query.settlementV2, finalized, finalizedHash, block, hash, query.boundary.SettlementEpoch, observed.pools, observed.hotkeyUIDs)
+	if err != nil {
+		return nil, err
 	}
 	if err := readReleaseDecisionChainV2Source(ctx, chain, query, observed, read, readUint); err != nil {
 		return nil, err
