@@ -2,9 +2,11 @@ package ctf
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/holiman/uint256"
 
@@ -255,27 +257,31 @@ var (
 	previousPotsRole   = role{check: CheckPrevious, within: ledger.ErrPreviousRebuild, mismatch: ErrObjectHash, oversize: ErrPotRows, limit: NumPots * PotRowBytes}
 	previousPendRole   = role{check: CheckPrevious, within: ledger.ErrPreviousRebuild, mismatch: ErrObjectHash, oversize: ErrPendingRows, limit: maxPendingBytes}
 	accountChunkRole   = role{check: CheckChunks, mismatch: ledger.ErrChunkHash, oversize: ledger.ErrChunkLength, limit: ledger.ChunkRows * ledger.AccountRowBytes}
-	censusHeaderRole   = role{check: CheckCensus, mismatch: ErrObjectHash, oversize: ErrCensusTooLarge, limit: ledger.MaxHeaderBytes}
-	censusChunkRole    = role{check: CheckCensus, mismatch: ErrObjectHash, oversize: ledger.ErrChunkLength, limit: ledger.ChunkRows * CensusRowBytes}
-	excludedRole       = role{check: CheckCensus, mismatch: ErrObjectHash, oversize: ErrExcluded, limit: maxExclusionRows * ExclusionRowBytes}
 	awardsRole         = role{check: CheckDraw, mismatch: ErrObjectHash, oversize: ErrAwardRows, limit: NumSlots * AwardRowBytes}
+	potsRole           = role{check: CheckAmounts, mismatch: ErrObjectHash, oversize: ErrPotRows, limit: NumPots * PotRowBytes}
+	pendingRole        = role{check: CheckAmounts, mismatch: ErrObjectHash, oversize: ErrPendingRows, limit: maxPendingBytes}
 )
 
 type verifier struct {
 	ctx context.Context
 	in  *VerifyInput
 	res *Result
+	// previousLast is the latest finalized root's last covered epoch, whose
+	// pot and pending rows are the pool's state.
+	previousLast *HeaderEpoch
 }
 
 // Verify audits the pending CTF root (§8). It returns an error only for its
 // own inputs (ErrInput, ledger.ErrFunding, ErrPulse for a pulse that does not
 // verify), its context, its custody or its head oracle; the audit's outcome
 // is in the Result. The checks run in this order, stopping at the first that
-// fails: the previous root and its state, the header, the pending root's
-// account chunks and the faults they show, fixed inputs, accounts, tree; then
-// per covered epoch its census, seed, draw and amounts; and finally each
-// account's delta. Objects fetched are kept in custody, with each epoch's
-// recomputed pot and pending rows, and an epoch's awards that pass are
+// fails: the previous root's accounts, the header, the pending root's account
+// chunks and the faults they show, fixed inputs, accounts, tree, the previous
+// root's state; then per covered epoch its census, seed, draw and amounts;
+// and finally each account's delta. The previous root comes first and the
+// pending accounts early so that a failed root still has accounts to protect
+// and its faults known, whatever else is withheld. Every object the header
+// names is fetched and kept in custody, and an epoch's awards that pass are
 // recorded as valid.
 func Verify(ctx context.Context, in VerifyInput) (*Result, error) {
 	if ctx == nil || in.Fetcher == nil || in.Custody == nil {
@@ -321,6 +327,9 @@ func (v *verifier) run() error {
 		return fail(CheckAccounts, err)
 	}
 	if err := v.checkTree(); err != nil {
+		return err
+	}
+	if err := v.previousState(); err != nil {
 		return err
 	}
 	deltas, err := v.epochs(header, p)
@@ -395,8 +404,8 @@ func (v *verifier) loadAccounts(refs []ledger.Ref, r *role) ([]merkle.LedgerAcco
 	return accounts, nil
 }
 
-// previous checks that the latest finalized root's objects rebuild it, and
-// reads its state from its last epoch's pot and pending rows.
+// previous checks that the latest finalized root's objects rebuild it. Its
+// state is read later, by previousState.
 func (v *verifier) previous() error {
 	previous := v.in.Previous
 	if previous == nil {
@@ -438,12 +447,24 @@ func (v *verifier) previous() error {
 	if root, _ := tree.Root(); root != previous.Root {
 		return fail(CheckPrevious, fmt.Errorf("%w: root", ledger.ErrPreviousRebuild))
 	}
-	last := &header.Epochs[len(header.Epochs)-1]
-	pots, err := v.get(last.Pots, &previousPotsRole)
+	v.res.Previous, v.res.PreviousAccounts = tree, accounts
+	v.previousLast = &header.Epochs[len(header.Epochs)-1]
+	return nil
+}
+
+// previousState reads the latest finalized root's state from its last
+// epoch's pot and pending rows. It runs once the pending root's accounts are
+// known, so that a withheld state object, like any withheld object, leads to
+// a demand that protects the previous accounts.
+func (v *verifier) previousState() error {
+	if v.res.PreviousState != nil {
+		return nil
+	}
+	pots, err := v.get(v.previousLast.Pots, &previousPotsRole)
 	if err != nil {
 		return err
 	}
-	pending, err := v.get(last.Pending, &previousPendRole)
+	pending, err := v.get(v.previousLast.Pending, &previousPendRole)
 	if err != nil {
 		return err
 	}
@@ -451,8 +472,66 @@ func (v *verifier) previous() error {
 	if err != nil {
 		return previousPotsRole.fail(err)
 	}
-	v.res.Previous, v.res.PreviousAccounts, v.res.PreviousState = tree, accounts, state
+	v.res.PreviousState = state
 	return nil
+}
+
+// censusObject reads a census object as get does, except for an object
+// longer than limit: no census Build would draw holds one, so it is read on
+// through its hash, within the byte budget, and reported oversize when it
+// matches its reference, making the census not canonical for the auditor
+// exactly as for Build. An object served with other bytes is missing, as
+// with get, so serving other bytes never cancels a draw.
+func (v *verifier) censusObject(ref ledger.Ref, limit int) ([]byte, bool, error) {
+	if ref == emptyRef {
+		return []byte{}, false, nil
+	}
+	data, ok, err := v.in.Custody.Object(v.ctx, ref)
+	if err != nil || ok {
+		return data, false, err
+	}
+	remaining := v.in.MaxFetchBytes - min(v.res.FetchedBytes, v.in.MaxFetchBytes)
+	keep := uint64(limit) + 1
+	if remaining < uint64(limit) {
+		keep = remaining + 1
+	}
+	hash := sha256.New()
+	var n uint64
+	body, err := v.in.Fetcher.Fetch(v.ctx, ref)
+	if err == nil {
+		data, err = io.ReadAll(io.LimitReader(body, int64(keep)))
+		n = uint64(len(data))
+		hash.Write(data)
+		if err == nil && n > uint64(limit) && n <= remaining {
+			// Hash the rest, up to one byte past the budget.
+			var rest int64
+			rest, err = io.Copy(hash, io.LimitReader(body, int64(min(remaining-n, math.MaxInt64-1))+1))
+			n += uint64(rest)
+		}
+		body.Close()
+		v.res.FetchedBytes += n
+	}
+	if err != nil {
+		if ctxErr := v.ctx.Err(); ctxErr != nil {
+			return nil, false, ctxErr
+		}
+		v.res.Missing = append(v.res.Missing, ref)
+		return nil, false, fail(CheckFetch, fmt.Errorf("%w: %v: %w", ledger.ErrObjectUnavailable, ref, err))
+	}
+	if n > remaining {
+		return nil, false, fail(CheckFetch, fmt.Errorf("%w: %d bytes at %v", ledger.ErrByteBudget, v.in.MaxFetchBytes, ref))
+	}
+	if ledger.Ref(hash.Sum(nil)) != ref {
+		v.res.Missing = append(v.res.Missing, ref)
+		return nil, false, fail(CheckCensus, fmt.Errorf("%w: %v", ErrObjectHash, ref))
+	}
+	if n > uint64(limit) {
+		return nil, true, nil
+	}
+	if err := v.in.Custody.Keep(v.ctx, ref, data); err != nil {
+		return nil, false, err
+	}
+	return data, false, nil
 }
 
 // header checks the pending root's header.
@@ -594,6 +673,9 @@ func (v *verifier) epochs(h *Header, p uint64) ([]protocol.LedgerDelta, error) {
 		}
 	}
 	deltas, err := w.finish(v.in.CarryColdkey)
+	if errors.Is(err, ErrReturnRolls) {
+		return nil, fail(CheckAmounts, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -618,35 +700,20 @@ func (v *verifier) draw(entry *HeaderEpoch, facts *EpochFacts) (*epochDraw, erro
 	}
 	hash := c.Hash
 	d.census, d.censusBlock = &hash, c.Block
-	header, err := v.get(c.Hash, &censusHeaderRole)
+	// The census decides the draw only from bytes that match their
+	// references, read as Build reads them.
+	census, invalid, err := readCensus(c.Hash, v.in.NoID, entry.Epoch, v.censusObject)
 	if err != nil {
 		return nil, err
 	}
-	// The census decides the draw only from bytes that match their
-	// references, so serving other bytes can never cancel a draw.
-	h, err := DecodeCensusHeader(header)
-	if err == nil {
-		var chunks [][]byte
-		var excluded []byte
-		chunks, excluded, err = censusObjects(h, func(ref ledger.Ref) ([]byte, error) {
-			r := &censusChunkRole
-			if ref == h.Excluded {
-				r = &excludedRole
-			}
-			return v.get(ref, r)
-		})
-		if err != nil {
-			return nil, err
-		}
-		d.decoded, err = decodeCensusFor(h, chunks, excluded, v.in.NoID, entry.Epoch)
-	}
-	if err != nil {
-		d.censusErr, d.decoded = err, nil
+	if invalid != nil {
+		d.censusErr = invalid
 		if entry.Round != 0 {
-			return nil, fail(CheckSeed, fmt.Errorf("%w: epoch %d lists round %d, and its census is not canonical: %v", ErrRound, entry.Epoch, entry.Round, err))
+			return nil, fail(CheckSeed, fmt.Errorf("%w: epoch %d lists round %d, and its census is not canonical: %v", ErrRound, entry.Epoch, entry.Round, invalid))
 		}
 		return d, nil
 	}
+	d.decoded = census
 	d.round = DrawRound(c.Time)
 	if entry.Round != d.round {
 		return nil, fail(CheckSeed, fmt.Errorf("%w: epoch %d lists round %d, not %d", ErrRound, entry.Epoch, entry.Round, d.round))
@@ -707,8 +774,8 @@ func (v *verifier) awards(entry *HeaderEpoch, draw *Draw) ([]Award, error) {
 }
 
 // amounts runs §8 check 4: the award rows' amounts are the walk's, and the
-// header names the walk's pot and pending rows. An epoch that passes keeps
-// its recomputed rows in custody and records its awards as valid.
+// header names the walk's pot and pending rows, which are published. An
+// epoch that passes records its awards as valid.
 func (v *verifier) amounts(entry *HeaderEpoch, e *EpochResult, published []Award) error {
 	for i := range e.Awards {
 		a, b := &e.Awards[i], &published[i]
@@ -731,17 +798,13 @@ func (v *verifier) amounts(entry *HeaderEpoch, e *EpochResult, published []Award
 	if e.PendingRef != entry.Pending {
 		return fail(CheckAmounts, fmt.Errorf("%w: epoch %d lists %v, recomputed %v", ErrPending, entry.Epoch, entry.Pending, e.PendingRef))
 	}
-	for _, ref := range []ledger.Ref{e.PotsRef, e.PendingRef} {
-		if ref == emptyRef {
-			continue
-		}
-		if _, ok, err := v.in.Custody.Object(v.ctx, ref); err != nil {
-			return err
-		} else if !ok {
-			if err := v.in.Custody.Keep(v.ctx, ref, objects[ref]); err != nil {
-				return err
-			}
-		}
+	// The next root's audit starts from these rows, so they must be
+	// published: matching the recomputed references, they are its bytes.
+	if _, err := v.get(entry.Pots, &potsRole); err != nil {
+		return err
+	}
+	if _, err := v.get(entry.Pending, &pendingRole); err != nil {
+		return err
 	}
 	poolID := PoolID(v.in.NoID)
 	if _, ok, err := v.in.Custody.ValidRows(v.ctx, poolID, entry.Epoch); err != nil {

@@ -12,14 +12,28 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// CarryRounding is the rao of rounding that one carry cycle may lose (§4.6:
-// a claim, two stake moves and the capture, at most a rao each). An epoch
-// whose returned carry is within CarryRounding of what is owed is matured and
-// writes the difference off; an epoch with a partial return writes off up to
-// CarryRounding of what is still owed (§4.5).
-const CarryRounding = 4
+const (
+	// CarryRounding is the rao of rounding that one carry cycle may lose
+	// (§4.6: a claim, two stake moves and the capture, at most a rao each).
+	CarryRounding = 4
+	// CarryTolerance is what an epoch with a return writes off of what is
+	// still owed: the rounding of two cycles, since a late root's return and
+	// the next root's can come back in one epoch. An epoch whose return is
+	// within CarryTolerance of what is owed is matured (§4.5). Because it
+	// exceeds one cycle's rounding, rounding left owed shrinks by at least
+	// CarryRounding with every single return and never grows with two, so it
+	// cannot keep later epochs unmatured.
+	CarryTolerance = 2 * CarryRounding
+)
 
 var (
+	// ErrReturnRolls is returned for returned carry recorded for the root's
+	// last covered epoch when that epoch funded nothing: it would roll past
+	// the root, which no rule can allocate. STSettlement2's commit window
+	// makes it impossible, since a root's last epoch is captured before its
+	// root is committed.
+	ErrReturnRolls = errors.New("ctf: returned carry rolls past the root's last epoch")
+
 	five      = uint256.NewInt(5)
 	slotCount = uint256.NewInt(NumSlots)
 	errWalk   = errors.New("ctf: a shortfall exceeds the pots and pending awards")
@@ -126,10 +140,10 @@ type EpochResult struct {
 	// the returns of the uncaptured epochs before it, never more than Owed.
 	Returned uint256.Int
 	// Credited is what k counts as returned of what was owed: Owed when
-	// matured, Returned + CarryRounding (below Owed) for a partial return,
+	// matured, Returned + CarryTolerance (below Owed) for a partial return,
 	// else zero.
 	Credited uint256.Int
-	// Matured is M_k: Returned + CarryRounding >= Owed.
+	// Matured is M_k: Returned + CarryTolerance >= Owed.
 	Matured bool
 	// Fresh is F_k = Funding − Credited, or 0 when Credited exceeds Funding;
 	// Shortfall is then Credited − Funding, taken from the pots.
@@ -237,7 +251,7 @@ func (w *walk) step(k uint64, f, recycled *uint256.Int, draw *Draw, coldkey func
 		e.Returned = w.owed
 	}
 	var within uint256.Int
-	within.AddUint64(&e.Returned, CarryRounding)
+	within.AddUint64(&e.Returned, CarryTolerance)
 	switch {
 	case !within.Lt(&w.owed):
 		e.Matured, e.Credited = true, w.owed
@@ -364,7 +378,7 @@ func (w *walk) charge(shortfall uint256.Int) error {
 // epoch. It returns every coldkey's delta, ascending.
 func (w *walk) finish(carry [32]byte) ([]protocol.LedgerDelta, error) {
 	if !w.rolled.IsZero() {
-		return nil, fmt.Errorf("%w: %s rao of returned carry follows the last covered epoch, which vault2 always captures", ErrInput, w.rolled.Dec())
+		return nil, fmt.Errorf("%w: %s rao", ErrReturnRolls, w.rolled.Dec())
 	}
 	if w.paid.Gt(&w.funding) {
 		return nil, fmt.Errorf("%w: paid %s of funding %s", errWalk, w.paid.Dec(), w.funding.Dec())

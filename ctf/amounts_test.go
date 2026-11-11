@@ -292,14 +292,14 @@ func TestDeferredEpoch(t *testing.T) {
 	if _, err := w.step(8, &uint256.Int{}, &owed, nil, winnerKey); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.finish(carryKey); !errors.Is(err, ErrInput) {
+	if _, err := w.finish(carryKey); !errors.Is(err, ErrReturnRolls) {
 		t.Fatalf("rolled past the last epoch: %v", err)
 	}
 }
 
 // §4.6: stake beyond what is owed is a donation and fresh; a partial return
-// writes off up to CarryRounding and stays unmatured; a return within
-// CarryRounding of what is owed matures the epoch, and when the funding does
+// writes off up to CarryTolerance and stays unmatured; a return within
+// CarryTolerance of what is owed matures the epoch, and when the funding does
 // not cover it the shortfall comes from the largest pot, so no amount is ever
 // negative.
 func TestCarryArithmetic(t *testing.T) {
@@ -321,15 +321,15 @@ func TestCarryArithmetic(t *testing.T) {
 	t.Run("partial return", func(t *testing.T) {
 		results, _, w := runWalk(t, start(),
 			walkEpoch{f: u(600 + 2_490), recycled: u(600)},
-			walkEpoch{f: u(396 + 2_490), recycled: u(400)},
+			walkEpoch{f: u(392 + 2_490), recycled: u(400)},
 		)
 		e := results[0]
-		if e.Matured || e.Credited.Uint64() != 604 || e.Fresh.Uint64() != 2_486 || !e.Owed.Eq(&owed) {
+		if e.Matured || e.Credited.Uint64() != 608 || e.Fresh.Uint64() != 2_482 || !e.Owed.Eq(&owed) {
 			t.Fatalf("partial: matured %t credited %s fresh %s", e.Matured, e.Credited.Dec(), e.Fresh.Dec())
 		}
-		// The rest comes back: 396 are owed, 400 came, 4 of them fresh.
+		// The rest comes back: 392 are owed, 400 came, 8 of them fresh.
 		e = results[1]
-		if !e.Matured || e.Owed.Uint64() != 396 || e.Returned.Uint64() != 396 || e.Fresh.Uint64() != 2_490 || !w.owed.IsZero() {
+		if !e.Matured || e.Owed.Uint64() != 392 || e.Returned.Uint64() != 392 || e.Fresh.Uint64() != 2_490 || !w.owed.IsZero() {
 			t.Fatalf("rest: matured %t owed %s returned %s fresh %s", e.Matured, e.Owed.Dec(), e.Returned.Dec(), e.Fresh.Dec())
 		}
 	})
@@ -345,8 +345,8 @@ func TestCarryArithmetic(t *testing.T) {
 		}
 	})
 	t.Run("short beyond rounding", func(t *testing.T) {
-		results, _, _ := runWalk(t, start(), walkEpoch{f: u(995), recycled: u(995)})
-		if e := results[0]; e.Matured || e.Credited.Uint64() != 999 || !e.Fresh.IsZero() || e.Shortfall.Uint64() != 4 {
+		results, _, _ := runWalk(t, start(), walkEpoch{f: u(991), recycled: u(991)})
+		if e := results[0]; e.Matured || e.Credited.Uint64() != 999 || !e.Fresh.IsZero() || e.Shortfall.Uint64() != 8 {
 			t.Fatalf("matured %t credited %s shortfall %s", e.Matured, e.Credited.Dec(), e.Shortfall.Dec())
 		}
 	})
@@ -415,5 +415,55 @@ func TestWalkConservation(t *testing.T) {
 			_ = trial
 			runWalk(t, state, epochs...)
 		})
+	}
+}
+
+// §4.6 across roots: one-epoch roots, the carry account's delta claimed and
+// returned the next epoch through its own recycle, every recycle losing
+// CarryRounding rao (the bound) and every capture one more, and the carry
+// late for one, two and three epochs in a row, so that up to four cycles come
+// back in one epoch. Rounding left owed shrinks by CarryRounding an epoch, so
+// every epoch from the fourth after a late spell is matured with no pending
+// awards, and the funding is conserved root by root. With a tolerance of one
+// cycle's rounding, the residual would never shrink.
+func TestCarryAcrossRoots(t *testing.T) {
+	state := &State{}
+	var queue []uint256.Int
+	emission := u(NumSlots * 1_000)
+	draw := drawWith(potDraw{"tm", RoleProvider, 1, 1}, potDraw{"is", RoleExtender, 3, 3})
+	late := map[uint64]bool{3: true, 11: true, 12: true, 20: true, 21: true, 22: true}
+	for k := uint64(1); k <= 60; k++ {
+		var recycled uint256.Int
+		if !late[k] {
+			for _, d := range queue {
+				if d.GtUint64(CarryRounding) {
+					d.SubUint64(&d, CarryRounding)
+					recycled.Add(&recycled, &d)
+				}
+			}
+			queue = nil
+		}
+		f := sum(recycled, emission)
+		if !recycled.IsZero() {
+			f.SubUint64(&f, 1)
+		}
+		w := newWalk(state)
+		e, err := w.step(k, &f, &recycled, draw, winnerKey)
+		if err != nil {
+			t.Fatalf("epoch %d: %v", k, err)
+		}
+		checkConservation(t, w, e)
+		deltas, err := w.finish(carryKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queue = append(queue, deltaOf(deltas, carryKey))
+		state = &State{Pots: w.state.Pots, Pending: w.state.Pending}
+		if !late[k] && !late[k-1] && !late[k-2] && !late[k-3] && (!e.Matured || len(e.Pending) != 0) {
+			t.Fatalf("epoch %d, after the late spell: matured %t, %d pending, owed %s, returned %s", k, e.Matured, len(e.Pending), e.Owed.Dec(), e.Returned.Dec())
+		}
+	}
+	if len(state.Pending) != 0 {
+		t.Fatalf("%d pending awards at the end", len(state.Pending))
 	}
 }

@@ -193,7 +193,7 @@ func TestBuildErrors(t *testing.T) {
 			in.FundedThrough = maps.Clone(s.funded)
 			in.FundedThrough[11] = s.funded[10]
 			in.Epochs[1].Census = nil
-		}, ErrInput},
+		}, ErrReturnRolls},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -312,4 +312,108 @@ func TestReadPrevious(t *testing.T) {
 	if _, err := ReadPrevious(context.Background(), commit, s.f.Objects); !errors.Is(err, ledger.ErrPrevious) {
 		t.Fatalf("another total: %v", err)
 	}
+}
+
+// A committed census object longer than any canonical census holds makes the
+// census not canonical for Build and the auditor alike (no draw), as long as
+// its bytes match its reference; served with other bytes it is missing, so it
+// never cancels a draw. Build reads the census in one order, the header, the
+// row chunks, the exclusion object, and stops at the first such object.
+func TestOversizeCensus(t *testing.T) {
+	cases := []struct {
+		name string
+		// census returns the committed header and the objects it names, the
+		// oversize one last.
+		census func(base *CensusObjects) ([]byte, []ledger.Ref, [][]byte)
+		want   error
+	}{
+		{"header over 256 KiB", func(base *CensusObjects) ([]byte, []ledger.Ref, [][]byte) {
+			header := append(bytes.Clone(base.Header), bytes.Repeat([]byte(" "), ledger.MaxHeaderBytes)...)
+			return header, nil, nil
+		}, ErrCensusTooLarge},
+		{"chunk over 131,072 rows", func(base *CensusObjects) ([]byte, []ledger.Ref, [][]byte) {
+			chunk := bytes.Repeat([]byte{1}, (ledger.ChunkRows+1)*CensusRowBytes)
+			ref := ledger.RefOf(chunk)
+			raw := censusHeaderJSON{Schema: CensusSchema, NoID: testNoID, PoolID: PoolID(testNoID), Epoch: 10, Countries: CountriesRef.String(),
+				Rows: []string{ref.String()}, Candidates: ledger.ChunkRows + 1, ExcusedSamples: []uint64{}, Excluded: emptyRef.String()}
+			return raw.appendJSON(nil), []ledger.Ref{ref}, [][]byte{chunk}
+		}, ledger.ErrChunkLength},
+		{"exclusion object over 5,000 rows", func(base *CensusObjects) ([]byte, []ledger.Ref, [][]byte) {
+			excluded := bytes.Repeat([]byte{2}, (maxExclusionRows+1)*ExclusionRowBytes)
+			ref := ledger.RefOf(excluded)
+			header := bytes.Replace(base.Header, []byte(base.Excluded.String()), []byte(ref.String()), 1)
+			refs := append(slices.Clone(base.Rows), ref)
+			datas := [][]byte{}
+			for _, r := range base.Rows {
+				datas = append(datas, base.Objects[r])
+			}
+			return header, refs, append(datas, excluded)
+		}, ErrExcluded},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newScenario(t)
+			base := s.census[10].objects
+			header, refs, datas := c.census(base)
+			objects := ledger.Objects{ledger.RefOf(header): header}
+			for i, ref := range refs {
+				objects[ref] = datas[i]
+			}
+			s.census[10] = &committed{objects: &CensusObjects{Hash: ledger.RefOf(header), Header: header, Objects: objects}, time: s.census[10].time, block: s.census[10].block}
+			p, err := Build(context.Background(), s.buildInput(11))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e := p.Epochs[0]; e.Drawn || !errors.Is(e.CensusErr, c.want) || e.Round != 0 || len(e.Awards) != 0 {
+				t.Fatalf("drawn %t err %v round %d", e.Drawn, e.CensusErr, e.Round)
+			}
+			published := maps.Clone(p.Objects)
+			maps.Copy(published, objects)
+			expectPass(t, s.verifyCopy(t, p.Commit, published))
+
+			// The oversize object served with other bytes is missing.
+			big := ledger.RefOf(header)
+			if len(refs) > 0 {
+				big = refs[len(refs)-1]
+			}
+			published[big] = flip(published[big], 0, 1)
+			res := s.verifyCopy(t, p.Commit, published)
+			if res.Check != CheckCensus || !errors.Is(res.Err, ErrObjectHash) || !slices.Contains(res.Missing, big) || res.Action() != ledger.ActionDemand {
+				t.Fatalf("other bytes: check %v err %v missing %v action %v", res.Check, res.Err, res.Missing, res.Action())
+			}
+			// Beyond the byte budget, the auditor decides nothing.
+			in := s.verifyInput(p.Commit, &s.f.Commit, maps.Clone(p.Objects))
+			maps.Copy(in.Fetcher.(ledger.Objects), objects)
+			in.Custody = cloneCustody(s.custody)
+			in.MaxFetchBytes = uint64(len(header)) + 100
+			if res, err := Verify(context.Background(), in); err != nil || res.Check != CheckFetch || !errors.Is(res.Err, ledger.ErrByteBudget) {
+				t.Fatalf("budget: %v %v %v", err, res.Check, res.Err)
+			}
+		})
+	}
+}
+
+// A census without exclusion counts names the empty object, which Build and
+// DecodeCensus accept without its bytes.
+func TestCensusEmptyExclusions(t *testing.T) {
+	s := newScenario(t)
+	c := epochCensus(10)
+	c.Excluded = nil
+	s.census[10] = commit(t, c, s.census[10].time)
+	objects := s.census[10].objects
+	if objects.Excluded != emptyRef {
+		t.Fatal("no counts is not the empty object")
+	}
+	delete(objects.Objects, emptyRef)
+	if _, err := DecodeCensus(objects.Header, objects.Objects); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Build(context.Background(), s.buildInput(11))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Epochs[0].Drawn {
+		t.Fatalf("not drawn: %v", p.Epochs[0].CensusErr)
+	}
+	expectPass(t, s.verifyCopy(t, p.Commit, p.Objects))
 }

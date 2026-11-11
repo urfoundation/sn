@@ -487,24 +487,86 @@ func DecodeCensusHeader(data []byte) (*CensusHeader, error) {
 // the header names, held in objects, and checks it is canonical: the header
 // (DecodeCensusHeader), the rows (DecodeCensusRows), their count and the
 // exclusion counts (DecodeExclusions). An object missing from objects gives
-// ErrCensusUnavailable; any other error means the census is not canonical.
+// ErrCensusUnavailable, except the empty object, which needs no bytes; any
+// other error means the census is not canonical.
 func DecodeCensus(header []byte, objects ledger.Objects) (*Census, error) {
 	h, err := DecodeCensusHeader(header)
 	if err != nil {
 		return nil, err
 	}
+	get := func(ref ledger.Ref) ([]byte, error) {
+		if data, ok := objects[ref]; ok {
+			return data, nil
+		}
+		if ref == emptyRef {
+			return []byte{}, nil
+		}
+		return nil, fmt.Errorf("%w: %v", ErrCensusUnavailable, ref)
+	}
 	chunks := make([][]byte, len(h.Rows))
 	for j, ref := range h.Rows {
-		var ok bool
-		if chunks[j], ok = objects[ref]; !ok {
-			return nil, fmt.Errorf("%w: rows %v", ErrCensusUnavailable, ref)
+		if chunks[j], err = get(ref); err != nil {
+			return nil, err
 		}
 	}
-	excluded, ok := objects[h.Excluded]
-	if !ok {
-		return nil, fmt.Errorf("%w: excluded %v", ErrCensusUnavailable, h.Excluded)
+	excluded, err := get(h.Excluded)
+	if err != nil {
+		return nil, err
 	}
 	return decodeCensusObjects(h, chunks, excluded)
+}
+
+const (
+	// censusChunkLimit and exclusionLimit are the most bytes a canonical
+	// census's row chunk and exclusion object hold.
+	censusChunkLimit = ledger.ChunkRows * CensusRowBytes
+	exclusionLimit   = maxExclusionRows * ExclusionRowBytes
+)
+
+// censusGetter returns a census object whose bytes match ref: its bytes, or
+// oversize when it is longer than limit, or an error when it cannot be had.
+type censusGetter func(ref ledger.Ref, limit int) (data []byte, oversize bool, err error)
+
+// readCensus reads the census committed as hash for operator noID's epoch,
+// in one order: the header, then each row chunk, then the exclusion object.
+// It returns the census; or, with a nil census, invalid, why the committed
+// census is not canonical: a header that is not, one for another pool or
+// epoch, or an object longer than any canonical census holds, each of which
+// ends the reading; or get's error. Build and Verify both read through it, so
+// they agree on every census whose objects match their references.
+func readCensus(hash ledger.Ref, noID, epoch uint64, get censusGetter) (census *Census, invalid error, err error) {
+	header, oversize, err := get(hash, ledger.MaxHeaderBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	if oversize {
+		return nil, fmt.Errorf("%w: %v", ErrCensusTooLarge, hash), nil
+	}
+	h, invalid := DecodeCensusHeader(header)
+	if invalid != nil {
+		return nil, invalid, nil
+	}
+	if h.NoID != noID || h.Epoch != epoch {
+		return nil, fmt.Errorf("%w: no_id %d epoch %d, committed for %d epoch %d", ErrCensusEpoch, h.NoID, h.Epoch, noID, epoch), nil
+	}
+	chunks := make([][]byte, len(h.Rows))
+	for j, ref := range h.Rows {
+		if chunks[j], oversize, err = get(ref, censusChunkLimit); err != nil {
+			return nil, nil, err
+		}
+		if oversize {
+			return nil, fmt.Errorf("%w: chunk %d is over %d rows", ledger.ErrChunkLength, j, ledger.ChunkRows), nil
+		}
+	}
+	excluded, oversize, err := get(h.Excluded, exclusionLimit)
+	if err != nil {
+		return nil, nil, err
+	}
+	if oversize {
+		return nil, fmt.Errorf("%w: over %d bytes", ErrExcluded, exclusionLimit), nil
+	}
+	census, invalid = decodeCensusObjects(h, chunks, excluded)
+	return census, invalid, nil
 }
 
 // decodeCensusObjects decodes a census whose header h decoded, from its row

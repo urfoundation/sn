@@ -117,10 +117,14 @@ type Ledger struct {
 // ledger.ErrTotalNotIncreased when fundedThrough[e] does not exceed the
 // previous total, ErrCensusUnavailable for a census object it was not given,
 // ErrPulse for a pulse that does not verify, ErrColdkey for a winner without a
-// coldkey and ledger.ErrFixedInputs for awards that differ from the fixed
-// ones; and the covered-epoch, funding and size errors of the ledger package.
-// A committed census that is not canonical gives no draw, as none would: it is
-// reported in EpochResult.CensusErr, not refused.
+// coldkey, ledger.ErrFixedInputs for awards that differ from the fixed ones
+// and ErrReturnRolls for returned carry recorded for a last epoch that funded
+// nothing; and the covered-epoch, funding and size errors of the ledger
+// package. A committed census that is not canonical gives no draw, as none
+// would: it is reported in EpochResult.CensusErr, not refused. The census is
+// read in a fixed order, the header, the row chunks, the exclusion object, and
+// an object longer than a canonical census holds ends the reading as not
+// canonical, exactly as Verify reads it.
 func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 	if ctx == nil {
 		return nil, ErrInput
@@ -330,31 +334,27 @@ func buildDraw(in *BuildInput, input *EpochInput, poolID uint64, objects ledger.
 	}
 	hash := c.Hash
 	d.census, d.censusBlock = &hash, c.Block
-	header, ok := c.Objects[c.Hash]
-	if !ok || ledger.RefOf(header) != c.Hash {
-		return nil, fmt.Errorf("%w: epoch %d census header %v", ErrCensusUnavailable, input.Epoch, c.Hash)
-	}
-	objects[c.Hash] = header
-	h, err := DecodeCensusHeader(header)
-	if err == nil {
-		var chunks [][]byte
-		var excluded []byte
-		if chunks, excluded, err = censusObjects(h, func(ref ledger.Ref) ([]byte, error) {
-			data, ok := c.Objects[ref]
-			if !ok || ledger.RefOf(data) != ref {
-				return nil, fmt.Errorf("%w: epoch %d %v", ErrCensusUnavailable, input.Epoch, ref)
-			}
-			objects[ref] = data
-			return data, nil
-		}); err != nil {
-			return nil, err
+	census, invalid, err := readCensus(c.Hash, in.NoID, input.Epoch, func(ref ledger.Ref, limit int) ([]byte, bool, error) {
+		data, ok := c.Objects[ref]
+		switch {
+		case !ok && ref == emptyRef:
+			return []byte{}, false, nil
+		case !ok || ledger.RefOf(data) != ref:
+			return nil, false, fmt.Errorf("%w: epoch %d %v", ErrCensusUnavailable, input.Epoch, ref)
+		case len(data) > limit:
+			return nil, true, nil
 		}
-		d.decoded, err = decodeCensusFor(h, chunks, excluded, in.NoID, input.Epoch)
-	}
+		objects[ref] = data
+		return data, false, nil
+	})
 	if err != nil {
-		d.censusErr, d.decoded = err, nil
+		return nil, err
+	}
+	if invalid != nil {
+		d.censusErr = invalid
 		return d, nil
 	}
+	d.decoded = census
 	d.round = DrawRound(c.Time)
 	if input.Pulse == nil || input.Pulse.Round != d.round {
 		return nil, fmt.Errorf("%w: epoch %d needs the pulse of round %d", ErrInput, input.Epoch, d.round)
@@ -365,31 +365,6 @@ func buildDraw(in *BuildInput, input *EpochInput, poolID uint64, objects ledger.
 	d.randomness = input.Pulse.Randomness()
 	d.draw = DrawCensus(d.decoded.Candidates, Seed(in.ChainID, in.Netuid, poolID, input.Epoch, c.Hash, d.randomness), input.Bound)
 	return d, nil
-}
-
-// censusObjects reads a decoded census header's row chunks and exclusion
-// object with get, which returns only bytes that match their reference.
-func censusObjects(h *CensusHeader, get func(ledger.Ref) ([]byte, error)) ([][]byte, []byte, error) {
-	chunks := make([][]byte, len(h.Rows))
-	for j, ref := range h.Rows {
-		var err error
-		if chunks[j], err = get(ref); err != nil {
-			return nil, nil, err
-		}
-	}
-	excluded, err := get(h.Excluded)
-	if err != nil {
-		return nil, nil, err
-	}
-	return chunks, excluded, nil
-}
-
-// decodeCensusFor decodes a census committed for operator noID's epoch k.
-func decodeCensusFor(h *CensusHeader, chunks [][]byte, excluded []byte, noID, epoch uint64) (*Census, error) {
-	if h.NoID != noID || h.Epoch != epoch {
-		return nil, fmt.Errorf("%w: no_id %d epoch %d, committed for %d epoch %d", ErrCensusEpoch, h.NoID, h.Epoch, noID, epoch)
-	}
-	return decodeCensusObjects(h, chunks, excluded)
 }
 
 // encodeEpoch encodes an epoch's awards, pots and pending rows into objects

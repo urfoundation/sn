@@ -316,17 +316,26 @@ func TestVerifyAccountMutations(t *testing.T) {
 func TestVerifyServedBytes(t *testing.T) {
 	s := newScenario(t)
 	census := s.census[10].objects
+	pending, err := DecodeHeader(s.p.Header)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, ref := range map[string]ledger.Ref{
 		"census header":   census.Hash,
 		"census rows":     census.Rows[0],
 		"exclusion rows":  census.Excluded,
 		"awards":          s.p.Epochs[0].AwardsRef,
-		"account chunk":   ledger.Ref(s.p.Commit.LedgerHash),
+		"pots":            s.p.Epochs[0].PotsRef,
+		"pending":         s.p.Epochs[0].PendingRef,
+		"pending header":  ledger.Ref(s.p.Commit.LedgerHash),
+		"account chunk":   pending.Accounts[0],
 		"previous header": ledger.Ref(s.f.Commit.LedgerHash),
 	} {
 		t.Run(name+" other bytes", func(t *testing.T) {
 			objects := maps.Clone(s.p.Objects)
-			objects[ref] = append(bytes.Clone(objects[ref]), 0)
+			if data, ok := objects[ref]; ok {
+				objects[ref] = flip(data, len(data)-1, 1)
+			}
 			s.custody = ledger.NewMemoryCustody()
 			maps.Copy(objects, map[ledger.Ref][]byte{})
 			for k, v := range s.f.Objects {
@@ -388,7 +397,7 @@ func TestVerifyChainFacts(t *testing.T) {
 		}, CheckSeed, ErrRound},
 		{"the carry short beyond rounding", func(in *VerifyInput) {
 			f := in.Epochs[11]
-			f.Recycled.SubUint64(&f.Recycled, CarryRounding+1)
+			f.Recycled.SubUint64(&f.Recycled, CarryTolerance+1)
 			in.Epochs[11] = f
 		}, CheckAmounts, ErrAwardAmount},
 		// One more rao fills the remainder: only the last slot, an unfilled
@@ -555,10 +564,10 @@ func TestBuildInputMutations(t *testing.T) {
 			t.Fatalf("signature byte %d: %v", i, err)
 		}
 	}
-	// The carry's return within CarryRounding of what is owed matures the
+	// The carry's return within CarryTolerance of what is owed matures the
 	// epoch as the exact return does, so it must fall short beyond it.
 	for name, mutate := range map[string]func(*BuildInput){
-		"recycled": func(in *BuildInput) { in.Epochs[1].Recycled.SubUint64(&in.Epochs[1].Recycled, CarryRounding+1) },
+		"recycled": func(in *BuildInput) { in.Epochs[1].Recycled.SubUint64(&in.Epochs[1].Recycled, CarryTolerance+1) },
 		"funding": func(in *BuildInput) {
 			in.FundedThrough = maps.Clone(in.FundedThrough)
 			v := in.FundedThrough[11]
@@ -582,5 +591,48 @@ func TestBuildInputMutations(t *testing.T) {
 		in := s.buildInput(11)
 		mutate(&in)
 		differs(t, name, in)
+	}
+}
+
+// §9.3: a withheld state object of the previous root, like any withheld
+// object, leads to a demand: the previous accounts are verified before it is
+// read, and the pending accounts too.
+func TestVerifyPreviousStateWithheld(t *testing.T) {
+	s := newScenario(t)
+	f, err := DecodeHeader(s.f.Header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []ledger.Ref{f.Epochs[len(f.Epochs)-1].Pots, f.Epochs[len(f.Epochs)-1].Pending} {
+		if ref == emptyRef {
+			continue
+		}
+		s.custody = cloneCustody(s.custody)
+		delete(s.custody.Objects, ref)
+		objects := maps.Clone(s.p.Objects)
+		delete(objects, ref)
+		res := s.verify(t, s.p.Commit, objects)
+		if res.Check != CheckFetch || !slices.Contains(res.Missing, ref) || res.Previous == nil || !res.Reproduced || res.Action() != ledger.ActionDemand {
+			t.Fatalf("check %v missing %v previous %t reproduced %t action %v", res.Check, res.Missing, res.Previous != nil, res.Reproduced, res.Action())
+		}
+	}
+}
+
+// A return recorded for a last covered epoch that funded nothing would roll
+// past the root: the auditor refuses such a root, and Build refuses to build
+// it.
+func TestVerifyReturnRollsPastRoot(t *testing.T) {
+	s := newScenario(t)
+	s.funded[11] = s.funded[10]
+	s.recycled[11] = uint256.Int{}
+	p, err := Build(context.Background(), s.buildInput(11))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.recycled[11] = rao(12_345)
+	res := s.verifyCopy(t, p.Commit, p.Objects)
+	expectFailure(t, res, CheckAmounts, ErrReturnRolls)
+	if _, err := Build(context.Background(), s.buildInput(11)); !errors.Is(err, ErrReturnRolls) {
+		t.Fatalf("build: %v", err)
 	}
 }

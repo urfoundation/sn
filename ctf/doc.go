@@ -95,8 +95,15 @@
 //
 // A committed census that is not canonical, whose bytes match its committed
 // hash, gives no draw, as an uncommitted one does: §8 check 1 refusing it
-// would leave the epoch, and every root after it, unbuildable. Objects served
-// with other bytes are missing, never a reason to cancel a draw.
+// would leave the epoch, and every root after it, unbuildable. Build and
+// Verify read a committed census in one order, the header, then each row
+// chunk, then the exclusion object: a header that is not canonical or names
+// another pool or epoch, or an object longer than any canonical census holds
+// (256 KiB, 131,072 rows, 5,000 exclusion rows), ends the reading as not
+// canonical; otherwise every object must be had before the rows and counts
+// decide. The auditor reads an over-long object through its hash, within its
+// byte budget. Objects served with other bytes are missing, never a reason to
+// cancel a draw.
 //
 // # Amounts (§4.5 to §4.7)
 //
@@ -111,8 +118,8 @@
 //	raw      = recycledFor[k] + the returns of uncaptured epochs before it;
 //	           an epoch with f_k = 0 (deferred) rolls its raw to the next
 //	R_k      = min(raw, X)                       (stake beyond X is a donation, fresh)
-//	M_k      = R_k + 4 >= X                      (matured: the carry is back)
-//	credit   = X if M_k; R_k + 4 if 0 < R_k; else 0;     X ← X − credit
+//	M_k      = R_k + 8 >= X                      (matured: the carry is back)
+//	credit   = X if M_k; R_k + 8 if 0 < R_k; else 0;     X ← X − credit
 //	F_k      = f_k − credit, or 0 with the shortfall credit − f_k taken from the
 //	           pots, the largest first (ties to pot order), then pending awards
 //	a_{k,s}  = floor(F_k / 2490) + (1 if s < F_k mod 2490)   for slot s
@@ -125,19 +132,32 @@
 // An epoch without a draw has no winners, so all of F_k joins the pots slot by
 // slot. The carry contract's coldkey receives Σ f_k less everything paid,
 // which is the obligations less what is still owed, never negative; the
-// root's total is therefore fundedThrough[e]. A return cannot roll past the
-// last covered epoch, which vault2 always captures (ErrInput).
+// root's total is therefore fundedThrough[e]. A return recorded for a last
+// covered epoch that funded nothing would roll past the root: Build refuses
+// it and Verify fails the root with ErrReturnRolls (CheckAmounts).
+// STSettlement2's commit window makes it impossible, as a root's last epoch
+// is captured before its root is committed.
 //
-// Where §4.5 is wrong, this is the closest correct rule: its M_k also needed
-// f_k >= X_k, and its F_k = f_k − R_k could be negative. With no fresh funding
-// (validators not supporting CTF, §4.7) a single rao lost to rounding then
-// left every later epoch unmatured, so pending awards never paid, and a
-// capture a rao short of the return made F_k negative. Here a shortfall the
-// funding cannot cover is taken from the pots instead, at most a few rao, and
-// a partial return also writes off up to CarryRounding, so rounding that
-// several returns lost cannot pile up beyond the tolerance and block maturity
-// for good. A write-off later returned is a donation, counted as fresh. In
-// every case the deltas sum to the funding (TestWalkConservation).
+// Where §4.5 is wrong, this is the closest correct rule:
+//
+//   - Its M_k also needed f_k >= X_k, and its F_k = f_k − R_k could be
+//     negative. With no fresh funding (validators not supporting CTF, §4.7) a
+//     single rao lost to rounding then left every later epoch unmatured, so
+//     pending awards never paid, and a capture a rao short of the return made
+//     F_k negative. Here a shortfall the funding cannot cover is taken from
+//     the pots instead, at most a few rao.
+//   - Its tolerance was one cycle's rounding (CarryRounding, 4 rao). A
+//     partial return then leaves the rounding of several cycles owed, a late
+//     root's return and the next one's can come back in one epoch, and
+//     whatever stays owed at a root's end is owed again by the next, so at the
+//     4-rao bound per cycle the residual never shrank and pending awards piled
+//     up for good. Here the tolerance is CarryTolerance, two cycles' rounding
+//     (8 rao), and a partial return writes off as much: rounding left owed
+//     shrinks by at least 4 rao with every single return and never grows with
+//     two (TestCarryAcrossRoots). A write-off later returned is a donation,
+//     counted as fresh.
+//
+// In every case the deltas sum to the funding (TestWalkConservation).
 //
 // # The ledger (§5)
 //
@@ -207,9 +227,12 @@
 // (ErrInput, ledger.ErrFunding, ErrPulse for a pulse that does not verify),
 // its context, its custody or its head oracle. Otherwise the Result holds the
 // outcome: Check is the first check that failed and Err its error; the checks
-// run in the order CheckPrevious, CheckHeader, CheckChunks (with the faults
-// against the previous root), CheckFixedInputs, CheckAccounts, CheckTree,
-// then per covered epoch CheckCensus, CheckSeed, CheckDraw and CheckAmounts,
+// run in the order CheckPrevious (its accounts), CheckHeader, CheckChunks
+// (with the faults against the previous root), CheckFixedInputs,
+// CheckAccounts, CheckTree, CheckPrevious (its state, read only now, so that a
+// withheld state object leads to a demand), then per covered epoch
+// CheckCensus, CheckSeed, CheckDraw and CheckAmounts (which fetches the pot
+// and pending rows the header names: the next audit starts from them),
 // and finally CheckAllocation. Result.Action applies VERSION2-FINAL.md §9.3
 // as for a provider pool (ledger.Action), and Result.Epochs reports each
 // epoch exactly as Build does. Presence, the checks behind P1 and X1,
