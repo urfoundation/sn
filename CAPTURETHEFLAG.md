@@ -602,9 +602,9 @@ The page is a new English‑only page, `ur.xyz/ctf`, with a page per country at 
 - **How it is built.** It follows `/mainnet`: Astro renders the React page to static HTML from each epoch's
   data, and islands add the interaction and the visitor's country. Every figure is then in the HTML that
   search engines and AI crawlers read.
-- **Where the design is.** The mockup is the canvas "ur.xyz CTF page". `design/ctf/design.html` is a
-  standalone copy that adds the country page, and `design/ctf/SEO.md` has the search, compliance and agent
-  findings.
+- **Where the design is.** `design/ctf/design.html` is the page's design: the hub and a country page. It
+  replaced the canvas "ur.xyz CTF page" on 2026‑11‑11. `design/ctf/SEO.md` has the search, compliance and
+  agent findings.
 
 Under the title, a mission statement reads "Providers and extenders in every country". From the top down:
 
@@ -645,9 +645,8 @@ Under the title, a mission statement reads "Providers and extenders in every cou
 - **Chance to win.**
   - It is shown only for a role whose five slots were all won.
   - Its entries are last epoch's eligible units in that role plus the visitor.
-  - The owner's display rule is 100% at five entries or fewer, else 1/(entries − 4).
-  - The draw itself (§4.4) gives each entry 5/entries, so the rule understates the odds: 50% against 83%
-    at six entries, and 17% against 50% at ten. The mockup has a tweak to compare the two.
+  - It is the draw's exact odds (§4.4): 100% at five entries or fewer, else 5/entries. That is 83% at six
+    entries, 50% at ten and 5% at a hundred.
 - **Large pots are highlighted, in two tiers above a threshold (5 α in the mockup):**
   - **"So close"** cells (a near miss) glow in the site's pink, wave their flags, carry a pixel‑type ribbon,
     and sort first.
@@ -858,8 +857,8 @@ it is.
     - Flags held are countries whose ten slots were all won.
     - A role is "not fully captured" where at least one of its slots went unclaimed, so a newcomer wins by
       default.
-    - The chance to win shows only where all five of a role's slots were won: 1/(entries − 4), or 100% at
-      five entries or fewer.
+    - The chance to win shows only where all five of a role's slots were won: the draw's exact odds,
+      5/entries, or 100% at five entries or fewer.
 16. **A fifth of the pot.** Each winner takes its own slot and a fifth of the pot carried into its country
     and role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so
     it has to stay about five epochs to capture most of the reward.
