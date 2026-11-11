@@ -457,14 +457,13 @@ func (c *v2TestChain) execute(from common.Address, value *big.Int, input []byte,
 		return pack(c.demanded[[3]uint64{args[1].(uint64), args[2].(*big.Int).Uint64(), args[3].(*big.Int).Uint64()}]), nil, nil
 	case "demandFeeWei":
 		return pack(c.fee), nil, nil
-	case "coordinator":
+	case "coordinator", "netuid":
 		if c.ctf == nil {
-			return pack(common.Address{}), nil, nil
+			c.t.Errorf("unexpected vault2 call %s outside a capture the flag check", method.Name)
+			return nil, nil, v2TestError("Unknown")
 		}
-		return pack(c.ctf.coordinator), nil, nil
-	case "netuid":
-		if c.ctf == nil {
-			return pack(uint16(0)), nil, nil
+		if method.Name == "coordinator" {
+			return pack(c.ctf.coordinator), nil, nil
 		}
 		return pack(c.ctf.netuid), nil, nil
 	case "CHALLENGE_BLOCKS":

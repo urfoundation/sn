@@ -283,16 +283,17 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	} else {
 		fmt.Printf("  finalized root:    none; the pending root is the pool's first\n")
 	}
-	// unavailable is a capture the flag audit that could not run: the check
-	// protects the accounts all the same, then fails.
+	// failed is a capture the flag audit that could not run, or that refused
+	// the root with nothing to challenge or demand: the check acts on the
+	// accounts all the same, then fails.
 	var a *v2Assessment
-	var unavailable error
+	var failed error
 	if isCtf {
-		if a, unavailable, err = v2CheckCtf(ctx, reader, objects, sources, chainID, ctfNoID, noID, state, in.Previous); err != nil {
-			return err
+		if a, failed, err = v2CheckCtf(ctx, reader, objects, sources, chainID, ctfNoID, noID, state, in.Previous); err != nil {
+			return v2AlsoFailed(err, failed)
 		}
 		if a == nil {
-			return unavailable
+			return failed
 		}
 	} else {
 		res, err := ledger.Verify(ctx, in)
@@ -322,28 +323,28 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	switch a.action {
 	case ledger.ActionChallenge:
 		if !challenge {
-			return fmt.Errorf("pending root seq %d faults %d accounts of finalized root %d; --challenge deletes it", pending.Seq, len(a.faults), a.protected.index)
+			return v2AlsoFailed(fmt.Errorf("pending root seq %d faults %d accounts of finalized root %d; --challenge deletes it", pending.Seq, len(a.faults), a.protected.index), failed)
 		}
-		return v2Challenge(ctx, sender, noID, state, a)
+		return v2AlsoFailed(v2Challenge(ctx, sender, noID, state, a), failed)
 	case ledger.ActionDemand:
 		if !demand {
-			return v2AlsoUnavailable(fmt.Errorf("pending root seq %d leaves the accounts of finalized root %d unverifiable; --demand sends the demand set", pending.Seq, a.protected.index), unavailable)
+			return v2AlsoFailed(fmt.Errorf("pending root seq %d leaves the accounts of finalized root %d unverifiable; --demand sends the demand set", pending.Seq, a.protected.index), failed)
 		}
-		return v2AlsoUnavailable(v2Demand(ctx, sender, noID, state, a, head.Number), unavailable)
+		return v2AlsoFailed(v2Demand(ctx, sender, noID, state, a, head.Number), failed)
 	}
 	if a.protected.index != state.latestIndex {
-		return v2AlsoUnavailable(fmt.Errorf("finalized root %d's objects are missing or do not rebuild it: the accounts added after root %d cannot be checked", state.latestIndex, a.protected.index), unavailable)
+		return v2AlsoFailed(fmt.Errorf("finalized root %d's objects are missing or do not rebuild it: the accounts added after root %d cannot be checked", state.latestIndex, a.protected.index), failed)
 	}
-	return unavailable
+	return failed
 }
 
-// v2AlsoUnavailable adds an audit that could not run to err, which is
+// v2AlsoFailed adds a capture the flag audit that failed to err, which is
 // returned as it is otherwise.
-func v2AlsoUnavailable(err, unavailable error) error {
-	if unavailable == nil {
+func v2AlsoFailed(err, failed error) error {
+	if failed == nil {
 		return err
 	}
-	return errors.Join(err, unavailable)
+	return errors.Join(err, failed)
 }
 
 // v2LedgerRoot is a vault2 root as ledger.Verify takes it.

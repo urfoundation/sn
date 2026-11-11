@@ -423,8 +423,8 @@ func TestV2CheckCtfVerifies(t *testing.T) {
 	if !maps.Equal(s.web.calls, map[string]int{"/amendments.yml": 1, pulse: 1}) {
 		t.Fatalf("web reads %v", s.web.calls)
 	}
-	// Every object of both roots but F's epoch objects was fetched once:
-	// the census, P's epoch objects and both roots' headers and accounts.
+	// The objects came from the operator API's object endpoint, no more
+	// reads of it than both roots have objects.
 	if s.c.apiCalls["/sn/ledger/object"] == 0 || s.c.apiCalls["/sn/ledger/object"] > len(s.f.Objects)+len(s.p.Objects) {
 		t.Fatalf("fetched %d objects", s.c.apiCalls["/sn/ledger/object"])
 	}
@@ -435,7 +435,9 @@ func TestV2CheckCtfVerifies(t *testing.T) {
 // the root drew, none at all, or a carry that returned nothing, so the pot
 // shares the root paid were owed as pending awards. The published accounts
 // reproduce the root and fault none of F's, so the watcher has nothing to
-// challenge or demand, as for a provider pool's refused root.
+// challenge or demand; unlike a provider pool's refused root, the check
+// fails, since a wrong draw or wrong amounts never fault an account and the
+// failed run is the watcher's alert.
 func TestV2CheckCtfRefusesWhatTheChainDoesNotReproduce(t *testing.T) {
 	for _, c := range []struct {
 		name   string
@@ -456,7 +458,9 @@ func TestV2CheckCtfRefusesWhatTheChainDoesNotReproduce(t *testing.T) {
 			s := newV2CtfScenario(t)
 			c.change(s)
 			output, err := s.c.run(s.argv("--challenge", "--demand"))
-			if err != nil || !strings.Contains(output, c.want) || strings.Contains(output, "approve") || !strings.HasSuffix(output, "  previous accounts: 1 of root 0, no fault\n") || len(s.c.transactions()) != 0 {
+			refusal := "the capture the flag audit refuses pending root seq 2 (" + strings.TrimPrefix(c.want, "  audit:             refuse (")
+			if err == nil || !strings.HasPrefix(err.Error(), refusal) || !strings.Contains(output, c.want) || strings.Contains(output, "approve") ||
+				!strings.HasSuffix(output, "  previous accounts: 1 of root 0, no fault\n") || len(s.c.transactions()) != 0 {
 				t.Fatalf("%v\n%s\nwant %q", err, output, c.want)
 			}
 		})
@@ -578,7 +582,8 @@ func (s *v2CtfScenario) ctfFaulty(t *testing.T) *merkle.LedgerSumTree {
 // account of a capture the flag pool as in the provider pool. A pending CTF
 // root that lowers F's carry account is challenged with checkPath of the
 // CTF pool, which deletes it; it is challenged as well when the audit is
-// unavailable, since the accounts need none of its inputs.
+// unavailable, since the accounts need none of its inputs, and the check
+// then fails all the same.
 func TestV2CheckCtfChallengesAFault(t *testing.T) {
 	for _, unavailable := range []bool{false, true} {
 		s := newV2CtfScenario(t)
@@ -591,11 +596,12 @@ func TestV2CheckCtfChallengesAFault(t *testing.T) {
 			t.Fatal(err)
 		}
 		output, err := s.c.run(s.argv("--challenge"))
-		audit := "  audit:             challenge (accounts check: "
+		audit, failed := "  audit:             challenge (accounts check: ", ""
 		if unavailable {
-			audit = "  audit:             unavailable: the capture the flag audit could not run: the signed amendments at "
+			failed = "the capture the flag audit could not run: the signed amendments at " + s.web.server.URL + "/amendments.yml: amendment: HTTP 404; " + amendment.ErrUnknown.Error()
+			audit = "  audit:             unavailable: " + failed
 		}
-		if err != nil || !strings.Contains(output, audit) || !strings.Contains(output, fmt.Sprintf("  previous accounts: 1 of root 0, 1 with a provable fault, 0 with no fault\n    account 0:      %v\n", merkle.LedgerFaultLowerValue)) ||
+		if (err == nil) != !unavailable || unavailable && err.Error() != failed || !strings.Contains(output, audit) || !strings.Contains(output, fmt.Sprintf("  previous accounts: 1 of root 0, 1 with a provable fault, 0 with no fault\n    account 0:      %v\n", merkle.LedgerFaultLowerValue)) ||
 			!strings.Contains(output, "DistributionDeleted: pool 4294967297, seq 2\n") || len(s.c.transactions()) != 1 {
 			t.Fatalf("unavailable %v: %v\n%s", unavailable, err, output)
 		}
@@ -610,14 +616,18 @@ func TestV2CheckCtfChallengesAFault(t *testing.T) {
 	}
 }
 
-// CAPTURETHEFLAG.md §2.4: E_c comes from the signed amendment entry. With
-// the pool registered from epoch 8 and capture the flag in force from epoch
-// 9, the pool's first root covers epoch 8 without a draw, whatever census
-// was committed for it: the root that leaves it undrawn is approved, and
-// one that drew its committed census is refused.
-func TestV2CheckCtfNoDrawBeforeEc(t *testing.T) {
+// CAPTURETHEFLAG.md §2.4, §5, §8 check 1: E_c comes from the signed
+// amendment entry and changes nothing in the audit: a committed census is
+// drawn as committed. With the pool registered from epoch 8 and capture the
+// flag in force from epoch 9, the pool's first root covers epoch 8, for which
+// a census was committed. The root that draws it is approved; one that leaves
+// it undrawn is refused at the census, and the check fails, since nothing in
+// a first root can be challenged.
+func TestV2CheckCtfDrawsEveryCommittedCensus(t *testing.T) {
 	signature, _ := hex.DecodeString(v2CtfTestSignature)
-	for _, drawn := range []bool{false, true} {
+	pulse := &ctf.Pulse{Round: v2CtfTestRound, Signature: signature}
+	const block8 = v2CtfTestCensusBlock - 50_400
+	for _, drawn := range []bool{true, false} {
 		s := newV2CtfScenario(t)
 		s.web.amendments = v2CtfTestAmendments(t, s.key, v2CtfTestEntry(9, v2CtfTestCarry))
 		candidates := v2CtfTestCandidates(t)
@@ -626,10 +636,9 @@ func TestV2CheckCtfNoDrawBeforeEc(t *testing.T) {
 			t.Fatal(err)
 		}
 		inputs := []ctf.EpochInput{{Epoch: 8}, {Epoch: 9, Census: &ctf.CensusInput{Hash: s.census.Hash, Block: v2CtfTestCensusBlock, Time: v2CtfTestTime, Objects: s.p.Objects},
-			Pulse: &ctf.Pulse{Round: v2CtfTestRound, Signature: signature}, Coldkeys: v2CtfTestColdkeys(candidates)}}
+			Pulse: pulse, Coldkeys: v2CtfTestColdkeys(candidates)}}
 		if drawn {
-			inputs[0] = ctf.EpochInput{Epoch: 8, Census: &ctf.CensusInput{Hash: eight.Hash, Block: v2CtfTestCensusBlock - 50_400, Time: v2CtfTestTime, Objects: eight.Objects},
-				Pulse: &ctf.Pulse{Round: v2CtfTestRound, Signature: signature}, Coldkeys: v2CtfTestColdkeys(candidates)}
+			inputs[0] = ctf.EpochInput{Epoch: 8, Census: &ctf.CensusInput{Hash: eight.Hash, Block: block8, Time: v2CtfTestTime, Objects: eight.Objects}, Pulse: pulse, Coldkeys: v2CtfTestColdkeys(candidates)}
 		}
 		first, err := ctf.Build(context.Background(), ctf.BuildInput{NoID: v2CtfTestNoID, ChainID: v2TestChainID, Netuid: v2CtfTestNetuid, Epoch: 9, FirstEpoch: 8,
 			CarryColdkey: v2CtfTestCarryColdkey, Epochs: inputs, FundedThrough: s.funded})
@@ -637,26 +646,183 @@ func TestV2CheckCtfNoDrawBeforeEc(t *testing.T) {
 			t.Fatal(err)
 		}
 		maps.Copy(s.c.objects, first.Objects)
-		// A first root has no carry out to return.
-		s.c.ctf.census[8] = v2TestCensus{hash: eight.Hash, block: v2CtfTestCensusBlock - 50_400}
+		maps.Copy(s.c.objects, eight.Objects)
+		// Epoch 8's census was committed; a first root has no carry out to
+		// return.
+		s.c.ctf.census[8] = v2TestCensus{hash: eight.Hash, block: block8}
+		s.c.ctf.times[block8] = v2CtfTestTime
 		s.c.ctf.recycled = map[uint64]*big.Int{}
 		s.c.roots, s.c.logs = nil, nil
 		s.setPending(1, first.Commit)
 		output, err := s.c.run(s.argv())
-		want := "  capture the flag:  operator 1, from epoch 9 by the signed amendment entry, carry contract " + common.HexToAddress(v2CtfTestCarry).Hex() + "\n" +
-			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey) +
-			"                     epoch 8 is before it: no draw, whatever census was committed\n"
+		terms := "  finalized root:    none; the pending root is the pool's first\n" +
+			"  capture the flag:  operator 1, from epoch 9 by the signed amendment entry, carry contract " + common.HexToAddress(v2CtfTestCarry).Hex() + "\n" +
+			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey)
 		if drawn {
-			want += fmt.Sprintf("  audit:             refuse (census check: ctf: header census is not the committed census: epoch 8 lists %v, and none was committed)\n", eight.Hash)
+			want := terms + fmt.Sprintf("  epoch 8:           census %v at block %d, 10 candidates; drand round 1000, 8 winners\n", eight.Hash, block8)
+			if err != nil || !strings.Contains(output, want) || !strings.HasSuffix(output, "  audit:             approve\n") {
+				t.Fatalf("drawn: %v\n%s\nwant:\n%s", err, output, want)
+			}
 		} else {
-			want += "  epoch 8:           before the capture the flag entry in force: no draw\n"
+			refusal := fmt.Sprintf("census check: ctf: header census is not the committed census: epoch 8, committed %v", eight.Hash)
+			if err == nil || err.Error() != "the capture the flag audit refuses pending root seq 1 ("+refusal+")" || !strings.HasSuffix(output, terms+"  audit:             refuse ("+refusal+")\n") {
+				t.Fatalf("undrawn: %v\n%s", err, output)
+			}
 		}
-		if err != nil || !strings.Contains(output, "  finalized root:    none; the pending root is the pool's first\n"+want) || s.c.calls["eth_call:ctfCensus"] != 1 {
-			t.Fatalf("drawn %v: %v\n%s\nwant:\n%s", drawn, err, output, want)
+		if s.c.calls["eth_call:ctfCensus"] != 2 || s.c.calls["eth_getBlockByNumber:"+hexutil.EncodeUint64(block8)] != 1 || len(s.c.transactions()) != 0 {
+			t.Fatalf("drawn %v: observed %s", drawn, s.c.observed())
 		}
-		if !drawn && !strings.Contains(output, "  audit:             approve\n") {
-			t.Fatalf("undrawn epoch 8 was not approved:\n%s", output)
+	}
+}
+
+// CAPTURETHEFLAG.md §8: a pool's first root has no accounts to protect. The
+// check succeeds when the audit approves it, and fails, with nothing sent,
+// when the audit refuses it or could not run.
+func TestV2CheckCtfFirstRoot(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		change func(s *v2CtfScenario)
+		audit  string
+		failed string
+	}{
+		{"approved", func(*v2CtfScenario) {}, "approve", ""},
+		{"refused", func(s *v2CtfScenario) {
+			s.c.ctf.census[8] = v2TestCensus{hash: s.census.Hash, block: v2CtfTestCensusBlock}
+		},
+			"refuse (census check: ctf: header census is not the committed census: epoch 8, committed %v)", "the capture the flag audit refuses pending root seq 1 (census check: ctf: header census is not the committed census: epoch 8, committed %v)"},
+		{"unavailable", func(s *v2CtfScenario) { s.web.amendments = nil },
+			"unavailable: the capture the flag audit could not run: the signed amendments at %s/amendments.yml: amendment: HTTP 404; " + amendment.ErrUnknown.Error(),
+			"the capture the flag audit could not run: the signed amendments at %s/amendments.yml: amendment: HTTP 404; " + amendment.ErrUnknown.Error()},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newV2CtfScenario(t)
+			s.c.roots, s.c.logs = nil, nil
+			s.setPending(1, s.f.Commit)
+			c.change(s)
+			output, err := s.c.run(s.argv("--challenge", "--demand"))
+			fill := func(text string) string {
+				return strings.NewReplacer("%v", s.census.Hash.String(), "%s", s.web.server.URL).Replace(text)
+			}
+			if (err == nil) != (c.failed == "") || err != nil && err.Error() != fill(c.failed) || !strings.HasSuffix(output, "  audit:             "+fill(c.audit)+"\n") ||
+				!strings.Contains(output, "  finalized root:    none; the pending root is the pool's first\n") || len(s.c.transactions()) != 0 {
+				t.Fatalf("%v\n%s", err, output)
+			}
+		})
+	}
+}
+
+// CAPTURETHEFLAG.md §8, VERSION2-FINAL.md §9.3: with the audit unavailable
+// and the pending root's header withheld, F's accounts are unverifiable from
+// the published objects alone: --demand demands them, each paying the fee
+// with its proof against F, and the check fails either way.
+func TestV2CheckCtfUnavailableStillDemands(t *testing.T) {
+	for _, send := range []bool{false, true} {
+		s := newV2CtfScenario(t)
+		s.web.amendments = nil
+		delete(s.c.objects, s.p.Commit.LedgerHash)
+		var flags []string
+		if send {
+			flags = append(flags, "--demand")
 		}
+		output, err := s.c.run(s.argv(flags...))
+		failed := "the capture the flag audit could not run: the signed amendments at " + s.web.server.URL + "/amendments.yml: amendment: HTTP 404; " + amendment.ErrUnknown.Error()
+		if !send {
+			failed = "pending root seq 2 leaves the accounts of finalized root 0 unverifiable; --demand sends the demand set\n" + failed
+		}
+		if err == nil || err.Error() != failed || !strings.Contains(output, "  previous accounts: 1 of root 0, unverifiable: the published objects are missing or do not reproduce the pending root\n") {
+			t.Fatalf("--demand %v: %v\n%s", send, err, output)
+		}
+		if !send {
+			if len(s.c.transactions()) != 0 {
+				t.Fatal("demanded without --demand")
+			}
+			continue
+		}
+		proof, _ := s.f.Tree.Proof(0)
+		data, err := v2TestABI.Pack("demandPath", big.NewInt(v2CtfTestPool), big.NewInt(0), v2LedgerAccount(0, &s.f.Accounts[0]), v2ProofNodes(proof))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(s.c.transactions()) != 1 || !strings.Contains(output, "PathDemanded: pool 4294967297, seq 2, account 0 of root 0\n") {
+			t.Fatalf("%d demands\n%s", len(s.c.transactions()), output)
+		}
+		requireV2Tx(t, s.c.transactions()[0], 7, 60_000, v2TestFee, data)
+	}
+}
+
+// thirdRoot finalizes P as root 1 and commits P2, which covers epoch 11, for
+// which no census was committed, as pending seq 3.
+func (s *v2CtfScenario) thirdRoot(t *testing.T) *ctf.Ledger {
+	t.Helper()
+	s.funded[11] = *uint256.NewInt(8_225_000_007)
+	s.c.funded[11] = big.NewInt(8_225_000_007)
+	p2, err := ctf.Build(context.Background(), ctf.BuildInput{NoID: v2CtfTestNoID, ChainID: v2TestChainID, Netuid: v2CtfTestNetuid, Epoch: 11, FirstEpoch: 8,
+		CarryColdkey: v2CtfTestCarryColdkey, Previous: &ctf.Previous{Root: s.p.Commit, Accounts: s.p.Accounts, State: s.p.State},
+		Epochs: []ctf.EpochInput{{Epoch: 11}}, FundedThrough: s.funded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(s.c.objects, p2.Objects)
+	s.c.roots = append(s.c.roots, v2TestRoot(s.p.Tree, 10, s.p.Commit.LedgerHash))
+	s.c.logs = nil
+	s.c.committed(v2TestHead-40_000, 1, s.f.Commit, 0)
+	s.c.finalized(v2TestHead-30_000, 1, 0, s.f.Commit)
+	s.c.committed(v2TestHead-20_000, 2, s.p.Commit, 0)
+	s.c.finalized(v2TestHead-10_000, 2, 1, s.p.Commit)
+	s.setPending(3, p2.Commit)
+	return p2
+}
+
+// CAPTURETHEFLAG.md §8: the fallback reads the capture the flag headers of
+// the pool's roots. When the latest finalized root's objects are missing,
+// the check protects the newest older root whose objects rebuild it,
+// whether the audit ran or could not, and fails, since the accounts added
+// after it cannot be checked; with no such root it says so, and fails.
+func TestV2CheckCtfFallsBack(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		older       bool
+		unavailable bool
+	}{
+		{"no older root", false, false},
+		{"no older root, audit unavailable", false, true},
+		{"an older root", true, false},
+		{"an older root, audit unavailable", true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newV2CtfScenario(t)
+			missing := s.f.Commit.LedgerHash
+			if c.older {
+				s.thirdRoot(t)
+				missing = s.p.Commit.LedgerHash
+			}
+			delete(s.c.objects, missing)
+			failed := ""
+			if c.unavailable {
+				s.web.amendments = nil
+				failed = "\nthe capture the flag audit could not run: the signed amendments at " + s.web.server.URL + "/amendments.yml: amendment: HTTP 404; " + amendment.ErrUnknown.Error()
+			}
+			output, err := s.c.run(s.argv("--challenge", "--demand"))
+			want := "no finalized root of pool 4294967297 has objects that rebuild it: its accounts cannot be checked, challenged or demanded" + failed
+			lines := []string{}
+			if c.older {
+				want = "finalized root 1's objects are missing or do not rebuild it: the accounts added after root 0 cannot be checked" + failed
+				lines = append(lines, "  fallback:          finalized root 1's objects are missing or do not rebuild it; protecting finalized root 0, the newest whose objects do\n  previous accounts: 1 of root 0, no fault\n")
+			}
+			if c.unavailable {
+				lines = append(lines, fmt.Sprintf("  fallback:          finalized root %d is unverifiable: object %v: GET ", len(s.c.roots)-1, ledger.Ref(missing)))
+			} else {
+				lines = append(lines, "  audit:             refuse (fetch check: ")
+			}
+			if err == nil || err.Error() != want || len(s.c.transactions()) != 0 {
+				t.Fatalf("%v\nwant %q\n%s", err, want, output)
+			}
+			for _, line := range lines {
+				if !strings.Contains(output, line) {
+					t.Fatalf("output lacks %q:\n%s", line, output)
+				}
+			}
+		})
 	}
 }
 

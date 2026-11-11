@@ -10,14 +10,15 @@ package onchain
 //   - vault2's coordinator (STSettlement2) and netuid, which with the chain id
 //     seed the draw;
 //   - the signed settlement amendments (--amendments_url, verified against the
-//     price sheet's pinned key), for the capture the flag entry in force at
-//     each covered epoch: from E_c, its first epoch, and its carry contract.
-//     An epoch before E_c has no draw, whatever was committed for it, and one
-//     root is never audited against two carry contracts;
-//   - for each covered epoch from E_c, the census commitment ctfCensus(n, k),
-//     the EVM timestamp of its block B_k and the drand quicknet pulse of ρ_k
-//     from --drand_url, which is not trusted: the pulse must verify against
-//     quicknet's key;
+//     price sheet's pinned key), for the capture the flag entry in force at the
+//     pending root's epoch: E_c, its first epoch, and its carry contract. An
+//     entry in force at another covered epoch must name the same carry
+//     contract, since one root is never audited against two;
+//   - for each covered epoch, the census commitment ctfCensus(n, k) and, for a
+//     committed census, the EVM timestamp of its block B_k and the drand
+//     quicknet pulse of ρ_k from --drand_url, which is not trusted: the pulse
+//     must verify against quicknet's key. A committed census is drawn as
+//     committed, as §8's check 1 requires, also for an epoch before E_c;
 //   - the carry contract's coldkey and recycledFor(k). The contract must serve
 //     vault2's pool 2^32 + n.
 //
@@ -31,7 +32,11 @@ package onchain
 // of the latest finalized root from the published objects alone, as it does
 // when those objects are missing, then fails. A pulse that does not verify,
 // unknown amendments, capture the flag not in force at the pending root's
-// epoch, or a carry contract that is not the pool's all end that way.
+// epoch, or a carry contract that is not the pool's all end that way. A
+// refused root that leaves nothing to challenge or demand fails the check
+// too, unlike a provider pool's: a wrong draw or wrong amounts never fault an
+// account, so only the auditors' refusal stops such a root, and the failed
+// check is the watcher's alert.
 
 import (
 	"context"
@@ -40,10 +45,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"math/big"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,9 +116,6 @@ type v2CtfAudit struct {
 	// epoch, and carry its carry contract.
 	entry *amendment.Entry
 	carry common.Address
-	// before marks the covered epochs at which no capture the flag entry is
-	// in force, before E_c: they are audited without a draw.
-	before map[uint64]bool
 }
 
 // readV2Ctf reads, at the reader's block, what ctf.Verify takes for
@@ -149,7 +149,7 @@ func readV2Ctf(ctx context.Context, r *v2Reader, sources v2CtfSources, chainID *
 	if entry.Ctf.CtfPool != poolID {
 		return nil, fmt.Errorf("the signed capture the flag entry of operator %d names pool %d, not %d", n, entry.Ctf.CtfPool, poolID)
 	}
-	audit := &v2CtfAudit{entry: entry, carry: entry.Ctf.Carry, before: map[uint64]bool{}}
+	audit := &v2CtfAudit{entry: entry, carry: entry.Ctf.Carry}
 	if err := checkV2Carry(ctx, r, audit.carry, poolID); err != nil {
 		return nil, err
 	}
@@ -216,10 +216,18 @@ func checkV2Carry(ctx context.Context, r *v2Reader, carry common.Address, poolID
 	return nil
 }
 
-// readV2CtfEpoch reads covered epoch k's facts: recycledFor(k), and when
-// capture the flag is in force at k, its census commitment, the timestamp of
-// the commitment's block and the pulse of its draw round.
+// readV2CtfEpoch reads covered epoch k's facts: recycledFor(k), its census
+// commitment and, for a committed census, the timestamp of the commitment's
+// block and the pulse of its draw round. A capture the flag entry in force
+// at k must name the pending root's carry contract.
 func readV2CtfEpoch(ctx context.Context, r *v2Reader, sources v2CtfSources, file *amendment.File, audit *v2CtfAudit, coordinator common.Address, n, k uint64) (*ctf.EpochFacts, error) {
+	inForce, err := file.At(n, k, nil)
+	if err != nil {
+		return nil, err
+	}
+	if entry := inForce.CaptureTheFlag; entry != nil && (entry.Ctf == nil || entry.Ctf.Carry != audit.carry) {
+		return nil, fmt.Errorf("the signed capture the flag entries of operator %d name another carry contract at epoch %d than at epoch %d: one root cannot be audited against two", n, k, audit.in.Pending.Epoch)
+	}
 	epoch := new(big.Int).SetUint64(k)
 	out, err := v2CtfView(ctx, r, audit.carry, "recycledFor", epoch)
 	if err != nil {
@@ -227,18 +235,6 @@ func readV2CtfEpoch(ctx context.Context, r *v2Reader, sources v2CtfSources, file
 	}
 	// ABI uint256 values always fit.
 	facts := &ctf.EpochFacts{Recycled: *uint256.MustFromBig(out[0].(*big.Int))}
-	inForce, err := file.At(n, k, nil)
-	if err != nil {
-		return nil, err
-	}
-	entry := inForce.CaptureTheFlag
-	if entry == nil {
-		audit.before[k] = true
-		return facts, nil
-	}
-	if entry.Ctf == nil || entry.Ctf.Carry != audit.carry {
-		return nil, fmt.Errorf("the signed capture the flag entries of operator %d name another carry contract at epoch %d than at epoch %d: one root cannot be audited against two", n, k, audit.in.Pending.Epoch)
-	}
 	out, err = v2CtfView(ctx, r, coordinator, "ctfCensus", new(big.Int).SetUint64(n), epoch)
 	if err != nil {
 		return nil, fmt.Errorf("coordinator %s ctfCensus(%d,%d): %w", coordinator.Hex(), n, k, err)
@@ -321,25 +317,20 @@ func v2CtfAccounts(data []byte) ([]ledger.Ref, error) {
 	return header.Accounts, nil
 }
 
-// reportV2Ctf prints the terms of the audit: the entry in force, the carry
-// contract, and the covered epochs before E_c.
+// reportV2Ctf prints the terms of the audit: the entry in force and the
+// carry contract.
 func reportV2Ctf(audit *v2CtfAudit) {
 	entry := audit.entry
 	fmt.Printf("  capture the flag:  operator %d, from epoch %d by the signed amendment entry, carry contract %s\n", entry.NoID, entry.FromEpoch, audit.carry.Hex())
 	fmt.Printf("                     carry coldkey 0x%x\n", audit.in.CarryColdkey)
-	for _, k := range slices.Sorted(maps.Keys(audit.before)) {
-		fmt.Printf("                     epoch %d is before it: no draw, whatever census was committed\n", k)
-	}
 }
 
 // reportV2CtfAudit prints each epoch the audit recomputed, then the audit
 // and the objects it could not obtain. Amounts are rao.
-func reportV2CtfAudit(audit *v2CtfAudit, res *ctf.Result) {
+func reportV2CtfAudit(res *ctf.Result) {
 	for _, e := range res.Epochs {
 		label := fmt.Sprintf("  epoch %d:", e.Epoch)
 		switch {
-		case audit.before[e.Epoch]:
-			fmt.Printf("%-21sbefore the capture the flag entry in force: no draw\n", label)
 		case e.Census == nil:
 			fmt.Printf("%-21sno census committed: no draw\n", label)
 		case !e.Drawn:
@@ -367,10 +358,11 @@ func reportV2CtfAudit(audit *v2CtfAudit, res *ctf.Result) {
 
 // v2CheckCtf audits the pending root of operator n's capture the flag pool,
 // vault2 pool poolID, and returns what it shows of the accounts of the
-// latest finalized root, nil for the pool's first root. An audit that could
-// not run is returned as unavailable, with the accounts assessed from the
-// published objects alone.
-func v2CheckCtf(ctx context.Context, r *v2Reader, objects ledger.Fetcher, sources v2CtfSources, chainID *big.Int, n, poolID uint64, state *v2State, previous *ledger.Root) (a *v2Assessment, unavailable error, err error) {
+// latest finalized root, nil for the pool's first root. failed is an audit
+// that could not run, whose accounts are then assessed from the published
+// objects alone, or one that refused the root with nothing to challenge or
+// demand: the check acts on the accounts all the same, then fails.
+func v2CheckCtf(ctx context.Context, r *v2Reader, objects ledger.Fetcher, sources v2CtfSources, chainID *big.Int, n, poolID uint64, state *v2State, previous *ledger.Root) (a *v2Assessment, failed error, err error) {
 	audit, unavailable := readV2Ctf(ctx, r, sources, chainID, n, state)
 	var res *ctf.Result
 	if unavailable == nil {
@@ -382,17 +374,23 @@ func v2CheckCtf(ctx context.Context, r *v2Reader, objects ledger.Fetcher, source
 		return nil, nil, ctxErr
 	}
 	if unavailable != nil {
-		unavailable = fmt.Errorf("the capture the flag audit could not run: %w", unavailable)
-		fmt.Printf("  audit:             unavailable: %v\n", unavailable)
-	} else {
-		reportV2CtfAudit(audit, res)
+		failed = fmt.Errorf("the capture the flag audit could not run: %w", unavailable)
+		fmt.Printf("  audit:             unavailable: %v\n", failed)
+		if state.latest == nil {
+			return nil, failed, nil
+		}
+		a, err = v2AccountsOnly(ctx, r, objects, poolID, state)
+		return a, failed, err
+	}
+	reportV2CtfAudit(res)
+	// A refusal leaves nothing to act on when the previous root's accounts
+	// were read and show no fault the watcher can prove or demand; without
+	// them the fallback below decides.
+	if res.Err != nil && res.Action() == ledger.ActionRefuse && (state.latest == nil || res.Previous != nil) {
+		failed = fmt.Errorf("the capture the flag audit refuses pending root seq %d (%v check: %w)", state.pending.Seq, res.Check, res.Err)
 	}
 	if state.latest == nil {
-		return nil, unavailable, nil
-	}
-	if unavailable != nil {
-		a, err := v2AccountsOnly(ctx, r, objects, poolID, state)
-		return a, unavailable, err
+		return nil, failed, nil
 	}
 	a = &v2Assessment{
 		protected: v2Protected{index: state.latestIndex, accounts: res.PreviousAccounts, tree: res.Previous},
@@ -401,7 +399,7 @@ func v2CheckCtf(ctx context.Context, r *v2Reader, objects ledger.Fetcher, source
 	if res.Previous == nil {
 		a, err = v2Fallback(ctx, r, objects, poolID, state, v2CtfAccounts)
 	}
-	return a, nil, err
+	return a, failed, err
 }
 
 // v2AccountsOnly assesses the pending root's published accounts against the

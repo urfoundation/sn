@@ -169,23 +169,31 @@ watcher above, on the same host, as the same user and with the same key. Install
 both files as `/etc/systemd/system/sn-mainnet-settlement-v2-ctf-watcher.service`
 and `.timer`, with the placeholders of the watcher above. Enable the timer once
 the pool is registered, by the timelock operation that upgrades
-`STSettlement2` (§11.2), and once `https://ur.xyz/amendments.yml` serves the
-signed capture the flag entry. Before then every run fails.
+`STSettlement2` (§11.2). Before then every run fails, because vault2 holds no
+such pool. After that, a run finds nothing to check until the pool's first
+root is pending. From then it fails unless `https://ur.xyz/amendments.yml`
+serves the signed capture the flag entry.
 
 Beside vault2 and the operator API, the run reads:
 
 - the signed settlement amendments at `--amendments_url`, by default
   `https://ur.xyz/amendments.yml`, for the entry in force: `E_c` and the carry
-  contract. Only entries signed by the price sheet's pinned key count;
+  contract. Only entries signed by the price sheet's pinned key count. A run
+  keeps no copy between runs, so it takes any validly signed copy the URL
+  serves, even an older one that drops a later entry. Point it only at a
+  source kept current;
 - a drand relay at `--drand_url`, by default `https://api.drand.sh`, for the
   pulse of each drawn epoch. Any relay will do, since each pulse must verify
   against quicknet's key.
 
-The audit fails closed. When it cannot run, because the file or the relay
-cannot be read or capture the flag is not in force, the run still challenges a
-provable fault and demands an unverifiable root, then fails. A refused audit
-whose published accounts fault nothing leaves the run successful, as for the
-pool: only the auditors can withhold approval.
+The audit fails closed. When it cannot run, the run still challenges a
+provable fault and demands an unverifiable root, then fails. That happens when
+the file or the relay cannot be read, or when capture the flag is not in
+force.
+
+A refused audit with nothing to challenge or demand also fails the run, unlike
+the pool watcher's. A wrong draw or wrong amounts never fault an account, so
+only the auditors' refusal stops such a root, and the failed run is the alert.
 
 The timer runs at half past each hour, half an hour from the pool watcher, so
 the two rarely send at once. If they do, one send can fail on its nonce. That
