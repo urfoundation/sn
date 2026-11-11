@@ -1,0 +1,901 @@
+# Capture the flag (CTF)
+
+**A per‑country coverage lottery beside the provider pool.**
+
+Design, 2026‑11‑11. Nothing here is built yet. From the CTF start epoch `E_c` (epoch 8, the owner's decision; §11.2) it
+amends the steering split of `WHITEPAPER.md` §8.5 and adds a second settlement v2 pool per network operator
+(`VERSION2-FINAL.md`). The owner's decisions of 2026‑11‑11 are folded in (§12.1). Every other question the
+design raised is resolved in §12.2, each with its reason, for the owner's review.
+
+## Summary
+
+- **A new pool per network operator, with its own UID.** Each NO gets a second vault2 pool, the **CTF pool**.
+  It settles exactly like the provider pool: cumulative per‑coldkey accounts, a sum‑tree root, auditor
+  approval, the 14,400‑block challenge window, and permissionless claims that never expire.
+- **The providers' share splits three ways.** Of the providers' share `μ` (1/10 of the miner allocation on
+  SN25), the provider pools take **0.4**, the CTF pools **0.1** and the top‑level miners **0.5**. While no
+  top‑level miner is weighted, the head's 0.5 goes to the provider pools only. The CTF pools therefore always
+  get 0.1.
+- **Ten slots per country.** Each of the 249 ISO 3166‑1 countries has 5 provider slots and 5 extender
+  slots. Each slot is worth the same amount: the CTF pool's fresh funding for the epoch divided by 2,490.
+- **The operator nominates, a public draw picks.** At the end of each epoch the NO lists the providers and
+  extenders that its own data shows online, passing its checks and in one country for at least half of the
+  epoch. It commits that census on chain. A drand round published after the commitment then seeds a draw of
+  up to 5 winners per country and role.
+- **One ticket per subnet.** Candidates are grouped by the keyed /29 IPv4 or /48 IPv6 unit of §8.4 and §8.6.
+  A unit is one ticket, and its members are equivalent.
+- **Unfilled slots carry forward.** A slot with no winner adds its amount to its country's pot for that role.
+  Each winner takes its own slot and a fifth of that pot, and the rest keeps carrying. A miner who reaches a
+  country nobody has reached therefore takes a fifth of its pot each epoch. It has to stay about five epochs
+  to capture most of the pot, and every newcomer there takes a fifth too.
+- **The carry goes round through a contract.** vault2 allocates every captured α at every root, so a pot
+  cannot wait inside the pool. Each root pays the pots to the account of an immutable, ownerless **carry
+  contract**. Anyone can trigger it to claim that account and move the α straight back onto the CTF pool
+  hotkey, where the next close captures it again.
+- **Validators do not probe it.** A validator's only CTF decision is whether to weight the CTF pools. That
+  weight follows the provider pools' weight. The auditor approves each CTF root after recomputing the draw
+  and its arithmetic.
+- **Same registration, same claim flow.** Winners are paid to the payout coldkey that the provider pool
+  already selects. Apps claim the CTF account next to the pool account.
+- **Inspectable.** The census, the draw, the awards and the pots are public objects. `sn/api/operator.yml`
+  documents the routes that the ur.xyz `/ctf` page reads.
+
+## 1. Why
+
+The provider pool pays for usage (§8.2). The head pays for routable breadth (§8.4). From epoch 8 the
+extender pool spreads platform traffic evenly over prefix units (§8.6). None of them pays for being present
+in a country. Usage concentrates where users are, and breadth and units reward many address blocks wherever
+they sit. Censorship resistance, though, is decided country by country. §8.6.6 notes that a national firewall
+can cut the platform's whole surface, and that providers and extenders inside that country are the way around
+it.
+
+On 2026‑11‑10 the network had providers in 109 countries: 74 with at least five and 35 with one to four
+(ur.xyz dashboard history). 168 countries appeared over the previous 80 days, and about 210 extenders were
+active. CTF pays a fixed bounty per country and role. So the first miner to reach a thin country earns far
+more than one more miner in a dense one.
+
+## 2. The emission split
+
+### 2.1 Shares and cede rules
+
+```
+providers' share μ                 1/10 of the native miner allocation on SN25 (unchanged; treasury policy)
+  provider pools     s_pool = 4/10   across NOs by ŵ_n = implied_usage_n × Q_n (§8.1)
+  CTF pools          s_ctf  = 1/10   across NOs by the same ŵ_n (§2.2)
+  top-level miners   s_head = 5/10   by EMA(score) (§8.4)
+```
+
+The cede rules apply in this order:
+
+1. **CTF is fixed.** When the CTF channel is non‑empty, it gets exactly `s_ctf · μ`.
+2. **Pool and head share the rest in the ratio 4 : 5.** "The rest" is `(1 − s_ctf) · μ`, or all of `μ` when
+   the CTF channel is empty. When either channel is empty it cedes to the other, as `cede_to_nonempty` does
+   today. So with no head fleet, the pools take `9/10 · μ`.
+3. **When the CTF channel is empty.** It is empty when the validator does not support CTF (§2.3), when no NO
+   has a CTF pool registered for the epoch, or when no NO's pool has weight. Its share then joins rule 2.
+4. **With no provider weight at all** the SN25 row is reserve‑only, as today (§8.5).
+
+Today's SN25 row, with no head fleet, is pool 9/100, CTF 1/100 and the two `ur‑reserve` recipients 9/20 each,
+about u16 [13107, 1456, 65535, 65535]. Once fleets are weighted it is pool 4/100, CTF 1/100, head 5/100 and
+the recipients 9/20 each. Every entry stays far under the 32768 cap. The treasury policy (μ = 1/10, cap
+32768) is unchanged.
+
+**Magnitudes at epoch 4's scale.** In epoch 4 the providers' share funded the pool with 1,195.84 α, all of
+`μ`, since no fleet was weighted. Before fleets, CTF then gets about 119.58 α per epoch and the pool about
+1,076.26 α. Once fleets are weighted, the pool gets about 478.34 α and the head about 597.92 α. A slot is
+worth about 0.048 α. A country with no miners grows its two pots by about 0.48 α per epoch, roughly 25 α a
+year.
+
+**θ.** From `E_c` the three shares replace §8.5's θ (3/10 in policy v1). The nominal head share rises from
+3/10 to 5/10 and the nominal pool share falls from 7/10 to 4/10. This changes nothing until a fleet is
+weighted. It also makes §8.5's hard constraint easier to meet: the lowest‑paid top miner should earn at least
+as much as the highest‑paid pool provider.
+
+### 2.2 Across operators
+
+```
+ctf[n]  =  s_ctf · μ · ŵ_n          ŵ_n = pool_v[n] / Σ_m pool_v[m], the validator's own pool weights (§8.1, §10)
+```
+
+A NO's CTF pool takes the same fraction of the CTF channel that its provider pool takes of the pool channel.
+No CTF‑specific measurement is needed:
+
+- A validator that masks NO `n` (self‑mask) masks both of its UIDs.
+- A pool that the deposit audit zero‑weights zeroes its CTF pool too.
+- With one operator, the whole channel goes to UR's CTF pool.
+
+### 2.3 Validators: support it or not, never probe it
+
+- **No probing.** No validator measures, samples or probes a CTF miner. CTF has no quality term and no REACH
+  message.
+- **One decision.** Each validator decides whether to weight the CTF pools. The release has a setting
+  (`ctf: support | off`), and its sample configuration sets `support`. A validator set to `off` treats the
+  CTF channel as empty (rule 3).
+- **Yuma decides what is paid.** Each CTF UID's incentive is the κ‑stake‑weighted median of the validators'
+  weights for it. A CTF pool is paid only while validators holding more than half of the active stake
+  support it.
+  - Validators that support CTF while consensus does not have their CTF weight clipped.
+  - Validators that do not support it while consensus does are clipped where they overweight the pool or
+    head.
+  - Either way the gap is about 1/100 of the row, so the vtrust cost is small.
+  - The owner's validator holds the stake majority today, so CTF is paid.
+- **Resolving the UID.** A validator finds NO `n`'s CTF pool with `STSettlement2.ctfSettlementAt(n, epoch)`.
+  It checks the hotkey against vault2's own `pools(ctf(n))` record, as it does for the provider pool (§10).
+  An unregistered or pruned CTF pool leaves the channel empty for that NO.
+- **The audit is separate.** vault2 finalizes a CTF root only with auditor approval, and at launch the auditor
+  key is the validator's. That audit recomputes the draw and the arithmetic from public objects and chain
+  state (§8). It is the same kind of check the validator runs on the extender census, not a measurement.
+
+### 2.4 How the split is fixed: a signed amendment entry
+
+The split does **not** move by a successor protocol policy. The server resolves each epoch's payout consents
+in a domain that includes that epoch's policy hash. It also refuses an epoch whose policy hash differs from
+its configuration (`server/controller/provider_wallet_epoch.go`), and the contracts and configs bind the
+same hash. A successor policy would leave every existing payout consent outside the new epochs' domain.
+
+So `E_c`, the shares and the CTF parameters are fixed by a signed amendment entry, published beside the price
+sheet with its pinned key. This is the mechanism §8.6.7 introduced for `E_x`, and its readers in the server,
+the validator and `snclaim` are extended to read it:
+
+```
+UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the flag, ctf pool 4294967297, carry 0x<carry contract>, shares pool 4/10 ctf 1/10 head 5/10, head cedes to pool, slots 5 providers 5 extenders, countries iso 3166-1 249, presence half epoch, units egress prefix, draw drand quicknet 60s after census
+```
+
+The owner signs it before `E_c` starts, because the signing tool refuses an entry for an epoch that has
+already started.
+
+## 3. The CTF pool
+
+### 3.1 On chain
+
+**Pool id.** NO `n`'s CTF pool is the vault2 pool `ctf(n) = 2^32 + n`, so UR's is **4,294,967,297**.
+
+- The id sits above every v1 operator id and below 2^53, so JavaScript clients keep it exact.
+- vault2 needs only `noId < 2^64`.
+- vault2 itself does not change.
+
+**`STSettlement2Ctf`.** The owner‑upgradeable `STSettlement2` gains an upgrade, built on the implementation
+then live (phase C's when its upgrade has run). Its storage is appended after that implementation's slots and
+pinned in `evm/layout/`.
+
+| Function | Caller | Behaviour |
+| --- | --- | --- |
+| `registerCtfPool(n, maxBurn, firstEpoch)` | O, payable | Requires v1 operator `n` active, `n < 2^32`, `n`'s v2 pool registered and `firstEpoch > currentEpoch()`, and applies the same cadence check as `registerOperatorPool`. Derives the pool hotkey (below), calls `vault.registerPool(ctf(n), hotkey, …)` and refunds the burn surplus. |
+| `registerOperatorPool(n, …)` | O, payable | Unchanged, except that it now refuses `n ≥ 2^32`, so no provider pool can take a CTF id. |
+| `commitDistribution(e, poolId, …)` | R | For a CTF pool id the root signer is `operatorAt(poolId − 2^32, e).rootSigner`. Everything else is unchanged. |
+| `commitCtfCensus(e, n, censusHash)` | R | The root signer of `operatorAt(n, e)`, at a block in `[end(e), end(e) + rootCommitWindowBlocks/2]` (600 blocks on mainnet). Requires `n`'s CTF pool registered with `e ≥ firstEpoch`. Write‑once per `(n, e)`. Records the hash and block, and emits `CtfCensusCommitted(n, e, censusHash, block)`. |
+| `ctfCensus(n, e)` | view | `(censusHash, block)`, zero when none was committed. |
+| `ctfSettlementAt(n, epoch)` | view | `(vault, hotkey, firstEpoch)` when `n`'s CTF pool is registered and `epoch ≥ firstEpoch`, otherwise zeros. |
+| `closeOperatorEpoch`, `approveDistribution`, `finalizeDistribution` | as today | They already take vault2 pool ids, so they serve the CTF pool unchanged. |
+
+**Governance.** The upgrade and the registration go through the `TimelockController` (72 h) as one
+operation: `upgradeToAndCall`, with `registerCtfPool` as its call and `maxBurn` as its value
+(`mainnet/BOOTSTRAP-CONTRACTS.md`). As two operations they would take 144 h, because review refuses to
+schedule a call that would revert at the head, and `registerCtfPool` does not exist until the upgrade has run.
+`upgrade-settlement2 review` learns the CTF artifact and the folded call.
+
+**The pool hotkey is derived at execution,** as `keccak256(proxy, ctf(n), block.number, blockhash(block.number − 1))`:
+
+- A hotkey named in the scheduled call would be public for the timelock's 72 h. Whoever registered it on SN25
+  first would own it, and vault2's registration would then fail, costing another 72 h.
+- A derived hotkey is unknown until its block, and a failed execution can run again in a later block.
+- Nothing signs with a pool hotkey. vault2, its coldkey, makes every call for it: the registration, the
+  captures and any re‑registration.
+
+**UID.** Registration burns one UID. The pool is registered one to two days before `E_c`, as the v2 pool
+was, so that it earns weight before its immunity ends. §14's budget gains one UID per NO. Anyone can
+re‑register a pruned CTF pool hotkey with `registerPoolUid`.
+
+**Why not a second v1 operator?** Registering the CTF pool as v1 operator 2 would need no upgrade. But it
+would cost two UID burns (a v1 pool UID and the v2 one), a deposit hotkey and two signers for something that
+is not an operator. Its consents would also belong to another NO's domain (§3.2), and the census commitment
+would still need a home.
+
+### 3.2 Same registration
+
+A winner is paid to the coldkey that the provider rows' wallet selection gives its client. That is the
+client's own consent, else its network's, else a hotkey delegation (§8.2, E4). Payout consents name the NO
+(`ClientKeyHistoryDomain.NoID`), not a vault2 pool. So one consent covers both of NO `n`'s pools, and no
+miner signs anything new. The same coldkey then holds one account in each pool and makes one claim per pool,
+or one batched claim for both (§10).
+
+### 3.3 Settlement
+
+The CTF pool follows the v2 lifecycle (`VERSION2-FINAL.md` §5):
+
+- **Close.** Anyone may close it within 1,200 blocks of the epoch's end, and the server does so with the
+  provider pool.
+- **Commit.** The NO's root signer commits the root.
+- **Approve.** The auditors approve it before the next epoch ends.
+- **Finalize.** Anyone finalizes it once the 14,400‑block window has passed with no open demand.
+- **Challenges and demands** protect every account exactly as in the provider pool.
+- **Claims** are cumulative and permissionless. They always pay the leaf's coldkey and never expire.
+
+## 4. Slots, the draw and the carry
+
+### 4.1 Countries and slots
+
+- **The country list.** `L` is the 249 codes of `server/model/iso_country_names.go`, every ISO 3166‑1
+  alpha‑2 code (owner decision). Codes are lowercase, as the server stores them, and the site shows them
+  uppercase.
+  - Kosovo (XK) is not an ISO 3166‑1 code, so it is not in `L`.
+  - The seven territories without a permanent population (AQ, BV, GS, HM, IO, TF, UM) are in `L`. Their
+    pots grow every epoch and will probably never be paid (§7).
+- **Slots.** `S = 10 · |L| = 2,490`. A slot is `(country, role, rank)`, where role is provider or extender and
+  rank runs 1–5.
+- **Slot order.** Slots are ordered by country code, then provider before extender, then rank. This order
+  decides who gets the remainder rao (§4.5).
+
+### 4.2 Eligibility: the operator's nomination
+
+The NO nominates from its own data. It is operator‑attested, like the provider population and the extender
+census (§8.6.4). Eligibility needs the miner online, passing the operator's checks and in one country for at
+least half of the epoch, and active at its end (owner decision).
+
+**Presence.** The server samples every provider and extender of NO `n` each quarter hour, 672 times an
+epoch. A sample records whether the miner is present (P1 or X1, below) and its country. The threshold is
+half of the epoch's samples, less any the operator excuses for a platform‑wide outage it declares; the
+excused samples are listed with the census. The provider data already exists (the 1‑minute reliability blocks
+and the score export behind `ClientScore`). The extender challenge (every 5 minutes, six failures in a row
+deactivate an address) keeps only current state today, so the sampler is its first history.
+
+**Providers.** A provider client `x` of NO `n` is a candidate in country `c` for epoch `k` when:
+
+- **(P1) Online and passing at `end(k)`.** At the boundary capture it is an active, top‑level, connected
+  provider with a Public provide key and a valid location (`network_client_location_reliability.valid`). It
+  also passes the operator's provider eligibility (`ClientScore.Online`): the reliability minimums, risk,
+  quarantine, zero‑carry and probe rules of `decideProviderEgress`.
+- **(P2) Present in `c` for half the epoch.** At least half of the epoch's non‑excused samples found it as P1
+  requires, with `c` as its published country.
+- **(P3) Its country is `c` at `end(k)`.** That is its published country: the derived location from
+  co‑signed pings, else the operator's egress probe, else GeoLite2.
+- **(P4) Distinct (E3).** One candidate per IPv4 address or IPv6 /64 per role, the lowest client id, using
+  the keyed address hashes of the verify index.
+- **(P5) Payable (E4).** It has a payout coldkey under the wallet selection, and no active fleet binding at
+  either boundary. A head client earns in one tier only.
+- **(P6) Independent (E5).** It is not on one of `n`'s own networks: the gated, durable fleet
+  (`durable_network_ids`), canaries, or any network `n` declares it controls.
+- **Its unit** is the egress prefix that the verify head model pins for it in epoch `k`: its IPv4 /29 first,
+  else its IPv6 /48 (`server/model/verify_head_model.go`). It is keyed exactly as §8.4 keys it.
+
+**Extenders.** An extender record `x` of NO `n` is a candidate in country `c` for epoch `k` when:
+
+- **(X1) Active at `end(k)`.** E1 of §8.6.2 holds: the record, signed by `n`'s root key, is active and
+  unrevoked, and at least one of its addresses is active.
+- **(X2) Present in `c` for half the epoch.** At least half of the non‑excused samples found it active with
+  an address whose challenge passed within the sample's quarter hour, and with `c` as its country.
+- **(X3) Its country is `c` at `end(k)`.** That is the record's country: the derived location's when it has
+  one, else the activation's GeoLite2 country. Every activation of the record in epoch `k` was in `c`.
+- **(X4–X6)** E3, E4 and E5 of §8.6.2: distinct by provider client and address, payable with no fleet
+  binding, and independent.
+- **Its unit** is the /29 of its active IPv4 address, else the /48 of its active IPv6 address, keyed exactly
+  as §8.6.2 keys it.
+
+**Units are tickets.** All candidates in one unit are equivalent: the unit holds one ticket per role, whatever
+its size. A unit enters one country's draw for each role, the country of its lowest candidate client id; the
+other members follow it there. A client is a candidate in at most one country per role. It may be a
+candidate in both roles and win both: every miner can be both a provider and an extender (§8.6 decision 9).
+
+### 4.3 The census and its commitment
+
+Right after the end boundary is finalized, at the moment the server already captures the users count
+(`stLedgerV2CaptureUsers`), the server builds epoch `k`'s **census**. It is one row per candidate, sorted
+by role, country, unit and client id:
+
+```
+census row (52 bytes):  role (1: 1 provider, 2 extender) ‖ country (2, ASCII) ‖ unit (32) ‖ unit family (1: 4 or 6) ‖ client_id (16)
+census header (JSON):   {"schema":"urnetwork-ctf-census-v1","no_id":N,"pool_id":P,"epoch":K,"countries":"sha256:…",
+                         "rows":["sha256:…",…],"candidates":C,"excused_samples":[…],"excluded":"sha256:…"}
+```
+
+- **Rows** are in chunks of 131,072.
+- **`excluded`** names an object of per‑country counts of the miners each rule excluded: not online at the
+  end, too little presence, country changed, no valid location, duplicate address, no wallet, head‑bound, own
+  network, not Public, and revoked or inactive. It holds counts only.
+- **No coldkeys and no addresses** are in the census.
+- **The commitment.** Within 600 blocks of `end(k)` the root signer commits `censusHash = sha256(census
+  header)` with `commitCtfCensus(k, n, censusHash)` at some block `B_k`. The commitment is write‑once, so the
+  candidates are fixed on chain before any randomness for the draw exists.
+
+### 4.4 The draw
+
+```
+ρ_k        = the first drand quicknet round whose time is ≥ ts(B_k) + 60 s     time(r) = 1692803367 + 3·(r − 1)
+rand_k     = that round's randomness: sha256 of its BLS signature, verified against quicknet's public key
+σ_k        = keccak256("urnetwork/ctf-draw/v1" ‖ chain_id:u64 ‖ netuid:u16 ‖ pool_id:u64 ‖ k:u64 ‖ censusHash ‖ rand_k)
+ticket(u)  = keccak256(σ_k ‖ role:u8 ‖ country:2 ‖ unit:32)                     one per unit, per role and country
+winners    = the min(5, |U_{c,r}|) units with the smallest tickets, ranked 1… by ticket ascending
+member     = in each winning unit, the candidate with the smallest keccak256(σ_k ‖ role:u8 ‖ unit:32 ‖ client_id:16)
+```
+
+- **The randomness source.** The server and the validator read the pulse from the chain's Drand pallet when
+  it is stored there, else from any drand relay. A pulse verifies against quicknet's key whatever its source.
+  `sn/crv4` already carries quicknet's constants.
+- **What the draw guarantees.** Taking the smallest tickets draws a uniformly random set of up to five
+  units, and the member hash picks a uniform member within each.
+- **Nobody can steer it.** The operator fixed the candidates at `B_k`, at least a minute before `ρ_k`
+  existed. Block producers cannot bias drand. A second commitment is refused.
+- **Withholding gains nothing.** An operator that withholds its commitment gets no draw, and everything
+  carries forward (§4.7).
+
+### 4.5 Amounts
+
+For each covered epoch `k` of a root, in order:
+
+```
+f_k      = fundedThrough[k] − fundedThrough[k−1]                     the CTF pool's funding, read from vault2
+R_k      = stake the carry contract returned for k                    its recycledFor records, rolled past deferred epochs (§4.6)
+X_k      = carry still owed back before k's capture                   the carry account's cumulative in the root built on,
+                                                                      less what the contract has returned before k and the
+                                                                      rounding already written off
+M_k      = R_k ≥ X_k − 4  and  f_k ≥ X_k                              matured: everything owed back is in (≤ 4 rao rounding)
+F_k      = f_k − (M_k ? X_k : R_k)                                    the fresh amount; a matured epoch writes off its rounding
+a_{k,s}  = floor(F_k / S) + (1 if s < F_k mod S, else 0)              slot s's amount in slot order; Σ_s a_{k,s} = F_k
+
+for each country c and role r, with pot P = P_{c,r} and W = min(5, |U_{c,r}|) winners:
+  q        = floor(P / 5)                                              a fifth of the pot
+  winner of rank i ≤ W   gets  a_{k,(c,r,i)}  now, and  q  (plus 1 rao if W = 5 and i ≤ P mod 5)
+                                now if M_k, else as a pending award to its coldkey
+  P_{c,r} ← P − W·q − (W = 5 ? P mod 5 : 0) + Σ_{i=W+1..5} a_{k,(c,r,i)}     what is not won carries
+pending awards           all paid in full in the first matured epoch, with or without a draw
+O_k      = Σ pots + Σ pending awards                                  what the CTF pool owes after k
+```
+
+- **A fifth of the pot per winner** (owner decision). Each winner takes its own slot and a fifth of the pot
+  carried into its country and role. Five winners empty the pot. Fewer leave the rest to carry, with the
+  epoch's unfilled slots added.
+  - A lone miner in an unclaimed country takes a fifth of what is left each epoch. It captures most of a pot
+    only by staying: about 67% of it in five epochs, and 89% in ten.
+  - Every newcomer who becomes eligible there takes its own fifth, so a pot never goes all at once to
+    whoever arrives first.
+  - A lone winner that stays settles where the pot holds twenty slot amounts, and it then takes five slot
+    amounts per epoch.
+- **Fresh amounts only.** Slot amounts come from fresh funding only. Returned carry pays obligations, never
+  new slots.
+- **Exactness.** All amounts are exact integers in rao. Rounding goes to the lowest slot positions and the
+  best ranks, by the rule a contract already uses for its byte shares (`evenContractPayoutShare`).
+- **The carry account.** At the end of the root's walk the carry account receives everything the walk did
+  not pay. That is the pots and pending awards, less what the carry contract still owes back. So the root's
+  total equals `fundedThrough[e]` and vault2's invariant holds (§4.6).
+
+### 4.6 The carry contract
+
+vault2 requires each root's total to equal the pool's funding through its epoch (`commitPending`: `total ==
+fundedThrough[e]`), so every captured rao sits in some account at every root. A pot that waits for a winner
+therefore has to leave the CTF pool and come back. The **carry contract** does that with no custodian (owner
+decision):
+
+```
+STCtfCarry                       immutable, ownerless, one per CTF pool; reads escrowHotkey, selfColdkey and the
+                                 pool hotkey from vault2, which never changes them
+recycle(rootIndex, account, proof)   anyone
+    if an account is given: require account.coldkey == this contract's coldkey;
+                            vault2.claim(poolId, rootIndex, account, proof)     // pays this coldkey on vault2's escrow hotkey
+    amount = this coldkey's movable stake on the escrow hotkey                  // everything it holds, claimed by anyone
+    moveStake(escrowHotkey → poolHotkey, amount)                                 // its own position
+    transferStake(to vault2's coldkey, on poolHotkey, all of it)                 // vault2's position on the pool hotkey grows
+    g = the growth of vault2's position, measured as vault2 measures its moves
+    e = vault2.lastFundedEpoch(poolId) + 1;  recycledFor[e] += g;  emit Recycled(e, g)
+no owner, no upgrade, no other entry point; it holds stake only inside a call
+```
+
+- **Every epoch the carry cycles.** The root allocates the carry account its delta, the root finalizes about
+  two days after the epoch ends, and the server's relay calls `recycle`. The next close then captures the
+  returned stake with the epoch's emission, and the ledger tells them apart by `recycledFor` (`R_k`, §4.5).
+  Gas is one claim and two stake moves an epoch, paid by the relay.
+- **Deferred epochs.** A recycle recorded for an epoch that is later deferred (a missed close) is captured
+  by the next close, so the ledger rolls its `R` forward to that epoch.
+- **Donations are fresh funding.** Stake anyone sends to the contract or to vault2 on the CTF pool hotkey is
+  counted as fresh funding: `R_k` never exceeds what is owed.
+- **Rounding.** Each stake move may lose a rao to the runtime's rounding (§7.3 of `VERSION2-FINAL.md`), at
+  most four per cycle. A matured epoch writes that off against its fresh amount.
+- **What it trusts.** It relies only on vault2 and the runtime, and it changes nothing in vault2, which pays
+  the leaf's coldkey whoever calls.
+- **Qualifying it.** It needs the same runtime qualification as vault2's moves. A rehearsal case on the live
+  runtime covers a claim to a contract coldkey, a `moveStake` and a `transferStake` from it, and the capture
+  of the returned position (gas, rounding, the staking‑hotkey list).
+
+### 4.7 Missed steps
+
+| What is missed | What happens |
+| --- | --- |
+| No census committed in `[end(k), end(k)+600]` | No draw for `k`: no winners, and all of `F_k` joins the pots slot by slot. Pending awards are still paid if `k` matured. |
+| The root for `k` (late, refused, deleted or replaced) | The next root covers `k` with its committed census and draw, which are fixed inputs, as provider rows are. The carry never left the pool, so nothing is lost. |
+| The close for `k` (deferred) | `f_k = 0`, and the epoch's emission and returned carry fund the next captured epoch (§6.4 of `VERSION2-FINAL.md`). `k`'s draw still runs, with zero slot amounts and, unmatured, its pot shares as pending awards. |
+| The carry's return (late root or relay down) | `k` is not matured. Winners get their slot amounts now and their pot shares as pending awards. |
+| Validator support (no fresh funding) | `F_k = 0`, and draws continue. Pots and pending awards pay whenever the carry is back. |
+| The CTF UID (pruned) | No emission until someone re‑registers it with `registerPoolUid`. |
+
+## 5. The ledger
+
+The CTF pool's ledger keeps v2's accounts, sum tree, claim proofs, path checks, objects and canonical‑JSON
+rules (`VERSION2-FINAL.md` §6). Only the per‑epoch inputs differ:
+
+```
+header:   {"schema":"urnetwork-ctf-ledger-v1","no_id":N,"pool_id":P,"epoch":E,"countries":"sha256:…",
+           "carry_coldkey":"0x…","epochs":[{"epoch":K,"census":"sha256:…"|null,"round":R,"awards":"sha256:…",
+           "pots":"sha256:…","pending":"sha256:…"},…],"accounts":["sha256:…",…]}
+award row (117 bytes):    role (1) ‖ country (2) ‖ rank (1) ‖ unit (32) ‖ client_id (16) ‖ coldkey (32) ‖ slot_rao (16) ‖
+                          pot_rao (16) ‖ deferred (1: pot share paid now 0, pending 1)          ≤ 2,490 rows, by role, country, rank
+pot row (40 bytes):       country (2) ‖ role (1) ‖ units (4) ‖ winners (1) ‖ pot_in (16) ‖ pot_out (16)   always 498 rows
+pending row (60 bytes):   award epoch (8) ‖ role (1) ‖ country (2) ‖ rank (1) ‖ coldkey (32) ‖ amount (16)
+account row (48 bytes):   coldkey (32) ‖ cumulative (16), as v2
+```
+
+- **Header fields.** `census` is the committed census header's reference, or null when none was committed.
+  `round` is `ρ_k`, or 0 with no census. `countries` names the list object, the 249 codes in order.
+- **Accounts.** A coldkey's delta is the sum of its slot amounts, pot shares and paid pending awards across
+  the covered epochs. The carry contract's coldkey (`carry_coldkey`) receives the walk's remainder (§4.5).
+  New accounts are appended in ascending coldkey order. Positions, coldkeys and cumulatives never change,
+  except to grow.
+- **Commit.** `ledgerHash = sha256(header)`. The commit is `(root, total = fundedThrough[e], leafCount,
+  ledgerHash)`, as for every v2 pool.
+- **Fixed inputs.** An epoch's census, draw and awards are built once, at the first root that covers it.
+  Rebuilding them needs the explicit operator command naming the epoch, which the validator accepts only for
+  an epoch whose component it refused (§6.4 of `VERSION2-FINAL.md`).
+- **Bounds.** A root covers at most 96 epochs, and its header stays under 256 KiB. A census of 100,000
+  candidates is about 5 MB.
+
+## 6. Worked example
+
+**The epoch.** Take one epoch at epoch 4's scale with no head fleet. The CTF pool's fresh amount is
+`F_k = 119,583,893,572` rao (119.58 α), and `S = 2,490`, so `a = floor(F_k / S) = 48,025,660` rao. The
+remainder of 172 rao goes one each to the first 172 slots: every slot of AD through BA (17 countries) and
+BB's provider ranks 1 and 2. None of the rows below is among them. The carry from the epoch before has come
+back, so the epoch is matured.
+
+| Country, role | Units | Winners | Pot in (rao) | Each winner gets (rao) | Pot out (rao) |
+|---|---:|---:|---:|---|---:|
+| DE, provider | 1,840 | 5 | 0 | 48,025,660 | 0 |
+| DE, extender | 3 | 3 | 96,051,320 | 67,235,924 | 134,471,848 |
+| IS, provider | 2 | 2 | 144,076,980 | 76,841,056 | 230,523,168 |
+| IS, extender | 0 | 0 | 960,513,200 | — | 1,200,641,500 |
+| TM, provider | 1 | 1 | 12,006,415,000 | 2,449,308,660 (2.45 α) | 9,797,234,640 |
+| KP, provider | 0 | 0 | 12,006,415,000 | — | 12,246,543,300 |
+
+**Reading the rows.**
+
+- **DE extenders.** The three units all win, and their tickets rank them. Each winner gets `a` plus a fifth
+  of the 2‑slot pot that DE's extenders left the epoch before. The other two fifths carry, with the two empty
+  slots.
+- **TM.** Its first eligible provider unit takes its own slot plus a fifth of the 250 slot‑amounts that 50
+  epochs of empty slots built: 2.45 α. The other four fifths carry, with its four empty slots.
+  - If it stays alone, it takes a fifth of what is left each epoch: 8.63 α over five epochs and 12.26 α over
+    ten.
+  - Any other provider that becomes eligible in TM takes its own fifth from then on.
+- **KP.** KP has no candidate, so both its pots grow by `5a` a role, 0.24 α each.
+
+**If the carry were late.** Suppose the previous root finalized after `k`'s close. Then `R_k = 0`, `k` is not
+matured, and `F_k = f_k`. TM's winner would get `48,025,660` rao now and a pending award of `2,401,283,000`
+rao, paid in full in the first matured epoch. The pots move exactly as in the table.
+
+**The root.** Every slot amount and pot share paid goes to its winner's coldkey. Everything else (every pot
+out and any pending award) goes to the carry contract's account. That account's delta is the epoch's
+funding less what was paid, so the root's total is `fundedThrough[k]`.
+
+**At today's coverage** about 560 of the 2,490 slots could fill: about 440 provider slots in the 109 provider
+countries and about 120 extender slots. So roughly three quarters of each epoch's fresh amount carries. At
+epoch 4's scale that is about 90 α an epoch, on the order of 4,500 α within a year, cycling through the carry
+contract.
+
+## 7. Incentives and attacks
+
+**Location spoofing is the main pressure.** A pot rewards whoever appears to be in its country. An address
+block that GeoLite2 places in a thin country can be bought or claimed (geofeeds, misplaced cloud ranges).
+
+- **What blunts it.** The server's location precedence ranks the derived location from co‑signed pings
+  first, then the operator's egress probe, then GeoLite2. A valid location needs one location and one
+  address hash per family. And the owner's presence rule needs half an epoch in the country.
+- **Later options, by signed entry:**
+  - require a derived location that agrees, for countries whose pot exceeds a threshold;
+  - alert on every capture above a size;
+  - publish the location source of each winning unit.
+
+**Units turn Sybils into coverage.** Packing hosts into one /29 or /48 buys one ticket. Spreading across
+blocks buys more, as in the extender pool (§8.6.3).
+
+- In a dense country a slot is worth about 0.048 α, and a ticket's chance is about 5 in the number of units.
+- In a thin country, a fleet holding five units takes all five slots. That is five blocks of real presence
+  there, which is what CTF pays for.
+- ASN units (§8.6.3, S2) remain a later option for both pools.
+
+**Boundary gaming is closed** by the presence rule (owner decision). A host started near `end(k)` has none of
+the 336 samples it needs.
+
+**The fifth rule slows a pot grab.** A winner takes a fifth of its country's pot per epoch, so draining a big
+pot takes many epochs of continued eligibility: five epochs alone take about two thirds of it. A spoofed or
+short‑lived capture therefore pays little before the operator can see it. Honest miners who join in the
+meantime take their own fifths.
+
+**The operator attests the census.** It could list undeclared hosts of its own in empty countries and take
+their pots, or drop competitors. Several things bound this:
+
+- E5 excludes the networks it declares.
+- The on‑chain commitment before drand rules out targeted picks. To favour anyone, the operator must exclude
+  everyone else in that country and role, and that shows up in the published counts and exclusion reasons.
+- A miner can see its own status and reason (`GET /sn/ctf/client`, §9.1).
+- As §8.6.3 and §12.3 already say for the extender census and the deposit audit, this needs review before
+  any other operator is admitted.
+
+While one organisation is owner, operator and validator, publication guards against bugs and compromised
+keys, not against the owner.
+
+**Validators** pay CTF only by majority (§2.3). The cost of disagreeing with consensus is about 1/100 of a
+row.
+
+**Pots that never pay.** By owner decision all 249 codes have slots, so the pots of the seven territories
+without a permanent population, and of countries with no realistic presence, grow without bound. They stay
+visible on the grid. They cost only the carry cycle's gas, and every rao of them stays in the CTF pool's
+accounts. A later signed entry could cap pots or release such pots to the countries that have winners.
+
+**Privacy.** The census publishes a country and a keyed unit hash for every candidate's client id. Award rows
+add the winners' coldkeys. No address is ever published.
+
+- An extender's client id can now be tied to a country. That gives no route to its address, which the
+  directory design keeps rationed (§8.6.4).
+- A winner's coldkey is tied to its country in public. Miners who mind can consent a separate coldkey.
+
+**Sanctions.** No country is excluded (owner decision). CTF payouts are screened as every payout is today, by
+the SDN address list. The grid shows every flag.
+
+**No double pay.** Head‑bound clients are excluded (P5). The CTF pool is separate from the provider pool's
+usage rows and from the extender pool's share rows (§8.6). A miner can earn from all three: usage, its unit's
+share of `Z'`, and a CTF slot.
+
+## 8. Verification and evidence
+
+**The auditor's CTF audit.** It runs for every covered epoch `k`, alongside the provider pool's ledger audit,
+and approves nothing that does not reproduce exactly:
+
+1. **Census.** If `ctfCensus(n, k)` is set, the header's census reference hashes to it. The census is
+   canonical: sorted and unique, one country per client per role, unit families consistent, and countries in
+   `L`. If it is not set, the epoch has no draw.
+2. **Seed.** `ρ_k` follows from the timestamp of `B_k`. The pulse verifies against quicknet's key, and `σ_k`
+   follows.
+3. **Draw.** Recompute the winning units, ranks and members. They must equal the award rows. Each winner must
+   have no fleet binding at either boundary (`bindingAt`). Checking winners alone is enough, because removing
+   a unit that did not win changes no other unit's ticket.
+4. **Amounts.** Take `f_k` from vault2 and `R_k` from the carry contract's records. Derive `X_k`, `M_k`,
+   `F_k`, the slot amounts, the pots (from the previous root's pot rows), the pending awards and the
+   payments.
+5. **Accounts.** Check the deltas, positions, coldkeys and the carry account, then rebuild the root, its
+   total `fundedThrough[e]` and its leaf count.
+
+**Attested and not checkable**, as for the extender census: presence, the checks behind P1 and X1, the
+countries, units and address dedupe, the wallets, and the declared networks. A failed component is refused
+and rebuilt only on the operator's explicit command.
+
+**What anyone can check.** `snclaim v2 check --no_id 4294967297` runs the same audit from the published
+objects, and UR's watcher runs it beside the provider pool's. The CTF statement (§9.1) publishes the
+per‑country counts and amounts, so concentration and jumps between epochs show.
+
+## 9. External inspection
+
+### 9.1 The API: `sn/api/operator.yml`
+
+`sn/api/operator.yml` is a new OpenAPI 3.1 file for the operator's public SN routes. It starts with the
+`/sn/ctf` routes, and the other `/sn` routes may move into it later. The server's
+`api/spec_conformance_test.go` maps `/sn/ctf` routes to it, as it maps `/competition` routes to
+`sn/api/competition.yml`. Amounts are decimal strings of rao, as in `/sn/ledger/account`.
+
+| Route | Access | Returns |
+| --- | --- | --- |
+| `GET /sn/ctf` | public; `Cache-Control: public, max-age=60` | The current state. Pool facts: `no_id`, `pool_id`, `vault`, `carry_contract`, `carry_coldkey`, `countries_version`, `current_epoch`, `draw_at` (the end of the current epoch). The latest drawn epoch: `last_epoch`, with its root's `status` (pending or finalized), `seq` and `ledger_hash`. That epoch's `funding_rao`, `returned_rao`, `fresh_rao`, `slot_rao`, `paid_rao`, `pending_rao` and `carried_rao`. And one row per country of `L`: `code`, `name`, `providers_paid`, `extenders_paid`, `paid_rao`, `provider_units`, `extender_units`, `provider_carry_rao`, `extender_carry_rao`, `available_rao`, `open_epochs` and `near_misses`. `available_rao` is the two pots plus ten slots at the last slot amount: an estimate of what the country's draw holds this epoch. `open_epochs` counts the epochs since the country last had a winner in either role. `near_misses` counts the miners there that the census left out only for presence or a change of country (§4.3). |
+| `GET /sn/ctf/here` | public; `Cache-Control: private, no-store` | `{"country": "is"}`: the caller's country from GeoLite2 on the request's address, or null. Nothing is stored or logged. It lets the page open on the visitor's own country. |
+| `GET /sn/ctf/epoch/{epoch}` | public; immutable once finalized | One epoch. The census (`hash`, `block`, `candidates`, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the country rows, and the awards: role, country, rank, coldkey, client id, `slot_rao`, `pot_rao`, `pending`. Also the object references (header, census, awards, pots, pending), served by `GET /sn/ledger/object`. |
+| `GET /sn/ctf/client` | Bearer client JWT, own client only | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. |
+| `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`provider` or `ctf`) and `label`. A pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. |
+
+**Headers.** Every route sends exactly one `Access-Control-Allow-Origin` header, as the site's status feeds
+require.
+
+**"Last epoch" and "this epoch".** "Paid last epoch" is the latest epoch with a committed CTF root: its
+winners per country and role. Its root may still be pending, and the status says so. "Carried into this
+epoch" is that epoch's pot out per country and role.
+
+### 9.2 The ur.xyz `/ctf` page
+
+The page is a new English‑only page, `ur.xyz/ctf`, with a page per country at `ur.xyz/ctf/<cc>`.
+
+- **Its name.** Its H1 is "Capture the flag". Its title leads with plain words, "Earn crypto by sharing your
+  internet in 249 countries | UR", because in search "capture the flag" means hacking contests.
+- **How it is built.** It follows `/mainnet`: Astro renders the React page to static HTML from each epoch's
+  data, and islands add the interaction and the visitor's country. Every figure is then in the HTML that
+  search engines and AI crawlers read.
+- **Where the design is.** The mockup is the canvas "ur.xyz CTF page". `design/ctf/design.html` is a
+  standalone copy that adds the country page, and `design/ctf/SEO.md` has the search, compliance and agent
+  findings.
+
+Under the title, a mission statement reads "Providers and extenders in every country". From the top down:
+
+- **Live bar.** The epoch and the time to its draw, the slot amount, the α carried into this epoch, and
+  what the last draw paid and to how many winners. Three counts are also filters:
+  - **Flags held:** countries whose ten slots were all won last epoch, five providers and five extenders.
+  - **Not fully captured**, with one row for providers and one for extenders: countries where at least one of
+    the role's five slots went unclaimed last epoch. These are the easy wins: a new miner in that role who
+    meets the presence rule wins by default.
+  - Tapping Flags held, or one of those rows, shows only its countries, directly under the bar. The other sections and cells animate out
+    and the matching cells move up. Tapping it again, or "Show all", reverses it.
+  - A not-fully-captured view sorts its countries by their provider and extender pots together, largest
+    first.
+- **Your country.** A card for the visitor's country, from `GET /sn/ctf/here`, with a picker to change it.
+  - It shows the flag on a pole, waving while any slot is open, and what is up for grabs there this epoch.
+  - For each role it shows how many of the 5 slots were won last epoch. Then it shows either the pot with
+    "not fully captured, a newcomer wins by default", or the units in the draw with the chance to win.
+  - The call to action is **Start mining**, with **Run an extender** beside it and the eligibility rule
+    beneath: online, in the country, for half the epoch.
+- **Easy wins.** Eight countries drawn at random from those with a big pot this epoch, weighted by pot size.
+  - The draw repeats on each visit, or with Shuffle.
+  - Each country drawn has an open slot, so a newcomer wins by default.
+  - A card is marked "So close" where miners were present last epoch but fell short of the presence rule
+    (`near_misses > 0`).
+  - The seven territories without a permanent population are left out of this draw, though they stay in the
+    grid.
+- **The grid.** 249 cells, one per code in `L`. Each cell shows:
+  - the flag as its icon and the country's name;
+  - the provider pot and the extender pot, which are separate pots: each in its role's row, and their sum as
+    the cell's headline;
+  - one row per role with five pips for last epoch's winners, then an **Open** chip where the role is not
+    fully captured, or the chance to win where all five slots were won;
+  - the number won and the amount paid last epoch.
+- **Next steps.** Hovering, focusing or tapping a "So close" ribbon or an "Open" chip opens a card. It names
+  the role, what a newcomer takes this epoch and a button to start. For example: "Run an extender in Laos for
+  half an epoch and you win by default: about 1.30 α this epoch, then a fifth of what is left each epoch you
+  stay".
+- **Chance to win.**
+  - It is shown only for a role whose five slots were all won.
+  - Its entries are last epoch's eligible units in that role plus the visitor.
+  - The owner's display rule is 100% at five entries or fewer, else 1/(entries − 4).
+  - The draw itself (§4.4) gives each entry 5/entries, so the rule understates the odds: 50% against 83%
+    at six entries, and 17% against 50% at ten. The mockup has a tweak to compare the two.
+- **Large pots are highlighted, in two tiers above a threshold (5 α in the mockup):**
+  - **"So close"** cells (a near miss) glow in the site's pink, wave their flags, carry a pixel‑type ribbon,
+    and sort first.
+  - **"Big pot"** cells show the amount in pink with a "big pot" tag.
+  - Motion stops under `prefers-reduced-motion`.
+- **Sorting and filters.** The sorts are A–Z (the default), biggest pot, or easiest wins. The filters are all,
+  big pots or held, and there is a search box, as /dashboard's country table has. Wherever countries sort by
+  pot, it is the provider and extender pots together, and pots within 0.1 α of each other fall back to A–Z.
+- **How it works**, in three steps. The fine print says the amounts are estimates and that every draw is
+  verifiable (§8).
+- **Data.** `GET /sn/ctf` from the site's configured `apiUrl`, refreshed every 5 minutes. When the route
+  cannot be reached the page shows "unavailable", never zeros.
+- **Flags.** The site has no flag assets today. Bundle an MIT‑licensed SVG set (flag‑icons 4×3) under the
+  site's own path, because the network‑privacy gate refuses third‑party hosts. Names come from the API, so
+  the site keeps no second country list.
+- **Wiring.** `react/src/router.js` `PAGE_ROUTES`, the page map in `App.jsx`, `astro/src/pages/ctf.astro`,
+  the route lists of the network‑privacy and visual‑parity tests, nginx's language redirect, and a footer
+  link.
+- **Number style.** "12.97 α", as /reserve formats amounts.
+- **Sizes.** It is one responsive page, which the mockup draws at three widths. Nothing scrolls sideways.
+  - **Desktop** is as described above.
+  - **Tablet (601–1099 px):**
+    - the stats wrap into a grid;
+    - Easy wins flows in two columns;
+    - the grid has five columns, with winners shown as a count ("2/5") instead of pips;
+    - tap to expand replaces hover, because touch screens have none. Tapping any Easy wins card or grid card
+      opens it to full width with what hover shows on desktop: each role's pot, chance or next step, and a
+      button to start.
+  - **Mobile (600 px and below):** as tablet, but Easy wins shows compact cards two across, and the grid
+    shows compact tiles three across with the flag, the name, the pots and a P/E status.
+
+## 10. Claims and apps
+
+The claim path needs no new contract call: a CTF account is claimed from vault2 like any pool's. The clients
+already loop over every entry of `GET /sn/ledger/account`, which is keyed by `no_id`. What blocks a second pool
+today is on the server and in the presentation:
+
+- **Server endpoint.** Today the server records and serves accounts for its own `NoId` only. It records the
+  CTF pool's accounts too and serves both pools, each built independently, with `kind`, `label` and
+  `unavailable_pools` (§9.1).
+- **Claim relay** (`server/controller/sn_claim_relay.go`). Today it covers one pool and keys its candidates by
+  coldkey.
+  - Its units become (coldkey, pool).
+  - A coldkey's "Claim now" claims all of its pools' accounts, and the 30‑day limit stays per coldkey.
+  - When one of a coldkey's accounts is due, the relay claims every other account of that coldkey above the
+    transfer floor in the same batch. A CTF account is often far below the 1.9 α automatic threshold, and the
+    batch adds only about 150,000 gas per claim.
+- **SDK.**
+  - `SnLedgerAccount` gains `Kind` and `Label`.
+  - A pool in `unavailable_pools` shows as unavailable without hiding the others.
+  - With two or more claimable accounts, the SDK claims them in one `STClaimBatcher` transaction, which is
+    already deployed on mainnet. Each claim sent alone is signed at 2.6M gas or more, so batching nearly
+    halves the gas balance a device needs for two.
+- **Apps** (Android, Apple, Windows, Linux, ur.io).
+  - CTF accounts are labelled "Capture the flag", from new `sn_ctf_*` strings in the shared localization
+    store.
+  - One action claims both pools.
+  - Apple, Windows, Linux and ur.io draw only the relay's top‑level status today, so they gain per‑pool rows,
+    as Android already has.
+  - Optionally, a line from `GET /sn/ctf/client` names the flag a provider captured.
+- **Old apps keep working.** The SDK parses entries with `encoding/json`, which ignores the new fields. A CTF
+  entry carries exactly the existing ones, so old apps show it as "Pool 4294967297" and claim it like any
+  pool. The new labels only have to ship before the first CTF claims, about two days after `E_c` ends.
+- **Miner daemon and `snclaim`.** Both already treat each `(vault, noId, index)` as its own unit, so they
+  claim CTF accounts unchanged. `snclaim v2 check` needs the CTF audit (§8).
+
+## 11. Changes needed elsewhere, effort and rollout
+
+### 11.1 Components
+
+| Component | Change | Effort | Needed for |
+|---|---|---|---|
+| sn: `ctf` package | The country list, the census, award, pot and pending codecs, the seed, tickets and members, the walk of §4.5, header v1, and Build and Verify with fixed inputs. Mutation tests and a 100,000‑candidate fixture. The server's builder imports it, so it lands first. | 6–8 days | shadow run, by ~11‑25 |
+| sn: contracts | `STSettlement2Ctf` and its layout, `STCtfCarry`, tests, rehearsal cases on the live runtime, and `upgrade-settlement2 review` for the new artifact and its folded registration call | 6–9 days | scheduled by ~11‑22 |
+| sn: validator | The three‑way split and its cede rules in the exact weight builder and the treasury production row and replay, CTF pool resolution, the `ctf` setting, the CTF audit and approval, and the amendment entry v2 reader | 6–9 days | weights before `E_c`; audit by ~12‑01 |
+| sn: `snclaim`, amendment entry | `v2 check` for CTF, and the v2 line format and its signing | 2–3 days | before `E_c` |
+| server: presence and census | The quarter‑hour sampler for both roles, the boundary census (P1–P6, X1–X6, units, unit country, exclusion counts), and metrics | 5–7 days | sampler by `end(6)` |
+| server: CTF driver | Close, census commitment, the wait for `ρ_k`, the draw, build, commit and finalize, then `recycle` after finalization. Alerts on a late commitment, a late carry return, and pot captures above a size. | 4–6 days | shadow at `end(7)`; live by `end(8)` |
+| server: API and relay | `/sn/ctf`, `/sn/ctf/epoch/{epoch}`, `/sn/ctf/client`, the ledger endpoint's `kind`, `label` and `unavailable_pools`, `sn/api/operator.yml` and conformance, and the multi‑pool relay | 5–7 days | before `E_c`; relay before the first CTF claims |
+| SDK and apps | `Kind` and `Label`, per‑pool availability, the batched claim, `sn_ctf_*` strings, and per‑pool rows on five platforms | 5–8 days | before the first CTF claims |
+| web: ur.xyz | `/ctf` and `/ctf/<cc>`, the flag assets, the per‑epoch data import, routes, structured data and the SEO gates (`design/ctf/SEO.md` §6) | 4–6 days | before `E_c` |
+| docs | WHITEPAPER §8.5 and a new §8.7, §14's UID budget, an addendum to `VERSION2-FINAL.md`, the README glossary, the mainnet timeline notice | 2–3 days | with each release |
+
+The whole set is about 45–66 engineer‑days, 9–13 engineer‑weeks. Epoch 8 leaves 16 days from 2026‑11‑11, so
+the work needs three to four engineers in parallel. Two paths are critical. One runs from the contracts
+through the rehearsal and the 72‑hour timelock to the pool's registration, and the operation has to be
+scheduled by about 11‑22. The other runs from the server's sampler, live by `end(6)`, to the sn `ctf` package
+and the builder for the shadow run at `end(7)`. vault2, the provider pool's ledger and the extender pool do not
+change.
+
+### 11.2 Deployment plan: `E_c = 8`
+
+The owner set `E_c = 8` on 2026‑11‑11. It is also the extender pool's first epoch, `E_x` (§8.6.7), so
+extenders compete from the first CTF epoch. CTF's extender conditions use E1 and E3–E5 of the extender
+census, whose shadow runs in epochs 6 and 7 exercise them.
+
+*The dates,* at the measured 12.0 s per block:
+
+| Epoch | Blocks | Ends about | Root committed by |
+|---|---|---|---|
+| 6 | 9,499,228–9,549,627 | 2026‑11‑20 18:28Z | block 9,550,828, about 22:28Z |
+| 7 | 9,549,628–9,600,027 | 2026‑11‑27 18:29Z | block 9,601,228, about 22:29Z |
+| 8 | 9,600,028–9,650,427 | 2026‑12‑04 18:30Z | block 9,651,628, about 22:30Z |
+| 9 | 9,650,428–9,700,827 | 2026‑12‑11 18:30Z | block 9,702,028, about 22:30Z |
+
+- Epoch 8's earning window opens at about 2026‑11‑27 18:29Z.
+- Its census is committed by block 9,651,028, about 12‑04 20:30Z. Its root is committed with the provider
+  root, by about 22:30Z.
+- The first CTF claims open once the auditor has approved that root and its 14,400‑block window has passed,
+  about 12‑07. The approval's deadline is `end(9)`, about 12‑11 18:30Z.
+
+*On chain and on the subnet.* No subnet hyperparameter changes, and the treasury policy (μ = 1/10, cap 32768)
+stays as it is. The changes are the owner's:
+
+1. **One timelock operation** upgrades `STSettlement2` to `STSettlement2Ctf` and registers UR's CTF pool:
+   `upgradeToAndCall` with `registerCtfPool(1, maxBurn, 8)` as its call (§3.1).
+   - The Safe schedules it, and anyone executes it once it is ready, 72 h later.
+   - It has to execute before epoch 8 starts, since `registerCtfPool` requires `firstEpoch > currentEpoch()`.
+   - Its `maxBurn` leaves headroom over the live burn, because vault2 refunds the surplus and a burn above it
+     would revert the operation.
+2. **The CTF UID.** The registration pays SN25's burn and takes one of the 256 UIDs. With no owner trim, a full
+   metagraph loses its lowest‑ranked UID that is not immune. The live `immunity_period` has to outlast the
+   time from the registration to the first revealed CTF weight, a little over two days.
+3. **The carry contract** is created through the deterministic deployment proxy after the operation, since it
+   reads the pool hotkey from vault2. Its address is known before it exists, so the entry can name it.
+4. **The amendment entry v2,** "from epoch 8", is signed and published during epoch 7. `E_x`'s entry v1 is due
+   by the same time (§8.6.7).
+5. **UR's validator** weights the CTF UID from epoch 8's first tempo.
+   - It holds the stake majority, so it alone makes CTF paid (§2.3).
+   - Its row becomes about pool 9/100, CTF 1/100 and the two `ur‑reserve` recipients 9/20 each (§2.1).
+   - Commit‑reveal delays the new row, so the first tempos of epoch 8 still pay the old one, as they did at
+     `E_s`.
+6. **Partner validators need nothing for epoch 8.** Until a release of theirs supports CTF, Yuma clips their
+   weights by about 1/100 of the row. `weights_version_key` is not bumped, since support is each validator's
+   choice.
+7. **The notice** on the mainnet timeline, with `E_x`'s. From epoch 8 the provider pool gets 9/10 of the
+   providers' share instead of all of it: about 1,076.26 α instead of 1,195.84 α at epoch 4's scale. It gets
+   4/10 once fleets are weighted.
+
+No key changes: the census commitment and the CTF roots use NO 1's root signer, and the auditor set stays as
+it is.
+
+*What has to ship, and by when:*
+
+1. **Before `end(6)`, about 11‑20 18:28Z:** the server's presence sampler for both roles, so that epoch 7 is a
+   full shadow epoch. It has to be running when epoch 8 starts in any case.
+2. **By about 11‑21:** the two contracts, their rehearsal on the live runtime, and `upgrade-settlement2
+   review` for the folded call. Anyone then creates the implementation through the deterministic deployment
+   proxy.
+3. **By about 11‑22 18:30Z:** the Safe schedules the operation. It is ready, and executed, about 11‑25 18:30Z,
+   two days before `E_c`. Scheduled by 11‑23 18:30Z, it still executes a day before.
+4. **By about 11‑25:** the sn `ctf` package, and the server's census, draw and builder, for the shadow run.
+5. **Before epoch 8 starts, about 11‑27 18:29Z:**
+   - the operation executed and the carry contract created;
+   - the entry signed and published;
+   - UR's validator release with the split and its cede rules, the treasury row and replay, CTF pool
+     resolution, `ctf: support` and the entry reader. It is deployed while the validator is idle, before
+     `E_x`'s validator release (§8.6.7, step 4);
+   - the notice;
+   - the API and the `/ctf` page. They do not gate the start.
+6. **After `end(7)`:** the shadow run. The server builds epoch 7's census, draw and ledger from the real
+   samples without committing them, and publishes an unsigned report. The validator's audit runs on it.
+7. **By about 12‑01:** the CTF audit and approval, in `E_x`'s validator release, and `snclaim v2 check`.
+8. **Before `end(8)`, about 12‑04 18:30Z:** the CTF driver in production: the close, the census commitment,
+   the draw, the build and the commit.
+9. **Before the first CTF claims, about 12‑07:** the multi‑pool relay, then the SDK and app releases with the
+   labels. Until then old apps show a CTF account as "Pool 4294967297" and claim it like any pool (§10).
+
+*What would move the start to epoch 9:*
+
+- the operation not executed before epoch 8 starts. Scheduled after about 11‑24 18:29Z, it cannot be;
+- the entry not signed before epoch 8 starts, since the signing tool would then require epoch 9;
+- the sampler not running when epoch 8 starts;
+- the notice not out before epoch 8 starts.
+
+*What would not:*
+
+- **A shadow mismatch or a late driver.** The operator commits no census for epoch 8, so every slot carries
+  (§4.7), and the first winners are drawn in epoch 9.
+- **A late validator release,** as long as it lands before the UID's immunity ends. It only shrinks epoch 8's
+  funding.
+
+## 12. Decisions
+
+### 12.1 Owner decisions, 2026‑11‑11
+
+1. **A new pool per network operator, with its own UID**, beside the current mechanism.
+2. **The shares.** Of the providers' share: provider pool 0.4, CTF pool 0.1, top‑level miners 0.5.
+3. **Head cede.** While no top‑level miner is weighted, the head's share goes to the provider pool only, and
+   CTF stays at 0.1.
+4. **Slots.** A uniform amount to up to 5 providers and up to 5 extenders per country.
+5. **Nomination.** The operator nominates candidates from its own reliability data and picks winners at
+   random per country: a lottery for eligible miners.
+6. **Eligibility.** Online, passing the operator's checks and in the same country for at least half of the
+   epoch, and active at its end.
+7. **Carry.** Slots that cannot be awarded carry forward to the next epoch, so a country can build a large
+   pot.
+8. **Carry custody.** The carry is held by an immutable carry contract.
+9. **Countries.** All 249 ISO 3166‑1 codes have slots.
+10. **Units.** The IPv4 and IPv6 subnet uniqueness rules of the head and extender pools apply: all miners in
+    one subnet are equivalent.
+11. **Validators** do not probe the CTF pool. Each chooses whether to allocate to it.
+12. **Registration.** Miners use the provider pool's registration.
+13. **Claims.** The apps claim CTF rewards in the same claim flow as pool rewards.
+14. **Inspection.** The pool is externally inspectable, through an API at `sn/api/operator.yml` and a flag grid
+    on ur.xyz.
+15. **The `/ctf` page.**
+    - Flags held are countries whose ten slots were all won.
+    - A role is "not fully captured" where at least one of its slots went unclaimed, so a newcomer wins by
+      default.
+    - The chance to win shows only where all five of a role's slots were won: 1/(entries − 4), or 100% at
+      five entries or fewer.
+16. **A fifth of the pot.** Each winner takes its own slot and a fifth of the pot carried into its country
+    and role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so
+    it has to stay about five epochs to capture most of the reward.
+17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow (§11.2).
+
+### 12.2 Resolved in this design, for review
+
+| # | Question | Resolution | Why |
+|---|---|---|---|
+| 1 | How is CTF divided across NOs? | By each validator's own pool weights `ŵ_n` | It needs no CTF measurement, and it follows demand and quality like the pool. |
+| 2 | Where does an empty CTF channel's share go? | To pool and head 4 : 5, each ceding to the other when empty | That is today's behaviour whenever CTF is absent. |
+| 3 | How does a validator choose? | A `ctf` setting, `support` in the sample config | The user's "support it or not". Yuma makes it a stake‑majority choice. |
+| 4 | How are the split and `E_c` fixed? | A signed amendment entry v2, not a successor policy | A new policy hash would leave every payout consent outside the new epochs' domain. |
+| 5 | Which on‑chain identity? | The vault2 pool `2^32 + n`, through an `STSettlement2` upgrade | One UID, no fake operator, and the consents' NO domain stays the same. |
+| 6 | What sets the uniform amount? | Fresh funding ÷ 2,490, with the remainder by slot order | Returned carry pays only what it is owed. |
+| 7 | How is a pot paid? | A fifth to each winner per epoch, and the rest carries | Owner decision (§12.1, item 16). It replaces an earlier even split among the epoch's winners. |
+| 8 | Who is excluded? | Head‑bound clients, non‑Public providers, the NO's own networks, duplicate addresses | One tier per client, public coverage only, and no self‑dealing (E3–E5). |
+| 9 | Which country for a unit? | Its lowest candidate client id's, one country per client per role | A unit is one ticket. |
+| 10 | Can one client win both roles? | Yes | Every miner can be a provider and an extender (§8.6 decision 9). |
+| 11 | How is the draw kept honest? | The census committed on chain, then a drand round at least 60 s later | The candidates are fixed before randomness exists, and drand cannot be biased. |
+| 12 | What if no census is committed? | No draw, and everything carries | Withholding gains the operator nothing. |
+| 13 | What if the carry is late? | Pending awards, paid in full when it returns | A winner never loses its pot to a delay. |
+| 14 | What does the census publish? | Candidates' client ids, units and countries. Coldkeys only for winners, counts for exclusions. | The audit needs no more. |
+| 15 | Does anyone check CTF roots? | The auditor's arithmetic and draw audit, needed for finalization | vault2 requires approval. This is not probing. |
+| 16 | Where are the routes documented? | `/sn/ctf` in `sn/api/operator.yml`, mapped by the conformance test | As `competition.yml` is. |
+| 17 | How does the pool register through the timelock? | One operation that upgrades and registers, with the hotkey derived at execution | It saves 72 h, and a hotkey named 72 h ahead could be registered first by anyone (§3.1). |
+| 18 | Is Kosovo included? | No | XK is not an ISO 3166‑1 code, and the server refuses unnamed codes. |
+
+### 12.3 Later options, not open questions
+
+These are only options, each needing its own signed entry:
+
+- ASN units for both the extender pool and CTF;
+- a cap on pots, or a release of territories' pots to countries with winners;
+- per‑country slot counts;
+- a derived‑location requirement for large pots;
+- a wind‑down rule for ending CTF, which must say where the outstanding pots go, since CTF α can leave only
+  through CTF accounts;
+- CTF pools for operators other than UR.
