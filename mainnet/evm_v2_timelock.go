@@ -8,15 +8,17 @@
 // With --timelock, upgrade-settlement2 review and owner-call-settlement2
 // review check that timelock at the same head as the call: its exact reviewed
 // code, its minimum delay and the Safe's roles. The reviewed owner call then
-// becomes the Safe's call of schedule(settlement2, 0, call, 0x0, salt,
+// becomes the Safe's call of schedule(settlement2, value, call, 0x0, salt,
 // minDelay), which the Safe's owner executes exactly as the direct Safe call
 // went, and the call itself is preflighted from the timelock, so a schedule
-// whose execution would revert is refused up front. With --execute, review
-// covers the scheduled operation's execute step instead: the operation must
-// be ready, and review prints the timelock's execute transaction, which any
-// funded key sends while execution is open, or the Safe's execTransaction of
-// it while only the Safe executes. Without --timelock both reviews keep the
-// direct Safe call.
+// whose execution would revert is refused up front. The value is zero but for
+// the capture the flag upgrade's call, which the timelock pays from its own
+// balance: that call's preflight needs the balance, and review refuses a
+// timelock that holds less. With --execute, review covers the scheduled
+// operation's execute step instead: the operation must be ready, and review
+// prints the timelock's execute transaction, which any funded key sends while
+// execution is open, or the Safe's execTransaction of it while only the Safe
+// executes. Without --timelock both reviews keep the direct Safe call.
 package main
 
 import (
@@ -137,12 +139,14 @@ func settlement2TimelockFlags(flags *flag.FlagSet) func(set map[string]bool, gov
 }
 
 // The timelock section of a review in timelock mode. call is the owner call
-// the timelock makes when the operation executes. roles names, for each role,
-// which of the Safe, the zero address and the timelock itself hold it:
-// TimelockController keeps no member list. earliest_execution is, for a
-// schedule, the head's time plus the minimum delay (the schedule lands later,
-// so the operation is ready later still) and, for a scheduled operation, its
-// getTimestamp. execute_transaction is the timelock's execute of the call.
+// the timelock makes when the operation executes, with its value. roles
+// names, for each role, which of the Safe, the zero address and the timelock
+// itself hold it: TimelockController keeps no member list. earliest_execution
+// is, for a schedule, the head's time plus the minimum delay (the schedule
+// lands later, so the operation is ready later still) and, for a scheduled
+// operation, its getTimestamp. execute_transaction is the timelock's execute
+// of the call; it sends no value, since the timelock pays the call's value
+// from its own balance.
 type settlement2UpgradeTimelock struct {
 	Address               string                       `json:"address"`
 	CodeHash              string                       `json:"code_hash"`
@@ -235,13 +239,31 @@ func settlement2LooksLikeTimelock(ctx context.Context, chain *upgradeChain, owne
 }
 
 // settlement2TimelockOperation is TimelockController.hashOperation of a call
-// of data on target with no value and no predecessor.
-func settlement2TimelockOperation(target common.Address, data []byte, salt common.Hash) common.Hash {
-	encoded, err := settlement2TimelockAbi.Methods["hashOperation"].Inputs.Pack(target, new(big.Int), data, [32]byte{}, [32]byte(salt))
+// of data with value on target, with no predecessor.
+func settlement2TimelockOperation(target common.Address, value *big.Int, data []byte, salt common.Hash) common.Hash {
+	encoded, err := settlement2TimelockAbi.Methods["hashOperation"].Inputs.Pack(target, value, data, [32]byte{}, [32]byte(salt))
 	if err != nil {
 		panic(err)
 	}
 	return crypto.Keccak256Hash(encoded)
+}
+
+// settlement2TimelockTime renders a unix time as UTC RFC 3339, or nothing for
+// one past int64.
+func settlement2TimelockTime(seconds *big.Int) string {
+	if !seconds.IsInt64() {
+		return ""
+	}
+	return time.Unix(seconds.Int64(), 0).UTC().Format(time.RFC3339)
+}
+
+// balance is an account's balance at the head, in wei.
+func (self *upgradeChain) balance(ctx context.Context, address common.Address) (*big.Int, error) {
+	var balance hexutil.Big
+	if err := self.client.callUpgradeRead(ctx, "eth_getBalance", []any{address.Hex(), self.head}, &balance); err != nil {
+		return nil, err
+	}
+	return balance.ToInt(), nil
 }
 
 // time is the head block's timestamp.
@@ -272,18 +294,25 @@ type settlement2TimelockReview struct {
 }
 
 // reviewSettlement2Timelock checks the timelock and the operation of call,
-// with data, on settlement, then builds the transaction of the step under
-// review: the Safe's schedule, or the execute step. With preflight it runs
-// the call from the timelock and the step's transaction from its sender at
-// the head, and either failing is a refusal; without it neither runs.
-func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governance settlement2Governance, settlement common.Address, call settlement2TimelockCall, data []byte, preflight bool) (settlement2TimelockReview, error) {
+// with data and value, on settlement, then builds the transaction of the step
+// under review: the Safe's schedule, or the execute step. At the schedule
+// step, schedulable, when set, refuses an operation that could not succeed
+// once it is ready; it gets the head's time and the earliest execution. With
+// preflight it runs the call from the timelock and the step's transaction
+// from its sender at the head, and either failing is a refusal; the timelock
+// pays the call's value from its own balance, so review first refuses one
+// that holds less. Without preflight neither runs.
+func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governance settlement2Governance, settlement common.Address, call settlement2TimelockCall, data []byte, value *big.Int, preflight bool, schedulable func(now uint64, earliest *big.Int) error) (settlement2TimelockReview, error) {
 	var result settlement2TimelockReview
+	if value == nil {
+		value = new(big.Int)
+	}
 	timelock, delay, err := readSettlement2Timelock(ctx, chain, governance)
 	if err != nil {
 		return result, err
 	}
-	id := settlement2TimelockOperation(settlement, data, governance.salt)
-	values, err := upgradeView(ctx, chain, governance.timelock, settlement2TimelockAbi, "hashOperation", settlement, new(big.Int), data, [32]byte{}, [32]byte(governance.salt))
+	id := settlement2TimelockOperation(settlement, value, data, governance.salt)
+	values, err := upgradeView(ctx, chain, governance.timelock, settlement2TimelockAbi, "hashOperation", settlement, value, data, [32]byte{}, [32]byte(governance.salt))
 	if err != nil {
 		return result, err
 	}
@@ -307,7 +336,7 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 	if err != nil {
 		return result, err
 	}
-	executeData, err := settlement2TimelockAbi.Pack("execute", settlement, new(big.Int), data, [32]byte{}, [32]byte(governance.salt))
+	executeData, err := settlement2TimelockAbi.Pack("execute", settlement, value, data, [32]byte{}, [32]byte(governance.salt))
 	if err != nil {
 		return result, err
 	}
@@ -317,12 +346,6 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 		Function: "execute(address,uint256,bytes,bytes32,bytes32)"}
 	timelock.CallPreflight = settlement2UpgradePreflight{Result: "not run"}
 	result.preflight = settlement2UpgradePreflight{Result: "not run"}
-	at := func(seconds *big.Int) string {
-		if !seconds.IsInt64() {
-			return ""
-		}
-		return time.Unix(seconds.Int64(), 0).UTC().Format(time.RFC3339)
-	}
 
 	// The step must find the operation in its state: a schedule only an
 	// operation that does not exist yet, an execute only a ready one.
@@ -332,7 +355,7 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 		case "unset":
 			return result, upgradeRefusal(fmt.Sprintf("the operation %s is not scheduled: review its schedule, without --execute", id.Hex()))
 		case "waiting":
-			return result, upgradeRefusal(fmt.Sprintf("the operation %s is not ready until %s, %s s after the head", id.Hex(), at(ready), new(big.Int).Sub(ready, new(big.Int).SetUint64(now))))
+			return result, upgradeRefusal(fmt.Sprintf("the operation %s is not ready until %s, %s s after the head", id.Hex(), settlement2TimelockTime(ready), new(big.Int).Sub(ready, new(big.Int).SetUint64(now))))
 		case "done":
 			return result, upgradeRefusal(fmt.Sprintf("the operation %s has already executed", id.Hex()))
 		}
@@ -340,22 +363,39 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 	} else {
 		switch state {
 		case "waiting":
-			return result, upgradeRefusal(fmt.Sprintf("the operation %s is already scheduled, ready at %s: then review its execute step with --execute", id.Hex(), at(ready)))
+			return result, upgradeRefusal(fmt.Sprintf("the operation %s is already scheduled, ready at %s: then review its execute step with --execute", id.Hex(), settlement2TimelockTime(ready)))
 		case "ready":
 			return result, upgradeRefusal(fmt.Sprintf("the operation %s is already scheduled and ready: review its execute step with --execute", id.Hex()))
 		case "done":
 			return result, upgradeRefusal(fmt.Sprintf("the operation %s has executed; scheduling the same call again takes another --timelock-salt", id.Hex()))
 		}
 		timelock.Step, earliest = "schedule", new(big.Int).Add(new(big.Int).SetUint64(now), delay)
+		if schedulable != nil {
+			if err := schedulable(now, earliest); err != nil {
+				return result, err
+			}
+		}
 	}
-	timelock.EarliestExecution, timelock.EarliestExecutionUnix = at(earliest), earliest.String()
+	timelock.EarliestExecution, timelock.EarliestExecutionUnix = settlement2TimelockTime(earliest), earliest.String()
 
-	// The call itself, from the timelock, as the execute step runs it.
+	// The call itself, from the timelock, as the execute step runs it: with
+	// its value, which the timelock pays from its own balance.
 	if preflight {
-		if _, err := chain.call(ctx, &governance.timelock, settlement, data); err != nil {
+		ran := "the call from the timelock succeeds at the head"
+		if value.Sign() != 0 {
+			balance, err := chain.balance(ctx, governance.timelock)
+			if err != nil {
+				return result, err
+			}
+			if balance.Cmp(value) < 0 {
+				return result, upgradeRefusal(fmt.Sprintf("the timelock %s holds %s wei, less than the call's value of %s wei, which it pays from its own balance at execution: send it at least %s wei first", governance.timelock.Hex(), balance, value, new(big.Int).Sub(value, balance)))
+			}
+			ran = "the call from the timelock, with its value, succeeds at the head"
+		}
+		if _, err := chain.call(ctx, &governance.timelock, value, settlement, data); err != nil {
 			return result, fmt.Errorf("the call from the timelock: %w", err)
 		}
-		timelock.CallPreflight = settlement2UpgradePreflight{Ran: true, Result: "the call from the timelock succeeds at the head"}
+		timelock.CallPreflight = settlement2UpgradePreflight{Ran: true, Result: ran}
 	}
 
 	// The step's transaction: the Safe's schedule; anyone's execute while
@@ -364,14 +404,14 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 	var args map[string]string
 	switch {
 	case !governance.execute:
-		data, err = settlement2TimelockAbi.Pack("schedule", settlement, new(big.Int), data, [32]byte{}, [32]byte(governance.salt), delay)
+		data, err = settlement2TimelockAbi.Pack("schedule", settlement, value, data, [32]byte{}, [32]byte(governance.salt), delay)
 		if err != nil {
 			return result, err
 		}
-		function, args = "schedule(address,uint256,bytes,bytes32,bytes32,uint256)", map[string]string{"target": settlement.Hex(), "value": "0", "data": call.Data, "predecessor": zero, "salt": governance.salt.Hex(), "delay": delay.String()}
+		function, args = "schedule(address,uint256,bytes,bytes32,bytes32,uint256)", map[string]string{"target": settlement.Hex(), "value": value.String(), "data": call.Data, "predecessor": zero, "salt": governance.salt.Hex(), "delay": delay.String()}
 	case timelock.Executor == "open":
 		if preflight {
-			if _, err := chain.call(ctx, nil, governance.timelock, executeData); err != nil {
+			if _, err := chain.call(ctx, nil, nil, governance.timelock, executeData); err != nil {
 				return result, fmt.Errorf("the execute transaction: %w", err)
 			}
 			result.preflight = settlement2UpgradePreflight{Ran: true, Result: "execute from any sender succeeds at the head"}
@@ -380,7 +420,7 @@ func reviewSettlement2Timelock(ctx context.Context, chain *upgradeChain, governa
 		return result, nil
 	default:
 		data = executeData
-		function, args = "execute(address,uint256,bytes,bytes32,bytes32)", map[string]string{"target": settlement.Hex(), "value": "0", "payload": call.Data, "predecessor": zero, "salt": governance.salt.Hex()}
+		function, args = "execute(address,uint256,bytes,bytes32,bytes32)", map[string]string{"target": settlement.Hex(), "value": value.String(), "payload": call.Data, "predecessor": zero, "salt": governance.salt.Hex()}
 	}
 	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, governance.safe)
 	if err != nil {
