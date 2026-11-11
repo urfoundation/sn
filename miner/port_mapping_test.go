@@ -11,7 +11,7 @@ import (
 	"github.com/urnetwork/sdk"
 )
 
-// The miner's router port mapping (connect/EXTENDER.md S8): on by default,
+// The miner's router port mapping (connect/EXTENDER.md S10): on by default,
 // unlike the apps, off by URNETWORK_PORT_MAPPING or --no-port-mapping, and
 // reported by provider status and provider doctor.
 

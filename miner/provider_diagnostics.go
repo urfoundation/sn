@@ -58,7 +58,7 @@ type providerExtenderObservation struct {
 	ActivationFailed bool `json:"activation_failed"`
 	Revoked          bool `json:"revoked"`
 	// the router port mapping's state, the sdk's fixed set (off, not_needed,
-	// mapping, mapped, failed), never its reason (connect/EXTENDER.md S8)
+	// mapping, mapped, failed), never its reason (connect/EXTENDER.md S10)
 	PortMapping string `json:"port_mapping,omitempty"`
 }
 

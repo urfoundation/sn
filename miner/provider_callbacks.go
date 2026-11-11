@@ -125,7 +125,7 @@ type providerExtenderStatusListener struct {
 	diagnostics *providerDiagnostics
 	provider    uint64
 	// the run's port mapping, which the extender slot's listener alone feeds
-	// (connect/EXTENDER.md S8); nil on every other slot
+	// (connect/EXTENDER.md S10); nil on every other slot
 	portMapping *minerPortMappingHolder
 }
 

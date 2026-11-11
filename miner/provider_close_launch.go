@@ -14,7 +14,7 @@ import (
 // carrier beside udp 4053 (connect/EXTENDER.md L2): a refused 53 leaves the
 // carrier on 4053, and tcp 443 still decides whether the extender runs. And
 // unlike the apps it asks the router to forward the extender's ports unless
-// URNETWORK_PORT_MAPPING turns that off (S8, port_mapping.go).
+// URNETWORK_PORT_MAPPING turns that off (S10, port_mapping.go).
 func ProviderDeviceSettings(domainHash [32]byte) *sdk.DeviceLocalSettings {
 	settings := sdk.DefaultDeviceLocalSettings()
 	settings.ClientSettings.ContractManagerSettings.CloseReportDomainHash = domainHash

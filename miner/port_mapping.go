@@ -10,7 +10,7 @@ import (
 	"github.com/urnetwork/sdk"
 )
 
-// The router port mapping of the miner's extender (connect/EXTENDER.md S8): the
+// The router port mapping of the miner's extender (connect/EXTENDER.md S10): the
 // extender asks the router, by UPnP, NAT-PMP or PCP, to forward its own ports --
 // TCP 443, UDP 443 and UDP 4053 -- to this device, so a miner behind a home
 // router can be an extender. The miner turns it on by default and the apps

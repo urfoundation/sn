@@ -761,7 +761,7 @@ func provideWith(opts docopt.Opts, start bool) {
 	applyProviderProcessMemory(memoryPlan)
 
 	// the extender's router port mapping is on unless this run or its
-	// environment turns it off (connect/EXTENDER.md S8); the environment is
+	// environment turns it off (connect/EXTENDER.md S10); the environment is
 	// what every slot and every operator child reads
 	if noPortMapping, _ := opts.Bool("--no-port-mapping"); noPortMapping {
 		os.Setenv(minerPortMappingEnv, "0")
@@ -890,7 +890,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	}
 	defer progress.close()
 	// provider status reads this; it stops before progress closes
-	// what the extender slot's router port mapping comes to (S8)
+	// what the extender slot's router port mapping comes to (S10)
 	portMapping := newMinerPortMappingHolder(minerPortMappingEnabled())
 	defer startMinerStatusFile(ctx, progress, portMapping)()
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)

@@ -46,7 +46,7 @@ type minerStatusReport struct {
 	// connection (an older version, or one just starting).
 	Unreported bool `json:"connection_unreported,omitempty"`
 	// the extender's router port mapping, while a miner that reports it runs
-	// (connect/EXTENDER.md S8)
+	// (connect/EXTENDER.md S10)
 	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
 	Update      minerUpdateReport       `json:"update"`
 	StateDir    string                  `json:"state_dir"`
@@ -291,7 +291,7 @@ func (self statusWriter) warn(label string, detail string) {
 }
 
 // The extender's router port mapping line, while a running miner reports it
-// (connect/EXTENDER.md S8). A router that did not open the ports is a warning:
+// (connect/EXTENDER.md S10). A router that did not open the ports is a warning:
 // the miner provides without it.
 func (self statusWriter) portMapping(status *minerPortMappingStatus) {
 	if status == nil {
@@ -365,7 +365,7 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 		w.row(nil, "Miner", "not running ("+minerStartHint()+")")
 	}
 	// the extender's router port mapping, and why the router did not open the
-	// ports when it did not (connect/EXTENDER.md S8)
+	// ports when it did not (connect/EXTENDER.md S10)
 	w.portMapping(report.PortMapping)
 
 	// updates: can this binary replace itself?

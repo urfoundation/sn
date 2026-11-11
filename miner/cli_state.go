@@ -39,7 +39,7 @@ type minerLocalStatus struct {
 	StoppedAt      *time.Time          `json:"stopped_at,omitempty"`
 	ConnectedSince *time.Time          `json:"connected_since,omitempty"`
 	Members        []minerMemberStatus `json:"members"`
-	// the extender's router port mapping (connect/EXTENDER.md S8), absent
+	// the extender's router port mapping (connect/EXTENDER.md S10), absent
 	// from a miner that predates it
 	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
 }
