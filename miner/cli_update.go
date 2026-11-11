@@ -46,8 +46,11 @@ const minerUpdateDefaultSource = "https://api.github.com/repos/urnetwork/build/r
 const minerUpdateRollout = 16 * time.Hour
 
 // How long a new version has to come back connected before it is rolled
-// back, and how long a rolled back version is skipped.
-const minerUpdateHealthWindow = 10 * time.Minute
+// back, how often that is looked at, and how long a rolled back version is
+// skipped. Variables only so tests can shorten the wait.
+var minerUpdateHealthWindow = 10 * time.Minute
+var minerUpdateHealthPoll = 3 * time.Second
+
 const minerUpdateHoldBack = 7 * 24 * time.Hour
 
 // The largest download an update reads, and the largest binary it accepts.
@@ -472,7 +475,8 @@ type minerRunningState struct {
 	service   minerServiceManager
 }
 
-func readMinerRunningState() minerRunningState {
+// readMinerRunningState is a variable so tests can stand in a service.
+var readMinerRunningState = func() minerRunningState {
 	state := minerRunningState{}
 	if status, err := readMinerLocalStatus(); err == nil && status.running(time.Now()) {
 		state.running = true
@@ -500,7 +504,7 @@ func waitMinerHealthy(version string, needConnected bool, window time.Duration, 
 		if tick != nil {
 			tick()
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(minerUpdateHealthPoll)
 	}
 	return false
 }
