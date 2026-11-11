@@ -57,6 +57,9 @@ type providerExtenderObservation struct {
 	ActivatedV6      bool `json:"activated_v6"`
 	ActivationFailed bool `json:"activation_failed"`
 	Revoked          bool `json:"revoked"`
+	// the router port mapping's state, the sdk's fixed set (off, not_needed,
+	// mapping, mapped, failed), never its reason (connect/EXTENDER.md S8)
+	PortMapping string `json:"port_mapping,omitempty"`
 }
 
 // Optional operational delivery evidence is independent of status=ok, which

@@ -39,6 +39,9 @@ type minerLocalStatus struct {
 	StoppedAt      *time.Time          `json:"stopped_at,omitempty"`
 	ConnectedSince *time.Time          `json:"connected_since,omitempty"`
 	Members        []minerMemberStatus `json:"members"`
+	// the extender's router port mapping (connect/EXTENDER.md S8), absent
+	// from a miner that predates it
+	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
 }
 
 type minerMemberStatus struct {
@@ -115,9 +118,10 @@ func writeMinerLocalStatus(status *minerLocalStatus) error {
 }
 
 // startMinerStatusFile keeps the status file current from the run's
-// progress until the returned stop is called, which records the stop time.
-// A status file that can't be written never stops the miner.
-func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) (stop func()) {
+// progress and its extender's port mapping (nil for none) until the returned
+// stop is called, which records the stop time. A status file that can't be
+// written never stops the miner.
+func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, portMapping *minerPortMappingHolder) (stop func()) {
 	if progress == nil {
 		return func() {}
 	}
@@ -135,6 +139,7 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) 
 			status.Members = append(status.Members, minerMemberStatus{Slot: member.Slot, ClientId: member.ClientId, Lifecycle: member.Lifecycle, Connected: member.Connected, Ready: member.Ready})
 		}
 		status.UpdatedAt = time.Now().UTC()
+		status.PortMapping = portMapping.snapshot()
 		if status.connected() {
 			if status.ConnectedSince == nil {
 				since := status.UpdatedAt

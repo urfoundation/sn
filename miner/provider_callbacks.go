@@ -124,6 +124,9 @@ type providerExtenderStatusListener struct {
 	last        providerExtenderObservation
 	diagnostics *providerDiagnostics
 	provider    uint64
+	// the run's port mapping, which the extender slot's listener alone feeds
+	// (connect/EXTENDER.md S8); nil on every other slot
+	portMapping *minerPortMappingHolder
 }
 
 // The provider borrows its enclosing run's explicitly supplied output budget.
@@ -135,8 +138,11 @@ func newProviderExtenderStatusListener(output *providerDiagnostics, provider uin
 func (self *providerExtenderStatusListener) ExtenderProvideStatusChanged(status *sdk.ExtenderProvideStatus) {
 	observation := providerExtenderObservation{}
 	if status != nil {
-		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0}
+		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0, PortMapping: status.PortMapping}
 	}
+	// the status file keeps the router's answer, its reason included, for
+	// provider status on this device; the diagnostics carry the state alone
+	self.portMapping.observe(status)
 	changed := func() bool {
 		self.stateLock.Lock()
 		defer self.stateLock.Unlock()
