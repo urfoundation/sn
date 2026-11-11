@@ -2315,10 +2315,11 @@ and role, so the first miner to reach a thin country earns far more than one mor
   country's draw per role, the country of its lowest candidate client id. A miner may be a candidate in both
   roles and win both: every miner can be both a provider and an extender (§8.6.8, decision 9).
 - **The census and its commitment.** Right after the end boundary, the server builds epoch `k`'s **census**:
-  one row per candidate (role, country, unit, unit family, client id), sorted, with per‑country counts of the
-  miners each rule excluded. It holds no coldkeys and no addresses. Within 600 blocks of `end(k)`, NO `n`'s
-  root signer commits `censusHash = sha256(census header)` with `commitCtfCensus(k, n, censusHash)`, once per
-  epoch, so the candidates are fixed on chain before any randomness for the draw exists.
+  one row per candidate (role, its own country, unit, unit family, client id), sorted, with per‑country
+  counts of the miners each rule excluded. It holds no coldkeys and no addresses. Within 600 blocks of
+  `end(k)`, NO `n`'s root signer commits `censusHash = sha256(census header)` with
+  `commitCtfCensus(k, n, censusHash)`, once per epoch, so the candidates are fixed on chain before any
+  randomness for the draw exists.
 - **The draw.** A drand round published after the commitment seeds it:
 
   ```
@@ -2328,9 +2329,11 @@ and role, so the first miner to reach a thin country earns far more than one mor
   member   = in each winning unit, the candidate with the smallest keccak256(σ_k ‖ role ‖ unit ‖ client_id)
   ```
 
-  `rand_k` is the round's randomness, verified against quicknet's public key. Taking the smallest tickets
-  draws a uniformly random set of up to five units. Block producers cannot bias drand, and a second commitment
-  is refused. An operator that withholds its commitment gets no draw, and everything carries.
+  `rand_k` is the round's randomness, verified against quicknet's public key. Candidates with an active fleet
+  binding at either boundary are left out first. Taking the smallest tickets draws a uniformly random set of
+  up to five units. Block producers cannot bias drand, and a second commitment is refused. An operator that
+  withholds its commitment gets no draw, and so does a committed census that is not canonical: everything then
+  carries.
 
 #### 8.7.3 Pots and the carry contract
 
@@ -2345,7 +2348,7 @@ and role, so the first miner to reach a thin country earns far more than one mor
     arrives first.
 - **Fresh amounts only.** Slot amounts come from the epoch's fresh funding. Returned carry pays only the pots
   and pending awards it is owed, never new slots. All amounts are exact integers in rao (`CAPTURETHEFLAG.md`
-  §4.5).
+  §4.5, implemented by the package `ctf`).
 - **The carry contract.** vault2 requires each root's total to equal the pool's funding through its epoch, so
   every captured rao sits in some account at every root, and a pot cannot wait inside the pool. Each root pays
   the pots and pending awards to the account of the **carry contract**, `STCtfCarry`: immutable, ownerless, one
@@ -2389,7 +2392,7 @@ takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
   census against its commitment, the seed from the drand pulse, the draw, the amounts and the accounts. It is
   the same kind of check it runs on the extender census, not a measurement. Presence, the checks behind P1 and
   X1, the countries, units and address dedupe, the wallets and the declared networks are attested and not
-  checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit.
+  checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit, `ctf.Verify`.
 - **Claims.** Apps claim a CTF account beside the pool account, in the same claim flow. Each entry of
   `GET /sn/ledger/account` gains `kind` (`pool` or `ctf`) and `label`. Old apps show a CTF account as
   "Pool 4294967297" and claim it like any pool.

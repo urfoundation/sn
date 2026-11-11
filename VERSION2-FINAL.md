@@ -1996,7 +1996,8 @@ change, and its guarantees (§4.2) hold for the CTF pool as for any pool.
 The provider pool's ledger and allocation (§6) do not change either. This
 addendum records what the CTF pool adds to this plan. The census, the draw,
 the amounts, the CTF ledger and its audit are specified in CAPTURETHEFLAG.md
-§4, §5 and §8.
+§4, §5 and §8, and implemented by the package `ctf`, whose `ctf/doc.go`
+states every format byte for byte.
 
 ### 19.1 The CTF pool on vault2
 
@@ -2191,7 +2192,8 @@ tells them apart by `recycledFor` (CAPTURETHEFLAG.md §4.5, §4.6). A return
 recorded for an epoch that is later deferred is captured by the next close,
 and the ledger rolls it forward. Each stake move may lose a rao to the
 runtime's rounding (§7.3), at most four a cycle counting the claim, the two
-moves and the next capture, and the ledger writes them off. If the carry
+moves and the next capture. The CTF ledger tolerates two cycles' rounding,
+8 rao, and writes it off (CAPTURETHEFLAG.md §4.5). If the carry
 has not come back by an epoch's close, the epoch's winners take their slot
 amounts at once and their pot shares as pending awards, paid in full in the
 first epoch whose carry is back.
@@ -2211,9 +2213,9 @@ first epoch whose carry is back.
 
 - **Server** (CAPTURETHEFLAG.md §11.1). A quarter-hour presence sampler for
   providers and extenders; the census at the end boundary, committed with
-  `commitCtfCensus` within 600 blocks; the wait for the drand round; the
-  draw and the build; the commit and finalize with the provider pool; then
-  `recycle`. `GET /sn/ledger/account` (§8.3) serves both pools, and each
+  `commitCtfCensus` within 600 blocks, its objects published first and
+  kept; the wait for the drand round; the draw and the build (`ctf.Build`);
+  the commit and finalize with the provider pool; then `recycle`. `GET /sn/ledger/account` (§8.3) serves both pools, and each
   entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a
   pool whose tree cannot be built is named in `unavailable_pools` instead of
   failing the answer; without it the answer stays whole or a 502. The CTF
@@ -2225,14 +2227,15 @@ first epoch whose carry is back.
   batch.
 - **Validator** (§9). The three-way split and its cede rules
   (`WHITEPAPER.md` §8.5), the `ctf` setting (`support` or `off`), the CTF
-  pool's resolution above, and the CTF audit and approval as the quorum-1
-  auditor. It recomputes the census against its commitment, the seed, the
-  draw, the amounts and the accounts, and approves nothing that does not
-  reproduce exactly (CAPTURETHEFLAG.md §8). It reads `E_c` and the shares
-  from the amendment entry v2.
+  pool's resolution above, and the CTF audit (`ctf.Verify`) and approval as
+  the quorum-1 auditor. It recomputes the census against its commitment, the
+  seed, the draw, the amounts and the accounts, and approves nothing that
+  does not reproduce exactly (CAPTURETHEFLAG.md §8). It reads `E_c` and the
+  shares from the amendment entry v2.
 - **`snclaim` and the claim daemon** (§10). Both already treat each
   `(vault, noId, index)` as its own account, so they claim CTF accounts
-  unchanged. `snclaim v2 check --no_id 4294967297` runs the CTF audit.
+  unchanged. `snclaim v2 check --no_id 4294967297` runs the CTF audit
+  through the same `ctf.Verify`.
 - **SDK and apps** (§11). `SnLedgerAccount` gains `Kind` and `Label`. The SDK
   asks with `partial=true`, and claims two or more claimable accounts in one
   `STClaimBatcher` transaction (§10.2). The apps label CTF accounts "Capture

@@ -2,10 +2,11 @@
 
 **A per‑country coverage lottery beside the provider pool.**
 
-Design, 2026‑11‑11. Nothing here is built yet. From the CTF start epoch `E_c` (epoch 8, the owner's decision; §11.2) it
+Design, 2026‑11‑11. From the CTF start epoch `E_c` (epoch 8, the owner's decision; §11.2) it
 amends the steering split of `WHITEPAPER.md` §8.5 and adds a second settlement v2 pool per network operator
 (`VERSION2-FINAL.md`). The owner's decisions of 2026‑11‑11 are folded in (§12.1). Every other question the
-design raised is resolved in §12.2, each with its reason, for the owner's review.
+design raised is resolved in §12.2, each with its reason, for the owner's review. Where the code built since
+departs from this design's first draft, the text follows the code and gives the reason (§12.2, rows 19–22).
 
 ## Summary
 
@@ -144,6 +145,11 @@ UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the fl
 The owner signs it before `E_c` starts, because the signing tool refuses an entry for an epoch that has
 already started.
 
+The entry is a line of `amendments.yml`, beside `price.yml`, published at `https://ur.xyz/amendments.yml` and
+signed over its text with the price sheet's pinned key. The `amendment` package reads it, and `cli/amendment`
+signs it (`mainnet/SETTLEMENT-AMENDMENTS.md`). Only the chain, sn, operator, first epoch and carry vary: the
+carry must be in EIP‑55 checksum form, and the ctf pool must be `2^32 + no`.
+
 ## 3. The CTF pool
 
 ### 3.1 On chain
@@ -273,14 +279,16 @@ deactivate an address) keeps only current state today, so the sampler is its fir
 
 **Units are tickets.** All candidates in one unit are equivalent: the unit holds one ticket per role, whatever
 its size. A unit enters one country's draw for each role, the country of its lowest candidate client id; the
-other members follow it there. A client is a candidate in at most one country per role. It may be a
+other members follow it there. The census keeps each candidate's own country (§4.3), and the draw, not the
+census, places the unit. So members of one unit may list different countries, and the auditor can check the
+rule from the census (`ctf` package). A client is a candidate in at most one country per role. It may be a
 candidate in both roles and win both: every miner can be both a provider and an extender (§8.6 decision 9).
 
 ### 4.3 The census and its commitment
 
 Right after the end boundary is finalized, at the moment the server already captures the users count
-(`stLedgerV2CaptureUsers`), the server builds epoch `k`'s **census**. It is one row per candidate, sorted
-by role, country, unit and client id:
+(`stLedgerV2CaptureUsers`), the server builds epoch `k`'s **census**. It is one row per candidate, with the
+candidate's own country at `end(k)`, sorted by role, country, unit and client id:
 
 ```
 census row (52 bytes):  role (1: 1 provider, 2 extender) ‖ country (2, ASCII) ‖ unit (32) ‖ unit family (1: 4 or 6) ‖ client_id (16)
@@ -296,6 +304,10 @@ census header (JSON):   {"schema":"urnetwork-ctf-census-v1","no_id":N,"pool_id":
 - **The commitment.** Within 600 blocks of `end(k)` the root signer commits `censusHash = sha256(census
   header)` with `commitCtfCensus(k, n, censusHash)` at some block `B_k`. The commitment is write‑once, so the
   candidates are fixed on chain before any randomness for the draw exists.
+- **Canonical, or no draw.** A committed census that is not canonical gives no draw for `k`, exactly as an
+  uncommitted one does (§4.7, §8 check 1). The server publishes every census object before it commits the
+  hash, and keeps them: a committed census whose objects are lost can never be verified, and the roots that
+  cover its epoch stall.
 
 ### 4.4 The draw
 
@@ -308,6 +320,11 @@ winners    = the min(5, |U_{c,r}|) units with the smallest tickets, ranked 1… 
 member     = in each winning unit, the candidate with the smallest keccak256(σ_k ‖ role:u8 ‖ unit:32 ‖ client_id:16)
 ```
 
+- **Fleet‑bound candidates are left out first.** Before the draw, every candidate with an active fleet
+  binding at either boundary (P5, X5) is left out, from the chain's bindings, which the builder and the
+  auditor read alike. `U_{c,r}` is the units left in country `c` and role `r`. A root with a bound winner is
+  therefore never refused (§8 check 3): a committed census cannot be rebuilt, so a refusal would leave the
+  epoch unbuildable.
 - **The randomness source.** The server and the validator read the pulse from the chain's Drand pallet when
   it is stored there, else from any drand relay. A pulse verifies against quicknet's key whatever its source.
   `sn/crv4` already carries quicknet's constants.
@@ -320,16 +337,17 @@ member     = in each winning unit, the candidate with the smallest keccak256(σ_
 
 ### 4.5 Amounts
 
-For each covered epoch `k` of a root, in order:
+A root's walk starts owing `X = O_p`, the pots and pending awards after the root it builds on (0 for the
+pool's first root). Then, for each covered epoch `k` of the root, in order:
 
 ```
 f_k      = fundedThrough[k] − fundedThrough[k−1]                     the CTF pool's funding, read from vault2
-R_k      = stake the carry contract returned for k                    its recycledFor records, rolled past deferred epochs (§4.6)
-X_k      = carry still owed back before k's capture                   the carry account's cumulative in the root built on,
-                                                                      less what the contract has returned before k and the
-                                                                      rounding already written off
-M_k      = R_k ≥ X_k − 4  and  f_k ≥ X_k                              matured: everything owed back is in (≤ 4 rao rounding)
-F_k      = f_k − (M_k ? X_k : R_k)                                    the fresh amount; a matured epoch writes off its rounding
+raw_k    = recycledFor[k] + returns rolled from uncaptured epochs     a deferred epoch (f_k = 0) rolls its raw to the next (§4.6)
+R_k      = min(raw_k, X)                                              returned; stake beyond what is owed is a donation, fresh
+M_k      = R_k + 8 ≥ X                                                matured: the carry is back, within two cycles' rounding
+credit_k = X if M_k;  R_k + 8 if 0 < R_k;  else 0                     then X ← X − credit_k: a return writes off up to 8 rao
+F_k      = f_k − credit_k, or 0 if credit_k > f_k                     the fresh amount; a shortfall credit_k − f_k comes from the
+                                                                      pots, the largest first (ties to pot order), then pending awards
 a_{k,s}  = floor(F_k / S) + (1 if s < F_k mod S, else 0)              slot s's amount in slot order; Σ_s a_{k,s} = F_k
 
 for each country c and role r, with pot P = P_{c,r} and W = min(5, |U_{c,r}|) winners:
@@ -357,6 +375,24 @@ O_k      = Σ pots + Σ pending awards                                  what the
 - **The carry account.** At the end of the root's walk the carry account receives everything the walk did
   not pay. That is the pots and pending awards, less what the carry contract still owes back. So the root's
   total equals `fundedThrough[e]` and vault2's invariant holds (§4.6).
+- **Where the walk departs from this design's first draft, and why.** The `ctf` package implements the walk
+  above (`ctf/doc.go`, "Amounts"). The first draft had `M_k = R_k ≥ X_k − 4 and f_k ≥ X_k` and
+  `F_k = f_k − (M_k ? X_k : R_k)`, with `X_k` the carry account's cumulative less everything returned and
+  written off. Where that broke, the package takes the closest correct rule:
+  - **What is owed starts at the root built on's pots and pending awards.** That equals the first draft's
+    `X_k`, and it needs no extra state.
+  - **A shortfall comes from the largest pot.** The first draft's `M_k` also needed `f_k ≥ X_k`, and its
+    `F_k` could be negative. With no fresh funding (validators not supporting CTF, §4.7), a single rao lost
+    to rounding then left every later epoch unmatured, so pending awards never paid, and a capture a rao
+    short of the return made `F_k` negative. A shortfall the funding cannot cover is now taken from the pots,
+    the largest first: at most a few rao.
+  - **The tolerance is 8 rao, two cycles' rounding, not 4.** With one cycle's rounding (§4.6) the residual
+    could not clear: a partial return leaves the rounding of several cycles owed, a late root's return and
+    the next one's can come back in one epoch, and whatever stays owed at a root's end is owed again by the
+    next. At the bound of 4 rao a cycle the residual never shrank, and pending awards piled up for good. With
+    8, and a partial return writing off as much, the rounding left owed shrinks by at least 4 rao with every
+    single return and never grows with two.
+  - A write‑off that comes back later counts as fresh. In every case the deltas sum to the funding.
 
 ### 4.6 The carry contract
 
@@ -388,7 +424,9 @@ no owner, no upgrade, no other entry point; it holds stake only inside a call
 - **Donations are fresh funding.** Stake anyone sends to the contract or to vault2 on the CTF pool hotkey is
   counted as fresh funding: `R_k` never exceeds what is owed.
 - **Rounding.** Each stake move may lose a rao to the runtime's rounding (§7.3 of `VERSION2-FINAL.md`), at
-  most four per cycle. A matured epoch writes that off against its fresh amount.
+  most four per cycle: the claim, the two moves and the next capture. The ledger tolerates two cycles'
+  rounding, 8 rao: a matured epoch writes off what is still owed, and a partial return writes off up to 8 rao,
+  against the fresh amount (§4.5).
 - **What it trusts.** It relies only on vault2 and the runtime, and it changes nothing in vault2, which pays
   the leaf's coldkey whoever calls.
 - **Qualifying it.** It needs the same runtime qualification as vault2's moves. A rehearsal case on the live
@@ -400,10 +438,11 @@ no owner, no upgrade, no other entry point; it holds stake only inside a call
 | What is missed | What happens |
 | --- | --- |
 | No census committed in `[end(k), end(k)+600]` | No draw for `k`: no winners, and all of `F_k` joins the pots slot by slot. Pending awards are still paid if `k` matured. |
+| A canonical census (the committed census is not canonical) | No draw for `k`, exactly as with none committed. The commitment is write‑once, so refusing the root instead would leave `k`, and every root after it, unbuildable (§8 check 1). |
 | The root for `k` (late, refused, deleted or replaced) | The next root covers `k` with its committed census and draw, which are fixed inputs, as provider rows are. The carry never left the pool, so nothing is lost. |
 | The close for `k` (deferred) | `f_k = 0`, and the epoch's emission and returned carry fund the next captured epoch (§6.4 of `VERSION2-FINAL.md`). `k`'s draw still runs, with zero slot amounts and, unmatured, its pot shares as pending awards. |
 | The carry's return (late root or relay down) | `k` is not matured. Winners get their slot amounts now and their pot shares as pending awards. |
-| Validator support (no fresh funding) | `F_k = 0`, and draws continue. Pots and pending awards pay whenever the carry is back. |
+| Validator support (no fresh funding) | `F_k = 0`, and draws continue. A rounding shortfall comes from the largest pot (§4.5). Pots and pending awards pay whenever the carry is back. |
 | The CTF UID (pruned) | No emission until someone re‑registers it with `registerPoolUid`. |
 
 ## 5. The ledger
@@ -423,7 +462,10 @@ account row (48 bytes):   coldkey (32) ‖ cumulative (16), as v2
 ```
 
 - **Header fields.** `census` is the committed census header's reference, or null when none was committed.
-  `round` is `ρ_k`, or 0 with no census. `countries` names the list object, the 249 codes in order.
+  `round` is `ρ_k` for an epoch with a draw, else 0. `countries` names the list object, the 249 codes in
+  order.
+- **Pot and pending rows.** `pot_in` is the pot carried in, less any shortfall taken from it (§4.5). The
+  pending rows are the pending awards outstanding after the epoch. An empty list is the empty object.
 - **Accounts.** A coldkey's delta is the sum of its slot amounts, pot shares and paid pending awards across
   the covered epochs. The carry contract's coldkey (`carry_coldkey`) receives the walk's remainder (§4.5).
   New accounts are appended in ascending coldkey order. Positions, coldkeys and cumulatives never change,
@@ -547,17 +589,23 @@ share of `Z'`, and a CTF slot.
 **The auditor's CTF audit.** It runs for every covered epoch `k`, alongside the provider pool's ledger audit,
 and approves nothing that does not reproduce exactly:
 
-1. **Census.** If `ctfCensus(n, k)` is set, the header's census reference hashes to it. The census is
-   canonical: sorted and unique, one country per client per role, unit families consistent, and countries in
-   `L`. If it is not set, the epoch has no draw.
+1. **Census.** If `ctfCensus(n, k)` is set, the header's census reference is it, and the census objects are
+   available with the bytes their references name. Objects served with other bytes are missing, never a
+   reason to cancel a draw. A committed census that is not canonical gives no draw, as an uncommitted one
+   does: the commitment is write‑once, so refusing the root would leave the epoch, and every root after it,
+   unbuildable. Canonical means sorted and unique, one country per client per role, unit families
+   consistent, countries in `L`, a header for this pool and epoch, and no object longer than a canonical
+   census holds (a 256 KiB header, 131,072‑row chunks, 5,000 exclusion rows). If `ctfCensus(n, k)` is not
+   set, the epoch has no draw.
 2. **Seed.** `ρ_k` follows from the timestamp of `B_k`. The pulse verifies against quicknet's key, and `σ_k`
    follows.
-3. **Draw.** Recompute the winning units, ranks and members. They must equal the award rows. Each winner must
-   have no fleet binding at either boundary (`bindingAt`). Checking winners alone is enough, because removing
-   a unit that did not win changes no other unit's ticket.
-4. **Amounts.** Take `f_k` from vault2 and `R_k` from the carry contract's records. Derive `X_k`, `M_k`,
-   `F_k`, the slot amounts, the pots (from the previous root's pot rows), the pending awards and the
-   payments.
+3. **Draw.** Leave out every candidate with a fleet binding at either boundary (`bindingAt`), from the same
+   chain bindings the builder reads, then recompute the winning units, ranks and members. They must equal the
+   award rows. A bound candidate is left out before the draw rather than refusing a root with a bound
+   winner: a committed census cannot be rebuilt (§4.4).
+4. **Amounts.** Take `f_k` from vault2 and `recycledFor[k]` from the carry contract. Walk §4.5 from the
+   previous root's pot and pending rows: `R_k`, `M_k`, `F_k`, any shortfall, the slot amounts, the pots, the
+   pending awards and the payments. The pot and pending rows of both roots must be published.
 5. **Accounts.** Check the deltas, positions, coldkeys and the carry account, then rebuild the root, its
    total `fundedThrough[e]` and its leaf count.
 
@@ -566,8 +614,10 @@ countries, units and address dedupe, the wallets, and the declared networks. A f
 and rebuilt only on the operator's explicit command.
 
 **What anyone can check.** `snclaim v2 check --no_id 4294967297` runs the same audit from the published
-objects, and UR's watcher runs it beside the provider pool's. The CTF statement (§9.1) publishes the
-per‑country counts and amounts, so concentration and jumps between epochs show.
+objects, and UR's watcher runs it beside the provider pool's. Without an archive of fleet bindings it leaves
+out no candidate, so a census that lists a fleet‑bound client reproduces only for the validator. The CTF
+statement (§9.1) publishes the per‑country counts and amounts, so concentration and jumps between epochs
+show.
 
 ## 9. External inspection
 
@@ -892,7 +942,7 @@ it is.
 | 6 | What sets the uniform amount? | Fresh funding ÷ 2,490, with the remainder by slot order | Returned carry pays only what it is owed. |
 | 7 | How is a pot paid? | A fifth to each winner per epoch, and the rest carries | Owner decision (§12.1, item 16). It replaces an earlier even split among the epoch's winners. |
 | 8 | Who is excluded? | Head‑bound clients, non‑Public providers, the NO's own networks, duplicate addresses | One tier per client, public coverage only, and no self‑dealing (E3–E5). |
-| 9 | Which country for a unit? | Its lowest candidate client id's, one country per client per role | A unit is one ticket. |
+| 9 | Which country for a unit? | Its lowest candidate client id's, one country per client per role. The census keeps each candidate's own country, and the draw places the unit | A unit is one ticket, and the auditor can check the rule from the census. |
 | 10 | Can one client win both roles? | Yes | Every miner can be a provider and an extender (§8.6 decision 9). |
 | 11 | How is the draw kept honest? | The census committed on chain, then a drand round at least 60 s later | The candidates are fixed before randomness exists, and drand cannot be biased. |
 | 12 | What if no census is committed? | No draw, and everything carries | Withholding gains the operator nothing. |
@@ -902,6 +952,10 @@ it is.
 | 16 | Where are the routes documented? | `/sn/ctf` in `sn/api/operator.yml`, mapped by the conformance test | As `competition.yml` is. |
 | 17 | How does the pool register through the timelock? | One operation that upgrades and registers, with the hotkey derived at execution | It saves 72 h, and a hotkey named 72 h ahead could be registered first by anyone (§3.1). |
 | 18 | Is Kosovo included? | No | XK is not an ISO 3166‑1 code, and the server refuses unnamed codes. |
+| 19 | What if a committed census is not canonical? | No draw for that epoch, as with none committed (§4.3, §8 check 1) | The commitment is write‑once, so refusing the root would leave the epoch, and every root after it, unbuildable. |
+| 20 | What if the census lists a fleet‑bound candidate? | It is left out before the draw, by the chain's bindings, which the builder and the auditor read alike (§4.4) | Refusing a root with a bound winner cannot be repaired: a committed census cannot be rebuilt. |
+| 21 | How much rounding does the walk tolerate? | Two cycles', 8 rao, and a partial return writes off as much (§4.5) | With one cycle's 4 rao, rounding left owed at a root's end never shrank, and pending awards piled up for good. |
+| 22 | What if returned carry credits more than the epoch's funding? | The shortfall comes from the pots, the largest first, then pending awards (§4.5) | It is at most a few rao. Without it, `F_k` could go negative, and with no fresh funding pending awards never paid. |
 
 ### 12.3 Later options, not open questions
 
