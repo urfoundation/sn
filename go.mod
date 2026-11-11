@@ -39,6 +39,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
+	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coinbase/cdp-sdk/go v0.0.0-20261022213558-658e227219e3 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
