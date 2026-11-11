@@ -575,8 +575,23 @@ per‑country counts and amounts, so concentration and jumps between epochs show
 
 `sn/api/operator.yml` is a new OpenAPI 3.1 file for the operator's public SN routes. It starts with the
 `/sn/ctf` routes, and the other `/sn` routes may move into it later. The server's
-`api/spec_conformance_test.go` maps `/sn/ctf` routes to it, as it maps `/competition` routes to
-`sn/api/competition.yml`. Amounts are decimal strings of rao, as in `/sn/ledger/account`.
+`api/spec_conformance_test.go` maps the routes it documents to it (`/sn/ctf` and `GET /sn/openapi.yml`, where
+the server serves it), as it maps `/competition` routes to `sn/api/competition.yml`. The ledger route is in
+`connect/api/bringyour.yml` too, with the same fields.
+
+**The document is the contract.** It was written on 2026‑11‑11 from this section, and where the two differ it
+governs:
+
+- Each country row nests its roles (`providers`, `extenders`), with the page's `sentence_name`.
+- Amounts are an alpha string and integer rao (`design/ctf/SEO.md` §5.3). The ledger route keeps its decimal
+  strings of rao.
+- The draw figures (slots won, units, near misses, chance to win) are null without a draw last epoch, so the API
+  never claims a default win it has no basis for.
+- `pending_draw` reports an ended epoch's census and round until its root is committed.
+- A ledger entry's `kind` is `pool` or `ctf`, since from `E_x` the operator's pool pays extenders too.
+- `unavailable_pools` applies with `partial=true`. Without it the answer stays whole or a 502, so a client that
+  predates the field never takes a partial list for a whole one.
+- It adds `GET /sn/ctf/country/{cc}` and `GET /sn/ctf/top` (`design/ctf/SEO.md` §5.3) and `GET /sn/openapi.yml`.
 
 | Route | Access | Returns |
 | --- | --- | --- |
@@ -584,7 +599,7 @@ per‑country counts and amounts, so concentration and jumps between epochs show
 | `GET /sn/ctf/here` | public; `Cache-Control: private, no-store` | `{"country": "is"}`: the caller's country from GeoLite2 on the request's address, or null. Nothing is stored or logged. It lets the page open on the visitor's own country. |
 | `GET /sn/ctf/epoch/{epoch}` | public; immutable once finalized | One epoch. The census (`hash`, `block`, `candidates`, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the country rows, and the awards: role, country, rank, coldkey, client id, `slot_rao`, `pot_rao`, `pending`. Also the object references (header, census, awards, pots, pending), served by `GET /sn/ledger/object`. |
 | `GET /sn/ctf/client` | Bearer client JWT, own client only | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. |
-| `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`provider` or `ctf`) and `label`. A pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. |
+| `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. |
 
 **Headers.** Every route sends exactly one `Access-Control-Allow-Origin` header, as the site's status feeds
 require.
@@ -696,7 +711,8 @@ today is on the server and in the presentation:
     batch adds only about 150,000 gas per claim.
 - **SDK.**
   - `SnLedgerAccount` gains `Kind` and `Label`.
-  - A pool in `unavailable_pools` shows as unavailable without hiding the others.
+  - It asks with `partial=true`, and a pool in `unavailable_pools` shows as unavailable without hiding the
+    others.
   - With two or more claimable accounts, the SDK claims them in one `STClaimBatcher` transaction, which is
     already deployed on mainnet. Each claim sent alone is signed at 2.6M gas or more, so batching nearly
     halves the gas balance a device needs for two.
