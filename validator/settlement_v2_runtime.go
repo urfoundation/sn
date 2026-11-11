@@ -9,6 +9,7 @@ package validator
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -31,6 +32,9 @@ type SettlementV2RuntimeOptions struct {
 	// Optional whole steering-operation budget. Zero selects
 	// DefaultReleaseSteeringSettings; negative values are invalid.
 	SteeringOperationTimeout time.Duration
+	// --drand_url, the drand relay the capture the flag audit reads
+	// quicknet's pulses from. Empty is DefaultDrandURL.
+	DrandURL string
 }
 
 type settlementV2RuntimeOptionsKey struct{}
@@ -66,6 +70,13 @@ func settlementV2RuntimeOptionsFromOpts(opts docopt.Opts) (SettlementV2RuntimeOp
 			return options, fmt.Errorf("--ledger_max_bytes=%q must be a positive number of bytes", text)
 		}
 		options.LedgerMaxBytes = value
+	}
+	if text := optString(opts, "--drand_url", ""); text != "" {
+		parsed, err := url.Parse(text)
+		if err != nil || parsed.Scheme != "https" && parsed.Scheme != "http" || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return options, fmt.Errorf("--drand_url=%q must be an http(s) URL of a drand relay", text)
+		}
+		options.DrandURL = text
 	}
 	if options.AuditorKeyFile != "" {
 		if _, err := onchain.LoadKeyFile(options.AuditorKeyFile); err != nil {

@@ -39,9 +39,14 @@ type settlementV2ResolverTestFixture struct {
 	identities map[uint64]stabi.SettlementAtOutput
 	// ctfIdentities are ctfSettlementAt's answers, by operator.
 	ctfIdentities map[uint64]releaseCtfTestIdentity
-	pending       stabi.ISTSettlementVault2Pending
-	raw           map[string][]byte
-	v2Calls       map[string][]uint64
+	// ctfCensuses are ctfCensus's answers by epoch, carry the carry contract,
+	// and times the EVM timestamps of blocks.
+	ctfCensuses map[uint64]stabiCtfCensus
+	carry       releaseCtfTestCarry
+	times       map[uint64]uint64
+	pending     stabi.ISTSettlementVault2Pending
+	raw         map[string][]byte
+	v2Calls     map[string][]uint64
 }
 
 // Both operators are active in epoch 1; neither pool is registered in vault2
@@ -116,6 +121,8 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 		metadata = &stabi.STSettlementVault2MetaData
 	case self.addresses.Settlement:
 		metadata = &stabi.STSettlement2MetaData
+	case self.carry.address:
+		metadata = &settlementV2CtfCarryMetaData
 	default:
 		return self.releaseDecisionV2TestFixture.Call(ctx, call, selector)
 	}
@@ -133,9 +140,12 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 		return nil, errors.Join(errors.New("settlement v2 test block or ABI is unknown"), err)
 	}
 	method, err := contractABI.MethodById(call["input"])
-	if err != nil && metadata == &stabi.STSettlement2MetaData {
-		// STSettlement2Ctf's view, which the upgrade adds.
-		ctfABI, ctfErr := releaseCtfSettlementMetaData.ParseABI()
+	for _, upgrade := range []*bind.MetaData{&releaseCtfSettlementMetaData, &settlementV2CtfCensusMetaData} {
+		// STSettlement2Ctf's views, which the upgrade adds.
+		if err == nil || metadata != &stabi.STSettlement2MetaData {
+			break
+		}
+		ctfABI, ctfErr := upgrade.ParseABI()
 		if ctfErr != nil {
 			return nil, ctfErr
 		}
@@ -159,6 +169,22 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	if raw, found := self.raw[method.Name]; found {
 		return slices.Clone(raw), ctx.Err()
 	}
+	switch method.Name {
+	case "coldkey":
+		return method.Outputs.Pack(self.carry.coldkey)
+	case "vault":
+		return method.Outputs.Pack(self.carry.vault)
+	case "poolId":
+		return method.Outputs.Pack(new(big.Int).SetUint64(self.carry.poolID))
+	case "recycledFor":
+		return method.Outputs.Pack(new(big.Int).SetUint64(self.carry.recycled[arguments[0].(*big.Int).Uint64()]))
+	case "ctfCensus":
+		census := self.ctfCensuses[arguments[1].(*big.Int).Uint64()]
+		if arguments[0].(*big.Int).Uint64() != 1 {
+			census = stabiCtfCensus{}
+		}
+		return method.Outputs.Pack(census.hash, census.block)
+	}
 	noID := arguments[0].(*big.Int).Uint64()
 	var encoded []byte
 	switch method.Name {
@@ -180,12 +206,17 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	return encoded, errors.Join(err, ctx.Err())
 }
 
-// The finalized head is the fixture's head; numbered blocks are the base's.
+// The finalized head is the fixture's head; numbered blocks are the base's,
+// with a timestamp where the test set one.
 func (self *settlementV2ResolverTestFixture) GetBlockByNumber(ctx context.Context, number gethrpc.BlockNumber, full bool) (map[string]any, error) {
 	if number == gethrpc.FinalizedBlockNumber {
 		number = gethrpc.BlockNumber(self.head)
 	}
-	return self.releaseDecisionV2TestFixture.GetBlockByNumber(ctx, number, full)
+	block, err := self.releaseDecisionV2TestFixture.GetBlockByNumber(ctx, number, full)
+	if time, found := self.times[uint64(number)]; found && err == nil {
+		block["timestamp"] = hexutil.EncodeUint64(time)
+	}
+	return block, err
 }
 
 func (self *settlementV2ResolverTestFixture) snapshot() *ReleaseSnapshot {

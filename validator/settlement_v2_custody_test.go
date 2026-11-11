@@ -231,7 +231,7 @@ func TestSettlementV2CustodyAccounts(t *testing.T) {
 		}
 		return custody
 	}
-	accounts, tree, err := hold(t, f.Objects).accounts(context.Background(), f.Commit)
+	accounts, tree, err := hold(t, f.Objects).accounts(context.Background(), f.Commit, settlementV2LedgerHeaderAccounts)
 	if root, total := tree.Root(); err != nil || !slices.Equal(accounts, f.Accounts) || root != f.Commit.Root || !total.Eq(&f.Commit.Total) {
 		t.Fatalf("accounts not rebuilt: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestSettlementV2CustodyAccounts(t *testing.T) {
 	for name, setup := range unusable {
 		t.Run(name, func(t *testing.T) {
 			objects, root := setup()
-			if accounts, tree, err := hold(t, objects).accounts(context.Background(), root); accounts != nil || tree != nil || err != nil {
+			if accounts, tree, err := hold(t, objects).accounts(context.Background(), root, settlementV2LedgerHeaderAccounts); accounts != nil || tree != nil || err != nil {
 				t.Fatalf("custody gave accounts %d, tree %v: %v", len(accounts), tree != nil, err)
 			}
 		})
@@ -302,14 +302,14 @@ func TestSettlementV2CustodyAccounts(t *testing.T) {
 		if err := os.Mkdir(custody.path("objects", hex.EncodeToString(header.Accounts[0][:])), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := custody.accounts(context.Background(), f.Commit); err == nil {
+		if _, _, err := custody.accounts(context.Background(), f.Commit, settlementV2LedgerHeaderAccounts); err == nil {
 			t.Fatal("an unreadable chunk gave no error")
 		}
 	})
 	t.Run("canceled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, _, err := hold(t, f.Objects).accounts(ctx, f.Commit); err != context.Canceled {
+		if _, _, err := hold(t, f.Objects).accounts(ctx, f.Commit, settlementV2LedgerHeaderAccounts); err != context.Canceled {
 			t.Fatalf("canceled: %v", err)
 		}
 	})
