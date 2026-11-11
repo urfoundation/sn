@@ -19,11 +19,13 @@ type MemoryCustody struct {
 	Rows map[PoolEpoch][]Ref
 	// Nulls holds, per epoch, the seq of every null declaration recorded.
 	Nulls map[PoolEpoch][]uint64
+	// Extenders holds each epoch's valid extender component.
+	Extenders map[PoolEpoch]*HeaderExtenders
 }
 
 // NewMemoryCustody returns an empty MemoryCustody.
 func NewMemoryCustody() *MemoryCustody {
-	return &MemoryCustody{Objects: Objects{}, Rows: map[PoolEpoch][]Ref{}, Nulls: map[PoolEpoch][]uint64{}}
+	return &MemoryCustody{Objects: Objects{}, Rows: map[PoolEpoch][]Ref{}, Nulls: map[PoolEpoch][]uint64{}, Extenders: map[PoolEpoch]*HeaderExtenders{}}
 }
 
 func (c *MemoryCustody) Object(ctx context.Context, ref Ref) ([]byte, bool, error) {
@@ -49,5 +51,21 @@ func (c *MemoryCustody) KeepValidRows(ctx context.Context, noID, epoch uint64, c
 func (c *MemoryCustody) KeepNull(ctx context.Context, noID, epoch, seq uint64) error {
 	key := PoolEpoch{noID, epoch}
 	c.Nulls[key] = append(c.Nulls[key], seq)
+	return nil
+}
+
+func (c *MemoryCustody) ValidExtenders(ctx context.Context, noID, epoch uint64) (*HeaderExtenders, bool, error) {
+	component, ok := c.Extenders[PoolEpoch{noID, epoch}]
+	if !ok {
+		return nil, false, nil
+	}
+	return &HeaderExtenders{Bytes: component.Bytes, Census: slices.Clone(component.Census), Rows: slices.Clone(component.Rows)}, true, nil
+}
+
+func (c *MemoryCustody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *HeaderExtenders) error {
+	if c.Extenders == nil {
+		c.Extenders = map[PoolEpoch]*HeaderExtenders{}
+	}
+	c.Extenders[PoolEpoch{noID, epoch}] = &HeaderExtenders{Bytes: component.Bytes, Census: slices.Clone(component.Census), Rows: slices.Clone(component.Rows)}
 	return nil
 }

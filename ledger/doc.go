@@ -24,13 +24,29 @@
 //
 //	{"epoch":K,"providers":[…],"recovery":[{"epoch":S,"amount":A,"providers":["sha256:…",…]|null},…]}
 //
+// An epoch that the extender pool amendment covers (WHITEPAPER.md §8.6,
+// from E_x, the first epoch of its signed amendment entry) carries its
+// extender component last, and a header with one names the schema
+// urnetwork-payout-ledger-v3 (SchemaV3); a header without one keeps v2's
+// bytes exactly:
+//
+//	{"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":["sha256:…",…],"rows":["sha256:…",…]}}
+//
 // The header lists chunks:
 //
 //   - provider chunks: ProviderRowBytes-byte rows (protocol.LedgerUsageRow),
 //     client_id(16) ‖ coldkey(32) ‖ usage_bytes(8) ‖ head_excluded(1),
 //     big-endian, sorted by client id;
 //   - account chunks: AccountRowBytes-byte rows (merkle.LedgerAccount),
-//     coldkey(32) ‖ cumulative(16), in account position order.
+//     coldkey(32) ‖ cumulative(16), in account position order;
+//   - an extender component's census chunks: CensusRowBytes-byte rows
+//     (CensusRow), extender_id(16) ‖ client_id(16) ‖ coldkey(32) ‖ unit(32)
+//     ‖ unit_family(1) ‖ flags(1), sorted by client id and extender id, one
+//     per extender of the operator known in the epoch, eligible or not;
+//   - an extender component's share rows: ProviderRowBytes-byte rows like
+//     provider rows, one per eligible extender with a positive share, sorted
+//     by client id, head_excluded 0. "rows": [] when none is eligible or Z
+//     is 0.
 //
 // A chunk list has ChunkRows rows in every chunk except a non-empty last
 // one; an empty list has no chunks.
@@ -38,10 +54,28 @@
 // EncodeHeader and DecodeHeader convert a Header. DecodeHeader accepts only
 // the canonical bytes: it decodes with unknown fields refused, refuses
 // trailing bytes, and requires that re-encoding reproduce the input; then it
-// checks the schema, null only for providers, the epoch count and every
-// reference. EncodeProviderChunks, DecodeProviderChunks,
-// EncodeAccountChunks and DecodeAccountChunks convert chunk lists, checking
-// the chunk shape and row encodings.
+// checks the schema, null only for providers, no extender component on an
+// unrecoverable epoch, the epoch count and every reference.
+// EncodeProviderChunks, DecodeProviderChunks, EncodeAccountChunks,
+// DecodeAccountChunks, EncodeCensusChunks and DecodeCensusChunks convert
+// chunk lists, checking the chunk shape and row encodings.
+//
+// # The extender pool (WHITEPAPER.md §8.6.2)
+//
+// An epoch's extender component splits Z, its extender pool bytes, which the
+// operator's epoch reader takes out of the provider rows: the funded
+// intra-platform and intra-network hop shares of its contracts, less
+// declared measurement and test traffic. SplitExtenderPool caps Z at W_k,
+// the epoch's eligible provider usage (ζ = 1), so extenders take at most
+// half of the epoch's amount, and splits the capped Z' evenly over the units
+// that hold an eligible extender, by unit hash, then evenly over each unit's
+// eligible extenders, by client id, the remainder bytes going to the lowest
+// at each level. A census row is eligible when it is active (E1) with no
+// other flag (E3, E4's head binding, E5) and has a coldkey (E4). With no
+// eligible extender Z is dropped and the epoch allocates as without the
+// amendment. The share rows enter the epoch's allocation beside its provider
+// rows, so a coldkey that holds both adds them. CheckCensusRows holds the
+// census rules a verifier can check without addresses.
 //
 // # Building a root (server)
 //
@@ -61,13 +95,17 @@
 //     first built with and Rows its rows (DecodeProviderChunks of those
 //     chunks): Build refuses rows that encode differently (ErrFixedInputs).
 //     Leave Chunks nil to build an epoch the first time, or to rebuild it on
-//     an operator command;
+//     an operator command. Extenders is set for exactly the epochs the
+//     extender pool amendment covers: Z, the census and, for an epoch built
+//     by an earlier root, the census chunks it was first built with
+//     (ErrFixedInputs again) and the Z it was built with;
 //   - FundedThrough: vault2's fundedThrough[k] for every covered epoch.
 //
 // It walks the epochs (§6.4): f_k = fundedThrough[k] − fundedThrough[k−1],
 // where fundedThrough[p] is the previous root's total (0 for the first
 // root). An epoch whose rows have eligible usage is allocated f_k plus the
-// carry with protocol.AllocateLedgerEpoch, and the carry clears; an epoch
+// carry with protocol.AllocateLedgerEpoch, over its provider rows and, with
+// an extender component, its share rows, and the carry clears; an epoch
 // with no rows, no eligible usage, or null adds f_k to the carry. Each
 // coldkey's positive summed delta is added to its account; coldkeys without
 // one get new accounts, appended in ascending coldkey order. Previous
@@ -135,16 +173,21 @@
 //     budget is per root: when retrying an audit, pass what earlier
 //     attempts left of it (Result.FetchedBytes counts each attempt);
 //   - Custody, durable: objects held (held objects are trusted and cost no
-//     budget), and per pool epoch the chunks of rows found valid and the
-//     null declarations recorded. Verify keeps every object it fetches,
-//     records an epoch's rows as valid once they pass checks 4 to 6 and
+//     budget), and per pool epoch the chunks of rows found valid, the
+//     extender component found valid, and the null declarations recorded.
+//     Verify keeps every object it fetches, records an epoch's rows and
+//     extender component as valid once they pass checks 4 to 6 and 11 and
 //     allocate, and records every null it accepts. MemoryCustody is an
 //     in-memory Custody;
 //   - Heads, which returns for an epoch the candidates, the client ids with
 //     a FleetBound event whose validity covers it, each mapped to whether
-//     bindingAt is active at either boundary. A row's head_excluded must be
-//     1 exactly for the candidates mapped to true. Nil skips check 6, for
-//     tools without archive state.
+//     bindingAt is active at either boundary. A row's head_excluded, and a
+//     census row's head-bound flag, must be 1 exactly for the candidates
+//     mapped to true. Nil skips check 6, for tools without archive state;
+//   - ExtendersFrom, E_x: the first epoch of the extender pool amendment in
+//     force for the pool (amendment.File.At), 0 while none is. Exactly the
+//     covered epochs from it that are not null must carry an extender
+//     component.
 //
 // Verify returns an error only for its own inputs (ErrInput, ErrFunding),
 // its context, or an error of Custody or Heads; fix or retry those.
@@ -157,7 +200,7 @@
 //	2 CheckPrevious       ErrPreviousNotTight, ErrPreviousRebuild
 //	3 CheckFixedInputs    ErrFixedInputs, ErrNullAgainstValidRows
 //	4 CheckChunks         ErrChunkHash, ErrChunkLength, ErrChunkShort,
-//	                      ErrChunkEmpty, ErrRowEncoding
+//	                      ErrChunkEmpty, ErrRowEncoding, ErrCensusEncoding
 //	5 CheckRows           ErrRowZeroClientID, ErrRowZeroUsage, ErrRowsUnsorted,
 //	                      ErrRowDuplicate, ErrUsageOverflow
 //	6 CheckHeadExclusion  ErrHeadFlagSet, ErrHeadFlagCleared
@@ -167,15 +210,21 @@
 //	9 CheckTree           ErrTreeLeafCount, ErrTreeTotal, ErrTreeRoot
 //	  CheckFetch          ErrObjectUnavailable, ErrByteBudget
 //	10 CheckRecovery      ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount
+//	11 CheckExtenders     ErrExtendersMissing, ErrExtendersUnexpected, ErrExtenderRows,
+//	                      ErrExtenderOverflow, ErrCensusZeroID, ErrCensusUnsorted,
+//	                      ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags,
+//	                      ErrCensusClient
 //
 // The checks run in the order 2, 1, 4 for the pending account chunks, 10,
-// 3, 8, 9, then per covered epoch 4, 5 and 6 with its allocation, each
-// recovery component's source rows first (head bindings of the source
-// epoch), then 7. The previous root comes first so that a failed root still
-// has accounts to protect, and the pending accounts are read before the
-// other checks so that their faults are known whatever else fails; a
-// recovery dispute is therefore found with the root reproduced, and leads
-// to a refusal, not a demand. VerifyInput.Recoveries holds the components
+// 11 for which epochs carry an extender component, 3, 8, 9, then per
+// covered epoch 4, 5 and 6 with its allocation, each recovery component's
+// source rows first (head bindings of the source epoch), then its extender
+// component's census (4, 11, 6) and share rows (11, 4), then 7. The previous
+// root comes first so that a failed root still has accounts to protect, and
+// the pending accounts are read before the other checks so that their faults
+// are known whatever else fails; a recovery or extender dispute is therefore
+// found with the root reproduced, and leads to a refusal, not a demand.
+// VerifyInput.Recoveries holds the components
 // the chain calls for, per covered epoch; the header must list exactly
 // those (check 10). A watcher without vault1 or the surplus history sets
 // VerifyInput.RecoveriesUnchecked instead: the header's components are

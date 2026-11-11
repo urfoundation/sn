@@ -17,7 +17,7 @@ import (
 )
 
 func cloneCustody(c *MemoryCustody) *MemoryCustody {
-	return &MemoryCustody{Objects: maps.Clone(c.Objects), Rows: maps.Clone(c.Rows), Nulls: maps.Clone(c.Nulls)}
+	return &MemoryCustody{Objects: maps.Clone(c.Objects), Rows: maps.Clone(c.Rows), Nulls: maps.Clone(c.Nulls), Extenders: maps.Clone(c.Extenders)}
 }
 
 func objectBytes(objects Objects) uint64 {
@@ -802,6 +802,20 @@ func (c *failingCustody) KeepNull(ctx context.Context, noID, epoch, seq uint64) 
 		return err
 	}
 	return c.MemoryCustody.KeepNull(ctx, noID, epoch, seq)
+}
+
+func (c *failingCustody) ValidExtenders(ctx context.Context, noID, epoch uint64) (*HeaderExtenders, bool, error) {
+	if err := c.fail(); err != nil {
+		return nil, false, err
+	}
+	return c.MemoryCustody.ValidExtenders(ctx, noID, epoch)
+}
+
+func (c *failingCustody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *HeaderExtenders) error {
+	if err := c.fail(); err != nil {
+		return err
+	}
+	return c.MemoryCustody.KeepValidExtenders(ctx, noID, epoch, component)
 }
 
 // failingHeads fails every call.

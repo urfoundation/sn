@@ -254,7 +254,7 @@ func accountIndex(t *testing.T, accounts []merkle.LedgerAccount, n int) int {
 var checkErrors = []error{
 	ErrObjectUnavailable, ErrByteBudget,
 	ErrLedgerHash, ErrHeaderTooLarge, ErrHeaderDecode, ErrHeaderTrailingData, ErrHeaderNotCanonical, ErrHeaderSchema,
-	ErrHeaderNull, ErrRef, ErrHeaderNoID, ErrHeaderEpoch, ErrCoveredEpochs, ErrTooManyEpochs,
+	ErrHeaderNull, ErrHeaderExtenders, ErrRef, ErrHeaderNoID, ErrHeaderEpoch, ErrCoveredEpochs, ErrTooManyEpochs,
 	ErrPreviousNotTight, ErrPreviousRebuild,
 	ErrFixedInputs, ErrNullAgainstValidRows,
 	ErrChunkHash, ErrChunkLength, ErrChunkShort, ErrChunkEmpty, ErrRowEncoding,
@@ -264,6 +264,8 @@ var checkErrors = []error{
 	ErrAccountMoved, ErrAccountLowered, ErrAccountDuplicate, ErrAccountUnsorted, ErrAccountZeroDelta,
 	ErrTreeLeafCount, ErrTreeTotal, ErrTreeRoot,
 	ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount, ErrRecoveryFunding,
+	ErrExtendersMissing, ErrExtendersUnexpected, ErrExtenderRows, ErrExtenderOverflow,
+	ErrCensusEncoding, ErrCensusZeroID, ErrCensusUnsorted, ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags, ErrCensusClient,
 }
 
 // expectFailure requires that res failed exactly check with exactly the
