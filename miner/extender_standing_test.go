@@ -531,3 +531,45 @@ func TestServiceInstallSystemAsUser(t *testing.T) {
 		}
 	}
 }
+
+// --as names the user of a system service, and only of one.
+func TestServiceAsParsesOnlyWithSystem(t *testing.T) {
+	parser := &docopt.Parser{HelpHandler: docopt.NoHelpHandler, SkipHelpFlags: true}
+	opts, err := parser.ParseArgs(mainUsage(), []string{"service", "install", "--system", "--as=alice"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if as, _ := opts.String("--as"); as != "alice" || !cliOptBool(opts, "--system") || !cliOptBool(opts, "install") {
+		t.Fatalf("%v", opts)
+	}
+	for _, args := range [][]string{
+		{"service", "uninstall", "--system", "--as=alice"},
+		{"service", "start", "--system", "--as=alice"},
+	} {
+		if _, err := parser.ParseArgs(mainUsage(), args, ""); err == nil {
+			t.Errorf("%v parsed", args)
+		}
+	}
+	// docopt takes --as without --system, so the command refuses it, before
+	// it looks up anyone or changes anything
+	phase2State(t)
+	var calls []string
+	cliRun = func(name string, args ...string) (string, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return "", nil
+	}
+	defer func() { cliRun = defaultCliRun }()
+	cliUserLookup = func(name string) (*user.User, error) {
+		t.Fatal("looked up a user")
+		return nil, nil
+	}
+	defer func() { cliUserLookup = user.Lookup }()
+	var out, errOut bytes.Buffer
+	code := serviceCmd(docopt.Opts{"install": true, "--as": "alice"}, &out, &errOut)
+	if code == 0 || 0 < len(calls) {
+		t.Fatalf("exit %d, calls %v: %s", code, calls, errOut.String())
+	}
+	if runtime.GOOS == "linux" && !strings.Contains(errOut.String(), "--system --as=alice") {
+		t.Fatal(errOut.String())
+	}
+}

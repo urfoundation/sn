@@ -209,6 +209,11 @@ func serviceCmd(opts docopt.Opts, stdout io.Writer, stderr io.Writer) int {
 		writeCliError(stderr, "--as is for Linux, where a system service may run the miner as a user with only the right to bind port 443.")
 		return 1
 	}
+	if asName != "" && !system {
+		// docopt takes the option alone too; it names the user of a system service
+		writeCliError(stderr, "--as names the user a system service runs the miner as. Run it with --system:\n  sudo provider service install --system --as="+asName)
+		return 1
+	}
 	// status and logs only read, so a user may look at a system service
 	readOnly := cliOptBool(opts, "status") || cliOptBool(opts, "logs")
 	if system && os.Geteuid() != 0 && !readOnly {
