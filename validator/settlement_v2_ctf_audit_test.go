@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
@@ -473,5 +474,34 @@ func TestSettlementV2CtfChainReadsTheAuditFacts(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		reader.amendments, fixture.carry = saved, savedCarry
+	}
+}
+
+// The views the validator calls are STSettlement2Ctf's and STCtfCarry's: their
+// selectors are those of the contracts' interface.
+func TestCaptureTheFlagViewSelectors(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		metadata  *bind.MetaData
+		method    string
+		signature string
+	}{
+		{&releaseCtfSettlementMetaData, "ctfSettlementAt", "ctfSettlementAt(uint256,uint256)"},
+		{&settlementV2CtfCensusMetaData, "ctfCensus", "ctfCensus(uint256,uint256)"},
+		{&settlementV2CtfCarryMetaData, "recycledFor", "recycledFor(uint256)"},
+		{&settlementV2CtfCarryMetaData, "coldkey", "coldkey()"},
+		{&settlementV2CtfCarryMetaData, "vault", "vault()"},
+		{&settlementV2CtfCarryMetaData, "poolId", "poolId()"},
+	} {
+		parsed, err := test.metadata.ParseABI()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := parsed.Methods[test.method].ID, crypto.Keccak256([]byte(test.signature))[:4]; !bytes.Equal(got, want) {
+			t.Fatalf("%s selector 0x%x, want 0x%x", test.signature, got, want)
+		}
+	}
+	if selector := evmSelector("ctfSettlementAt(uint256,uint256)"); hex.EncodeToString(selector[:]) != "076882a7" {
+		t.Fatalf("ctfSettlementAt selector 0x%x", selector)
 	}
 }
