@@ -65,13 +65,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;family=Silkscreen:wght@400;700&amp;display=swap">
 <!--
-  Design for ur.xyz/ctf ("Capture the flag"), CAPTURETHEFLAG.md §9.2. A standalone port of the
-  "ur.xyz CTF page" design canvas: open this file in a browser; it needs flags-4x3-sprite.svg beside it.
+  Design for ur.xyz/ctf ("Capture the flag"), CAPTURETHEFLAG.md §9.2. This file is the page's design: it
+  replaced the "ur.xyz CTF page" canvas on 2026-11-11, and changes to the page are made here. Open it in a
+  browser; it needs flags-4x3-sprite.svg beside it.
   Mock data: 26 simulated epochs on the network's real country coverage (August to November 2026).
   Preview states with query parameters: ?page=ke (the Kenya country page, /ctf/ke), ?focus=np (the hub
   filtered to open provider slots), ?country=tm (visitor country), ?expanded=af (an opened tile on
-  touch sizes), ?odds=5/n (exact draw odds instead of the owner's 1/(entries-4) display rule),
-  ?motion=0 (no animation). Resize the window below 1100px for tablet and below 600px for mobile.
+  touch sizes), ?motion=0 (no animation). Resize the window below 1100px for tablet and below 600px for mobile.
   The real page is built in web/ur.xyz (Astro) with self-hosted fonts and flag files; see SEO.md.
 -->
 <style>
@@ -464,8 +464,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
   const PROPS = {
     country: (qs.get('country') || 'is').toLowerCase(),
     threshold: 5,
-    motion: qs.get('motion') !== '0',
-    odds: qs.get('odds') === '5/n' ? '5/n' : '1/(n-4)'
+    motion: qs.get('motion') !== '0'
   };
   const state = {
     viewer: null, sort: 'az', show: 'all', q: '', tip: null, focus: PAGE ? null : FOCUS0,
@@ -485,7 +484,8 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
   const pipsHtml = function (list) { return list.map(function (p) { return '<i class="pip ' + p + '"></i>'; }).join(''); };
   const delayOf = function (r) { return '-' + (((r.fx * 7 + r.fy * 11) % 23) / 10).toFixed(1) + 's'; };
   // A newcomer's chance: the entries are last epoch's eligible units in the role plus the newcomer.
-  const chance = function (units) { const n = units + 1; if (n <= 5) return 1; return PROPS.odds === '5/n' ? 5 / n : 1 / (n - 4); };
+  // The draw picks five of the n entries at random, so each entry wins with probability 5/n, or 1 with five or fewer.
+  const chance = function (units) { const n = units + 1; return n <= 5 ? 1 : 5 / n; };
   const pct = function (p) {
     if (p >= 1) return '100%';
     const v = p * 100;
@@ -515,7 +515,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       : label + ': all five slots were won last epoch from ' + int(units) + ' units. The estimated probability that you win if you launch ' + art + ' here: ' + pct(p) + ', with ' + int(units + 1) + ' entries for five slots, each worth about ' + SLOT.toFixed(3) + ' α.';
   };
 
-  // ---- the page's values, the same computation as the design canvas
+  // ---- the page's values
   function compute() {
     const threshold = PROPS.threshold;
     const tipKey = state.tip;
@@ -637,7 +637,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       motionCls: PROPS.motion ? '' : 'still', epoch: 39, drawIn: '3d 04h', slotStr: '0.048',
       carriedStr: two(carried), paidStr: two(paid), winners: int(winners), fullHeld: fullHeld, openP: openP, openX: openX,
       thresholdStr: two(threshold),
-      oddsTxt: PROPS.odds === '5/n' ? '5 ÷ entries, the exact odds of drawing five winners' : '1 ÷ (entries − 4)',
+      oddsTxt: '5 ÷ entries, the exact odds of a draw of five winners',
       focus: focus, showIntro: !focus, showFeat: feat.length > 0 && !focus,
       gridCls: focus === 'np' ? 'focus-p' : focus === 'nx' ? 'focus-x' : '',
       focusTitle: { held: fullHeld + ' flags held', np: openP + ' countries with providers not fully captured', nx: openX + ' countries with extenders not fully captured' }[focus] || '',
@@ -883,7 +883,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       ['Provider or extender: which should I run in ' + r.the + '?', advice],
       ['How are winners chosen, and can I check?', 'When the epoch ends, the operator commits the list of eligible miners in ' + the + ' on chain, and a drand round published after it draws up to five winners per role. With five entries or fewer, everyone wins. Miners in one /29 or /48 share a single entry. Each draw\'s census and round are public.'],
       ['How do I get paid?', 'Winnings go to the payout wallet the app already uses, and you claim them with your pool earnings in the app.',
-        'Local note for ' + the + ': how to cash out here and what local law says, dated and reviewed by a person before this page is indexed.']
+        'Local note for ' + the + ': how to cash out here and what local law says, dated and reviewed by a person.']
     ]);
   }
 

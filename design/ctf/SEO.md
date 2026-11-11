@@ -195,15 +195,14 @@ The API answers those (§5.4).
   title that differs "by only a single piece of information" counts as boilerplate
   ([title links](https://developers.google.com/search/docs/appearance/title-link)). Data‑driven
   descriptions are encouraged ([snippets](https://developers.google.com/search/docs/appearance/snippet)).
-- **What to index.**
-  - Always: the hub.
-  - A country page: once it has a reviewed local note and at least four epochs of history.
-  - Until then: linked and crawlable, but `noindex`.
-  - Never: the seven territories with no permanent population (AQ, BV, GS, HM, IO, TF, UM). They keep their
-    slots (§12.1, item 9) but stay `noindex` and out of the sitemap.
-  - Held until counsel's review: countries under comprehensive sanctions, and countries where circumvention
-    tools are illegal.
-- **Where to start.** Write the first local notes for the demand markets of §1.1, plus the US, UK, Canada and
+- **What to index: every page, from launch** (owner decision, 2026‑11‑11). The hub and all 249 country
+  pages are indexable from the first epoch.
+  - That includes the seven territories with no permanent population (AQ, BV, GS, HM, IO, TF, UM).
+  - It includes countries under comprehensive sanctions, and countries where circumvention tools are
+    illegal. Counsel's review (§3.3) therefore comes before launch.
+  - The weight falls on each page's own data from its first epoch. No two pages may differ by the country's
+    name alone.
+- **The local notes, in order.** Write them for the demand markets of §1.1 first, plus the US, UK, Canada and
   Germany, where Honeygain says bandwidth is worth most
   ([Honeygain](https://www.honeygain.com/blog/bandwidth-sharing-apps/)):
   - India, Indonesia, Nigeria, the Philippines, Pakistan, Vietnam, Bangladesh, Nepal;
@@ -493,11 +492,10 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
   - `breadcrumbName` ("Capture the flag", then the country);
   - `jsonLd` (Dataset on the hub; WebPage with `about` Country on country pages);
   - `alternate` (the country's JSON);
-  - `noindex` per §2.1;
   - `ogImage` per epoch and country, named by epoch so caches refresh.
 - **"Updated".** `LASTMOD_TOKEN` fills it, as on `/mainnet`, so the visible date, `dateModified` and the
   sitemap's `lastmod` agree.
-- **Indexing.** The sitemap leaves out `noindex` pages automatically.
+- **Indexing.** Every page is indexable (§2.1), so every page is in the sitemap.
 - **Links.** Every cell of the 249‑country grid is a plain `<a href="/ctf/<cc>">`, so every country page is
   linked.
 - **English first, like `/mainnet`.**
@@ -511,7 +509,7 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
   - hreflang;
   - the agent‑file budgets.
 
-  Add one check: no country page is indexable without its local note.
+  Add one check: no two country pages differ by the country's name alone.
 - **The rebuild.** After each epoch's census and root, the import runs, the site rebuilds and deploys.
 - **`SITEMAP.md`.** A Capture the flag section, like the Mainnet one.
 
@@ -538,13 +536,12 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
 
 ## 8. Open questions for the owner
 
-1. **Which country pages to index at launch:** the starting list of §2.1, or more.
-2. **Counsel's review:**
+1. **Counsel's review:**
    - the UK and EU promotion rules;
    - how the draw reads under lottery law;
    - sanctions;
    - extenders in censored countries.
-3. **New locales**, beyond ru, ar, es, zh and de: Portuguese (BR), Indonesian, Vietnamese, Turkish, Hindi
+2. **New locales**, beyond ru, ar, es, zh and de: Portuguese (BR), Indonesian, Vietnamese, Turkish, Hindi
    (romanized) or French.
-4. **Whether to build the read‑only MCP server.**
-5. **A comparison page** for "Honeygain alternatives" and "URnetwork vs …", sourced and kept apart from `/ctf`.
+3. **Whether to build the read‑only MCP server.**
+4. **A comparison page** for "Honeygain alternatives" and "URnetwork vs …", sourced and kept apart from `/ctf`.
