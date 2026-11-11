@@ -16,14 +16,17 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/urfoundation/sn/amendment"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // launchFile is the file before any entry is signed, as the repository first held it.
@@ -290,10 +293,25 @@ func TestAStartedEpochIsRefused(t *testing.T) {
 	}
 }
 
+// mainnetEpochStart is the coordinator's first block of epoch e on mainnet: weekly
+// 50,400-block epochs from epoch 1 at block 9,247,228.
+func mainnetEpochStart(epoch uint64) uint64 {
+	return 9_247_228 + 50_400*(epoch-1)
+}
+
 // fakeChain answers as the coordinator's RPC does and checks what it is asked. It is a
-// local stand-in: no test reaches a chain.
-func fakeChain(t *testing.T, chainID string, currentEpoch *uint64) *httptest.Server {
+// local stand-in: no test reaches a chain. Its latest block is 1,000 blocks into the
+// current epoch and headAge old, or 6 seconds old when none is given.
+func fakeChain(t *testing.T, chainID string, currentEpoch *uint64, headAge ...time.Duration) *httptest.Server {
 	t.Helper()
+	age := 6 * time.Second
+	if len(headAge) > 0 {
+		age = headAge[0]
+	}
+	coordinator := stabi.NewSTCoordinator()
+	word := func(value uint64) string {
+		return "0x" + hex.EncodeToString(common.LeftPadBytes(new(big.Int).SetUint64(value).Bytes(), 32))
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			ID     json.RawMessage   `json:"id"`
@@ -303,10 +321,19 @@ func fakeChain(t *testing.T, chainID string, currentEpoch *uint64) *httptest.Ser
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 		}
-		var result string
+		var result any
 		switch request.Method {
 		case "eth_chainId":
 			result = chainID
+		case "eth_getBlockByNumber":
+			if len(request.Params) == 0 || string(request.Params[0]) != `"latest"` {
+				t.Errorf("asked for block %s", request.Params)
+			}
+			head := uint64(9_000_000)
+			if currentEpoch != nil && *currentEpoch > 0 {
+				head = mainnetEpochStart(*currentEpoch) + 1_000
+			}
+			result = map[string]string{"number": hexutil.EncodeUint64(head), "timestamp": hexutil.EncodeUint64(uint64(time.Now().Add(-age).Unix()))}
 		case "eth_call":
 			var call struct {
 				To    string `json:"to"`
@@ -319,18 +346,29 @@ func fakeChain(t *testing.T, chainID string, currentEpoch *uint64) *httptest.Ser
 			if !strings.EqualFold(call.To, "0xC18925925E2B7bb9059b7d696b8c92762AE86406") {
 				t.Errorf("called %s", call.To)
 			}
-			if data := call.Input + call.Data; data != "0x76671808" { // currentEpoch()
-				t.Errorf("called %s", data)
+			data, err := hexutil.Decode(call.Input + call.Data)
+			if err != nil {
+				t.Error(err)
 			}
 			result = "0x"
-			if currentEpoch != nil {
-				result = "0x" + hex.EncodeToString(common.LeftPadBytes(new(big.Int).SetUint64(*currentEpoch).Bytes(), 32))
+			switch {
+			case currentEpoch == nil:
+			case bytes.Equal(data, coordinator.PackCurrentEpoch()):
+				result = word(*currentEpoch)
+			case len(data) == 36 && bytes.Equal(data[:4], coordinator.PackEpochStartBlock(big.NewInt(0))[:4]):
+				result = word(mainnetEpochStart(new(big.Int).SetBytes(data[4:]).Uint64()))
+			default:
+				t.Errorf("called %x", data)
 			}
 		default:
 			t.Errorf("unexpected method %s", request.Method)
 		}
+		encoded, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
+		if err != nil {
+			t.Error(err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":%q}`, request.ID, result)
+		w.Write(encoded)
 	}))
 	t.Cleanup(server.Close)
 	return server
@@ -345,7 +383,13 @@ func TestTheCurrentEpochFromTheChain(t *testing.T) {
 	chain := fakeChain(t, "0x3c4", &current)
 	line := ctfLine(1, 8)
 	out, err := h.run("message", "--in="+path, "--line="+line, "--rpc="+chain.URL)
-	if err != nil || !strings.Contains(out, "The current epoch, read from the chain, is 7. Epoch 8 has not started.") {
+	want := "The current epoch, read from the chain at block 9550628, is 7. Epoch 8 has not started: it starts at block 9600028, 49400 blocks from now, about 6.9 days at 12 s a block. Publish the entry before then."
+	if err != nil || !strings.Contains(out, want) {
+		t.Fatal(out, err)
+	}
+	// sign reads it too.
+	signPath := writeAmendments(t, launchFile)
+	if out, err := h.run("sign", "--in="+signPath, "--line="+line, "--key-file="+writeKeyFile(t, h.key), "--rpc="+chain.URL); err != nil {
 		t.Fatal(out, err)
 	}
 	current = 8
@@ -353,8 +397,34 @@ func TestTheCurrentEpochFromTheChain(t *testing.T) {
 	if out, err := h.run(attach...); err == nil || !strings.Contains(err.Error(), "epoch 8 has started") {
 		t.Fatal(out, err)
 	}
+	if out, err := h.run("sign", "--in="+path, "--line="+line, "--key-file="+writeKeyFile(t, h.key), "--rpc="+chain.URL); err == nil || !strings.Contains(err.Error(), "epoch 8 has started") {
+		t.Fatal(out, err)
+	}
 	if readAmendments(t, path) != launchFile {
 		t.Fatal("a refused attach changed the file")
+	}
+	// A node behind the chain could report an epoch that has ended, so its answer is
+	// no answer.
+	current = 7
+	behind := fakeChain(t, "0x3c4", &current, time.Hour)
+	for _, args := range [][]string{
+		{"message", "--in=" + path, "--line=" + line, "--rpc=" + behind.URL},
+		{"attach", "--in=" + path, "--line=" + line, "--signature=" + h.sign(t, line), "--rpc=" + behind.URL},
+		{"sign", "--in=" + path, "--line=" + line, "--key-file=" + writeKeyFile(t, h.key), "--rpc=" + behind.URL},
+		{"verify", "--in=" + path, "--rpc=" + behind.URL},
+	} {
+		if out, err := h.run(args...); err == nil || !strings.Contains(err.Error(), "is behind") || out != "" {
+			t.Fatalf("%s: %v\n%s", args[0], err, out)
+		}
+	}
+	if readAmendments(t, path) != launchFile {
+		t.Fatal("a refused attach changed the file")
+	}
+	// The epoch is read only from the coordinator of the line's own deployment.
+	elsewhere := &harness{key: h.key, signer: h.signer, deps: dependencies{signerFor: func(uint64, uint16) (common.Address, bool) { return h.signer, true }}}
+	otherDeployment := strings.Replace(line, "chain 964", "chain 945", 1)
+	if out, err := elsewhere.run("message", "--in="+path, "--line="+otherDeployment, "--rpc="+chain.URL); err == nil || !strings.Contains(err.Error(), "no coordinator is known") {
+		t.Fatal(out, err)
 	}
 	// A chain that cannot answer is no answer: nothing is printed for it.
 	wrongChain := fakeChain(t, "0x3b1", &current)
@@ -566,8 +636,23 @@ func TestAttachRefuses(t *testing.T) {
 			t.Fatalf("%s changed the file", name)
 		}
 	}
-	// Another operator's or kind's entry at an earlier epoch is its own series.
-	if _, err := h.run("message", "--in="+path, "--line="+extendersLine(2, 7), "--current-epoch=6"); err != nil {
+	// Nor does any entry come before the newest in the file, of whatever kind or
+	// operator: a reader holding that one may have decided the epochs between.
+	for name, args := range map[string][]string{
+		"another operator, earlier":  {"message", "--in=" + path, "--line=" + extendersLine(2, 7), "--current-epoch=6"},
+		"another kind, earlier":      attach(ctfLine(1, 7), h.sign(t, ctfLine(1, 7))),
+		"another operator's, signed": attach(ctfLine(2, 5), h.sign(t, ctfLine(2, 5))),
+	} {
+		args[len(args)-1] = strings.Replace(args[len(args)-1], "--current-epoch=7", "--current-epoch=4", 1)
+		if out, err := h.run(args...); err == nil || !strings.Contains(err.Error(), placeRefusal) {
+			t.Fatalf("%s: %v\n%s", name, err, out)
+		}
+	}
+	if readAmendments(t, path) != current {
+		t.Fatal("a refused entry changed the file")
+	}
+	// Another operator's entry as late as the newest is its own series.
+	if _, err := h.run("message", "--in="+path, "--line="+extendersLine(2, 8), "--current-epoch=7"); err != nil {
 		t.Fatal(err)
 	}
 	// A tampered earlier entry stops everything: nothing new joins a bad file.
@@ -705,11 +790,12 @@ func forge(t *testing.T, other *harness, file string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	line, err := parsed.Entries[0].Line()
+	first := parsed.Entries()[0]
+	line, err := first.Line()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return strings.Replace(file, hex.EncodeToString(parsed.Entries[0].Signature), strings.TrimPrefix(other.sign(t, line), "0x"), 1)
+	return strings.Replace(file, hex.EncodeToString(first.Signature), strings.TrimPrefix(other.sign(t, line), "0x"), 1)
 }
 
 func TestVerifyRefuses(t *testing.T) {
@@ -997,5 +1083,51 @@ func TestOnlyThePinnedSignerIsAccepted(t *testing.T) {
 	}
 	if readAmendments(t, path) != launchFile {
 		t.Fatal("a refused sign changed the file")
+	}
+}
+
+// A key file others can read is refused before it is used.
+func TestSignRefusesAKeyFileOthersCanRead(t *testing.T) {
+	h := newHarness(t)
+	path := writeAmendments(t, launchFile)
+	keyFile := writeKeyFile(t, h.key)
+	for _, mode := range []os.FileMode{0o644, 0o640, 0o604} {
+		if err := os.Chmod(keyFile, mode); err != nil {
+			t.Fatal(err)
+		}
+		out, err := h.run("sign", "--in="+path, "--line="+ctfLine(1, 8), "--current-epoch=7", "--key-file="+keyFile)
+		if err == nil || !strings.Contains(err.Error(), "can be read by others") {
+			t.Fatalf("mode %04o: %v\n%s", mode, err, out)
+		}
+	}
+	if readAmendments(t, path) != launchFile {
+		t.Fatal("a refused sign changed the file")
+	}
+}
+
+// The chain is read after the file, so an edit made meanwhile is not overwritten.
+func TestAnEditWhileReadingTheChainIsKept(t *testing.T) {
+	h := newHarness(t)
+	path := writeAmendments(t, launchFile)
+	edited := launchFile + "# edited meanwhile\n"
+	current := uint64(7)
+	chain := fakeChain(t, "0x3c4", &current)
+	var once sync.Once
+	editing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() {
+			if err := os.WriteFile(path, []byte(edited), 0o640); err != nil {
+				t.Error(err)
+			}
+		})
+		chain.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer editing.Close()
+	line := ctfLine(1, 8)
+	out, err := h.run("attach", "--in="+path, "--line="+line, "--signature="+h.sign(t, line), "--rpc="+editing.URL)
+	if err == nil || !strings.Contains(err.Error(), "changed while this ran") {
+		t.Fatal(out, err)
+	}
+	if readAmendments(t, path) != edited {
+		t.Fatal("the edit was overwritten")
 	}
 }

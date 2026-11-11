@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -37,6 +38,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"gopkg.in/yaml.v3"
 
@@ -90,11 +92,24 @@ const (
 	// amendment.ParseFile refuses a file past this size; reading one byte more lets it.
 	maxFileBytes = 256 << 10
 	// placeRefusal says why an entry cannot go where it would.
-	placeRefusal = "a new entry must come after every existing one of its kind for its operator"
+	placeRefusal = "a new entry takes effect no earlier than every entry in the file, and later than every one of its kind for its operator"
+	// maxHeadAge is how old an RPC's latest block may be. A node further behind the
+	// chain could report an epoch that has already ended.
+	maxHeadAge = 5 * time.Minute
+	// blockSeconds is the chain's measured block time, for saying how long is left.
+	blockSeconds = 12
 )
 
 // mainnetCoordinator counts the epochs of the only deployment with a pinned signer.
 var mainnetCoordinator = common.HexToAddress("0xC18925925E2B7bb9059b7d696b8c92762AE86406")
+
+// coordinatorFor is the coordinator that counts a deployment's epochs.
+func coordinatorFor(chainID uint64, netuid uint16) (common.Address, bool) {
+	if chainID == 964 && netuid == 25 {
+		return mainnetCoordinator, true
+	}
+	return common.Address{}, false
+}
 
 var (
 	wholeText      = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
@@ -196,56 +211,111 @@ func parseWhole(name, text string) (uint64, error) {
 	return value, nil
 }
 
-// epochNow is the current epoch the caller gave, or read from the RPC, and a sentence
-// saying where it came from. Nil means neither was given.
-func epochNow(ctx context.Context, opts *options, chainID uint64) (*uint64, string, error) {
+// epochNow is the current epoch the caller gave, or read from the RPC. said says where
+// it came from, and startsAt, for an RPC and a first epoch from, when that epoch
+// starts. Nil means neither was given.
+func epochNow(ctx context.Context, opts *options, chainID uint64, netuid uint16, from *uint64) (current *uint64, said, startsAt string, err error) {
 	switch {
 	case opts.currentEpoch != "" && opts.rpc != "":
-		return nil, "", errors.New("give --current-epoch or --rpc, not both")
+		return nil, "", "", errors.New("give --current-epoch or --rpc, not both")
 	case opts.currentEpoch != "":
 		epoch, err := parseWhole("--current-epoch", opts.currentEpoch)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
-		return &epoch, fmt.Sprintf("The current epoch, as given, is %d.", epoch), nil
+		return &epoch, fmt.Sprintf("The current epoch, as given, is %d.", epoch), "", nil
 	case opts.rpc != "":
-		epoch, err := readCurrentEpoch(ctx, opts.rpc, chainID)
-		if err != nil {
-			return nil, "", err
+		coordinator, ok := coordinatorFor(chainID, netuid)
+		if !ok {
+			return nil, "", "", fmt.Errorf("no coordinator is known for chain %d sn %d to read the epoch from; give --current-epoch", chainID, netuid)
 		}
-		return &epoch, fmt.Sprintf("The current epoch, read from the chain, is %d.", epoch), nil
+		reading, err := readChain(ctx, opts.rpc, chainID, coordinator, from, time.Now())
+		if err != nil {
+			return nil, "", "", err
+		}
+		said = fmt.Sprintf("The current epoch, read from the chain at block %d, is %d.", reading.head, reading.epoch)
+		if from != nil && reading.startsAt > reading.head {
+			blocks := reading.startsAt - reading.head
+			startsAt = fmt.Sprintf("it starts at block %d, %d blocks from now, about %s at %d s a block", reading.startsAt, blocks, roughly(blocks*blockSeconds), blockSeconds)
+		}
+		return &reading.epoch, said, startsAt, nil
 	}
-	return nil, "", nil
+	return nil, "", "", nil
 }
 
-func readCurrentEpoch(ctx context.Context, endpoint string, chainID uint64) (uint64, error) {
+// roughly says a span of seconds in minutes, hours or days.
+func roughly(seconds uint64) string {
+	switch {
+	case seconds < 2*3600:
+		return fmt.Sprintf("%d minutes", (seconds+59)/60)
+	case seconds < 2*86400:
+		return fmt.Sprintf("%.1f hours", float64(seconds)/3600)
+	}
+	return fmt.Sprintf("%.1f days", float64(seconds)/86400)
+}
+
+// chainReading is what the coordinator says at the RPC's latest block.
+type chainReading struct {
+	head, epoch uint64
+	// startsAt is the first block of the epoch asked about, if any.
+	startsAt uint64
+}
+
+// readChain reads the current epoch from the coordinator at the RPC's latest block,
+// and the first block of epoch from, if given. It refuses a node whose latest block is
+// older than maxHeadAge, since one behind the chain would report an epoch that has
+// already ended.
+func readChain(ctx context.Context, endpoint string, chainID uint64, coordinatorAddress common.Address, from *uint64, now time.Time) (*chainReading, error) {
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 	client, err := evmrpc.DialContext(ctx, endpoint)
 	if err != nil {
-		return 0, fmt.Errorf("the RPC at %s: %w", endpoint, err)
+		return nil, fmt.Errorf("the RPC at %s: %w", endpoint, err)
 	}
 	defer client.Close()
 	reported, err := client.ChainID(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("read the chain id from %s: %w", endpoint, err)
+		return nil, fmt.Errorf("read the chain id from %s: %w", endpoint, err)
 	}
 	if !reported.IsUint64() || reported.Uint64() != chainID {
-		return 0, fmt.Errorf("the RPC at %s is on chain %s, not %d", endpoint, reported, chainID)
+		return nil, fmt.Errorf("the RPC at %s is on chain %s, not %d", endpoint, reported, chainID)
 	}
+	var head struct {
+		Number    hexutil.Uint64 `json:"number"`
+		Timestamp hexutil.Uint64 `json:"timestamp"`
+	}
+	if err := client.Client().CallContext(ctx, &head, "eth_getBlockByNumber", "latest", false); err != nil {
+		return nil, fmt.Errorf("read the latest block from %s: %w", endpoint, err)
+	}
+	if age := now.Sub(time.Unix(int64(head.Timestamp), 0)); age > maxHeadAge {
+		return nil, fmt.Errorf("the RPC at %s is behind: its latest block, %d, is %s old, so the epoch it reports may have ended; use a node at the chain's head", endpoint, uint64(head.Number), age.Round(time.Second))
+	}
+	block := new(big.Int).SetUint64(uint64(head.Number))
 	coordinator := stabi.NewSTCoordinator()
-	output, err := client.CallContract(ctx, ethereum.CallMsg{To: &mainnetCoordinator, Data: coordinator.PackCurrentEpoch()}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("read currentEpoch() from %s: %w", endpoint, err)
+	read := func(name string, data []byte, unpack func([]byte) (*big.Int, error)) (uint64, error) {
+		output, err := client.CallContract(ctx, ethereum.CallMsg{To: &coordinatorAddress, Data: data}, block)
+		if err != nil {
+			return 0, fmt.Errorf("read %s from %s: %w", name, endpoint, err)
+		}
+		value, err := unpack(output)
+		if err != nil {
+			return 0, fmt.Errorf("read %s from %s: %w", name, endpoint, err)
+		}
+		if !value.IsUint64() {
+			return 0, fmt.Errorf("%s from %s is out of range: %s", name, endpoint, value)
+		}
+		return value.Uint64(), nil
 	}
-	epoch, err := coordinator.UnpackCurrentEpoch(output)
-	if err != nil {
-		return 0, fmt.Errorf("read currentEpoch() from %s: %w", endpoint, err)
+	reading := &chainReading{head: uint64(head.Number)}
+	if reading.epoch, err = read("currentEpoch()", coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch); err != nil {
+		return nil, err
 	}
-	if !epoch.IsUint64() {
-		return 0, fmt.Errorf("currentEpoch() from %s is out of range: %s", endpoint, epoch)
+	if from != nil {
+		if reading.startsAt, err = read("epochStartBlock()", coordinator.PackEpochStartBlock(new(big.Int).SetUint64(*from)), coordinator.UnpackEpochStartBlock); err != nil {
+			return nil, err
+		}
 	}
-	return epoch.Uint64(), nil
+	return reading, nil
 }
 
 // parseStrict is amendment.ParseFile and one thing more. ParseFile passes over
@@ -329,8 +399,8 @@ func loadDraft(ctx context.Context, opts *options, deps dependencies) (*draft, e
 	if err != nil {
 		return nil, err
 	}
-	if file.Netuid != entry.Netuid {
-		return nil, fmt.Errorf("the line is for sn %d and %s for sn %d", entry.Netuid, opts.in, file.Netuid)
+	if file.Netuid() != entry.Netuid {
+		return nil, fmt.Errorf("the line is for sn %d and %s for sn %d", entry.Netuid, opts.in, file.Netuid())
 	}
 	if err := file.Verify(entry.ChainID, entry.Netuid, signer); err != nil {
 		return nil, fmt.Errorf("an entry already in %s does not verify: %w", opts.in, err)
@@ -339,7 +409,7 @@ func loadDraft(ctx context.Context, opts *options, deps dependencies) (*draft, e
 	if err := d.checkPlace(); err != nil {
 		return nil, err
 	}
-	current, now, err := epochNow(ctx, opts, entry.ChainID)
+	current, said, startsAt, err := epochNow(ctx, opts, entry.ChainID, entry.Netuid, &entry.FromEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -347,22 +417,42 @@ func loadDraft(ctx context.Context, opts *options, deps dependencies) (*draft, e
 		return nil, errors.New("give the current epoch, --current-epoch=N or --rpc=URL: an amendment whose first epoch has started is refused")
 	}
 	if entry.FromEpoch <= *current {
-		return nil, fmt.Errorf("epoch %d has started: the current epoch is %d, and an amendment is signed before its first epoch starts, so the earliest is %d", entry.FromEpoch, *current, *current+1)
+		earliest := fmt.Sprintf("so the earliest is %d", *current+1)
+		if *current == math.MaxUint64 {
+			earliest = "and no later epoch exists"
+		}
+		return nil, fmt.Errorf("epoch %d has started: the current epoch is %d, and an amendment is signed before its first epoch starts, %s", entry.FromEpoch, *current, earliest)
 	}
-	d.now = fmt.Sprintf("%s Epoch %d has not started.", now, entry.FromEpoch)
+	d.now = fmt.Sprintf("%s Epoch %d has not started.", said, entry.FromEpoch)
+	if startsAt != "" {
+		d.now = fmt.Sprintf("%s Epoch %d has not started: %s. Publish the entry before then.", said, entry.FromEpoch, startsAt)
+	}
 	return d, nil
 }
 
-// checkPlace refuses, before anyone signs, an entry the file could not take: a new
-// entry comes after every existing one of its kind for its operator. One placed
-// earlier could change epochs readers have already decided, so they refuse that file,
-// and one at an existing epoch would change a signed entry, which never changes.
+// checkPlace refuses, before anyone signs, an entry the file could not take. A file
+// lists its entries in the order they take effect, so a new entry takes effect no
+// earlier than any entry in it, and later than every one of its kind for its operator.
+// One placed earlier could change epochs readers have already decided, so they refuse
+// that file, and one at an existing epoch of its kind would change a signed entry,
+// which never changes.
 func (d *draft) checkPlace() error {
-	latest := d.file.Latest(d.entry.Kind(), d.entry.NoID)
-	if latest == nil || d.entry.FromEpoch > latest.FromEpoch {
-		return nil
+	var newest, ofKind *amendment.Entry
+	for _, entry := range d.file.Entries() {
+		if newest == nil || entry.FromEpoch >= newest.FromEpoch {
+			newest = &entry
+		}
+		if entry.Kind() == d.entry.Kind() && entry.NoID == d.entry.NoID {
+			ofKind = &entry
+		}
 	}
-	return fmt.Errorf("epoch %d is not after the newest entry of %s for no %d, from epoch %d: %s, because readers refuse a file that could change epochs they have already decided, and a signed entry never changes", d.entry.FromEpoch, d.entry.Kind(), d.entry.NoID, latest.FromEpoch, placeRefusal)
+	switch {
+	case ofKind != nil && d.entry.FromEpoch <= ofKind.FromEpoch:
+		return fmt.Errorf("epoch %d is not after the newest entry of %s for no %d, from epoch %d: %s, because readers refuse a file that could change epochs they have already decided, and a signed entry never changes", d.entry.FromEpoch, d.entry.Kind(), d.entry.NoID, ofKind.FromEpoch, placeRefusal)
+	case newest != nil && d.entry.FromEpoch < newest.FromEpoch:
+		return fmt.Errorf("epoch %d is before the newest entry in the file, from epoch %d: %s, because readers refuse a file that could change epochs they have already decided", d.entry.FromEpoch, newest.FromEpoch, placeRefusal)
+	}
+	return nil
 }
 
 func runMessage(ctx context.Context, opts *options, stdout io.Writer, deps dependencies) error {
@@ -443,6 +533,13 @@ func runSign(ctx context.Context, opts *options, stdout io.Writer, deps dependen
 	if err != nil {
 		return err
 	}
+	info, err := os.Stat(opts.keyFile)
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%s can be read by others (mode %04o): keep a key file to its owner, with chmod 600", opts.keyFile, info.Mode().Perm())
+	}
 	key, err := onchain.LoadKeyFile(opts.keyFile)
 	if err != nil {
 		return err
@@ -469,6 +566,10 @@ func (d *draft) attach(stdout io.Writer, done string) error {
 	if err := d.checkResult(next); err != nil {
 		return fmt.Errorf("nothing written: %w", err)
 	}
+	// The chain was read since the file was, so check nobody changed it meanwhile.
+	if now, err := os.ReadFile(d.in); err != nil || !bytes.Equal(now, d.raw) {
+		return fmt.Errorf("nothing written: %s changed while this ran; run it again", d.in)
+	}
 	if err := writeFileAtomic(d.in, next); err != nil {
 		return err
 	}
@@ -486,10 +587,11 @@ func (d *draft) checkResult(next []byte) error {
 	if err := file.Verify(d.entry.ChainID, d.entry.Netuid, d.signer); err != nil {
 		return err
 	}
-	if len(file.Entries) != len(d.file.Entries)+1 || !amendment.Extends(file, d.file) {
+	entries := file.Entries()
+	if len(entries) != len(d.file.Entries())+1 || !amendment.Extends(file, d.file) {
 		return errors.New("the result does not keep every earlier entry unchanged")
 	}
-	added := &file.Entries[len(file.Entries)-1]
+	added := &entries[len(entries)-1]
 	line, err := added.Line()
 	if err != nil {
 		return err
@@ -643,14 +745,14 @@ func runVerify(ctx context.Context, opts *options, stdout io.Writer, deps depend
 	if err != nil {
 		return err
 	}
-	signer, err := pinnedSigner(deps, chainID, file.Netuid)
+	signer, err := pinnedSigner(deps, chainID, file.Netuid())
 	if err != nil {
 		return err
 	}
-	if err := file.Verify(chainID, file.Netuid, signer); err != nil {
+	if err := file.Verify(chainID, file.Netuid(), signer); err != nil {
 		return err
 	}
-	current, _, err := epochNow(ctx, opts, chainID)
+	current, _, _, err := epochNow(ctx, opts, chainID, file.Netuid(), nil)
 	if err != nil {
 		return err
 	}
@@ -659,15 +761,16 @@ func runVerify(ctx context.Context, opts *options, stdout io.Writer, deps depend
 
 func report(stdout io.Writer, source string, file *amendment.File, chainID uint64, signer common.Address, current *uint64) error {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s: chain %d, sn %d, signer %s\n", source, chainID, file.Netuid, signer)
-	if len(file.Entries) == 0 {
+	entries := file.Entries()
+	fmt.Fprintf(&out, "%s: chain %d, sn %d, signer %s\n", source, chainID, file.Netuid(), signer)
+	if len(entries) == 0 {
 		fmt.Fprintln(&out, "No signed entries: no signed amendment is in force.")
 		_, err := io.WriteString(stdout, out.String())
 		return err
 	}
-	fmt.Fprintf(&out, "%d signed, each verified:\n", len(file.Entries))
-	for i := range file.Entries {
-		line, err := file.Entries[i].Line()
+	fmt.Fprintf(&out, "%d signed, each verified:\n", len(entries))
+	for i := range entries {
+		line, err := entries[i].Line()
 		if err != nil {
 			return err
 		}
@@ -693,10 +796,11 @@ func nowStatement(file *amendment.File, current uint64) (string, error) {
 		kind amendment.Kind
 		noID uint64
 	}
+	entries := file.Entries()
 	var order []series
 	seen := map[series]bool{}
-	for i := range file.Entries {
-		key := series{file.Entries[i].Kind(), file.Entries[i].NoID}
+	for i := range entries {
+		key := series{entries[i].Kind(), entries[i].NoID}
 		if !seen[key] {
 			seen[key] = true
 			order = append(order, key)
@@ -717,8 +821,8 @@ func nowStatement(file *amendment.File, current uint64) (string, error) {
 		if applies != nil {
 			statement = fmt.Sprintf("the entry from epoch %d applies.", applies.FromEpoch)
 		}
-		for i := range file.Entries {
-			entry := &file.Entries[i]
+		for i := range entries {
+			entry := &entries[i]
 			if entry.Kind() == key.kind && entry.NoID == key.noID && entry.FromEpoch > current {
 				statement += fmt.Sprintf(" The entry from epoch %d is next.", entry.FromEpoch)
 				break

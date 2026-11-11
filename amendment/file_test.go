@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -144,7 +145,7 @@ func TestEntriesInForceByEpoch(t *testing.T) {
 			t.Errorf("no %d, epoch %d: extenders from %d, ctf from %d; want %d and %d", c.noID, c.epoch, fromEpoch(in.Extenders), fromEpoch(in.CaptureTheFlag), c.extenders, c.ctf)
 		}
 		for _, entry := range []*Entry{in.Extenders, in.CaptureTheFlag} {
-			if entry != nil && (entry.NoID != c.noID || !entry.Signed() || entry.Verify(testChain, testNetuid, signer) != nil) {
+			if entry != nil && (entry.NoID != c.noID || entry.Configured() || entry.Verify(testChain, testNetuid, signer) != nil) {
 				t.Errorf("no %d, epoch %d: %+v", c.noID, c.epoch, entry)
 			}
 		}
@@ -161,11 +162,15 @@ func TestEntriesInForceByEpoch(t *testing.T) {
 	if again.CaptureTheFlag.FromEpoch != 12 || again.CaptureTheFlag.Ctf.Carry != common.HexToAddress(testCarry) || again.CaptureTheFlag.Verify(testChain, testNetuid, signer) != nil {
 		t.Fatalf("%+v", again.CaptureTheFlag)
 	}
-	if latest := file.Latest(KindCaptureTheFlag, 1); latest == nil || latest.FromEpoch != 12 {
-		t.Fatal(latest)
+	// So are the entries it lists.
+	entries := file.Entries()
+	if len(entries) != 4 || entries[3].FromEpoch != 12 || file.Netuid() != testNetuid {
+		t.Fatalf("%+v", entries)
 	}
-	if latest := file.Latest(KindCaptureTheFlag, 2); latest != nil {
-		t.Fatal(latest)
+	entries[3].FromEpoch = 13
+	entries[3].Signature[1] ^= 1
+	if again, _ := file.At(1, 12, nil); again.CaptureTheFlag == nil || again.CaptureTheFlag.FromEpoch != 12 || again.CaptureTheFlag.Verify(testChain, testNetuid, signer) != nil {
+		t.Fatalf("%+v", again.CaptureTheFlag)
 	}
 }
 
@@ -177,15 +182,15 @@ func TestOnlyAVerifiedFileAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.At(1, 8, nil); err == nil {
-		t.Fatal("an unverified file answered")
+	if _, err := file.At(1, 8, nil); !errors.Is(err, ErrUnverified) {
+		t.Fatal("an unverified file answered:", err)
 	}
 	_, other := testKey(t)
 	if err := file.Verify(testChain, testNetuid, other); err == nil {
 		t.Fatal("verified under another signer")
 	}
-	if _, err := file.At(1, 8, nil); err == nil {
-		t.Fatal("a file that failed verification answered")
+	if _, err := file.At(1, 8, nil); !errors.Is(err, ErrUnverified) {
+		t.Fatal("a file that failed verification answered:", err)
 	}
 	if err := file.Verify(testChain, testNetuid, signer); err != nil {
 		t.Fatal(err)
@@ -197,8 +202,12 @@ func TestOnlyAVerifiedFileAnswers(t *testing.T) {
 	if err := file.Verify(945, testNetuid, signer); err == nil {
 		t.Fatal("verified for another chain")
 	}
-	if _, err := file.At(1, 8, nil); err == nil {
-		t.Fatal("a file that failed its last verification answered")
+	if _, err := file.At(1, 8, nil); !errors.Is(err, ErrUnverified) {
+		t.Fatal("a file that failed its last verification answered:", err)
+	}
+	// A file made any other way than by parsing has no entries to answer with.
+	if _, err := (&File{}).At(1, 8, nil); !errors.Is(err, ErrUnverified) {
+		t.Fatal("a file nobody parsed or verified answered:", err)
 	}
 	fallback, err := ParseFallback(testChain, testNetuid, []string{extendersLine(t, 1, 8)})
 	if err != nil {
@@ -219,7 +228,7 @@ func TestTheFallbackStandsInOnlyWhereNoSignedEntryIs(t *testing.T) {
 	key, signer := testKey(t)
 	// The signing missed epoch 8, so configuration covers it and the entry signed
 	// next starts at 9. The extender pool's configuration says 6, its entry 8.
-	file := verifiedFile(t, fileText(t, key, ctfLineAt(t, 1, 9), extendersLine(t, 1, 8)), signer)
+	file := verifiedFile(t, fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 9)), signer)
 	fallback, err := ParseFallback(testChain, testNetuid, []string{
 		ctfLineAt(t, 1, 8),
 		extendersLine(t, 1, 6),
@@ -230,19 +239,19 @@ func TestTheFallbackStandsInOnlyWhereNoSignedEntryIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
-		noID, epoch     uint64
-		extenders, ctf  int64
-		extendersSigned bool
-		ctfSigned       bool
+		noID, epoch         uint64
+		extenders, ctf      int64
+		extendersConfigured bool
+		ctfConfigured       bool
 	}{
 		{noID: 1, epoch: 5, extenders: -1, ctf: -1},
-		{noID: 1, epoch: 6, extenders: 6, ctf: -1},
-		{noID: 1, epoch: 7, extenders: 6, ctf: -1},
-		{noID: 1, epoch: 8, extenders: 8, ctf: 8, extendersSigned: true},
-		{noID: 1, epoch: 9, extenders: 8, ctf: 9, extendersSigned: true, ctfSigned: true},
-		{noID: 1, epoch: 25, extenders: 8, ctf: 9, extendersSigned: true, ctfSigned: true},
+		{noID: 1, epoch: 6, extenders: 6, ctf: -1, extendersConfigured: true},
+		{noID: 1, epoch: 7, extenders: 6, ctf: -1, extendersConfigured: true},
+		{noID: 1, epoch: 8, extenders: 8, ctf: 8, ctfConfigured: true},
+		{noID: 1, epoch: 9, extenders: 8, ctf: 9},
+		{noID: 1, epoch: 25, extenders: 8, ctf: 9},
 		{noID: 2, epoch: 4, extenders: -1, ctf: -1},
-		{noID: 2, epoch: 5, extenders: 5, ctf: -1},
+		{noID: 2, epoch: 5, extenders: 5, ctf: -1, extendersConfigured: true},
 	} {
 		in, err := file.At(c.noID, c.epoch, fallback)
 		if err != nil {
@@ -252,27 +261,52 @@ func TestTheFallbackStandsInOnlyWhereNoSignedEntryIs(t *testing.T) {
 			t.Errorf("no %d, epoch %d: extenders from %d, ctf from %d; want %d and %d", c.noID, c.epoch, fromEpoch(in.Extenders), fromEpoch(in.CaptureTheFlag), c.extenders, c.ctf)
 			continue
 		}
-		if in.Extenders != nil && in.Extenders.Signed() != c.extendersSigned || in.CaptureTheFlag != nil && in.CaptureTheFlag.Signed() != c.ctfSigned {
+		if in.Extenders != nil && in.Extenders.Configured() != c.extendersConfigured || in.CaptureTheFlag != nil && in.CaptureTheFlag.Configured() != c.ctfConfigured {
 			t.Errorf("no %d, epoch %d: a configured entry stood in for a signed one, or the other way", c.noID, c.epoch)
+		}
+		for _, entry := range []*Entry{in.Extenders, in.CaptureTheFlag} {
+			if entry != nil && !entry.Configured() && entry.Verify(testChain, testNetuid, signer) != nil {
+				t.Errorf("no %d, epoch %d: an unverified answer", c.noID, c.epoch)
+			}
 		}
 	}
 	// A file with no entries, as at launch, leaves configuration alone in force.
 	launch := verifiedFile(t, launchFile, signer)
-	if in, err := launch.At(1, 8, fallback); err != nil || fromEpoch(in.CaptureTheFlag) != 8 || in.CaptureTheFlag.Signed() || fromEpoch(in.Extenders) != 6 {
+	if in, err := launch.At(1, 8, fallback); err != nil || fromEpoch(in.CaptureTheFlag) != 8 || !in.CaptureTheFlag.Configured() || fromEpoch(in.Extenders) != 6 {
 		t.Fatal(in, err)
 	}
 	if in, err := launch.At(1, 8, nil); err != nil || in.CaptureTheFlag != nil || in.Extenders != nil {
 		t.Fatal(in, err)
 	}
-	// So does a deployment with no pinned signer.
-	if in, err := Unpublished(testNetuid).At(1, 7, fallback); err != nil || fromEpoch(in.Extenders) != 6 || in.CaptureTheFlag != nil {
-		t.Fatal(in, err)
-	}
-	if in, err := Unpublished(testNetuid).At(1, 7, nil); err != nil || in.Extenders != nil {
-		t.Fatal(in, err)
-	}
-	if entries := fallback.Entries(); len(entries) != 4 || entries[0].Signed() {
+	if entries := fallback.Entries(); len(entries) != 4 || !entries[0].Configured() || entries[0].Signature != nil {
 		t.Fatal(entries)
+	}
+}
+
+// A deployment with no pinned signer publishes no amendments, so its configuration
+// alone puts one in force. One with a pinned signer has no such file: without its
+// verified file, what is in force is unknown, whatever its configuration says.
+func TestOnlyAnUnpinnedDeploymentIsUnpublished(t *testing.T) {
+	if file, err := Unpublished(testChain, testNetuid); err == nil {
+		t.Fatalf("SN25 is unpublished: %+v", file)
+	}
+	const testnet = 945
+	unpublished, err := Unpublished(testnet, testNetuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := ParseFallback(testnet, testNetuid, []string{strings.Replace(extendersLine(t, 1, 6), "chain 964", "chain 945", 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in, err := unpublished.At(1, 7, fallback); err != nil || fromEpoch(in.Extenders) != 6 || !in.Extenders.Configured() || in.CaptureTheFlag != nil {
+		t.Fatal(in, err)
+	}
+	if in, err := unpublished.At(1, 7, nil); err != nil || in.Extenders != nil || in.CaptureTheFlag != nil {
+		t.Fatal(in, err)
+	}
+	if len(unpublished.Entries()) != 0 || unpublished.Netuid() != testNetuid {
+		t.Fatal(unpublished.Entries())
 	}
 }
 
@@ -365,6 +399,9 @@ func TestRefusedFiles(t *testing.T) {
 		"an entry twice": good + `  - line: "` + line + `"
     signature: "` + signature + "\"\n",
 		"an earlier entry after a later": fileText(t, key, extendersLine(t, 1, 9), extendersLine(t, 1, 8)),
+		"another kind before one listed": fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 5)),
+		"another operator before one":    fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 12), extendersLine(t, 2, 3)),
+		"a signature with an escape":     replace(`"`+signature+`"`, `"\x30`+signature[1:]+`"`),
 		"an entry for another sn": func() string {
 			other, err := NewExtenders(testChain, 26, 1, 8).Line()
 			if err != nil {
@@ -381,12 +418,13 @@ func TestRefusedFiles(t *testing.T) {
 		t.Fatal("parsed an oversized file")
 	}
 	// What a reader passes over, and what it allows: fields it does not use, the
-	// layout of a list, and entries of different kinds or operators in any order.
+	// layout of a list, and kinds and operators interleaved in the order they take
+	// effect.
 	for name, file := range map[string]string{
 		"an unused top-level field": good + "notes: kept for people\n",
 		"a list at the margin":      strings.ReplaceAll(strings.ReplaceAll(good, "  - line", "- line"), "    signature", "  signature"),
 		"kinds and operators interleaved": fileText(t, key,
-			ctfLineAt(t, 1, 12), extendersLine(t, 2, 10), extendersLine(t, 1, 8), ctfLineAt(t, 2, 9)),
+			extendersLine(t, 1, 8), ctfLineAt(t, 2, 8), ctfLineAt(t, 1, 8), extendersLine(t, 2, 10), ctfLineAt(t, 1, 12)),
 		"comments among the entries": strings.Replace(good, "signed_amendments:\n", "signed_amendments:\n  # the extender pool\n", 1),
 	} {
 		if _, err := ParseFile([]byte(file)); err != nil {
@@ -407,7 +445,7 @@ func TestVerifyChecksEveryEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(file.Entries) != 2 {
+	if len(file.Entries()) != 2 {
 		t.Fatalf("%+v", file)
 	}
 	if err := file.Verify(testChain, testNetuid, signer); err == nil {
@@ -426,7 +464,8 @@ func TestVerifyChecksEveryEntry(t *testing.T) {
 }
 
 // A reader takes only entries after the ones it holds. An entry added among them, even
-// well signed, would change epochs that reader has already decided.
+// well signed, would change epochs that reader has already decided, and so would one
+// added after them that takes effect before them, which no file can hold.
 func TestOnlyALaterEntryExtendsAFile(t *testing.T) {
 	key, signer := testKey(t)
 	parse := func(lines ...string) *File {
@@ -436,20 +475,21 @@ func TestOnlyALaterEntryExtendsAFile(t *testing.T) {
 	v1, v2, v2Later := extendersLine(t, 1, 8), ctfLineAt(t, 1, 8), ctfLineAt(t, 1, 12)
 	last := parse(v1, v2)
 	resigned := parse(v1, v2)
-	resigned.Entries[1].Signature = malleate(resigned.Entries[1].Signature)
+	resigned.entries[1].Signature = malleate(resigned.entries[1].Signature)
 	for name, c := range map[string]struct {
 		next *File
 		want bool
 	}{
-		"the same file":              {parse(v1, v2), true},
-		"a later entry":              {parse(v1, v2, v2Later), true},
-		"an entry of another kind":   {parse(v1, v2, extendersLine(t, 2, 4)), true},
-		"an entry between":           {parse(v1, extendersLine(t, 2, 4), v2), false},
-		"an entry before all":        {parse(extendersLine(t, 2, 4), v1, v2), false},
-		"the newest dropped":         {parse(v1), false},
-		"the oldest dropped":         {parse(v2), false},
-		"an entry signed once more":  {resigned, false},
-		"the entries in other order": {parse(v2, v1), false},
+		"the same file":                {parse(v1, v2), true},
+		"a later entry":                {parse(v1, v2, v2Later), true},
+		"another operator's, as late":  {parse(v1, v2, extendersLine(t, 2, 8)), true},
+		"an entry between":             {parse(v1, ctfLineAt(t, 2, 8), v2), false},
+		"an entry before all":          {parse(extendersLine(t, 2, 3), v1, v2), false},
+		"the newest dropped":           {parse(v1), false},
+		"the oldest dropped":           {parse(v2), false},
+		"an entry signed once more":    {resigned, false},
+		"the entries in other order":   {parse(v2, v1), false},
+		"a later one, the newest gone": {parse(v1, v2Later), false},
 	} {
 		if got := Extends(c.next, last); got != c.want {
 			t.Errorf("%s: Extends = %t, want %t", name, got, c.want)
@@ -460,6 +500,36 @@ func TestOnlyALaterEntryExtendsAFile(t *testing.T) {
 	}
 	if Extends(nil, last) {
 		t.Error("no file extends one")
+	}
+	// A file that kept every held entry and added one taking effect before them would
+	// change epochs a reader has decided: no file can list it.
+	for _, earlier := range []string{ctfLineAt(t, 2, 7), extendersLine(t, 3, 1)} {
+		if _, err := ParseFile([]byte(fileText(t, key, v1, v2, earlier))); err == nil {
+			t.Fatalf("a file added %q after entries from epoch 8", earlier)
+		}
+	}
+}
+
+// Verify holds a file to the order ParseFile requires, and At answers by first epoch
+// however the entries were listed, so neither rests on the other alone.
+func TestTheOrderIsCheckedTwice(t *testing.T) {
+	key, signer := testKey(t)
+	later := signed(t, key, mustParse(t, ctfLineAt(t, 1, 12)))
+	earlier := signed(t, key, mustParse(t, ctfLineAt(t, 1, 8)))
+	file := &File{netuid: testNetuid, entries: []Entry{*later, *earlier}}
+	if err := file.Verify(testChain, testNetuid, signer); err == nil {
+		t.Fatal("verified entries out of order")
+	}
+	file.verified = true
+	if in, err := file.At(1, 20, nil); err != nil || fromEpoch(in.CaptureTheFlag) != 12 {
+		t.Fatal(in, err)
+	}
+	if in, err := file.At(1, 10, nil); err != nil || fromEpoch(in.CaptureTheFlag) != 8 {
+		t.Fatal(in, err)
+	}
+	wrongSubnet := signed(t, key, mustParse(t, strings.Replace(ctfLineAt(t, 1, 8), "sn 25", "sn 26", 1)))
+	if err := (&File{netuid: testNetuid, entries: []Entry{*wrongSubnet}}).Verify(testChain, testNetuid, signer); err == nil {
+		t.Fatal("verified an entry for another subnet")
 	}
 }
 
@@ -673,4 +743,162 @@ func TestSaveFailureStillUsesTheVerifiedFile(t *testing.T) {
 	if in, err := file.At(1, 8, nil); err != nil || in.Extenders == nil {
 		t.Fatal(in, err)
 	}
+}
+
+// servedFiles answers each request with the next of bodies, then the last again.
+func servedFiles(t *testing.T, bodies ...func() (int, string)) *httptest.Server {
+	t.Helper()
+	var lock sync.Mutex
+	next := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		lock.Lock()
+		body := bodies[min(next, len(bodies)-1)]
+		next++
+		lock.Unlock()
+		status, text := body()
+		w.WriteHeader(status)
+		fmt.Fprint(w, text)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func ok(text string) func() (int, string) {
+	return func() (int, string) { return http.StatusOK, text }
+}
+
+func down() (int, string) { return http.StatusBadGateway, "" }
+
+// A source holds the last good file itself: with no store, or one it cannot read, a
+// rollback is refused and an outage keeps the file in force.
+func TestASourceHoldsItsOwnLastGoodFile(t *testing.T) {
+	ctx := context.Background()
+	key, signer := testKey(t)
+	two := fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 8))
+	one := fileText(t, key, extendersLine(t, 1, 8))
+	for name, store := range map[string]Store{
+		"no store":            nil,
+		"an unreadable store": &memoryStore{loadErr: errors.New("connection reset")},
+	} {
+		server := servedFiles(t, ok(two), ok(one), down, ok(launchFile))
+		source := NewSource(server.URL, testChain, testNetuid, signer, store)
+		file, problem := source.Refresh(ctx)
+		if file == nil || len(file.Entries()) != 2 || store == nil && problem != nil {
+			t.Fatalf("%s: %v %v", name, file, problem)
+		}
+		for _, what := range []string{"a rollback", "an outage", "the launch file again"} {
+			file, problem := source.Refresh(ctx)
+			if problem == nil || file == nil || len(file.Entries()) != 2 {
+				t.Fatalf("%s, %s: %v %v", name, what, file, problem)
+			}
+			if in, err := file.At(1, 8, nil); err != nil || in.CaptureTheFlag == nil {
+				t.Fatalf("%s, %s: %v %v", name, what, in, err)
+			}
+		}
+	}
+}
+
+// Two readers share a store, as the server's replicas do. One that read the store
+// before the other saved a newer file, and then fetched an older one from a stale
+// cache, does not save it over the newer.
+func TestASharedStoreIsNotWalkedBack(t *testing.T) {
+	ctx := context.Background()
+	key, signer := testKey(t)
+	one := fileText(t, key, extendersLine(t, 1, 8))
+	two := fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 8))
+	store := &memoryStore{raw: []byte(one)}
+	arrived, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stale" {
+			close(arrived)
+			<-release
+			fmt.Fprint(w, one)
+			return
+		}
+		fmt.Fprint(w, two)
+	}))
+	defer server.Close()
+	slow := NewSource(server.URL+"/stale", testChain, testNetuid, signer, store)
+	fast := NewSource(server.URL+"/fresh", testChain, testNetuid, signer, store)
+	done := make(chan struct{})
+	var slowFile *File
+	go func() {
+		defer close(done)
+		slowFile, _ = slow.Refresh(ctx)
+	}()
+	<-arrived
+	if file, problem := fast.Refresh(ctx); problem != nil || len(file.Entries()) != 2 || string(store.raw) != two {
+		t.Fatal(file, problem, string(store.raw))
+	}
+	close(release)
+	<-done
+	if string(store.raw) != two {
+		t.Fatalf("the newer stored file was walked back:\n%s", store.raw)
+	}
+	if slowFile == nil || len(slowFile.Entries()) != 1 {
+		t.Fatal(slowFile)
+	}
+	// And the slow reader's next refresh starts from the newer stored file.
+	if file, problem := NewSource(server.URL+"/fresh", testChain, testNetuid, signer, store).Refresh(ctx); problem != nil || len(file.Entries()) != 2 {
+		t.Fatal(file, problem)
+	}
+}
+
+// Refreshes run one at a time, so a stale answer that arrives late never replaces the
+// newer file one source holds or stores.
+func TestConcurrentRefreshesKeepTheNewest(t *testing.T) {
+	ctx := context.Background()
+	key, signer := testKey(t)
+	one := fileText(t, key, extendersLine(t, 1, 8))
+	two := fileText(t, key, extendersLine(t, 1, 8), ctfLineAt(t, 1, 8))
+	var lock sync.Mutex
+	served := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		lock.Lock()
+		served++
+		body := one
+		if served%2 == 0 {
+			body = two
+		}
+		lock.Unlock()
+		fmt.Fprint(w, body)
+	}))
+	defer server.Close()
+	store := &lockedStore{}
+	source := NewSource(server.URL, testChain, testNetuid, signer, store)
+	var group sync.WaitGroup
+	for range 16 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			if file, _ := source.Refresh(ctx); file == nil {
+				t.Error("a refresh returned no file")
+			}
+		}()
+	}
+	group.Wait()
+	file, _ := source.Refresh(ctx)
+	if file == nil || len(file.Entries()) != 2 || string(store.load()) != two {
+		t.Fatalf("%v\n%s", file, store.load())
+	}
+}
+
+type lockedStore struct {
+	lock sync.Mutex
+	raw  []byte
+}
+
+func (l *lockedStore) load() []byte {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return l.raw
+}
+
+func (l *lockedStore) Load(context.Context) ([]byte, error) { return l.load(), nil }
+
+func (l *lockedStore) Save(_ context.Context, raw []byte) error {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.raw = raw
+	return nil
 }

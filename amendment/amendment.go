@@ -66,10 +66,23 @@ func SignerFor(chainID uint64, netuid uint16) (common.Address, bool) {
 	return pricesheet.SignerFor(chainID, netuid)
 }
 
-// CtfPoolID is network operator noID's CTF pool: the vault2 pool 2^32 + noID
-// (CAPTURETHEFLAG.md §3.1).
-func CtfPoolID(noID uint64) uint64 {
-	return ctfPoolBase + noID
+// CtfPoolID is network operator noID's CTF pool, the vault2 pool 2^32 + noID
+// (CAPTURETHEFLAG.md §3.1), and false for a noID that is no operator id, which is 1
+// to 2^32 - 1.
+func CtfPoolID(noID uint64) (uint64, bool) {
+	if noID == 0 || noID >= ctfPoolBase {
+		return 0, false
+	}
+	return ctfPoolBase + noID, true
+}
+
+// CtfNoID is the network operator whose CTF pool poolID is, and false for a pool id
+// that is no operator's CTF pool.
+func CtfNoID(poolID uint64) (uint64, bool) {
+	if poolID <= ctfPoolBase || poolID >= 2*ctfPoolBase {
+		return 0, false
+	}
+	return poolID - ctfPoolBase, true
 }
 
 // Version is a line format, the number after "v" in its line.
@@ -192,7 +205,7 @@ func extenderTerms() ExtenderTerms {
 
 func ctfTerms(noID uint64, carry common.Address) CtfTerms {
 	return CtfTerms{
-		CtfPool:         CtfPoolID(noID),
+		CtfPool:         ctfPoolBase + noID,
 		Carry:           carry,
 		Shares:          Shares{Pool: Ratio{Num: 4, Den: 10}, Ctf: Ratio{Num: 1, Den: 10}, Head: Ratio{Num: 5, Den: 10}},
 		HeadCedesToPool: true,
@@ -222,6 +235,8 @@ type Entry struct {
 	// Signature is the pinned signer's EIP-191 signature of the line, as a hardware
 	// wallet returns it. A configured entry has none.
 	Signature []byte
+	// configured marks an entry of a Fallback.
+	configured bool
 }
 
 // NewExtenders is a version 1 entry, unsigned.
@@ -247,10 +262,11 @@ func (e *Entry) Kind() Kind {
 	return 0
 }
 
-// Signed reports whether the entry carries a signature, as every entry of a file
-// does and no configured one does. Verify checks it.
-func (e *Entry) Signed() bool {
-	return len(e.Signature) != 0
+// Configured reports whether the entry is a configured one: File.At answered with it
+// from its fallback, because no signed entry of its kind is in force. Every other
+// answer of File.At is a signed entry that Verify checked.
+func (e *Entry) Configured() bool {
+	return e.configured
 }
 
 func (e *Entry) String() string {

@@ -61,8 +61,8 @@ func TestTheDesignLinesParse(t *testing.T) {
 	if *extenders.Extender != *want.Extender || extenders.Ctf != nil || extenders.Version != want.Version || extenders.ChainID != 964 || extenders.Netuid != 25 || extenders.NoID != 1 || extenders.FromEpoch != 8 {
 		t.Fatalf("%+v %+v", extenders, extenders.Extender)
 	}
-	if extenders.Kind() != KindExtenders || extenders.Signed() {
-		t.Fatal(extenders.Kind(), extenders.Signed())
+	if extenders.Kind() != KindExtenders || extenders.Configured() || extenders.Signature != nil {
+		t.Fatal(extenders.Kind(), extenders.Configured())
 	}
 	ctf := mustParse(t, ctfLine)
 	wantTerms := CtfTerms{
@@ -80,7 +80,7 @@ func TestTheDesignLinesParse(t *testing.T) {
 	if ctf.Ctf == nil || *ctf.Ctf != wantTerms || ctf.Extender != nil || ctf.Version != V2 || ctf.ChainID != 964 || ctf.Netuid != 25 || ctf.NoID != 1 || ctf.FromEpoch != 8 {
 		t.Fatalf("%+v %+v", ctf, ctf.Ctf)
 	}
-	if ctf.Kind() != KindCaptureTheFlag || CtfPoolID(1) != 4_294_967_297 {
+	if ctf.Kind() != KindCaptureTheFlag {
 		t.Fatal(ctf.Kind())
 	}
 	// The constructors write the same lines, and each reads back as written.
@@ -135,6 +135,28 @@ func TestTheVariableTerms(t *testing.T) {
 		}
 		if parsed.Ctf != nil && parsed.Ctf.CtfPool != 1<<32+entry.NoID {
 			t.Fatal(parsed.Ctf.CtfPool)
+		}
+	}
+}
+
+// An operator's CTF pool is 2^32 + its id, and only an operator id has one.
+func TestCtfPoolIDs(t *testing.T) {
+	for noID, pool := range map[uint64]uint64{1: 4_294_967_297, 2: 4_294_967_298, 1<<32 - 1: 1<<33 - 1} {
+		if got, ok := CtfPoolID(noID); !ok || got != pool {
+			t.Fatalf("no %d: %d %t", noID, got, ok)
+		}
+		if got, ok := CtfNoID(pool); !ok || got != noID {
+			t.Fatalf("pool %d: %d %t", pool, got, ok)
+		}
+	}
+	for _, noID := range []uint64{0, 1 << 32, 1<<64 - 1, 1<<64 - 1<<32 + 1} {
+		if pool, ok := CtfPoolID(noID); ok {
+			t.Fatalf("no %d has pool %d", noID, pool)
+		}
+	}
+	for _, pool := range []uint64{0, 1, 1<<32 - 1, 1 << 32, 1 << 33, 1<<64 - 1} {
+		if noID, ok := CtfNoID(pool); ok {
+			t.Fatalf("pool %d is no %d's", pool, noID)
 		}
 	}
 }
@@ -358,7 +380,7 @@ func TestTheSignatureBindsTheLine(t *testing.T) {
 		if err := entry.Verify(testChain, testNetuid, signer); err != nil {
 			t.Fatal(err)
 		}
-		if !entry.Signed() || entry.Signature[64] != 27 && entry.Signature[64] != 28 {
+		if len(entry.Signature) != 65 || entry.Signature[64] != 27 && entry.Signature[64] != 28 {
 			t.Fatalf("not as a hardware wallet returns it: %x", entry.Signature)
 		}
 		changes := map[string]func(*Entry){
@@ -367,7 +389,7 @@ func TestTheSignatureBindsTheLine(t *testing.T) {
 			"subnet":      func(e *Entry) { e.Netuid = 26 },
 		}
 		if entry.Version == V2 {
-			changes["operator"] = func(e *Entry) { e.NoID, e.Ctf.CtfPool = 2, CtfPoolID(2) }
+			changes["operator"] = func(e *Entry) { e.NoID, e.Ctf.CtfPool = 2, ctfPoolBase+2 }
 			changes["carry"] = func(e *Entry) { e.Ctf.Carry = common.HexToAddress("0x0000000000000000000000000000000000000001") }
 			changes["version"] = func(e *Entry) { e.Version, e.Extender, e.Ctf = V1, NewExtenders(1, 1, 1, 1).Extender, nil }
 		} else {
@@ -418,7 +440,7 @@ func TestTermsALineDoesNotStateAreRefused(t *testing.T) {
 		"no chain":      func(e *Entry) { e.ChainID = 0 },
 		"no subnet":     func(e *Entry) { e.Netuid = 0 },
 		"operator 0":    func(e *Entry) { e.NoID = 0 },
-		"operator 2^32": func(e *Entry) { e.NoID, e.Ctf.CtfPool = 1<<32, CtfPoolID(1<<32) },
+		"operator 2^32": func(e *Entry) { e.NoID, e.Ctf.CtfPool = 1<<32, ctfPoolBase+1<<32 },
 		"extender zeta": func(e *Entry) {
 			e.Version, e.Extender, e.Ctf = V1, &ExtenderTerms{IntraPlatform: true, IntraNetwork: true, Units: UnitsEgressPrefix, FreeAndPaid: true, Zeta: Ratio{Num: 2, Den: 2}}, nil
 		},
