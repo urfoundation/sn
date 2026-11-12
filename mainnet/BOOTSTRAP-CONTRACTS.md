@@ -1493,8 +1493,12 @@ refuses with exit 3:
 - a deterministic deployment proxy that is missing or whose code differs;
 - a proxy without the capture the flag implementation, a CTF pool vault2
   does not hold, and a pool that `ctfSettlementAt` resolves elsewhere;
-- a carry coldkey that already holds staking hotkeys, owns hotkeys or holds a
-  lock: someone knows its address, so it is created under another salt;
+- a carry coldkey that owns hotkeys, holds a lock, or holds more staking
+  hotkeys than the 128 that transfers from other coldkeys can add: only a
+  coldkey swap into it leaves those, so it is created under another salt.
+  Staking hotkeys third parties sent it are reported, not refused: the
+  guardian's association makes the coldkey public, and the creation and the
+  carry work with up to 128 of them, each adding gas to its moves;
 - a carry coldkey that is not yet a hotkey account, or is one of another
   coldkey than the guardian, which could release it with a coldkey swap into
   it: the carry is created under another salt;

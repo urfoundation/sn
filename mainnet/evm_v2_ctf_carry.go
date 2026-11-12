@@ -11,12 +11,15 @@
 //
 // review pins the artifact and derives the address from it, the salt, and
 // vault2 and the CTF pool, which it reads through STSettlement2 at the head.
-// Before the carry exists it requires the carry's coldkey to be untouched (no
-// staking hotkeys, owned hotkeys or lock: a coldkey swap prepared into it, or
-// stake sent to it, means its address is known) and already a hotkey account
-// of the guardian named by --guardian, which refuses every coldkey swap into
-// it and every reservation of it, as must vault2's coldkey be; a pool hotkey
-// that holds a UID, which the auto-stake destination needs; the
+// Before the carry exists it requires the carry's coldkey to own no hotkeys,
+// hold no lock and hold no more staking hotkeys than third parties can add,
+// which only a coldkey swap into it could leave, and to be already a hotkey
+// account of the guardian named by --guardian, which refuses every coldkey
+// swap into it and every reservation of it, as must vault2's coldkey be. The
+// guardian's association makes the coldkey public, so anyone can send it stake
+// before the creation: up to 128 such staking hotkeys are reported, not
+// refused, since the creation and the carry work with them. It requires a pool
+// hotkey that holds a UID, which the auto-stake destination needs; the
 // deterministic deployment proxy's account holding TAO above its existential
 // deposit, without which the creation's value cannot pass through it; a seed
 // of at least the contract's seedMinimum() at the head; and, with --from, the
@@ -63,6 +66,9 @@ const (
 	ctfCarrySeedMultiple       = 10
 	ctfCarryExistentialDeposit = 500
 	ctfCarryStakingHotkeyPage  = 64
+	// Runtime 486 lets a transfer from another coldkey add a hotkey only to a
+	// StakingHotkeys list of fewer than 128 entries.
+	ctfCarryThirdPartyStakingHotkeys = 128
 )
 
 // The functions an STCtfCarry artifact must declare, and its immutables, one
@@ -446,11 +452,11 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 		return result, ctx.Err()
 	}
 
-	// Before the creation: an untouched coldkey, a seed of at least the
-	// least, and the creation itself as an eth_call.
+	// Before the creation: a coldkey no coldkey swap reached, a seed of at
+	// least the least, and the creation itself as an eth_call.
 	switch {
-	case runtime.StakingHotkeys != 0:
-		return result, ctfCarryRefusal("the carry's coldkey %s already holds %d staking hotkeys: someone knows its address; create it under another salt", coldkey.Hex(), runtime.StakingHotkeys)
+	case runtime.StakingHotkeys > ctfCarryThirdPartyStakingHotkeys:
+		return result, ctfCarryRefusal("the carry's coldkey %s already holds %d staking hotkeys, more than the %d transfers from other coldkeys can add, as a coldkey swap into it leaves: create it under another salt", coldkey.Hex(), runtime.StakingHotkeys, ctfCarryThirdPartyStakingHotkeys)
 	case runtime.OwnedHotkeys != 0:
 		return result, ctfCarryRefusal("the carry's coldkey %s already owns %d hotkeys, as a coldkey swap into it leaves: create it under another salt", coldkey.Hex(), runtime.OwnedHotkeys)
 	case runtime.Lock:

@@ -378,7 +378,8 @@ func (self *ctfCarryFake) review(t *testing.T, extra ...string) (int, ctfCarryRe
 // CR-1: before the creation, review derives the carry's address from the
 // artifact, the salt, vault2 and the pool, and its coldkey from the address;
 // builds the creation call with the seed and the existential deposit as its
-// value; and, with --from, runs it as an eth_call that answers the address.
+// value; and, with --from, runs it as an eth_call that answers the address. A
+// list third parties filled through the public coldkey is reported.
 func TestCtfCarryReviewBeforeCreation(t *testing.T) {
 	f := newCtfCarryFake(t)
 	code, review, stderr := f.review(t)
@@ -428,12 +429,21 @@ func TestCtfCarryReviewBeforeCreation(t *testing.T) {
 	if code, review, stderr = f.review(t, "--seed-rao", "100000000"); code != 0 || review.Runtime.SeedMinimumRao != "100000000" {
 		t.Fatalf("exit %d for the floor's seed: %+v; %s", code, review.Runtime, stderr)
 	}
+
+	// The guardian's association makes the coldkey public: stake third
+	// parties send it before the creation, up to the 128 entries they can
+	// add, is reported and not refused.
+	f.stakingLists[f.coldkey] = make([][32]byte, 128)
+	if code, review, stderr = f.review(t); code != 0 || review.Runtime.StakingHotkeys != 128 {
+		t.Fatalf("exit %d with a list third parties filled: %+v; %s", code, review.Runtime, stderr)
+	}
 }
 
 // CR-2: before the creation review refuses, exit 3, what the creation would
 // make unsafe or fail: the proxy's code, a proxy without the capture the flag
 // implementation, a pool vault2 does not hold or the proxy resolves
-// elsewhere, a carry coldkey someone has touched, either coldkey not the
+// elsewhere, a carry coldkey that owns hotkeys, holds a lock or holds more
+// staking hotkeys than third parties can add, either coldkey not the
 // guardian's hotkey account, a proxy without TAO above its existential
 // deposit, a seed below the least, and a creation that fails or answers
 // another address.
@@ -449,7 +459,7 @@ func TestCtfCarryReviewRefusesBeforeCreation(t *testing.T) {
 		{"phase C proxy", func(f *ctfCarryFake) { f.notCtf = true }, nil, "capture the flag implementation"},
 		{"no CTF pool", func(f *ctfCarryFake) { f.registered = false }, nil, "holds no CTF pool"},
 		{"pool resolved elsewhere", func(f *ctfCarryFake) { f.resolved = other }, nil, "ctfSettlementAt"},
-		{"staking hotkeys", func(f *ctfCarryFake) { f.stakingLists[f.coldkey] = [][32]byte{{1}} }, nil, "already holds 1 staking hotkeys"},
+		{"more staking hotkeys than third parties can add", func(f *ctfCarryFake) { f.stakingLists[f.coldkey] = make([][32]byte, 129) }, nil, "already holds 129 staking hotkeys"},
 		{"owned hotkeys", func(f *ctfCarryFake) { f.owned[f.coldkey] = [][32]byte{{2}} }, nil, "already owns 1 hotkeys"},
 		{"a lock", func(f *ctfCarryFake) { f.locked[f.coldkey] = true }, nil, "conviction lock"},
 		{"a pool hotkey without a UID", func(f *ctfCarryFake) { f.noPoolUid = true }, nil, "holds no UID"},

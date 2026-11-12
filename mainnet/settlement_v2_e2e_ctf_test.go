@@ -195,11 +195,12 @@ func newCtfE2E(t *testing.T) *ctfE2E {
 // createCarry creates STCtfCarry(vault2, 2^32 + 1) through the deterministic
 // deployment proxy as the owner's steps do (CAPTURETHEFLAG.md §11.2), each
 // one checked by ctf-carry review. Review refuses until the guardian holds
-// the carry's coldkey as a hotkey account, then until the proxy's account
-// holds TAO above its existential deposit, without which the creation's
-// value cannot pass through it; funded by a native transfer, review
-// preflights the creation, which sends the 1 TAO seed and the deposit as its
-// value. The runtime keeps the deposit on the proxy and on the carry, as
+// the carry's coldkey as a hotkey account. That makes the coldkey public, and
+// a stranger sends it stake on a hotkey of its own, which review reports and
+// does not refuse. Review then refuses until the proxy's account holds TAO
+// above its existential deposit, without which the creation's value cannot
+// pass through it; funded by a native transfer, review preflights the
+// creation, which sends the 1 TAO seed and the deposit as its value. The runtime keeps the deposit on the proxy and on the carry, as
 // Frontier does, so the carry stakes exactly its seed on vault2's escrow
 // hotkey as its residual; it pins the pool hotkey as its auto-stake
 // destination and opts out of third-party staking-hotkey growth and of
@@ -240,6 +241,15 @@ func (e *ctfE2E) createCarry() {
 	if !f.chain.associateHotkey(e.carryGuardian, e.carryColdkey) {
 		t.Fatal("the guardian does not hold the carry's coldkey")
 	}
+	// The stranger's dust is a third-party entry on the carry's list, which
+	// stays: the creation and every move go through it.
+	dust := e2eKey("ctf-carry-dust-hotkey")
+	f.chain.emit(dust, ss58.EvmMirrorPubkey(f.stranger.address), e2eRao(1_000_000))
+	transfer, err := e2eRuntimeABI.Pack("transferStake", e.carryColdkey, dust, big.NewInt(e2eNetuid), big.NewInt(e2eNetuid), big.NewInt(1_000_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.must(f.stranger, e2eStaking, nil, transfer)
 	// The proxy holds nothing above its deposit: the creation would fail,
 	// as review says.
 	if _, code, stderr := review(); code != 3 || !strings.Contains(stderr, "holds no TAO above its existential deposit") {
@@ -256,7 +266,7 @@ func (e *ctfE2E) createCarry() {
 	before, code, stderr := review("--from", f.anyone.address.Hex())
 	if code != 0 || !before.Preflight.Ran || before.Carry.Address != e.carry.Hex() || before.Carry.Coldkey != common.Hash(e.carryColdkey).Hex() ||
 		before.Carry.CreateData != hexutil.Encode(createData) || before.Carry.CreateValueWei != value.String() || before.Created != nil ||
-		before.Runtime.SeedMinimumRao != strconv.Itoa(10*ctfE2ENominatorMinimum) || before.Runtime.StakingHotkeys != 0 {
+		before.Runtime.SeedMinimumRao != strconv.Itoa(10*ctfE2ENominatorMinimum) || before.Runtime.StakingHotkeys != 1 {
 		t.Fatalf("review before the creation: exit %d %+v %+v\n%s", code, before.Carry, before.Runtime, stderr)
 	}
 
@@ -291,12 +301,14 @@ func (e *ctfE2E) createCarry() {
 			e.carry, coldkey, vault, pool, netuid, escrow, hotkey, vaultColdkey, e.residual(), minimum)
 	}
 	// The proxy passed the value on and keeps its funding; the carry keeps
-	// the deposit and staked the rest. Its list holds the escrow hotkey, by
-	// the residual, and the pool hotkey, by the pin, which holds no stake.
+	// the deposit and staked the rest. Its list holds the stranger's dust,
+	// the escrow hotkey, by the residual, and the pool hotkey, by the pin,
+	// which holds no stake.
 	listed := f.chain.stakingHotkeys(e.carryColdkey)
 	if f.chain.balance(upgradeCreate2Factory).Cmp(new(big.Int).Mul(e2eRao(e2eExistentialDepositRao+1), big.NewInt(e2eRaoWei))) != 0 ||
 		f.chain.balance(e.carry).Cmp(new(big.Int).Mul(e2eRao(e2eExistentialDepositRao), big.NewInt(e2eRaoWei))) != 0 ||
-		len(listed) != 2 || !slices.Contains(listed, f.escrowV2) || !slices.Contains(listed, e.hotkey) || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
+		len(listed) != 3 || !slices.Contains(listed, dust) || !slices.Contains(listed, f.escrowV2) || !slices.Contains(listed, e.hotkey) ||
+		e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
 		t.Fatalf("after the creation the proxy holds %s wei, the carry %s wei, its list %x", f.chain.balance(upgradeCreate2Factory), f.chain.balance(e.carry), listed)
 	}
 }
