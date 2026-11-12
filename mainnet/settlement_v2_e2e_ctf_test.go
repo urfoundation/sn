@@ -114,6 +114,9 @@ type ctfE2E struct {
 	sender     *validator.SettlementV2Sender
 	// ledgers are the CTF roots built, by root index once finalized.
 	ledgers []*ctf.Ledger
+	// short is the rao every stake move credits its destination short of
+	// its amount: 0, or 1 once the runtime's shortfall knob is set.
+	short int64
 }
 
 // newCtfE2E upgrades the proxy through the folded timelock operation,
@@ -135,7 +138,9 @@ func newCtfE2E(t *testing.T) *ctfE2E {
 	if balance := f.chain.balance(f.timelock); balance.Cmp(new(big.Int).Sub(ctfTestValue, ctfTestBurn)) != 0 {
 		t.Fatalf("the timelock holds %s wei after the execute", balance)
 	}
+	f.publisher.lock.Lock()
 	f.publisher.pools = append(f.publisher.pools, ctfE2EPool)
+	f.publisher.lock.Unlock()
 	e.createCarry()
 	e.signEntry()
 	e.web = httptest.NewServer(http.HandlerFunc(e.serveWeb))
@@ -383,21 +388,23 @@ func (e *ctfE2E) refusedCtf(actor *e2eActor, to common.Address, data []byte, nam
 }
 
 // close lets epoch end and closes it for the CTF pool, as anyone may: the
-// close captures everything vault2 holds on the CTF pool hotkey.
+// close moves everything vault2 holds on the CTF pool hotkey to its escrow,
+// and funds the epoch with what escrow gained. It returns that funding.
 func (e *ctfE2E) close(epoch uint64) *big.Int {
 	e.t.Helper()
 	if end := e.end(epoch); e.chain.next() < end {
 		e.chain.rollTo(end)
 	}
 	observed := e.chain.stake(e.hotkey, e.vault2Coldkey)
+	captured := new(big.Int).Sub(observed, big.NewInt(e.short))
 	before := e.fundedThrough(epoch - 1)
 	receipt := e.must(e.anyone, e.settlement, nil, e2eSettlementBinding.PackCloseOperatorEpoch(e2eRao(epoch), ctfTestPoolId))
-	funded := new(big.Int).Add(before, observed)
-	e.requireLogs(receipt, e.vault2Log("EmissionCaptured", e2eRao(epoch), ctfTestPoolId, observed, observed, funded))
+	funded := new(big.Int).Add(before, captured)
+	e.requireLogs(receipt, e.vault2Log("EmissionCaptured", e2eRao(epoch), ctfTestPoolId, observed, captured, funded))
 	if e.fundedThrough(epoch).Cmp(funded) != 0 || e.chain.stake(e.hotkey, e.vault2Coldkey).Sign() != 0 {
 		e.t.Fatalf("epoch %d funded through %s, want %s", epoch, e.fundedThrough(epoch), funded)
 	}
-	return observed
+	return captured
 }
 
 // commitCensus publishes the census's objects and commits its hash as the
@@ -565,8 +572,10 @@ func (e *ctfE2E) check(flags ...string) (string, string, int) {
 // finalized CTF root through the carry, and checks what moved: the account
 // is claimed in full, the carry holds nothing, and vault2's position on the
 // CTF pool hotkey grew by what it returned, recorded for the next unfunded
-// epoch. With claimant set, the claimant first claims the carry account from
-// vault2 itself, as anyone may, and the recycle claims nothing again.
+// epoch: the account's unclaimed amount, less the rao each of the claim, the
+// carry's move and its transfer may credit short. With claimant set, the
+// claimant first claims the carry account from vault2 itself, as anyone may,
+// and the recycle claims nothing again.
 func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
 	e.t.Helper()
 	index := e.rootCount() - 1
@@ -576,7 +585,7 @@ func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
 	owed := new(big.Int).Sub(account.Cumulative, e.claimed(carryIndex))
 	if claimant != nil {
 		e.must(claimant, e.vault2, nil, e2eVault2Binding.PackClaim(ctfTestPoolId, e2eRao(index), account, proof))
-		if e.claimed(carryIndex).Cmp(account.Cumulative) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(owed) != 0 {
+		if e.claimed(carryIndex).Cmp(account.Cumulative) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(new(big.Int).Sub(owed, big.NewInt(e.short))) != 0 {
 			e.t.Fatalf("%s's claim of the carry account paid the carry %s of %s", claimant.name, e.chain.stake(e.escrowV2, e.carryColdkey), owed)
 		}
 	}
@@ -591,7 +600,8 @@ func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
 		}
 	}
 	grown := new(big.Int).Sub(e.chain.stake(e.hotkey, e.vault2Coldkey), before)
-	if event == nil || event.Epoch.Uint64() != epoch || event.Amount.Cmp(grown) != 0 || grown.Cmp(owed) != 0 || e.claimed(carryIndex).Cmp(account.Cumulative) != 0 ||
+	returned := new(big.Int).Sub(owed, big.NewInt(3*e.short))
+	if event == nil || event.Epoch.Uint64() != epoch || event.Amount.Cmp(grown) != 0 || grown.Cmp(returned) != 0 || e.claimed(carryIndex).Cmp(account.Cumulative) != 0 ||
 		e.recycledFor(epoch).Cmp(new(big.Int).Add(recorded, grown)) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Sign() != 0 || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
 		e.t.Fatalf("recycle of root %d: event %+v, vault2 grew %s of %s owed, recycledFor(%d) %s", index, event, grown, owed, epoch, e.recycledFor(epoch))
 	}
@@ -635,13 +645,33 @@ func ctfE2ECensus(epoch uint64) *ctf.Census {
 // root finalizes; snclaim v2 status lists a winner's CTF account, and the
 // winner claims it through snclaim v2 claim; anyone claims and recycles the
 // carry account through STCtfCarry, recorded for epoch 4. Epoch 4 has no
-// census: everything carries, and its root returns the carry in full,
-// matured; the audit and snclaim, with the previous root's accounts, approve
-// it, it finalizes, and once the watcher has claimed the carry account from
-// vault2 itself the carry recycles what it holds for epoch 5. vault2's
-// conservation holds across both pools.
+// census: everything carries, and its root returns the carry, matured; the
+// audit and snclaim, with the previous root's accounts, approve it, it
+// finalizes, and once the watcher has claimed the carry account from vault2
+// itself the carry recycles what it holds for epoch 5. vault2's conservation
+// holds across both pools. The cycle runs with exact stake moves, and again
+// with every move from epoch 3 on crediting one rao short, as the runtime's
+// share pool can: a recycle returns three rao less than the carry account,
+// the next capture one less, and the root still matures within the walk's
+// tolerance (CAPTURETHEFLAG.md §4.5, §4.6).
 func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
-	e := newCtfE2E(t)
+	for _, short := range []int64{0, 1} {
+		t.Run(fmt.Sprintf("moves %d rao short", short), func(t *testing.T) {
+			e := newCtfE2E(t)
+			e.short = short
+			e.chain.do(func() { e.chain.runtime.shortfall = short == 1 })
+			e.cycle()
+		})
+	}
+}
+
+// cycle runs E-8 from epoch 3's emission.
+func (e *ctfE2E) cycle() {
+	t := e.t
+	short := big.NewInt(e.short)
+	less := func(amount *big.Int, times int64) *big.Int {
+		return new(big.Int).Sub(amount, new(big.Int).Mul(short, big.NewInt(times)))
+	}
 
 	// Epoch 3: the CTF pool earns, and the census window opens at end(3).
 	e.chain.emit(e.hotkey, e.vault2Coldkey, e2eRao(ctfE2EEmission3))
@@ -657,8 +687,9 @@ func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
 	commitData := e2eSettlementBinding.PackCommitCtfCensus(e2eRao(ctfTestFirstEpoch), big.NewInt(e2eNoID), encoded.Hash)
 	e.chain.rollTo(end - 1)
 	e.refusedCtf(e.operator, e.settlement, commitData, "InvalidWindow")
-	if captured := e.close(ctfTestFirstEpoch); captured.Uint64() != ctfE2EEmission3 {
-		t.Fatalf("the close captured %s", captured)
+	funded3 := e.close(ctfTestFirstEpoch)
+	if funded3.Cmp(less(e2eRao(ctfE2EEmission3), 1)) != 0 {
+		t.Fatalf("the close funded %s", funded3)
 	}
 	e.refusedCtf(e.anyone, e.settlement, commitData, "Unauthorized")
 	e.refusedCtf(e.operator, e.settlement, e2eSettlementBinding.PackCommitCtfCensus(e2eRao(ctfTestFirstEpoch), big.NewInt(e2eNoID), [32]byte{}), "InvalidCensusHash")
@@ -669,7 +700,8 @@ func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
 	censuses := map[uint64]*ctf.CensusObjects{ctfTestFirstEpoch: objects}
 	first := e.build(ctfTestFirstEpoch, censuses)
 	three := first.Epochs[0]
-	if !three.Drawn || three.Round != ctfE2ERound || len(three.Bound) != 1 || three.Bound[0].ClientID != ctfE2EBound || len(three.Awards) != 6 || three.SlotBase.Uint64() != 10_000_000 {
+	if !three.Drawn || three.Round != ctfE2ERound || len(three.Bound) != 1 || three.Bound[0].ClientID != ctfE2EBound || len(three.Awards) != 6 ||
+		three.SlotBase.ToBig().Cmp(new(big.Int).Div(funded3, big.NewInt(ctf.NumSlots))) != 0 {
 		t.Fatalf("epoch 3 drawn %t round %d, bound %v, %d awards, slot %s", three.Drawn, three.Round, three.Bound, len(three.Awards), three.SlotBase.Dec())
 	}
 	for _, award := range three.Awards {
@@ -677,7 +709,7 @@ func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
 			t.Fatal("the bound client won")
 		}
 	}
-	pending := e.commit(first)
+	e.commit(first)
 
 	// The auditor approves what reproduces with the chain's bindings; without
 	// them the draw keeps the bound client and the root is refused, which is
@@ -715,30 +747,33 @@ func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
 		t.Fatalf("snclaim v2 status of the winner: exit %d\n%s%s", code, stdout, stderr)
 	}
 	stdout, stderr, code = e.snclaim(e.snclaimArgs("v2", "claim", fmt.Sprintf("--coldkey=0x%x", winner.Coldkey), fmt.Sprintf("--no_id=%d", ctfE2EPool), "--key_file="+e.anyone.keyFile(t))...)
-	if code != 0 || e.claimed(index).Cmp(cumulative) != 0 || e.chain.stake(e.escrowV2, winner.Coldkey).Cmp(cumulative) != 0 {
+	if code != 0 || e.claimed(index).Cmp(cumulative) != 0 || e.chain.stake(e.escrowV2, winner.Coldkey).Cmp(less(cumulative, 1)) != 0 {
 		t.Fatalf("snclaim v2 claim of the winner's CTF account: exit %d, claimed %s of %s\n%s%s", code, e.claimed(index), cumulative, stdout, stderr)
 	}
 
 	// Anyone recycles the carry: vault2's next close captures it. It returns
-	// everything the root owed the pots and pending awards.
+	// what the root owed the pots and pending awards, less the moves' rounding.
 	returned4, amount := e.recycle(nil)
-	if owed := first.State.Obligations(); returned4 != ctfTestFirstEpoch+1 || amount.Cmp(owed.ToBig()) != 0 {
+	if owed := first.State.Obligations(); returned4 != ctfTestFirstEpoch+1 || amount.Cmp(less(owed.ToBig(), 3)) != 0 {
 		t.Fatalf("recycled %s for epoch %d, the pots and pending awards are %s", amount, returned4, owed.Dec())
 	}
 
 	// Epoch 4: fresh emission and the returned carry; no census, so no draw
-	// and everything carries.
+	// and everything carries. The carry is back within the walk's tolerance:
+	// what the moves lost is written off, and the fresh amount is the funding
+	// less what was owed.
 	e.chain.emit(e.hotkey, e.vault2Coldkey, e2eRao(ctfE2EEmission4))
-	if captured := e.close(ctfTestFirstEpoch + 1); captured.Cmp(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4))) != 0 {
-		t.Fatalf("the close of epoch 4 captured %s", captured)
+	funded4 := e.close(ctfTestFirstEpoch + 1)
+	if funded4.Cmp(less(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4)), 1)) != 0 {
+		t.Fatalf("the close of epoch 4 funded %s", funded4)
 	}
 	second := e.build(ctfTestFirstEpoch+1, censuses)
-	four := second.Epochs[0]
-	if paid := four.Paid(); four.Drawn || four.Census != nil || !four.Matured || four.Returned.ToBig().Cmp(amount) != 0 || four.Fresh.Uint64() != ctfE2EEmission4 || !paid.IsZero() {
-		t.Fatalf("epoch 4: drawn %t, matured %t, returned %s of %s, fresh %s, paid %s", four.Drawn, four.Matured, four.Returned.Dec(), amount, four.Fresh.Dec(), paid.Dec())
+	four, owed := second.Epochs[0], first.State.Obligations()
+	if paid := four.Paid(); four.Drawn || four.Census != nil || !four.Matured || four.Owed.Cmp(&owed) != 0 || four.Returned.ToBig().Cmp(amount) != 0 ||
+		four.Fresh.ToBig().Cmp(new(big.Int).Sub(funded4, owed.ToBig())) != 0 || !paid.IsZero() {
+		t.Fatalf("epoch 4: drawn %t, matured %t, returned %s of %s owed, fresh %s, paid %s", four.Drawn, four.Matured, four.Returned.Dec(), four.Owed.Dec(), four.Fresh.Dec(), paid.Dec())
 	}
-	pending = e.commit(second)
-	if pending.Seq != 2 {
+	if pending := e.commit(second); pending.Seq != 2 {
 		t.Fatalf("the second CTF root is seq %d", pending.Seq)
 	}
 	e.approve()
@@ -751,7 +786,7 @@ func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
 	// The watcher claims the carry account from vault2 first; the recycle
 	// then claims nothing again and returns what the carry holds.
 	e.finalize(second)
-	if returned5, again := e.recycle(e.watcher); returned5 != ctfTestFirstEpoch+2 || again.Cmp(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4))) != 0 {
+	if returned5, again := e.recycle(e.watcher); returned5 != ctfTestFirstEpoch+2 || again.Cmp(less(funded4, 3)) != 0 {
 		t.Fatalf("recycled %s for epoch %d", again, returned5)
 	}
 	e.requireConservation()
