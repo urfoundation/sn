@@ -60,3 +60,35 @@ func TestV2WatcherUnitExample(t *testing.T) {
 		t.Fatalf("watcher timer: %v", timer)
 	}
 }
+
+// CAPTURETHEFLAG.md §8: the capture the flag watcher unit's ExecStart parses
+// with snclaim's real usage as the pool watcher's but for UR's capture the
+// flag pool 4294967297, reading the amendments and pulses from their
+// defaults; without the key file check refuses before any RPC. Its timer
+// runs hourly, at half past, half an hour from the pool watcher's.
+func TestV2CtfWatcherUnitExample(t *testing.T) {
+	service := v2WatcherUnit(t, "settlement-v2-ctf-watcher.example.service")
+	pool := v2WatcherUnit(t, "settlement-v2-watcher.example.service")
+	if !slices.Equal(service["Type"], []string{"oneshot"}) || !slices.Equal(service["User"], pool["User"]) || len(service["ExecStart"]) != 1 {
+		t.Fatalf("capture the flag watcher service profile: %v", service)
+	}
+	if want := strings.Replace(pool["ExecStart"][0], " --no_id=1 ", " --no_id=4294967297 ", 1); service["ExecStart"][0] != want {
+		t.Fatalf("capture the flag watcher ExecStart %q, want %q", service["ExecStart"][0], want)
+	}
+	opts, err := parseArgv(t, strings.Fields(service["ExecStart"][0])[1:])
+	if err != nil || strOpt(opts, "--no_id") != "4294967297" || strOpt(opts, "--amendments_url") != "https://ur.xyz/amendments.yml" || strOpt(opts, "--drand_url") != "https://api.drand.sh" {
+		t.Fatalf("capture the flag watcher options %v, %v", opts, err)
+	}
+	filled := strings.NewReplacer("<vault2-address>", v2TestVault, "<O21-evm-rpc-url>", "http://127.0.0.1:1", "<operator-api-url>", "https://api.example").Replace(service["ExecStart"][0])
+	opts, err = parseArgv(t, slices.DeleteFunc(strings.Fields(filled)[1:], func(arg string) bool { return strings.HasPrefix(arg, "--key_file=") }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdV2Check(t.Context(), opts); err == nil || err.Error() != "--challenge and --demand send transactions: --key_file is required" {
+		t.Fatalf("capture the flag watcher without its key file: %v", err)
+	}
+	timer := v2WatcherUnit(t, "settlement-v2-ctf-watcher.example.timer")
+	if !slices.Equal(timer["OnCalendar"], []string{"*-*-* *:30:00"}) || !slices.Equal(timer["Persistent"], []string{"true"}) || !slices.Equal(timer["Unit"], []string{"sn-mainnet-settlement-v2-ctf-watcher.service"}) {
+		t.Fatalf("capture the flag watcher timer: %v", timer)
+	}
+}

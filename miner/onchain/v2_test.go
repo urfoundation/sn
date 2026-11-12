@@ -132,6 +132,13 @@ type v2TestChain struct {
 	garbage map[string]bool
 	revert  map[string]string
 	before  func(key string)
+
+	// poolID is the pool vault2 holds the pool record, pending root and
+	// roots of: v2TestPool, or a capture the flag pool (v2_ctf_test.go).
+	// ctf, when set, models the capture the flag contracts and the census
+	// blocks' timestamps.
+	poolID uint64
+	ctf    *v2TestCtfModel
 }
 
 func newV2TestChain(t *testing.T) *v2TestChain {
@@ -157,6 +164,7 @@ func newV2TestChain(t *testing.T) *v2TestChain {
 		pools:    map[uint64][]stabi.ISTSettlementVault2Root{},
 		gasLimit: 75_000_000,
 		exhaust:  map[[2]uint64]bool{},
+		poolID:   v2TestPool,
 	}
 	if err := os.WriteFile(c.keyFile, []byte(testKeyHex), 0o600); err != nil {
 		t.Fatal(err)
@@ -241,6 +249,9 @@ func (c *v2TestChain) answer(method string, params []json.RawMessage) (any, map[
 			number = hexutil.MustDecodeUint64(selector)
 		}
 		block := syntheticBlockIdentityFixture(c.t, number, v2TestBlockHash(number))
+		if time, ok := c.ctf.blockTime(number); ok {
+			block["timestamp"] = hexutil.EncodeUint64(time)
+		}
 		block["gasLimit"] = hexutil.EncodeUint64(c.gasLimit)
 		if c.gasLimit == 0 {
 			delete(block, "gasLimit")
@@ -254,11 +265,14 @@ func (c *v2TestChain) answer(method string, params []json.RawMessage) (any, map[
 			Value *hexutil.Big    `json:"value"`
 			Gas   *hexutil.Uint64 `json:"gas"`
 		}
-		if len(params) == 0 || json.Unmarshal(params[0], &message) != nil || message.To != c.vault && (message.To != c.batcher || c.batcher == common.Address{}) {
+		if len(params) == 0 || json.Unmarshal(params[0], &message) != nil || message.To != c.vault && (message.To != c.batcher || c.batcher == common.Address{}) && !c.ctf.serves(message.To) {
 			c.t.Errorf("%s does not address vault2: %s", method, params)
 		}
 		if message.To == c.batcher {
 			return c.answerBatch(method, message.Gas, message.Input)
+		}
+		if c.ctf.serves(message.To) {
+			return c.answerCtf(method, message.To, params)
 		}
 		function := c.function(message.Input)
 		key := method + ":" + function
@@ -403,7 +417,7 @@ func (c *v2TestChain) execute(from common.Address, value *big.Int, input []byte,
 		c.t.Errorf("%s arguments do not decode: %v", method.Name, err)
 		return nil, nil, v2TestError("Unknown")
 	}
-	ours := len(args) > 0 && args[0].(*big.Int).Cmp(big.NewInt(v2TestPool)) == 0
+	ours := len(args) > 0 && args[0].(*big.Int).Cmp(new(big.Int).SetUint64(c.poolID)) == 0
 	pack := func(values ...any) []byte {
 		out, err := method.Outputs.Pack(values...)
 		if err != nil {
@@ -443,6 +457,15 @@ func (c *v2TestChain) execute(from common.Address, value *big.Int, input []byte,
 		return pack(c.demanded[[3]uint64{args[1].(uint64), args[2].(*big.Int).Uint64(), args[3].(*big.Int).Uint64()}]), nil, nil
 	case "demandFeeWei":
 		return pack(c.fee), nil, nil
+	case "coordinator", "netuid":
+		if c.ctf == nil {
+			c.t.Errorf("unexpected vault2 call %s outside a capture the flag check", method.Name)
+			return nil, nil, v2TestError("Unknown")
+		}
+		if method.Name == "coordinator" {
+			return pack(c.ctf.coordinator), nil, nil
+		}
+		return pack(c.ctf.netuid), nil, nil
 	case "CHALLENGE_BLOCKS":
 		return pack(uint64(v2TestChallengeBlocks)), nil, nil
 	case "claim":
@@ -474,7 +497,7 @@ func v2TestVerify(root stabi.ISTSettlementVault2Root, account stabi.LedgerTreeAc
 
 // rootsOf returns the finalized roots of a pool.
 func (c *v2TestChain) rootsOf(noID *big.Int) []stabi.ISTSettlementVault2Root {
-	if noID.Cmp(big.NewInt(v2TestPool)) == 0 {
+	if noID.Cmp(new(big.Int).SetUint64(c.poolID)) == 0 {
 		return c.roots
 	}
 	if !noID.IsUint64() {
@@ -587,7 +610,7 @@ func (c *v2TestChain) demandPath(from common.Address, value *big.Int, rootIndex 
 }
 
 func (c *v2TestChain) seqTopics(seq uint64) []common.Hash {
-	return []common.Hash{common.BigToHash(big.NewInt(v2TestPool)), common.BigToHash(new(big.Int).SetUint64(seq))}
+	return []common.Hash{common.BigToHash(new(big.Int).SetUint64(c.poolID)), common.BigToHash(new(big.Int).SetUint64(seq))}
 }
 
 // event encodes a vault2 event with its indexed topics and its data.

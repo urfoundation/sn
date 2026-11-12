@@ -171,7 +171,7 @@ func (self *claimV2TestChain) runBatch(data []byte, gas uint64, receipt *types.R
 		}
 		left -= min(left, itemGas)
 		if receipt != nil {
-			self.claimed[intent.Account.Index.Uint64()] = *uint256.MustFromBig(intent.Account.Cumulative)
+			self.pool(intent.NoID.Uint64()).claimed[intent.Account.Index.Uint64()] = *uint256.MustFromBig(intent.Account.Cumulative)
 			caller := self.batch.address
 			if self.batch.caller != nil {
 				caller = *self.batch.caller
