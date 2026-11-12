@@ -71,7 +71,9 @@
   Mock data: 26 simulated epochs on the network's real country coverage (August to November 2026).
   Preview states with query parameters: ?page=ke (the Kenya country page, /ctf/ke), ?focus=np (the hub
   filtered to open provider slots), ?country=tm (visitor country), ?expanded=af (an opened tile on
-  touch sizes), ?motion=0 (no animation). Resize the window below 1100px for tablet and below 600px for mobile.
+  touch sizes), ?motion=0 (no animation), ?prelaunch (the note at the top of the hub before capture the flag
+  starts, 15 days 3 hours 38 minutes before epoch 8 on a clock of its own; ?prelaunch=15 starts it 15 seconds from
+  now, to see the last minute and the turn). Resize the window below 1100px for tablet and below 600px for mobile.
   The real page is built in web/ur.xyz (Astro) with self-hosted fonts and flag files; see SEO.md.
 -->
 <style>
@@ -105,6 +107,66 @@ a{color:#ED8FFF}a:hover{color:#F6C4FF}
 .h2{margin:0;font:500 30px/1.1 Inter,sans-serif;letter-spacing:-.02em}
 .sub{margin:0;color:var(--soft);font-size:15px;line-height:1.5;max-width:660px}
 .sec{margin-top:60px;display:flex;flex-direction:column;gap:18px}
+
+/* the note above everything else until capture the flag starts (?prelaunch): its sentence, a countdown on split
+   tiles in the pixel face, the blocks left with a bar that fills over each block's 12 seconds, and a flag that
+   climbs its pole over the three epochs before the start (--hoist, 0 to 1) and glides up to its place as the page
+   starts. The two sentences share one place, and so do the countdown and its live status, so nothing under the
+   note moves when it turns live; at the start the flag waves and ten pips burst from it, five providers' (blue)
+   and five extenders' (green). A screen reader hears the sentence and the time left in words, at most once a
+   minute; the figures are hidden from it. Without motion nothing rolls, waves, glides or bursts. */
+.start{--digit:clamp(30px,3.4vw,44px);--fw:46px;--fh:34px;margin-top:28px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"pole line clock" "pole blocks clock";align-items:center;gap:16px 44px;padding:24px 32px 22px 24px;border:1px solid rgba(237,143,255,.3);border-radius:18px;background:radial-gradient(ellipse 300px 220px at 0% 100%,rgba(237,143,255,.13),transparent 70%),#151215}
+.start+.hdr{padding-top:40px}
+.start-pole{grid-area:pole;align-self:stretch;position:relative;width:calc(var(--fw) + 6px);min-height:118px}
+.start-pole::before{content:"";position:absolute;left:2px;top:4px;bottom:0;width:3px;border-radius:2px;background:var(--muted)}
+.start-pole::after{content:"";position:absolute;left:0;top:0;width:7px;height:7px;border-radius:50%;background:#D6E6F4;box-shadow:0 0 10px rgba(214,230,244,.45)}
+.start-notch{position:absolute;left:-1px;width:9px;height:1px;background:rgba(214,230,244,.4);bottom:calc(var(--fh) + (100% - 10px - var(--fh)) / 3)}
+.start-notch+.start-notch{bottom:calc(var(--fh) + (100% - 10px - var(--fh)) * 2 / 3)}
+.start-car{position:absolute;top:10px;bottom:0;left:0;right:0;display:flex;align-items:flex-end;transform:translateY(calc(var(--hoist) * (var(--fh) - 100%)));transition:transform 1.8s cubic-bezier(.3,1.18,.4,1)}
+.start-flag{position:relative;display:grid;place-items:center;width:var(--fw);height:var(--fh);margin-left:5px;border-radius:2px 5px 5px 2px;background:linear-gradient(90deg,transparent 22%,rgba(255,255,255,.2) 42%,transparent 58%,rgba(16,16,16,.1) 82%,transparent),linear-gradient(160deg,#F6C4FF,var(--acc) 55%,#D46FE8);box-shadow:0 0 22px rgba(237,143,255,.35);transform-origin:left center;animation:wave 2.8s ease-in-out infinite}
+.start-flag b{font:400 calc(var(--fh) * .62)/1 Silkscreen,monospace;color:#101010}
+.start[data-last-minute] .start-flag{animation-duration:1.4s}
+.start[data-phase="live"] .start-flag{animation-duration:1.6s}
+.start-burst{position:absolute;left:calc(5px + var(--fw) / 2);bottom:calc(var(--fh) / 2)}
+.start-burst i{position:absolute;left:-3.5px;top:-3.5px;width:7px;height:7px;border-radius:2px;background:var(--blue);opacity:0;animation:burst 1.3s cubic-bezier(.15,.7,.3,1) .4s both}
+.start-burst i:nth-child(n+6){background:var(--green)}
+.start-burst i:nth-child(1){--x:-46px;--y:-30px;--r:-80deg}.start-burst i:nth-child(2){--x:12px;--y:-52px;--r:120deg}.start-burst i:nth-child(3){--x:58px;--y:-22px;--r:-140deg}.start-burst i:nth-child(4){--x:66px;--y:30px;--r:90deg}.start-burst i:nth-child(5){--x:20px;--y:58px;--r:-60deg}
+.start-burst i:nth-child(6){--x:-28px;--y:-54px;--r:150deg}.start-burst i:nth-child(7){--x:40px;--y:-48px;--r:-100deg}.start-burst i:nth-child(8){--x:76px;--y:4px;--r:70deg}.start-burst i:nth-child(9){--x:48px;--y:50px;--r:-120deg}.start-burst i:nth-child(10){--x:-10px;--y:64px;--r:100deg}
+@keyframes burst{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0deg)}65%{opacity:1}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(1) rotate(var(--r))}}
+.start-line{grid-area:line;margin:0;display:grid;font:400 clamp(19px,1.85vw,23px)/1.32 Inter,sans-serif;letter-spacing:-.01em;color:var(--ink)}
+.start-line>span{grid-area:1/1}
+.start-ghost{visibility:hidden}
+.start-clock{grid-area:clock;display:grid}
+.start-clock>*{grid-area:1/1}
+.start-count{display:flex;flex-direction:column;gap:10px}
+.start-tiles{display:flex;align-items:flex-start;gap:6px}
+.start-unit{display:flex;flex-direction:column;align-items:center;gap:8px}
+.start-num{position:relative;display:flex;direction:ltr;padding:.12em .14em .04em;border:1px solid rgba(237,143,255,.4);border-radius:10px;background:linear-gradient(180deg,#2b1a30,#1e1323 50%,#170f1b 50%,#1f1425);box-shadow:0 0 24px rgba(237,143,255,.1),inset 0 1px 0 rgba(255,225,255,.12);color:var(--acc);font:400 var(--digit)/1 Silkscreen,monospace;text-shadow:0 0 16px rgba(237,143,255,.5)}
+.start-num::after{content:"";position:absolute;inset:50% 0 auto;height:1px;background:rgba(16,16,16,.65)}
+.start-d{display:block;width:.62em;text-align:center}
+.start-d>span{display:block;animation:roll .45s cubic-bezier(.2,.8,.2,1)}
+.start-d>span.s{animation:none}
+@keyframes roll{from{transform:translateY(-40%) scaleY(.6);opacity:0}}
+.start-sep{padding-top:.12em;color:rgba(237,143,255,.55);font:400 var(--digit)/1 Silkscreen,monospace;animation:blink 1s steps(1,end) infinite}
+@keyframes blink{50%{opacity:.25}}
+.start-uname{display:flex;justify-content:center;width:0;font:400 10px/1.2 "JetBrains Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+.start[data-last-minute] .start-num{animation:flare 1s ease-out infinite}
+@keyframes flare{from{box-shadow:0 0 40px rgba(237,143,255,.5),inset 0 1px 0 rgba(255,225,255,.12)}}
+.start-go{display:inline-flex;align-items:center;justify-content:center;gap:.4em;color:var(--acc);font:400 calc(var(--digit) * .9)/1 Silkscreen,monospace;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 0 22px rgba(237,143,255,.5)}
+.start-go i{flex:none;width:.3em;height:.3em;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
+.start[data-phase="live"] .start-count{visibility:hidden}
+.start[data-phase="live"] .start-go{animation:go .9s cubic-bezier(.2,.8,.2,1)}
+@keyframes go{from{opacity:0;transform:scale(.88)}}
+.start-blocks{grid-area:blocks;margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.start-blocks b{display:inline-block;min-width:8ch;font:400 14px/1 Silkscreen,monospace;color:var(--ink);white-space:nowrap}
+.start-track{position:relative;width:64px;height:3px;border-radius:2px;background:#2c2830;overflow:hidden}
+.start-bar{position:absolute;inset:0;background:rgba(237,143,255,.75);transform-origin:left center;animation:block 12s linear both}
+@keyframes block{from{transform:scaleX(0)}}
+.start[data-phase="live"] .start-blocks{visibility:hidden}
+.still .start-car{transition:none}
+.still .start-flag,.still .start-d>span,.still .start-sep,.still .start[data-last-minute] .start-num,.still .start-go,.still .start-go i{animation:none!important}
+.still .start-burst,.still .start-track{display:none}
+@media (prefers-reduced-motion:reduce){.start-car{transition:none}.start-flag,.start-d>span,.start-sep,.start[data-last-minute] .start-num,.start-go,.start-go i{animation:none!important}.start-burst,.start-track{display:none}}
 
 /* stats bar: wraps instead of scrolling; hairline separators come from the 1px gap */
 .live{display:flex;flex-wrap:wrap;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -288,6 +350,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 /* touch sizes, tablet and mobile (1099px and below): tap to expand replaces hover */
 @media (max-width:1099px){
   .shell{width:calc(100% - 48px)}
+  .start{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"pole line" "pole clock" "pole blocks";align-items:start;justify-items:start;gap:18px 26px}
   .touch-block{display:block}
   .live{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
   .live .tag{grid-column:1/-1;padding:12px 18px}
@@ -330,6 +393,12 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 /* mobile: 600px and below */
 @media (max-width:600px){
   .shell{width:calc(100% - 32px)}
+  .start{--digit:clamp(22px,7.4vw,32px);--fw:34px;--fh:25px;margin-top:20px;gap:16px 14px;padding:20px 16px 18px 14px;border-radius:16px}
+  .start+.hdr{padding-top:30px}
+  .start-line{font-size:17px}
+  .start-tiles{gap:3px}
+  .start-num{border-radius:8px}
+  .start-uname{font-size:9px;letter-spacing:.06em}
   .mob-only{display:inline-flex}
   .nav{gap:0 12px}
   .nav-links{gap:0 14px}
@@ -428,6 +497,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 .faq details p{margin:0 0 16px;color:var(--soft);font-size:14px;line-height:1.6}
 .faq details p b{color:var(--ink);font-weight:600}
 @media (max-width:1099px){.faq{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:400px){.start-uname{font-size:8px;letter-spacing:.02em}}
 </style>
 </head>
 <body>
@@ -514,6 +584,107 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       ? label + ': ' + won + ' of 5 won last epoch, pot ' + two(pot) + ' α. Launch ' + art + ' here and you win by default: about ' + two(SLOT + pot / 5) + ' α this epoch, then a fifth of what is left each epoch you stay.'
       : label + ': all five slots were won last epoch from ' + int(units) + ' units. The estimated probability that you win if you launch ' + art + ' here: ' + pct(p) + ', with ' + int(units + 1) + ' entries for five slots, each worth about ' + SLOT.toFixed(3) + ' α.';
   };
+
+  // ---- the note before capture the flag starts (?prelaunch, on the hub). On ur.xyz it is the island
+  // react/src/components/pages/ctf/Countdown.jsx, shown while the snapshot is the prelaunch one; its start is the
+  // snapshot's prelaunch block (epoch 8's first, 9,600,028, projected at 12 s a block, so "about"). The preview
+  // runs on a clock of its own: ?prelaunch shows it 15 days 3 hours 38 minutes before the start, whatever the day,
+  // and ?prelaunch=<n> n seconds before (the last minute, the turn and the burst: ?prelaunch=15; a negative n after
+  // it). The board below stays the mock's drawn epoch.
+  const START = { first: 8, block: 9600028, at: Date.parse('2026-11-27T18:25:24Z') };
+  const PRE = qs.has('prelaunch') && !PAGE;
+  const PRE_LEAD = qs.get('prelaunch') !== '' && Number.isFinite(Number(qs.get('prelaunch'))) ? Number(qs.get('prelaunch')) : 15 * 86400 + 3 * 3600 + 38 * 60;
+  const SKEW = PRE ? START.at - PRE_LEAD * 1000 - Date.now() : 0;
+  const BLOCK_MS = 12000, HOIST_MS = 3 * 50400 * BLOCK_MS;
+  const START_NOTE = 'Capture the flag starts with epoch ' + START.first + ', at block ' + int(START.block) + ', about November 27, 18:25 UTC.';
+  const START_LIVE = 'Capture the flag is live from epoch ' + START.first + '.';
+  const START_UNITS = ['days', 'hours', 'minutes', 'seconds'];
+  const START_PIPS = '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
+  const startNow = function () { return Date.now() + SKEW; };
+  // the countdown at `now`: live from the start; before it the figures (a part second counts), the blocks left and
+  // how far into the current one, and how far up its pole the flag is, climbing over the three epochs before
+  function startAt(now) {
+    const ms = START.at - now;
+    if (!(ms > 0)) return { live: true, hoist: 1 };
+    const left = Math.ceil(ms / 1000), blocks = Math.ceil(ms / BLOCK_MS);
+    const figs = [Math.floor(left / 86400), Math.floor(left / 3600) % 24, Math.floor(left / 60) % 60, left % 60]
+      .map(function (n) { return n < 10 ? '0' + n : String(n); });
+    return { live: false, figs: figs, lastMinute: left <= 60, blocks: blocks, into: blocks * BLOCK_MS - ms, hoist: Math.min(1, Math.max(0, 1 - ms / HOIST_MS)) };
+  }
+  // the time left in words for a screen reader, from the whole minutes left, so it changes at most once a minute
+  function startWords(now) {
+    const minutes = Math.ceil((START.at - now) / 60000);
+    if (!(minutes > 0)) return '';
+    const ms = minutes * 60000;
+    const u = ms >= 1.5 * 86400000 ? [Math.round(ms / 86400000), 'day'] : ms >= 1.5 * 3600000 ? [Math.round(ms / 3600000), 'hour'] : [minutes, 'minute'];
+    return 'Starts in about ' + new Intl.NumberFormat('en', { style: 'unit', unit: u[1], unitDisplay: 'long' }).format(u[0]) + '.';
+  }
+  let startDrawn = false, startBurst = false;
+  // the note's markup; the first draw puts the flag at the foot (it glides up as the clock starts) and rolls its
+  // digits in, a later draw (another render of the page) neither. Before the start it says nothing of after it;
+  // once live, the sentence of before (the longer) and the countdown hold their places unseen, and the pips burst
+  // once, on the first draw after the start or at the turn
+  function viewStart() {
+    const now = startNow();
+    const c = startAt(now);
+    const first = !startDrawn;
+    startDrawn = true;
+    const burst = c.live && !startBurst;
+    if (burst) startBurst = true;
+    const tile = function (text) {
+      return '<span class="start-num">' + text.split('').map(function (d) { return '<span class="start-d"><span' + (first ? '' : ' class="s"') + '>' + d + '</span></span>'; }).join('') + '</span>';
+    };
+    return '<div class="start" id="ctf-start" data-phase="' + (c.live ? 'live' : 'soon') + '"' + (c.lastMinute ? ' data-last-minute=""' : '') + ' style="--hoist:' + (first ? 0 : c.hoist) + '">' +
+      '<div class="start-pole" aria-hidden="true"><i class="start-notch"></i><i class="start-notch"></i><span class="start-car"><span class="start-flag"><b>' + START.first + '</b></span>' +
+      (burst ? '<span class="start-burst">' + START_PIPS + '</span>' : '') + '</span></div>' +
+      '<p class="start-line"><span role="status">' + esc(c.live ? START_LIVE : START_NOTE) + '</span>' + (c.live ? '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>' : '') + '</p>' +
+      '<div class="start-clock" aria-hidden="true"><span class="start-count"><span class="label" style="color:#ED8FFF">Starts in about</span><span class="start-tiles">' +
+      (c.live ? ['--', '--', '--', '--'] : c.figs).map(function (f, i) { return (i ? '<span class="start-sep">:</span>' : '') + '<span class="start-unit">' + tile(f) + '<span class="start-uname">' + START_UNITS[i] + '</span></span>'; }).join('') +
+      '</span></span>' + (c.live ? '<span class="start-go"><i></i>Live</span>' : '') + '</div>' +
+      '<p class="start-blocks" aria-hidden="true"><span class="label">Blocks to go</span><b>≈ ' + (c.live ? '0' : int(c.blocks)) + '</b><span class="start-track">' +
+      (c.live ? '' : '<i class="start-bar" style="animation-delay:-' + c.into + 'ms"></i>') + '</span></p>' +
+      '<p class="sr">' + esc(startWords(now)) + '</p></div>';
+  }
+  // each second of the countdown (on the start's own beat) until the start: the flag's height, the digits that
+  // changed (each rolls in), the blocks left and the bar, the time in words; at the start the sentence turns live
+  // (a status, heard once) and the pips burst. Only where there is a page and a clock to run it.
+  let startTicking = false;
+  function startTick() {
+    const el = document.getElementById('ctf-start');
+    if (!el || !el.querySelector) return;
+    const now = startNow();
+    const c = startAt(now);
+    el.style.setProperty('--hoist', String(c.hoist));
+    el.setAttribute('data-phase', c.live ? 'live' : 'soon');
+    if (c.lastMinute) el.setAttribute('data-last-minute', ''); else el.removeAttribute('data-last-minute');
+    const status = el.querySelector('[role="status"]');
+    const words = startWords(now);
+    const sr = el.querySelector('.sr');
+    if (sr.textContent !== words) sr.textContent = words;
+    if (c.live) {
+      if (status.textContent !== START_LIVE) {
+        status.textContent = START_LIVE;
+        status.insertAdjacentHTML('afterend', '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>');
+        el.querySelector('.start-clock').insertAdjacentHTML('beforeend', '<span class="start-go"><i></i>Live</span>');
+        if (!startBurst) {
+          startBurst = true;
+          el.querySelector('.start-car').insertAdjacentHTML('beforeend', '<span class="start-burst">' + START_PIPS + '</span>');
+        }
+      }
+      return;
+    }
+    const cells = el.querySelectorAll('.start-d');
+    const digits = c.figs.join('').split('');
+    if (cells.length === digits.length) {
+      digits.forEach(function (d, i) { if (cells[i].textContent !== d) cells[i].innerHTML = '<span>' + d + '</span>'; });
+    }
+    const b = el.querySelector('.start-blocks b');
+    if (b.textContent !== '≈ ' + int(c.blocks)) {
+      b.textContent = '≈ ' + int(c.blocks);
+      el.querySelector('.start-track').innerHTML = '<i class="start-bar" style="animation-delay:-' + c.into + 'ms"></i>';
+    }
+    window.setTimeout(startTick, ((START.at - now) % 1000 || 1000) + 20);
+  }
 
   // ---- the page's values
   function compute() {
@@ -949,8 +1120,8 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   function view(v) {
     return '<div class="ctf ' + v.motionCls + '">' +
-      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage</span></div>' +
-      '<div class="shell">' + viewNav() + viewHeader(v) + viewLive(v) +
+      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage' + (PRE ? '; the note before the start counts down to epoch 8 on a clock of its own, above the drawn mock' : '') + '</span></div>' +
+      '<div class="shell">' + viewNav() + (PRE ? viewStart() : '') + viewHeader(v) + viewLive(v) +
       (v.showIntro ? viewMine(v) : '') + (v.page ? viewFaq(v) : '') + (v.showFeat ? viewFeat(v) : '') +
       (v.page ? viewAll(v) : viewGrid(v)) + viewHow(v) + (v.page ? '' : viewFaq(v)) + viewFoot(v) +
       '</div></div>';
@@ -964,6 +1135,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
     const v = compute();
     root.innerHTML = view(v);
     syncHead(v);
+    if (PRE && !startTicking && typeof window.setTimeout === 'function') { startTicking = true; window.setTimeout(startTick, 40); }
     if (keep) {
       const el = keep.id ? document.getElementById(keep.id) : keep.fk ? root.querySelector('[data-fk="' + CSS.escape(keep.fk) + '"]') : null;
       if (el) {
