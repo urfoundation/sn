@@ -95,7 +95,7 @@ with deregistration churn running that tournament. Both tiers share **one** mech
 the head vs. the pools (§8.4–8.5). On SN25 that share, the **momentum** `μ`, is 1/10 at launch, and the
 native treasury multisig `ur‑reserve` receives the rest (§8.5). From epoch 8 (`E_c`) three fixed shares
 replace θ: the pools take 4/10, the head 5/10 (the pools' while no fleet is weighted), and 1/10 funds the NOs'
-**capture the flag** pools, split by their pools' weights: a per‑country lottery that pays miners for being
+**capture the flag** pools, split by their pools' weights: a per‑country auction that pays miners for being
 present in every country (§8.5, §8.7).
 
 The subnet **launches centralized‑but‑bounded** — an upgradeable policy coordinator owned by a dedicated
@@ -2284,7 +2284,7 @@ numbers are those of the first draft.
 
 **Still open.** Nothing: Q7, the last open question, is decision 16.
 
-### 8.7 Capture the flag — a per‑country coverage lottery beside the provider pool (decided 2026‑11‑11)
+### 8.7 Capture the flag — a per‑country coverage auction beside the provider pool (decided 2026‑11‑11)
 
 > **Amendment decided by the owner on 2026‑11‑11.** Capture the flag (CTF) takes effect from epoch 8
 > (`E_c = 8`), the extender pool's first epoch too, once the signed amendment entry v2 is published (§8.7.5).
@@ -2388,16 +2388,25 @@ and role, so the first miner to reach a thin country earns far more than one mor
   per CTF pool. Once the root finalizes, anyone calls `recycle`. It claims that account and moves the α
   straight back onto the CTF pool hotkey, where the next close captures it with the epoch's emission. It
   records each return under the epoch whose close captures it (`recycledFor`), so the ledger tells returned
-  carry from fresh funding. It holds stake on the escrow and pool hotkeys only until the next recycle. Stake
-  sent to its coldkey on any other hotkey stays where it is, which is how the open problem below arises.
+  carry from fresh funding. Beyond a small residual of its own, it holds stake on the escrow and pool hotkeys
+  only until the next recycle.
 - **Pending awards.** If the carry has not come back before an epoch's close (a late root, or the relay down),
   the epoch is not matured. Its winners take their slot amounts at once and their pot shares as pending awards,
   paid in the first matured epoch, so a delay does not cost a winner its pot share.
-- **An open problem, pending the owner's decision.** Third parties can fill the carry contract's
-  staking‑hotkey list, after which the runtime refuses every claim of its account, and the contract cannot clear
-  the list. Slot amounts would still pay, but the pots and pending awards would never return. This is not
-  solved: the owner decides before the carry contract is created (`CAPTURETHEFLAG.md` §4.6, §12.4;
+- **Why the carry keeps a residual.** vault2's claim pays the carry by a transfer from another coldkey, which
+  the runtime refuses once third parties have filled the receiving coldkey's staking‑hotkey list to 128
+  entries, unless the hotkey is already on it. So the carry keeps a residual of its own on vault2's escrow
+  hotkey, which keeps that hotkey on its list, pins the CTF pool hotkey there as its auto‑stake destination,
+  so its own moves land on a listed hotkey too, and opts out of third‑party list growth, which keeps the list
+  short. Its list's length then never refuses it. It stakes the residual from the TAO it is created with, by its own
+  `addStake`, and anyone can restore it with `seed()` if root's sweep of small nominations ever clears it.
+  The residual never returns to the pool, so the ledger is unchanged (`CAPTURETHEFLAG.md` §4.6;
   `VERSION2-FINAL.md` §19.4).
+- **Hotkey accounts against swaps and reservations.** A coldkey swap could merge into the carry's coldkey or
+  vault2's, and a swap's announcement reserves its destination, which refuses every transfer into it. The
+  runtime does neither to a coldkey that is a hotkey account, so a guardian coldkey makes both of them hotkey
+  accounts. What can still delay the carry, taking nothing, is vault2's own list held full while the CTF UID
+  earns nothing (`CAPTURETHEFLAG.md` §4.6, §12.4).
 
 At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
 is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
@@ -2462,7 +2471,10 @@ started, so the owner signs it during epoch 7 (`mainnet/SETTLEMENT-AMENDMENTS.md
   execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another
   salt, is scheduled beside it.
 - **The carry contract** is created after the operation, at an address known in advance that depends on its
-  exact build, so its artifact is pinned before the entry names the address.
+  exact build, so its artifact is pinned before the entry names the address. It is created with a 1 TAO seed,
+  once R-9 has passed on the runtime mainnet runs, the guardian holds its coldkey and vault2's as hotkey
+  accounts, and the deterministic deployment proxy's account is funded, within the CTF UID's immunity window,
+  and `sn-mainnet ctf-carry review` checks it before and after (`CAPTURETHEFLAG.md` §11.2).
 - **The server** samples presence from before `end(6)`, so that epoch 7 runs in shadow. Epoch 8's census is
   committed by block 9,651,028, and its root with the provider root by block 9,651,628.
 - **UR's validator** weights the CTF UID from epoch 8's first tempo. It holds the stake majority, so it alone
@@ -2486,7 +2498,7 @@ These are `CAPTURETHEFLAG.md` §12.1.
    stays at 0.1.
 4. **Slots.** A uniform amount to up to 5 providers and up to 5 extenders per country.
 5. **Nomination.** The operator nominates candidates from its own reliability data and picks winners at random
-   per country: a lottery for eligible miners.
+   per country: an auction among eligible miners.
 6. **Eligibility.** Online, passing the operator's checks and in the same country for at least half of the
    epoch, and active at its end.
 7. **Carry.** Slots that cannot be awarded carry forward to the next epoch, so a country can build a large pot.
@@ -2507,12 +2519,16 @@ These are `CAPTURETHEFLAG.md` §12.1.
     role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so it has
     to stay about five epochs to capture most of the reward.
 17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow.
+18. **The carry's residual.** The carry contract keeps a residual of its own on vault2's escrow hotkey, pins the
+    CTF pool hotkey as its auto‑stake destination and opts out of third‑party staking‑hotkey growth, and a
+    guardian coldkey makes vault2's coldkey and the carry's hotkey accounts (§8.7.3). It replaces the first
+    carry, which third parties could block for good.
 
-Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason, except
-one that is open, pending the owner's decision: third parties can block the carry contract (§8.7.3;
-`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN units, a cap on pots or a release
-of territories' pots, per‑country slot counts, a derived‑location requirement for large pots, a wind‑down rule,
-and CTF pools for other operators.
+Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason. The one
+left open, third parties blocking the carry contract, the owner settled the same day with decision 18
+(`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN
+units, a cap on pots or a release of territories' pots, per‑country slot counts, a derived‑location requirement
+for large pots, a wind‑down rule, and CTF pools for other operators.
 
 ---
 
@@ -3837,7 +3853,7 @@ starts at least two days after the last one passes.
 
 *Terms of §8.7 (capture the flag, decided 2026‑11‑11; in effect from `E_c = 8`):*
 
-- **Capture the flag (CTF)** — a per‑country coverage lottery beside the provider pool (`CAPTURETHEFLAG.md`).
+- **Capture the flag (CTF)** — a per‑country coverage auction beside the provider pool (`CAPTURETHEFLAG.md`).
   Each epoch every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the
   NO's eligible miners there. A tenth of the providers' share `μ` funds it (§8.5).
 - **CTF pool** — NO `n`'s second vault2 pool, `2^32 + n` (UR's is 4,294,967,297), with its own vault‑owned
