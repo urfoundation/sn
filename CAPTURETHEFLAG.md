@@ -706,7 +706,7 @@ governs:
 | `GET /sn/ctf` | public; `Cache-Control: public, max-age=60` | The current state. Pool facts: `no_id`, `pool_id`, `vault`, `carry_contract`, `carry_coldkey`, `countries_version`, `current_epoch`, `draw_at` (the end of the current epoch). The latest drawn epoch: `last_epoch`, with its root's `status` (pending or finalized), `seq` and `ledger_hash`. That epoch's `funding_rao`, `returned_rao`, `fresh_rao`, `slot_rao`, `paid_rao`, `pending_rao` and `carried_rao`. And one row per country of `L`: `code`, `name`, `providers_paid`, `extenders_paid`, `paid_rao`, `provider_units`, `extender_units`, `provider_carry_rao`, `extender_carry_rao`, `available_rao`, `open_epochs` and `near_misses`. `available_rao` is the two pots plus ten slots at the last slot amount: an estimate of what the country's draw holds this epoch. `open_epochs` counts the epochs since the country last had a winner in either role. `near_misses` counts the miners there that the census left out only for presence or a change of country (§4.3). |
 | `GET /sn/ctf/here` | public; `Cache-Control: private, no-store` | `{"country": "is"}`: the caller's country from GeoLite2 on the request's address, or null. Nothing is stored or logged. It lets the page open on the visitor's own country. |
 | `GET /sn/ctf/epoch/{epoch}` | public; immutable once finalized | One epoch. The census (`hash`, `block`, `candidates`, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the country rows, and the awards: role, country, rank, coldkey, client id, `slot_rao`, `pot_rao`, `pending`. Also the object references (header, census, awards, pots, pending), served by `GET /sn/ledger/object`. |
-| `GET /sn/ctf/client` | Bearer client JWT, own client only | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. |
+| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; never 401 for either | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. And the wins, each with its client and whether it is claimed: every win not claimed yet, and every win of the recent epochs. A win is claimed once vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in the root that pays it (operator.yml says exactly how). |
 | `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. |
 
 **Headers.** Every route sends exactly one `Access-Control-Allow-Origin` header, as the site's status feeds
@@ -833,7 +833,9 @@ today is on the server and in the presentation:
   - One action claims both pools.
   - Apple, Windows, Linux and ur.io draw only the relay's top‑level status today, so they gain per‑pool rows,
     as Android already has.
-  - Optionally, a line from `GET /sn/ctf/client` names the flag a provider captured.
+  - A line from `GET /sn/ctf/client` names each flag won and not claimed yet (owner, 2026‑11‑11: every
+    unclaimed win). The route answers every app the same way: a client JWT for its own client, ur.io's network
+    JWT for all of the network's clients.
 - **Old apps keep working.** The SDK parses entries with `encoding/json`, which ignores the new fields. A CTF
   entry carries exactly the existing ones, so old apps show it as "Pool 4294967297" and claim it like any
   pool. The new labels only have to ship before the first CTF claims, about two days after `E_c` ends.
