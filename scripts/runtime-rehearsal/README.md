@@ -775,14 +775,15 @@ minutes. Its subtests run in this order:
    fifths to the carry contract's coldkey and the rest to a winner. The root
    names that coldkey before the contract exists, from its CREATE2 address,
    which the case derives with the zero salt, the worst case. The guardian
-   makes that coldkey a hotkey account, and the factory's mapped account gets
-   0.001 TAO, above its existential deposit, which a CREATE2 carrying value
-   needs (`OutOfFund` otherwise). A third party then
-   fills that coldkey's `StakingHotkeys` list to 128 entries, as R-3
-   filled vault2's, each entry a hotkey of its own staked and transferred
-   whole, and a 129th entry is refused (`TooManyStakingHotkeys`). Anyone then
-   creates `STCtfCarry` through the same proxy with a seed of 1 TAO plus the
-   500-rao existential deposit as the call's value. The case requires that:
+   makes that coldkey a hotkey account, which the case requires it to own,
+   and the factory's mapped account gets 0.001 TAO, above its existential
+   deposit, which a CREATE2 carrying value needs (`OutOfFund` otherwise). A
+   third party then fills that coldkey's `StakingHotkeys` list to 128
+   entries, as R-3 filled vault2's, each entry a hotkey of its own staked and
+   transferred whole, and a 129th entry is refused (`TooManyStakingHotkeys`).
+   Anyone then creates `STCtfCarry` through the same proxy with a seed of 1
+   TAO plus the 500-rao existential deposit as the call's value. The case
+   requires that:
    - its `coldkey()`, from the runtime's 0x080c address mapping, is the
      mirror of its address, and its other views are vault2's;
    - its constructor staked the seed on the escrow hotkey by its own
@@ -851,7 +852,20 @@ It logs:
   `absorbStake`'s gas.
 
 Runtime 486's source predicts each outcome
-(`pallets/subtensor/src/staking/stake_utils.rs`):
+(`pallets/subtensor/src/staking/stake_utils.rs`). Mainnet reported spec
+version 490 at block 9,487,555 (2026-11-11). In `v490`'s source
+(`d967d13588834f4f5aaa8ef4c8fc1a865d581462`) the functions behind these
+rules read as in 486 (`ensure_third_party_staking_hotkeys_can_grow`,
+`ensure_staking_hotkeys_can_grow`, `validate_stake_transition`,
+`validate_add_stake`, `clear_small_nomination_if_required`,
+`coldkey_swap_hotkeys_bounded`, the share pool's `withdrawal_drains_member`),
+except that `try_associate_hotkey` and a swap's destination check first
+apply a new hotkey owner policy for hashed accounts, which allows classical
+accounts as before; the destination check still refuses a hotkey account
+and the association still refuses a reserved one. 490 also maps an EVM
+address to a hashed account's alias first, which leaves existing addresses'
+mapping as it was, and meters each precompile's mapping, which adds gas. R-9
+runs on the runtime mainnet then runs:
 
 - A transfer from another coldkey can add a hotkey to a list only while the
   list holds fewer than 128 entries (`TooManyStakingHotkeys`), and not at all

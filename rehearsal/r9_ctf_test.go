@@ -361,6 +361,9 @@ func TestR9CaptureTheFlag(t *testing.T) {
 		// proxy's account gets TAO above its existential deposit, without
 		// which the creation's value cannot pass through it (OutOfFund).
 		n.submit(t, guardian.Ring, n.call(t, "SubtensorModule.try_associate_hotkey", accountID(t, carryColdkey)))
+		if n.owner(t, carryColdkey) != guardian.PublicKey() {
+			t.Fatal("the carry's coldkey is not the guardian's hotkey")
+		}
 		n.fundEVM(t, factory, tao/1_000)
 		// A third party fills the list to 128 entries; a 129th is refused.
 		if _, err := fill(t, carryColdkey, thirdPartyStakingHotkeys+1); err == nil || !strings.Contains(err.Error(), "TooManyStakingHotkeys") {
