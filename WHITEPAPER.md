@@ -95,7 +95,7 @@ with deregistration churn running that tournament. Both tiers share **one** mech
 the head vs. the pools (§8.4–8.5). On SN25 that share, the **momentum** `μ`, is 1/10 at launch, and the
 native treasury multisig `ur‑reserve` receives the rest (§8.5). From epoch 8 (`E_c`) three fixed shares
 replace θ: the pools take 4/10, the head 5/10 (the pools' while no fleet is weighted), and 1/10 funds the NOs'
-**capture the flag** pools, split by their pools' weights: a per‑country lottery that pays miners for being
+**capture the flag** pools, split by their pools' weights: a per‑country auction that pays miners for being
 present in every country (§8.5, §8.7).
 
 The subnet **launches centralized‑but‑bounded** — an upgradeable policy coordinator owned by a dedicated
@@ -2253,7 +2253,7 @@ numbers are those of the first draft.
 
 **Still open.** Nothing: Q7, the last open question, is decision 16.
 
-### 8.7 Capture the flag — a per‑country coverage lottery beside the provider pool (decided 2026‑11‑11)
+### 8.7 Capture the flag — a per‑country coverage auction beside the provider pool (decided 2026‑11‑11)
 
 > **Amendment decided by the owner on 2026‑11‑11.** Capture the flag (CTF) takes effect from epoch 8
 > (`E_c = 8`), the extender pool's first epoch too, once the signed amendment entry v2 is published (§8.7.5).
@@ -2467,7 +2467,7 @@ These are `CAPTURETHEFLAG.md` §12.1.
    stays at 0.1.
 4. **Slots.** A uniform amount to up to 5 providers and up to 5 extenders per country.
 5. **Nomination.** The operator nominates candidates from its own reliability data and picks winners at random
-   per country: a lottery for eligible miners.
+   per country: an auction among eligible miners.
 6. **Eligibility.** Online, passing the operator's checks and in the same country for at least half of the
    epoch, and active at its end.
 7. **Carry.** Slots that cannot be awarded carry forward to the next epoch, so a country can build a large pot.
@@ -3822,7 +3822,7 @@ starts at least two days after the last one passes.
 
 *Terms of §8.7 (capture the flag, decided 2026‑11‑11; in effect from `E_c = 8`):*
 
-- **Capture the flag (CTF)** — a per‑country coverage lottery beside the provider pool (`CAPTURETHEFLAG.md`).
+- **Capture the flag (CTF)** — a per‑country coverage auction beside the provider pool (`CAPTURETHEFLAG.md`).
   Each epoch every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the
   NO's eligible miners there. A tenth of the providers' share `μ` funds it (§8.5).
 - **CTF pool** — NO `n`'s second vault2 pool, `2^32 + n` (UR's is 4,294,967,297), with its own vault‑owned
