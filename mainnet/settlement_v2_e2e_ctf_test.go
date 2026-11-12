@@ -6,11 +6,14 @@
 //
 // The chain is mainnet's configuration (evm_v2_ctf_upgrade_test.go): pool 1
 // registered for v2 from epoch 2, STSettlement2 on phase C behind the
-// reviewed 72 h timelock. The folded operation upgrades it to
-// STSettlement2Ctf and registers pool 2^32 + 1 from epoch 3 under the hotkey
-// derived at execution; the carry contract is created through the
-// deterministic deployment proxy; the signed amendment entry v2 puts capture
-// the flag in force from epoch 3 with that carry, signed by the test's key in
+// reviewed 72 h timelock, and vault2's coldkey a hotkey account of the
+// guardian. The folded operation upgrades it to STSettlement2Ctf and
+// registers pool 2^32 + 1 from epoch 3 under the hotkey derived at execution;
+// the carry contract is created through the deterministic deployment proxy
+// with its 1 TAO seed, as ctf-carry review checks it before and after, once
+// the guardian holds its coldkey too and the proxy's account is funded above
+// its existential deposit; the signed amendment entry v2 puts capture the
+// flag in force from epoch 3 with that carry, signed by the test's key in
 // place of the price sheet's (e2eAmendmentSignerEnv).
 //
 // Each epoch then runs as the server's driver runs it (server
@@ -28,14 +31,18 @@
 // SettlementV2Sender. snclaim v2 check audits the pending root as UR's CTF
 // watcher does, then the root finalizes after its window, a winner claims
 // through snclaim v2 claim, and anyone recycles the carry account through
-// STCtfCarry, which the next epoch's close captures.
+// STCtfCarry, which keeps its residual and returns the rest, for the next
+// epoch's close to capture.
 //
 // The runtime is the e2e chain's Go fakes of runtime 475 (stake moves,
-// registration, UIDs) with the address mapping and the Ed25519 and sr25519
-// checks (settlement_v2_e2e_chain_test.go), not a subtensor node: rehearsal
-// R-9 runs the upgrade, the census and the carry on the live runtime. Every
-// block is final at once, and drand's pulse is served by a local relay that
-// answers with the real signature pinned here.
+// registration, UIDs) with the address mapping, the Ed25519 and sr25519
+// checks, runtime 486's staking-hotkey lists, opt-outs and auto-stake
+// destinations, addStake, and the existential deposit on the proxy and the
+// carry (settlement_v2_e2e_chain_test.go), not a subtensor node: rehearsal
+// R-9 runs the upgrade, the census and the carry on the live runtime. The
+// guardian's associations, the proxy's funding and root's sweep are native
+// steps, as emission is. Every block is final at once, and drand's pulse is
+// served by a local relay that answers with the real signature pinned here.
 package main
 
 import (
@@ -44,11 +51,14 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -56,6 +66,7 @@ import (
 
 	schnorrkel "github.com/ChainSafe/go-schnorrkel"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
@@ -84,6 +95,13 @@ const (
 	// 0.01 α each.
 	ctfE2EEmission3 = 24_900_000_000
 	ctfE2EEmission4 = 2_490_000_000
+	// The carry's seed, in rao: 1 TAO, as on mainnet (CAPTURETHEFLAG.md
+	// §11.2), above its least of ten times the runtime's nominator minimum.
+	ctfE2ESeed             = 1_000_000_000
+	ctfE2ENominatorMinimum = 50_000_000
+	// Root raises the nominator minimum to 2 TAO, and its sweep clears the
+	// 1 TAO residual: the carry's least seed becomes 20 TAO.
+	ctfE2ERaisedMinimum = 2_000_000_000
 )
 
 var (
@@ -106,9 +124,12 @@ type ctfE2E struct {
 	ctx context.Context
 	// hotkey is the CTF pool's hotkey, derived at the execution.
 	hotkey [32]byte
-	// carry is the carry contract and carryColdkey its coldkey.
-	carry        common.Address
-	carryColdkey [32]byte
+	// carry is the carry contract and carryColdkey its coldkey;
+	// carryGuardian is the coldkey whose hotkey accounts the carry's coldkey
+	// and vault2's are (not the v1 coordinator's guardian).
+	carry         common.Address
+	carryColdkey  [32]byte
+	carryGuardian [32]byte
 	// signer signs the amendments file, which web serves at /amendments.yml
 	// beside quicknet's pinned pulse, as a drand relay serves it.
 	signer     *ecdsa.PrivateKey
@@ -125,13 +146,21 @@ type ctfE2E struct {
 	short int64
 }
 
-// newCtfE2E upgrades the proxy through the folded timelock operation,
-// creates the carry, signs the amendment entry and binds ctfE2EBound to a
-// head fleet from epoch 3 to 4.
+// newCtfE2E has the guardian make vault2's coldkey a hotkey account,
+// upgrades the proxy through the folded timelock operation, creates the
+// carry, signs the amendment entry and binds ctfE2EBound to a head fleet from
+// epoch 3 to 4.
 func newCtfE2E(t *testing.T) *ctfE2E {
 	t.Helper()
 	f := newCtfTestChain(t)
-	e := &ctfE2E{ctfTestChain: f, ctx: context.Background()}
+	e := &ctfE2E{ctfTestChain: f, ctx: context.Background(), carryGuardian: e2eKey("ctf-guardian")}
+	// The guardian's first step (§11.2 step 0), sent on the runtime through
+	// MevShield.submit_encrypted: vault2's coldkey becomes its hotkey
+	// account, so no coldkey swap can merge into vault2 or reserve it.
+	if !f.chain.associateHotkey(e.carryGuardian, f.vault2Coldkey) {
+		t.Fatal("the guardian does not hold vault2's coldkey")
+	}
+	f.chain.setNominatorMinimum(ctfE2ENominatorMinimum)
 	operation := f.operation()
 	f.schedule(operation)
 	// The timelock holds exactly the value; a stranger sends the execute, and
@@ -164,25 +193,111 @@ func newCtfE2E(t *testing.T) *ctfE2E {
 }
 
 // createCarry creates STCtfCarry(vault2, 2^32 + 1) through the deterministic
-// deployment proxy, as the release does, and checks what it read at
-// creation. A carry whose constructor changes (a residual seeded at
-// creation, say) changes only this step.
+// deployment proxy as the owner's steps do (CAPTURETHEFLAG.md §11.2), each
+// one checked by ctf-carry review. Review refuses until the guardian holds
+// the carry's coldkey as a hotkey account, then until the proxy's account
+// holds TAO above its existential deposit, without which the creation's
+// value cannot pass through it; funded by a native transfer, review
+// preflights the creation, which sends the 1 TAO seed and the deposit as its
+// value. The runtime keeps the deposit on the proxy and on the carry, as
+// Frontier does, so the carry stakes exactly its seed on vault2's escrow
+// hotkey as its residual; it pins the pool hotkey as its auto-stake
+// destination and opts out of third-party staking-hotkey growth and of
+// locked alpha. Review then checks the carry it made, and every view.
 func (e *ctfE2E) createCarry() {
 	f, t := e.ctfTestChain, e.t
 	artifact := e2eForgeArtifact(t, "STCtfCarry")
-	initcode := append(slices.Clone(artifact.creation), e2eCtfCarryBinding.PackConstructor(f.vault2, ctfTestPoolId)...)
+	path := filepath.Join(t.TempDir(), "STCtfCarry.json")
+	if err := os.WriteFile(path, artifact.raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	salt := crypto.Keccak256Hash([]byte("urnetwork-e2e-ctf-carry"))
-	f.must(f.anyone, upgradeCreate2Factory, nil, append(salt.Bytes(), initcode...))
+	initcode := append(slices.Clone(artifact.creation), e2eCtfCarryBinding.PackConstructor(f.vault2, ctfTestPoolId)...)
+	createData := append(salt.Bytes(), initcode...)
+	value := new(big.Int).Mul(e2eRao(ctfE2ESeed+e2eExistentialDepositRao), big.NewInt(e2eRaoWei))
 	e.carry = crypto.CreateAddress2(upgradeCreate2Factory, salt, crypto.Keccak256(initcode))
-	e.carryColdkey = e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackColdkey(), e2eCtfCarryBinding.UnpackColdkey)
+	e.carryColdkey = ss58.EvmMirrorPubkey(e.carry)
+	f.chain.keepExistentialDeposit(upgradeCreate2Factory, e.carry)
+	review := func(extra ...string) (ctfCarryReview, int, string) {
+		t.Helper()
+		args := append([]string{"review", "--rpc", f.rpc, "--settlement2", f.settlement.Hex(), "--no-id", "1", "--artifact", path,
+			"--salt", salt.Hex(), "--seed-rao", strconv.Itoa(ctfE2ESeed), "--guardian", common.Hash(e.carryGuardian).Hex()}, extra...)
+		var stdout, stderr strings.Builder
+		code := runCtfCarryCommand(e.ctx, args, &stdout, &stderr)
+		var result ctfCarryReview
+		if code == 0 {
+			if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
+				t.Fatalf("ctf-carry review output %q: %v", stdout.String(), err)
+			}
+		}
+		return result, code, stderr.String()
+	}
+
+	// The guardian has not taken the carry's coldkey yet.
+	if _, code, stderr := review(); code != 3 || !strings.Contains(stderr, "is not a hotkey account yet") {
+		t.Fatalf("review before the carry's coldkey is the guardian's: exit %d\n%s", code, stderr)
+	}
+	if !f.chain.associateHotkey(e.carryGuardian, e.carryColdkey) {
+		t.Fatal("the guardian does not hold the carry's coldkey")
+	}
+	// The proxy holds nothing above its deposit: the creation would fail,
+	// as review says.
+	if _, code, stderr := review(); code != 3 || !strings.Contains(stderr, "holds no TAO above its existential deposit") {
+		t.Fatalf("review with the proxy unfunded: exit %d\n%s", code, stderr)
+	}
+	var unfunded error
+	f.chain.do(func() {
+		_, _, unfunded = f.chain.callLocked(f.anyone.address, &upgradeCreate2Factory, value, createData, e2eTxGas, f.chain.head)
+	})
+	if unfunded == nil {
+		t.Fatal("the creation passes its value through a proxy that holds only the value")
+	}
+	f.chain.transferNative(upgradeCreate2Factory, e2eExistentialDepositRao+1)
+	before, code, stderr := review("--from", f.anyone.address.Hex())
+	if code != 0 || !before.Preflight.Ran || before.Carry.Address != e.carry.Hex() || before.Carry.Coldkey != common.Hash(e.carryColdkey).Hex() ||
+		before.Carry.CreateData != hexutil.Encode(createData) || before.Carry.CreateValueWei != value.String() || before.Created != nil ||
+		before.Runtime.SeedMinimumRao != strconv.Itoa(10*ctfE2ENominatorMinimum) || before.Runtime.StakingHotkeys != 0 {
+		t.Fatalf("review before the creation: exit %d %+v %+v\n%s", code, before.Carry, before.Runtime, stderr)
+	}
+
+	receipt := f.must(f.anyone, upgradeCreate2Factory, value, hexutil.MustDecode(before.Carry.CreateData))
+	var seeded *stabi.STCtfCarrySeeded
+	for _, log := range receipt.Logs {
+		if log.Address == e.carry {
+			seeded, _ = e2eCtfCarryBinding.UnpackSeededEvent(log)
+		}
+	}
+	if seeded == nil || seeded.Tao.Cmp(e2eRao(ctfE2ESeed)) != 0 || seeded.Amount.Cmp(e2eRao(ctfE2ESeed)) != 0 || seeded.Residual.Cmp(e2eRao(ctfE2ESeed)) != 0 {
+		t.Fatalf("the creation seeded %+v", seeded)
+	}
+	after, code, stderr := review()
+	if code != 0 || after.Created == nil || !after.Carry.Exists || after.Created.ResidualRao != strconv.Itoa(ctfE2ESeed) || after.Created.EscrowPositionRao != strconv.Itoa(ctfE2ESeed) ||
+		!after.Created.EscrowListed || !after.Created.PoolHotkeyPinned || !after.Created.PoolListed || !after.Created.RejectsGrowth || !after.Created.RejectsLockedAlpha ||
+		after.Created.AmendmentCarryEntry != e.carry.Hex() {
+		t.Fatalf("review of the created carry: exit %d %+v\n%s", code, after.Created, stderr)
+	}
+
 	vault := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackVault(), e2eCtfCarryBinding.UnpackVault)
 	pool := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackPoolId(), e2eCtfCarryBinding.UnpackPoolId)
 	netuid := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackNetuid(), e2eCtfCarryBinding.UnpackNetuid)
 	escrow := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackEscrowHotkey(), e2eCtfCarryBinding.UnpackEscrowHotkey)
 	hotkey := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackPoolHotkey(), e2eCtfCarryBinding.UnpackPoolHotkey)
 	vaultColdkey := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackVaultColdkey(), e2eCtfCarryBinding.UnpackVaultColdkey)
-	if e.carryColdkey != ss58.EvmMirrorPubkey(e.carry) || vault != f.vault2 || pool.Cmp(ctfTestPoolId) != 0 || netuid != e2eNetuid || escrow != f.escrowV2 || hotkey != e.hotkey || vaultColdkey != f.vault2Coldkey {
-		t.Fatalf("carry %s reads coldkey 0x%x, vault %s pool %s netuid %d, escrow 0x%x, pool hotkey 0x%x, vault coldkey 0x%x", e.carry, e.carryColdkey, vault, pool, netuid, escrow, hotkey, vaultColdkey)
+	coldkey := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackColdkey(), e2eCtfCarryBinding.UnpackColdkey)
+	minimum := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackSeedMinimum(), e2eCtfCarryBinding.UnpackSeedMinimum)
+	if coldkey != e.carryColdkey || vault != f.vault2 || pool.Cmp(ctfTestPoolId) != 0 || netuid != e2eNetuid || escrow != f.escrowV2 || hotkey != e.hotkey ||
+		vaultColdkey != f.vault2Coldkey || e.residual().Cmp(e2eRao(ctfE2ESeed)) != 0 || minimum.Cmp(e2eRao(10*ctfE2ENominatorMinimum)) != 0 {
+		t.Fatalf("carry %s reads coldkey 0x%x, vault %s pool %s netuid %d, escrow 0x%x, pool hotkey 0x%x, vault coldkey 0x%x, residual %s, least seed %s",
+			e.carry, coldkey, vault, pool, netuid, escrow, hotkey, vaultColdkey, e.residual(), minimum)
+	}
+	// The proxy passed the value on and keeps its funding; the carry keeps
+	// the deposit and staked the rest. Its list holds the escrow hotkey, by
+	// the residual, and the pool hotkey, by the pin, which holds no stake.
+	listed := f.chain.stakingHotkeys(e.carryColdkey)
+	if f.chain.balance(upgradeCreate2Factory).Cmp(new(big.Int).Mul(e2eRao(e2eExistentialDepositRao+1), big.NewInt(e2eRaoWei))) != 0 ||
+		f.chain.balance(e.carry).Cmp(new(big.Int).Mul(e2eRao(e2eExistentialDepositRao), big.NewInt(e2eRaoWei))) != 0 ||
+		len(listed) != 2 || !slices.Contains(listed, f.escrowV2) || !slices.Contains(listed, e.hotkey) || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
+		t.Fatalf("after the creation the proxy holds %s wei, the carry %s wei, its list %x", f.chain.balance(upgradeCreate2Factory), f.chain.balance(e.carry), listed)
 	}
 }
 
@@ -365,6 +480,12 @@ func (e *ctfE2E) claimed(index uint64) *big.Int {
 
 func (e *ctfE2E) recycledFor(epoch uint64) *big.Int {
 	return e2eView(e.e2eFixture, e.carry, e2eCtfCarryBinding.PackRecycledFor(e2eRao(epoch)), e2eCtfCarryBinding.UnpackRecycledFor)
+}
+
+// residual is the carry's own stake on vault2's escrow hotkey, which it
+// never returns.
+func (e *ctfE2E) residual() *big.Int {
+	return e2eView(e.e2eFixture, e.carry, e2eCtfCarryBinding.PackResidual(), e2eCtfCarryBinding.UnpackResidual)
 }
 
 func (e *ctfE2E) census(epoch uint64) stabi.CtfCensusOutput {
@@ -582,7 +703,8 @@ func (e *ctfE2E) check(flags ...string) (string, string, int) {
 
 // recycle has anyone claim and recycle the carry account of the latest
 // finalized CTF root through the carry, and checks what moved: the account
-// is claimed in full, the carry holds nothing, and vault2's position on the
+// is claimed in full, the carry keeps exactly its residual on the escrow
+// hotkey and holds nothing on the pool hotkey, and vault2's position on the
 // CTF pool hotkey grew by what it returned, recorded for the next unfunded
 // epoch: the account's unclaimed amount, less the rao each of the claim, the
 // carry's move and its transfer may credit short. With claimant set, the
@@ -595,10 +717,14 @@ func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
 	carryIndex := e2eAccountOf(e.t, built.Accounts, e.carryColdkey)
 	account, proof := e2eProof(e.t, built.Tree, built.Accounts, carryIndex)
 	owed := new(big.Int).Sub(account.Cumulative, e.claimed(carryIndex))
+	residual := e.residual()
+	if residual.Sign() == 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(residual) != 0 {
+		e.t.Fatalf("before the recycle of root %d the carry holds %s on the escrow hotkey, its residual %s", index, e.chain.stake(e.escrowV2, e.carryColdkey), residual)
+	}
 	if claimant != nil {
 		e.must(claimant, e.vault2, nil, e2eVault2Binding.PackClaim(ctfTestPoolId, e2eRao(index), account, proof))
-		if e.claimed(carryIndex).Cmp(account.Cumulative) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(new(big.Int).Sub(owed, big.NewInt(e.short))) != 0 {
-			e.t.Fatalf("%s's claim of the carry account paid the carry %s of %s", claimant.name, e.chain.stake(e.escrowV2, e.carryColdkey), owed)
+		if paid := new(big.Int).Sub(e.chain.stake(e.escrowV2, e.carryColdkey), residual); e.claimed(carryIndex).Cmp(account.Cumulative) != 0 || paid.Cmp(new(big.Int).Sub(owed, big.NewInt(e.short))) != 0 {
+			e.t.Fatalf("%s's claim of the carry account paid the carry %s of %s", claimant.name, paid, owed)
 		}
 	}
 	before := e.chain.stake(e.hotkey, e.vault2Coldkey)
@@ -614,12 +740,69 @@ func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
 	grown := new(big.Int).Sub(e.chain.stake(e.hotkey, e.vault2Coldkey), before)
 	returned := new(big.Int).Sub(owed, big.NewInt(3*e.short))
 	if event == nil || event.Epoch.Uint64() != epoch || event.Amount.Cmp(grown) != 0 || grown.Cmp(returned) != 0 || e.claimed(carryIndex).Cmp(account.Cumulative) != 0 ||
-		e.recycledFor(epoch).Cmp(new(big.Int).Add(recorded, grown)) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Sign() != 0 || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
-		e.t.Fatalf("recycle of root %d: event %+v, vault2 grew %s of %s owed, recycledFor(%d) %s", index, event, grown, owed, epoch, e.recycledFor(epoch))
+		e.recycledFor(epoch).Cmp(new(big.Int).Add(recorded, grown)) != 0 || e.residual().Cmp(residual) != 0 ||
+		e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(residual) != 0 || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
+		e.t.Fatalf("recycle of root %d: event %+v, vault2 grew %s of %s owed, recycledFor(%d) %s, the carry keeps %s of its residual %s on the escrow hotkey",
+			index, event, grown, owed, epoch, e.recycledFor(epoch), e.chain.stake(e.escrowV2, e.carryColdkey), residual)
 	}
-	// Nothing is left to move: another recycle, naming no account, reverts.
+	// Nothing is left above the residual: another recycle, naming no
+	// account, reverts.
 	e.refusedCtf(e.anyone, e.carry, e2eCtfCarryBinding.PackRecycle(e2eRao(index), stabi.LedgerTreeAccount{Index: new(big.Int), Cumulative: new(big.Int)}, nil), "NothingToRecycle")
 	return epoch, grown
+}
+
+// sweepResidual has root raise the nominator minimum past the residual's
+// worth, and its sweep unstake the residual back to the carry's TAO
+// (CAPTURETHEFLAG.md §4.6). Without it the escrow hotkey leaves the carry's
+// list, and with third-party growth refused the runtime refuses vault2's
+// claim of the carry account, the watcher's included; the recycle that would
+// claim it reverts ResidualMissing instead, and the account stays claimable.
+// The relay's answer is seed() with at least seedMinimum() less what the
+// carry holds: a seed of the swept TAO alone is refused, SeedTooSmall. The
+// seed follows the residual down to nothing and restores it, and the escrow
+// hotkey with it.
+func (e *ctfE2E) sweepResidual() {
+	t := e.t
+	t.Helper()
+	index := e.rootCount() - 1
+	built := e.ledgers[index]
+	carryIndex := e2eAccountOf(t, built.Accounts, e.carryColdkey)
+	account, proof := e2eProof(t, built.Tree, built.Accounts, carryIndex)
+	residual, claimed := e.residual(), e.claimed(carryIndex)
+	e.chain.setNominatorMinimum(ctfE2ERaisedMinimum)
+	swept := e.chain.sweep(e.escrowV2, e.carryColdkey, e.carry)
+	if swept.Cmp(residual) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Sign() != 0 || slices.Contains(e.chain.stakingHotkeys(e.carryColdkey), e.escrowV2) {
+		t.Fatalf("root's sweep returned %s of the residual %s, leaving %s on the escrow hotkey", swept, residual, e.chain.stake(e.escrowV2, e.carryColdkey))
+	}
+	if receipt, _ := e.chain.send(e.watcher.key, &e.vault2, nil, e2eVault2Binding.PackClaim(ctfTestPoolId, e2eRao(index), account, proof)); receipt.Status != types.ReceiptStatusFailed || e.claimed(carryIndex).Cmp(claimed) != 0 {
+		t.Fatalf("vault2's claim of the carry account without its residual: status %d, claimed %s", receipt.Status, e.claimed(carryIndex))
+	}
+	e.refusedCtf(e.anyone, e.carry, e2eCtfCarryBinding.PackRecycle(e2eRao(index), account, proof), "ResidualMissing")
+	minimum := e2eView(e.e2eFixture, e.carry, e2eCtfCarryBinding.PackSeedMinimum(), e2eCtfCarryBinding.UnpackSeedMinimum)
+	if minimum.Cmp(e2eRao(10*ctfE2ERaisedMinimum)) != 0 {
+		t.Fatalf("the least seed is %s after root raised the nominator minimum", minimum)
+	}
+	e.refusedCtf(e.anyone, e.carry, e2eCtfCarryBinding.PackSeed(), "SeedTooSmall")
+	topUp := new(big.Int).Mul(new(big.Int).Sub(minimum, swept), big.NewInt(e2eRaoWei))
+	receipt := e.must(e.anyone, e.carry, topUp, e2eCtfCarryBinding.PackSeed())
+	var lowered *stabi.STCtfCarryResidualLowered
+	var seeded *stabi.STCtfCarrySeeded
+	for _, log := range receipt.Logs {
+		if log.Address != e.carry {
+			continue
+		}
+		if event, err := e2eCtfCarryBinding.UnpackResidualLoweredEvent(log); err == nil {
+			lowered = event
+		}
+		if event, err := e2eCtfCarryBinding.UnpackSeededEvent(log); err == nil {
+			seeded = event
+		}
+	}
+	if lowered == nil || lowered.From.Cmp(residual) != 0 || lowered.To.Sign() != 0 || seeded == nil || seeded.Tao.Cmp(minimum) != 0 || seeded.Amount.Cmp(minimum) != 0 ||
+		seeded.Residual.Cmp(minimum) != 0 || e.residual().Cmp(minimum) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(minimum) != 0 ||
+		!slices.Contains(e.chain.stakingHotkeys(e.carryColdkey), e.escrowV2) || e.claimed(carryIndex).Cmp(claimed) != 0 {
+		t.Fatalf("seed after the sweep: lowered %+v, seeded %+v, residual %s, escrow position %s", lowered, seeded, e.residual(), e.chain.stake(e.escrowV2, e.carryColdkey))
+	}
 }
 
 // ctfE2ECensus is epoch 3's census: three provider units in DE, two in IS,
@@ -644,10 +827,13 @@ func ctfE2ECensus(epoch uint64) *ctf.Census {
 		}}
 }
 
-// E-8: capture the flag's whole cycle on the e2e chain. The proxy is upgraded
-// to STSettlement2Ctf and UR's CTF pool registered from epoch 3 by the one
+// E-8: capture the flag's whole cycle on the e2e chain. The guardian makes
+// vault2's coldkey a hotkey account; the proxy is upgraded to
+// STSettlement2Ctf and UR's CTF pool registered from epoch 3 by the one
 // folded timelock operation, its value paid from the timelock; the carry is
-// created and the signed entry names it. In epoch 3 the CTF pool earns
+// created with its 1 TAO seed once the guardian holds its coldkey and the
+// proxy's account is funded, ctf-carry review checking it before and after,
+// and the signed entry names it. In epoch 3 the CTF pool earns
 // 24.9 α; its census, which lists a client bound to a head fleet, is refused
 // before its window and from anyone but the root signer, committed in it once
 // and only once; the root drawn with quicknet's real pulse, leaving the bound
@@ -657,13 +843,15 @@ func ctfE2ECensus(epoch uint64) *ctf.Census {
 // without head bindings it would refuse it. After its window the
 // root finalizes; snclaim v2 status lists a winner's CTF account, and the
 // winner claims it through snclaim v2 claim; anyone claims and recycles the
-// carry account through STCtfCarry, recorded for epoch 4. Epoch 4's census
-// window passes without one, and a census after it is refused: everything
-// carries, and its root returns the carry, matured; the
-// audit and snclaim, with the previous root's accounts, approve it, it
-// finalizes, and once the watcher has claimed the carry account from vault2
-// itself the carry recycles what it holds for epoch 5. vault2's conservation
-// holds across both pools. The cycle runs with exact stake moves, and again
+// carry account through STCtfCarry, which keeps its residual, recorded for
+// epoch 4. Epoch 4's census window passes without one, and a census after it
+// is refused: everything carries, and its root returns the carry, matured;
+// the audit and snclaim, with the previous root's accounts, approve it, and it
+// finalizes. Root's sweep then clears the residual: vault2's claim of the
+// carry account is refused, the recycle reverts ResidualMissing, and a seed
+// of at least the raised least restores it. Once the watcher has claimed the
+// carry account from vault2 itself the carry recycles what it holds above
+// the residual for epoch 5. vault2's conservation holds across both pools. The cycle runs with exact stake moves, and again
 // with every move from epoch 3 on crediting one rao short, as the runtime's
 // share pool can: a recycle returns three rao less than the carry account,
 // the next capture one less, and the root still matures within the walk's
@@ -766,7 +954,8 @@ func (e *ctfE2E) cycle() {
 	}
 
 	// Anyone recycles the carry: vault2's next close captures it. It returns
-	// what the root owed the pots and pending awards, less the moves' rounding.
+	// what the root owed the pots and pending awards, less the moves'
+	// rounding, and keeps its residual.
 	returned4, amount := e.recycle(nil)
 	if owed := first.State.Obligations(); returned4 != ctfTestFirstEpoch+1 || amount.Cmp(less(owed.ToBig(), 3)) != 0 {
 		t.Fatalf("recycled %s for epoch %d, the pots and pending awards are %s", amount, returned4, owed.Dec())
@@ -800,9 +989,11 @@ func (e *ctfE2E) cycle() {
 		t.Fatalf("snclaim v2 check of the second CTF root: exit %d\n%s%s", code, stdout, stderr)
 	}
 	t.Logf("snclaim v2 check of the second CTF root:\n%s", stdout)
-	// The watcher claims the carry account from vault2 first; the recycle
-	// then claims nothing again and returns what the carry holds.
+	// Root's sweep clears the residual, which seed() restores. The watcher
+	// then claims the carry account from vault2 first; the recycle claims
+	// nothing again and returns what the carry holds above its residual.
 	e.finalize(second)
+	e.sweepResidual()
 	if returned5, again := e.recycle(e.watcher); returned5 != ctfTestFirstEpoch+2 || again.Cmp(less(funded4, 3)) != 0 {
 		t.Fatalf("recycled %s for epoch %d", again, returned5)
 	}
