@@ -269,12 +269,15 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	// A watcher has neither vault1 nor the pool's surplus history: it takes
 	// the header's recovery components as declared (§16 step 6) and checks
 	// their rows, allocation and fit within the funding; the auditors check
-	// them against the chain.
+	// them against the chain. It takes the header's extender components as
+	// declared too (WHITEPAPER.md §8.6.4) and checks their census and share
+	// rows; which epochs the signed amendment entry covers is the auditors'
+	// check.
 	in := ledger.VerifyInput{
 		NoID: noID, FirstEpoch: state.firstEpoch, Seq: pending.Seq,
 		Pending:       v2LedgerRoot(pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash),
 		FundedThrough: state.funded, Fetcher: objects, Custody: ledger.NewMemoryCustody(),
-		MaxFetchBytes: ledger.DefaultMaxFetchBytes, RecoveriesUnchecked: true,
+		MaxFetchBytes: ledger.DefaultMaxFetchBytes, RecoveriesUnchecked: true, ExtendersUnchecked: true,
 	}
 	if latest := state.latest; latest != nil {
 		fmt.Printf("  finalized root:    index %d, epoch %d, root 0x%x, total %s, %d accounts\n", state.latestIndex, latest.Epoch, latest.Root, formatAlpha(latest.Total), latest.LeafCount)

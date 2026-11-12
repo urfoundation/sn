@@ -114,6 +114,7 @@ Usage:
         [-v...]
     validator run [--config=<path>] [--progress-file=<path>]
         [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--drand_url=<url>]
+        [--amendments-fallback=<path>]
         [--steering-operation-timeout=<duration>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [(--native-gap-bridge=<path> --native-gap-bridge-sha256=<hash>)] [--startup-verified-progress]
@@ -151,6 +152,10 @@ Options:
                                  per root, in bytes; raised operationally [default: 2147483648].
     --drand_url=<url>            drand relay the capture the flag audit reads quicknet's pulses from;
                                  each pulse must verify against quicknet's key. Omitted: https://api.drand.sh.
+    --amendments-fallback=<path>  Configured settlement amendment lines, one per line, the fallback
+                                 where no signed entry of amendments.yml is in force (WHITEPAPER.md
+                                 §8.6.7). Every reader must configure the same lines; the signed
+                                 configuration is unchanged.
     --approval-key-file=<path>   Private raw32 or bare64-hex Ed25519 seed for the configured approval
                                  signer. Signs activation's exact successor message; never copied into
                                  the rendered configuration. init creates a private raw seed if absent,
