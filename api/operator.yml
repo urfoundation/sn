@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.11.11
+  version: 2026.11.12
   title: URnetwork Operator API
   summary: The network operator's public SN25 routes, starting with capture the flag.
   description: |
@@ -71,7 +71,9 @@ info:
       census or a root is committed, and when a root is finalized. Between
       those events the body, its `ETag` and `as_of` stay the same, and
       `Last-Modified` carries `as_of` as an HTTP date. A census commitment
-      shows in `pending_draw`. Times of future
+      shows in `pending_draw`. The one exception is `GET /sn/ctf/client`,
+      whose wins' `claimed` follows the chain's claims, so its body and
+      `ETag` also change when an account is claimed. Times of future
       blocks are estimates at 12 seconds per block.
     - **Countries** are lowercase ISO 3166-1 alpha-2 codes (`is`), the 249
       codes of the standard. Kosovo (`xk`) is not one. Names are English and
@@ -377,24 +379,66 @@ paths:
       tags: [Capture the flag]
       security:
         - BearerAuth: []
-      summary: The calling client's own capture the flag status and wins
+      summary: The caller's own capture the flag wins and status, a client's or its network's
       description: |
-        The client the bearer token names: in each of its recent epochs, per
-        role, whether it was a candidate and, if not, the first rule that
-        excluded it; its country and unit family; its presence against the
-        half-epoch rule; and whether it won, with its rank, its slot amount,
-        its share of the pot and the coldkey paid. An app can name the flag
-        a provider captured from it.
+        The wins of the client or the network the bearer token names, each
+        with whether it is claimed, so that an app can say "you won a slot"
+        for every win not claimed yet; and, for a client, its status in each
+        of its recent epochs.
 
-        Only the token's own client is answered. The token must be a client
-        JWT (`by_client_jwt` from `POST /network/auth-client`); a network JWT
-        or an API key names no client and is answered 401.
+        **Whom it answers for.** A client JWT (`by_client_jwt` from
+        `POST /network/auth-client`, as the URnetwork apps hold it) is
+        answered for its own client: its `client_id`; in `epochs`, per role,
+        whether it was a candidate and, if not, the first rule that excluded
+        it, its country and unit family, its presence against the half-epoch
+        rule, and whether it won, with its rank, its slot amount, its share
+        of the pot and the coldkey paid; and its `wins`. The network's own
+        credential, its JWT (as ur.io holds it) or an API key, is answered
+        for the network: `wins` holds the wins of every client the network
+        has had, removed ones included, each naming its `client_id`, while
+        `client_id` is null and `epochs` is `[]`. A token of either kind that
+        authenticates is never answered 401.
 
-        The epochs are the most recent `limit` of the pool's epochs that a
-        committed root covers, newest first.
+        **Which wins.** Every win of those clients that is not known to be
+        claimed (`claimed` false or null), whatever its epoch, and every win
+        of the `limit` most recent epochs that a committed root covers (the
+        epochs `epochs` lists for a client), claimed or not. Newest first: by
+        epoch descending, then providers before extenders, then country, then
+        rank. An app shows the wins with `claimed: false` as won and not
+        claimed yet.
+
+        **Claimed.** vault2's claims are cumulative: a claim pays an account
+        up to its cumulative in a finalized root and records that cumulative
+        as the account's `claimed`, so `claimed` is always the cumulative of
+        the root of the account's latest claim.
+
+        - A win's paying epoch is its own epoch, or, when its pot share was a
+          pending award (`pending`), the first epoch after it that matured,
+          which pays every pending award.
+        - Its paying root is the committed root that covers the paying epoch:
+          the first pending or finalized CTF root whose epoch is at or after
+          it.
+        - A win is claimed when its paying root is finalized and vault2's
+          `claimed` for the CTF account of the win's coldkey, read at the
+          finalized head as `GET /sn/ledger/account` reads it, is at least
+          that account's cumulative in the paying root: the account's latest
+          claim used that root or a later one. An account claimed exactly
+          through the paying root has claimed the win.
+        - Otherwise it is not: while its paying root is pending, while its
+          pending pot share waits for a matured epoch that a committed root
+          covers, and while the account is claimed only through an earlier
+          root. A root that covers several epochs is claimed as a whole.
+        - `claimed` is null when the account's state could not be read for
+          this answer (its ledger or vault2 could not be read, or they
+          disagree), and for the wins of any coldkey beyond the 32 an answer
+          reads, those of its newest wins first. A client shows such a win
+          neither as claimed nor as not. A win whose paying root is pending,
+          or which has none yet, is never null.
 
         `Cache-Control: private, no-cache`: the app may keep it, revalidating
-        with its `ETag`.
+        with its `ETag`. `claimed` is read from the chain with every request,
+        so the answer and its `ETag` also change when an account is claimed,
+        while `as_of` stays the time of the capture the flag state.
       parameters:
         - $ref: "#/components/parameters/ClientLimit"
         - $ref: "#/components/parameters/IfNoneMatch"
@@ -414,6 +458,8 @@ paths:
               examples:
                 provider:
                   $ref: "#/components/examples/CtfClientResult"
+                network:
+                  $ref: "#/components/examples/CtfClientResultNetwork"
         "304":
           $ref: "#/components/responses/NotModified"
         "400":
@@ -550,7 +596,7 @@ paths:
                   value: |
                     openapi: "3.1.0"
                     info:
-                      version: 2026.11.11
+                      version: 2026.11.12
                       title: URnetwork Operator API
         "304":
           $ref: "#/components/responses/NotModified"
@@ -564,9 +610,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        `Authorization: Bearer` and a URnetwork client JWT (`by_client_jwt`
-        from `POST /network/auth-client`), as the URnetwork apps send it.
-        connect/api/bringyour.yml describes how to obtain one.
+        `Authorization: Bearer` and a URnetwork token: a client JWT
+        (`by_client_jwt` from `POST /network/auth-client`), as the URnetwork
+        apps send it, or the network's own credential, its JWT or an API key
+        (`urn_…`), as ur.io sends its JWT. connect/api/bringyour.yml
+        describes how to obtain them.
 
   parameters:
     IfNoneMatch:
@@ -629,7 +677,10 @@ components:
       name: limit
       in: query
       required: false
-      description: How many of the most recent epochs to answer, at most.
+      description: |
+        How many of the most recent covered epochs to answer, at most: a
+        client's `epochs`, and the epochs whose claimed wins `wins` lists as
+        well as the others.
       schema:
         type: integer
         minimum: 1
@@ -776,7 +827,7 @@ components:
                 code: bad_request
                 detail: coldkey is not an ss58 address or 0x and 64 hex digits
     Unauthorized:
-      description: The bearer token is missing or invalid, or names no client (a network JWT or an API key).
+      description: The bearer token is missing, or it does not authenticate (malformed, expired or revoked).
       headers:
         Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
         WWW-Authenticate:
@@ -790,14 +841,14 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
           examples:
-            noClient:
-              summary: A network JWT
+            noToken:
+              summary: No bearer token
               value:
                 type: about:blank
                 title: Unauthorized
                 status: 401
                 code: unauthorized
-                detail: This route answers for one client. Send the client's JWT.
+                detail: Send a client's or a network's bearer token.
     UnknownCountry:
       description: The code is not one of the 249 ISO 3166-1 alpha-2 codes.
       headers:
@@ -1496,7 +1547,7 @@ components:
         pending_awards: []
 
     CtfClientResult:
-      summary: A provider in Iceland that won in both epochs
+      summary: A provider in Iceland that won in both epochs, its epoch 8 win claimed
       value:
         as_of: "2026-12-11T22:24:12Z"
         unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
@@ -1564,6 +1615,94 @@ components:
               pending: false
               coldkey: null
               coldkey_ss58: null
+        wins:
+          - epoch: 9
+            role: provider
+            country: is
+            rank: 1
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.076841056", rao: 76841056}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+            root_status: pending
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: false
+          - epoch: 8
+            role: provider
+            country: is
+            rank: 2
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: true
+
+    CtfClientResultNetwork:
+      summary: A network's credential, its provider in Iceland claimed through epoch 8 and its extender in Germany not yet
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        client_id: null
+        epochs: []
+        wins:
+          - epoch: 9
+            role: provider
+            country: is
+            rank: 1
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.076841056", rao: 76841056}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+            root_status: pending
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: false
+          - epoch: 9
+            role: extender
+            country: de
+            rank: 1
+            client_id: "6a0f3c9d-71e2-4b58-8c3a-e94d2b6f1057"
+            amount: {alpha: "0.067235924", rao: 67235924}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.019210264", rao: 19210264}
+            pending: false
+            root_status: pending
+            coldkey: "0xb515f4c4f7bc1e73557df4d34f7fb3ae7885d1fa1e522eea3439d1c198697afb"
+            coldkey_ss58: 5GA93f6m9nTDubvFwi7jKnX4E4YREFXCSbuTJMFqtrutGJFi
+            claimed: false
+          - epoch: 8
+            role: provider
+            country: is
+            rank: 2
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: true
+          - epoch: 8
+            role: extender
+            country: de
+            rank: 1
+            client_id: "6a0f3c9d-71e2-4b58-8c3a-e94d2b6f1057"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xb515f4c4f7bc1e73557df4d34f7fb3ae7885d1fa1e522eea3439d1c198697afb"
+            coldkey_ss58: 5GA93f6m9nTDubvFwi7jKnX4E4YREFXCSbuTJMFqtrutGJFi
+            claimed: false
 
     SnLedgerAccountResultWhole:
       summary: A coldkey with an account in the provider pool and one in the CTF pool
@@ -2687,23 +2826,85 @@ components:
         extenders:
           $ref: "#/components/schemas/CtfClientRole"
 
+    CtfClientWin:
+      type: object
+      description: |
+        One win of the client, or of one of the network's clients: an award
+        of a committed root, as `GET /sn/ctf/epoch/{epoch}` lists it, and
+        whether it is claimed (`GET /sn/ctf/client` says how that is read).
+      required: [epoch, role, country, rank, client_id, amount, slot, pot_share, pending, root_status, coldkey, coldkey_ss58, claimed]
+      properties:
+        epoch:
+          type: integer
+          description: The epoch whose draw it won.
+        role:
+          $ref: "#/components/schemas/Role"
+        country:
+          $ref: "#/components/schemas/CountryCode"
+          description: The country of its unit's draw.
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 5
+        client_id:
+          type: string
+          format: uuid
+          description: The client that won.
+        amount:
+          $ref: "#/components/schemas/Amount"
+          description: The whole award, `slot` and `pot_share` together.
+        slot:
+          $ref: "#/components/schemas/Amount"
+        pot_share:
+          $ref: "#/components/schemas/Amount"
+        pending:
+          type: boolean
+          description: |
+            Its pot share was a pending award, because its epoch had not
+            matured; the first matured epoch after it pays it.
+        root_status:
+          $ref: "#/components/schemas/RootStatus"
+          description: |
+            The status of the committed root that covers its epoch: `pending`
+            is not claimable yet.
+        coldkey:
+          $ref: "#/components/schemas/Coldkey"
+          description: The coldkey its award is paid to, whose account in the CTF pool holds it.
+        coldkey_ss58:
+          $ref: "#/components/schemas/ColdkeySs58"
+        claimed:
+          type: [boolean, "null"]
+          description: |
+            Whether its coldkey's account in the CTF pool has been claimed
+            through the root that pays it; null when that could not be read
+            for this answer.
+
     CtfClientResult:
       type: object
       description: The answer of `GET /sn/ctf/client`.
-      required: [as_of, unit, client_id, epochs]
+      required: [as_of, unit, client_id, epochs, wins]
       properties:
         as_of:
           $ref: "#/components/schemas/Timestamp"
         unit:
           $ref: "#/components/schemas/Unit"
         client_id:
-          type: string
+          type: [string, "null"]
           format: uuid
+          description: The client a client JWT names; null for the network's credential, which names no one client.
         epochs:
           type: array
-          description: Newest first; `[]` before the first root.
+          description: The client's status per epoch, newest first; `[]` before the first root, and for the network's credential.
           items:
             $ref: "#/components/schemas/CtfClientEpoch"
+        wins:
+          type: array
+          description: |
+            The wins of the client, or of every client of the network: every
+            one not known to be claimed, and every one of the `limit` most
+            recent covered epochs; newest first. `[]` before the first root.
+          items:
+            $ref: "#/components/schemas/CtfClientWin"
 
     SnLedgerPoolKind:
       type: string
