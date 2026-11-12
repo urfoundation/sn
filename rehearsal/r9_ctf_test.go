@@ -231,7 +231,7 @@ func TestR9CaptureTheFlag(t *testing.T) {
 	carryColdkey := mirror(carry)
 	names := map[[32]byte]string{s.escrow: "escrow", hotkey: "CTF pool", operator.pool: "provider pool"}
 	n.stakeFor(t, alice, s.vaultColdkey, hotkey, s.netuid, 200*tao)
-	flags := forgeArtifact(t, "src/interfaces/stakingAccountFlags.sol", "IStakingAccountFlags")
+	settings := forgeArtifact(t, "src/interfaces/stakingAccountSettings.sol", "IStakingAccountSettings")
 	donor := newColdkey(t)
 	n.fund(t, donor.PublicKey(), 1_000*tao)
 	// fill has a third party add hotkeys of its own to coldkey's StakingHotkeys
@@ -390,16 +390,21 @@ func TestR9CaptureTheFlag(t *testing.T) {
 			t.Fatal("the carry contract read vault2 differently")
 		}
 		// The residual is what the seed's addStake gained on the escrow hotkey,
-		// the escrow hotkey joined the full list, and both opt-outs hold.
+		// the escrow hotkey and the pool hotkey, its auto-stake destination,
+		// joined the full list, and both opt-outs hold.
 		residual = n.read(t, carry, carryArtifact, "residual")[0].(*big.Int).Uint64()
 		listed := n.stakingHotkeys(t, carryColdkey)
 		requireEvent(t, creation, carryArtifact, carry, "Seeded", map[string]any{"tao": id(carrySeed), "amount": id(residual), "residual": id(residual)})
-		if residual == 0 || n.stake(t, s.escrow, carryColdkey, s.netuid) != residual || len(listed) != thirdPartyStakingHotkeys+1 || !onList(listed, s.escrow) {
+		if residual == 0 || n.stake(t, s.escrow, carryColdkey, s.netuid) != residual || len(listed) != thirdPartyStakingHotkeys+2 ||
+			!onList(listed, s.escrow) || !onList(listed, hotkey) {
 			t.Fatalf("the seed staked a residual of %d rao, the carry holds %d on the escrow hotkey, and its list is %s",
 				residual, n.stake(t, s.escrow, carryColdkey, s.netuid), hotkeyList(listed, names))
 		}
-		if !n.read(t, stakingAddress, flags, "getRejectStakingHotkeyGrowth", carryColdkey)[0].(bool) ||
-			!n.read(t, stakingAddress, flags, "getRejectLockedAlpha", carryColdkey)[0].(bool) {
+		if destination := n.read(t, stakingAddress, settings, "getAutoStakeDestination", carryColdkey, s.netuid); !destination[0].(bool) || destination[1].([32]byte) != hotkey {
+			t.Fatalf("the carry coldkey's auto-stake destination on netuid %d is %v, not the CTF pool hotkey", s.netuid, destination)
+		}
+		if !n.read(t, stakingAddress, settings, "getRejectStakingHotkeyGrowth", carryColdkey)[0].(bool) ||
+			!n.read(t, stakingAddress, settings, "getRejectLockedAlpha", carryColdkey)[0].(bool) {
 			t.Fatal("the carry coldkey does not keep its opt-outs")
 		}
 		if left := n.freeBalance(t, carryColdkey); left > existentialDeposit {
@@ -463,7 +468,7 @@ func TestR9CaptureTheFlag(t *testing.T) {
 		escrowLeft, poolLeft := n.stake(t, s.escrow, carryColdkey, s.netuid), n.stake(t, hotkey, carryColdkey, s.netuid)
 		kept := n.read(t, carry, carryArtifact, "residual")[0].(*big.Int).Uint64()
 		carryAfter := n.stakingHotkeys(t, carryColdkey)
-		if poolLeft != 0 || escrowLeft < kept || escrowLeft > kept+1 || kept > residual || residual-kept > 1 || !onList(carryAfter, s.escrow) {
+		if poolLeft != 0 || escrowLeft < kept || escrowLeft > kept+1 || kept > residual || residual-kept > 1 || !onList(carryAfter, s.escrow) || !onList(carryAfter, hotkey) {
 			t.Fatalf("the carry holds %d rao on the escrow hotkey with a residual of %d (%d at creation) and %d on the CTF pool hotkey; its list is %s",
 				escrowLeft, kept, residual, poolLeft, hotkeyList(carryAfter, names))
 		}

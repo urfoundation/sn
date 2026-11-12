@@ -2365,8 +2365,9 @@ and role, so the first miner to reach a thin country earns far more than one mor
 - **Why the carry keeps a residual.** vault2's claim pays the carry by a transfer from another coldkey, which
   the runtime refuses once third parties have filled the receiving coldkey's staking‑hotkey list to 128
   entries, unless the hotkey is already on it. So the carry keeps a residual of its own on vault2's escrow
-  hotkey, which keeps that hotkey on its list, and opts out of third‑party list growth, so no transfer or
-  coldkey swap can lengthen it. It stakes the residual from the TAO it is created with, by its own
+  hotkey, which keeps that hotkey on its list, pins the CTF pool hotkey there as its auto‑stake destination,
+  so its own moves land on a listed hotkey too, and opts out of third‑party list growth, which keeps the list
+  short. Its list's length then never refuses it. It stakes the residual from the TAO it is created with, by its own
   `addStake`, and anyone can restore it with `seed()` if root's sweep of small nominations ever clears it.
   The residual never returns to the pool, so the ledger is unchanged (`CAPTURETHEFLAG.md` §4.6;
   `VERSION2-FINAL.md` §19.4).

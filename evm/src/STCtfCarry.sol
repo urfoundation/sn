@@ -4,7 +4,7 @@ pragma solidity 0.8.24;
 import {ISTSettlementVault2} from "./interfaces/ISTSettlementVault2.sol";
 import {IStaking, ISTAKING_ADDRESS} from "./interfaces/stakingV2.sol";
 import {IStakingCollateral} from "./interfaces/stakingCollateral.sol";
-import {IStakingAccountFlags} from "./interfaces/stakingAccountFlags.sol";
+import {IStakingAccountSettings} from "./interfaces/stakingAccountSettings.sol";
 import {LedgerTree} from "./LedgerTree.sol";
 import {Blake2b} from "./lib/Blake2b.sol";
 
@@ -27,11 +27,14 @@ import {Blake2b} from "./lib/Blake2b.sol";
 /// dust, so without more the escrow hotkey would leave this coldkey's list at
 /// every recycle and anyone could block the carry for good. So the contract
 /// keeps a residual of its own on the escrow hotkey, which keeps that hotkey on
-/// its list, and opts out of third-party list growth, so no other transfer or
-/// coldkey swap can lengthen the list. The constructor seeds the residual from
-/// the TAO it is created with, by its own addStake, which only the larger
-/// 256-entry cap of a coldkey's own operations limits, and the residual never
-/// returns to the pool. It also keeps rejecting conviction-locked alpha.
+/// its list, and makes the pool hotkey its auto-stake destination on the
+/// subnet, which keeps that one on its list too: every claim to it and every
+/// move of its own lands on a listed hotkey, which the runtime admits whatever
+/// the list's length. It also opts out of third-party list growth, which
+/// keeps the list short, and keeps rejecting conviction-locked alpha. The
+/// constructor seeds the residual from the TAO it is created with, by its own
+/// addStake, which only the larger 256-entry cap of a coldkey's own
+/// operations limits, and the residual never returns to the pool.
 ///
 /// It has no owner and no upgrade. Its entry points are `recycle` and `seed`,
 /// which only stakes this contract's own TAO onto the escrow hotkey, so that
@@ -119,8 +122,10 @@ contract STCtfCarry {
     /// @param poolId_ the CTF pool, 2^32 + the operator's id.
     /// @dev Created with at least seedMinimum() rao of TAO, as call value or
     /// already on its address: all of it is staked on the escrow hotkey as the
-    /// residual. Then third parties can no longer grow this coldkey's
-    /// StakingHotkeys list, and conviction-locked alpha stays refused.
+    /// residual. The pool hotkey, which must hold a UID on the subnet, becomes
+    /// this coldkey's auto-stake destination there. Then third parties can no
+    /// longer grow this coldkey's StakingHotkeys list, and conviction-locked
+    /// alpha stays refused.
     constructor(ISTSettlementVault2 vault_, uint256 poolId_) payable {
         if (address(vault_).code.length == 0) revert InvalidConfiguration();
         ISTSettlementVault2.Pool memory pool = vault_.pools(poolId_);
@@ -138,10 +143,15 @@ contract STCtfCarry {
 
         (uint256 tao, uint256 amount) = _seed(escrow, netuid_, coldkey_);
         residual = amount;
-        IStakingAccountFlags flags = IStakingAccountFlags(ISTAKING_ADDRESS);
-        flags.setRejectStakingHotkeyGrowth(true);
-        flags.setRejectLockedAlpha(true);
-        if (!flags.getRejectStakingHotkeyGrowth(coldkey_) || !flags.getRejectLockedAlpha(coldkey_)) {
+        IStakingAccountSettings settings = IStakingAccountSettings(ISTAKING_ADDRESS);
+        settings.setColdkeyAutoStakeHotkey(netuid_, pool.hotkey);
+        settings.setRejectStakingHotkeyGrowth(true);
+        settings.setRejectLockedAlpha(true);
+        (bool pinned, bytes32 destination) = settings.getAutoStakeDestination(coldkey_, netuid_);
+        if (
+            !pinned || destination != pool.hotkey || !settings.getRejectStakingHotkeyGrowth(coldkey_)
+                || !settings.getRejectLockedAlpha(coldkey_)
+        ) {
             revert InvalidConfiguration();
         }
         emit Seeded(tao, amount, amount);

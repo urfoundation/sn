@@ -1396,7 +1396,11 @@ through the canonical deterministic deployment proxy, in one transaction:
   call's value. The constructor stakes all the TAO the contract then holds on
   vault2's escrow hotkey by its own `addStake`: that is its residual, which
   keeps the escrow hotkey on its staking-hotkey list so that vault2's claims
-  to it always land. It then sets the runtime's opt-outs of third-party
+  to it always land. It makes the CTF pool hotkey its auto-stake destination,
+  which keeps that hotkey on its list too, so its own moves always land, and
+  which needs the pool hotkey to hold a UID: create the carry while the
+  registration's UID stands, or re-register it with vault2's
+  `registerPoolUid` first. It then sets the runtime's opt-outs of third-party
   staking-hotkey growth and of locked alpha. The seed must be at least the
   contract's `seedMinimum()`: ten times the runtime's nominator minimum, and
   at least 0.1 TAO. Mainnet seeds 1 TAO. The seed never returns.
@@ -1433,8 +1437,9 @@ It reads the pool through the proxy, which must run `STSettlement2Ctf`:
 `ctfPoolId(noId)`, `vault()`, vault2's `pools(2^32 + noId)` and
 `ctfSettlementAt(noId, firstEpoch)`, which must agree, and vault2's
 `netuid()`, `escrowHotkey()` and `selfColdkey()`. From the staking and alpha
-precompiles it reads the nominator minimum, the alpha price, and the carry
-coldkey's staking hotkeys, owned hotkeys and conviction lock.
+precompiles it reads the nominator minimum, the alpha price, whether the pool
+hotkey holds a UID, and the carry coldkey's staking hotkeys, owned hotkeys and
+conviction lock.
 
 **Before the creation** it refuses with exit 3:
 
@@ -1443,6 +1448,7 @@ coldkey's staking hotkeys, owned hotkeys and conviction lock.
   does not hold, and a pool that `ctfSettlementAt` resolves elsewhere;
 - a carry coldkey that already holds staking hotkeys, owns hotkeys or holds a
   lock: someone knows its address, so it is created under another salt;
+- a pool hotkey that holds no UID, which the auto-stake destination needs;
 - a seed below `seedMinimum()` at the head; and
 - with `--from`, a creation that fails as an `eth_call` from that sender with
   its value, or that answers another address than the derived one.
@@ -1458,7 +1464,8 @@ Without `--from` the preflight does not run, and its result says so.
   address, and constants other than the reviewed `MINIMUM_SEED_RAO` and
   `SEED_NOMINATOR_MULTIPLE`;
 - no residual, a position on the escrow hotkey below the residual, a
-  staking-hotkey list without the escrow hotkey, and either opt-out unset;
+  staking-hotkey list without the escrow hotkey, an auto-stake destination
+  other than the pool hotkey or a list without it, and either opt-out unset;
   and
 - a residual worth less, at the head's alpha price, than the nominator
   minimum, which root's next sweep would clear. `seed()` adds to it.
@@ -1473,11 +1480,12 @@ Its result, schema `urnetwork-mainnet-ctf-carry-review-v1`, has:
 - `pool`: the proxy, vault2, the operator, the pool id, its hotkey and first
   epoch, vault2's netuid, escrow hotkey and coldkey;
 - `runtime`: the nominator minimum, `seedMinimum()`, the alpha price, the
-  address's balance, which the seed's staking includes, and the coldkey's
-  staking hotkeys, owned hotkeys and lock;
+  address's balance, which the seed's staking includes, the coldkey's staking
+  hotkeys, owned hotkeys and lock, and the pool hotkey's UID;
 - `created`, once it exists: its code hash, the residual, its position on the
   escrow hotkey and its worth in TAO at the head, whether the list holds the
-  escrow hotkey, both opt-outs, and the address in its EIP-55 form for the
+  escrow hotkey, whether the pool hotkey is its auto-stake destination and on
+  its list, both opt-outs, and the address in its EIP-55 form for the
   amendment entry (`mainnet/SETTLEMENT-AMENDMENTS.md`); and
 - `preflight`, as in the upgrade review.
 

@@ -4,21 +4,24 @@
 // the call's value. Its address is CREATE2(factory, salt, keccak256(STCtfCarry
 // creation code ‖ abi.encode(vault2, 2^32 + noId))): it depends on the exact
 // build, which the amendment entry v2 then names. Its constructor stakes the
-// seed on vault2's escrow hotkey as its residual and sets the runtime's
-// opt-outs of third-party staking-hotkey growth and of locked alpha, so no
-// third party can block vault2's claims to it.
+// seed on vault2's escrow hotkey as its residual, makes the pool hotkey its
+// auto-stake destination, and sets the runtime's opt-outs of third-party
+// staking-hotkey growth and of locked alpha, so no third party can block
+// vault2's claims to it or its own moves.
 //
 // review pins the artifact and derives the address from it, the salt, and
 // vault2 and the CTF pool, which it reads through STSettlement2 at the head.
 // Before the carry exists it requires the carry's coldkey to be untouched (no
 // staking hotkeys, owned hotkeys or lock: a coldkey swap prepared into it, or
-// stake sent to it, means its address is known), a seed of at least the
+// stake sent to it, means its address is known), a pool hotkey that holds a
+// UID, which the auto-stake destination needs, a seed of at least the
 // contract's seedMinimum() at the head, and, with --from, the creation to
 // succeed as an eth_call from that sender with its value and to answer the
 // address. Once the carry exists it requires the artifact's code outside the
 // immutables, immutables that name vault2, the pool and the carry's own
-// coldkey, a residual held on the escrow hotkey, which its staking-hotkey list
-// keeps, and both opt-outs. It neither signs nor sends, and every read is
+// coldkey, a residual held on the escrow hotkey, the pool hotkey as its
+// auto-stake destination, both on its staking-hotkey list, and both opt-outs.
+// It neither signs nor sends, and every read is
 // pinned to one head block.
 package main
 
@@ -77,6 +80,8 @@ const ctfCarryRuntimeAbiJson = `[
  {"type":"function","name":"getColdkeyLock","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint256"}],"outputs":[{"name":"lockInfo","type":"tuple","components":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"},{"name":"locked_mass","type":"uint256"},{"name":"conviction","type":"uint128"},{"name":"is_perpetual","type":"bool"}]}]},
  {"type":"function","name":"getRejectStakingHotkeyGrowth","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
  {"type":"function","name":"getRejectLockedAlpha","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
+ {"type":"function","name":"getAutoStakeDestination","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint16"}],"outputs":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"}]},
+ {"type":"function","name":"getUid","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}]},
  {"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]}
 ]`
 
@@ -89,6 +94,7 @@ var ctfCarryRuntimeAbi = func() abi.ABI {
 }()
 
 var (
+	ctfCarryNeuron  = common.HexToAddress("0x0000000000000000000000000000000000000804")
 	ctfCarryStaking = common.HexToAddress("0x0000000000000000000000000000000000000805")
 	ctfCarryAlpha   = common.HexToAddress("0x0000000000000000000000000000000000000808")
 )
@@ -245,6 +251,7 @@ type ctfCarryRuntime struct {
 	StakingHotkeys      uint64 `json:"staking_hotkeys"`
 	OwnedHotkeys        int    `json:"owned_hotkeys"`
 	Lock                bool   `json:"lock"`
+	PoolHotkeyUid       *int   `json:"pool_hotkey_uid"`
 }
 
 type ctfCarryCreated struct {
@@ -253,6 +260,8 @@ type ctfCarryCreated struct {
 	EscrowPositionRao   string `json:"escrow_position_rao"`
 	ResidualTaoRao      string `json:"residual_tao_rao"`
 	EscrowListed        bool   `json:"escrow_listed"`
+	PoolHotkeyPinned    bool   `json:"pool_hotkey_pinned"`
+	PoolListed          bool   `json:"pool_listed"`
 	RejectsGrowth       bool   `json:"rejects_staking_hotkey_growth"`
 	RejectsLockedAlpha  bool   `json:"rejects_locked_alpha"`
 	AmendmentCarryEntry string `json:"amendment_carry"`
@@ -386,7 +395,7 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 	}
 
 	// The runtime at the head: the seed's least, and the carry coldkey.
-	runtime, nominator, price, err := reviewCtfCarryRuntime(ctx, chain, address, coldkey, pool.Netuid)
+	runtime, nominator, price, err := reviewCtfCarryRuntime(ctx, chain, address, coldkey, pool.Netuid, poolHotkey)
 	if err != nil {
 		return result, err
 	}
@@ -410,6 +419,8 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 		return result, ctfCarryRefusal("the carry's coldkey %s already owns %d hotkeys, as a coldkey swap into it leaves: create it under another salt", coldkey.Hex(), runtime.OwnedHotkeys)
 	case runtime.Lock:
 		return result, ctfCarryRefusal("the carry's coldkey %s holds a conviction lock on netuid %d, as a coldkey swap into it leaves: create it under another salt", coldkey.Hex(), pool.Netuid)
+	case runtime.PoolHotkeyUid == nil:
+		return result, ctfCarryRefusal("the CTF pool hotkey %s holds no UID on netuid %d, which the carry's auto-stake destination needs: re-register it with vault2's registerPoolUid first", poolHotkey.Hex(), pool.Netuid)
 	}
 	minimum, _ := new(big.Int).SetString(runtime.SeedMinimumRao, 10)
 	if new(big.Int).SetUint64(request.seedRao).Cmp(minimum) < 0 {
@@ -486,7 +497,7 @@ func reviewCtfCarryPool(ctx context.Context, chain *upgradeChain, request ctfCar
 // reviewCtfCarryRuntime reads the seed's least at the head, the alpha price,
 // and what the runtime holds for the carry's coldkey: its staking hotkeys,
 // owned hotkeys and lock, and the address's balance, which a seed stakes too.
-func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address common.Address, coldkey common.Hash, netuid uint16) (ctfCarryRuntime, *big.Int, *big.Int, error) {
+func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address common.Address, coldkey common.Hash, netuid uint16, poolHotkey common.Hash) (ctfCarryRuntime, *big.Int, *big.Int, error) {
 	var runtime ctfCarryRuntime
 	values, err := ctfCarryRead(ctx, chain, ctfCarryStaking, "getNominatorMinRequiredStake")
 	if err != nil {
@@ -525,6 +536,13 @@ func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address com
 		return runtime, nil, nil, ctfCarryRefusal("getColdkeyLock answered %v, not a lock record", values[0])
 	}
 	runtime.Lock = exists.Bool()
+	if values, err = ctfCarryRead(ctx, chain, ctfCarryNeuron, "getUid", netuid, [32]byte(poolHotkey)); err != nil {
+		return runtime, nil, nil, err
+	}
+	if values[0].(bool) {
+		uid := int(values[1].(uint16))
+		runtime.PoolHotkeyUid = &uid
+	}
 	return runtime, nominator, price, nil
 }
 
@@ -572,6 +590,14 @@ func reviewCreatedCtfCarry(ctx context.Context, chain *upgradeChain, request ctf
 	if err != nil {
 		return nil, err
 	}
+	poolListed, err := ctfCarryListed(ctx, chain, coldkey, poolHotkey)
+	if err != nil {
+		return nil, err
+	}
+	if values, err = ctfCarryRead(ctx, chain, ctfCarryStaking, "getAutoStakeDestination", [32]byte(coldkey), pool.Netuid); err != nil {
+		return nil, err
+	}
+	pinned := values[0].(bool) && values[1].([32]byte) == [32]byte(poolHotkey)
 	if values, err = ctfCarryRead(ctx, chain, ctfCarryStaking, "getRejectStakingHotkeyGrowth", [32]byte(coldkey)); err != nil {
 		return nil, err
 	}
@@ -583,7 +609,8 @@ func reviewCreatedCtfCarry(ctx context.Context, chain *upgradeChain, request ctf
 	worth := new(big.Int).Div(new(big.Int).Mul(residual, price), big.NewInt(1_000_000_000_000_000_000))
 	created := &ctfCarryCreated{
 		RuntimeCodeHash: crypto.Keccak256Hash(code).Hex(), ResidualRao: residual.String(), EscrowPositionRao: position.String(),
-		ResidualTaoRao: worth.String(), EscrowListed: listed, RejectsGrowth: rejectsGrowth, RejectsLockedAlpha: rejectsLocked,
+		ResidualTaoRao: worth.String(), EscrowListed: listed, PoolHotkeyPinned: pinned, PoolListed: poolListed,
+		RejectsGrowth: rejectsGrowth, RejectsLockedAlpha: rejectsLocked,
 		AmendmentCarryEntry: address.Hex(),
 	}
 	switch {
@@ -593,6 +620,8 @@ func reviewCreatedCtfCarry(ctx context.Context, chain *upgradeChain, request ctf
 		return created, ctfCarryRefusal("the carry holds %s rao on the escrow hotkey, below its residual of %s: the next recycle lowers the residual", position, residual)
 	case !listed:
 		return created, ctfCarryRefusal("the carry coldkey's staking-hotkey list does not hold the escrow hotkey %s", escrow.Hex())
+	case !pinned || !poolListed:
+		return created, ctfCarryRefusal("the carry coldkey's auto-stake destination on netuid %d is not the CTF pool hotkey %s (pinned %v, listed %v)", pool.Netuid, poolHotkey.Hex(), pinned, poolListed)
 	case !rejectsGrowth || !rejectsLocked:
 		return created, ctfCarryRefusal("the carry coldkey's opt-outs are not set: staking-hotkey growth %v, locked alpha %v", rejectsGrowth, rejectsLocked)
 	case worth.Cmp(nominator) < 0:

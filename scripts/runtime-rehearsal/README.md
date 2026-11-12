@@ -782,8 +782,9 @@ order:
    - its constructor staked the seed on the escrow hotkey by its own
      `addStake`, the 256-entry cap's, not the third parties' 128: `Seeded`
      names 1 TAO, `residual()` equals the carry's position there, the list
-     holds the 128 entries and the escrow hotkey, and the account keeps no
-     more than its existential deposit;
+     holds the 128 entries, the escrow hotkey and the pool hotkey, and the
+     account keeps no more than its existential deposit;
+   - `getAutoStakeDestination` names the CTF pool hotkey on the subnet;
    - `getRejectStakingHotkeyGrowth` and `getRejectLockedAlpha` read true;
    - the carry refuses another account (`InvalidColdkey`) and a recycle with
      nothing above its residual (`NothingToRecycle`);
@@ -798,8 +799,8 @@ order:
    case requires that:
    - vault2's `Claimed` pays the carry's coldkey, with the carry as caller,
      although third parties filled its list;
-   - the carry keeps its residual on the escrow hotkey, which stays on its
-     list, within a rao, and nothing on the pool hotkey;
+   - the carry keeps its residual on the escrow hotkey, within a rao, and
+     nothing on the pool hotkey, and both stay on its list;
    - vault2's position on the pool hotkey grows by the `Recycled` amount,
      recorded in `recycledFor(2)` and within 3 rao of the claim and the
      donation; and

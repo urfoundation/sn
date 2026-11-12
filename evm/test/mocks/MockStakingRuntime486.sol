@@ -3,7 +3,7 @@ pragma solidity 0.8.24;
 
 import {Vm} from "forge-std/Vm.sol";
 
-import {MockStakingV2} from "./PrecompileMocks.sol";
+import {MockStakingV2, MockNeuron} from "./PrecompileMocks.sol";
 import {Blake2b} from "../../src/lib/Blake2b.sol";
 
 /// @dev MockStakingV2 with runtime 486's StakingHotkeys rules, which the carry
@@ -25,7 +25,10 @@ import {Blake2b} from "../../src/lib/Blake2b.sol";
 ///        returns the stake to the coldkey's TAO (staking/helpers.rs:236-301);
 ///      - a coldkey swap merging one coldkey's positions into another's, which
 ///        a destination that rejects growth refuses when it would bring a new
-///        hotkey (swap/swap_coldkey.rs:645-666).
+///        hotkey (swap/swap_coldkey.rs:645-666);
+///      - a coldkey's auto-stake destination on a subnet, which must hold a UID
+///        there (the neuron mock's) and keeps its entry on the list without
+///        stake (dispatches.rs:1978-2026, stake_utils.rs:921-930).
 ///      A caller the mock does not know gets the runtime's mapping of its
 ///      address as its coldkey, so a contract can stake from its constructor.
 ///      Refusals revert with "mock: <runtime error>".
@@ -43,6 +46,8 @@ contract MockStakingRuntime486 is MockStakingV2 {
     mapping(bytes32 hotkey => bytes32 coldkey) public hotkeyOwner;
     // The EVM account whose native balance is a coldkey's TAO.
     mapping(bytes32 coldkey => address) public accountOf;
+    mapping(bytes32 coldkey => mapping(uint16 netuid => bytes32 hotkey)) public autoStake;
+    mapping(bytes32 coldkey => mapping(bytes32 hotkey => uint256 count)) private _pins;
     uint256 public minimumAddStake;
     bool public failFlags;
     uint256 public addStakeCalls;
@@ -94,6 +99,27 @@ contract MockStakingRuntime486 is MockStakingV2 {
 
     function getRejectLockedAlpha(bytes32 coldkey) external view returns (bool) {
         return !acceptsLockedAlpha[coldkey];
+    }
+
+    function setColdkeyAutoStakeHotkey(uint16 netuid, bytes32 hotkey) external {
+        bytes32 ck = _caller();
+        (bool registered,) = MockNeuron(address(0x804)).getUid(netuid, hotkey);
+        require(registered, "mock: HotKeyNotRegisteredInSubNet");
+        _ensureOwnGrowth(ck, hotkey);
+        bytes32 old = autoStake[ck][netuid];
+        require(old != hotkey, "mock: SameAutoStakeHotkeyAlreadySet");
+        autoStake[ck][netuid] = hotkey;
+        _pins[ck][hotkey]++;
+        _sync(ck, hotkey);
+        if (old != bytes32(0)) {
+            _pins[ck][old]--;
+            _sync(ck, old);
+        }
+    }
+
+    function getAutoStakeDestination(bytes32 coldkey, uint16 netuid) external view returns (bool, bytes32) {
+        bytes32 hotkey = autoStake[coldkey][netuid];
+        return (hotkey != bytes32(0), hotkey);
     }
 
     // --- stake operations under the list rules ---
@@ -215,10 +241,11 @@ contract MockStakingRuntime486 is MockStakingV2 {
         require(_lists[coldkey].length < MAX_THIRD_PARTY_STAKING_HOTKEYS, "mock: TooManyStakingHotkeys");
     }
 
-    // An entry stays while the pair holds stake.
+    // An entry stays while the pair holds stake, or the hotkey is the
+    // coldkey's auto-stake destination.
     function _sync(bytes32 coldkey, bytes32 hotkey) private {
         uint256 index = _listed[coldkey][hotkey];
-        if (stakes[hotkey][coldkey] != 0) {
+        if (stakes[hotkey][coldkey] != 0 || _pins[coldkey][hotkey] != 0) {
             if (index == 0) {
                 _lists[coldkey].push(hotkey);
                 _listed[coldkey][hotkey] = _lists[coldkey].length;

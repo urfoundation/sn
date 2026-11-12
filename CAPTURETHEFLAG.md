@@ -434,6 +434,7 @@ STCtfCarry                       immutable, ownerless, one per CTF pool; reads e
                                  pool hotkey from vault2, which never changes them
 constructor(vault2, poolId)      payable: created with at least seedMinimum() rao of TAO
     addStake(escrowHotkey, all its TAO);  residual = the gain                    // its own stake, never returned
+    setColdkeyAutoStakeHotkey(netuid, poolHotkey)                                // pins the pool hotkey on its list
     setRejectStakingHotkeyGrowth(true);  setRejectLockedAlpha(true)              // no third party lengthens its list
 recycle(rootIndex, account, proof)   anyone
     kept = min(residual, this coldkey's movable stake on the escrow hotkey)     // follows a residual the runtime lowered
@@ -467,12 +468,21 @@ pending awards would never return. The contract closes that:
 
 - **The residual keeps the escrow hotkey on the list.** A transfer to a hotkey already on the list passes
   whatever the list's length, so vault2's claim always lands.
-- **The opt‑out stops the list from growing.** With `setRejectStakingHotkeyGrowth` set, the runtime refuses
-  every other third‑party transfer that would add a hotkey, and every coldkey swap into the carry's coldkey
-  that would bring one. Without it a swap could fill the list to 256, the cap on a coldkey's own operations,
-  and the carry's own move onto the pool hotkey would then be refused. The opt‑out does not touch the carry's
-  own operations: the claim lands on a listed hotkey, and its moves face only the 256 cap.
-  `setRejectLockedAlpha` keeps refusing conviction‑locked alpha, as every account does by default.
+- **The pool hotkey stays on the list too.** The constructor makes the CTF pool hotkey the carry coldkey's
+  auto‑stake destination on the subnet (`setColdkeyAutoStakeHotkey`), which keeps that hotkey on its list
+  with no stake, for good: pruning never clears a destination, and a coldkey swap never overwrites one. So
+  the carry's own move lands on a listed hotkey too, which passes whatever the list's length. That matters
+  because the opt‑out below does not count hotkeys a coldkey *owns*: a coldkey swap into the carry can give it
+  registered hotkeys, and the runtime adds their emission to its list with no cap. Past 256 entries a carry
+  without the pin could no longer move onto the pool hotkey. A destination must hold a UID, which the pool
+  hotkey does once the operation of §3.1 has registered it; the escrow hotkey does not, which is why it keeps
+  a residual instead. Emission of any hotkey the carry is given on SN25 lands on the pool hotkey and goes
+  round as a donation.
+- **The opt‑out keeps the list short.** With `setRejectStakingHotkeyGrowth` set, the runtime refuses every
+  other third‑party transfer that would add a hotkey, and every coldkey swap into the carry's coldkey that
+  would bring a staking hotkey, so the list, and the gas of the carry's moves, stay small. It does not touch
+  the carry's own operations. `setRejectLockedAlpha` keeps refusing conviction‑locked alpha, as every account
+  does by default.
 - **The carry stakes the seed itself.** Its constructor stakes the TAO it is created with by its own
   `addStake`, which only the 256 cap limits, so a fill of the list before creation, at most 128 entries,
   cannot stop it. A seed transferred by a third party could be refused like the claim, and seeding from the
@@ -487,10 +497,9 @@ pending awards would never return. The contract closes that:
   (§11.2). If a
   sweep clears the residual anyway, `recycle` reverts `ResidualMissing` and the account stays claimable;
   anyone restores the residual with `seed()`, which stakes the TAO the sweep returned and any sent with it.
-- **Pruning changes nothing.** Moves and `addStake` need only the hotkey's owner, which pruning keeps; the
-  escrow hotkey earns nothing and is pruned already. `setColdkeyAutoStakeHotkey`, which would pin the list
-  entry without stake, needs the hotkey to hold a UID, and only vault2, which has no call for it, could
-  register the escrow hotkey again.
+- **Pruning changes nothing.** Moves and `addStake` need only the hotkey's owner, which pruning keeps, and the
+  auto‑stake destination outlives a pruned UID. The escrow hotkey earns nothing and is pruned already; only
+  vault2, which has no call for it, could register it again, so it could not be pinned like the pool hotkey.
 
 - **Every epoch the carry cycles.** The root allocates the carry account its delta, the root finalizes about
   two days after the epoch ends, and the server's relay calls `recycle`. The next close then captures the
@@ -507,15 +516,16 @@ pending awards would never return. The contract closes that:
   to 8 rao, against the fresh amount (§4.5).
 - **What it trusts.** It relies only on vault2 and the runtime, and it changes nothing in vault2, which pays
   the leaf's coldkey whoever calls.
-- **Creating it.** Anyone creates it after the operation of §3.1, through the deterministic deployment proxy,
-  with the seed as the call's value and a fresh random salt that nobody sees before the creation transaction.
+- **Creating it.** Anyone creates it after the operation of §3.1, while the pool hotkey holds its UID,
+  through the deterministic deployment proxy, with the seed as the call's value and a fresh random salt that
+  nobody sees before the creation transaction.
   `sn-mainnet ctf-carry review` (`mainnet/BOOTSTRAP-CONTRACTS.md`, "Capture the flag carry") pins the artifact,
-  derives the CREATE2 address, requires the carry's coldkey to be untouched and preflights the creation; once
-  the carry exists it checks the code, the residual and the opt‑outs. The amendment entry names the address
-  after the creation.
-  - A coldkey swap into the carry's coldkey before it exists could fill its list to 256, or bring locked
-    alpha, and the opt‑outs cannot refuse it then. A swap needs five days' notice, so a salt nobody knows until
-    the creation rules it out.
+  derives the CREATE2 address, requires the carry's coldkey to be untouched and the pool hotkey to hold a UID,
+  and preflights the creation; once the carry exists it checks the code, the residual, the auto‑stake
+  destination and the opt‑outs. The amendment entry names the address after the creation.
+  - A coldkey swap into the carry's coldkey before it exists could bring it locked alpha, or an auto‑stake
+    destination of its own, before the constructor sets its own. A swap needs five days' notice, so a salt
+    nobody knows until the creation rules it out.
   - A fill of the list before the creation, which anyone who sees the transaction can still send in the same
     block, is at most 128 entries. The creation goes through, and the entries only add gas to the carry's
     moves, about 8,750 an entry on runtime 478 and later.
@@ -1091,7 +1101,7 @@ it is.
 | 21 | How much rounding does the walk tolerate? | Two cycles', 8 rao, and a partial return writes off as much (§4.5) | With one cycle's 4 rao, rounding left owed at a root's end never shrank, and pending awards piled up for good. |
 | 22 | What if returned carry credits more than the epoch's funding? | The shortfall comes from the pots, the largest first, then pending awards (§4.5) | It is at most a few rao. Without it, `F_k` could go negative, and with no fresh funding pending awards never paid. |
 | 23 | Does a pause stop census commitments? | Yes, and the window does not wait: a pause across it means no census, so no draw, for that epoch (§3.1, §4.7) | Pause stops settlement, as it stops closes, commits and finalization (`VERSION2-FINAL.md` §4.3, S5). |
-| 24 | How can third parties be kept from blocking the carry's claims for good? | The carry keeps a residual of its own on vault2's escrow hotkey, seeded from the TAO it is created with by its own `addStake`, and sets the runtime's opt‑out of third‑party staking‑hotkey growth. `seed()` restores a residual root's sweep cleared (§4.6) | The residual keeps the escrow hotkey on the carry's list, so vault2's claim always lands, and the opt‑out stops transfers and coldkey swaps from lengthening the list. The seed is outside money, so the ledger's carry owed is unchanged. A pin by `setColdkeyAutoStakeHotkey` needs the escrow hotkey to hold a UID, which it lost to pruning. |
+| 24 | How can third parties be kept from blocking the carry's claims for good? | The carry keeps a residual of its own on vault2's escrow hotkey, seeded from the TAO it is created with by its own `addStake`, pins the pool hotkey as its auto‑stake destination, and sets the runtime's opt‑out of third‑party staking‑hotkey growth. `seed()` restores a residual root's sweep cleared (§4.6) | Both hotkeys the carry's claim and move land on stay on its list, which the runtime then admits whatever the list's length, even past 256 entries that hotkeys given to it by a coldkey swap could add. The opt‑out keeps the list short. The seed is outside money, so the ledger's carry owed is unchanged. The escrow hotkey cannot be pinned like the pool hotkey: a destination needs a UID, which the escrow hotkey lost to pruning. |
 
 ### 12.3 Later options, not open questions
 

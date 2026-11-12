@@ -68,6 +68,9 @@ type ctfCarryFake struct {
 	rejectsGrowth map[[32]byte]bool
 	rejectsLocked map[[32]byte]bool
 	stakes        map[[32]byte]*big.Int
+	autoStake     map[[32]byte][32]byte
+	// noPoolUid takes the CTF pool hotkey's UID away.
+	noPoolUid bool
 	// The factory and its CREATE2: wrongFactory changes its code,
 	// createAnswer replaces the created address, createFails reverts it.
 	wrongFactory bool
@@ -88,7 +91,7 @@ func newCtfCarryFake(t *testing.T) *ctfCarryFake {
 	f := &ctfCarryFake{t: t, artifact: artifact, registered: true, resolved: ctfCarryTestVault2,
 		nominator: big.NewInt(20_000_000), price: big.NewInt(1e18),
 		stakingLists: map[[32]byte][][32]byte{}, owned: map[[32]byte][][32]byte{}, locked: map[[32]byte]bool{},
-		rejectsGrowth: map[[32]byte]bool{}, rejectsLocked: map[[32]byte]bool{}, stakes: map[[32]byte]*big.Int{}}
+		rejectsGrowth: map[[32]byte]bool{}, rejectsLocked: map[[32]byte]bool{}, stakes: map[[32]byte]*big.Int{}, autoStake: map[[32]byte][32]byte{}}
 	initcode, _, err := artifact.initcode(ctfCarryTestVault2, ctfCarryTestPoolId)
 	if err != nil {
 		t.Fatal(err)
@@ -99,8 +102,9 @@ func newCtfCarryFake(t *testing.T) *ctfCarryFake {
 }
 
 // create makes the carry exist, as its constructor leaves it: its code with
-// the immutables filled, its views, the residual on the escrow hotkey, which
-// its list holds, and both opt-outs.
+// the immutables filled, its views, the residual on the escrow hotkey, the
+// pool hotkey as its auto-stake destination, both on its list, and both
+// opt-outs.
 func (self *ctfCarryFake) create() {
 	self.code = bytes.Clone(self.artifact.runtime)
 	for i, word := range self.artifact.immutables {
@@ -114,7 +118,8 @@ func (self *ctfCarryFake) create() {
 		"MINIMUM_SEED_RAO": big.NewInt(ctfCarryMinimumSeedRao), "SEED_NOMINATOR_MULTIPLE": big.NewInt(ctfCarrySeedMultiple),
 	}
 	self.stakes[self.coldkey] = big.NewInt(ctfCarryTestResidual)
-	self.stakingLists[self.coldkey] = [][32]byte{crypto.Keccak256Hash([]byte("dust")), [32]byte(ctfCarryTestEscrow)}
+	self.stakingLists[self.coldkey] = [][32]byte{crypto.Keccak256Hash([]byte("dust")), [32]byte(ctfCarryTestEscrow), [32]byte(ctfCarryTestPoolHotkey)}
+	self.autoStake[self.coldkey] = [32]byte(ctfCarryTestPoolHotkey)
 	self.rejectsGrowth[self.coldkey], self.rejectsLocked[self.coldkey] = true, true
 }
 
@@ -223,6 +228,9 @@ func (self *ctfCarryFake) call(from common.Address, to common.Address, value *bi
 			return self.pack(runtime, found.Name, self.rejectsGrowth[args[0].([32]byte)]), true
 		case "getRejectLockedAlpha":
 			return self.pack(runtime, found.Name, self.rejectsLocked[args[0].([32]byte)]), true
+		case "getAutoStakeDestination":
+			destination, ok := self.autoStake[args[0].([32]byte)]
+			return self.pack(runtime, found.Name, ok, destination), true
 		case "getStake":
 			staked := self.stakes[args[1].([32]byte)]
 			if staked == nil || args[0].([32]byte) != [32]byte(ctfCarryTestEscrow) {
@@ -230,6 +238,13 @@ func (self *ctfCarryFake) call(from common.Address, to common.Address, value *bi
 			}
 			return self.pack(runtime, found.Name, staked), true
 		}
+	case ctfCarryNeuron:
+		found, args := method(&runtime)
+		if found == nil || found.Name != "getUid" {
+			return nil, false
+		}
+		registered := !self.noPoolUid && args[1].([32]byte) == [32]byte(ctfCarryTestPoolHotkey)
+		return self.pack(runtime, found.Name, registered, uint16(31)), true
 	case ctfCarryAlpha:
 		return self.pack(runtime, "getAlphaPrice", self.price), true
 	case self.address:
@@ -375,7 +390,8 @@ func TestCtfCarryReviewBeforeCreation(t *testing.T) {
 	case review.Pool.PoolId != "4294967297" || review.Pool.Vault2 != ctfCarryTestVault2.Hex() || review.Pool.PoolHotkey != ctfCarryTestPoolHotkey.Hex() ||
 		review.Pool.Netuid != ctfCarryTestNetuid || review.Pool.EscrowHotkey != ctfCarryTestEscrow.Hex() || review.Pool.FirstEpoch != ctfCarryTestFirstEpoch:
 		t.Fatalf("pool %+v", review.Pool)
-	case review.Runtime.NominatorMinimumRao != "20000000" || review.Runtime.SeedMinimumRao != "200000000" || review.Runtime.StakingHotkeys != 0:
+	case review.Runtime.NominatorMinimumRao != "20000000" || review.Runtime.SeedMinimumRao != "200000000" || review.Runtime.StakingHotkeys != 0 ||
+		review.Runtime.PoolHotkeyUid == nil || *review.Runtime.PoolHotkeyUid != 31:
 		t.Fatalf("runtime %+v", review.Runtime)
 	case review.Preflight.Ran || !strings.Contains(review.Preflight.Result, "--from"):
 		t.Fatalf("preflight %+v without --from", review.Preflight)
@@ -414,6 +430,7 @@ func TestCtfCarryReviewRefusesBeforeCreation(t *testing.T) {
 		{"staking hotkeys", func(f *ctfCarryFake) { f.stakingLists[f.coldkey] = [][32]byte{{1}} }, nil, "already holds 1 staking hotkeys"},
 		{"owned hotkeys", func(f *ctfCarryFake) { f.owned[f.coldkey] = [][32]byte{{2}} }, nil, "already owns 1 hotkeys"},
 		{"a lock", func(f *ctfCarryFake) { f.locked[f.coldkey] = true }, nil, "conviction lock"},
+		{"a pool hotkey without a UID", func(f *ctfCarryFake) { f.noPoolUid = true }, nil, "holds no UID"},
 		{"seed below ten times the nominator minimum", func(f *ctfCarryFake) { f.nominator = big.NewInt(100_000_001) }, nil, "below the carry's least seed"},
 		{"seed below the floor", func(*ctfCarryFake) {}, []string{"--seed-rao", "99999999"}, "below the carry's least seed"},
 		{"creation fails", func(f *ctfCarryFake) { f.createFails = true }, []string{"--from", ctfCarryTestCreator.Hex()}, "failed"},
@@ -480,7 +497,8 @@ func TestCtfCarryReviewAfterCreation(t *testing.T) {
 	}
 	created := review.Created
 	if created == nil || !review.Carry.Exists || created.ResidualRao != "987654321" || created.EscrowPositionRao != "987654321" ||
-		created.ResidualTaoRao != "987654321" || !created.EscrowListed || !created.RejectsGrowth || !created.RejectsLockedAlpha ||
+		created.ResidualTaoRao != "987654321" || !created.EscrowListed || !created.PoolHotkeyPinned || !created.PoolListed ||
+		!created.RejectsGrowth || !created.RejectsLockedAlpha ||
 		created.AmendmentCarryEntry != f.address.Hex() || created.RuntimeCodeHash != crypto.Keccak256Hash(f.code).Hex() || review.Preflight.Ran {
 		t.Fatalf("created %+v, carry %+v, preflight %+v", created, review.Carry, review.Preflight)
 	}
@@ -506,6 +524,9 @@ func TestCtfCarryReviewRefusesACreatedCarry(t *testing.T) {
 		{"no residual", func(f *ctfCarryFake) { f.residual = new(big.Int) }, "keeps no residual"},
 		{"a position below the residual", func(f *ctfCarryFake) { f.stakes[f.coldkey] = big.NewInt(ctfCarryTestResidual - 1) }, "below its residual"},
 		{"escrow not listed", func(f *ctfCarryFake) { f.stakingLists[f.coldkey] = [][32]byte{{3}} }, "does not hold the escrow hotkey"},
+		{"another auto-stake destination", func(f *ctfCarryFake) { f.autoStake[f.coldkey] = [32]byte{4} }, "auto-stake destination"},
+		{"no auto-stake destination", func(f *ctfCarryFake) { delete(f.autoStake, f.coldkey) }, "auto-stake destination"},
+		{"pool hotkey not listed", func(f *ctfCarryFake) { f.stakingLists[f.coldkey] = [][32]byte{[32]byte(ctfCarryTestEscrow)} }, "auto-stake destination"},
 		{"growth accepted", func(f *ctfCarryFake) { f.rejectsGrowth[f.coldkey] = false }, "opt-outs"},
 		{"locked alpha accepted", func(f *ctfCarryFake) { f.rejectsLocked[f.coldkey] = false }, "opt-outs"},
 		{"a residual worth less than the nominator minimum", func(f *ctfCarryFake) { f.price = big.NewInt(1e16) }, "below the nominator minimum"},
