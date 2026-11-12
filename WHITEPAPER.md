@@ -2197,8 +2197,10 @@ Epoch 9's window runs from 12‑04 18:30Z to 12‑11 18:30Z.
   UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
   ```
 
-- **The fallback.** Configuration (the server's `sn.yml` and the validator's adopted config) is used only if
-  the signing cannot happen before epoch 8 starts.
+- **The fallback.** Configuration is used only if the signing cannot happen before epoch 8 starts: the same
+  unsigned line in the server's st.yml `amendments:` block and in every validator's `--amendments-fallback`
+  file (`VALIDATOR.md`). A configured line stands in only for epochs where no signed entry of its kind is in
+  force, and it is removed once a signed entry covers its epochs.
 
 *Every epoch from `E_x`:* the server emits header v3 and statement v2, and builds the provider rows without
 same‑network shares. A root that covers epochs on both sides of `E_x` applies each epoch's own rule.
