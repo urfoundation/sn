@@ -13,16 +13,19 @@
 // vault2 and the CTF pool, which it reads through STSettlement2 at the head.
 // Before the carry exists it requires the carry's coldkey to be untouched (no
 // staking hotkeys, owned hotkeys or lock: a coldkey swap prepared into it, or
-// stake sent to it, means its address is known), a pool hotkey that holds a
-// UID, which the auto-stake destination needs, a seed of at least the
-// contract's seedMinimum() at the head, and, with --from, the creation to
-// succeed as an eth_call from that sender with its value and to answer the
-// address. Once the carry exists it requires the artifact's code outside the
-// immutables, immutables that name vault2, the pool and the carry's own
-// coldkey, a residual held on the escrow hotkey, the pool hotkey as its
-// auto-stake destination, both on its staking-hotkey list, and both opt-outs.
-// It neither signs nor sends, and every read is
-// pinned to one head block.
+// stake sent to it, means its address is known) and already a hotkey account,
+// which refuses every coldkey swap into it and every reservation of it; a
+// pool hotkey that holds a UID, which the auto-stake destination needs; the
+// deterministic deployment proxy's account holding TAO above its existential
+// deposit, without which the creation's value cannot pass through it; a seed
+// of at least the contract's seedMinimum() at the head; and, with --from, the
+// creation to succeed as an eth_call from that sender with its value and to
+// answer the address. Once the carry exists it requires the artifact's code
+// outside the immutables, immutables that name vault2, the pool and the
+// carry's own coldkey, a residual held on the escrow hotkey, the pool hotkey
+// as its auto-stake destination, both on its staking-hotkey list, both
+// opt-outs, its coldkey still a hotkey account, and no hotkey of its own. It
+// neither signs nor sends, and every read is pinned to one head block.
 package main
 
 import (
@@ -80,6 +83,7 @@ const ctfCarryRuntimeAbiJson = `[
  {"type":"function","name":"getColdkeyLock","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint256"}],"outputs":[{"name":"lockInfo","type":"tuple","components":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"},{"name":"locked_mass","type":"uint256"},{"name":"conviction","type":"uint128"},{"name":"is_perpetual","type":"bool"}]}]},
  {"type":"function","name":"getRejectStakingHotkeyGrowth","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
  {"type":"function","name":"getRejectLockedAlpha","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
+ {"type":"function","name":"getHotkeyOwner","stateMutability":"view","inputs":[{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"owner","type":"bytes32"}]},
  {"type":"function","name":"getAutoStakeDestination","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint16"}],"outputs":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"}]},
  {"type":"function","name":"getUid","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}]},
  {"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]}
@@ -252,6 +256,11 @@ type ctfCarryRuntime struct {
 	OwnedHotkeys        int    `json:"owned_hotkeys"`
 	Lock                bool   `json:"lock"`
 	PoolHotkeyUid       *int   `json:"pool_hotkey_uid"`
+	// The coldkey of the hotkey account the carry's coldkey is, or null.
+	ColdkeyHotkeyOwner *string `json:"coldkey_hotkey_owner"`
+	// The proxy's mapped account, and its balance above the existential deposit.
+	ProxyAccount    string `json:"proxy_account"`
+	ProxyBalanceWei string `json:"proxy_balance_wei"`
 }
 
 type ctfCarryCreated struct {
@@ -405,6 +414,12 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 		if err != nil {
 			return result, err
 		}
+		switch {
+		case runtime.ColdkeyHotkeyOwner == nil:
+			return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account, so a coldkey swap could merge into it or reserve it: from a coldkey that will never swap that hotkey, call try_associate_hotkey(%s)", coldkey.Hex(), coldkey.Hex())
+		case runtime.OwnedHotkeys != 0:
+			return result, ctfCarryRefusal("the carry's coldkey owns %d hotkeys, which only a coldkey swap into it gives", runtime.OwnedHotkeys)
+		}
 		result.Created = created
 		result.Preflight = settlement2UpgradePreflight{Result: "not run: the carry exists; its code, residual and opt-outs are checked above"}
 		return result, ctx.Err()
@@ -421,6 +436,10 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 		return result, ctfCarryRefusal("the carry's coldkey %s holds a conviction lock on netuid %d, as a coldkey swap into it leaves: create it under another salt", coldkey.Hex(), pool.Netuid)
 	case runtime.PoolHotkeyUid == nil:
 		return result, ctfCarryRefusal("the CTF pool hotkey %s holds no UID on netuid %d, which the carry's auto-stake destination needs: re-register it with vault2's registerPoolUid first", poolHotkey.Hex(), pool.Netuid)
+	case runtime.ColdkeyHotkeyOwner == nil:
+		return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account yet: from a coldkey that will never swap that hotkey, call try_associate_hotkey(%s) first, so that no coldkey swap can merge into it or reserve it", coldkey.Hex(), coldkey.Hex())
+	case runtime.ProxyBalanceWei == "0":
+		return result, ctfCarryRefusal("the deterministic deployment proxy's account holds no TAO above its existential deposit, so the creation's value cannot pass through it (OutOfFund): send its mapped account %s at least 501 rao first", runtime.ProxyAccount)
 	}
 	minimum, _ := new(big.Int).SetString(runtime.SeedMinimumRao, 10)
 	if new(big.Int).SetUint64(request.seedRao).Cmp(minimum) < 0 {
@@ -536,6 +555,19 @@ func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address com
 		return runtime, nil, nil, ctfCarryRefusal("getColdkeyLock answered %v, not a lock record", values[0])
 	}
 	runtime.Lock = exists.Bool()
+	if values, err = ctfCarryRead(ctx, chain, ctfCarryStaking, "getHotkeyOwner", [32]byte(coldkey)); err != nil {
+		return runtime, nil, nil, err
+	}
+	if values[0].(bool) {
+		owner := common.Hash(values[1].([32]byte)).Hex()
+		runtime.ColdkeyHotkeyOwner = &owner
+	}
+	proxyBalance, err := chain.balance(ctx, upgradeCreate2Factory)
+	if err != nil {
+		return runtime, nil, nil, err
+	}
+	runtime.ProxyBalanceWei = proxyBalance.String()
+	runtime.ProxyAccount = common.Hash(ss58.EvmMirrorPubkey([20]byte(upgradeCreate2Factory))).Hex()
 	if values, err = ctfCarryRead(ctx, chain, ctfCarryNeuron, "getUid", netuid, [32]byte(poolHotkey)); err != nil {
 		return runtime, nil, nil, err
 	}
