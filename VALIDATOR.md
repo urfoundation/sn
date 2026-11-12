@@ -1214,18 +1214,22 @@ operator's CTF pool beside its provider pool, with the same custody, objects, he
 bindings, decisions and auditor key, and runs `ctf.Verify` in place of `ledger.Verify`.
 At its pinned finalized block it reads:
 
-- the entry in force at the pending root's epoch, which names `E_c` and the carry
-  contract; the carry contract must serve vault2's pool `2^32 + n`, and gives its
-  coldkey and `recycledFor(k)`;
-- from `E_c`, each covered epoch's `ctfCensus(n, k)`, the EVM timestamp of its block,
-  and the quicknet pulse of its draw round from `--drand_url` (default
+- the entry in force at the pending root's epoch, which names the carry contract; every
+  entry in force at a covered epoch must name the same one. The carry contract must
+  serve vault2's pool `2^32 + n`, and gives its coldkey and `recycledFor(k)`;
+- each covered epoch's `ctfCensus(n, k)` and, for a committed census, the EVM timestamp
+  of its block and the quicknet pulse of its draw round from `--drand_url` (default
   `https://api.drand.sh`). The relay is trusted for nothing: the pulse must verify
-  against quicknet's key. An epoch before `E_c` has no draw, whatever was committed.
+  against quicknet's key. Every committed census is drawn as committed, an epoch
+  before `E_c`'s too.
 
 It approves only a root whose census, draw, slot amounts, pots, pending awards and
 accounts reproduce exactly, and challenges, demands or refuses as for the provider
-pool (`VERSION2-FINAL.md` §9.3), as UR's watcher and `snclaim v2 check` do. A pulse that
-does not verify, or no entry in force, decides nothing and is tried again.
+pool (`VERSION2-FINAL.md` §9.3), as UR's watcher and `snclaim v2 check` do. A census that
+lists a head-bound client breaks P5, and its root is refused even when its draw left
+the client out, as the watcher, which reads no bindings, refuses it. A pulse that no
+relay serves or that does not verify, or no entry in force, decides nothing and is
+tried again.
 
 ---
 

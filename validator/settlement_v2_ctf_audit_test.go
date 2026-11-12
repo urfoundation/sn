@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -88,6 +89,13 @@ type settlementV2CtfTestScenario struct {
 
 func newSettlementV2CtfTestScenario(t *testing.T) *settlementV2CtfTestScenario {
 	t.Helper()
+	return newSettlementV2CtfTestScenarioBound(t, nil)
+}
+
+// newSettlementV2CtfTestScenarioBound builds the scenario's root with bound,
+// the head-bound clients the operator's draw leaves out.
+func newSettlementV2CtfTestScenarioBound(t *testing.T, bound map[[16]byte]bool) *settlementV2CtfTestScenario {
+	t.Helper()
 	is, _ := ctf.ParseCountry("is")
 	tm, _ := ctf.ParseCountry("tm")
 	candidate := func(role ctf.Role, country ctf.Country, unit, client byte) ctf.Candidate {
@@ -106,13 +114,13 @@ func newSettlementV2CtfTestScenario(t *testing.T) *settlementV2CtfTestScenario {
 	scenario := &settlementV2CtfTestScenario{census: census, carry: [32]byte{0xca, 0x77}, funded: map[uint64]uint256.Int{5: *uint256.NewInt(119_583_893_572)}}
 	scenario.facts = ctf.EpochFacts{Census: &ctf.CensusCommitment{Hash: census.Hash, Block: 601, Time: settlementV2CtfTestTime}, Pulse: settlementV2CtfTestPulse(t)}
 	scenario.built, err = ctf.Build(t.Context(), ctf.BuildInput{NoID: settlementV2AuditTestNoID, ChainID: settlementV2TestChainID, Netuid: 25, Epoch: 5, FirstEpoch: 5, CarryColdkey: scenario.carry,
-		Epochs:        []ctf.EpochInput{{Epoch: 5, Census: &ctf.CensusInput{Hash: census.Hash, Block: 601, Time: settlementV2CtfTestTime, Objects: census.Objects}, Pulse: scenario.facts.Pulse, Coldkeys: coldkeys}},
+		Epochs:        []ctf.EpochInput{{Epoch: 5, Census: &ctf.CensusInput{Hash: census.Hash, Block: 601, Time: settlementV2CtfTestTime, Objects: census.Objects}, Pulse: scenario.facts.Pulse, Coldkeys: coldkeys, Bound: bound}},
 		FundedThrough: scenario.funded})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := scenario.built.Epochs[0]; !result.Drawn || len(result.Awards) != 6 {
-		t.Fatalf("the scenario drew %d winners", len(result.Awards))
+	if result := scenario.built.Epochs[0]; !result.Drawn || len(result.Awards) != 6 || len(result.Bound) != len(bound) {
+		t.Fatalf("the scenario drew %d winners and left out %d", len(result.Awards), len(result.Bound))
 	}
 	return scenario
 }
@@ -283,6 +291,43 @@ func TestSettlementV2CtfAuditRefusesWhatDoesNotReproduce(t *testing.T) {
 	}
 }
 
+// A census that lists a head-bound client breaks P5 (CAPTURETHEFLAG.md §4.2):
+// its root is refused even when the operator's draw left the client out as the
+// audit's does, as `snclaim v2 check`, which reads no bindings, refuses it; and
+// a root whose draw kept the client is refused for its draw.
+func TestSettlementV2CtfAuditRefusesHeadBoundCandidates(t *testing.T) {
+	t.Parallel()
+	client := [16]byte{1}
+	for _, test := range []struct {
+		name  string
+		bound map[[16]byte]bool
+		want  error
+	}{
+		{name: "left out of the draw", bound: map[[16]byte]bool{client: true}, want: errSettlementV2CtfCensusBound},
+		{name: "kept in the draw", want: ctf.ErrAwardWinner},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := newSettlementV2AuditTestFixture(t)
+			// Client 1 holds a fleet binding at epoch 5's start boundary.
+			fixture.chain.fleetBound(t, 190, client, 5, 5)
+			fixture.chain.setActive(client, 5, 500, true)
+			scenario := newSettlementV2CtfTestScenarioBound(t, test.bound)
+			pool := fixture.useCtf(t, scenario, settlementV2CtfTestFacts(scenario))
+			if err := fixture.audit.audit(t.Context(), pool); err != nil {
+				t.Fatal(err)
+			}
+			record := fixture.ctfRecord(t, 1)
+			if record.Decision != settlementV2DecisionRefuse || record.Check != "draw" || !strings.Contains(record.Error, test.want.Error()) || !record.Done {
+				t.Fatalf("record %+v", record)
+			}
+			if len(fixture.chain.accepted()) != 0 {
+				t.Fatal("a root over a head-bound client sent a transaction")
+			}
+		})
+	}
+}
+
 // The relay is trusted for nothing: a pulse is taken only for its own round,
 // verified against quicknet's key, with any randomness it states the
 // signature's sha256; a verified pulse is kept and never read again.
@@ -447,8 +492,8 @@ func TestSettlementV2CtfChainReadsTheAuditFacts(t *testing.T) {
 		t.Fatalf("input %+v", in)
 	}
 	five, six := in.Epochs[5], in.Epochs[6]
-	if five.Census != nil || five.Pulse != nil || five.Recycled.Uint64() != 7 {
-		t.Fatalf("epoch 5, before E_c: %+v", five)
+	if five.Census == nil || five.Census.Hash != ([32]byte{0x55}) || five.Pulse == nil || five.Pulse.Round != 1000 || five.Recycled.Uint64() != 7 {
+		t.Fatalf("epoch 5, before E_c, is not drawn as committed: %+v", five)
 	}
 	if six.Census == nil || six.Census.Hash != census || six.Census.Block != block || six.Census.Time != settlementV2CtfTestTime || six.Pulse == nil || six.Pulse.Round != 1000 || six.Recycled.Uint64() != 11 {
 		t.Fatalf("epoch 6: %+v", six)
@@ -467,13 +512,15 @@ func TestSettlementV2CtfChainReadsTheAuditFacts(t *testing.T) {
 		}, "two"},
 		"a carry of another vault": {func() { fixture.carry.vault = fixture.addresses.Settlement }, "serves vault"},
 		"a carry of another pool":  {func() { fixture.carry.poolID++ }, "serves vault"},
+		"a pulse no relay serves":  {func() { reader.drand = []string{relay.URL + "/missing"} }, "no drand relay served a verified pulse of round 1000"},
 	} {
-		saved, savedCarry := reader.amendments, fixture.carry
+		saved, savedCarry, savedDrand := reader.amendments, fixture.carry, reader.drand
 		test.change()
+		reader.pulses = sync.Map{}
 		if _, err := reader.ctfInput(t.Context(), state, 1); err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Fatalf("%s: %v", name, err)
 		}
-		reader.amendments, fixture.carry = saved, savedCarry
+		reader.amendments, fixture.carry, reader.drand = saved, savedCarry, savedDrand
 	}
 }
 

@@ -11,21 +11,26 @@
 //
 //   - the capture the flag entry in force for the operator at the pending root's
 //     epoch (the signed settlement amendments, with the configured fallback),
-//     which names E_c and the carry contract; an epoch before E_c has no draw,
-//     whatever was committed for it, and one root is never audited against two
-//     carry contracts;
+//     which names the carry contract; every entry in force at a covered epoch
+//     must name the same one, as one root is never audited against two;
 //   - the carry contract, which must serve vault2's pool 2^32 + n: its coldkey
 //     and recycledFor(k);
-//   - from E_c, ctfCensus(n, k), the EVM timestamp of its block B_k, and the
-//     drand quicknet pulse of ρ_k from a relay, which is not trusted: the pulse
-//     must verify against quicknet's key.
+//   - for every covered epoch, ctfCensus(n, k) and, for a committed census, the
+//     EVM timestamp of its block B_k and the drand quicknet pulse of ρ_k from a
+//     relay, which is not trusted: the pulse must verify against quicknet's
+//     key. Every committed census is drawn as committed (§5, §8 check 1), an
+//     epoch before E_c's too.
 //
 // It approves only a root that reproduces exactly, and challenges, demands or
-// refuses as for the provider pool (VERSION2-FINAL.md §9.3). Without capture
-// the flag in force at the pending root's epoch it decides nothing and tries
-// again, so nothing is approved that the validator cannot rebuild. A validator
-// whose ctf setting is off audits no CTF pool. The same facts are what
-// `snclaim v2 check` reads, so the watcher and the auditor agree.
+// refuses as for the provider pool (VERSION2-FINAL.md §9.3). A census that
+// lists a head-bound client breaks P5 (§4.2), and its root is refused even when
+// the draw left the client out: §8 check 3 accepts no winner with a fleet
+// binding, and `snclaim v2 check`, which reads no bindings, refuses such a root
+// too. An input it cannot read or verify (no entry in force, a pulse no relay
+// serves) decides nothing and is tried again, so nothing is approved that the
+// validator cannot rebuild. A validator whose ctf setting is off audits no CTF
+// pool. These are the facts and the verdicts of `snclaim v2 check`, so the
+// watcher and the auditor agree.
 package validator
 
 import (
@@ -85,6 +90,10 @@ func settlementV2CtfHeaderAccounts(data []byte) ([]ledger.Ref, error) {
 // audit cannot rebuild the root and decides nothing.
 var errSettlementV2CtfNotInForce = errors.New("capture the flag is not in force at the pending root's epoch, so its carry contract is unknown")
 
+// errSettlementV2CtfCensusBound: a covered epoch's census lists a client with a
+// fleet binding at either boundary, which P5 keeps out of every census.
+var errSettlementV2CtfCensusBound = errors.New("the census lists head-bound clients, which P5 keeps out of every census")
+
 // settlementV2CtfReader reads what ctf.Verify takes beside vault2's state.
 type settlementV2CtfReader interface {
 	// ctfInput reads, at state's pinned block, operator noID's capture the flag
@@ -115,7 +124,19 @@ func (self *settlementV2Audit) verifyCtf(ctx context.Context, pool settlementV2A
 		return nil, fmt.Errorf("capture the flag audit of pool %d seq %d: %w", state.noID, pending.Seq, err)
 	}
 	record.FetchedBytes += res.FetchedBytes
-	return &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}, nil
+	finding := &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}
+	// A root that reproduces from a census listing head-bound clients is still
+	// refused: Verify's draw left them out, as the operator's did, but no census
+	// may list them (P5), and the watcher cannot tell them apart.
+	if res.Err == nil {
+		for _, epoch := range res.Epochs {
+			if len(epoch.Bound) > 0 {
+				finding.check, finding.err, finding.action = ctf.CheckDraw.String(), fmt.Errorf("%w: epoch %d, %d clients", errSettlementV2CtfCensusBound, epoch.Epoch, len(epoch.Bound)), ledger.ActionRefuse
+				break
+			}
+		}
+	}
+	return finding, nil
 }
 
 // settlementV2CtfViews are the capture the flag views the audit calls:
@@ -229,24 +250,24 @@ func (self *settlementV2CtfChain) ctfInput(ctx context.Context, state *settlemen
 		if err != nil {
 			return nil, err
 		}
-		// Before E_c an epoch has no draw, whatever was committed for it.
-		if entry != nil {
-			if entry.Ctf.Carry != carry {
-				return nil, fmt.Errorf("the capture the flag entries of operator %d name another carry contract at epoch %d than at epoch %d: one root cannot be audited against two", noID, k, pending.Epoch)
-			}
-			census, err := view(self.settlement, &settlementV2CtfCensusMetaData, "ctfCensus", new(big.Int).SetUint64(noID), epoch)
+		if entry != nil && entry.Ctf.Carry != carry {
+			return nil, fmt.Errorf("the capture the flag entries of operator %d name another carry contract at epoch %d than at epoch %d: one root cannot be audited against two", noID, k, pending.Epoch)
+		}
+		// Every committed census is drawn as committed, before E_c too.
+		census, err := view(self.settlement, &settlementV2CtfCensusMetaData, "ctfCensus", new(big.Int).SetUint64(noID), epoch)
+		if err != nil {
+			return nil, err
+		}
+		if hash, block := census[0].([32]byte), census[1].(uint64); hash != ([32]byte{}) {
+			time, err := self.blockTime(ctx, block)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("epoch %d census block %d: %w", k, block, err)
 			}
-			if hash, block := census[0].([32]byte), census[1].(uint64); hash != ([32]byte{}) {
-				time, err := self.blockTime(ctx, block)
-				if err != nil {
-					return nil, fmt.Errorf("epoch %d census block %d: %w", k, block, err)
-				}
-				facts.Census = &ctf.CensusCommitment{Hash: hash, Block: block, Time: time}
-				// A pulse no relay serves leaves Verify to say whether the draw
-				// needs it: a canonical census does, and the audit tries again.
-				facts.Pulse, _ = self.pulse(ctx, ctf.DrawRound(time))
+			facts.Census = &ctf.CensusCommitment{Hash: hash, Block: block, Time: time}
+			// The pulse is read for every committed census, as the watcher reads
+			// it: one no relay serves decides nothing, and the audit tries again.
+			if facts.Pulse, err = self.pulse(ctx, ctf.DrawRound(time)); err != nil {
+				return nil, fmt.Errorf("epoch %d draw: %w", k, err)
 			}
 		}
 		in.Epochs[k] = facts
