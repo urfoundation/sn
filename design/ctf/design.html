@@ -11,13 +11,13 @@
 -->
 <meta name="robots" content="noindex">
 <title>Earn crypto by sharing your internet in 249 countries | UR</title>
-<meta name="description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then run the free URnetwork app.">
+<meta name="description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then start mining.">
 <link rel="canonical" href="https://ur.xyz/ctf">
 <link rel="alternate" type="application/json" href="https://api.bringyour.com/sn/ctf">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="UR">
 <meta property="og:title" content="Earn crypto by sharing your internet in 249 countries | UR">
-<meta property="og:description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then run the free URnetwork app.">
+<meta property="og:description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then start mining.">
 <meta property="og:url" content="https://ur.xyz/ctf">
 <meta property="og:image" content="https://ur.xyz/ctf/og/epoch-39.png">
 <script type="application/ld+json" id="ctf-jsonld">
@@ -28,7 +28,7 @@
    "@type": "Dataset",
    "@id": "https://ur.xyz/ctf#dataset",
    "name": "URnetwork capture the flag: reward slots and pots by country",
-   "description": "Each epoch (one week), every one of the 249 ISO 3166-1 countries has five provider slots and five extender slots on URnetwork, Bittensor subnet 25. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.",
+   "description": "Each epoch (one week), every network operator of Bittensor subnet 25 (UR) has five provider slots and five extender slots in every one of the 249 ISO 3166-1 countries, and this data adds every operator's up. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.",
    "url": "https://ur.xyz/ctf",
    "dateModified": "2026-11-11",
    "isAccessibleForFree": true,
@@ -512,7 +512,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 </style>
 </head>
 <body>
-<noscript><p style="font:16px/1.5 system-ui;color:#F2F4EF;background:#101010;padding:24px;margin:0">Capture the flag: every country has five provider and five extender reward slots each epoch on URnetwork. This design needs JavaScript to draw its mock data; the live page renders it on the server.</p></noscript>
+<noscript><p style="font:16px/1.5 system-ui;color:#F2F4EF;background:#101010;padding:24px;margin:0">Capture the flag: every network operator of SN25 has five provider and five extender reward slots in every country each epoch, and this page adds them up. This design needs JavaScript to draw its mock data; the live page renders it on the server.</p></noscript>
 <div id="app"></div>
 <script>
 (function () {
@@ -542,6 +542,12 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
   const PAGE = BY[(qs.get('page') || '').toLowerCase()] ? qs.get('page').toLowerCase() : null;
   const FOCUS0 = ['held', 'np', 'nx'].indexOf(qs.get('focus')) >= 0 ? qs.get('focus') : null;
   const API = 'https://api.bringyour.com/sn/ctf';
+  // The page combines every network operator of the operator list (CAPTURETHEFLAG.md §9.2); this mock has one,
+  // bringyour.com, whose API serves /sn/ctf. With several, the figures are their sums and a role's odds,
+  // open slots and missed draws are listed by operator ("38% at bringyour.com · 83% at example.org").
+  const OPERATORS = 'https://ur.xyz/operators.yml';
+  // the calls to action: Start mining and Run a provider open the miner guide, Run an extender its extender chapter
+  const ctaHref = (cta) => (cta === 'Run an extender' ? '/docs/miner/extender' : '/docs/miner');
   const PROPS = {
     country: (qs.get('country') || 'is').toLowerCase(),
     threshold: 5,
@@ -849,7 +855,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       (o.near ? '<span class="act-near">' + o.near + '</span>' : '') +
       '<span class="act-do" id="' + id + '">' + o.body + '</span>' +
       (o.after ? '<span class="act-near">' + o.after + '</span>' : '') +
-      '<a class="btn btn-p btn-sm" href="https://ur.io">' + o.cta + '</a>' +
+      '<a class="btn btn-p btn-sm" href="' + ctaHref(o.cta) + '">' + o.cta + '</a>' +
       '</span></span>';
   }
 
@@ -867,14 +873,14 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
         '<nav class="crumbs" aria-label="Breadcrumb"><a href="?">Capture the flag</a><span aria-hidden="true">›</span><span aria-current="page">' + esc(r.the.replace(/^the /, '')) + '</span></nav>' +
         '<h1>Earn crypto in ' + esc(r.the) + ' with your internet connection</h1>' +
         '<p class="mission">Five provider and five extender slots in ' + esc(r.the) + ' every epoch</p>' +
-        '<p class="intro"><span class="answer">Run the free URnetwork app in ' + esc(r.the) + ' as a provider or an extender, and you can win weekly crypto rewards.</span> As of epoch ' + v.epoch + ': ' + esc(v.me.msg) + ' Rewards are paid in alpha, the token of Bittensor subnet 25, and are not guaranteed.</p>' +
+        '<p class="intro"><span class="answer">Mine in ' + esc(r.the) + ' as a provider or an extender, with the miner or the free URnetwork app, and you can win weekly crypto rewards.</span> As of epoch ' + v.epoch + ': ' + esc(v.me.msg) + ' Rewards are paid in alpha, the token of Bittensor subnet 25, and are not guaranteed.</p>' +
         '</header>';
     }
     return '<header class="hdr">' +
       '<div class="label" style="color:#ED8FFF">SN25 · every country, every epoch</div>' +
       '<h1>Capture the flag</h1>' +
       '<p class="mission">Providers and extenders in every country</p>' +
-      '<p class="intro"><span class="answer">Run the free URnetwork app as a provider or an extender, and you can win weekly crypto rewards wherever you are.</span> Every country has ten slots each epoch (one week): five for providers and five for extenders. A slot nobody wins rolls into that country\'s pot, and each winner there takes its slot and a fifth of the pot. Where a slot went unclaimed, a new miner who stays online for half the epoch wins by default.</p>' +
+      '<p class="intro"><span class="answer">Mine as a provider or an extender, with the miner or the free URnetwork app, and you can win weekly crypto rewards wherever you are.</span> Every SN25 network operator runs a capture the flag pool beside its provider pool, with ten slots in every country each epoch (one week): five for providers and five for extenders. A slot nobody wins rolls into the country\'s pot at that operator, and each winner there takes its slot and a fifth of the pot. Where an operator\'s slot went unclaimed, a new miner with that operator who stays online for half the epoch wins by default.</p>' +
       '</header>';
   }
 
@@ -919,7 +925,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       '</div>' +
       (me.anyClosed ? '<p class="touch-block me-note">Chance to win is the estimated probability that you win the epoch reward if you launch a provider or an extender here and keep it online for half the epoch.</p>' : '') +
       '</div>' +
-      '<div class="cta"><a class="btn btn-p" href="https://ur.io">Start mining in ' + esc(me.the) + '</a><a class="btn btn-s" href="https://ur.io">Run an extender</a>' +
+      '<div class="cta"><a class="btn btn-p" href="/docs/miner">Start mining in ' + esc(me.the) + '</a><a class="btn btn-s" href="/docs/miner/extender">Run an extender</a>' +
       '<p class="cta-note">Stay online in ' + esc(me.the) + ' for at least half the epoch to enter the draw. Your app\'s payout wallet is used.</p>' +
       '<div class="pick"><label for="ctf-country" class="label">Somewhere else?</label><input id="ctf-country" class="field" list="ctf-countries" placeholder="Type a country" autocomplete="off"><datalist id="ctf-countries">' + options + '</datalist></div>' +
       '</div></section>';
@@ -936,7 +942,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       '<span class="mono fc-pots fc-pots-l">' + esc(f.potLine) + '</span><span class="mono fc-pots fc-pots-s">' + esc(f.potShort) + '</span>' +
       '<p class="mono fc-line">' + esc(f.line) + '</p>' +
       '<div class="fc-next"><span class="act-near">' + esc(f.nearStr) + '</span><span class="act-do">' + esc(f.actA) + '<b>' + esc(f.actB) + '</b>.</span>' +
-      '<div class="more-cta"><a class="btn btn-p btn-sm" href="https://ur.io">' + f.actCta + '</a><button type="button" class="btn btn-s btn-sm" data-act="fexp" data-arg="' + f.c + '">Close</button></div></div>' +
+      '<div class="more-cta"><a class="btn btn-p btn-sm" href="' + ctaHref(f.actCta) + '">' + f.actCta + '</a><button type="button" class="btn btn-s btn-sm" data-act="fexp" data-arg="' + f.c + '">Close</button></div></div>' +
       '</article>';
   }
 
@@ -976,7 +982,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
       '<div class="last">' + viewRole(c, 'p') + viewRole(c, 'x') + '<span aria-hidden="true">' + c.lastStr + '</span><span class="sr">' + esc(c.srLast) + '</span></div>' +
       '<div class="cell-more">' + (c.hasNear ? '<p class="more-near">' + esc(c.moreNear) + '</p>' : '') +
       '<p class="more-line">' + esc(c.moreP) + '</p><p class="more-line">' + esc(c.moreX) + '</p>' +
-      '<div class="more-cta"><a class="btn btn-p btn-sm" href="https://ur.io">' + c.ctaA + '</a><a class="btn btn-s btn-sm" href="' + pageHref(c.c) + '">Country page</a><button type="button" class="btn btn-s btn-sm" data-act="exp" data-arg="' + c.c + '">Close</button></div></div>' +
+      '<div class="more-cta"><a class="btn btn-p btn-sm" href="' + ctaHref(c.ctaA) + '">' + c.ctaA + '</a><a class="btn btn-s btn-sm" href="' + pageHref(c.c) + '">Country page</a><button type="button" class="btn btn-s btn-sm" data-act="exp" data-arg="' + c.c + '">Close</button></div></div>' +
       '</article>';
   }
 
@@ -1020,7 +1026,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
   function viewHow(v) {
     return '<section id="how" class="sec" aria-labelledby="how-h"><h2 id="how-h" class="h2">How the draw works</h2><div class="steps">' +
       '<div class="step"><b>01</b><h3>Be there</h3><p>Run a provider or an extender in the country for at least half the epoch, and be online when it ends. Your network\'s existing payout wallet is used, so there is nothing new to sign.</p></div>' +
-      '<div class="step"><b>02</b><h3>The draw</h3><p>When the epoch ends, the operator commits the list of eligible miners on chain. A public drand round then picks up to five winners per country for each role. With five or fewer entries, everyone wins. Miners in one /29 or /48 share a single ticket.</p></div>' +
+      '<div class="step"><b>02</b><h3>The draw</h3><p>When the epoch ends, each network operator commits the list of its eligible miners on chain. A public drand round then picks up to five winners per country for each role from that list. With five or fewer entries, everyone wins. Miners in one /29 or /48 share a single ticket.</p></div>' +
       '<div class="step"><b>03</b><h3>Claim</h3><p>Each winner takes its slot and a fifth of the country\'s pot, so staying several epochs captures most of a big pot. The alpha accrues to your wallet, and you claim it with your pool earnings in the app.</p></div>' +
       '</div></section>';
   }
@@ -1038,13 +1044,13 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
   function viewFaq(v) {
     if (!v.page) {
       return faqHtml('Questions', [
-        ['What is capture the flag?', 'A weekly reward on URnetwork, Bittensor subnet 25. Every country has five provider slots and five extender slots each epoch (one week), and winners are paid in alpha, the subnet\'s token. A slot that nobody wins adds its amount to that country\'s pot, so a newcomer to an empty country takes a fifth of the pot every epoch it stays.'],
-        ['How do I win a slot?', 'Run the free URnetwork app as a provider or an extender, keep it online in your country for at least half the epoch, and be online when it ends. Where a slot went unclaimed last epoch, a newcomer wins by default. Where all five were won, a public draw picks five winners.'],
+        ['What is capture the flag?', 'A weekly reward that is part of the protocol of Bittensor subnet 25 (UR): every network operator runs a capture the flag pool beside its provider pool, with five provider slots and five extender slots in every country each epoch (one week), and winners are paid in alpha, the subnet\'s token. A slot that nobody wins adds its amount to that country\'s pot, so a newcomer to an empty country takes a fifth of the pot every epoch it stays.'],
+        ['How do I win a slot?', 'Run a miner or the free URnetwork app as a provider or an extender, keep it online in your country for at least half the epoch, and be online when it ends. Where your operator\'s slot went unclaimed last epoch, a newcomer wins by default. Where all five were won, its public draw picks five winners.'],
         ['How much can I earn?', 'A slot is worth about ' + v.slotStr + ' α this epoch, and a winner in a country with a pot also takes a fifth of that pot. Amounts change every epoch with the network\'s emission and with how many people run in each country, and alpha\'s price moves. Nothing is guaranteed.'],
         ['Is it passive income, or a job?', 'Neither, quite. The app runs in the background on a phone or computer you already have, but it earns only while it stays online. It is not a job, with no employer, hours or wage, and not an investment, with no fixed return.'],
-        ['What is the difference between a provider and an extender?', 'A provider shares your internet connection with the people who use URnetwork. An extender is a relay for people who cannot reach the network directly, for example behind censorship. The desktop app runs both by default, and one device can win in both roles.'],
-        ['How is the draw kept fair?', 'When the epoch ends, the operator commits the list of eligible miners on chain. A drand round published after that commitment then picks the winners, so nobody can choose them. Every draw can be checked against its census and its round.'],
-        ['Can my AI assistant read this data?', 'Yes. The numbers on this page are public JSON at <a href="' + API + '">/sn/ctf</a>, documented in <code>sn/api/operator.yml</code>, with times in UTC and amounts in α. They change once an epoch.']
+        ['What is the difference between a provider and an extender?', 'A provider shares your internet connection with the people who use the network. An extender is a relay for people who cannot reach the network directly, for example behind censorship. The miner and the desktop app run both by default, and one device can win in both roles.'],
+        ['How is the draw kept fair?', 'When the epoch ends, each network operator commits the list of its eligible miners on chain. A drand round published after that commitment then picks the winners, so nobody, the operator included, can choose them. Every draw can be checked against its census and its round.'],
+        ['Can my AI assistant read this data?', 'Yes. The numbers on this page add up the public JSON every network operator serves at <a href="' + API + '">/sn/ctf</a>, documented in <code>sn/api/operator.yml</code>, with times in UTC and amounts in α; <a href="' + OPERATORS + '">the operator list</a> names each operator\'s API. They change once an epoch.']
       ]);
     }
     const r = v.row, me = v.me, the = esc(r.the);
@@ -1060,11 +1066,11 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
           ? 'A provider. Its slots in ' + the + ' were not all won last epoch, so a new provider wins by default. All five extender slots were won, so a new extender needs the draw: about <b>' + me.xChance + '</b>.'
           : 'Both roles were fully captured last epoch, so a newcomer needs the draw: about <b>' + me.pChance + '</b> as a provider and <b>' + me.xChance + '</b> as an extender. The desktop app runs both, which enters both draws.';
     return faqHtml('Questions about earning in ' + r.the, [
-      ['Can you make money in ' + r.the + ' with URnetwork?', 'Yes, in small amounts. A slot is worth about ' + v.slotStr + ' α this epoch, and the pots carried in ' + the + ' are <b>' + two(r.ppot) + ' α</b> for providers and <b>' + two(r.xpot) + ' α</b> for extenders. Each winner takes its slot and a fifth of its role\'s pot. Last epoch, ' + entries(r.pp, r.pu, 'provider') + ' and ' + entries(r.xp, r.xu, 'extender') + '. Rewards are paid in alpha, whose value changes, and nothing is guaranteed.'],
+      ['Can you make money in ' + r.the + ' by sharing your internet?', 'Yes, in small amounts. A slot is worth about ' + v.slotStr + ' α this epoch, and the pots carried in ' + the + ' are <b>' + two(r.ppot) + ' α</b> for providers and <b>' + two(r.xpot) + ' α</b> for extenders. Each winner takes its slot and a fifth of its role\'s pot. Last epoch, ' + entries(r.pp, r.pu, 'provider') + ' and ' + entries(r.xp, r.xu, 'extender') + '. Rewards are paid in alpha, whose value changes, and nothing is guaranteed.'],
       ['Is it passive income?', 'Partly. The app runs in the background on a phone or computer you already have, but it earns only while it stays online, and what you win depends on how many others run in ' + the + ' and on alpha\'s price. It is not an investment and has no fixed return.'],
       ['Is it remote work in ' + r.the + '?', 'No. Capture the flag is not a job: there is no employer, no hours and no wage. It can run alongside remote work or any other job, on the internet connection you already have.'],
       ['Provider or extender: which should I run in ' + r.the + '?', advice],
-      ['How are winners chosen, and can I check?', 'When the epoch ends, the operator commits the list of eligible miners in ' + the + ' on chain, and a drand round published after it draws up to five winners per role. With five entries or fewer, everyone wins. Miners in one /29 or /48 share a single entry. Each draw\'s census and round are public.'],
+      ['How are winners chosen, and can I check?', 'When the epoch ends, each network operator commits the list of its eligible miners in ' + the + ' on chain, and a drand round published after it draws up to five winners per role. With five entries or fewer, everyone wins. Miners in one /29 or /48 share a single entry. Each draw\'s census and round are public.'],
       ['How do I get paid?', 'Winnings go to the payout wallet the app already uses, and you claim them with your pool earnings in the app.',
         'Local note for ' + the + ': how to cash out here and what local law says, dated and reviewed by a person.']
     ]);
@@ -1076,7 +1082,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   // The head follows the page, as Base.astro's props would: title, description, canonical, alternate, JSON-LD.
   const HUB_TITLE = "Earn crypto by sharing your internet in 249 countries | UR";
-  const HUB_LD = {"@context": "https://schema.org", "@graph": [{"@type": "Dataset", "@id": "https://ur.xyz/ctf#dataset", "name": "URnetwork capture the flag: reward slots and pots by country", "description": "Each epoch (one week), every one of the 249 ISO 3166-1 countries has five provider slots and five extender slots on URnetwork, Bittensor subnet 25. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.", "url": "https://ur.xyz/ctf", "dateModified": "2026-11-11", "isAccessibleForFree": true, "creator": {"@type": "Organization", "name": "UR", "url": "https://ur.xyz"}, "spatialCoverage": {"@type": "Place", "name": "Worldwide"}, "temporalCoverage": "2026-11-27/..", "variableMeasured": ["Provider slots won", "Extender slots won", "Units in the draw", "Provider pot (alpha)", "Extender pot (alpha)", "Chance to win"], "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://api.bringyour.com/sn/ctf"}]}]};
+  const HUB_LD = {"@context": "https://schema.org", "@graph": [{"@type": "Dataset", "@id": "https://ur.xyz/ctf#dataset", "name": "URnetwork capture the flag: reward slots and pots by country", "description": "Each epoch (one week), every network operator of Bittensor subnet 25 (UR) has five provider slots and five extender slots in every one of the 249 ISO 3166-1 countries, and this data adds every operator's up. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.", "url": "https://ur.xyz/ctf", "dateModified": "2026-11-11", "isAccessibleForFree": true, "creator": {"@type": "Organization", "name": "UR", "url": "https://ur.xyz"}, "spatialCoverage": {"@type": "Place", "name": "Worldwide"}, "temporalCoverage": "2026-11-27/..", "variableMeasured": ["Provider slots won", "Extender slots won", "Units in the draw", "Provider pot (alpha)", "Extender pot (alpha)", "Chance to win"], "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://api.bringyour.com/sn/ctf"}]}]};
   const UPDATED = '2026-11-11';
   const titleFor = function (r) {
     const a = 'Earn crypto in ' + r.the + ': open slots and pots | UR';
@@ -1122,9 +1128,10 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   function viewFoot(v) {
     return '<footer class="mono foot" style="margin-top:48px">' +
-      '<p>Up for grabs is an estimate: the pots carried in, plus this epoch\'s ten slots at last epoch\'s slot amount of ' + v.slotStr + ' α. Every draw can be checked against its on-chain census and drand round at <a href="https://api.bringyour.com/sn/ctf">/sn/ctf</a>.</p>' +
-      '<p>Chance to win shows where all five of a role\'s slots were won last epoch. Its entries are last epoch\'s eligible units in that role plus you, and it is ' + v.oddsTxt + '. Where a slot went unclaimed, a new miner wins by default.</p>' +
+      '<p>Up for grabs is an estimate: the pots carried in, plus this epoch\'s ten slots at last epoch\'s slot amount of ' + v.slotStr + ' α. Every draw can be checked against its on-chain census and drand round, published at its operator\'s <a href="https://api.bringyour.com/sn/ctf">/sn/ctf</a>.</p>' +
+      '<p>Chance to win shows where all five of a role\'s slots at an operator were won last epoch. Its entries are last epoch\'s eligible units in that role at that operator plus you, and it is ' + v.oddsTxt + '. Where an operator\'s slot went unclaimed, a new miner with that operator wins by default.</p>' +
       '<p>Rewards are paid in alpha, the token of Bittensor subnet 25, whose value changes and can fall. They depend on uptime, on how many others run in each country and on the network\'s emission. They are not wages, a salary, a guaranteed income or an investment, and you pay your own costs, such as power and data.</p>' +
+      '<p>Capture the flag is part of the SN25 protocol: every network operator runs a capture the flag pool beside its provider pool, with its own draw in every country, and this page combines every operator in <a href="' + OPERATORS + '">the operator list</a>. Its rules are public: the method in CAPTURETHEFLAG.md, and the code in the subnet\'s repository.</p>' +
       '<p>Country pages are built from each epoch\'s public data. Their local notes are written and reviewed by people.</p>' +
       '<p>Mockup data: 26 simulated epochs on the network\'s provider coverage of August to November 2026, at epoch 4\'s scale. Flags: flag-icons, MIT licence.</p>' +
       '</footer>';
@@ -1132,7 +1139,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   function view(v) {
     return '<div class="ctf ' + v.motionCls + '">' +
-      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage' + (PRE ? '; the note before the start counts down to epoch 8 on a clock of its own, above the drawn mock' : '') + '</span></div>' +
+      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage, one network operator\'s; with several, the page adds them up and lists each operator\'s odds by its domain' + (PRE ? '; the note before the start counts down to epoch 8 on a clock of its own, above the drawn mock' : '') + '</span></div>' +
       '<div class="shell">' + viewNav() + (PRE ? viewStart(Boolean(v.page)) : '') + viewHeader(v) + viewLive(v) +
       (v.showIntro ? viewMine(v) : '') + (v.page ? viewFaq(v) : '') + (v.showFeat ? viewFeat(v) : '') +
       (v.page ? viewAll(v) : viewGrid(v)) + viewHow(v) + (v.page ? '' : viewFaq(v)) + viewFoot(v) +
