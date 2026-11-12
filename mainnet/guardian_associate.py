@@ -35,6 +35,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import sys
 import time
 
@@ -648,7 +649,7 @@ def parse(argv):
         if args.carrier_wallet:
             from bittensor.wallet import DEFAULT_WALLET_PATH
 
-            args.wallet_path = args.wallet_path or DEFAULT_WALLET_PATH
+            args.wallet_path = os.path.expanduser(args.wallet_path or DEFAULT_WALLET_PATH)
             args.carrier_bytes = carrier_address(args.carrier_wallet, args.wallet_path)
     return args
 
