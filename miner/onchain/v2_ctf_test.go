@@ -80,8 +80,9 @@ type v2TestCensus struct {
 // carry, whose vault2 answers coordinator() and netuid() from it, with the
 // census blocks' timestamps. absent leaves the carry address without code.
 // v1 is the v1 coordinator, with its FleetBound events and its archive
-// bindingAt answers; pruned answers its code at a past block as a node
-// without archive state does.
+// bindingAt answers. pruned refuses its code at a past block, and codeless
+// answers none, as Frontier's eth_getCode does on a node without archive
+// state; unclosed puts epochs' ends past the finalized block.
 type v2TestCtfModel struct {
 	coordinator common.Address
 	carry       common.Address
@@ -97,6 +98,8 @@ type v2TestCtfModel struct {
 	fleet       []v2TestFleetBound
 	active      map[v2TestBindingAt]bool
 	pruned      bool
+	codeless    bool
+	unclosed    bool
 }
 
 // v2TestFleetBound is a FleetBound event of the v1 coordinator.
@@ -157,7 +160,11 @@ func (c *v2TestChain) answerV1(to common.Address, input []byte, block string) (a
 	case "epochStartBlock":
 		out, err = method.Outputs.Pack(new(big.Int).SetUint64(v2CtfTestGenesis + v2CtfTestEpochBlocks*args[0].(*big.Int).Uint64()))
 	case "epochEndBlock":
-		out, err = method.Outputs.Pack(new(big.Int).SetUint64(v2CtfTestGenesis + v2CtfTestEpochBlocks*(args[0].(*big.Int).Uint64()+1)))
+		end := v2CtfTestGenesis + v2CtfTestEpochBlocks*(args[0].(*big.Int).Uint64()+1)
+		if m.unclosed {
+			end = v2TestHead + 1
+		}
+		out, err = method.Outputs.Pack(new(big.Int).SetUint64(end))
 	case "bindingAt":
 		at := v2TestBindingAt{client: args[0].([16]byte), epoch: args[1].(*big.Int).Uint64(), block: hexutil.MustDecodeUint64(block)}
 		out, err = method.Outputs.Pack(m.active[at], stabi.STCoordinatorBindingRecord{})
@@ -761,10 +768,11 @@ func TestV2CheckCtfLeavesOutHeadBoundCandidates(t *testing.T) {
 
 // CAPTURETHEFLAG.md §8: the head bindings fail closed like every other
 // input. A node without archive state, which answers the coordinator's code
-// at its first block with an error, or a refused read of STSettlement2's v1
-// coordinator, its epochs' boundaries, its FleetBound events or bindingAt,
-// makes the audit unavailable; F's accounts are still found without fault
-// from the published objects, and the check fails.
+// at its first block with an error or with none, as Frontier does; a refused
+// read of STSettlement2's v1 coordinator, its epochs' boundaries, its
+// FleetBound events or bindingAt; or an epoch whose end is past the
+// finalized block makes the audit unavailable. F's accounts are still found
+// without fault from the published objects, and the check fails.
 func TestV2CheckCtfHeadBindingsFailClosed(t *testing.T) {
 	coordinator := common.HexToAddress(v2CtfTestV1Coordinator).Hex()
 	for _, c := range []struct {
@@ -776,8 +784,14 @@ func TestV2CheckCtfHeadBindingsFailClosed(t *testing.T) {
 			"the head bindings need an archive RPC: v1 coordinator " + coordinator + "'s code at its first block 100000: State already discarded for block"},
 		{"the v1 coordinator unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:v1Coordinator"] = 1 },
 			"coordinator " + common.HexToAddress(v2CtfTestCoordinator).Hex() + " v1Coordinator(): synthetic refusal of eth_call:v1Coordinator"},
+		{"a node answering no code at the first block", func(s *v2CtfScenario) { s.c.ctf.codeless = true },
+			"the head bindings need an archive RPC: v1 coordinator " + coordinator + "'s code at its first block 100000: the RPC answered no code"},
 		{"its first block unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:epochStartBlock"] = 1 },
 			"v1 coordinator " + coordinator + " epochStartBlock(0): synthetic refusal of eth_call:epochStartBlock"},
+		{"an epoch's start unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:epochStartBlock"] = 2 },
+			"v1 coordinator " + coordinator + " epochStartBlock(9): synthetic refusal of eth_call:epochStartBlock"},
+		{"an epoch not closed at the finalized block", func(s *v2CtfScenario) { s.c.ctf.unclosed = true },
+			"epoch 9 boundaries [145000,200001] are not closed at the finalized block 200000"},
 		{"its FleetBound events refused", func(s *v2CtfScenario) { s.c.failAt["eth_getLogs:FleetBound"] = 3 },
 			"v1 coordinator " + coordinator + " FleetBound events: eth_getLogs [102000,102999]: synthetic log refusal"},
 		{"an epoch's end unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:epochEndBlock"] = 1 },

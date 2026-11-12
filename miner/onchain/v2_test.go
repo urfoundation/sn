@@ -322,6 +322,9 @@ func (c *v2TestChain) answer(method string, params []json.RawMessage) (any, map[
 			if c.ctf.pruned {
 				return nil, rpcError(4003, "State already discarded for block", nil)
 			}
+			if c.ctf.codeless {
+				return "0x", nil
+			}
 			return hexutil.Bytes{0x60, 0x80}, nil
 		}
 		if account != c.batcher || c.batcher == (common.Address{}) {

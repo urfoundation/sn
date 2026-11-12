@@ -21,9 +21,9 @@ package onchain
 //     committed, as §8's check 1 requires, also for an epoch before E_c;
 //   - the carry contract's coldkey and recycledFor(k). The contract must serve
 //     vault2's pool 2^32 + n;
-//   - for each epoch with a committed census, the head bindings its draw
-//     leaves out, from the v1 coordinator's FleetBound events and archive
-//     bindingAt reads at the epoch's boundaries, as the validator reads them
+//   - for each epoch the audit draws, the head bindings its draw leaves out,
+//     from the v1 coordinator's FleetBound events and archive bindingAt reads
+//     at the epoch's boundaries, as the validator reads them
 //     (v2_ctf_heads.go). A census that lists a head-bound client, which P5
 //     keeps out of every census, then draws here as it does for the
 //     validator: the client is left out, and the check names it.
