@@ -4,16 +4,18 @@ pragma solidity 0.8.24;
 import {V2StackBase} from "./utils/V2StackBase.sol";
 import {V2LifecycleHandler} from "./utils/V2LifecycleHandler.sol";
 import {STSettlement2PhaseC} from "../src/STSettlement2PhaseC.sol";
+import {STSettlement2Ctf} from "../src/STSettlement2Ctf.sol";
 import {ISTSettlementVault2} from "../src/interfaces/ISTSettlementVault2.sol";
 
 /// @dev The settlement v2 invariants (VERSION2-FINAL.md §15.5) over random
 ///      lifecycles of pools 1 and 2 through the whole stack, with the auditor
-///      set at quorum 2 of 3 and STSettlement2 upgraded to its phase C
-///      implementation, which exposes assignSurplus. Registration collateral is locked on the escrow and on
-///      pool 2's hotkey (A3). One campaign checks all six invariants after
-///      every call: Foundry would replay the identical campaign for each
-///      invariant function. The default profile runs it short and the
-///      v2_invariant profile deep, with metrics:
+///      set at quorum 2 of 3 and STSettlement2 upgraded to its capture the flag
+///      implementation, which keeps phase C's assignSurplus. Registration
+///      collateral is locked on the escrow and on pool 2's hotkey (A3). One
+///      campaign checks all six invariants after every call: Foundry would
+///      replay the identical campaign for each invariant function. The
+///      default profile runs it short and the v2_invariant profile deep, with
+///      metrics:
 ///        FOUNDRY_PROFILE=v2_invariant forge test --match-path test/V2Invariant.t.sol
 ///      Runs are deep in both, so that every run reaches finalizations and
 ///      claims (afterInvariant).
@@ -30,7 +32,9 @@ contract V2InvariantTest is V2StackBase {
         _registerV2Pool(NO2, V2_POOL2, V2_POOL2_UID);
         address[] memory auditors = new address[](3);
         (auditors[0], auditors[1], auditors[2]) = (auditor1, makeAddr("auditor-2"), makeAddr("auditor-3"));
-        STSettlement2PhaseC upgrade = new STSettlement2PhaseC();
+        // The newest implementation, capture the flag's, which keeps every
+        // phase C call the handler makes (mainnet goes there through phase C).
+        STSettlement2Ctf upgrade = new STSettlement2Ctf();
         vm.startPrank(owner);
         settlement.setAuditors(auditors, 2);
         settlement.upgradeToAndCall(address(upgrade), "");

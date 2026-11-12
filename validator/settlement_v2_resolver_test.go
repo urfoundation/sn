@@ -37,9 +37,16 @@ type settlementV2ResolverTestFixture struct {
 	metagraph  [][32]byte
 	pools      map[uint64]stabi.ISTSettlementVault2Pool
 	identities map[uint64]stabi.SettlementAtOutput
-	pending    stabi.ISTSettlementVault2Pending
-	raw        map[string][]byte
-	v2Calls    map[string][]uint64
+	// ctfIdentities are ctfSettlementAt's answers, by operator.
+	ctfIdentities map[uint64]releaseCtfTestIdentity
+	// ctfCensuses are ctfCensus's answers by epoch, carry the carry contract,
+	// and times the EVM timestamps of blocks.
+	ctfCensuses map[uint64]stabiCtfCensus
+	carry       releaseCtfTestCarry
+	times       map[uint64]uint64
+	pending     stabi.ISTSettlementVault2Pending
+	raw         map[string][]byte
+	v2Calls     map[string][]uint64
 }
 
 // Both operators are active in epoch 1; neither pool is registered in vault2
@@ -50,7 +57,7 @@ func newSettlementV2ResolverTestFixture(t *testing.T) *settlementV2ResolverTestF
 	base := newReleaseDecisionV2TestFixture(t)
 	fixture := &settlementV2ResolverTestFixture{releaseDecisionV2TestFixture: base,
 		addresses: SettlementV2Addresses{Settlement: common.HexToAddress("0x5e77100000000000000000000000000000000002"), Vault: common.HexToAddress("0x7a17000000000000000000000000000000000002")},
-		head:      base.finalized, pools: map[uint64]stabi.ISTSettlementVault2Pool{}, identities: map[uint64]stabi.SettlementAtOutput{}, raw: map[string][]byte{}, v2Calls: map[string][]uint64{}}
+		head:      base.finalized, pools: map[uint64]stabi.ISTSettlementVault2Pool{}, identities: map[uint64]stabi.SettlementAtOutput{}, ctfIdentities: map[uint64]releaseCtfTestIdentity{}, raw: map[string][]byte{}, v2Calls: map[string][]uint64{}}
 	fixture.setMetagraph(chainBatchHotkey(0), chainBatchHotkey(1), chainBatchHotkey(2), settlementV2TestPoolHotkey)
 	coordinator := base.chain.coordinator
 	for _, operator := range base.query.operators {
@@ -114,6 +121,8 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 		metadata = &stabi.STSettlementVault2MetaData
 	case self.addresses.Settlement:
 		metadata = &stabi.STSettlement2MetaData
+	case self.carry.address:
+		metadata = &stabi.STCtfCarryMetaData
 	default:
 		return self.releaseDecisionV2TestFixture.Call(ctx, call, selector)
 	}
@@ -149,6 +158,22 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	if raw, found := self.raw[method.Name]; found {
 		return slices.Clone(raw), ctx.Err()
 	}
+	switch method.Name {
+	case "coldkey":
+		return method.Outputs.Pack(self.carry.coldkey)
+	case "vault":
+		return method.Outputs.Pack(self.carry.vault)
+	case "poolId":
+		return method.Outputs.Pack(new(big.Int).SetUint64(self.carry.poolID))
+	case "recycledFor":
+		return method.Outputs.Pack(new(big.Int).SetUint64(self.carry.recycled[arguments[0].(*big.Int).Uint64()]))
+	case "ctfCensus":
+		census := self.ctfCensuses[arguments[1].(*big.Int).Uint64()]
+		if arguments[0].(*big.Int).Uint64() != 1 {
+			census = stabiCtfCensus{}
+		}
+		return method.Outputs.Pack(census.hash, census.block)
+	}
 	noID := arguments[0].(*big.Int).Uint64()
 	var encoded []byte
 	switch method.Name {
@@ -157,6 +182,9 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	case "settlementAt":
 		identity := self.identities[noID]
 		encoded, err = method.Outputs.Pack(identity.Vault, identity.Hotkey, identity.Version)
+	case "ctfSettlementAt":
+		identity := self.ctfIdentities[noID]
+		encoded, err = method.Outputs.Pack(identity.vault, identity.hotkey, identity.firstEpoch)
 	case "pending":
 		encoded, err = method.Outputs.Pack(self.pending)
 	case "approvalCount":
@@ -167,12 +195,17 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	return encoded, errors.Join(err, ctx.Err())
 }
 
-// The finalized head is the fixture's head; numbered blocks are the base's.
+// The finalized head is the fixture's head; numbered blocks are the base's,
+// with a timestamp where the test set one.
 func (self *settlementV2ResolverTestFixture) GetBlockByNumber(ctx context.Context, number gethrpc.BlockNumber, full bool) (map[string]any, error) {
 	if number == gethrpc.FinalizedBlockNumber {
 		number = gethrpc.BlockNumber(self.head)
 	}
-	return self.releaseDecisionV2TestFixture.GetBlockByNumber(ctx, number, full)
+	block, err := self.releaseDecisionV2TestFixture.GetBlockByNumber(ctx, number, full)
+	if time, found := self.times[uint64(number)]; found && err == nil {
+		block["timestamp"] = hexutil.EncodeUint64(time)
+	}
+	return block, err
 }
 
 func (self *settlementV2ResolverTestFixture) snapshot() *ReleaseSnapshot {

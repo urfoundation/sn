@@ -113,7 +113,7 @@ Usage:
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
     validator run [--config=<path>] [--progress-file=<path>]
-        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>]
+        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--drand_url=<url>]
         [--steering-operation-timeout=<duration>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [(--native-gap-bridge=<path> --native-gap-bridge-sha256=<hash>)] [--startup-verified-progress]
@@ -149,6 +149,8 @@ Options:
                                  approvals, challenges and demands. Without it none is sent.
     --ledger_max_bytes=<n>       Ledger objects new to custody that the settlement v2 audit fetches
                                  per root, in bytes; raised operationally [default: 2147483648].
+    --drand_url=<url>            drand relay the capture the flag audit reads quicknet's pulses from;
+                                 each pulse must verify against quicknet's key. Omitted: https://api.drand.sh.
     --approval-key-file=<path>   Private raw32 or bare64-hex Ed25519 seed for the configured approval
                                  signer. Signs activation's exact successor message; never copied into
                                  the rendered configuration. init creates a private raw seed if absent,

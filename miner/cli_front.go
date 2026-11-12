@@ -70,12 +70,13 @@ var cliCommandHelp = map[string]struct {
 		},
 	},
 	"doctor": {
-		summary: "Look for why the miner can't sign in or connect: the state folder, DNS, the\nconnection, a TLS-inspecting proxy, the clock, and whether updates can install.",
+		summary: "Look for why the miner can't sign in or connect: the state folder, DNS, the\nconnection, a TLS-inspecting proxy, the clock, and whether updates can install.\nIt also checks inbound TCP 443 for the extender: the bind and the last activation.",
 	},
 	"service": {
 		summary: "Run the miner in the background and on every boot (systemd on Linux, launchd on\nmacOS), with automatic updates checked every 6 hours. If the URnetwork installer's\nurnetwork.service is already there, start, stop, status and logs work on it.",
 		examples: []string{
 			"provider service install     # start now and on every boot",
+			"sudo \"$(command -v provider)\" service install --system --as=$USER   # Linux: may bind TCP 443 for the extender",
 			"provider service logs --follow",
 			"provider service uninstall   # your sign-in and identity are kept",
 		},

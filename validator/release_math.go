@@ -8,6 +8,7 @@ import (
 
 	"github.com/urnetwork/connect"
 
+	"github.com/urfoundation/sn/amendment"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/protocol/headscore"
 )
@@ -50,21 +51,111 @@ func BuildWeightVectorExact(pools, head []ExactWeightInput, theta protocol.Ratio
 		poolShare.SetInt64(0)
 		headShare.SetInt64(1)
 	}
-	combined := map[uint16]*big.Rat{}
-	addChannel := func(values map[uint16]*big.Rat, sum, share *big.Rat) {
-		if sum.Sign() == 0 || share.Sign() == 0 {
-			return
+	return combineExactChannels(masked, exactChannel{poolByUID, poolSum, poolShare}, exactChannel{headByUID, headSum, headShare})
+}
+
+// BuildWeightVectorCtf combines the pool, CTF and head channels under capture
+// the flag's shares, which replace theta from E_c (CAPTURETHEFLAG.md §2.1). The
+// cede rules apply in order:
+//
+//  1. A non-empty CTF channel takes exactly its share.
+//  2. Pool and head share the rest in the ratio of their shares, or all of the
+//     row when the CTF channel is empty. An empty one cedes to the other, so
+//     with no head fleet the pools take the rest and the CTF pools keep theirs.
+//  3. The CTF channel is empty with no positive unmasked input, and always when
+//     the pool channel is: a CTF pool takes its operator's pool weight (§2.2),
+//     so with no pool weight there is nothing to divide it by. Its share then
+//     joins rule 2.
+//  4. With no pool or head weight there is no provider row
+//     (errNoPositiveUnmaskedWeights), which the treasury answers reserve-only.
+//
+// Masks apply after aggregation, as in BuildWeightVectorExact.
+func BuildWeightVectorCtf(pools, ctf, head []ExactWeightInput, shares amendment.Shares, masked map[uint16]bool) ([]uint16, []*big.Rat, error) {
+	poolShare, ctfShare, headShare, err := ctfShareRats(shares)
+	if err != nil {
+		return nil, nil, err
+	}
+	poolByUID, poolSum, err := sumExactInputs(pools, masked)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pool: %w", err)
+	}
+	ctfByUID, ctfSum, err := sumExactInputs(ctf, masked)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ctf: %w", err)
+	}
+	headByUID, headSum, err := sumExactInputs(head, masked)
+	if err != nil {
+		return nil, nil, fmt.Errorf("head: %w", err)
+	}
+	if poolSum.Sign() == 0 && headSum.Sign() == 0 {
+		return nil, nil, errNoPositiveUnmaskedWeights
+	}
+	if poolSum.Sign() == 0 || ctfSum.Sign() == 0 {
+		ctfShare.SetInt64(0)
+	}
+	rest := new(big.Rat).Sub(big.NewRat(1, 1), ctfShare)
+	switch {
+	case headSum.Sign() == 0:
+		poolShare.Set(rest)
+		headShare.SetInt64(0)
+	case poolSum.Sign() == 0:
+		poolShare.SetInt64(0)
+		headShare.Set(rest)
+	default:
+		both := new(big.Rat).Add(poolShare, headShare)
+		poolShare.Mul(rest, poolShare.Quo(poolShare, both))
+		headShare.Sub(rest, poolShare)
+	}
+	return combineExactChannels(masked, exactChannel{poolByUID, poolSum, poolShare}, exactChannel{ctfByUID, ctfSum, ctfShare}, exactChannel{headByUID, headSum, headShare})
+}
+
+// ctfShareRats is shares as exact rationals: each between zero and one, and all
+// three summing to one.
+func ctfShareRats(shares amendment.Shares) (pool, ctf, head *big.Rat, err error) {
+	rat := func(name string, ratio amendment.Ratio) (*big.Rat, error) {
+		if ratio.Num == 0 || ratio.Den == 0 || ratio.Num >= ratio.Den {
+			return nil, fmt.Errorf("capture the flag %s share %d/%d is not between zero and one", name, ratio.Num, ratio.Den)
 		}
-		for uid, score := range values {
-			part := new(big.Rat).Mul(share, new(big.Rat).Quo(score, sum))
+		return new(big.Rat).SetFrac(new(big.Int).SetUint64(ratio.Num), new(big.Int).SetUint64(ratio.Den)), nil
+	}
+	if pool, err = rat("pool", shares.Pool); err != nil {
+		return nil, nil, nil, err
+	}
+	if ctf, err = rat("ctf", shares.Ctf); err != nil {
+		return nil, nil, nil, err
+	}
+	if head, err = rat("head", shares.Head); err != nil {
+		return nil, nil, nil, err
+	}
+	if total := new(big.Rat).Add(pool, ctf); total.Add(total, head).Cmp(big.NewRat(1, 1)) != 0 {
+		return nil, nil, nil, errors.New("capture the flag shares do not sum to one")
+	}
+	return pool, ctf, head, nil
+}
+
+// exactChannel is one channel's aggregated inputs and the share of the row it
+// takes.
+type exactChannel struct {
+	values     map[uint16]*big.Rat
+	sum, share *big.Rat
+}
+
+// combineExactChannels gives each channel's UIDs its share in proportion to
+// their scores, then leaves out masked UIDs and orders the row by UID.
+func combineExactChannels(masked map[uint16]bool, channels ...exactChannel) ([]uint16, []*big.Rat, error) {
+	combined := map[uint16]*big.Rat{}
+	for _, channel := range channels {
+		if channel.sum.Sign() == 0 || channel.share.Sign() == 0 {
+			continue
+		}
+		for uid, score := range channel.values {
+			part := new(big.Rat).Mul(channel.share, new(big.Rat).Quo(score, channel.sum))
 			if combined[uid] == nil {
 				combined[uid] = new(big.Rat)
 			}
 			combined[uid].Add(combined[uid], part)
 		}
 	}
-	addChannel(poolByUID, poolSum, poolShare)
-	addChannel(headByUID, headSum, headShare)
 	uids := make([]uint16, 0, len(combined))
 	for uid, score := range combined {
 		if score.Sign() > 0 && !masked[uid] {

@@ -74,9 +74,14 @@ func parseVault2(s string) (common.Address, error) {
 
 // parseAPIURL parses --api_url, the operator API serving the ledger.
 func parseAPIURL(s string) (*url.URL, error) {
+	return parseHTTPURL("--api_url", s)
+}
+
+// parseHTTPURL parses flag's http(s) URL, which has no query.
+func parseHTTPURL(flag, s string) (*url.URL, error) {
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return nil, fmt.Errorf("--api_url: %q is not an http(s) URL without a query", s)
+		return nil, fmt.Errorf("%s: %q is not an http(s) URL without a query", flag, s)
 	}
 	if u.Path == "" {
 		u.Path = "/" // so that JoinPath gives an absolute path

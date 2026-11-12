@@ -25,6 +25,7 @@ digits; a bare digest is refused.
 | [validator-ledger-auditor.example.conf](validator-ledger-auditor.example.conf) | 10 | O10, O15 | `TestSettlementV2LaunchAuditorDropInExample`, `validator/TestSettlementV2LaunchAuditorDropInParses`, `validator/TestSettlementV2AdoptionDocumentRestartIsTheDropIn` (VA-3) |
 | [claim-daemon-v2.example.yml](claim-daemon-v2.example.yml) | 13 | O2, O11, O22 | `miner/TestClaimV2LaunchConfigExample` (E-5) |
 | [settlement-v2-watcher.example.service](settlement-v2-watcher.example.service), [settlement-v2-watcher.example.timer](settlement-v2-watcher.example.timer) | 13 | O2, O21 | `miner/onchain/TestV2WatcherUnitExample` (CL-1) |
+| [settlement-v2-ctf-watcher.example.service](settlement-v2-ctf-watcher.example.service), [settlement-v2-ctf-watcher.example.timer](settlement-v2-ctf-watcher.example.timer) | after the CTF pool's registration (CAPTURETHEFLAG.md §11.2) | O2, O21 | `miner/onchain/TestV2CtfWatcherUnitExample` |
 
 The tests without a directory are in `settlement_v2_launch_examples_test.go`
 and `settlement_v2_adoption_test.go`.
@@ -159,3 +160,45 @@ at 12 seconds, so a root's 14,400-block challenge window (48 hours) holds about
 outage of the host, its RPC or the operator API of a day or more. A run stops
 demanding when the window closes, and the timer never starts a run while one
 is still sending. A failed run leaves the service failed; alert on that.
+
+## Capture the flag watcher service and timer
+
+UR's capture the flag pool is vault2 pool 4294967297, 2^32 + 1
+(CAPTURETHEFLAG.md §3.1). Its watcher runs the CTF audit (§8) beside the
+watcher above, on the same host, as the same user and with the same key. Install
+both files as `/etc/systemd/system/sn-mainnet-settlement-v2-ctf-watcher.service`
+and `.timer`, with the placeholders of the watcher above. Enable the timer once
+the pool is registered, by the timelock operation that upgrades
+`STSettlement2` (§11.2). Before then every run fails, because vault2 holds no
+such pool. After that, a run finds nothing to check until the pool's first
+root is pending. From then it fails unless `https://ur.xyz/amendments.yml`
+serves the signed capture the flag entry.
+
+Beside vault2 and the operator API, the run reads:
+
+- the signed settlement amendments at `--amendments_url`, by default
+  `https://ur.xyz/amendments.yml`, for the entry in force: `E_c` and the carry
+  contract. Only entries signed by the price sheet's pinned key count. A run
+  keeps no copy between runs, so it takes any validly signed copy the URL
+  serves, even an older one that drops a later entry. Point it only at a
+  source kept current;
+- a drand relay at `--drand_url`, by default `https://api.drand.sh`, for the
+  pulse of each drawn epoch. Any relay will do, since each pulse must verify
+  against quicknet's key;
+- for each drawn epoch, the head bindings its draw leaves out, where the
+  validator reads them: the v1 coordinator's `FleetBound` events since its
+  first block, and `bindingAt` at the epoch's start and end blocks. Those are
+  past blocks' state, so `<O21-evm-rpc-url>` must be an archive node.
+
+The audit fails closed. When it cannot run, the run still challenges a
+provable fault and demands an unverifiable root, then fails. That happens when
+the file, the relay or the head bindings cannot be read (a node without
+archive state cannot serve them), or when capture the flag is not in force.
+
+A refused audit with nothing to challenge or demand also fails the run, unlike
+the pool watcher's. A wrong draw or wrong amounts never fault an account, so
+only the auditors' refusal stops such a root, and the failed run is the alert.
+
+The timer runs at half past each hour, half an hour from the pool watcher, so
+the two rarely send at once. If they do, one send can fail on its nonce. That
+run fails, and the next run repeats it.

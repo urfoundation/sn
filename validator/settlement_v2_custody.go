@@ -93,12 +93,12 @@ type settlementV2AuditFault struct {
 }
 
 // observe records an audit's finding at the pinned block.
-func (self *settlementV2AuditRecord) observe(block uint64, res *ledger.Result) {
-	self.Block, self.Check, self.Error, self.Missing, self.Faults = block, res.Check.String(), "", nil, settlementV2AuditFaults(res.Faults)
-	if res.Err != nil {
-		self.Error = res.Err.Error()
+func (self *settlementV2AuditRecord) observe(block uint64, res *settlementV2Finding) {
+	self.Block, self.Check, self.Error, self.Missing, self.Faults = block, res.check, "", nil, settlementV2AuditFaults(res.faults)
+	if res.err != nil {
+		self.Error = res.err.Error()
 	}
-	for _, ref := range res.Missing {
+	for _, ref := range res.missing {
 		self.Missing = append(self.Missing, ref.String())
 	}
 }
@@ -230,18 +230,19 @@ func (self *settlementV2Custody) auditRecord(noID uint64, pending stabi.ISTSettl
 
 // accounts returns a finalized root's accounts and their tree from custody
 // alone, or nil when custody does not hold every object of the root or they
-// do not rebuild it.
-func (self *settlementV2Custody) accounts(ctx context.Context, root ledger.Root) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
+// do not rebuild it. headerAccounts names the account chunks of the pool's
+// header.
+func (self *settlementV2Custody) accounts(ctx context.Context, root ledger.Root, headerAccounts func([]byte) ([]ledger.Ref, error)) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
 	data, ok, err := self.Object(ctx, root.LedgerHash)
 	if err != nil || !ok {
 		return nil, nil, err
 	}
-	header, err := ledger.DecodeHeader(data)
+	refs, err := headerAccounts(data)
 	if err != nil {
 		return nil, nil, nil
 	}
-	chunks := make([][]byte, len(header.Accounts))
-	for j, ref := range header.Accounts {
+	chunks := make([][]byte, len(refs))
+	for j, ref := range refs {
 		if chunks[j], ok, err = self.Object(ctx, ref); err != nil || !ok {
 			return nil, nil, err
 		}

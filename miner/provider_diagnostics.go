@@ -57,6 +57,14 @@ type providerExtenderObservation struct {
 	ActivatedV6      bool `json:"activated_v6"`
 	ActivationFailed bool `json:"activation_failed"`
 	Revoked          bool `json:"revoked"`
+	// Why the extender is off or unpublished, one of the closed reasons of
+	// extender_standing.go (tcp_443_permission_denied, tcp_443_in_use,
+	// tcp_443_bind_failed, unreachable_on_tcp_443); the record's guidance
+	// says the fix. Empty while nothing is wrong.
+	Reason string `json:"reason,omitempty"`
+	// the router port mapping's state, the sdk's fixed set (off, not_needed,
+	// mapping, mapped, failed), never its reason (connect/EXTENDER.md S10)
+	PortMapping string `json:"port_mapping,omitempty"`
 }
 
 // Optional operational delivery evidence is independent of status=ok, which
@@ -135,6 +143,12 @@ func (self *providerDiagnostics) observe(event providerDiagnosticEvent, provider
 // observeFile records an event that names a local file, such as the file a
 // rejected network sign-in was set aside as. A path is no credential.
 func (self *providerDiagnostics) observeFile(event providerDiagnosticEvent, provider uint64, known bool, err error, retry time.Duration, extender *providerExtenderObservation, file string) {
+	self.observeGuided(event, provider, known, err, retry, extender, file, "")
+}
+
+// observeGuided records an event with one more guidance sentence, such as
+// the fix for an extender that can't bind tcp 443, after the event's own.
+func (self *providerDiagnostics) observeGuided(event providerDiagnosticEvent, provider uint64, known bool, err error, retry time.Duration, extender *providerExtenderObservation, file string, extraGuidance string) {
 	if self == nil {
 		return
 	}
@@ -211,6 +225,12 @@ func (self *providerDiagnostics) observeFile(event providerDiagnosticEvent, prov
 	}
 	if event == providerContractCaptureRequired {
 		guidance = "Restore the approved original contract profile, provider key and prepared source custody. Supply --original-contract-capture and --original-contract-capture-sha256. See miner/PROVIDER-WHOLE-WORK.md."
+	}
+	if extraGuidance != "" {
+		if guidance != "" {
+			guidance += " "
+		}
+		guidance += extraGuidance
 	}
 	record := struct {
 		Schema        string                       `json:"schema"`

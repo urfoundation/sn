@@ -1,9 +1,11 @@
 // The settlement v2 end-to-end chain (VERSION2-FINAL.md §15, "End-to-end in
 // Go"): exact creation bytecode runs in geth's EVM over a StateDB, beside Go
 // fakes of runtime 475's neuron (0x804), staking (0x805) and alpha (0x808)
-// precompiles. Stake lives in the StateDB journal, so a Solidity revert rolls
-// a runtime move back exactly. geth hands a precompile no caller, so a tracer
-// OnEnter hook attributes each runtime call to its contract's mapped coldkey.
+// precompiles, and of its address mapping (0x80c) and its Ed25519 (0x402)
+// and sr25519 (0x403) signature checks, which verify for real. Stake lives in
+// the StateDB journal, so a Solidity revert rolls a runtime move back
+// exactly. geth hands a precompile no caller, so a tracer OnEnter hook
+// attributes each runtime call to its contract's mapped coldkey.
 // The chain serves the JSON-RPC the claim daemon, snclaim, the operator server
 // and the validator read, with EIP-1898 block selectors and the native
 // genesis hash. Every mined block is final at once; blocks without
@@ -13,6 +15,7 @@ package main
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,6 +30,7 @@ import (
 	"sync"
 	"testing"
 
+	schnorrkel "github.com/ChainSafe/go-schnorrkel"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -67,6 +71,11 @@ var (
 	e2eNeuron  = common.HexToAddress("0x0000000000000000000000000000000000000804")
 	e2eStaking = common.HexToAddress("0x0000000000000000000000000000000000000805")
 	e2eAlpha   = common.HexToAddress("0x0000000000000000000000000000000000000808")
+	// The runtime's address mapping, which STCtfCarry reads its coldkey from,
+	// and the signature checks a fleet binding's signatures pass.
+	e2eAddressMapping = common.HexToAddress("0x000000000000000000000000000000000000080c")
+	e2eEd25519        = common.HexToAddress("0x0000000000000000000000000000000000000402")
+	e2eSr25519        = common.HexToAddress("0x0000000000000000000000000000000000000403")
 )
 
 // The precompile surface the contracts call, with the gas the R battery
@@ -79,7 +88,9 @@ var e2eRuntimeABI = func() abi.ABI {
 {"type":"function","name":"transferStake","stateMutability":"nonpayable","inputs":[{"name":"destinationColdkey","type":"bytes32"},{"name":"hotkey","type":"bytes32"},{"name":"originNetuid","type":"uint256"},{"name":"destinationNetuid","type":"uint256"},{"name":"amount","type":"uint256"}],"outputs":[]},
 {"type":"function","name":"registerLimit","stateMutability":"payable","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"},{"name":"limitPrice","type":"uint64"}],"outputs":[]},
 {"type":"function","name":"getUid","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}]},
-{"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]}
+{"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]},
+{"type":"function","name":"addressMapping","stateMutability":"view","inputs":[{"name":"target","type":"address"}],"outputs":[{"name":"","type":"bytes32"}]},
+{"type":"function","name":"verify","stateMutability":"pure","inputs":[{"name":"message","type":"bytes32"},{"name":"publicKey","type":"bytes32"},{"name":"r","type":"bytes32"},{"name":"s","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]}
 ]`))
 	if err != nil {
 		panic(err)
@@ -90,6 +101,10 @@ var e2eRuntimeABI = func() abi.ABI {
 var e2eRuntimeGas = map[string]uint64{
 	"getStake": 4_748, "getMinerCollateral": 1_013, "moveStake": 81_753, "transferStake": 79_321,
 	"registerLimit": 1_409_550, "getUid": 995, "getAlphaPrice": 1_000,
+	// Not measured by the R battery: the runtime's Ed25519 and sr25519
+	// checks charge a 6,000 base, and its address mapping charges nothing of
+	// its own.
+	"addressMapping": 0, "verify": 6_000,
 }
 
 // Runtime 475 charges a dispatch's actual weight but admits it only if the gas
@@ -340,12 +355,51 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 		}
 		uid, exists := rt.uid(args[1].([32]byte))
 		return method.Outputs.Pack(exists, uid)
+	case "addressMapping":
+		return method.Outputs.Pack(ss58.EvmMirrorPubkey(args[0].(common.Address)))
+	case "verify":
+		// The runtime checks the 32-byte message as signed: Ed25519 at 0x402,
+		// whose key must decode as a curve point or the call fails, and
+		// sr25519 at 0x403 in the substrate signing context, where a key or
+		// signature that does not decode is only an invalid signature.
+		message, key, r, s := args[0].([32]byte), args[1].([32]byte), args[2].([32]byte), args[3].([32]byte)
+		signature := append(r[:], s[:]...)
+		if self.address == e2eEd25519 {
+			if !e2eEdwardsPoint(key) {
+				return nil, errors.New("Public key recover failed")
+			}
+			return method.Outputs.Pack(ed25519.Verify(key[:], message[:], signature))
+		}
+		var public schnorrkel.PublicKey
+		var decoded schnorrkel.Signature
+		if errors.Join(public.Decode(key), decoded.Decode([64]byte(signature))) != nil {
+			return method.Outputs.Pack(false)
+		}
+		valid, err := public.Verify(&decoded, schnorrkel.NewSigningContext([]byte("substrate"), message[:]))
+		return method.Outputs.Pack(valid && err == nil)
 	default: // getAlphaPrice
 		if err := netuid(args[0]); err != nil {
 			return nil, err
 		}
 		return method.Outputs.Pack(rt.price())
 	}
+}
+
+// e2eEdwardsPoint reports whether key decodes as an Ed25519 curve point, as
+// the runtime's VerifyingKey::try_from requires: its y, the sign bit cleared
+// and reduced mod p = 2^255 − 19, has an x with x² = (y² − 1) / (d·y² + 1).
+func e2eEdwardsPoint(key [32]byte) bool {
+	p := new(big.Int).Sub(new(big.Int).Lsh(common.Big1, 255), big.NewInt(19))
+	encoded := key
+	encoded[31] &= 0x7f
+	slices.Reverse(encoded[:])
+	y := new(big.Int).Mod(new(big.Int).SetBytes(encoded[:]), p)
+	d := new(big.Int).Mul(big.NewInt(-121665), new(big.Int).ModInverse(big.NewInt(121666), p))
+	y2 := new(big.Int).Mul(y, y)
+	u := new(big.Int).Mod(new(big.Int).Sub(y2, common.Big1), p)
+	v := new(big.Int).Mod(new(big.Int).Add(new(big.Int).Mul(d, y2), common.Big1), p)
+	x2 := new(big.Int).Mod(new(big.Int).Mul(u, new(big.Int).ModInverse(v, p)), p)
+	return x2.Sign() == 0 || new(big.Int).Exp(x2, new(big.Int).Rsh(new(big.Int).Sub(p, common.Big1), 1), p).Cmp(common.Big1) == 0
 }
 
 // e2eBlock is a block with a state change; virtual blocks between two of
@@ -404,7 +458,7 @@ func newE2EChain(t testing.TB, funded map[common.Address]*big.Int) *e2eChain {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []common.Address{e2eNeuron, e2eStaking, e2eAlpha} {
+	for _, address := range []common.Address{e2eNeuron, e2eStaking, e2eAlpha, e2eAddressMapping, e2eEd25519, e2eSr25519} {
 		db.SetCode(address, []byte{byte(vm.STOP)}, tracing.CodeChangeUnspecified)
 	}
 	// Price 1 TAO per alpha until a test sets another.
@@ -450,6 +504,9 @@ func (self *e2eChain) evmLocked(db *state.StateDB, number uint64, call bool) *vm
 	precompiles[e2eNeuron] = &e2ePrecompile{runtime: &self.runtime, address: e2eNeuron, methods: []string{"registerLimit", "getUid"}}
 	precompiles[e2eStaking] = &e2ePrecompile{runtime: &self.runtime, address: e2eStaking, methods: []string{"getStake", "getMinerCollateral", "moveStake", "transferStake"}}
 	precompiles[e2eAlpha] = &e2ePrecompile{runtime: &self.runtime, address: e2eAlpha, methods: []string{"getAlphaPrice"}}
+	precompiles[e2eAddressMapping] = &e2ePrecompile{runtime: &self.runtime, address: e2eAddressMapping, methods: []string{"addressMapping"}}
+	precompiles[e2eEd25519] = &e2ePrecompile{runtime: &self.runtime, address: e2eEd25519, methods: []string{"verify"}}
+	precompiles[e2eSr25519] = &e2ePrecompile{runtime: &self.runtime, address: e2eSr25519, methods: []string{"verify"}}
 	evm.SetPrecompiles(precompiles)
 	self.runtime.db = db
 	return evm

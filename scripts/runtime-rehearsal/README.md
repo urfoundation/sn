@@ -702,3 +702,126 @@ closed it at one boundary. Then, in order:
 
 Every refusal R-8 names reverted with its own error on the runtime.
 
+## Capture the flag (R-9)
+
+Capture the flag adds a second vault2 pool for each network operator, the CTF
+pool `2^32 + n`. It comes through an upgrade of `STSettlement2` to
+`STSettlement2Ctf`, and an immutable, ownerless carry contract,
+`STCtfCarry`, returns each root's pots to the pool (`CAPTURETHEFLAG.md` §3.1,
+§4.6). §4.6 requires the carry to pass the same runtime qualification as
+vault2's own moves, and the deployment plan puts that rehearsal ahead of the
+timelock operation (§11.2). `TestR9CaptureTheFlag` (`rehearsal/r9_ctf_test.go`)
+is that case.
+
+**R-9 has not been run, and no result is recorded here.** It was written on
+2026-11-11 without a node. It compiles and passes
+`go vet -tags runtime_rehearsal ./rehearsal/`. It must pass on a node built,
+as above, from the reviewed source of the runtime mainnet then runs, and its
+results must be recorded in this section. Both have to happen before anyone
+creates the carry contract, and before the Safe schedules the timelock
+operation that upgrades `STSettlement2` and registers UR's CTF pool.
+
+```sh
+RUNTIME_REHEARSAL_NODE=/path/to/target/release/node-subtensor \
+  go test -tags runtime_rehearsal -count=1 -v -timeout=90m -run '^TestR9CaptureTheFlag$' ./rehearsal/
+```
+
+The R battery's package command runs it too, on its own node.
+
+The stack is the R battery's, with two v1 operators, of which only operator 1
+has a provider pool. Every epoch from 1 has the 14,410-block cadence, so the
+CTF pool's first epoch is 1. As on mainnet, a root committed in an epoch's
+window finalizes before the next epoch ends, so each carry cycle returns
+before the next close. Epochs stop (tempo 0). The case seals about 43,500
+blocks: epochs 0 to 2 and the second root's challenge window. At the sealing
+rate recorded above, that is about six minutes. Its subtests run in this
+order:
+
+1. **upgrade** (epoch 0). Phase C is installed as R-8 installs it. A relayer
+   then creates `STSettlement2Ctf` through the deterministic deployment
+   proxy's exact code. The owner, standing in for the timelock, sends the
+   folded call,
+   `upgradeToAndCall(implementation, registerCtfPool(1, maximumBurn, 1))`,
+   with the burn ceiling as its value. The case checks that:
+   - a stranger's identical call is refused (`OwnableUnauthorizedAccount`),
+     and so is the implementation's own `initialize`;
+   - slots 0 to 50 are kept, and the ERC-1967 slot names the new
+     implementation;
+   - vault2 registers pool 4,294,967,297 from epoch 1, under a hotkey whose
+     UID vault2's coldkey owns;
+   - the hotkey is `keccak256(abi.encode(proxy, 2^32 + 1, block, parent))`,
+     where `parent` is the hash that `eth_getBlockByNumber` reports for the
+     previous block. This qualifies `BLOCKHASH` on the runtime. A hotkey
+     derived from a zero parent fails the case with `BLOCKHASH RETURNED ZERO`,
+     and one derived from the Substrate parent hash also fails it;
+   - the owner pays at most the burn read before the call and gets the rest
+     of the ceiling back, while vault2's account and the proxy's stay
+     unchanged;
+   - `ctfPoolId`, `ctfSettlementAt` and `settlementAt` resolve the pool; and
+   - `registerCtfPool` is refused for operator 2, which has no provider pool
+     (`UnknownPool`), and for operator 1 a second time (vault2's
+     `InvalidConfiguration`).
+2. **census** (the end of epoch 1). Operator 1's root signer commits epoch
+   1's census hash once, inside `[end(1), end(1) + window/2]`. A commitment
+   before the window is refused (`InvalidWindow`), and so is a second one
+   (`CensusAlreadyCommitted`). `ctfCensus` reads the hash and the block,
+   which also sit in slot 51's mapping. After the CTF pool's root is
+   committed, a census past the window is refused (`InvalidWindow`).
+3. **carry** (§4.6, "Qualifying it"). Emission reaches the CTF pool hotkey
+   during epoch 1, and the pool's close captures it. Its root pays four
+   fifths to the carry contract's coldkey and the rest to a winner. The root
+   names that coldkey before the contract exists, from its CREATE2 address.
+   Anyone then creates `STCtfCarry` through the same proxy. Its constructor
+   reads its `coldkey()` from the runtime's 0x080c address mapping, and that
+   must equal the mirror of its address. The carry refuses another account
+   (`InvalidColdkey`) and a recycle with nothing held (`NothingToRecycle`).
+   Once the root finalizes, a stranger's `recycle` claims the account. The
+   case requires that:
+   - vault2's `Claimed` pays the carry's coldkey, with the carry as caller;
+   - the carry holds nothing afterwards, on the escrow hotkey or the pool
+     hotkey;
+   - vault2's position on the pool hotkey grows by the `Recycled` amount,
+     recorded in `recycledFor(2)` and within 2 rao of the claimed amount; and
+   - epoch 2's close captures the returned stake with that epoch's emission,
+     and conservation holds throughout.
+4. **staking-hotkey list** (§4.6, an open question about the carry). Root 2
+   grows the carry's account. Third parties then fill the carry coldkey's
+   `StakingHotkeys` list to 128 entries, as R-3 filled vault2's: each stakes
+   on a hotkey of its own and transfers that position to the carry's
+   coldkey. After that, anyone tries the carry's next claim through
+   `recycle`. The outcome is logged, not required. A refusal must leave
+   vault2's `claimed` watermark unchanged, and the case names the runtime's
+   reason for it. The case fails only if that reason is not the list.
+
+It logs:
+
+- the gas of each creation, and the runtime size of both implementations
+  and of the carry;
+- the gas of both upgrades, the folded call's calldata size, the UID, and the
+  burn and refund;
+- the derived hotkey, its block and the parent hash;
+- the census commitment's gas, least gas limit and `eth_estimateGas` limit;
+- `recycle`'s gas, least gas limit and `eth_estimateGas` limit, and the rao
+  it lost to rounding;
+- each close's capture and its gas;
+- the carry coldkey's and vault2's `StakingHotkeys` lists before and after
+  the recycle, including whether the escrow hotkey stays on the carry's list
+  once its position is moved away; and
+- the outcome of the fill and of the second claim.
+
+Runtime 486's source predicts a refusal in step 4:
+
+- A transfer from another coldkey can add a hotkey to a list only while the
+  list holds fewer than 128 entries. Otherwise the transfer fails with
+  `TooManyStakingHotkeys` (`ensure_third_party_staking_hotkeys_can_grow` in
+  `pallets/subtensor/src/staking/stake_utils.rs`).
+- A position withdrawn in full loses its entry
+  (`maybe_remove_staking_hotkey`), because 486's share pool zeroes the dust
+  that a full withdrawal leaves (`primitives/share-pool/src/lib.rs`).
+- `recycle` moves everything, so afterwards the escrow hotkey should be off
+  the carry's list.
+
+The carry has no entry point that moves stake off another hotkey. A refusal
+would therefore last for as long as the third parties' positions do. The
+carry is immutable, so this result has to be weighed before the carry is
+created.
