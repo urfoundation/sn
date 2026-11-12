@@ -25,6 +25,9 @@ package api
 //     balance, and every ss58 address encodes its coldkey;
 //   - no default win is claimed without a draw: the draw figures are null
 //     together when last epoch had none;
+//   - a client answer's wins agree with themselves and its epochs: each
+//     amount is its slot and pot share, newest first, a win of a pending
+//     root never claimed, and every win of the epochs it lists listed;
 //   - the ledger route keeps every field connect/api/bringyour.yml gives it,
 //     and no route operator.yml owns is listed there, when the connect
 //     checkout is beside this one. Once bringyour.yml describes `kind`, it
@@ -34,6 +37,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -763,7 +767,7 @@ func TestOperatorExampleArithmetic(t *testing.T) {
 		if answer["awards"] != nil {
 			checkEpoch(t, answer)
 		}
-		if answer["client_id"] != nil {
+		if _, ok := answer["wins"]; ok {
 			checkClient(t, answer)
 		}
 	}
@@ -1076,8 +1080,15 @@ func checkEpoch(t *testing.T, answer map[string]any) {
 	}
 }
 
+// checkClient holds a GET /sn/ctf/client answer to its rules: each role's
+// fields agree with whether it won, and the wins agree with themselves and with
+// the epochs.
 func checkClient(t *testing.T, answer map[string]any) {
 	t.Helper()
+	if answer["client_id"] == nil && len(asSlice(answer["epochs"])) != 0 {
+		t.Errorf("client: a network's answer, with no client_id, has epochs")
+	}
+	checkWins(t, answer)
 	for _, epoch := range asSlice(answer["epochs"]) {
 		epoch := asMap(epoch)
 		for _, name := range []string{"providers", "extenders"} {
@@ -1100,6 +1111,63 @@ func checkClient(t *testing.T, answer map[string]any) {
 			}
 			if won && role["candidate"] != true {
 				t.Errorf("%s: won without being a candidate", where)
+			}
+		}
+	}
+}
+
+// checkWins: each win's amount is its slot and pot share; the wins are newest
+// first, then providers, country and rank; a win whose root is pending is not
+// claimed, never unknown; a client's wins are its own, and in the epochs it
+// lists they are exactly the roles it won there.
+func checkWins(t *testing.T, answer map[string]any) {
+	t.Helper()
+	roleOrder := map[any]int{"provider": 0, "extender": 1}
+	var previous map[string]any
+	listed := map[string]map[string]any{}
+	for i, raw := range asSlice(answer["wins"]) {
+		win := asMap(raw)
+		where := fmt.Sprintf("client win %d (epoch %v %v %v rank %v)", i, win["epoch"], win["role"], win["country"], win["rank"])
+		if raoOf(t, win["amount"]) != raoOf(t, win["slot"])+raoOf(t, win["pot_share"]) {
+			t.Errorf("%s: amount is not slot + pot_share", where)
+		}
+		if win["root_status"] == "pending" && win["claimed"] != false {
+			t.Errorf("%s: a win of a pending root is claimed %v, want false", where, win["claimed"])
+		}
+		if client := answer["client_id"]; client != nil && win["client_id"] != client {
+			t.Errorf("%s: client %v in the answer of client %v", where, win["client_id"], client)
+		}
+		if previous != nil {
+			order := cmp.Or(
+				cmp.Compare(intOf(t, previous["epoch"]), intOf(t, win["epoch"]))*-1,
+				cmp.Compare(roleOrder[previous["role"]], roleOrder[win["role"]]),
+				cmp.Compare(previous["country"].(string), win["country"].(string)),
+				cmp.Compare(intOf(t, previous["rank"]), intOf(t, win["rank"])),
+			)
+			if order >= 0 {
+				t.Errorf("%s: not after the win before it, newest first", where)
+			}
+		}
+		previous = win
+		listed[fmt.Sprintf("%v/%v", win["epoch"], win["role"])] = win
+	}
+	for _, raw := range asSlice(answer["epochs"]) {
+		epoch := asMap(raw)
+		for name, role := range map[string]string{"providers": "provider", "extenders": "extender"} {
+			state := asMap(epoch[name])
+			win := listed[fmt.Sprintf("%v/%s", epoch["epoch"], role)]
+			where := fmt.Sprintf("client epoch %v %s", epoch["epoch"], name)
+			if (state["won"] == true) != (win != nil) {
+				t.Errorf("%s: won %v, with a win listed %v: every win of the listed epochs is listed", where, state["won"], win != nil)
+				continue
+			}
+			if win == nil {
+				continue
+			}
+			if win["country"] != state["country"] || !jsonEqual(win["rank"], state["rank"]) || !reflect.DeepEqual(win["slot"], state["slot"]) ||
+				!reflect.DeepEqual(win["pot_share"], state["pot_share"]) || win["pending"] != state["pending"] || win["coldkey"] != state["coldkey"] ||
+				win["root_status"] != epoch["root_status"] {
+				t.Errorf("%s: the win %v is not the role %v", where, win, state)
 			}
 		}
 	}
