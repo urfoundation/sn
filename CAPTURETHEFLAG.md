@@ -259,10 +259,9 @@ would still need a home.
 A winner is paid to the coldkey that the provider rows' wallet selection gives its client. That is the
 client's own consent, else its network's, else a hotkey delegation (§8.2, E4), from the signed provider roster
 when one is configured. A client outside that roster, such as one that only runs an extender, then has no
-wallet, as in the provider rows. Payout consents name the NO
-(`ClientKeyHistoryDomain.NoID`), not a vault2 pool. So one consent covers both of NO `n`'s pools, and no
-miner signs anything new. The same coldkey then holds one account in each pool and makes one claim per pool,
-or one batched claim for both (§10).
+wallet, as in the provider rows. Payout consents name the NO (`ClientKeyHistoryDomain.NoID`), not a vault2
+pool. So one consent covers both of NO `n`'s pools, and no miner signs anything new. The same coldkey then
+holds one account in each pool and makes one claim per pool, or one batched claim for both (§10).
 
 ### 3.3 Settlement
 
@@ -389,8 +388,8 @@ census header (JSON):   {"schema":"urnetwork-ctf-census-v1","no_id":N,"pool_id":
 - **Rows** are in chunks of 131,072.
 - **`excluded`** names an object of counts by country at `end(k)` (`zz` for none), role and reason. Each member
   the census left out is counted once, under the lowest‑numbered reason that excludes it: 1 revoked or
-  inactive, 2 not online at the end, 3 not Public, 4 no valid location (a member with no unit counts here), 5
-  own network, 6 head‑bound, 7 no wallet, 8 duplicate address, 9 country changed, 10 too little presence.
+  inactive, 2 not online at the end, 3 not Public, 4 no valid location (a member with no unit counts here),
+  5 own network, 6 head‑bound, 7 no wallet, 8 duplicate address, 9 country changed, 10 too little presence.
   Reasons 9 and 10 are therefore the near misses (§9.1). It holds counts only, in 8‑byte rows.
 - **No coldkeys and no addresses** are in the census.
 - **The commitment.** Within 600 blocks of `end(k)` the root signer commits `censusHash = sha256(census
@@ -488,10 +487,10 @@ O_k      = Σ pots + Σ pending awards                                  what the
     short of the return made `F_k` negative. A shortfall the funding cannot cover is now taken from the pots,
     the largest first: at most a few rao. Only once every pot is empty does it come from the pending awards,
     which are then paid that much short.
-  - **The tolerance is 8 rao, two cycles' rounding, not 4.** With one cycle's rounding (§4.6) the residual
-    could not clear: a partial return leaves the rounding of several cycles owed, a late root's return and
-    the next one's can come back in one epoch, and whatever stays owed at a root's end is owed again by the
-    next. At the bound of 4 rao a cycle the residual never shrank, and pending awards piled up for good. With
+  - **The tolerance is 8 rao, two cycles' rounding, not 4.** With one cycle's rounding (§4.6) what rounding
+    left owed could not clear: a partial return leaves the rounding of several cycles owed, a late root's
+    return and the next one's can come back in one epoch, and whatever stays owed at a root's end is owed
+    again by the next. At the bound of 4 rao a cycle it never shrank, and pending awards piled up for good. With
     8, and a partial return writing off as much, the rounding left owed shrinks by at least 4 rao with every
     single return and never grows with two.
   - A write‑off that comes back later counts as fresh. In every case the deltas sum to the funding.
@@ -653,12 +652,12 @@ amounts would still pay, but the pots and pending awards would never return. The
   vault2's `claimed` of the carry account. No residual (`residual()` or the position is 0, or `recycle`
   reverts `ResidualMissing`) means a `seed()`, which the driver does not send, since it costs TAO: it alerts
   (`ctf_carry_residual`) with the TAO a seed needs, and while the carry account is still to claim it waits,
-  retrying hourly. vault2's
-  list at 128 without the pool hotkey means waiting a tempo, or `absorbStake` of a foreign SN25 entry worth
-  the floor. With no claim due, a surplus above the residual worth less than the runtime's transfer floor
-  waits for the next root's claim, which moves it along. A reservation, if a coldkey were not a hotkey
-  account, means waiting. Every case leaves the carry account claimable. The driver recycles as soon as a root
-  is final, so a claim of the carry account by anyone else waits on the escrow hotkey only until then.
+  retrying hourly. vault2's list at 128 without the pool hotkey means waiting a tempo, or `absorbStake` of a
+  foreign SN25 entry worth the floor. With no claim due, a surplus above the residual worth less than the
+  runtime's transfer floor waits for the next root's claim, which moves it along. A reservation, if a coldkey
+  were not a hotkey account, means waiting. Every case leaves the carry account claimable. The driver
+  recycles as soon as a root is final, so a claim of the carry account by anyone else waits on the escrow
+  hotkey only until then.
 - **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R-9
   (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)") covers, on the
   live runtime, a creation that stakes its seed from the constructor and sets the opt‑outs over a list
@@ -859,7 +858,7 @@ and approves nothing that does not reproduce exactly:
 
 **Attested and not checkable**, as for the extender census: presence, the checks behind P1 and X1, the
 countries, units and address dedupe, the wallets, and the declared networks. A failed component is refused
-and rebuilt only on the operator's explicit command.
+and rebuilt only on the operator's explicit act, by hand today (§5).
 
 **What anyone can check.** `snclaim v2 check --no_id 4294967297` runs the same audit from the published
 objects, and UR's watcher runs it beside the provider pool's (the example units
@@ -935,7 +934,8 @@ brief:
 require: `*`, or the request's own origin for the operator's own sites, which the load balancer answers for
 (vault `services.yml`'s `cors_origins`). The cacheable CTF answers carry a strong `ETag` (304 on
 `If-None-Match`) and `Last-Modified`, which is `as_of`: their data changes only when an epoch starts, a
-census or root is committed, or a root is finalized.
+census or root is committed, or a root is finalized. `/sn/ctf/client` also changes, with its `ETag` but not
+its `as_of`, when one of its wins is claimed.
 
 **"Last epoch" and "this epoch".** "Paid last epoch" is the latest epoch with a committed CTF root: its
 winners per country and role. Its root may still be pending, and the status says so. "Carried into this
