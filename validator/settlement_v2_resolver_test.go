@@ -122,7 +122,7 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 	case self.addresses.Settlement:
 		metadata = &stabi.STSettlement2MetaData
 	case self.carry.address:
-		metadata = &settlementV2CtfCarryMetaData
+		metadata = &stabi.STCtfCarryMetaData
 	default:
 		return self.releaseDecisionV2TestFixture.Call(ctx, call, selector)
 	}
@@ -140,17 +140,6 @@ func (self *settlementV2ResolverTestFixture) Call(ctx context.Context, call map[
 		return nil, errors.Join(errors.New("settlement v2 test block or ABI is unknown"), err)
 	}
 	method, err := contractABI.MethodById(call["input"])
-	for _, upgrade := range []*bind.MetaData{&releaseCtfSettlementMetaData, &settlementV2CtfCensusMetaData} {
-		// STSettlement2Ctf's views, which the upgrade adds.
-		if err == nil || metadata != &stabi.STSettlement2MetaData {
-			break
-		}
-		ctfABI, ctfErr := upgrade.ParseABI()
-		if ctfErr != nil {
-			return nil, ctfErr
-		}
-		method, err = ctfABI.MethodById(call["input"])
-	}
 	if err != nil {
 		return nil, err
 	}

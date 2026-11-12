@@ -103,10 +103,6 @@ func (self *ChainClient) releasePoolHotkeyContext(ctx context.Context, v2 Settle
 	return pool.Hotkey, nil
 }
 
-// releaseCtfSettlementMetaData is STSettlement2Ctf's ctfSettlementAt view
-// (CAPTURETHEFLAG.md §3.1), which the upgrade adds to STSettlement2.
-var releaseCtfSettlementMetaData = bind.MetaData{ABI: `[{"type":"function","name":"ctfSettlementAt","inputs":[{"name":"noId","type":"uint256","internalType":"uint256"},{"name":"epoch","type":"uint256","internalType":"uint256"}],"outputs":[{"name":"vault_","type":"address","internalType":"address"},{"name":"hotkey","type":"bytes32","internalType":"bytes32"},{"name":"firstEpoch","type":"uint64","internalType":"uint64"}],"stateMutability":"view"}]`}
-
 // releaseCtfPoolHotkeyContext returns the hotkey of operator noID's CTF pool,
 // vault2 pool 2^32 + noID, for epoch, and false when it has none: no settlement
 // v2, an operator id with no CTF pool id, a CTF pool vault2 does not hold, or
@@ -132,7 +128,7 @@ func (self *ChainClient) releaseCtfPoolHotkeyContext(ctx context.Context, v2 Set
 	if !pool.Registered || epoch < pool.FirstEpoch {
 		return [32]byte{}, false, nil
 	}
-	values, err = self.settlementV2ViewAtHashContext(ctx, v2.Settlement, &releaseCtfSettlementMetaData, "ctfSettlementAt", []any{new(big.Int).SetUint64(noID), new(big.Int).SetUint64(epoch)}, block, blockHash)
+	values, err = self.settlementV2ViewAtHashContext(ctx, v2.Settlement, &stabi.STSettlement2MetaData, "ctfSettlementAt", []any{new(big.Int).SetUint64(noID), new(big.Int).SetUint64(epoch)}, block, blockHash)
 	if err != nil {
 		return [32]byte{}, false, fmt.Errorf("no_id %d epoch %d ctfSettlementAt: %w", noID, epoch, err)
 	}

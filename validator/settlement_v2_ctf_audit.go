@@ -61,6 +61,7 @@ import (
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ctf"
 	"github.com/urfoundation/sn/ledger"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // DefaultDrandURL is the drand relay `validator run` reads quicknet's pulses
@@ -134,18 +135,6 @@ func (self *settlementV2Audit) verifyCtf(ctx context.Context, pool settlementV2A
 	return &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}, nil
 }
 
-// settlementV2CtfViews are the capture the flag views the audit calls:
-// STSettlement2Ctf's ctfCensus, and STCtfCarry's coldkey, vault, poolId and
-// recycledFor (CAPTURETHEFLAG.md §3.1, §4.6).
-var (
-	settlementV2CtfCensusMetaData = bind.MetaData{ABI: `[{"type":"function","name":"ctfCensus","inputs":[{"name":"noId","type":"uint256","internalType":"uint256"},{"name":"epoch","type":"uint256","internalType":"uint256"}],"outputs":[{"name":"censusHash","type":"bytes32","internalType":"bytes32"},{"name":"blockNumber","type":"uint64","internalType":"uint64"}],"stateMutability":"view"}]`}
-	settlementV2CtfCarryMetaData  = bind.MetaData{ABI: `[
-{"type":"function","name":"coldkey","inputs":[],"outputs":[{"name":"","type":"bytes32","internalType":"bytes32"}],"stateMutability":"view"},
-{"type":"function","name":"vault","inputs":[],"outputs":[{"name":"","type":"address","internalType":"address"}],"stateMutability":"view"},
-{"type":"function","name":"poolId","inputs":[],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"view"},
-{"type":"function","name":"recycledFor","inputs":[{"name":"epoch","type":"uint256","internalType":"uint256"}],"outputs":[{"name":"","type":"uint256","internalType":"uint256"}],"stateMutability":"view"}]`}
-)
-
 // settlementV2CtfChain is the production settlementV2CtfReader.
 type settlementV2CtfChain struct {
 	chain      *ChainClient
@@ -205,18 +194,18 @@ func (self *settlementV2CtfChain) ctfInput(ctx context.Context, state *settlemen
 		}
 		return values, nil
 	}
-	vault, err := view(carry, &settlementV2CtfCarryMetaData, "vault")
+	vault, err := view(carry, &stabi.STCtfCarryMetaData, "vault")
 	if err != nil {
 		return nil, err
 	}
-	pool, err := view(carry, &settlementV2CtfCarryMetaData, "poolId")
+	pool, err := view(carry, &stabi.STCtfCarryMetaData, "poolId")
 	if err != nil {
 		return nil, err
 	}
 	if vault[0].(common.Address) != self.vault || pool[0].(*big.Int).Cmp(new(big.Int).SetUint64(poolID)) != 0 {
 		return nil, fmt.Errorf("carry contract %s serves vault %s pool %s, not vault2 %s pool %d", carry.Hex(), vault[0].(common.Address).Hex(), pool[0].(*big.Int), self.vault.Hex(), poolID)
 	}
-	coldkey, err := view(carry, &settlementV2CtfCarryMetaData, "coldkey")
+	coldkey, err := view(carry, &stabi.STCtfCarryMetaData, "coldkey")
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +221,7 @@ func (self *settlementV2CtfChain) ctfInput(ctx context.Context, state *settlemen
 	}
 	for k := p + 1; k <= pending.Epoch; k++ {
 		epoch := new(big.Int).SetUint64(k)
-		recycled, err := view(carry, &settlementV2CtfCarryMetaData, "recycledFor", epoch)
+		recycled, err := view(carry, &stabi.STCtfCarryMetaData, "recycledFor", epoch)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +238,7 @@ func (self *settlementV2CtfChain) ctfInput(ctx context.Context, state *settlemen
 			return nil, fmt.Errorf("the capture the flag entries of operator %d name another carry contract at epoch %d than at epoch %d: one root cannot be audited against two", noID, k, pending.Epoch)
 		}
 		// Every committed census is drawn as committed, before E_c too.
-		census, err := view(self.settlement, &settlementV2CtfCensusMetaData, "ctfCensus", new(big.Int).SetUint64(noID), epoch)
+		census, err := view(self.settlement, &stabi.STSettlement2MetaData, "ctfCensus", new(big.Int).SetUint64(noID), epoch)
 		if err != nil {
 			return nil, err
 		}

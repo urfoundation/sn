@@ -536,31 +536,28 @@ func TestSettlementV2CtfChainReadsTheAuditFacts(t *testing.T) {
 	}
 }
 
-// The views the validator calls are STSettlement2Ctf's and STCtfCarry's: their
-// selectors are those of the contracts' interface.
+// The views the validator calls are STSettlement2Ctf's and STCtfCarry's, from
+// the contracts' bindings, at the selectors of the contracts' interface.
 func TestCaptureTheFlagViewSelectors(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		metadata  *bind.MetaData
-		method    string
-		signature string
+		metadata *bind.MetaData
+		method   string
+		selector string
 	}{
-		{&releaseCtfSettlementMetaData, "ctfSettlementAt", "ctfSettlementAt(uint256,uint256)"},
-		{&settlementV2CtfCensusMetaData, "ctfCensus", "ctfCensus(uint256,uint256)"},
-		{&settlementV2CtfCarryMetaData, "recycledFor", "recycledFor(uint256)"},
-		{&settlementV2CtfCarryMetaData, "coldkey", "coldkey()"},
-		{&settlementV2CtfCarryMetaData, "vault", "vault()"},
-		{&settlementV2CtfCarryMetaData, "poolId", "poolId()"},
+		{&stabi.STSettlement2MetaData, "ctfSettlementAt", "076882a7"},
+		{&stabi.STSettlement2MetaData, "ctfCensus", "4396736d"},
+		{&stabi.STCtfCarryMetaData, "recycledFor", "02ed4e54"},
+		{&stabi.STCtfCarryMetaData, "coldkey", "6d9f69f2"},
+		{&stabi.STCtfCarryMetaData, "vault", hex.EncodeToString(crypto.Keccak256([]byte("vault()"))[:4])},
+		{&stabi.STCtfCarryMetaData, "poolId", hex.EncodeToString(crypto.Keccak256([]byte("poolId()"))[:4])},
 	} {
 		parsed, err := test.metadata.ParseABI()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, want := parsed.Methods[test.method].ID, crypto.Keccak256([]byte(test.signature))[:4]; !bytes.Equal(got, want) {
-			t.Fatalf("%s selector 0x%x, want 0x%x", test.signature, got, want)
+		if got := hex.EncodeToString(parsed.Methods[test.method].ID); got != test.selector {
+			t.Fatalf("%s selector 0x%s, want 0x%s", test.method, got, test.selector)
 		}
-	}
-	if selector := evmSelector("ctfSettlementAt(uint256,uint256)"); hex.EncodeToString(selector[:]) != "076882a7" {
-		t.Fatalf("ctfSettlementAt selector 0x%x", selector)
 	}
 }
