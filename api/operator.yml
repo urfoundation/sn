@@ -437,9 +437,15 @@ paths:
         - Every coldkey's state is read, those of the newest wins first. An
           answer reads vault2's `claimed` of all its accounts at one finalized
           block, and a value read is used again for up to 25 seconds.
-        - `claimed` is null when the account's state could not be read in the
-          five seconds or so an answer gives it, its ledger or vault2 being
-          unreadable or slow, and when the state disagrees with itself or
+        - When vault2's `claimed` of an account cannot be read again in the
+          five seconds or so an answer gives it, vault2 being unreadable or
+          slow, the answer uses the last value this server read for that
+          account, however old. vault2's `claimed` only grows, so such a value
+          can only show a claimed win as not claimed yet, for a little longer.
+        - `claimed` is null when the account's state could not be read: its
+          ledger could not be read in those five seconds, or vault2's
+          `claimed` could not be read and this server has no earlier value
+          for the account; and when the state disagrees with itself or
           with the win: vault2's `claimed` above the finalized cumulative, the
           server's records not adding up, or the account's cumulative in the
           paying root below the win's own `amount`, which that root pays
@@ -453,7 +459,8 @@ paths:
         with its `ETag`. `claimed` is read from the chain, each account's at
         most every 25 seconds, so the answer and its `ETag` also change when
         an account is claimed, within 25 seconds of the claim's finalized
-        block, while `as_of` stays the time of the capture the flag state.
+        block while vault2 can be read, while `as_of` stays the time of the
+        capture the flag state.
       parameters:
         - $ref: "#/components/parameters/ClientLimit"
         - $ref: "#/components/parameters/IfNoneMatch"
@@ -2892,7 +2899,9 @@ components:
           description: |
             Whether its coldkey's account in the CTF pool has been claimed
             through the root that pays it; null when that could not be read
-            for this answer.
+            for this answer. When vault2 cannot be read again in time, the
+            server's last value read for the account is used, which can only
+            lag: `claimed` only grows.
 
     CtfClientResult:
       type: object
