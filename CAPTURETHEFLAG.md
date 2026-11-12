@@ -1079,15 +1079,25 @@ needed was on the server and in the presentation:
     transaction to the batcher already deployed on mainnet, `0x14174e7c…c41a`, after checking its code
     against the release's. Each item is capped at 2.6M gas or its estimate, whichever is higher, and a batch
     of two is signed at about 3.5M gas, against 2.6M for one claim sent alone. So a batch needs a larger gas
-    balance, in one transaction instead of two. Without a batcher (testnet), or with a gas key that can pay
-    one claim but not the batch, it claims the accounts alone, the largest first. One the gas key then cannot
-    pay for fails `needs_gas` with nothing sent, so it stays claimable. An account a batch did not attempt is
-    then claimed alone.
+    balance, in one transaction instead of two. Without a batcher (testnet) it claims the accounts alone, the
+    largest first. A gas key that cannot pay for the batch of every account sends the batch of the most
+    accounts it can pay for, the largest first, when that is two or more, and claims the others alone, the
+    largest first; of two accounts, it claims the largest alone first. One the gas key then cannot pay for
+    fails `needs_gas` with nothing sent, so it stays claimable: a gas key that can pay for no claim at all
+    sends nothing, and every account fails `needs_gas`. An account a batch did not attempt is then claimed
+    alone.
   - **External wallets** (ur.io's injected wallet, and any external signer of the bindings).
-    `SnLedgerClaimTransactionsForPayer` builds one batch transaction for two or more accounts when the
-    paying wallet can pay for it at the chain's price, read high on purpose. Otherwise it builds the largest
-    account's claim alone, and the others stay claimable (owner decision, 2026‑11‑12).
-    `SnLedgerClaimOutcomesOf` reads what each mined transaction did for each account.
+    `SnLedgerClaimTransactionsForPayer` checks the paying wallet's balance at the chain's price, read high on
+    purpose. A wallet that can pay for every claim gets them all, two or more as one batch transaction.
+    Otherwise it gets the claims of the most accounts it can pay for, the largest first, as one batch when it
+    can be, and the others stay claimable: of two accounts, the largest account's claim alone (owner
+    decision, 2026‑11‑12). A wallet that cannot pay even for the largest account's claim alone gets no
+    transaction (sdk `447ed899`): every account is still claimable with `needs_gas`, and `MaxCostWei` is what
+    that claim alone can cost, the least the wallet must hold. ur.io then sends nothing and does not ask the
+    wallet onto the chain, every account reads Claimable with "Add TAO for gas", and Claim stays for the next
+    try; it reads an older SDK's answer, which still named the largest account's claim, the same way. So, as
+    the device's gas key sends nothing it cannot pay for, the payer form gives a wallet no claim it cannot pay
+    for at that price. `SnLedgerClaimOutcomesOf` reads what each mined transaction did for each account.
   - **The relay's status** is one row per (coldkey, pool), and its top level is the primary coldkey's
     accounts together, so one action claims every pool.
   - **The won‑slot line.** `SnCtfClient` asks `GET /sn/ctf/client` with the device's network credential, as
@@ -1107,7 +1117,7 @@ needed was on the server and in the presentation:
     leaves it out, so no app offers a claim the chain refuses, and the SDK's `AmountTooLow` refusal reads the
     same, never as a failure. With no floor known, the SDK's preflight decides, as before.
   - **Still claimable.** An account the paying key or wallet could not pay for, with nothing sent, stays
-    claimable, never failed.
+    claimable, never failed, with "Add TAO for gas" under it in every app.
   - Apple, Windows, Linux and ur.io drew only the relay's top‑level status, so they gained per‑pool rows, as
     Android already had, and Claim now's sheet has per‑pool rows, as Android's has.
   - **The won‑slot lines.** Every app, ur.io included, shows one line for each slot won and not claimed yet,
