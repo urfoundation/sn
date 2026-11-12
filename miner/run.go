@@ -91,6 +91,7 @@ Usage:
     provider provide --all-operators [--operators-url=<url>] [--operators-refresh=<duration>]
         [--auto-register --hotkey_seed_file=<path> | --hotkey_seed_file=<path>]
         [--port=<port>] [--max-memory=<mem>] [--allow-client-registration]
+        [--no-port-mapping]
         [-v...]
     provider operators [--operators-url=<url>] [-v...]
     provider provide [--port=<port>]
@@ -101,6 +102,7 @@ Usage:
 		[--require-original-contract-capture]
 		[--allow-client-registration | --adopt-legacy-provider-key]
 		[--quarantine-rejected-sign-in]
+        [--no-port-mapping]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
@@ -116,6 +118,7 @@ Usage:
 		[--require-original-contract-capture]
 		[--allow-client-registration | --adopt-legacy-provider-key]
     	[--port=<port>]
+        [--no-port-mapping]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
@@ -287,6 +290,9 @@ Options:
                                      run that reads the live burn economics and quotes the signed extrinsic.
 	--quarantine-rejected-sign-in        When the network rejects the saved sign-in, set it aside and exit 75 so
 	                                     the --all-operators supervisor signs in again and restarts this provider.
+	--no-port-mapping                    Don't ask the router (UPnP, NAT-PMP or PCP) to forward the extender's
+	                                     TCP 443, UDP 443 and UDP 4053 to this device, which the miner does by
+	                                     default behind a router. The same as URNETWORK_PORT_MAPPING=0.
 	--test-egress-source-ip=<source_ip>  Integration-harness-only IPv4 loopback source bound to both
 	                                     platform control and provider exit sockets.
     <coldkey_ss58>                   Subnet claim wallet: an ss58 coldkey address (prefix 42).
@@ -757,6 +763,12 @@ func provideWith(opts docopt.Opts, start bool) {
 	)
 	applyProviderProcessMemory(memoryPlan)
 
+	// the extender's router port mapping is on unless this run or its
+	// environment turns it off (connect/EXTENDER.md S10); the environment is
+	// what every slot and every operator child reads
+	if noPortMapping, _ := opts.Bool("--no-port-mapping"); noPortMapping {
+		os.Setenv(minerPortMappingEnv, "0")
+	}
 	allowClientRegistration, _ := opts.Bool("--allow-client-registration")
 	adoptLegacyProviderKey, _ := opts.Bool("--adopt-legacy-provider-key")
 	// internal: an operator child of provide --all-operators --auto-register
@@ -883,7 +895,9 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	// provider status reads this; it stops before progress closes
 	extenderStandings := newMinerExtenderStandings()
 	extenderBindFix := minerExtenderBindFix()
-	defer startMinerStatusFile(ctx, progress, extenderStandings)()
+	// what the extender slot's router port mapping comes to (S10)
+	portMapping := newMinerPortMappingHolder(minerPortMappingEnabled())
+	defer startMinerStatusFile(ctx, progress, extenderStandings, portMapping)()
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)
 	if err != nil {
 		output.observe(providerStatusFailed, 0, false, err, 0, nil)
@@ -1053,8 +1067,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		observeProviderExtenderIdentity(output, index, keyMaterial.GetExtenderKeySeed())
 		// one line per change, so the activation prints once it settles and
 		// nothing repeats while it holds (connect/EXTENDER.md F3, G3)
-		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(
-			newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix))
+		extenderStatusListener := newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix)
+		if providerRegistrationSlot(proxySettings) == extenderSlot {
+			extenderStatusListener.portMapping = portMapping
+		}
+		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(extenderStatusListener)
 		defer extenderStatusSub.Close()
 
 		select {

@@ -95,10 +95,12 @@ var cliExecutable = func() (string, error) {
 }
 
 // minerServiceEnvironment is the part of this environment the service needs
-// too: extra TLS roots behind an inspecting proxy, and the update settings.
+// too: extra TLS roots behind an inspecting proxy, the update settings, and the
+// extender's router port mapping (connect/EXTENDER.md S10), so
+// URNETWORK_PORT_MAPPING=0 provider service install keeps it off.
 func minerServiceEnvironment() []string {
 	out := []string{}
-	for _, key := range []string{"URNETWORK_CONNECT_EXTRA_ROOT_CA_FILE", "URNETWORK_AUTO_UPDATE", "URNETWORK_UPDATE_URL"} {
+	for _, key := range []string{"URNETWORK_CONNECT_EXTRA_ROOT_CA_FILE", "URNETWORK_AUTO_UPDATE", "URNETWORK_UPDATE_URL", minerPortMappingEnv} {
 		if value := os.Getenv(key); value != "" {
 			out = append(out, key+"="+value)
 		}
