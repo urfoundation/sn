@@ -1,7 +1,7 @@
 # Notice: extenders earn their share only on contracts they can relay
 
-November 11, 2026. All times are UTC. We will update this notice when the
-release has rolled out.
+November 12, 2026. All times are UTC. The network operator's server release
+of November 12 has rolled out.
 
 ## The rule
 
@@ -15,8 +15,8 @@ usage. Only contracts actually relayed through an extender earn that share.
 The network operator counts a connection as relayed by an extender when it
 comes from the extender's address: a client that reaches the platform through
 an extender arrives from that address. Some connections come from an
-extender's address without being relayed. From the network operator's next
-server release, these no longer make the extender a hop:
+extender's address without being relayed. From the network operator's server
+release of November 12, these no longer make the extender a hop:
 
 - **The extender host's own connection.** An extender host is usually a
   provider too, and its provider connection comes from its own address.
@@ -78,9 +78,10 @@ extender hosts' own connections and their own networks' devices.
 
 ## When
 
-- **Contracts created after the network operator's next server release.**
-  The rule is applied when a contract is created, so contracts created before
-  the release keep the hops they were created with until they close.
+- **Contracts created since the network operator's server release of
+  November 12.** The rule is applied when a contract is created, so contracts
+  created before the release keep the hops they were created with until they
+  close.
 
 ## What you need to do
 
@@ -88,4 +89,4 @@ Nothing. Providers and extenders do not need to change anything.
 
 The change is on the [mainnet timeline](https://ur.xyz/mainnet#extender-relay-share).
 It is the network operator's server change
-[ee5c7ca01](https://github.com/urnetwork/server/commit/ee5c7ca010a8f5d4e5662b42ce59ffbf92cc4be2).
+[a83f0883c](https://github.com/urnetwork/server/commit/a83f0883cb11aa6d21b275540192072b8fa2d668).
