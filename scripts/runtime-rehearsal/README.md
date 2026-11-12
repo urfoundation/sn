@@ -713,13 +713,11 @@ vault2's own moves, and the deployment plan puts that rehearsal ahead of the
 timelock operation (§11.2). `TestR9CaptureTheFlag` (`rehearsal/r9_ctf_test.go`)
 is that case.
 
-**R-9 has not been run, and no result is recorded here.** It was written on
-2026-11-11 without a node. It compiles and passes
-`go vet -tags runtime_rehearsal ./rehearsal/`. It must pass on a node built,
-as above, from the reviewed source of the runtime mainnet then runs, and its
-results must be recorded in this section. Both have to happen before anyone
-creates the carry contract, and before the Safe schedules the timelock
-operation that upgrades `STSettlement2` and registers UR's CTF pool.
+**R-9 passed on runtime 490, mainnet's, on 2026-11-12** ([R-9 on runtime
+490](#r-9-on-runtime-490)). It has to pass on the runtime mainnet runs before
+anyone creates the carry contract, and before the Safe schedules the timelock
+operation that upgrades `STSettlement2` and registers UR's CTF pool; on a
+later runtime, run it again.
 
 ```sh
 RUNTIME_REHEARSAL_NODE=/path/to/target/release/node-subtensor \
@@ -814,9 +812,11 @@ minutes. Its subtests run in this order:
      and conservation holds throughout.
 4. **griefing** (§4.6, what the residual cannot stop). Root 2 grows the
    carry's account and finalizes. Then:
-   - root raises the nominator minimum to 2 TAO
-     (`sudo_set_nominator_min_required_stake`), and its sweep clears the
-     residual back to the carry's TAO and the escrow hotkey off its list. A
+   - root raises the nominator minimum to twice the residual's worth at the
+     subnet's spot price (`sudo_set_nominator_min_required_stake`; the seed's
+     own buy lifts that price on the rehearsal's shallow pool, so twice the
+     seed's TAO need not be enough), and its sweep clears the residual back
+     to the carry's TAO and the escrow hotkey off its list. A
      recycle is refused (`ResidualMissing`), and simulated from vault2 the
      claim's transfer answers `AccountRejectsStakingHotkeyGrowth`. A seed of
      the returned TAO alone is refused (`SeedTooSmall`), since
@@ -827,9 +827,12 @@ minutes. Its subtests run in this order:
      a coldkey swap's destination: both announcements are refused
      (`NewColdKeyIsHotkey`);
    - third parties hold vault2's list at 128 entries without the CTF pool
-     hotkey, which epoch 2's capture left empty. A recycle is refused, and
-     simulated from the carry its return answers `TooManyStakingHotkeys`.
-     vault2's permissionless `absorbStake` frees one entry; and
+     hotkey, which epoch 2's capture left empty. A recycle is refused, and a
+     return to that list, simulated from a coldkey holding stake on the CTF
+     pool hotkey, answers `TooManyStakingHotkeys` (the carry holds nothing
+     there before its claim and move, and the runtime checks the stake to
+     withdraw before the destination's list). vault2's permissionless
+     `absorbStake` frees one entry; and
    - the recycle then pays: vault2's `claimed` reaches the account's
      cumulative, the carry keeps its residual, and conservation holds.
 
@@ -886,3 +889,57 @@ runs on the runtime mainnet then runs:
 - A CREATE2 that carries value first requires the creating contract's
   spendable balance, which Frontier reports less the existential deposit, to
   cover the value (evm 0.43.4 `executor/stack/executor.rs`).
+
+### R-9 on runtime 490
+
+`TestR9CaptureTheFlag` passed on 2026-11-12 on runtime 490, which mainnet runs
+from block 9,478,217: twice, in 827.7 s and, on the code as merged, in 1,706.0 s
+on a loaded host. The node line read `node runs
+node-subtensor/490, rehearsal-only source, no owner-source review
+d967d13588834f4f5aaa8ef4c8fc1a865d581462`: 490 has no crv4 owner-source
+review, so the harness admits it for the rehearsal alone (`rehearsalSources`
+in `node_test.go`), and crv4 still refuses it.
+
+The node is not a build from this directory's `build.sh`: it is upstream's
+own build of tag `v490` (`d967d13588834f4f5aaa8ef4c8fc1a865d581462`), the
+image `ghcr.io/raofoundation/subtensor-localnet:v490` (arm64 manifest
+`sha256:dfe2f1085103110c7780ca64898904c4e0e194759b3ae4b1ee532f318d1b2c86`,
+binary `/target/fast-runtime/release/node-subtensor`, SHA-256
+`8fdee28e99394caf943652f6daa9304b4b859e8e7fb585a1f243597ecbb8a39e`), built with
+`pow-faucet metadata-hash fast-runtime`. `pow-faucet` adds a faucet call and
+drops the default subnet-registration rate limit, which R-9 does not use. The
+binary needs Ubuntu 24.04's glibc, so the Go test ran in a container `FROM`
+that image with Go 1.27.4 and forge 1.7.1 added, through this directory's
+`run-node.sh`.
+
+Two of the griefing part's checks were corrected on that run; the runtime
+behaved as 486's source predicts. The sweep values a nomination at the spot
+price, which the seed's own buy had lifted to 2,005 TAO per alpha: the
+residual, 3,932,334 rao of alpha, was worth 7,885,410,231 rao, so a minimum of
+1 or 2 TAO left it in place; the minimum is now twice that worth. The
+simulated return to vault2's full list came from the carry, which held
+nothing on the CTF pool hotkey, so the runtime answered
+`NotEnoughStakeToWithdraw`; it now comes from a coldkey holding stake there.
+
+vault2's coldkey was the guardian's hotkey account throughout, so these ran
+with it: the folded upgrade's `registerCtfPool` and vault2's `registerPool`,
+the census, both captures, the claims to the carry, the carry's transfers into
+vault2 and `absorbStake`. Coldkey swaps announced into vault2's coldkey and
+into the carry's were refused (`NewColdKeyIsHotkey`). Measured:
+
+| Step | Result |
+| --- | --- |
+| `STSettlement2Ctf` creation | 11,677 runtime bytes, 2,608,468 gas |
+| Folded `upgradeToAndCall` | 228 calldata bytes, value 100 TAO, 1,607,476 gas; UID 6; burn 2.968833999 TAO, the rest refunded |
+| `commitCtfCensus` at `end(1) + 1` | 141,317 gas (least limit 143,106, `eth_estimateGas` 143,773) |
+| `closeOperatorEpoch` | 230,988 gas (epoch 1), 213,888 gas (epoch 2); each captured all of the pool hotkey's stake |
+| `STCtfCarry` creation, 1 TAO seed | 4,580 runtime bytes, 1,224,124 gas; residual 3,932,334 rao of alpha |
+| First `recycle`, the carry's list at 130 entries | 2,664,040 gas (least limit 2,688,917, `eth_estimateGas` 2,761,072); 0 rao lost; vault2's list 2 → 3 entries |
+| Root's sweep, then `seed()` | 10,910,577,959 rao of TAO returned to the carry; `seed()` 128,881 gas, residual 161,518,741 rao |
+| `absorbStake`, vault2's list full | 1,220,874 gas, the list at 127 entries |
+| Last `recycle` | 1,500,714 gas (least limit 1,525,591, `eth_estimateGas` 1,561,392) |
+
+`TestRehearsalSmoke` does not pass on this node: in its floor bisection, the
+largest amount `eth_call` refused was accepted as a transaction in the next
+block. R-9 does not depend on it; the rest of the R battery has not been rerun
+on 490.

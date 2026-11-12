@@ -666,15 +666,13 @@ amounts would still pay, but the pots and pending awards would never return. The
   the capture of the returned position (gas, rounding, the staking‑hotkey lists), all with vault2's and the
   carry's coldkeys made hotkey accounts by a guardian first. It then tries the griefing again: third‑party
   transfers, and coldkey swaps and reservations naming either coldkey, are refused, the claim still pays,
-  root's sweep of the residual is answered by `seed()`, and vault2's list held full by `absorbStake`. It must
-  pass on the runtime mainnet runs, spec version 490 at block 9,487,555 (the README records what 490 keeps of
-  486's rules), before anyone creates the carry contract and before the Safe schedules the operation of §3.1;
-  a runtime upgrade before then means running it again.
-  - **It passed on 490 on 2026‑11‑12,** on a local chain of upstream's v490 build (a fast‑runtime node),
-    with the harness admitting 490 for the rehearsal only. No contract changed, but two of R-9's own griefing
-    cases needed correcting: root's sweep now raises the nominator minimum to twice the residual's worth at
-    the spot price, and the full‑list case transfers from a coldkey that holds stake there. Those corrections
-    are still to land on sn main, and R-9 is then to run from main. E-8
+  root's sweep of the residual is answered by `seed()`, and vault2's list held full by `absorbStake`. It
+  passed on 2026‑11‑12 on spec version 490, the runtime mainnet runs, with vault2's coldkey the guardian's
+  hotkey account throughout. It ran on a local chain of upstream's v490 build, with the harness admitting 490
+  for the rehearsal only, and no contract changed; two of its own griefing checks were corrected: root's sweep
+  now values the residual at the spot price, and the full‑list case transfers from a coldkey that holds stake
+  there. The README records the node, the corrections and the gas. A runtime upgrade before anyone creates
+  the carry contract or the Safe schedules the operation of §3.1 means running it again. E-8
   (`mainnet/settlement_v2_e2e_ctf_test.go`) runs the same creation and the residual's cycle, root's sweep and
   `seed()` included, on the e2e chain's fakes of the runtime, with `ctf-carry review` before and after.
 
@@ -1167,18 +1165,18 @@ Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repos
 | the client route | `GET /sn/ctf/client` for a client or a network credential, with every win and whether it is claimed | sn `95bbbe57`, server `eb9ee7a25` |
 | SDK, second pass | Every unclaimed win, read with the network credential and never a reason to sign out; the largest account alone when the payer cannot pay for the batch | sdk `7387af51` |
 | apps, second pass | A line for every unclaimed win, the claim minimum on any account, a `needs_gas` account still claimable, and ur.io's largest‑first claim for browser wallets | android `ab694efff`, apple `b4d0b854`, windows `28d6d088`, linux `e53ef2d`, ur.io (mmm) `4f4524b8e` |
-| the guardian | `mainnet/guardian_associate.py`: the guardian's association through the MEV shield, signed once on a Ledger; the rehearsal harness admits runtime 490 | sn `fbb9072f`, `c6abfc9b` |
+| the guardian and R-9 | `mainnet/guardian_associate.py`: the guardian's association through the MEV shield, signed once on a Ledger; the rehearsal harness admits runtime 490, and R-9's corrected griefing checks, which passed on 490 | sn `fbb9072f`, `c6abfc9b`, `f707f657`, `87673a5f` |
 | the carry's residual | The residual, `seed()`, the pinned pool hotkey and the opt‑outs in `STCtfCarry`, `sn-mainnet ctf-carry review`, R-9's griefing cases, forge CC-1 to CC-21, E-8 on the new carry; the driver's recycle around the residual | sn `5e936a0b`; server `acf2e14da`, pushed as `cf1b8dcd8` |
-| old clients | Without `partial=true`, a CTF pool that cannot be read is left out and the other pools answer as before; the relay keeps claiming the operator's pool | sn `c287c43b`; server pending |
+| old clients | Without `partial=true`, a CTF pool that cannot be read is left out and the other pools answer as before; the relay keeps claiming the operator's pool | sn `c287c43b`, server `5ea1a1a47` |
 | strings | Seven keys in 28 locales | localizations `366ea17` |
 | web: amendments | `https://ur.xyz/amendments.yml`, its sync and its gate | web `01651c92` |
 | web: the pages | `/ctf` and the 249 `/ctf/<cc>`, the flags, the snapshot import and the SEO gates (`design/ctf/SEO.md` §6) | web `da04ba3c` |
 | web: noindex | Country pages that read alike but for the name are `noindex` until they have data of their own or a local note; `design/ctf/SEO.md` records the owner's decisions | web `8085515e`, sn `23e8a078` |
 
-vault2, the provider pool's ledger and the extender pool did not change. Some of it has not run outside tests:
+vault2, the provider pool's ledger and the extender pool did not change. Some of it has run only in tests:
 
-- **R-9** has not run on a live runtime (§4.6). E-8 runs the whole cycle on the e2e chain, whose runtime is
-  a set of Go fakes.
+- **On a runtime,** R-9 ran on a local chain of runtime 490 and passed (§4.6), and E-8 runs the whole cycle
+  on the e2e chain, whose runtime is a set of Go fakes. Nothing has run on mainnet.
 - **The ctf migration** has run only on disposable local databases, where every CTF database test passed.
 - **The apps** ran the unit tests that cover the change. No release build was made, and the Android and
   Windows apps were not built here at all.
@@ -1277,14 +1275,14 @@ coordinator's pause guardian, and it holds nothing else.
    which has the Ledger sign once and sends the encrypted carriers itself. It has to come before anyone
    reserves that coldkey, swaps into it or takes it: a coldkey swap into vault2 needs five days' notice and
    could stop every later pool registration, the operation's included, for good (§4.6). The account was still
-   free at finalized block 9,488,731.
+   free at block 9,489,181.
 1. **Before `end(6)`, about 11‑20 18:28Z: presence.** Apply the ctf migration, deploy the server parts that
    use it, and set ctf.yml's `presence.enabled: true`, so that epoch 7 is a full shadow epoch. The sampler has
    to be running when epoch 8 starts in any case.
 2. **First: R-9 on mainnet's runtime.** It has to pass on the runtime mainnet runs, 490 today, before the Safe
-   schedules the operation and before anyone creates the carry (§4.6). It passed on a local chain of
-   upstream's 490 build on 2026‑11‑12, with two corrections to its own cases that are still to land on sn
-   main; it runs again from main once they have.
+   schedules the operation and before anyone creates the carry (§4.6). It passed on 490 on 2026‑11‑12, with
+   vault2's coldkey the guardian's hotkey account throughout. It runs again if the runtime is upgraded before
+   the schedule or the creation.
 3. **By about 11‑22 18:25Z: the operation is scheduled.** Anyone creates the `STSettlement2Ctf`
    implementation through the deterministic deployment proxy and funds the timelock with the value, and
    `upgrade-settlement2 review` builds the schedule and the execute. The Safe schedules the operation, with
@@ -1485,7 +1483,7 @@ accounts (item 19). What remains is the owner's to do, in §11.2's order:
 1. **The guardian, now.** The guardian, a coldkey of its own that never swaps the hotkeys it holds, makes
    vault2's coldkey its hotkey account, through `MevShield.submit_encrypted`, checked with `getHotkeyOwner`
    (§11.2, step 0). Whoever associates vault2's coldkey first holds that hotkey account, and a coldkey swap
-   into vault2 could stop every later pool registration (§4.6). At finalized block 9,488,731 it was still
+   into vault2 could stop every later pool registration (§4.6). At block 9,489,181 it was still
    free.
 2. **The carry's creation,** once R-9 has passed on the runtime mainnet runs: the carry's coldkey made the
    guardian's hotkey account, the proxy funded, the 1 TAO seed, a fresh private salt within the CTF UID's
