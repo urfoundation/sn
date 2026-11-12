@@ -110,6 +110,27 @@ class SoftLedger:
         raise RuntimeError("the generic app does not blind-sign")
 
 
+class Rejecting:
+    """The guardian's Ledger, on which the person rejects the transaction."""
+
+    crypto_type = 0
+    ss58_format = 42
+
+    def __init__(self, ledger):
+        self.ledger = ledger
+        self.public_key = ledger.public_key
+        self.ss58_address = ledger.ss58_address
+
+    def metadata_digest(self, context):
+        return self.ledger.metadata_digest(context)
+
+    def sign_unsigned_extrinsic(self, unsigned):
+        raise RuntimeError("transaction rejected on the device")
+
+    def sign(self, _data):
+        raise RuntimeError("the generic app does not blind-sign")
+
+
 class StaleFirstKey(ga.Hooks):
     """Holds the first carrier back until its key has expired, as a slow approval would."""
 
@@ -333,6 +354,11 @@ class Node(unittest.TestCase):
         status, report = self.tool(hotkey, "--send", signer=SoftLedger())
         self.assertEqual(status, 3, report)
         self.assertIn("not the guardian", report["reason"])
+        carrier_nonce = self.nonce(self.carrier)
+        status, report = self.tool(hotkey, "--send", signer=Rejecting(self.guardian))
+        self.assertEqual(status, 3, report)
+        self.assertIn("the Ledger did not sign", report["reason"])
+        self.assertEqual(self.nonce(self.carrier), carrier_nonce)
         self.assertEqual(len(self.guardian.signed), signed)
         self.assertIsNone(self.owner(hotkey))
 

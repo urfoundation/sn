@@ -456,7 +456,10 @@ async def send(chain, args, report, signer, carrier, hooks):
     signed_at, _ = await chain.finalized()
     log(f"sign try_associate_hotkey({ss58(hotkey)}) as {ss58(guardian)}, nonce {nonce}, era {args.era} "
         "blocks: approve on the Ledger")
-    inner, inner_hash = await chain.substrate.sign_extrinsic(call, signer, nonce=nonce, period=args.era)
+    try:
+        inner, inner_hash = await chain.substrate.sign_extrinsic(call, signer, nonce=nonce, period=args.era)
+    except Exception as error:  # a rejection on the device, a lock, a disconnect: nothing was sent
+        raise Refused(f"the Ledger did not sign: {error}") from None
     inner = bytes(inner)
     # The era starts at the finalized head when signing began; leave the last two blocks unused.
     expires = signed_at + args.era - 2
@@ -573,8 +576,11 @@ async def associate(args, signer_factory=None, carrier_factory=None, hooks=None)
                 report["status"] = "dry run: nothing signed or sent"
                 log("dry run: nothing signed or sent; --send signs on the Ledger and sends")
             else:
-                signer = (signer_factory or (lambda: ledger_signer(args.ledger_account, args.ledger_index)))()
                 carrier = (carrier_factory or (lambda: carrier_keypair(args.carrier_wallet, args.wallet_path)))()
+                try:
+                    signer = (signer_factory or (lambda: ledger_signer(args.ledger_account, args.ledger_index)))()
+                except Exception as error:
+                    raise Refused(f"no Ledger: {error}; unlock it, open the Polkadot app and run again") from None
                 await send(chain, args, report, signer, carrier, hooks or Hooks())
                 log(f"associated: {ss58(args.hotkey_bytes)} is the hotkey of {ss58(args.guardian_bytes)}")
         except Refused as error:
