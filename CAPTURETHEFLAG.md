@@ -523,9 +523,9 @@ pending awards would never return. The contract closes that:
   derives the CREATE2 address, requires the carry's coldkey to be untouched and the pool hotkey to hold a UID,
   and preflights the creation; once the carry exists it checks the code, the residual, the auto‑stake
   destination and the opt‑outs. The amendment entry names the address after the creation.
-  - A coldkey swap into the carry's coldkey before it exists could bring it locked alpha, or an auto‑stake
-    destination of its own, before the constructor sets its own. A swap needs five days' notice, so a salt
-    nobody knows until the creation rules it out.
+  - A coldkey swap into the carry's coldkey before it exists could fill its list to 256, so that the seed's
+    `addStake` is refused and the creation fails, or bring it locked alpha, before the opt‑outs exist. A swap
+    needs five days' notice, so a salt nobody knows until the creation rules it out.
   - A fill of the list before the creation, which anyone who sees the transaction can still send in the same
     block, is at most 128 entries. The creation goes through, and the entries only add gas to the carry's
     moves, about 8,750 an entry on runtime 478 and later.
