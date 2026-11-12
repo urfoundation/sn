@@ -496,7 +496,9 @@ amounts would still pay, but the pots and pending awards would never return. The
   it is worth less than the nominator minimum, and only on its owner's own unstake or when root raises that
   minimum, which sweeps every account: it unstakes the position to the coldkey's TAO, or deletes it if that
   unstake fails. So a seed stakes at least `seedMinimum()`: ten times the runtime's nominator minimum, and at
-  least 0.1 TAO. The creation seeds 1 TAO (§11.2). If a sweep clears the residual anyway, `recycle` reverts
+  least 0.1 TAO. The creation seeds 1 TAO (§11.2). The sweep values the residual's alpha at the subnet's spot
+  price, so that tenfold margin, fixed in TAO at the seed, shrinks as SN25's alpha price falls; `ctf-carry
+  review` reports the residual's worth. If a sweep clears the residual anyway, `recycle` reverts
   `ResidualMissing` and the account stays claimable; anyone restores the residual with `seed()`, which stakes
   the TAO the sweep returned and any sent with it. A sweep that also caught carry not yet recycled would turn
   it into residual at that seed, and the ledger would then count it as never returned, so the relay recycles
@@ -541,9 +543,10 @@ amounts would still pay, but the pots and pending awards would never return. The
     hotkey accounts too, and preflights the creation; once the carry exists it checks the code, the residual,
     the auto‑stake destination, the opt‑outs and both hotkey accounts. The amendment entry names the address
     after the creation.
-  - A fill of the list before the creation, which anyone who sees the transaction can still send in the same
-    block, is at most 128 entries. The creation goes through, and the entries only add gas to the carry's
-    moves, about 8,750 an entry on runtime 478 and later.
+  - A fill of the list before the creation is at most 128 entries. Anyone who sees the guardian's association
+    knows the coldkey and can send it stake from then on, and anyone who sees the creation can in its block.
+    The creation goes through, and the entries only add gas to the carry's moves, about 8,750 an entry on
+    runtime 478 and later, so review reports them and does not refuse them.
 - **Coldkey‑swap reservations, and the hotkey accounts that refuse them.** For 0.1 TAO anyone can announce a
   coldkey swap that names a coldkey as its destination. While the reservation lasts, up to six days and
   renewable for another 0.1 TAO, the runtime refuses every transfer into that coldkey from another one: for
@@ -571,10 +574,15 @@ amounts would still pay, but the pots and pending awards would never return. The
     (`ColdkeySwapDestinationReserved`), and that swap could then go through; and anyone else who held it
     could release it with such a swap. vault2's coldkey cannot change, so that would be for good.
 - **What the relay does when a recycle fails.** A refused precompile call returns no data, so the relay reads
-  the state: no residual (`residual()` is 0, or `recycle` reverts `ResidualMissing`) means `seed()`; vault2's
+  the state first: the residual, the carry's position on the escrow hotkey, `seedMinimum()`, its TAO and
+  vault2's `claimed` of the carry account. No residual (`residual()` or the position is 0, or `recycle`
+  reverts `ResidualMissing`) means a `seed()`, which the relay does not send, since it costs TAO: it alerts
+  with the TAO a seed needs, and while the carry account is still to claim it waits, retrying hourly. vault2's
   list at 128 without the pool hotkey means waiting a tempo, or `absorbStake` of a foreign SN25 entry worth
-  the floor; a reservation, if a coldkey were not a hotkey account, means waiting. Every case leaves the carry
-  account claimable. The relay also recycles at once after anyone claims the carry account.
+  the floor. With no claim due, a surplus above the residual worth less than the runtime's transfer floor
+  waits for the next root's claim, which moves it along. A reservation, if a coldkey were not a hotkey
+  account, means waiting. Every case leaves the carry account claimable. The relay recycles as soon as a root
+  is final, so a claim of the carry account by anyone else waits on the escrow hotkey only until then.
 - **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R-9
   (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)") covers, on the
   live runtime, a creation that stakes its seed from the constructor and sets the opt‑outs over a list
@@ -1018,8 +1026,9 @@ stays as it is. The changes are the owner's:
    3. Anyone funds the proxy's mapped account above its existential deposit, with 501 rao or more, by a native
       transfer. Without it the creation's value cannot pass through the proxy (`OutOfFund`).
    4. `sn-mainnet ctf-carry review --seed-rao 1000000000 --guardian <guardian> --from <creator>` passes: it pins
-      the artifact, derives the address and the coldkey, checks the coldkey untouched, both hotkey accounts, the
-      pool hotkey's UID, the funded proxy and the seed, and preflights the creation
+      the artifact, derives the address and the coldkey, checks the coldkey owns no hotkeys and holds no lock,
+      reports any stake third parties sent it, checks both hotkey accounts, the pool hotkey's UID, the funded
+      proxy and the seed, and preflights the creation
       (`mainnet/BOOTSTRAP-CONTRACTS.md`, "Capture the flag carry").
    5. The creation goes out within the CTF UID's immunity window, since the auto‑stake destination needs the UID,
       under a fresh random salt kept private until then, with the value review prints: the seed and the
