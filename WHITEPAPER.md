@@ -1607,10 +1607,17 @@ score, which pins its IPv4 hash first and is never doubled by a second family (`
 **Intra‑platform contract.** A contract of NO `n` is intra‑platform when its service endpoint is one of
 `n`'s registered **platform endpoints**: a client identity the operator itself runs to serve a platform
 feature. The operator registers it, and it is recorded on the contract when the contract is created, never
-inferred from a missing participant. At `E_x` the platform endpoints are sidecar's edge platform clients:
-tlsedge, smtpedge and mxedge (§8.6.6). A platform endpoint is one of the contract's `n_c` hops, but it earns
-no share of any contract: its share is intra‑platform bytes in `z_c`, even when the origin is on its network.
-When it is the contract's only hop, that share is all of `b_c`.
+inferred from a missing participant.
+- **The test is "on an operator network"** (owner, 2026‑11‑12). The registry admits only an active client on
+  one of `n`'s own networks: its gated, durable fleet or a network it declares it controls, as in E5. It
+  never admits one on a declared measurement network.
+- **The kinds are fixed by the signed entry.** At `E_x` they are sidecar's edge platform clients, its TLS,
+  SMTP and MX edges: tlsedge, smtpedge and mxedge (§8.6.6). The registry refuses any other kind. A new kind
+  is a new rule, so it needs a new signed amendment entry (§8.6.7).
+
+A platform endpoint is one of the contract's `n_c` hops, but it earns no share of any contract: its share is
+intra‑platform bytes in `z_c`, even when the origin is on its network. When it is the contract's only hop,
+that share is all of `b_c`.
 
 **Extenders count as one of `n_c` (Q7).** The owner decided on 2026‑11‑11: "extenders count for one of n in
 payout weighting for contracts". From `E_x`, on every contract, each extender party is one of the contract's
@@ -1693,9 +1700,10 @@ provider.
     self‑service and the boundary is predictable, so this is cheap to game. The gain is limited by the
     units (a block counts once, however many hosts appear in it) and by the cap.
 - (E2, the first draft's hourly forwarding record, is removed by the same decision.)
-- **(E3) Distinct.** One record per provider client and per address: records that share a provider client,
-  an IPv4 address or an IPv6 /64 count once, for the lowest client id. Each eligible extender then belongs
-  to one unit (above).
+- **(E3) Distinct.** One record per provider client and per address: active records that share a provider
+  client, an IPv4 address or an IPv6 /64, directly or through other records, count once, for the record
+  with the lowest (client id, extender id) pair. The others are flagged duplicate. Each eligible extender
+  then belongs to one unit (above).
 - **(E4) Payable.** Its provider client (`network_extender.client_id` at `end(k)`) has a payout coldkey under
   the wallet selection that provider rows use (§8.2: the client's own consent, else its network's, else a
   hotkey delegation). It has no active fleet binding at either boundary, because a head client earns in one
@@ -2116,18 +2124,19 @@ ledgerHash)`.
 **Rollout to `E_x = 8`.** The owner moved the start from epoch 6 to epoch 8, while a new validator release
 goes out to partners.
 
-*The dates,* at the measured 12.0 s per block:
+*The dates.* The blocks fix each boundary. The clock times are estimates, the same ones the mainnet timeline
+and the notices use: about 18:25Z for each epoch's end and about 22:25Z for its root commit.
 
 | Epoch | Blocks | Ends about | Root committed by |
 |---|---|---|---|
-| 6 | 9,499,228–9,549,627 | 2026‑11‑20 18:28Z | block 9,550,828, about 22:28Z |
-| 7 | 9,549,628–9,600,027 | 2026‑11‑27 18:29Z | block 9,601,228, about 22:29Z |
-| 8 | 9,600,028–9,650,427 | 2026‑12‑04 18:30Z | block 9,651,628, about 22:30Z |
-| 9 | 9,650,428–9,700,827 | 2026‑12‑11 18:30Z | block 9,702,028, about 22:30Z |
+| 6 | 9,499,228–9,549,627 | 2026‑11‑20 18:25Z | block 9,550,828, about 22:25Z |
+| 7 | 9,549,628–9,600,027 | 2026‑11‑27 18:25Z | block 9,601,228, about 22:25Z |
+| 8 | 9,600,028–9,650,427 | 2026‑12‑04 18:25Z | block 9,651,628, about 22:25Z |
+| 9 | 9,650,428–9,700,827 | 2026‑12‑11 18:25Z | block 9,702,028, about 22:25Z |
 
-- Epoch 8's earning window opens at about 2026‑11‑27 18:29Z.
+- Epoch 8's earning window opens at about 2026‑11‑27 18:25Z.
 - Its statement follows its root commit on 12‑04.
-- Its root must be approved before `end(9)`, about 2026‑12‑11 18:30Z.
+- Its root must be approved before `end(9)`, about 2026‑12‑11 18:25Z.
 
 *What epoch 8 carries.* Unless sidecar is live by then, epoch 8's `Z` comes from same‑network contracts
 alone. By then the billing change funds them from their networks' balances, free or paid, so their shares
@@ -2150,9 +2159,9 @@ same‑network shares from providers to extenders, and publishes the first censu
    - The extender pool still starts at epoch 8. By then every contract created since the deploy is funded,
      and the shadow runs of epochs 6 and 7 see real funded flags.
 1. **By about 11‑16:** the sn `ledger` and `protocol` changes, which the server's builder imports.
-2. **Before `end(6)`, about 11‑20 18:28Z:** the server's same‑network rule, census capture and builder, running
+2. **Before `end(6)`, about 11‑20 18:25Z:** the server's same‑network rule, census capture and builder, running
    in shadow so that epoch 6 is the first live shadow run (below).
-3. **Before epoch 8 starts, about 11‑27 18:29Z:**
+3. **Before epoch 8 starts, about 11‑27 18:25Z:**
    - The amendment entry, signed and published. The owner signs it during epoch 7 at the latest, because the
      signing tool refuses an entry for an epoch that has started.
    - The notice on the mainnet timeline. The same‑network change applies to every contract that closes in
@@ -2160,8 +2169,8 @@ same‑network shares from providers to extenders, and publishes the first censu
 4. **By about 12‑01:** the validator and `snclaim` release with header v3, the recompute and the entry reader,
    deployed when the validator is idle. It follows the partner validator release that is going out now,
    rather than being folded into it.
-5. **Before `end(8)`, about 12‑04 18:30Z:** the server's production build, with the census capture running
-   at the boundary. Epoch 8's root, with header v3, is committed by about 22:30Z.
+5. **Before `end(8)`, about 12‑04 18:25Z:** the server's production build, with the census capture running
+   at the boundary. Epoch 8's root, with header v3, is committed by about 22:25Z.
 
 *The shadow runs.*
 
@@ -2174,13 +2183,13 @@ same‑network shares from providers to extenders, and publishes the first censu
 
 *What would move the start to epoch 9:*
 
-- The entry is not signed before about 11‑27 18:29Z. The signing tool would then require epoch 9.
+- The entry is not signed before about 11‑27 18:25Z. The signing tool would then require epoch 9.
 - The sn release is not deployed before epoch 8's root commit.
 - The census capture is not running at `end(8)`.
 - A shadow mismatch is not resolved.
 - The notice is not out before epoch 8 starts.
 
-Epoch 9's window runs from 12‑04 18:30Z to 12‑11 18:30Z.
+Epoch 9's window runs from 12‑04 18:25Z to 12‑11 18:25Z.
 
 *How `E_x` is fixed: by the signed amendment entry.*
 
@@ -2235,7 +2244,9 @@ numbers are those of the first draft.
      contracts that escrow and settle as all others do (decision 12).
 6. **Which traffic counts (Q10, and Q11's second half).**
    - Platform endpoints are sidecar's edge platform clients (tlsedge, smtpedge and mxedge), registered by
-     the operator.
+     the operator. Being on one of the operator's own networks is the test (owner, 2026‑11‑12). These three
+     kinds are the signed set: the registry refuses any other, and a new kind needs a new signed amendment
+     entry.
    - No two clients on one network count as paid providers. Every same‑network contract, in any product, is
      intra‑network, and its bytes count toward `Z`. This amends §8.2 from `E_x`.
    - Uncontracted api, push and storage traffic stays out at launch. Storage is the first candidate to add,
@@ -3824,8 +3835,9 @@ starts at least two days after the last one passes.
     most half a pool.
   - `Z'` is split evenly over the extender units, then evenly over the eligible extenders in each unit.
   - With no eligible extender, `Z` is dropped.
-- **Platform endpoint** (§8.6.2) — a client identity the NO itself runs to serve a platform feature.
-  At `E_x` these are sidecar's edge platform clients: tlsedge, smtpedge and mxedge. The operator registers
+- **Platform endpoint** (§8.6.2) — a client identity the NO itself runs, on one of its own networks, to
+  serve a platform feature. At `E_x` these are sidecar's edge platform clients: tlsedge, smtpedge and mxedge,
+  the kinds the signed entry covers; a new kind needs a new signed amendment entry. The operator registers
   them, and they are recorded on a contract when the contract is created. A platform endpoint counts among a
   contract's `n_c` hops but never earns its share, which goes to `Z` (Q7).
 - **Extender unit** (§8.6.2) — the keyed /29 IPv4 or /48 IPv6 prefix hash of an eligible extender's

@@ -191,10 +191,14 @@ func checkOrder(entries []Entry, listed bool) error {
 }
 
 // Fallback is a deployment's configured amendments: unsigned lines its configuration
-// states, the server's in sn.yml and the validator's in its adopted config. They stand
-// in only for a kind with no signed entry in force (File.At): configuration is the
-// fallback for an amendment whose signing cannot happen before its first epoch starts
-// (WHITEPAPER.md §8.6.7), never for a file that cannot be read.
+// states. For the extender pool (v1 lines) they are the server's st.yml amendments
+// block and the file each validator's run flag --amendments-fallback names
+// (VALIDATOR.md §11.6); for capture the flag (v2 lines), the server's st.yml
+// ctf.amendment_lines and the validator release configuration's amendment_fallback
+// (VALIDATOR.md §11.5). They stand in only for a kind with no signed entry in force
+// (File.At): configuration is the fallback for an amendment whose signing cannot
+// happen before its first epoch starts (WHITEPAPER.md §8.6.7), never for a file that
+// cannot be read.
 //
 // A configured line stands in for every epoch before the first signed entry of its
 // kind for its operator. Remove it once a signed entry covers the epochs it was for:

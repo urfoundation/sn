@@ -10,7 +10,7 @@ Safe, on its Ledger. The signed lines go in [`amendments.yml`](../amendments.yml
 publishes at <https://ur.xyz/amendments.yml>. The server, the validator and `snclaim` read it through the
 `amendment` package.
 
-Both entries for epoch 8 are due during epoch 7, before epoch 8 starts at block 9,600,028 (about 2026-11-27 18:29Z).
+Both entries for epoch 8 are due during epoch 7, before epoch 8 starts at block 9,600,028 (about 2026-11-27 18:25Z).
 The tool refuses an entry whose first epoch has started, so a missed deadline moves the start to epoch 9.
 
 ## 1. Before signing
@@ -23,9 +23,14 @@ The tool refuses an entry whose first epoch has started, so a missed deadline mo
   form, so a mistyped address fails before anyone signs it.
 - **The readers' releases.** The server and every validator must run a build that reads amendments before epoch
   8.
-- **The site.** It must serve `amendments.yml` before any reader depends on it. A reader with a pinned signer that
-  has never verified the file treats the amendments in force as unknown, and configuration does not stand in for
-  that.
+- **The site.** It must serve `amendments.yml` before any reader depends on it, which is before the signing: the
+  file without entries verifies too. A reader with a pinned signer that has never verified the file treats the
+  amendments in force as unknown, and configuration does not stand in for that.
+  - **The server.** Its settlement v2 builder builds no epoch's rows until it holds a verified file. So the site
+    serves the file before the taskworker that reads amendments is deployed, which is before the end of epoch 6
+    (about 2026-11-20 18:25Z).
+  - **Since 2026-11-12** (web 2026.11.12-outerwerld-1096925520), <https://ur.xyz/amendments.yml> serves the file
+    without entries, and `verify --url` reads it.
 
 ## 2. Sign each line
 
@@ -38,6 +43,11 @@ UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the fl
 
 Only the chain, sn, operator, first epoch and carry contract can vary. Every other term is fixed by the owner's
 decisions, and the tool refuses a line that differs from them in any character.
+
+The extender pool's "intra-platform" covers exactly the platform endpoint kinds the operator's registry accepts:
+sidecar's TLS, SMTP and MX edges (`tlsedge`, `smtpedge` and `mxedge`), each a client on one of the operator's own
+networks ([WHITEPAPER.md](../WHITEPAPER.md) §8.6.2). The registry refuses any other kind. A new kind is a new
+rule, so it needs a new signed entry.
 
 For each line, in this repository:
 
@@ -87,8 +97,16 @@ go run ./cli/amendment verify --url=https://ur.xyz/amendments.yml --rpc="$RPC"
 
 Configuration is the fallback (WHITEPAPER.md §8.6.7).
 
-- **Configure the line.** The server's and the validator's configuration name the same line, unsigned, identically
-  for every reader. A configured line stands in only for epochs where no signed entry of its kind is in force.
+- **Configure the line.** Every reader names the same line, unsigned and identical. A configured line stands in
+  only for epochs where no signed entry of its kind is in force.
+
+  | Line | Network operator's server | Each validator |
+  | --- | --- | --- |
+  | Extender pool (`v1`) | st.yml `amendments:` | the file named by the run flag `--amendments-fallback` ([VALIDATOR.md](../VALIDATOR.md) §11.6); on UR's validator, xops `sn_validator_amendments_fallback` |
+  | Capture the flag (`v2`) | st.yml `ctf.amendment_lines` | the release configuration's `amendment_fallback` ([VALIDATOR.md](../VALIDATOR.md) §11.5) |
+
+  For the extender pool, a reader without the line builds or audits those epochs without the component, so the
+  roots of a mismatched pair are refused ([VALIDATOR.md](../VALIDATOR.md) §11.6).
 - **Sign later.** Sign the entry from the next epoch that has not started. From then on the signed entry applies.
 - **Remove the configured line** once the signed entry covers its epochs. A line left in place still applies
   before a later signed start, so postponing a start also means removing the line from every reader.
