@@ -2397,8 +2397,8 @@ takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
   the same kind of check it runs on the extender census, not a measurement. Presence, the checks behind P1 and
   X1, the countries, units and address dedupe, the wallets and the declared networks are attested and not
   checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit, `ctf.Verify`,
-  with the fleet bindings read where the validator reads them, so both leave a fleet‑bound client a census
-  lists out of the draw.
+  with the fleet bindings the validator reads, so a fleet‑bound client that a census lists is left out of the
+  draw for both.
 - **Claims.** Apps claim a CTF account beside the pool account, in the same claim flow. Each entry of
   `GET /sn/ledger/account` gains `kind` (`pool` or `ctf`) and `label`. Old apps show a CTF account as
   "Pool 4294967297" and claim it like any pool.
