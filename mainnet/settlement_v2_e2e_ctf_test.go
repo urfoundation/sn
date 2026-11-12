@@ -1,0 +1,784 @@
+//go:build linux || darwin
+
+// Capture the flag end to end (CAPTURETHEFLAG.md §3 to §10, §11.2): UR's CTF
+// pool through its whole cycle on the e2e chain, with the real contracts, the
+// ctf package, the validator's auditor sender and the real snclaim.
+//
+// The chain is mainnet's configuration (evm_v2_ctf_upgrade_test.go): pool 1
+// registered for v2 from epoch 2, STSettlement2 on phase C behind the
+// reviewed 72 h timelock. The folded operation upgrades it to
+// STSettlement2Ctf and registers pool 2^32 + 1 from epoch 3 under the hotkey
+// derived at execution; the carry contract is created through the
+// deterministic deployment proxy; the signed amendment entry v2 puts capture
+// the flag in force from epoch 3 with that carry, signed by the test's key in
+// place of the price sheet's (e2eAmendmentSignerEnv).
+//
+// Each epoch then runs as the server's driver runs it (server
+// controller/st_ctf_driver.go): emission on the CTF pool hotkey, the close,
+// the census committed by the root signer in [end(k), end(k) + 600], the
+// ledger built by ctf.Build with drand's real quicknet pulse of ρ_k, its
+// objects published, header last, and its root committed by the root signer.
+// The auditor's CTF audit reads what the validator's reads
+// (validator/settlement_v2_ctf_audit.go: the entry in force, the carry's pool
+// and coldkey, recycledFor, ctfCensus, the census block's time, the pulse and
+// the head bindings), runs ctf.Verify, and approves through the validator's
+// SettlementV2Sender; the validator's own chain reader is unexported, and its
+// unit tests run it against a fake chain. snclaim v2 check audits the pending
+// root as UR's CTF watcher does, then the root finalizes after its window, a
+// winner claims through snclaim v2 claim, and anyone recycles the carry
+// account through STCtfCarry, which the next epoch's close captures.
+//
+// The runtime is the e2e chain's Go fakes of runtime 475 (stake moves,
+// registration, UIDs) with the address mapping and the Ed25519 and sr25519
+// checks (settlement_v2_e2e_chain_test.go), not a subtensor node: rehearsal
+// R-9 runs the upgrade, the census and the carry on the live runtime. Every
+// block is final at once, and drand's pulse is served by a local relay that
+// answers with the real signature pinned here.
+package main
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	schnorrkel "github.com/ChainSafe/go-schnorrkel"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
+
+	"github.com/urfoundation/sn/amendment"
+	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/ctf"
+	"github.com/urfoundation/sn/ledger"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/validator"
+)
+
+const (
+	// ctfE2ECensusBlock is B_3, the block that commits epoch 3's census, a
+	// fixed block inside its window [end(3), end(3) + 600], so the draw's
+	// round is the one pinned below while the fixture's deployment keeps
+	// end(3) within 300 blocks of where it is. ctfE2ERound is ρ_3, the first
+	// quicknet round at least 60 s after B_3's time, and ctfE2ESignature
+	// that round's real signature, as drand's relays serve it
+	// (GET https://api.drand.sh/<quicknet chain hash>/public/<round>).
+	ctfE2ECensusBlock = 158_705
+	ctfE2ERound       = 33_033_719
+	ctfE2ESignature   = "980fc88d2c2cdb8ccdb491c1e838c38f40df87e7f3d6ca44c752f24ee88835fe611a54436447176c65263cced115a6e8"
+	// The CTF pool's emission in epochs 3 and 4, in rao: epoch 3's slots are
+	// 0.01 α each.
+	ctfE2EEmission3 = 24_900_000_000
+	ctfE2EEmission4 = 2_490_000_000
+)
+
+var (
+	e2eCtfCarryBinding = stabi.NewSTCtfCarry()
+	ctfE2EPool         = uint64(ctf.PoolID(e2eNoID))
+	// ctfE2EBound is the head-bound client the census lists, a provider in
+	// IS, which P5 should have kept out of it.
+	ctfE2EBound = ctfE2EClient(12)
+)
+
+// ctfE2EClient is census client n, and ctfE2EColdkey its payout coldkey.
+func ctfE2EClient(n byte) [16]byte { return [16]byte{0: 0xc7, 15: n} }
+
+func ctfE2EColdkey(client [16]byte) [32]byte { return e2eKey(fmt.Sprintf("ctf-client-%x", client)) }
+
+// ctfE2E is the chain after the capture the flag upgrade, with the carry,
+// the signed entry, a drand relay and a head binding.
+type ctfE2E struct {
+	*ctfTestChain
+	ctx context.Context
+	// hotkey is the CTF pool's hotkey, derived at the execution.
+	hotkey [32]byte
+	// carry is the carry contract and carryColdkey its coldkey.
+	carry        common.Address
+	carryColdkey [32]byte
+	// signer signs the amendments file the web server serves at
+	// /amendments.yml; it also relays quicknet's pulses.
+	signer     *ecdsa.PrivateKey
+	amendments []byte
+	web        *httptest.Server
+	sender     *validator.SettlementV2Sender
+	// ledgers are the CTF roots built, by root index once finalized.
+	ledgers []*ctf.Ledger
+}
+
+// newCtfE2E upgrades the proxy through the folded timelock operation,
+// creates the carry, signs the amendment entry and binds ctfE2EBound to a
+// head fleet from epoch 3 to 4.
+func newCtfE2E(t *testing.T) *ctfE2E {
+	t.Helper()
+	f := newCtfTestChain(t)
+	e := &ctfE2E{ctfTestChain: f, ctx: context.Background()}
+	operation := f.operation()
+	f.schedule(operation)
+	// The timelock holds exactly the value; a stranger sends the execute, and
+	// the burn's surplus returns to the timelock.
+	receipt := f.must(f.stranger, f.timelock, nil, operation.execute)
+	e.hotkey = f.ctfHotkey(receipt.BlockNumber.Uint64())
+	if hotkey, firstEpoch, registered := f.ctfPool(); !registered || hotkey != e.hotkey || firstEpoch != ctfTestFirstEpoch || f.implementation() != operation.implementation {
+		t.Fatalf("the execute registered %s from %d (%t), proxy on %s", hotkey, firstEpoch, registered, f.implementation())
+	}
+	if balance := f.chain.balance(f.timelock); balance.Cmp(new(big.Int).Sub(ctfTestValue, ctfTestBurn)) != 0 {
+		t.Fatalf("the timelock holds %s wei after the execute", balance)
+	}
+	f.publisher.pools = append(f.publisher.pools, ctfE2EPool)
+	e.createCarry()
+	e.signEntry()
+	e.web = httptest.NewServer(http.HandlerFunc(e.serveWeb))
+	t.Cleanup(e.web.Close)
+	f.snclaimEnv = []string{e2eAmendmentSignerEnv + "=" + crypto.PubkeyToAddress(e.signer.PublicKey).Hex()}
+	chain, err := validator.DialReleaseChainContext(e.ctx, []string{f.chain.server.URL}, f.coordinator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.sender, err = validator.NewSettlementV2Sender(chain, []string{f.chain.server.URL}, e2eChainID, validator.SettlementV2Addresses{Settlement: f.settlement, Vault: f.vault2}, f.auditor.keyFile(t), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	e.bindHead(ctfE2EBound, ctfTestFirstEpoch, ctfTestFirstEpoch+1)
+	return e
+}
+
+// createCarry creates STCtfCarry(vault2, 2^32 + 1) through the deterministic
+// deployment proxy, as the release does, and checks what it read at
+// creation. A carry whose constructor changes (a residual seeded at
+// creation, say) changes only this step.
+func (e *ctfE2E) createCarry() {
+	f, t := e.ctfTestChain, e.t
+	artifact := e2eForgeArtifact(t, "STCtfCarry")
+	initcode := append(slices.Clone(artifact.creation), e2eCtfCarryBinding.PackConstructor(f.vault2, ctfTestPoolId)...)
+	salt := crypto.Keccak256Hash([]byte("urnetwork-e2e-ctf-carry"))
+	f.must(f.anyone, upgradeCreate2Factory, nil, append(salt.Bytes(), initcode...))
+	e.carry = crypto.CreateAddress2(upgradeCreate2Factory, salt, crypto.Keccak256(initcode))
+	e.carryColdkey = e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackColdkey(), e2eCtfCarryBinding.UnpackColdkey)
+	vault := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackVault(), e2eCtfCarryBinding.UnpackVault)
+	pool := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackPoolId(), e2eCtfCarryBinding.UnpackPoolId)
+	netuid := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackNetuid(), e2eCtfCarryBinding.UnpackNetuid)
+	escrow := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackEscrowHotkey(), e2eCtfCarryBinding.UnpackEscrowHotkey)
+	hotkey := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackPoolHotkey(), e2eCtfCarryBinding.UnpackPoolHotkey)
+	vaultColdkey := e2eView(f.e2eFixture, e.carry, e2eCtfCarryBinding.PackVaultColdkey(), e2eCtfCarryBinding.UnpackVaultColdkey)
+	if e.carryColdkey != ss58.EvmMirrorPubkey(e.carry) || vault != f.vault2 || pool.Cmp(ctfTestPoolId) != 0 || netuid != e2eNetuid || escrow != f.escrowV2 || hotkey != e.hotkey || vaultColdkey != f.vault2Coldkey {
+		t.Fatalf("carry %s reads coldkey 0x%x, vault %s pool %s netuid %d, escrow 0x%x, pool hotkey 0x%x, vault coldkey 0x%x", e.carry, e.carryColdkey, vault, pool, netuid, escrow, hotkey, vaultColdkey)
+	}
+}
+
+// signEntry signs the capture the flag entry of operator 1 from epoch 3 with
+// the carry, as cli/amendment attach writes it.
+func (e *ctfE2E) signEntry() {
+	t := e.t
+	key, err := crypto.ToECDSA(crypto.Keccak256([]byte("urnetwork-e2e-amendment-signer")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := amendment.NewCaptureTheFlag(e2eChainID, e2eNetuid, e2eNoID, ctfTestFirstEpoch, e.carry)
+	if err := entry.Sign(key); err != nil {
+		t.Fatal(err)
+	}
+	line, err := entry.Line()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.signer = key
+	e.amendments = []byte(fmt.Sprintf("sn: %d\nsigned_amendments:\n  - line: \"%s\"\n    signature: \"0x%x\"\n", e2eNetuid, line, entry.Signature))
+	if _, err := amendment.ParseVerified(e.amendments, e2eChainID, e2eNetuid, crypto.PubkeyToAddress(key.PublicKey)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// serveWeb serves the amendments, as ur.xyz does, and quicknet's pinned
+// pulse, as a drand relay does.
+func (e *ctfE2E) serveWeb(writer http.ResponseWriter, request *http.Request) {
+	if request.URL.Path == "/amendments.yml" {
+		_, _ = writer.Write(e.amendments)
+		return
+	}
+	if round, ok := strings.CutPrefix(request.URL.Path, "/"+crv4.QuicknetChainHash+"/public/"); ok && round == strconv.Itoa(ctfE2ERound) {
+		signature, _ := hex.DecodeString(ctfE2ESignature)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(writer, `{"round":%d,"randomness":"%x","signature":"%s"}`, ctfE2ERound, sha256.Sum256(signature), ctfE2ESignature)
+		return
+	}
+	http.NotFound(writer, request)
+}
+
+// pulse is quicknet's pulse of round, which must be the pinned one.
+func (e *ctfE2E) pulse(round uint64) *ctf.Pulse {
+	e.t.Helper()
+	signature, _ := hex.DecodeString(ctfE2ESignature)
+	pulse := &ctf.Pulse{Round: ctfE2ERound, Signature: signature}
+	if round != ctfE2ERound {
+		e.t.Fatalf("the draw needs quicknet round %d, and the test pins round %d: pin that round's signature", round, ctfE2ERound)
+	}
+	if err := pulse.Verify(); err != nil {
+		e.t.Fatal(err)
+	}
+	return pulse
+}
+
+// bindHead binds client to a head fleet for epochs [from, to] through the
+// v1 coordinator, as `provider fleet` does: the head hotkey holds a UID, the
+// oracle mirrors its commitment, and the client's Ed25519 key and the
+// hotkey's sr25519 key both sign the binding.
+func (e *ctfE2E) bindHead(client [16]byte, from, to uint64) {
+	f, t := e.ctfTestChain, e.t
+	mini, err := schnorrkel.NewMiniSecretKeyFromRaw(crypto.Keccak256Hash([]byte("urnetwork-e2e-ctf-head-hotkey")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, hotkey := mini.ExpandEd25519(), mini.Public().Encode()
+	f.chain.native(func(rt *e2eRuntime) { rt.setWord(e2eNeuron, e2eRuntimeSlot("uid", hotkey), big.NewInt(8)) })
+	commitment := crypto.Keccak256Hash([]byte("urnetwork-e2e-ctf-head-commitment"))
+	head := f.chain.next() - 1
+	f.must(f.oracle, f.coordinator, nil, e2eCoordinatorBinding.PackMirrorCommitment(hotkey, commitment, head, e2eBlockHash(head)))
+	clientKey := ed25519.NewKeyFromSeed(crypto.Keccak256([]byte("urnetwork-e2e-ctf-head-client")))
+	binding := stabi.STCoordinatorFleetBinding{ChainId: e2eChainID, Netuid: e2eNetuid, Coordinator: f.coordinator, FleetId: crypto.Keccak256Hash([]byte("urnetwork-e2e-ctf-fleet")),
+		Hotkey: hotkey, ClientId: client, ClientKey: [32]byte(clientKey.Public().(ed25519.PublicKey)), Generation: 1, ValidFromEpoch: from, ValidToEpoch: to, CommitmentHash: commitment}
+	digest := e2eView(f.e2eFixture, f.coordinator, e2eCoordinatorBinding.PackFleetBindingDigest(binding), e2eCoordinatorBinding.UnpackFleetBindingDigest)
+	signed, err := secret.Sign(schnorrkel.NewSigningContext([]byte("substrate"), digest[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotkeySignature := signed.Encode()
+	receipt := f.must(f.anyone, f.coordinator, nil, e2eCoordinatorBinding.PackBindFleetMember(binding, ed25519.Sign(clientKey, digest[:]), hotkeySignature[:]))
+	if len(receipt.Logs) != 1 {
+		t.Fatalf("the binding logged %d events", len(receipt.Logs))
+	}
+	if event, err := e2eCoordinatorBinding.UnpackFleetBoundEvent(receipt.Logs[0]); err != nil || event.ClientId != client || event.Uid != 7 || event.ValidFromEpoch != from || event.ValidToEpoch != to {
+		t.Fatalf("FleetBound %+v: %v", event, err)
+	}
+}
+
+// heads is the auditor's head oracle at the head: the v1 coordinator's
+// FleetBound events through it, and for each client whose validity covers
+// the epoch, bindingAt at the epoch's start and end blocks, as the
+// validator reads them (validator/settlement_v2_audit_chain.go).
+func (e *ctfE2E) heads() ledger.HeadOracle {
+	return ctfE2EHeads{e: e, block: e.chain.next() - 1}
+}
+
+type ctfE2EHeads struct {
+	e     *ctfE2E
+	block uint64
+}
+
+func (h ctfE2EHeads) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
+	f := h.e.ctfTestChain
+	var candidates [][16]byte
+	var failure error
+	f.chain.do(func() {
+		for _, log := range f.chain.logs {
+			if log.Address != f.coordinator || log.BlockNumber > h.block || len(log.Topics) == 0 || log.Topics[0] != e2eFleetBoundID {
+				continue
+			}
+			event, err := e2eCoordinatorBinding.UnpackFleetBoundEvent(log)
+			if err != nil {
+				failure = err
+				return
+			}
+			if event.ValidFromEpoch <= epoch && epoch <= event.ValidToEpoch && !slices.Contains(candidates, event.ClientId) {
+				candidates = append(candidates, event.ClientId)
+			}
+		}
+	})
+	bound := map[[16]byte]bool{}
+	if failure != nil || len(candidates) == 0 {
+		return bound, failure
+	}
+	start, end := f.epochStart(epoch), f.end(epoch)
+	if start >= end || end > h.block {
+		return nil, fmt.Errorf("epoch %d is not closed at block %d", epoch, h.block)
+	}
+	for _, block := range []uint64{start, end} {
+		for _, client := range candidates {
+			var out []byte
+			var err error
+			to := f.coordinator
+			f.chain.do(func() {
+				out, _, err = f.chain.callLocked(common.Address{}, &to, nil, e2eCoordinatorBinding.PackBindingAt(client, new(big.Int).SetUint64(epoch)), e2eTxGas, block)
+			})
+			if err != nil {
+				return nil, err
+			}
+			binding, err := e2eCoordinatorBinding.UnpackBindingAt(out)
+			if err != nil {
+				return nil, err
+			}
+			bound[client] = bound[client] || binding.Active
+		}
+	}
+	return bound, nil
+}
+
+// e2eFleetBoundID is the v1 coordinator's FleetBound topic.
+var e2eFleetBoundID = func() common.Hash {
+	parsed, err := stabi.STCoordinatorMetaData.ParseABI()
+	if err != nil {
+		panic(err)
+	}
+	return parsed.Events["FleetBound"].ID
+}()
+
+// The CTF pool's vault2 state at the head.
+func (e *ctfE2E) pending() stabi.ISTSettlementVault2Pending {
+	return e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackPending(ctfTestPoolId), e2eVault2Binding.UnpackPending)
+}
+
+func (e *ctfE2E) rootCount() uint64 {
+	return e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackRootCount(ctfTestPoolId), e2eVault2Binding.UnpackRootCount).Uint64()
+}
+
+func (e *ctfE2E) root(index uint64) stabi.ISTSettlementVault2Root {
+	return e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackRoots(ctfTestPoolId, e2eRao(index)), e2eVault2Binding.UnpackRoots)
+}
+
+func (e *ctfE2E) fundedThrough(epoch uint64) *big.Int {
+	return e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackFundedThrough(ctfTestPoolId, e2eRao(epoch)), e2eVault2Binding.UnpackFundedThrough)
+}
+
+func (e *ctfE2E) claimed(index uint64) *big.Int {
+	return e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackClaimed(ctfTestPoolId, e2eRao(index)), e2eVault2Binding.UnpackClaimed)
+}
+
+func (e *ctfE2E) recycledFor(epoch uint64) *big.Int {
+	return e2eView(e.e2eFixture, e.carry, e2eCtfCarryBinding.PackRecycledFor(e2eRao(epoch)), e2eCtfCarryBinding.UnpackRecycledFor)
+}
+
+func (e *ctfE2E) census(epoch uint64) stabi.CtfCensusOutput {
+	return e2eView(e.e2eFixture, e.settlement, e2eSettlementBinding.PackCtfCensus(big.NewInt(e2eNoID), e2eRao(epoch)), e2eSettlementBinding.UnpackCtfCensus)
+}
+
+// ctfError names a revert by STSettlement2Ctf's or STCtfCarry's errors.
+func (e *ctfE2E) ctfError(revert []byte) string {
+	if len(revert) >= 4 {
+		for _, contract := range []*e2eArtifact{e.ctf, e2eForgeArtifact(e.t, "STCtfCarry")} {
+			if failure, err := contract.abi.ErrorByID([4]byte(revert[:4])); err == nil {
+				return failure.Name
+			}
+		}
+	}
+	return fmt.Sprintf("0x%x", revert)
+}
+
+// refusedCtf sends data from actor and requires the named error of the
+// capture the flag contracts.
+func (e *ctfE2E) refusedCtf(actor *e2eActor, to common.Address, data []byte, name string) {
+	e.t.Helper()
+	receipt, revert := e.chain.send(actor.key, &to, nil, data)
+	if receipt.Status != types.ReceiptStatusFailed || e.ctfError(revert) != name {
+		e.t.Fatalf("%s's call 0x%x: status %d revert %s, want %s", actor.name, data[:4], receipt.Status, e.ctfError(revert), name)
+	}
+}
+
+// close lets epoch end and closes it for the CTF pool, as anyone may: the
+// close captures everything vault2 holds on the CTF pool hotkey.
+func (e *ctfE2E) close(epoch uint64) *big.Int {
+	e.t.Helper()
+	if end := e.end(epoch); e.chain.next() < end {
+		e.chain.rollTo(end)
+	}
+	observed := e.chain.stake(e.hotkey, e.vault2Coldkey)
+	before := e.fundedThrough(epoch - 1)
+	receipt := e.must(e.anyone, e.settlement, nil, e2eSettlementBinding.PackCloseOperatorEpoch(e2eRao(epoch), ctfTestPoolId))
+	funded := new(big.Int).Add(before, observed)
+	e.requireLogs(receipt, e.vault2Log("EmissionCaptured", e2eRao(epoch), ctfTestPoolId, observed, observed, funded))
+	if e.fundedThrough(epoch).Cmp(funded) != 0 || e.chain.stake(e.hotkey, e.vault2Coldkey).Sign() != 0 {
+		e.t.Fatalf("epoch %d funded through %s, want %s", epoch, e.fundedThrough(epoch), funded)
+	}
+	return observed
+}
+
+// commitCensus publishes the census's objects and commits its hash as the
+// root signer in block B_k.
+func (e *ctfE2E) commitCensus(census *ctf.Census, block uint64) *ctf.CensusObjects {
+	e.t.Helper()
+	objects, err := ctf.EncodeCensus(census)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.publisher.publish(objects.Objects, nil, nil)
+	e.chain.rollTo(block)
+	receipt := e.must(e.operator, e.settlement, nil, e2eSettlementBinding.PackCommitCtfCensus(e2eRao(census.Epoch), big.NewInt(e2eNoID), objects.Hash))
+	event, err := e2eSettlementBinding.UnpackCtfCensusCommittedEvent(receipt.Logs[0])
+	if len(receipt.Logs) != 1 || err != nil || event.NoId.Uint64() != e2eNoID || event.Epoch.Uint64() != census.Epoch || event.CensusHash != objects.Hash || event.BlockNumber != block || receipt.BlockNumber.Uint64() != block {
+		e.t.Fatalf("CtfCensusCommitted %+v: %v", event, err)
+	}
+	if committed := e.census(census.Epoch); committed.CensusHash != objects.Hash || committed.BlockNumber != block {
+		e.t.Fatalf("ctfCensus(1, %d) is %+v", census.Epoch, committed)
+	}
+	return objects
+}
+
+// build builds the CTF root of epoch over the latest finalized CTF root, as
+// the server's driver does: each covered epoch's committed census with its
+// pulse and the head bindings at its boundaries, recycledFor and vault2's
+// funding.
+func (e *ctfE2E) build(epoch uint64, censuses map[uint64]*ctf.CensusObjects) *ctf.Ledger {
+	e.t.Helper()
+	in := ctf.BuildInput{NoID: e2eNoID, ChainID: e2eChainID, Netuid: e2eNetuid, Epoch: epoch, FirstEpoch: ctfTestFirstEpoch, CarryColdkey: e.carryColdkey, FundedThrough: map[uint64]uint256.Int{}}
+	p := uint64(ctfTestFirstEpoch - 1)
+	if count := e.rootCount(); count > 0 {
+		previous := e.ledgers[count-1]
+		in.Previous = &ctf.Previous{Root: previous.Commit, Accounts: previous.Accounts, State: previous.State}
+		p = previous.Commit.Epoch
+	}
+	heads := e.heads()
+	for k := p + 1; k <= epoch; k++ {
+		in.FundedThrough[k] = *uint256.MustFromBig(e.fundedThrough(k))
+		input := ctf.EpochInput{Epoch: k, Recycled: *uint256.MustFromBig(e.recycledFor(k))}
+		if committed := e.census(k); committed.CensusHash != ([32]byte{}) {
+			objects := censuses[k]
+			time := e2eBlockTime(committed.BlockNumber)
+			bound, err := heads.HeadBindings(e.ctx, k)
+			if err != nil {
+				e.t.Fatal(err)
+			}
+			census, err := ctf.DecodeCensus(objects.Header, objects.Objects)
+			if err != nil {
+				e.t.Fatal(err)
+			}
+			coldkeys := map[[16]byte][32]byte{}
+			for _, candidate := range census.Candidates {
+				coldkeys[candidate.ClientID] = ctfE2EColdkey(candidate.ClientID)
+			}
+			input.Census = &ctf.CensusInput{Hash: committed.CensusHash, Block: committed.BlockNumber, Time: time, Objects: objects.Objects}
+			input.Pulse, input.Bound, input.Coldkeys = e.pulse(ctf.DrawRound(time)), bound, coldkeys
+		}
+		in.Epochs = append(in.Epochs, input)
+	}
+	built, err := ctf.Build(e.ctx, in)
+	if err != nil {
+		e.t.Fatalf("CTF root of epoch %d: %v", epoch, err)
+	}
+	return built
+}
+
+// commit publishes the root's objects and commits it as the root signer of
+// operator 1, checking DistributionCommitted.
+func (e *ctfE2E) commit(built *ctf.Ledger) stabi.ISTSettlementVault2Pending {
+	e.t.Helper()
+	e.publisher.publish(built.Objects, built.Accounts, built.Tree)
+	before, count := e.pending(), e.rootCount()
+	commitment := built.Commit
+	receipt := e.must(e.operator, e.settlement, nil, e2eSettlementBinding.PackCommitDistribution(e2eRao(commitment.Epoch), ctfTestPoolId, e2eRao(count),
+		stabi.ISTSettlementVault2Commitment{Root: commitment.Root, Total: commitment.Total.ToBig(), LeafCount: commitment.LeafCount, LedgerHash: commitment.LedgerHash}))
+	after := e.pending()
+	e.requireLogs(receipt, e.vault2Log("DistributionCommitted", ctfTestPoolId, after.Seq, commitment.Epoch, commitment.Root, commitment.Total.ToBig(), commitment.LeafCount, commitment.LedgerHash, before.Seq))
+	return after
+}
+
+// audit runs the auditor's CTF audit of the pending root at the head with
+// heads, as the validator's settlementV2CtfChain reads its input: the entry
+// in force at the pending epoch names the carry, which serves vault2's pool
+// 2^32 + 1; each covered epoch's recycledFor, ctfCensus, its block's time
+// and the pulse of its round.
+func (e *ctfE2E) audit(heads ledger.HeadOracle) *ctf.Result {
+	e.t.Helper()
+	pending := e.pending()
+	file, err := amendment.ParseVerified(e.amendments, e2eChainID, e2eNetuid, crypto.PubkeyToAddress(e.signer.PublicKey))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	inForce, err := file.At(e2eNoID, pending.Epoch, nil)
+	if err != nil || inForce.CaptureTheFlag == nil || inForce.CaptureTheFlag.Ctf.Carry != e.carry || inForce.CaptureTheFlag.Ctf.CtfPool != ctfE2EPool {
+		e.t.Fatalf("the entry in force at epoch %d: %+v (%v)", pending.Epoch, inForce.CaptureTheFlag, err)
+	}
+	pool := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackPools(ctfTestPoolId), e2eVault2Binding.UnpackPools)
+	in := ctf.VerifyInput{NoID: e2eNoID, ChainID: e2eChainID, Netuid: e2eNetuid, FirstEpoch: pool.FirstEpoch, CarryColdkey: e.carryColdkey,
+		Pending: e2eLedgerRoot(pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash), FundedThrough: map[uint64]uint256.Int{},
+		Epochs: map[uint64]ctf.EpochFacts{}, Fetcher: e.publisher, Custody: ledger.NewMemoryCustody(), Heads: heads, MaxFetchBytes: ledger.DefaultMaxFetchBytes}
+	p := pool.FirstEpoch - 1
+	if count := e.rootCount(); count > 0 {
+		root := e.root(count - 1)
+		previous := e2eLedgerRoot(root.Epoch, root.Root, root.Total, root.LeafCount, root.LedgerHash)
+		in.Previous, p = &previous, root.Epoch
+	}
+	for k := p + 1; k <= pending.Epoch; k++ {
+		in.FundedThrough[k] = *uint256.MustFromBig(e.fundedThrough(k))
+		facts := ctf.EpochFacts{Recycled: *uint256.MustFromBig(e.recycledFor(k))}
+		if committed := e.census(k); committed.CensusHash != ([32]byte{}) {
+			time := e2eBlockTime(committed.BlockNumber)
+			facts.Census = &ctf.CensusCommitment{Hash: committed.CensusHash, Block: committed.BlockNumber, Time: time}
+			facts.Pulse = e.pulse(ctf.DrawRound(time))
+		}
+		in.Epochs[k] = facts
+	}
+	result, err := ctf.Verify(e.ctx, in)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return result
+}
+
+// approve audits the pending root with the chain's head bindings and sends
+// the validator's approval through its sender.
+func (e *ctfE2E) approve() *ctf.Result {
+	e.t.Helper()
+	result := e.audit(e.heads())
+	if result.Action() != ledger.ActionApprove {
+		e.t.Fatalf("the auditor refuses the pending CTF root: %v (%v check: %v)", result.Action(), result.Check, result.Err)
+	}
+	pending := e.pending()
+	if err := e.sender.Approve(e.ctx, ctfE2EPool, pending); err != nil {
+		e.t.Fatal(err)
+	}
+	sent := e.chain.sentBy(e.auditor.address)
+	e.requireLogs(e.chain.receipt(sent[len(sent)-1].Hash()), e.settlementLog("DistributionApproved", ctfTestPoolId, pending.Seq, e.auditor.address, uint64(1), common.Big1))
+	return result
+}
+
+// finalize lets the pending root's challenge window pass and finalizes it,
+// as anyone may.
+func (e *ctfE2E) finalize(built *ctf.Ledger) uint64 {
+	e.t.Helper()
+	pending := e.pending()
+	if at := pending.CommittedBlock + e2eWindow; e.chain.next() < at {
+		e.chain.rollTo(at)
+	}
+	index := e.rootCount()
+	receipt := e.must(e.anyone, e.settlement, nil, e2eSettlementBinding.PackFinalizeDistribution(ctfTestPoolId))
+	e.requireLogs(receipt, e.vault2Log("DistributionFinalized", ctfTestPoolId, pending.Seq, e2eRao(index), pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash))
+	e.ledgers = append(e.ledgers, built)
+	return index
+}
+
+// check runs snclaim v2 check of the CTF pool, as the CTF watcher does.
+func (e *ctfE2E) check(flags ...string) (string, string, int) {
+	e.t.Helper()
+	return e.snclaim(e.snclaimArgs(append([]string{"v2", "check", "--all", fmt.Sprintf("--no_id=%d", ctfE2EPool),
+		"--amendments_url=" + e.web.URL + "/amendments.yml", "--drand_url=" + e.web.URL}, flags...)...)...)
+}
+
+// recycle has anyone claim and recycle the carry account of the latest
+// finalized CTF root through the carry, and checks what moved: the account
+// is claimed in full, the carry holds nothing, and vault2's position on the
+// CTF pool hotkey grew by what it returned, recorded for the next unfunded
+// epoch. With claimant set, the claimant first claims the carry account from
+// vault2 itself, as anyone may, and the recycle claims nothing again.
+func (e *ctfE2E) recycle(claimant *e2eActor) (uint64, *big.Int) {
+	e.t.Helper()
+	index := e.rootCount() - 1
+	built := e.ledgers[index]
+	carryIndex := e2eAccountOf(e.t, built.Accounts, e.carryColdkey)
+	account, proof := e2eProof(e.t, built.Tree, built.Accounts, carryIndex)
+	owed := new(big.Int).Sub(account.Cumulative, e.claimed(carryIndex))
+	if claimant != nil {
+		e.must(claimant, e.vault2, nil, e2eVault2Binding.PackClaim(ctfTestPoolId, e2eRao(index), account, proof))
+		if e.claimed(carryIndex).Cmp(account.Cumulative) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Cmp(owed) != 0 {
+			e.t.Fatalf("%s's claim of the carry account paid the carry %s of %s", claimant.name, e.chain.stake(e.escrowV2, e.carryColdkey), owed)
+		}
+	}
+	before := e.chain.stake(e.hotkey, e.vault2Coldkey)
+	epoch := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackLastFundedEpoch(ctfTestPoolId), e2eVault2Binding.UnpackLastFundedEpoch).Uint64() + 1
+	recorded := e.recycledFor(epoch)
+	receipt := e.must(e.anyone, e.carry, nil, e2eCtfCarryBinding.PackRecycle(e2eRao(index), account, proof))
+	var event *stabi.STCtfCarryRecycled
+	for _, log := range receipt.Logs {
+		if log.Address == e.carry {
+			event, _ = e2eCtfCarryBinding.UnpackRecycledEvent(log)
+		}
+	}
+	grown := new(big.Int).Sub(e.chain.stake(e.hotkey, e.vault2Coldkey), before)
+	if event == nil || event.Epoch.Uint64() != epoch || event.Amount.Cmp(grown) != 0 || grown.Cmp(owed) != 0 || e.claimed(carryIndex).Cmp(account.Cumulative) != 0 ||
+		e.recycledFor(epoch).Cmp(new(big.Int).Add(recorded, grown)) != 0 || e.chain.stake(e.escrowV2, e.carryColdkey).Sign() != 0 || e.chain.stake(e.hotkey, e.carryColdkey).Sign() != 0 {
+		e.t.Fatalf("recycle of root %d: event %+v, vault2 grew %s of %s owed, recycledFor(%d) %s", index, event, grown, owed, epoch, e.recycledFor(epoch))
+	}
+	// Nothing is left to move: another recycle, naming no account, reverts.
+	e.refusedCtf(e.anyone, e.carry, e2eCtfCarryBinding.PackRecycle(e2eRao(index), stabi.LedgerTreeAccount{Index: new(big.Int), Cumulative: new(big.Int)}, nil), "NothingToRecycle")
+	return epoch, grown
+}
+
+// ctfE2ECensus is epoch 3's census: three provider units in DE, two in IS,
+// one of them ctfE2EBound's, and two extender units in US, each client in its
+// own unit; a presence near miss in DE and an extender with no location.
+func ctfE2ECensus(epoch uint64) *ctf.Census {
+	candidate := func(role ctf.Role, country string, client byte) ctf.Candidate {
+		code, _ := ctf.ParseCountry(country)
+		unit := [32]byte{0: 0x0b, 31: client}
+		return ctf.Candidate{Role: role, Country: code, Unit: unit, Family: ctf.FamilyIPv4, ClientID: ctfE2EClient(client)}
+	}
+	de, _ := ctf.ParseCountry("de")
+	return &ctf.Census{NoID: e2eNoID, Epoch: epoch,
+		Candidates: []ctf.Candidate{
+			candidate(ctf.RoleProvider, "de", 1), candidate(ctf.RoleProvider, "de", 2), candidate(ctf.RoleProvider, "de", 3),
+			candidate(ctf.RoleProvider, "is", 11), candidate(ctf.RoleProvider, "is", 12),
+			candidate(ctf.RoleExtender, "us", 21), candidate(ctf.RoleExtender, "us", 22),
+		},
+		Excluded: []ctf.Exclusion{
+			{Country: de, Role: ctf.RoleProvider, Reason: ctf.ReasonPresence, Count: 2},
+			{Country: ctf.CountryUnknown, Role: ctf.RoleExtender, Reason: ctf.ReasonNoLocation, Count: 1},
+		}}
+}
+
+// E-8: capture the flag's whole cycle on the e2e chain. The proxy is upgraded
+// to STSettlement2Ctf and UR's CTF pool registered from epoch 3 by the one
+// folded timelock operation, its value paid from the timelock; the carry is
+// created and the signed entry names it. In epoch 3 the CTF pool earns
+// 24.9 α; its census, which lists a client bound to a head fleet, is refused
+// before its window and from anyone but the root signer, committed in it once
+// and only once; the root drawn with quicknet's real pulse, leaving the bound
+// client out, is approved by the auditor's CTF audit through the validator's
+// sender, and snclaim v2 check approves it too, naming the client it left
+// out, where without head bindings it would refuse it. After its window the
+// root finalizes; snclaim v2 status lists a winner's CTF account, and the
+// winner claims it through snclaim v2 claim; anyone claims and recycles the
+// carry account through STCtfCarry, recorded for epoch 4. Epoch 4 has no
+// census: everything carries, and its root returns the carry in full,
+// matured; the audit and snclaim, with the previous root's accounts, approve
+// it, it finalizes, and once the watcher has claimed the carry account from
+// vault2 itself the carry recycles what it holds for epoch 5. vault2's
+// conservation holds across both pools.
+func TestSettlementV2E2ECaptureTheFlag(t *testing.T) {
+	e := newCtfE2E(t)
+
+	// Epoch 3: the CTF pool earns, and the census window opens at end(3).
+	e.chain.emit(e.hotkey, e.vault2Coldkey, e2eRao(ctfE2EEmission3))
+	end := e.end(ctfTestFirstEpoch)
+	if ctfE2ECensusBlock < end || ctfE2ECensusBlock > end+e2eCommitWindow/2 {
+		t.Fatalf("B_3 %d is outside the census window [%d, %d]: pin another block and its round", ctfE2ECensusBlock, end, end+e2eCommitWindow/2)
+	}
+	census := ctfE2ECensus(ctfTestFirstEpoch)
+	encoded, err := ctf.EncodeCensus(census)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitData := e2eSettlementBinding.PackCommitCtfCensus(e2eRao(ctfTestFirstEpoch), big.NewInt(e2eNoID), encoded.Hash)
+	e.chain.rollTo(end - 1)
+	e.refusedCtf(e.operator, e.settlement, commitData, "InvalidWindow")
+	if captured := e.close(ctfTestFirstEpoch); captured.Uint64() != ctfE2EEmission3 {
+		t.Fatalf("the close captured %s", captured)
+	}
+	e.refusedCtf(e.anyone, e.settlement, commitData, "Unauthorized")
+	e.refusedCtf(e.operator, e.settlement, e2eSettlementBinding.PackCommitCtfCensus(e2eRao(ctfTestFirstEpoch), big.NewInt(e2eNoID), [32]byte{}), "InvalidCensusHash")
+	objects := e.commitCensus(census, ctfE2ECensusBlock)
+	e.refusedCtf(e.operator, e.settlement, commitData, "CensusAlreadyCommitted")
+
+	// The root: drawn with ρ_3's pulse, the bound client left out.
+	censuses := map[uint64]*ctf.CensusObjects{ctfTestFirstEpoch: objects}
+	first := e.build(ctfTestFirstEpoch, censuses)
+	three := first.Epochs[0]
+	if !three.Drawn || three.Round != ctfE2ERound || len(three.Bound) != 1 || three.Bound[0].ClientID != ctfE2EBound || len(three.Awards) != 6 || three.SlotBase.Uint64() != 10_000_000 {
+		t.Fatalf("epoch 3 drawn %t round %d, bound %v, %d awards, slot %s", three.Drawn, three.Round, three.Bound, len(three.Awards), three.SlotBase.Dec())
+	}
+	for _, award := range three.Awards {
+		if award.ClientID == ctfE2EBound {
+			t.Fatal("the bound client won")
+		}
+	}
+	pending := e.commit(first)
+
+	// The auditor approves what reproduces with the chain's bindings; without
+	// them the draw keeps the bound client and the root is refused, which is
+	// what a watcher without bindings would answer.
+	if blind := e.audit(nil); blind.Action() != ledger.ActionRefuse || blind.Check != ctf.CheckDraw {
+		t.Fatalf("an audit without head bindings: %v (%v check: %v)", blind.Action(), blind.Check, blind.Err)
+	}
+	audited := e.approve()
+	if bound := audited.Epochs[0].Bound; len(bound) != 1 || bound[0].ClientID != ctfE2EBound {
+		t.Fatalf("the audit left out %v", bound)
+	}
+
+	// snclaim agrees with the validator: it reads the same bindings, leaves
+	// the client out, names it, and approves.
+	stdout, stderr, code := e.check("--challenge", "--demand", "--key_file="+e.watcher.keyFile(t))
+	heads := fmt.Sprintf("  head bindings:     1 FleetBound events of v1 coordinator %s from block %d\n", e.coordinator.Hex(), e.epochStart(0))
+	left := fmt.Sprintf("                     left out 1 head-bound candidates: 0x%x (provider, is)\n", ctfE2EBound)
+	drawn := fmt.Sprintf("  epoch 3:           census %v at block %d, 7 candidates; drand round %d, 6 winners\n", objects.Hash, ctfE2ECensusBlock, ctfE2ERound)
+	if code != 0 || !strings.Contains(stdout, heads) || !strings.Contains(stdout, drawn+left) || !strings.HasSuffix(stdout, "  audit:             approve\n") || len(e.chain.sentBy(e.watcher.address)) != 0 {
+		t.Fatalf("snclaim v2 check of the first CTF root: exit %d\n%s%s", code, stdout, stderr)
+	}
+	t.Logf("snclaim v2 check of the first CTF root:\n%s", stdout)
+
+	// After its window the root finalizes, and a winner claims through
+	// snclaim, paid on vault2's escrow hotkey.
+	e.finalize(first)
+	if e.pending().Seq != 0 || e.rootCount() != 1 {
+		t.Fatal("the CTF root did not finalize")
+	}
+	winner := three.Awards[0]
+	index := e2eAccountOf(t, first.Accounts, winner.Coldkey)
+	cumulative := first.Accounts[index].Cumulative.ToBig()
+	stdout, stderr, code = e.snclaim(e.snclaimArgs("v2", "status", fmt.Sprintf("--coldkey=0x%x", winner.Coldkey))...)
+	if code != 0 || !strings.Contains(stdout, fmt.Sprintf("  pool %d, account %d:\n", ctfE2EPool, index)) || !strings.Contains(stdout, fmt.Sprintf(" (%s rao) at root 0\n", cumulative)) {
+		t.Fatalf("snclaim v2 status of the winner: exit %d\n%s%s", code, stdout, stderr)
+	}
+	stdout, stderr, code = e.snclaim(e.snclaimArgs("v2", "claim", fmt.Sprintf("--coldkey=0x%x", winner.Coldkey), fmt.Sprintf("--no_id=%d", ctfE2EPool), "--key_file="+e.anyone.keyFile(t))...)
+	if code != 0 || e.claimed(index).Cmp(cumulative) != 0 || e.chain.stake(e.escrowV2, winner.Coldkey).Cmp(cumulative) != 0 {
+		t.Fatalf("snclaim v2 claim of the winner's CTF account: exit %d, claimed %s of %s\n%s%s", code, e.claimed(index), cumulative, stdout, stderr)
+	}
+
+	// Anyone recycles the carry: vault2's next close captures it. It returns
+	// everything the root owed the pots and pending awards.
+	returned4, amount := e.recycle(nil)
+	if owed := first.State.Obligations(); returned4 != ctfTestFirstEpoch+1 || amount.Cmp(owed.ToBig()) != 0 {
+		t.Fatalf("recycled %s for epoch %d, the pots and pending awards are %s", amount, returned4, owed.Dec())
+	}
+
+	// Epoch 4: fresh emission and the returned carry; no census, so no draw
+	// and everything carries.
+	e.chain.emit(e.hotkey, e.vault2Coldkey, e2eRao(ctfE2EEmission4))
+	if captured := e.close(ctfTestFirstEpoch + 1); captured.Cmp(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4))) != 0 {
+		t.Fatalf("the close of epoch 4 captured %s", captured)
+	}
+	second := e.build(ctfTestFirstEpoch+1, censuses)
+	four := second.Epochs[0]
+	if paid := four.Paid(); four.Drawn || four.Census != nil || !four.Matured || four.Returned.ToBig().Cmp(amount) != 0 || four.Fresh.Uint64() != ctfE2EEmission4 || !paid.IsZero() {
+		t.Fatalf("epoch 4: drawn %t, matured %t, returned %s of %s, fresh %s, paid %s", four.Drawn, four.Matured, four.Returned.Dec(), amount, four.Fresh.Dec(), paid.Dec())
+	}
+	pending = e.commit(second)
+	if pending.Seq != 2 {
+		t.Fatalf("the second CTF root is seq %d", pending.Seq)
+	}
+	e.approve()
+	stdout, stderr, code = e.check("--challenge", "--demand", "--key_file="+e.watcher.keyFile(t))
+	if code != 0 || !strings.Contains(stdout, "  epoch 4:           no census committed: no draw\n") || strings.Contains(stdout, "head bindings") ||
+		!strings.HasSuffix(stdout, fmt.Sprintf("  audit:             approve\n  previous accounts: %d of root 0, no fault\n", len(first.Accounts))) {
+		t.Fatalf("snclaim v2 check of the second CTF root: exit %d\n%s%s", code, stdout, stderr)
+	}
+	t.Logf("snclaim v2 check of the second CTF root:\n%s", stdout)
+	// The watcher claims the carry account from vault2 first; the recycle
+	// then claims nothing again and returns what the carry holds.
+	e.finalize(second)
+	if returned5, again := e.recycle(e.watcher); returned5 != ctfTestFirstEpoch+2 || again.Cmp(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4))) != 0 {
+		t.Fatalf("recycled %s for epoch %d", again, returned5)
+	}
+	e.requireConservation()
+}
+
+// requireConservation checks G1 on vault2 across both of operator 1's pools:
+// what was captured is paid or accounted, each pool's captured less its
+// claims is its share of what is accounted, no pool's claims exceed its
+// finalized roots or those its captures, and vault2's escrow position covers
+// what it accounts.
+func (e *ctfE2E) requireConservation() {
+	e.t.Helper()
+	if !e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackConservationHolds(), e2eVault2Binding.UnpackConservationHolds) {
+		e.t.Fatal("vault2 conservation does not hold")
+	}
+	captured, paid, accounted := e.vault2Counter(e2eVault2Binding.PackTotalCaptured), e.vault2Counter(e2eVault2Binding.PackTotalPaid), e.vault2Counter(e2eVault2Binding.PackEscrowAccounted)
+	held := new(big.Int)
+	for _, pool := range []*big.Int{big.NewInt(e2eNoID), ctfTestPoolId} {
+		poolCaptured := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackCapturedTotal(pool), e2eVault2Binding.UnpackCapturedTotal)
+		poolClaimed := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackClaimedTotal(pool), e2eVault2Binding.UnpackClaimedTotal)
+		finalized := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackFinalizedTotal(pool), e2eVault2Binding.UnpackFinalizedTotal)
+		if poolClaimed.Cmp(finalized) > 0 || finalized.Cmp(poolCaptured) > 0 {
+			e.t.Fatalf("pool %s: captured %s, finalized %s, claimed %s", pool, poolCaptured, finalized, poolClaimed)
+		}
+		held.Add(held, new(big.Int).Sub(poolCaptured, poolClaimed))
+	}
+	if new(big.Int).Add(paid, accounted).Cmp(captured) != 0 || held.Cmp(accounted) != 0 || e.chain.stake(e.escrowV2, e.vault2Coldkey).Cmp(accounted) < 0 {
+		e.t.Fatalf("G1: captured %s paid %s accounted %s, the pools hold %s", captured, paid, accounted, held)
+	}
+}
