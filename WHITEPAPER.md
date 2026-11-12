@@ -2312,8 +2312,9 @@ and role, so the first miner to reach a thin country earns far more than one mor
     challenge passed, and it meets E3–E5.
 - **One ticket per unit.** Candidates are grouped by the keyed /29 IPv4 or /48 IPv6 unit of §8.4 and §8.6.2.
   A unit holds one ticket per role, whatever its size, and all its members are equivalent. It enters one
-  country's draw per role, the country of its lowest candidate client id. A miner may be a candidate in both
-  roles and win both: every miner can be both a provider and an extender (§8.6.8, decision 9).
+  country's draw per role, the country of the lowest client id among its candidates left in the draw, once
+  fleet‑bound ones are dropped. A miner may be a candidate in both roles and win both: every miner can be both
+  a provider and an extender (§8.6.8, decision 9).
 - **The census and its commitment.** Right after the end boundary, the server builds epoch `k`'s **census**:
   one row per candidate (role, its own country, unit, unit family, client id), sorted, with per‑country
   counts of the miners each rule excluded. It holds no coldkeys and no addresses. Within 600 blocks of
@@ -2356,10 +2357,11 @@ and role, so the first miner to reach a thin country earns far more than one mor
   per CTF pool. Once the root finalizes, anyone calls `recycle`. It claims that account and moves the α
   straight back onto the CTF pool hotkey, where the next close captures it with the epoch's emission. It
   records each return under the epoch whose close captures it (`recycledFor`), so the ledger tells returned
-  carry from fresh funding. It holds stake only until the next recycle, which returns everything it holds.
+  carry from fresh funding. It holds stake on the escrow and pool hotkeys only until the next recycle. Stake
+  sent to its coldkey on any other hotkey stays where it is, which is how the open problem below arises.
 - **Pending awards.** If the carry has not come back before an epoch's close (a late root, or the relay down),
   the epoch is not matured. Its winners take their slot amounts at once and their pot shares as pending awards,
-  paid in full in the first matured epoch, so a delay does not cost a winner its pot share.
+  paid in the first matured epoch, so a delay does not cost a winner its pot share.
 - **An open problem, pending the owner's decision.** Third parties can fill the carry contract's
   staking‑hotkey list, after which the runtime refuses every claim of its account, and the contract cannot clear
   the list. Slot amounts would still pay, but the pots and pending awards would never return. This is not
@@ -2394,7 +2396,8 @@ takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
   census against its commitment, the seed from the drand pulse, the draw, the amounts and the accounts. It is
   the same kind of check it runs on the extender census, not a measurement. Presence, the checks behind P1 and
   X1, the countries, units and address dedupe, the wallets and the declared networks are attested and not
-  checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit, `ctf.Verify`.
+  checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit, `ctf.Verify`,
+  but without fleet bindings, so a census that lists a fleet‑bound client reproduces only for the validator.
 - **Claims.** Apps claim a CTF account beside the pool account, in the same claim flow. Each entry of
   `GET /sn/ledger/account` gains `kind` (`pool` or `ctf`) and `label`. Old apps show a CTF account as
   "Pool 4294967297" and claim it like any pool.
@@ -2473,8 +2476,9 @@ These are `CAPTURETHEFLAG.md` §12.1.
     to stay about five epochs to capture most of the reward.
 17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow.
 
-Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason. Its
-§12.3 lists later options, each of which would need its own signed entry: ASN units, a cap on pots or a release
+Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason, except
+one that is open, pending the owner's decision: third parties can block the carry contract (§8.7.3;
+`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN units, a cap on pots or a release
 of territories' pots, per‑country slot counts, a derived‑location requirement for large pots, a wind‑down rule,
 and CTF pools for other operators.
 
@@ -3818,7 +3822,7 @@ starts at least two days after the last one passes.
   keyed by a seed from the first drand quicknet round at least 60 s after the census commitment, and a unit
   holds one ticket per role, whatever its size.
 - **Pending award** — a winner's pot share while the carry has not come back before the epoch's close. It is
-  paid in full in the first epoch whose carry is back.
+  paid in the first epoch whose carry is back.
 - **Carry contract (`STCtfCarry`)** — the immutable, ownerless contract, one per CTF pool, to whose account
   each root pays the pots and pending awards. After the root finalizes, anyone calls its `recycle`, which claims
   that account and returns the α to the CTF pool hotkey for the next close; `recycledFor` records each return.

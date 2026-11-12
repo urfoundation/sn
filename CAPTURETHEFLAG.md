@@ -5,9 +5,10 @@
 Design, 2026‑11‑11. From the CTF start epoch `E_c` (epoch 8, the owner's decision; §11.2) it
 amends the steering split of `WHITEPAPER.md` §8.5 and adds a second settlement v2 pool per network operator
 (`VERSION2-FINAL.md`). The owner's decisions of 2026‑11‑11 are folded in (§12.1). Every other question the
-design raised is resolved in §12.2, each with its reason, for the owner's review. Where the code built since
-departs from this design's first draft, the text follows the code and gives the reason (§12.2, rows 19–23).
-§12.4 lists what is open, pending the owner's decision.
+design raised is resolved in §12.2, each with its reason, for the owner's review, except one that is open,
+pending the owner's decision (§12.4). Where the code built since departs from this design's first draft, the
+text follows the code and gives the reason; rows 9, 17 and 19–23 of §12.2 record the departures that change a
+resolution.
 
 ## Summary
 
@@ -207,7 +208,7 @@ operations they would take 144 h, because review refuses to schedule a call that
   execution plan accounts for it (§11.2): the operation is ready days early, the execute is retried with a
   bounded gas limit, and a fallback operation for the next epoch is scheduled beside it.
 - Without the parent's hash the hotkey would be known for every block in advance, so `registerCtfPool`
-  refuses a zero `blockhash(block.number − 1)` (`BlockHashUnavailable`), and rehearsal R‑9 qualifies
+  refuses a zero `blockhash(block.number − 1)` (`BlockHashUnavailable`), and rehearsal R-9 qualifies
   `BLOCKHASH` on the runtime.
 - Nothing signs with a pool hotkey. vault2, its coldkey, makes every call for it: the registration, the
   captures and any re‑registration.
@@ -302,8 +303,8 @@ deactivate an address) keeps only current state today, so the sampler is its fir
   as §8.6.2 keys it.
 
 **Units are tickets.** All candidates in one unit are equivalent: the unit holds one ticket per role, whatever
-its size. A unit enters one country's draw for each role, the country of its lowest candidate client id; the
-other members follow it there. The census keeps each candidate's own country (§4.3), and the draw, not the
+its size. A unit enters one country's draw for each role, the country of the lowest client id among its
+candidates left in the draw (fleet‑bound ones are dropped first, §4.4); the other members follow it there. The census keeps each candidate's own country (§4.3), and the draw, not the
 census, places the unit. So members of one unit may list different countries, and the auditor can check the
 rule from the census (`ctf` package). A client is a candidate in at most one country per role. It may be a
 candidate in both roles and win both: every miner can be both a provider and an extender (§8.6 decision 9).
@@ -346,9 +347,9 @@ member     = in each winning unit, the candidate with the smallest keccak256(σ_
 
 - **Fleet‑bound candidates are left out first.** Before the draw, every candidate with an active fleet
   binding at either boundary (P5, X5) is left out, from the chain's bindings, which the builder and the
-  auditor read alike. `U_{c,r}` is the units left in country `c` and role `r`. A root with a bound winner is
-  therefore never refused (§8 check 3): a committed census cannot be rebuilt, so a refusal would leave the
-  epoch unbuildable.
+  auditor read alike. `U_{c,r}` is the units left in country `c` and role `r`. So no root is refused
+  because its census lists a bound candidate: the draw never picks one (§8 check 3). Refusing roots for it
+  instead would leave the epoch unbuildable, since a committed census cannot be rebuilt.
 - **The randomness source.** The server and the validator read the pulse from the chain's Drand pallet when
   it is stored there, else from any drand relay. A pulse verifies against quicknet's key whatever its source.
   `sn/crv4` already carries quicknet's constants.
@@ -379,7 +380,8 @@ for each country c and role r, with pot P = P_{c,r} and W = min(5, |U_{c,r}|) wi
   winner of rank i ≤ W   gets  a_{k,(c,r,i)}  now, and  q  (plus 1 rao if W = 5 and i ≤ P mod 5)
                                 now if M_k, else as a pending award to its coldkey
   P_{c,r} ← P − W·q − (W = 5 ? P mod 5 : 0) + Σ_{i=W+1..5} a_{k,(c,r,i)}     what is not won carries
-pending awards           all paid in full in the first matured epoch, with or without a draw
+pending awards           all paid in the first matured epoch, with or without a draw: in full, unless a shortfall
+                         finds every pot empty
 O_k      = Σ pots + Σ pending awards                                  what the CTF pool owes after k
 ```
 
@@ -409,7 +411,8 @@ O_k      = Σ pots + Σ pending awards                                  what the
     `F_k` could be negative. With no fresh funding (validators not supporting CTF, §4.7), a single rao lost
     to rounding then left every later epoch unmatured, so pending awards never paid, and a capture a rao
     short of the return made `F_k` negative. A shortfall the funding cannot cover is now taken from the pots,
-    the largest first: at most a few rao.
+    the largest first: at most a few rao. Only once every pot is empty does it come from the pending awards,
+    which are then paid that much short.
   - **The tolerance is 8 rao, two cycles' rounding, not 4.** With one cycle's rounding (§4.6) the residual
     could not clear: a partial return leaves the rounding of several cycles owed, a late root's return and
     the next one's can come back in one epoch, and whatever stays owed at a root's end is owed again by the
@@ -437,11 +440,13 @@ recycle(rootIndex, account, proof)   anyone
     transferStake(to vault2's coldkey, on poolHotkey, all of it)                 // vault2's position on the pool hotkey grows
     g = the growth of vault2's position, measured as vault2 measures its moves
     e = vault2.lastFundedEpoch(poolId) + 1;  recycledFor[e] += g;  emit Recycled(e, g)
-no owner, no upgrade, no other entry point; it holds stake only until the next recycle, which returns all of it
+no owner, no upgrade, no other entry point; it holds stake on the escrow and pool hotkeys only until the next recycle
 ```
 
 vault2's claims are anyone's and always pay the leaf's coldkey, so a third party's claim of the carry account
-leaves stake on the carry's coldkey until the next recycle moves it.
+leaves stake on the carry's coldkey until the next recycle moves it. Stake that anyone sends the carry's coldkey
+on any other hotkey stays where it is: the carry cannot move it, and that is how its staking‑hotkey list can be
+filled (below).
 
 - **Every epoch the carry cycles.** The root allocates the carry account its delta, the root finalizes about
   two days after the epoch ends, and the server's relay calls `recycle`. The next close then captures the
@@ -457,8 +462,8 @@ leaves stake on the carry's coldkey until the next recycle moves it.
   against the fresh amount (§4.5).
 - **What it trusts.** It relies only on vault2 and the runtime, and it changes nothing in vault2, which pays
   the leaf's coldkey whoever calls.
-- **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R‑9
-  (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R‑9)") covers, on the
+- **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R-9
+  (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)") covers, on the
   live runtime, a claim to a contract coldkey, a `moveStake` and a `transferStake` from it, and the capture of
   the returned position (gas, rounding, the staking‑hotkey list). It has not run yet. It must pass before
   anyone creates the carry contract, and before the Safe schedules the operation of §3.1.
@@ -473,7 +478,7 @@ leaves stake on the carry's coldkey until the next recycle moves it.
   - The owner decides before the carry is created, since it is immutable (§12.4). A candidate fix is being
     prepared: the carry keeps a small residual on the escrow hotkey, seeded at creation, possibly with the
     runtime's `setRejectStakingHotkeyGrowth`. It would keep `recycle`'s interface, but change this section and
-    what the ledger counts as owed (§4.5), and it needs R‑9.
+    what the ledger counts as owed (§4.5), and it needs R-9.
   - Meanwhile, the carry is created before its address is published, that is, before the amendment entry
     names it.
 - **vault2's own list can stall a recycle.** The carry's transfer adds the CTF pool hotkey to vault2's list
@@ -521,9 +526,10 @@ account row (48 bytes):   coldkey (32) ‖ cumulative (16), as v2
   except to grow.
 - **Commit.** `ledgerHash = sha256(header)`. The commit is `(root, total = fundedThrough[e], leafCount,
   ledgerHash)`, as for every v2 pool.
-- **Fixed inputs.** An epoch's census, draw and awards are built once, at the first root that covers it.
-  Rebuilding them needs the explicit operator command naming the epoch, which the validator accepts only for
-  an epoch whose component it refused (§6.4 of `VERSION2-FINAL.md`).
+- **Fixed inputs.** An epoch's draw and awards are built once, at the first root that covers it. Rebuilding
+  them needs the explicit operator command naming the epoch, which the validator accepts only for an epoch
+  whose component it refused (§6.4 of `VERSION2-FINAL.md`). Its census is fixed by its write‑once commitment
+  and is never rebuilt.
 - **Bounds.** A root covers at most 96 epochs, and its header stays under 256 KiB. A census of 100,000
   candidates is about 5 MB.
 
@@ -838,7 +844,7 @@ today is on the server and in the presentation:
 | sn: contracts | `STSettlement2Ctf` and its layout, `STCtfCarry`, tests, rehearsal cases on the live runtime, and `upgrade-settlement2 review` for the new artifact and its folded registration call | 6–9 days | scheduled by ~11‑22 |
 | sn: validator | The three‑way split and its cede rules in the exact weight builder and the treasury production row and replay, CTF pool resolution, the `ctf` setting, the CTF audit and approval, and the amendment entry v2 reader | 6–9 days | weights before `E_c`; audit by ~12‑01 |
 | sn: `snclaim`, amendment entry | `v2 check` for CTF, and the v2 line format and its signing | 2–3 days | before `E_c` |
-| server: presence and census | The quarter‑hour sampler for both roles, the boundary census (P1–P6, X1–X6, units, unit country, exclusion counts), and metrics | 5–7 days | sampler by `end(6)` |
+| server: presence and census | The quarter‑hour sampler for both roles, the boundary census (P1–P6, X1–X6, units, each candidate's own country, exclusion counts), and metrics | 5–7 days | sampler by `end(6)` |
 | server: CTF driver | Close, census commitment, the wait for `ρ_k`, the draw, build, commit and finalize, then `recycle` after finalization. Alerts on a late commitment, a late carry return, and pot captures above a size. | 4–6 days | shadow at `end(7)`; live by `end(8)` |
 | server: API and relay | `/sn/ctf`, `/sn/ctf/epoch/{epoch}`, `/sn/ctf/client`, the ledger endpoint's `kind`, `label` and `unavailable_pools`, `sn/api/operator.yml` and conformance, and the multi‑pool relay | 5–7 days | before `E_c`; relay before the first CTF claims |
 | SDK and apps | `Kind` and `Label`, per‑pool availability, the batched claim, `sn_ctf_*` strings, and per‑pool rows on five platforms | 5–8 days | before the first CTF claims |
@@ -923,7 +929,7 @@ it is.
    full shadow epoch. It has to be running when epoch 8 starts in any case.
 2. **By about 11‑21:** the two contracts, their rehearsal on the live runtime, and `upgrade-settlement2
    review` for the folded call. Anyone then creates the implementation through the deterministic deployment
-   proxy. R‑9 has to pass before the Safe schedules the operation and before anyone creates the carry (§4.6).
+   proxy. R-9 has to pass before the Safe schedules the operation and before anyone creates the carry (§4.6).
 3. **By about 11‑22 18:30Z:** the Safe schedules the operation, with the fallback for epoch 9 beside it. It is
    ready, and executed, about 11‑25 18:30Z, two days before `E_c`. Scheduled by 11‑23 18:30Z, it still executes a
    day before, but with less time to retry an execution whose hotkey was taken (§3.1).
@@ -949,6 +955,9 @@ it is.
 - the operation not executed before epoch 8 starts. Scheduled after about 11‑24 18:29Z, it cannot be. A
   griefer who takes the derived hotkey at every attempt until then has the same effect, and the fallback
   operation then registers the pool from epoch 9 (§3.1);
+- R-9 not passed in time for the Safe to schedule the operation, which it has to precede (§4.6);
+- the owner's decision on the carry (§12.4) not made in time to pin the carry's artifact and create it, since
+  the entry names its address;
 - the entry not signed before epoch 8 starts, since the signing tool would then require epoch 9;
 - the sampler not running when epoch 8 starts;
 - the notice not out before epoch 8 starts.
@@ -1011,11 +1020,11 @@ it is.
 | 10 | Can one client win both roles? | Yes | Every miner can be a provider and an extender (§8.6 decision 9). |
 | 11 | How is the draw kept honest? | The census committed on chain, then a drand round at least 60 s later | The candidates are fixed before randomness exists, and drand cannot be biased. |
 | 12 | What if no census is committed? | No draw, and everything carries | Withholding gains the operator nothing. |
-| 13 | What if the carry is late? | Pending awards, paid in full when it returns | A winner never loses its pot to a delay. |
+| 13 | What if the carry is late? | Pending awards, paid when it returns (§4.5) | A winner never loses its pot to a delay. |
 | 14 | What does the census publish? | Candidates' client ids, units and countries. Coldkeys only for winners, counts for exclusions. | The audit needs no more. |
 | 15 | Does anyone check CTF roots? | The auditor's arithmetic and draw audit, needed for finalization | vault2 requires approval. This is not probing. |
 | 16 | Where are the routes documented? | `/sn/ctf` in `sn/api/operator.yml`, mapped by the conformance test | As `competition.yml` is. |
-| 17 | How does the pool register through the timelock? | One operation that upgrades and registers, with the hotkey derived at execution | It saves 72 h, and a hotkey named 72 h ahead could be registered first by anyone (§3.1). |
+| 17 | How does the pool register through the timelock? | One operation that upgrades and registers, with the hotkey derived at execution. It is ready days early, its execute is retried, and a fallback operation for the next epoch is scheduled beside it (§11.2) | It saves 72 h, and a hotkey named 72 h ahead could be registered first by anyone. The derived hotkey is still known once its parent block is sealed, so anyone can take it inside the executing block (§3.1). |
 | 18 | Is Kosovo included? | No | XK is not an ISO 3166‑1 code, and the server refuses unnamed codes. |
 | 19 | What if a committed census is not canonical? | No draw for that epoch, as with none committed (§4.3, §8 check 1) | The commitment is write‑once, so refusing the root would leave the epoch, and every root after it, unbuildable. |
 | 20 | What if the census lists a fleet‑bound candidate? | It is left out before the draw, by the chain's bindings, which the builder and the auditor read alike (§4.4) | Refusing a root with a bound winner cannot be repaired: a committed census cannot be rebuilt. |
@@ -1040,5 +1049,5 @@ These are only options, each needing its own signed entry:
 1. **Third parties can block the carry contract for good** (§4.6). Filling the carry coldkey's staking‑hotkey
    list makes vault2's claim to it fail, so the pots and pending awards would never return. It is not solved.
    The owner decides before the carry is created, which is immutable: accept the risk, or adopt a fix, such as
-   a residual kept on the escrow hotkey, which changes the contract and needs R‑9. A candidate fix is being
+   a residual kept on the escrow hotkey, which changes the contract and needs R-9. A candidate fix is being
    prepared.

@@ -2090,9 +2090,9 @@ O means owner, the `TimelockController`, and R the root signer of
 **The census.** While the v1 coordinator is paused, `commitCtfCensus`
 reverts `SettlementPaused` (S5), and the window does not wait: a pause across
 it means no census for that epoch. An epoch with no census committed in its
-window has no draw, and all of its slots carry (CAPTURETHEFLAG.md §4.7). A sender
-treats a `CensusAlreadyCommitted` refusal as done when `ctfCensus` already
-holds its hash (§5).
+window has no draw, and all of its slots carry (CAPTURETHEFLAG.md §4.7). A
+sender treats a `CensusAlreadyCommitted` refusal as done when `ctfCensus`
+already holds its hash (§5).
 
 **Resolution by validators.** A validator finds operator `n`'s CTF pool with
 `ctfSettlementAt(n, epoch)` and checks the hotkey against
@@ -2204,7 +2204,10 @@ move.
 **What it guarantees.** It has no owner, no upgrade and no other entry
 point. Stake reaches it only from vault2's claims and from donations, and
 leaves it only for vault2's position on the CTF pool hotkey, so it cannot
-be drained or redirected, and it holds stake only until the next recycle.
+be drained or redirected, and it holds stake on the escrow and pool hotkeys
+only until the next recycle. Stake sent to its coldkey on any other hotkey
+stays where it is, which is how its staking-hotkey list can be filled
+(§19.4).
 It relies only on vault2 and the runtime, and it changes nothing in vault2,
 which pays the leaf's coldkey whoever calls. Stake donated to it, or to
 vault2 on the CTF pool hotkey, counts as fresh funding: the CTF ledger
@@ -2221,8 +2224,8 @@ runtime's rounding (§7.3), at most four a cycle counting the claim, the two
 moves and the next capture. The CTF ledger tolerates two cycles' rounding,
 8 rao, and writes it off (CAPTURETHEFLAG.md §4.5). If the carry
 has not come back by an epoch's close, the epoch's winners take their slot
-amounts at once and their pot shares as pending awards, paid in full in the
-first epoch whose carry is back.
+amounts at once and their pot shares as pending awards, paid in the first
+epoch whose carry is back.
 
 ### 19.4 Risks
 
@@ -2232,7 +2235,7 @@ first epoch whose carry is back.
 | Third parties hold vault2's own staking-hotkey list at 128 entries. The carry's transfer re-adds the CTF pool hotkey to vault2's list when vault2 holds nothing there, as after a capture with no collateral lock | `recycle` reverts until an emission credit re-adds the entry, or, while the CTF UID earns nothing, until someone frees an entry with vault2's `absorbStake`. The relay retries, and absorbs foreign entries. The epoch is not matured in the meantime |
 | Anyone takes the derived pool hotkey inside the executing block, since it is known once the parent block is sealed (§19.2), and repeats it until epoch 8 starts | The operation is ready days early, the execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another salt, registers the pool from epoch 9 if all attempts fail (`mainnet/BOOTSTRAP-CONTRACTS.md`) |
 | The v1 coordinator is paused across an epoch's 600-block census window | No census, so no draw, for that epoch: all its slots carry (CAPTURETHEFLAG.md §4.7) |
-| A late root, or the relay down | The return waits, the epoch is not matured, and pot shares are pending awards, paid in full when the carry is back |
+| A late root, or the relay down | The return waits, the epoch is not matured, and pot shares are pending awards, paid when the carry is back |
 | Validators holding most of the stake do not support CTF | The CTF pool gets no fresh funding, the draws continue, and pots and pending awards pay whenever the carry is back (CAPTURETHEFLAG.md §4.7) |
 | The CTF pool's UID is pruned | No emission until anyone re-registers its hotkey with `registerPoolUid` (§7.1) |
 | The operator attests the census | The census is committed on chain before the drand round exists, which rules out targeted picks; the census, its exclusion counts and the awards are public; a miner can read its own status and reason at `GET /sn/ctf/client`. A second operator needs review first (CAPTURETHEFLAG.md §7) |
@@ -2243,8 +2246,9 @@ first epoch whose carry is back.
   providers and extenders; the census at the end boundary, committed with
   `commitCtfCensus` within 600 blocks, its objects published first and
   kept; the wait for the drand round; the draw and the build (`ctf.Build`);
-  the commit and finalize with the provider pool; then `recycle`. `GET /sn/ledger/account` (§8.3) serves both pools, and each
-  entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a
+  the commit and finalize with the provider pool; then `recycle`.
+  `GET /sn/ledger/account` (§8.3) serves both pools, and each entry gains
+  `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a
   pool whose tree cannot be built is named in `unavailable_pools` instead of
   failing the answer; without it the answer stays whole or a 502. The CTF
   routes are documented in `api/operator.yml`.
@@ -2263,7 +2267,9 @@ first epoch whose carry is back.
 - **`snclaim` and the claim daemon** (§10). Both already treat each
   `(vault, noId, index)` as its own account, so they claim CTF accounts
   unchanged. `snclaim v2 check --no_id 4294967297` runs the CTF audit
-  through the same `ctf.Verify`.
+  through the same `ctf.Verify`, but without fleet bindings, so a census
+  that lists a fleet-bound client reproduces only for the validator
+  (CAPTURETHEFLAG.md §8).
 - **SDK and apps** (§11). `SnLedgerAccount` gains `Kind` and `Label`. The SDK
   asks with `partial=true`, and claims two or more claimable accounts in one
   `STClaimBatcher` transaction (§10.2). The apps label CTF accounts "Capture

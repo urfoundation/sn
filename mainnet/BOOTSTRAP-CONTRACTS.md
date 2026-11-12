@@ -1337,11 +1337,12 @@ has timelock mode's sections. `timelock.call` is
 `registerCtfPool` derives the pool hotkey at execution, as
 `keccak256(abi.encode(proxy, pool_id, block.number, blockhash(block.number - 1)))`.
 A hotkey named in the operation would be public for its 72 h, and anyone
-could register it on SN25 first. This one is unknown until its block.
-A failed execution changes nothing and leaves the operation ready, so anyone
-can execute it again in a later block, under another hotkey. The preflights
-derive the head's hotkey, not the hotkey of the block the execution lands in,
-so they cannot rule out a hotkey registered first.
+could register it on SN25 first. This one is unknown until its parent block
+is sealed (below). A failed execution changes nothing and leaves the
+operation ready, so anyone can execute it again in a later block, under
+another hotkey. The preflights derive the head's hotkey, not the hotkey of
+the block the execution lands in, so they cannot rule out a hotkey
+registered first.
 
 The hotkey is known once the parent block is sealed, about 12 s before the
 executing block. Anyone who sees the execute transaction pending can take the
