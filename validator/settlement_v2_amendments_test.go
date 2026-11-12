@@ -178,7 +178,7 @@ func TestSettlementV2AmendmentsPinnedDeployment(t *testing.T) {
 	if got, err := amendments.extendersFrom(ctx, 1, 7, 8); err != nil || got != 8 {
 		t.Fatalf("E_x = %d, %v; want 8", got, err)
 	}
-	if raw, err := os.ReadFile(filepath.Join(stateDir, "amendments", "amendments.yml")); err != nil || len(raw) == 0 {
+	if raw, err := os.ReadFile(settlementV2AmendmentsStorePath(stateDir)); err != nil || len(raw) == 0 {
 		t.Fatalf("the verified file is not kept: %v", err)
 	}
 	// Within the interval nothing is fetched.
@@ -294,5 +294,254 @@ func TestSettlementV2CustodyRecordsExtenders(t *testing.T) {
 		if _, ok, err := custody.ValidExtenders(ctx, 1, 8); err == nil || ok {
 			t.Fatalf("%s: the record was accepted", name)
 		}
+	}
+}
+
+// cacheTestFile is a published file of the test deployment the steering tests
+// pin (chain 945, sn 521), holding the extender entries for no 1 from each of
+// epochs, signed by the test price key both readers pin for it.
+func cacheTestFile(t *testing.T, epochs ...uint64) []byte {
+	t.Helper()
+	var file strings.Builder
+	file.WriteString("sn: 521\nsigned_amendments:\n")
+	for _, epoch := range epochs {
+		entry := amendment.NewExtenders(depositPriceTestChainID, 521, 1, epoch)
+		if err := entry.Sign(depositPriceTestKey); err != nil {
+			t.Fatal(err)
+		}
+		line, err := entry.Line()
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.WriteString("  - line: \"" + line + "\"\n    signature: \"0x" + hex.EncodeToString(entry.Signature) + "\"\n")
+	}
+	return []byte(file.String())
+}
+
+// cacheTestSite serves whatever file it is given, and nothing while it holds none.
+func cacheTestSite(t *testing.T) (*httptest.Server, *atomic.Value) {
+	t.Helper()
+	var served atomic.Value
+	served.Store([]byte(nil))
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw := served.Load().([]byte)
+		if raw == nil {
+			http.Error(w, "synthetic outage", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write(raw)
+	}))
+	t.Cleanup(site.Close)
+	return site, &served
+}
+
+// The ledger audit and capture the flag's steering read the same published file,
+// and each keeps its verified copy in its own place in one state directory:
+// state_dir/settlement-v2-amendments/amendments.yml and
+// state_dir/amendments/amendments.yml. Neither ever reads or writes the other's,
+// so the files each holds, kept or restarted from, are only its own, and one
+// reader's copy never stands in for the other's while a site is down.
+func TestSettlementV2AmendmentsCacheIsApartFromCaptureTheFlags(t *testing.T) {
+	ctx := context.Background()
+	const chainID, netuid = depositPriceTestChainID, uint16(521)
+	signer := crypto.PubkeyToAddress(depositPriceTestKey.PublicKey)
+	extenderSite, extenderServed := cacheTestSite(t)
+	ctfSite, ctfServed := cacheTestSite(t)
+	previousURL, previousSigner := settlementV2AmendmentsURL, settlementV2AmendmentsSigner
+	settlementV2AmendmentsURL = extenderSite.URL + "/amendments.yml"
+	settlementV2AmendmentsSigner = func(chain uint64, sn uint16) (common.Address, bool) {
+		return signer, chain == chainID && sn == netuid
+	}
+	defer func() { settlementV2AmendmentsURL, settlementV2AmendmentsSigner = previousURL, previousSigner }()
+
+	stateDir := t.TempDir()
+	extenderPath := settlementV2AmendmentsStorePath(stateDir)
+	// Capture the flag's own place, as release_capture_the_flag.go keeps it.
+	ctfPath := filepath.Join(stateDir, "amendments", "amendments.yml")
+	if filepath.Dir(extenderPath) == filepath.Dir(ctfPath) {
+		t.Fatalf("the ledger audit keeps its copy in capture the flag's directory %s", filepath.Dir(ctfPath))
+	}
+	// newExtender and newCtf build each reader as a validator does: the ledger
+	// audit's from its constructor, capture the flag's from its constructor with
+	// its source pointed at the test site and its own store.
+	newExtender := func() *settlementV2Amendments {
+		t.Helper()
+		reader, err := newSettlementV2Amendments(chainID, netuid, stateDir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return reader
+	}
+	newCtf := func() *releaseAmendments {
+		t.Helper()
+		reader, err := newReleaseAmendments(&ReleaseConfig{ChainID: chainID, Netuid: netuid, StateDir: stateDir})
+		if err != nil || reader.source == nil {
+			t.Fatalf("capture the flag's reader: %v", err)
+		}
+		reader.source = amendment.NewSource(ctfSite.URL+"/amendments.yml", chainID, netuid, signer, &releaseAmendmentStore{path: ctfPath})
+		return reader
+	}
+	held := func(name string, file *amendment.File) int {
+		t.Helper()
+		if file == nil {
+			t.Fatalf("%s holds no verified file", name)
+		}
+		return len(file.Entries())
+	}
+	stored := func(path string) []byte {
+		t.Helper()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		return raw
+	}
+	short, long := cacheTestFile(t, 8), cacheTestFile(t, 8, 9)
+
+	// Each takes what its own site publishes and keeps it in its own place: the
+	// ledger audit the longer file, capture the flag the shorter.
+	extenderServed.Store(long)
+	ctfServed.Store(short)
+	extender, ctf := newExtender(), newCtf()
+	if from, err := extender.extendersFrom(ctx, 1, 8, 8); err != nil || from != 8 {
+		t.Fatalf("E_x = %d, %v", from, err)
+	}
+	ctf.refresh(ctx)
+	if held("the ledger audit", extender.file) != 2 || held("capture the flag", ctf.file) != 1 {
+		t.Fatal("a reader holds another's file")
+	}
+	if !slices.Equal(stored(extenderPath), long) || !slices.Equal(stored(ctfPath), short) {
+		t.Fatal("a reader wrote the other's copy")
+	}
+
+	// Each refreshes from its own site only. Capture the flag takes the longer
+	// file, which keeps its entry; the ledger audit refuses the shorter one, which
+	// drops one of its own, and both keep exactly what they hold.
+	extenderServed.Store(short)
+	ctfServed.Store(long)
+	later := time.Now().Add(2 * max(settlementV2AmendmentsRefresh, releaseAmendmentCacheTTL))
+	extender.now, ctf.now = func() time.Time { return later }, func() time.Time { return later }
+	if from, err := extender.extendersFrom(ctx, 1, 9, 9); err != nil || from != 9 {
+		t.Fatalf("E_x = %d, %v", from, err)
+	}
+	ctf.refresh(ctx)
+	if held("the ledger audit", extender.file) != 2 || held("capture the flag", ctf.file) != 2 {
+		t.Fatal("a refresh took another's file or walked one back")
+	}
+	if !slices.Equal(stored(extenderPath), long) || !slices.Equal(stored(ctfPath), long) {
+		t.Fatal("a refresh changed the other reader's copy")
+	}
+
+	// A restart with both sites down recovers each reader's own copy.
+	extenderServed.Store([]byte(nil))
+	ctfServed.Store([]byte(nil))
+	if err := atomicStateWrite(ctfPath, short, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extender, ctf = newExtender(), newCtf()
+	if from, err := extender.extendersFrom(ctx, 1, 9, 9); err != nil || from != 9 || held("the restarted ledger audit", extender.file) != 2 {
+		t.Fatalf("the restarted ledger audit: E_x = %d, %v", from, err)
+	}
+	ctf.refresh(ctx)
+	if held("restarted capture the flag", ctf.file) != 1 {
+		t.Fatal("capture the flag restarted from another's copy")
+	}
+
+	// A copy in the other reader's place never stands in for a reader's own: with
+	// its site down and nothing of its own kept, each holds no verified file, and
+	// writes nothing.
+	for _, owner := range []string{"capture the flag", "the ledger audit"} {
+		stateDir = t.TempDir()
+		extenderPath, ctfPath = settlementV2AmendmentsStorePath(stateDir), filepath.Join(stateDir, "amendments", "amendments.yml")
+		kept, other := ctfPath, extenderPath
+		if owner == "the ledger audit" {
+			kept, other = extenderPath, ctfPath
+		}
+		if err := atomicStateWrite(kept, long, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		extender, ctf := newExtender(), newCtf()
+		_, err := extender.extendersFrom(ctx, 1, 8, 8)
+		ctf.refresh(ctx)
+		if owner == "capture the flag" {
+			if !errors.Is(err, amendment.ErrUnknown) || extender.file != nil {
+				t.Fatalf("the ledger audit read capture the flag's copy: %v", err)
+			}
+			if held("capture the flag", ctf.file) != 2 {
+				t.Fatal("capture the flag lost its own copy")
+			}
+		} else {
+			if ctf.file != nil {
+				t.Fatal("capture the flag read the ledger audit's copy")
+			}
+			if err != nil || held("the ledger audit", extender.file) != 2 {
+				t.Fatalf("the ledger audit lost its own copy: %v", err)
+			}
+		}
+		if _, err := os.Stat(other); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("with %s's copy kept, the other reader wrote one it never verified: %v", owner, err)
+		}
+		if !slices.Equal(stored(kept), long) {
+			t.Fatalf("%s's copy changed", owner)
+		}
+	}
+}
+
+// The ledger audit reads the repository's own amendments.yml, the file the site
+// publishes byte for byte, under SN25's real pinned signer: it verifies, keeps it,
+// and, with no signed entry in it yet, puts the extender pool in force only through
+// a configured line. A copy with an entry the pinned key never signed is not taken.
+func TestSettlementV2AmendmentsReadsTheRepositoryFile(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "amendments.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	site, served := cacheTestSite(t)
+	served.Store(raw)
+	previousURL, previousSigner := settlementV2AmendmentsURL, settlementV2AmendmentsSigner
+	settlementV2AmendmentsURL, settlementV2AmendmentsSigner = site.URL+"/amendments.yml", amendment.SignerFor
+	defer func() { settlementV2AmendmentsURL, settlementV2AmendmentsSigner = previousURL, previousSigner }()
+	ctx := context.Background()
+
+	stateDir := t.TempDir()
+	reader, err := newSettlementV2Amendments(amendmentsTestChain, amendmentsTestNetuid, stateDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.source == nil {
+		t.Fatal("SN25 reads no published file")
+	}
+	file := reader.held(ctx)
+	if file == nil {
+		t.Fatal("the repository's file was not taken")
+	}
+	// Whatever the file holds by now verifies; while it holds no entry, no epoch is
+	// covered.
+	from, err := reader.extendersFrom(ctx, 1, 6, 9)
+	if err != nil || (len(file.Entries()) == 0 && from != 0) {
+		t.Fatalf("E_x = %d, %v", from, err)
+	}
+	if kept, err := os.ReadFile(settlementV2AmendmentsStorePath(stateDir)); err != nil || !slices.Equal(kept, raw) {
+		t.Fatalf("the kept copy differs from the published bytes: %v", err)
+	}
+	if len(file.Entries()) == 0 {
+		configured, err := newSettlementV2Amendments(amendmentsTestChain, amendmentsTestNetuid, t.TempDir(), []string{amendmentsTestLine(t, 8)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if from, err := configured.extendersFrom(ctx, 1, 6, 9); err != nil || from != 8 {
+			t.Fatalf("the configured line: E_x = %d, %v", from, err)
+		}
+	}
+
+	// An entry signed by another key is never taken, and with nothing verified the
+	// amendments are unknown.
+	served.Store(amendmentsTestFile(t, amendmentsTestKey(t), 8))
+	forged, err := newSettlementV2Amendments(amendmentsTestChain, amendmentsTestNetuid, t.TempDir(), []string{amendmentsTestLine(t, 8)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := forged.extendersFrom(ctx, 1, 6, 9); !errors.Is(err, amendment.ErrUnknown) {
+		t.Fatalf("a file the pinned key never signed: %v", err)
 	}
 }

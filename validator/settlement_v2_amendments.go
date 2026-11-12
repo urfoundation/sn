@@ -13,11 +13,19 @@
 // `validator run --amendments-fallback`, identical on every reader; they are
 // not part of the signed release configuration, so no config hash changes
 // with them. A deployment with a pinned signer reads its verified file,
-// refreshed at most every settlementV2AmendmentsRefresh and kept under
-// state_dir; while none is held what is in force is unknown, the audit decides
-// nothing and retries, and configuration does not stand in. A deployment
-// without a pinned signer publishes none, so only its configured lines can put
-// the amendment in force.
+// refreshed at most every settlementV2AmendmentsRefresh and kept at
+// state_dir/settlement-v2-amendments/amendments.yml; while none is held what
+// is in force is unknown, the audit decides nothing and retries, and
+// configuration does not stand in. A deployment without a pinned signer
+// publishes none, so only its configured lines can put the amendment in
+// force.
+//
+// That copy is the ledger audit's own. Capture the flag's steering reader
+// (release_capture_the_flag.go) keeps its verified copy of the same published
+// file at state_dir/amendments/amendments.yml, and each reader reads and
+// writes only its own: neither a stale nor a newer copy of one can change what
+// the other holds, and each source refuses a published file that drops or
+// changes an entry of the one it holds.
 package validator
 
 import (
@@ -43,6 +51,13 @@ var (
 	settlementV2AmendmentsSigner = amendment.SignerFor
 )
 
+// settlementV2AmendmentsStorePath is where the ledger audit keeps its verified
+// amendments file: a directory of its own, apart from capture the flag's
+// state_dir/amendments.
+func settlementV2AmendmentsStorePath(stateDir string) string {
+	return filepath.Join(stateDir, "settlement-v2-amendments", "amendments.yml")
+}
+
 // settlementV2Amendments holds one deployment's amendments for the audit.
 type settlementV2Amendments struct {
 	// source is nil for a deployment without a pinned signer, whose file is
@@ -57,8 +72,8 @@ type settlementV2Amendments struct {
 }
 
 // newSettlementV2Amendments reads the configured fallback lines and, for a
-// deployment with a pinned signer, keeps its verified file under
-// stateDir/amendments.
+// deployment with a pinned signer, keeps its verified file at
+// settlementV2AmendmentsStorePath(stateDir).
 func newSettlementV2Amendments(chainID uint64, netuid uint16, stateDir string, lines []string) (*settlementV2Amendments, error) {
 	fallback, err := amendment.ParseFallback(chainID, netuid, lines)
 	if err != nil {
@@ -72,7 +87,7 @@ func newSettlementV2Amendments(chainID uint64, netuid uint16, stateDir string, l
 		}
 		return out, nil
 	}
-	store := &releaseDepositPriceStore{path: filepath.Join(stateDir, "amendments", "amendments.yml")}
+	store := &releaseDepositPriceStore{path: settlementV2AmendmentsStorePath(stateDir)}
 	out.source = amendment.NewSource(settlementV2AmendmentsURL, chainID, netuid, signer, store)
 	return out, nil
 }
