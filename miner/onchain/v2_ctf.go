@@ -20,19 +20,21 @@ package onchain
 //     must verify against quicknet's key. A committed census is drawn as
 //     committed, as §8's check 1 requires, also for an epoch before E_c;
 //   - the carry contract's coldkey and recycledFor(k). The contract must serve
-//     vault2's pool 2^32 + n.
-//
-// Without archive state the audit has no fleet bindings, so its draw leaves
-// out no candidate: a census that lists a head-bound client, which P5 keeps
-// out of every census, does not reproduce here, though the validator, which
-// leaves such clients out, would approve it.
+//     vault2's pool 2^32 + n;
+//   - for each epoch with a committed census, the head bindings its draw
+//     leaves out, from the v1 coordinator's FleetBound events and archive
+//     bindingAt reads at the epoch's boundaries, as the validator reads them
+//     (v2_ctf_heads.go). A census that lists a head-bound client, which P5
+//     keeps out of every census, then draws here as it does for the
+//     validator: the client is left out, and the check names it.
 //
 // The audit fails closed. When an input cannot be read or the audit cannot
 // run, the check says so and never approves; it still protects the accounts
 // of the latest finalized root from the published objects alone, as it does
 // when those objects are missing, then fails. A pulse that does not verify,
 // unknown amendments, capture the flag not in force at the pending root's
-// epoch, or a carry contract that is not the pool's all end that way. A
+// epoch, a carry contract that is not the pool's, or head bindings an RPC
+// without archive state cannot serve all end that way. A
 // refused root that leaves nothing to challenge or demand fails the check
 // too, unlike a provider pool's: a wrong draw or wrong amounts never fault an
 // account, so only the auditors' refusal stops such a root, and the failed
@@ -116,6 +118,9 @@ type v2CtfAudit struct {
 	// epoch, and carry its carry contract.
 	entry *amendment.Entry
 	carry common.Address
+	// heads are the drawn epochs' head bindings, nil when no covered epoch's
+	// census was committed.
+	heads *v2CtfHeads
 }
 
 // readV2Ctf reads, at the reader's block, what ctf.Verify takes for
@@ -179,6 +184,14 @@ func readV2Ctf(ctx context.Context, r *v2Reader, sources v2CtfSources, chainID *
 			return nil, err
 		}
 		in.Epochs[k] = *facts
+	}
+	// Each draw leaves out the head-bound candidates the validator's leaves
+	// out (v2_ctf_heads.go).
+	if audit.heads, err = readV2CtfHeads(ctx, r, coordinator, in.Epochs); err != nil {
+		return nil, err
+	}
+	if audit.heads != nil {
+		in.Heads = audit.heads
 	}
 	return audit, nil
 }
@@ -317,12 +330,15 @@ func v2CtfAccounts(data []byte) ([]ledger.Ref, error) {
 	return header.Accounts, nil
 }
 
-// reportV2Ctf prints the terms of the audit: the entry in force and the
-// carry contract.
+// reportV2Ctf prints the terms of the audit: the entry in force, the carry
+// contract and, for a draw, where the head bindings came from.
 func reportV2Ctf(audit *v2CtfAudit) {
 	entry := audit.entry
 	fmt.Printf("  capture the flag:  operator %d, from epoch %d by the signed amendment entry, carry contract %s\n", entry.NoID, entry.FromEpoch, audit.carry.Hex())
 	fmt.Printf("                     carry coldkey 0x%x\n", audit.in.CarryColdkey)
+	if h := audit.heads; h != nil {
+		fmt.Printf("  head bindings:     %d FleetBound events of v1 coordinator %s from block %d\n", h.events, h.coordinator.Hex(), h.from)
+	}
 }
 
 // reportV2CtfAudit prints each epoch the audit recomputed, then the audit
@@ -337,6 +353,15 @@ func reportV2CtfAudit(res *ctf.Result) {
 			fmt.Printf("%-21scensus %v at block %d is not canonical: no draw (%v)\n", label, *e.Census, e.CensusBlock, e.CensusErr)
 		default:
 			fmt.Printf("%-21scensus %v at block %d, %d candidates; drand round %d, %d winners\n", label, *e.Census, e.CensusBlock, e.Candidates, e.Round, len(e.Awards))
+		}
+		// A census that lists a head-bound client breaks P5 (§4.2); the draw
+		// left it out, as the validator's does (§8 check 3).
+		if len(e.Bound) > 0 {
+			fmt.Printf("                     left out %d head-bound candidates:", len(e.Bound))
+			for _, c := range e.Bound {
+				fmt.Printf(" 0x%x (%v, %v)", c.ClientID, c.Role, c.Country)
+			}
+			fmt.Println()
 		}
 		matured := "not matured"
 		if e.Matured {

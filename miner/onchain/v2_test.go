@@ -136,9 +136,11 @@ type v2TestChain struct {
 	// poolID is the pool vault2 holds the pool record, pending root and
 	// roots of: v2TestPool, or a capture the flag pool (v2_ctf_test.go).
 	// ctf, when set, models the capture the flag contracts and the census
-	// blocks' timestamps.
-	poolID uint64
-	ctf    *v2TestCtfModel
+	// blocks' timestamps, and fleetSpans holds the spans of the v1
+	// coordinator's FleetBound events read.
+	poolID     uint64
+	ctf        *v2TestCtfModel
+	fleetSpans [][2]uint64
 }
 
 func newV2TestChain(t *testing.T) *v2TestChain {
@@ -311,6 +313,17 @@ func (c *v2TestChain) answer(method string, params []json.RawMessage) (any, map[
 		if c.count(method) {
 			return nil, rpcError(-32000, "synthetic code refusal", nil)
 		}
+		if c.ctf != nil && account == c.ctf.v1 {
+			// The v1 coordinator's code at its first block, an archive read.
+			var block string
+			if json.Unmarshal(params[1], &block) != nil || block != hexutil.EncodeUint64(v2CtfTestGenesis) {
+				c.t.Errorf("the v1 coordinator's code is read at %s, not its first block", params[1])
+			}
+			if c.ctf.pruned {
+				return nil, rpcError(4003, "State already discarded for block", nil)
+			}
+			return hexutil.Bytes{0x60, 0x80}, nil
+		}
 		if account != c.batcher || c.batcher == (common.Address{}) {
 			return "0x", nil
 		}
@@ -376,8 +389,29 @@ func (c *v2TestChain) answer(method string, params []json.RawMessage) (any, map[
 			Address   []common.Address `json:"address"`
 			Topics    [][]common.Hash  `json:"topics"`
 		}
-		if len(params) != 1 || json.Unmarshal(params[0], &filter) != nil || !slices.Equal(filter.Address, []common.Address{c.vault}) || filter.ToBlock < filter.FromBlock || filter.ToBlock-filter.FromBlock >= v2LogChunkBlocks || filter.ToBlock > v2TestHead {
-			c.t.Errorf("eth_getLogs filter is not one span of vault2 below the finalized head: %s", params)
+		if len(params) != 1 || json.Unmarshal(params[0], &filter) != nil || filter.ToBlock < filter.FromBlock || filter.ToBlock-filter.FromBlock >= v2LogChunkBlocks || filter.ToBlock > v2TestHead {
+			c.t.Errorf("eth_getLogs filter is not one span below the finalized head: %s", params)
+		}
+		// The v1 coordinator's FleetBound events, for a capture the flag
+		// pool's head bindings (v2_ctf_heads.go).
+		if c.ctf != nil && slices.Equal(filter.Address, []common.Address{c.ctf.v1}) {
+			if len(filter.Topics) != 1 || !slices.Equal(filter.Topics[0], []common.Hash{v2FleetBoundID}) || filter.FromBlock < v2CtfTestGenesis {
+				c.t.Errorf("eth_getLogs of the v1 coordinator is not its FleetBound events from its first block: %s", params)
+			}
+			c.fleetSpans = append(c.fleetSpans, [2]uint64{uint64(filter.FromBlock), uint64(filter.ToBlock)})
+			if c.count(method + ":FleetBound") {
+				return nil, rpcError(-32005, "synthetic log refusal", nil)
+			}
+			matched := []types.Log{}
+			for _, binding := range c.ctf.fleet {
+				if binding.block >= uint64(filter.FromBlock) && binding.block <= uint64(filter.ToBlock) {
+					matched = append(matched, c.ctf.fleetBound(binding))
+				}
+			}
+			return matched, nil
+		}
+		if !slices.Equal(filter.Address, []common.Address{c.vault}) {
+			c.t.Errorf("eth_getLogs filter is not of vault2: %s", params)
 		}
 		c.spans = append(c.spans, [2]uint64{uint64(filter.FromBlock), uint64(filter.ToBlock)})
 		if c.count(method) {

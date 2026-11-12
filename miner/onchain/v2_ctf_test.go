@@ -23,8 +23,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 
@@ -48,6 +50,12 @@ const (
 	v2CtfTestCarry       = "0xca77000000000000000000000000000000000001"
 	// v2CtfTestCensusBlock is block B_9, which committed epoch 9's census.
 	v2CtfTestCensusBlock = 150_000
+	// v2CtfTestV1Coordinator is the v1 coordinator, STSettlement2's
+	// v1Coordinator(). Its epoch k spans blocks [v2CtfTestGenesis + 5,000k,
+	// v2CtfTestGenesis + 5,000(k + 1)), so epoch 9 ends at B_9.
+	v2CtfTestV1Coordinator = "0xc0de000000000000000000000000000000000001"
+	v2CtfTestGenesis       = 100_000
+	v2CtfTestEpochBlocks   = 5_000
 	// v2CtfTestRound is drand quicknet's round 1000, and v2CtfTestSignature
 	// its real signature (crv4/golden_test.go).
 	v2CtfTestRound     = 1000
@@ -71,6 +79,9 @@ type v2TestCensus struct {
 // v2TestCtfModel is STSettlement2Ctf at coordinator and STCtfCarry at
 // carry, whose vault2 answers coordinator() and netuid() from it, with the
 // census blocks' timestamps. absent leaves the carry address without code.
+// v1 is the v1 coordinator, with its FleetBound events and its archive
+// bindingAt answers; pruned answers its code at a past block as a node
+// without archive state does.
 type v2TestCtfModel struct {
 	coordinator common.Address
 	carry       common.Address
@@ -82,10 +93,96 @@ type v2TestCtfModel struct {
 	carryPool   uint64
 	recycled    map[uint64]*big.Int
 	absent      bool
+	v1          common.Address
+	fleet       []v2TestFleetBound
+	active      map[v2TestBindingAt]bool
+	pruned      bool
+}
+
+// v2TestFleetBound is a FleetBound event of the v1 coordinator.
+type v2TestFleetBound struct {
+	block              uint64
+	client             [16]byte
+	validFrom, validTo uint64
+}
+
+// v2TestBindingAt is a bindingAt(client, epoch) read at a block.
+type v2TestBindingAt struct {
+	client       [16]byte
+	epoch, block uint64
 }
 
 func (m *v2TestCtfModel) serves(to common.Address) bool {
-	return m != nil && (to == m.coordinator || to == m.carry)
+	return m != nil && (to == m.coordinator || to == m.carry || to == m.v1)
+}
+
+// v2TestV1Settlement and v2TestV1Coordinator decode the reads of the head
+// bindings: STSettlement2's v1Coordinator() and the v1 coordinator's views.
+var (
+	v2TestV1Settlement  = stabi.NewSTSettlement2()
+	v2TestV1Coordinator = func() abi.ABI {
+		parsed, err := stabi.STCoordinatorMetaData.ParseABI()
+		if err != nil {
+			panic(err)
+		}
+		return *parsed
+	}()
+)
+
+// answerV1 answers an eth_call of STSettlement2's v1Coordinator() or of the
+// v1 coordinator's epoch boundaries and bindingAt.
+func (c *v2TestChain) answerV1(to common.Address, input []byte, block string) (any, map[string]any) {
+	m := c.ctf
+	method, err := v2TestV1Coordinator.MethodById(input[:4])
+	if to == m.coordinator {
+		method, err = &abi.Method{Name: "v1Coordinator"}, nil
+	}
+	if err != nil {
+		c.t.Errorf("call of an unknown v1 coordinator view 0x%x", input)
+		return nil, rpcError(3, "execution reverted", nil)
+	}
+	c.blocks = append(c.blocks, method.Name+"@"+block)
+	if c.count("eth_call:" + method.Name) {
+		return nil, rpcError(-32000, "synthetic refusal of eth_call:"+method.Name, nil)
+	}
+	if to == m.coordinator {
+		return hexutil.Bytes(common.LeftPadBytes(m.v1.Bytes(), 32)), nil
+	}
+	args, err := method.Inputs.Unpack(input[4:])
+	if err != nil {
+		c.t.Errorf("%s arguments do not decode: %v", method.Name, err)
+	}
+	var out []byte
+	switch method.Name {
+	case "epochStartBlock":
+		out, err = method.Outputs.Pack(new(big.Int).SetUint64(v2CtfTestGenesis + v2CtfTestEpochBlocks*args[0].(*big.Int).Uint64()))
+	case "epochEndBlock":
+		out, err = method.Outputs.Pack(new(big.Int).SetUint64(v2CtfTestGenesis + v2CtfTestEpochBlocks*(args[0].(*big.Int).Uint64()+1)))
+	case "bindingAt":
+		at := v2TestBindingAt{client: args[0].([16]byte), epoch: args[1].(*big.Int).Uint64(), block: hexutil.MustDecodeUint64(block)}
+		out, err = method.Outputs.Pack(m.active[at], stabi.STCoordinatorBindingRecord{})
+	default:
+		c.t.Errorf("unexpected v1 coordinator view %s", method.Name)
+		return nil, rpcError(3, "execution reverted", nil)
+	}
+	if err != nil {
+		c.t.Errorf("%s outputs do not pack: %v", method.Name, err)
+	}
+	return hexutil.Bytes(out), nil
+}
+
+// fleetBound is the v1 coordinator's FleetBound log of binding.
+func (m *v2TestCtfModel) fleetBound(binding v2TestFleetBound) types.Log {
+	event := v2TestV1Coordinator.Events["FleetBound"]
+	topics, err := abi.MakeTopics([]any{binding.client}, []any{[32]byte{0xf1}}, []any{[32]byte{0x40}})
+	if err != nil {
+		panic(err)
+	}
+	data, err := event.Inputs.NonIndexed().Pack(uint16(7), uint64(1), binding.validFrom, binding.validTo)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{Address: m.v1, Topics: append([]common.Hash{event.ID}, topics[0][0], topics[1][0], topics[2][0]), Data: data, BlockNumber: binding.block}
 }
 
 func (m *v2TestCtfModel) blockTime(number uint64) (uint64, bool) {
@@ -106,6 +203,9 @@ func (c *v2TestChain) answerCtf(method string, to common.Address, params []json.
 	if method != "eth_call" || len(params) != 2 || json.Unmarshal(params[0], &message) != nil || json.Unmarshal(params[1], &block) != nil || len(message.Input) < 4 {
 		c.t.Errorf("%s of a capture the flag view: %s", method, params)
 		return nil, rpcError(-32602, "malformed call", nil)
+	}
+	if to == c.ctf.v1 || to == c.ctf.coordinator && [4]byte(message.Input[:4]) == [4]byte(v2TestV1Settlement.PackV1Coordinator()) {
+		return c.answerV1(to, message.Input, block)
 	}
 	view, err := views.MethodById(message.Input[:4])
 	if err != nil {
@@ -348,6 +448,7 @@ func newV2CtfScenario(t *testing.T) *v2CtfScenario {
 		times:   map[uint64]uint64{v2CtfTestCensusBlock: v2CtfTestTime},
 		coldkey: v2CtfTestCarryColdkey, carryVault: s.c.vault, carryPool: v2CtfTestPool,
 		recycled: map[uint64]*big.Int{9: f.Commit.Total.ToBig()},
+		v1:       common.HexToAddress(v2CtfTestV1Coordinator), active: map[v2TestBindingAt]bool{},
 	}
 	s.c.committed(v2TestHead-40_000, 1, f.Commit, 0)
 	s.c.finalized(v2TestHead-20_000, 1, 0, f.Commit)
@@ -390,7 +491,14 @@ func (s *v2CtfScenario) header() string {
 		fmt.Sprintf("                     root 0x%x, total 7.225000007 α (7225000007 rao), 9 accounts, ledger %v\n", s.p.Commit.Root, ledger.Ref(s.p.Commit.LedgerHash)) +
 		fmt.Sprintf("  finalized root:    index 0, epoch 8, root 0x%x, total 2.490000000 α (2490000000 rao), 1 accounts\n", s.f.Commit.Root) +
 		"  capture the flag:  operator 1, from epoch 8 by the signed amendment entry, carry contract " + common.HexToAddress(v2CtfTestCarry).Hex() + "\n" +
-		fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey)
+		fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey) +
+		v2CtfTestHeads(len(s.c.ctf.fleet))
+}
+
+// v2CtfTestHeads is the check's line on where the head bindings came from:
+// the v1 coordinator's FleetBound events from its first block.
+func v2CtfTestHeads(events int) string {
+	return fmt.Sprintf("  head bindings:     %d FleetBound events of v1 coordinator %s from block %d\n", events, common.HexToAddress(v2CtfTestV1Coordinator).Hex(), v2CtfTestGenesis)
 }
 
 // CAPTURETHEFLAG.md §8: an honest capture the flag root passes the CTF
@@ -410,9 +518,17 @@ func TestV2CheckCtfVerifies(t *testing.T) {
 	if err != nil || output != want || len(s.c.transactions()) != 0 {
 		t.Fatalf("honest root: %v\n%s\nwant:\n%s", err, output, want)
 	}
-	reads := "eth_call:coldkey=1 eth_call:coordinator=1 eth_call:ctfCensus=2 eth_call:fundedThrough=2 eth_call:netuid=1 eth_call:pending=1 eth_call:poolId=1 eth_call:pools=1 eth_call:recycledFor=2 eth_call:rootCount=1 eth_call:roots=1 eth_call:vault=1 eth_chainId=1 eth_getBlockByNumber:0x249f0=1 eth_getBlockByNumber:finalized=1"
+	reads := "eth_call:coldkey=1 eth_call:coordinator=1 eth_call:ctfCensus=2 eth_call:epochStartBlock=1 eth_call:fundedThrough=2 eth_call:netuid=1 eth_call:pending=1 eth_call:poolId=1 eth_call:pools=1 eth_call:recycledFor=2 eth_call:rootCount=1 eth_call:roots=1 eth_call:v1Coordinator=1 eth_call:vault=1 eth_chainId=1 eth_getBlockByNumber:0x249f0=1 eth_getBlockByNumber:finalized=1 eth_getCode=1 eth_getLogs:FleetBound=101"
 	if s.c.observed() != reads {
 		t.Fatalf("observed %s\nwant     %s", s.c.observed(), reads)
+	}
+	// The head bindings: the v1 coordinator's FleetBound events from its
+	// first block through the finalized block, in contiguous spans the public
+	// endpoint answers; none covers epoch 9, so no bindingAt is read.
+	for i, span := range s.c.fleetSpans {
+		if span[0] != v2CtfTestGenesis+uint64(i)*v2LogChunkBlocks || span[1] != min(span[0]+v2LogChunkBlocks-1, v2TestHead) {
+			t.Fatalf("FleetBound span %d is %v", i, span)
+		}
 	}
 	for _, block := range s.c.blocks {
 		if !strings.HasSuffix(block, "@0x30d40") {
@@ -544,6 +660,145 @@ func TestV2CheckCtfFailsClosed(t *testing.T) {
 	}
 }
 
+// v2CtfTestBound is the head-bound client of boundScenario: provider client
+// 41 in TM, alone in its unit, so its draw changes the award rows.
+var v2CtfTestBound = [16]byte{15: 41}
+
+// boundScenario makes epoch 9's census also list v2CtfTestBound, whose
+// FleetBound event at block 120,000 covers epochs 8 to 10, and rebuilds P
+// leaving it out of the draw, as the operator's builder and the validator
+// do. The v1 coordinator answers bindingAt(41, 9) as active at the
+// boundaries of epoch 9 listed in active.
+func (s *v2CtfScenario) boundScenario(t *testing.T, active ...uint64) {
+	t.Helper()
+	candidates := append(v2CtfTestCandidates(t), ctf.Candidate{Role: ctf.RoleProvider, Country: [2]byte{'t', 'm'}, Unit: [32]byte{0x0b, 31: 41}, Family: ctf.FamilyIPv4, ClientID: v2CtfTestBound})
+	census, err := ctf.EncodeCensus(&ctf.Census{NoID: v2CtfTestNoID, Epoch: 9, Candidates: candidates,
+		Excluded: []ctf.Exclusion{{Country: candidates[6].Country, Role: ctf.RoleProvider, Reason: ctf.ReasonPresence, Count: 2}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, _ := hex.DecodeString(v2CtfTestSignature)
+	p, err := ctf.Build(context.Background(), ctf.BuildInput{NoID: v2CtfTestNoID, ChainID: v2TestChainID, Netuid: v2CtfTestNetuid, Epoch: 10, FirstEpoch: 8,
+		CarryColdkey: v2CtfTestCarryColdkey, Previous: &ctf.Previous{Root: s.f.Commit, Accounts: s.f.Accounts, State: s.f.State},
+		Epochs: []ctf.EpochInput{
+			{Epoch: 9, Census: &ctf.CensusInput{Hash: census.Hash, Block: v2CtfTestCensusBlock, Time: v2CtfTestTime, Objects: census.Objects},
+				Pulse: &ctf.Pulse{Round: v2CtfTestRound, Signature: signature}, Recycled: s.f.Commit.Total, Coldkeys: v2CtfTestColdkeys(candidates),
+				Bound: map[[16]byte]bool{v2CtfTestBound: true}},
+			{Epoch: 10},
+		}, FundedThrough: s.funded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bound := p.Epochs[0].Bound; len(bound) != 1 || bound[0].ClientID != v2CtfTestBound || len(p.Epochs[0].Awards) != 8 {
+		t.Fatalf("epoch 9 left out %v and drew %d winners", bound, len(p.Epochs[0].Awards))
+	}
+	s.census, s.p = census, p
+	maps.Copy(s.c.objects, p.Objects)
+	s.c.ctf.census[9] = v2TestCensus{hash: census.Hash, block: v2CtfTestCensusBlock}
+	s.c.logs = nil
+	s.c.committed(v2TestHead-40_000, 1, s.f.Commit, 0)
+	s.c.finalized(v2TestHead-20_000, 1, 0, s.f.Commit)
+	s.setPending(2, p.Commit)
+	s.c.ctf.fleet = []v2TestFleetBound{{block: 120_000, client: v2CtfTestBound, validFrom: 8, validTo: 10}}
+	for _, block := range active {
+		s.c.ctf.active[v2TestBindingAt{client: v2CtfTestBound, epoch: 9, block: block}] = true
+	}
+}
+
+// CAPTURETHEFLAG.md §4.4, §8 check 3: a census that lists a head-bound
+// client, which P5 keeps out of every census, draws as the validator draws
+// it. The check reads the v1 coordinator's FleetBound events from its first
+// block, then, for the client whose binding covers epoch 9, bindingAt at
+// epoch 9's start and end blocks, and leaves the client out when either is
+// active: the root built that way is approved, and the check names the
+// client. A client the chain does not show bound at either boundary, by an
+// inactive binding, no event or one whose validity misses the epoch, is
+// drawn, so the root that left it out is refused, and the check fails. Epoch
+// 10, also covered by the binding, has no census, so nothing is read for it.
+func TestV2CheckCtfLeavesOutHeadBoundCandidates(t *testing.T) {
+	start, end := uint64(v2CtfTestGenesis+9*v2CtfTestEpochBlocks), uint64(v2CtfTestGenesis+10*v2CtfTestEpochBlocks)
+	left := fmt.Sprintf("                     left out 1 head-bound candidates: 0x%x (provider, tm)\n", v2CtfTestBound)
+	for _, c := range []struct {
+		name   string
+		active []uint64
+		change func(s *v2CtfScenario)
+		reads  int
+	}{
+		{"bound at both boundaries", []uint64{start, end}, nil, 2},
+		{"bound only at the start", []uint64{start}, nil, 2},
+		{"bound only at the end", []uint64{end}, nil, 2},
+		{"a binding inactive at both boundaries", nil, nil, 2},
+		{"no FleetBound event", []uint64{start, end}, func(s *v2CtfScenario) { s.c.ctf.fleet = nil }, 0},
+		{"a binding whose validity misses the epoch", []uint64{start, end}, func(s *v2CtfScenario) { s.c.ctf.fleet[0].validFrom = 10 }, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newV2CtfScenario(t)
+			s.boundScenario(t, c.active...)
+			if c.change != nil {
+				c.change(s)
+			}
+			output, err := s.c.run(s.argv("--challenge", "--demand"))
+			heads := v2CtfTestHeads(len(s.c.ctf.fleet))
+			bindingAt := slices.DeleteFunc(slices.Clone(s.c.blocks), func(block string) bool { return !strings.HasPrefix(block, "bindingAt@") })
+			if c.reads > 0 && !slices.Equal(bindingAt, []string{"bindingAt@" + hexutil.EncodeUint64(start), "bindingAt@" + hexutil.EncodeUint64(end)}) || c.reads == 0 && len(bindingAt) != 0 {
+				t.Fatalf("bindingAt reads %v", bindingAt)
+			}
+			if len(c.active) > 0 && c.change == nil {
+				if err != nil || !strings.Contains(output, heads) || !strings.Contains(output, left) || !strings.HasSuffix(output, "  audit:             approve\n  previous accounts: 1 of root 0, no fault\n") ||
+					len(s.c.transactions()) != 0 {
+					t.Fatalf("%v\n%s", err, output)
+				}
+				return
+			}
+			refusal := "the capture the flag audit refuses pending root seq 2 (draw check: ctf: award rows are not the draw's winners: epoch 9 "
+			if err == nil || !strings.HasPrefix(err.Error(), refusal) || !strings.Contains(output, heads) || strings.Contains(output, "left out") ||
+				!strings.Contains(output, "  audit:             refuse (draw check: ") || len(s.c.transactions()) != 0 {
+				t.Fatalf("%v\n%s", err, output)
+			}
+		})
+	}
+}
+
+// CAPTURETHEFLAG.md §8: the head bindings fail closed like every other
+// input. A node without archive state, which answers the coordinator's code
+// at its first block with an error, or a refused read of STSettlement2's v1
+// coordinator, its epochs' boundaries, its FleetBound events or bindingAt,
+// makes the audit unavailable; F's accounts are still found without fault
+// from the published objects, and the check fails.
+func TestV2CheckCtfHeadBindingsFailClosed(t *testing.T) {
+	coordinator := common.HexToAddress(v2CtfTestV1Coordinator).Hex()
+	for _, c := range []struct {
+		name   string
+		change func(s *v2CtfScenario)
+		want   string
+	}{
+		{"a node without archive state", func(s *v2CtfScenario) { s.c.ctf.pruned = true },
+			"the head bindings need an archive RPC: v1 coordinator " + coordinator + "'s code at its first block 100000: State already discarded for block"},
+		{"the v1 coordinator unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:v1Coordinator"] = 1 },
+			"coordinator " + common.HexToAddress(v2CtfTestCoordinator).Hex() + " v1Coordinator(): synthetic refusal of eth_call:v1Coordinator"},
+		{"its first block unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:epochStartBlock"] = 1 },
+			"v1 coordinator " + coordinator + " epochStartBlock(0): synthetic refusal of eth_call:epochStartBlock"},
+		{"its FleetBound events refused", func(s *v2CtfScenario) { s.c.failAt["eth_getLogs:FleetBound"] = 3 },
+			"v1 coordinator " + coordinator + " FleetBound events: eth_getLogs [102000,102999]: synthetic log refusal"},
+		{"an epoch's end unread", func(s *v2CtfScenario) { s.c.failAt["eth_call:epochEndBlock"] = 1 },
+			"v1 coordinator " + coordinator + " epochEndBlock(9): synthetic refusal of eth_call:epochEndBlock"},
+		{"a bindingAt refused", func(s *v2CtfScenario) { s.c.failAt["eth_call:bindingAt"] = 2 },
+			fmt.Sprintf("v1 coordinator %s bindingAt(0x%x,9) at block 150000: synthetic refusal of eth_call:bindingAt", coordinator, v2CtfTestBound)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newV2CtfScenario(t)
+			s.boundScenario(t, v2CtfTestGenesis+9*v2CtfTestEpochBlocks)
+			c.change(s)
+			output, err := s.c.run(s.argv("--challenge", "--demand"))
+			want := "the capture the flag audit could not run: " + c.want
+			if err == nil || err.Error() != want || !strings.Contains(output, "  audit:             unavailable: "+want+"\n") ||
+				strings.Contains(output, "approve") || !strings.HasSuffix(output, "  previous accounts: 1 of root 0, no fault\n") || len(s.c.transactions()) != 0 {
+				t.Fatalf("%v\n%s\nwant %q", err, output, want)
+			}
+		})
+	}
+}
+
 // ctfFaulty publishes P's accounts with F's carry account lowered by one
 // rao, under P's header, and makes the root they build pending as seq 2: a
 // provable fault.
@@ -657,7 +912,7 @@ func TestV2CheckCtfDrawsEveryCommittedCensus(t *testing.T) {
 		output, err := s.c.run(s.argv())
 		terms := "  finalized root:    none; the pending root is the pool's first\n" +
 			"  capture the flag:  operator 1, from epoch 9 by the signed amendment entry, carry contract " + common.HexToAddress(v2CtfTestCarry).Hex() + "\n" +
-			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey)
+			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey) + v2CtfTestHeads(0)
 		if drawn {
 			want := terms + fmt.Sprintf("  epoch 8:           census %v at block %d, 10 candidates; drand round 1000, 8 winners\n", eight.Hash, block8)
 			if err != nil || !strings.Contains(output, want) || !strings.HasSuffix(output, "  audit:             approve\n") {
