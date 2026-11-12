@@ -2282,7 +2282,9 @@ epoch whose carry is back.
   `GET /sn/ledger/account` (§8.3) serves both pools, and each entry gains
   `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a
   pool whose tree cannot be built is named in `unavailable_pools` instead of
-  failing the answer; without it the answer stays whole or a 502. The CTF
+  failing the answer. Without it, as old apps ask, a CTF pool that cannot be
+  read is left out and the other pools are answered as before, and any other
+  pool that cannot be read is a 502 (CAPTURETHEFLAG.md §9.1). The CTF
   routes are documented in `api/operator.yml`.
 - **Claim relay** (§10.3). Its units become (coldkey, pool). A coldkey's
   "Claim now" claims all of its pools' accounts, and the 30-day limit stays

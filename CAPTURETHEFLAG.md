@@ -807,8 +807,11 @@ governs:
   never claims a default win it has no basis for.
 - `pending_draw` reports an ended epoch's census and round until its root is committed.
 - A ledger entry's `kind` is `pool` or `ctf`, since from `E_x` the operator's pool pays extenders too.
-- `unavailable_pools` applies with `partial=true`. Without it the answer stays whole or a 502, so a client that
-  predates the field never takes a partial list for a whole one.
+- `unavailable_pools` applies with `partial=true`. Without it, as every app that predates the field asks, a CTF
+  pool that cannot be read is left out and the other pools are answered exactly as before the CTF pool existed:
+  such an app keeps the operator's pool's balance, and its CTF balance is missing until that pool reads again
+  (owner decision, 2026‑11‑11). A fault in any other pool is still a 502 for it, so it never takes a partial
+  list of those pools for a whole one.
 - It adds `GET /sn/ctf/country/{cc}` and `GET /sn/ctf/top` (`design/ctf/SEO.md` §5.3) and `GET /sn/openapi.yml`.
 
 | Route | Access | Returns |
@@ -816,8 +819,8 @@ governs:
 | `GET /sn/ctf` | public; `Cache-Control: public, max-age=60` | The current state. Pool facts: `no_id`, `pool_id`, `vault`, `carry_contract`, `carry_coldkey`, `countries_version`, `current_epoch`, `draw_at` (the end of the current epoch). The latest drawn epoch: `last_epoch`, with its root's `status` (pending or finalized), `seq` and `ledger_hash`. That epoch's `funding_rao`, `returned_rao`, `fresh_rao`, `slot_rao`, `paid_rao`, `pending_rao` and `carried_rao`. And one row per country of `L`: `code`, `name`, `providers_paid`, `extenders_paid`, `paid_rao`, `provider_units`, `extender_units`, `provider_carry_rao`, `extender_carry_rao`, `available_rao`, `open_epochs` and `near_misses`. `available_rao` is the two pots plus ten slots at the last slot amount: an estimate of what the country's draw holds this epoch. `open_epochs` counts the epochs since the country last had a winner in either role. `near_misses` counts the miners there that the census left out only for presence or a change of country (§4.3). |
 | `GET /sn/ctf/here` | public; `Cache-Control: private, no-store` | `{"country": "is"}`: the caller's country from GeoLite2 on the request's address, or null. Nothing is stored or logged. It lets the page open on the visitor's own country. |
 | `GET /sn/ctf/epoch/{epoch}` | public; immutable once finalized | One epoch. The census (`hash`, `block`, `candidates`, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the country rows, and the awards: role, country, rank, coldkey, client id, `slot_rao`, `pot_rao`, `pending`. Also the object references (header, census, awards, pots, pending), served by `GET /sn/ledger/object`. |
-| `GET /sn/ctf/client` | Bearer client JWT, own client only | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. |
-| `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. |
+| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; never 401 for either | This client's CTF status for recent epochs: candidate or not and why, its country and unit family per role, and whether it won, with rank and amounts. And the wins, each with its client and whether it is claimed: every win not claimed yet, and every win of the recent epochs. A win is claimed once vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in the root that pays it (operator.yml says exactly how). |
+| `GET /sn/ledger/account` | public, as today | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a pool whose tree cannot be built is left out and named in a new `unavailable_pools` list, rather than failing the whole answer with a 502. Without it, a CTF pool that cannot be read is left out, unnamed, and any other pool that cannot be read is a 502, as before. |
 
 **Headers.** Every route sends exactly one `Access-Control-Allow-Origin` header, as the site's status feeds
 require.
@@ -943,12 +946,28 @@ today is on the server and in the presentation:
   - One action claims both pools.
   - Apple, Windows, Linux and ur.io draw only the relay's top‑level status today, so they gain per‑pool rows,
     as Android already has.
-  - Optionally, a line from `GET /sn/ctf/client` names the flag a provider captured.
+  - A line from `GET /sn/ctf/client` names each flag won and not claimed yet (owner, 2026‑11‑11: every
+    unclaimed win). The route answers every app the same way: a client JWT for its own client, ur.io's network
+    JWT for all of the network's clients.
 - **Old apps keep working.** The SDK parses entries with `encoding/json`, which ignores the new fields. A CTF
   entry carries exactly the existing ones, so old apps show it as "Pool 4294967297" and claim it like any
   pool. The new labels only have to ship before the first CTF claims, about two days after `E_c` ends.
+  - Old apps never send `partial=true`. While the CTF pool cannot be read, the ledger route and the claim
+    relay answer them with the operator's pool exactly as before, never a 502 or an error that would hide that
+    pool's balance too. The CTF account is left out until its pool reads again (owner decision, 2026‑11‑11).
+  - The relay's pass keeps claiming the operator's pool meanwhile, whether its ledger read or a claim's proof
+    finds the CTF pool unreadable, so the operator's pool's rows read as they did. Only the relay's own
+    `state`, which every client reads and no app draws, says `ledger_unavailable`.
+  - Claim now names no partial answer, so it does the same for every app: a tap of a coldkey whose only
+    account is in an unreadable CTF pool reads `nothing_pending`. A tap of a coldkey that also has an account
+    in the operator's pool is taken, and it stays open until the CTF pool reads, so that its CTF account is
+    claimed then too.
+  - Only a fault in another pool, the operator's pool above all, keeps a 502, or the relay's error, for old
+    apps.
 - **Miner daemon and `snclaim`.** Both already treat each `(vault, noId, index)` as its own unit, so they
-  claim CTF accounts unchanged. `snclaim v2 check` needs the CTF audit (§8).
+  claim CTF accounts unchanged. `snclaim v2 check` needs the CTF audit (§8). Neither sends `partial=true`, so
+  while the CTF pool cannot be read the ledger route leaves it out for them too. The daemon keeps its CTF
+  units, which wait for the pool, and `snclaim v2 status` and `claim` see the operator's pool alone.
 
 ## 11. Changes needed elsewhere, effort and rollout
 
