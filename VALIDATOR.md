@@ -1185,13 +1185,18 @@ sheet:
 - `amendment_fallback` in the configuration holds configured lines in the exact line
   grammar. They stand in only where no signed entry of their kind is in force for their
   operator, never for an unknown file (`WHITEPAPER.md` §8.6.7). Remove one once a signed
-  entry covers its epochs.
+  entry covers its epochs: on a production configuration that is a re-signed successor,
+  and each earlier decision replays under the configuration it was made with.
 
 **The setting.** `ctf: support | off` in the release configuration. The sample
 configuration sets `support`, and an absent setting is `support`, so a signed
 configuration need not change to support capture the flag. `off` treats the CTF channel
 as empty (rule 3), keeps the 4 : 5 split from `E_c`, and audits no CTF pool. Neither key
-changes the hash of a configuration without it.
+changes the hash of a configuration without it. Replay finds a decision's setting and
+configured lines in its configuration, as it finds `controlled_no_ids` there. So on a
+configuration whose retained history replays under the running document (schema 1),
+both are fixed for that history, as `controlled_no_ids` is: changing either refuses the
+replay of decisions made with capture the flag.
 
 **Resolving a CTF pool,** as the provider pool's v2 destination is resolved (§13 of
 `VERSION2-FINAL.md`): vault2's `pools(2^32 + n)` at the finalized head decides, and
@@ -1233,7 +1238,10 @@ tried again. The draw leaves out the census's head-bound candidates, as the oper
 must, so no winner holds a fleet binding. A census that lists one breaks P5: the audit
 reports it (`ledger_audit_ctf_census_bound`) but judges the root as built, since a
 committed census cannot be rebuilt and refusing it would refuse every later root of the
-pool. The watcher, which reads no bindings, refuses such a root and is the alert.
+pool. The watcher, which reads no bindings, refuses such a root wherever the bound
+client changes its draw. Through an outage of the published amendments the audit keeps
+the last verified file, as steering does; a later entry it misses can only name another
+carry contract, which the root's header then fails.
 
 ---
 

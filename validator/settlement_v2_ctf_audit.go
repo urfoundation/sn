@@ -23,9 +23,12 @@
 //
 // It approves only a root that reproduces exactly, and challenges, demands or
 // refuses as for the provider pool (VERSION2-FINAL.md §9.3). An input it cannot
-// read or verify (no entry in force, a pulse no relay serves) decides nothing
-// and is tried again, so nothing is approved that the validator cannot rebuild.
-// A validator whose ctf setting is off audits no CTF pool. These are the facts
+// read or verify (no entry in force, unknown amendments, a pulse no relay
+// serves) decides nothing and is tried again, so nothing is approved that the
+// validator cannot rebuild. Through an outage of the published amendments the
+// last verified file stands, as it does for steering: a later entry it misses
+// can only name another carry contract, which the root's header then fails. A
+// validator whose ctf setting is off audits no CTF pool. These are the facts
 // `snclaim v2 check` reads.
 //
 // The draw leaves out the census's head-bound candidates, as the operator's
@@ -34,7 +37,8 @@
 // (ledger_audit_ctf_census_bound), but judges the root as built: a committed
 // census is write-once, so refusing for it would refuse every later root of the
 // pool, and anyone who can make a client look bound could stall the pool. The
-// watcher, which reads no bindings, refuses such a root; it is the alert.
+// watcher, which reads no bindings, refuses such a root wherever the bound
+// client changes its draw.
 package validator
 
 import (
@@ -129,7 +133,7 @@ func (self *settlementV2Audit) verifyCtf(ctx context.Context, pool settlementV2A
 	// so the root is judged as built, and the breach is reported.
 	for _, epoch := range res.Epochs {
 		if len(epoch.Bound) > 0 {
-			releaseDiagnostic(ctx, "operator", "ledger_audit_ctf_census_bound", epoch.Epoch, true, 0, releaseDiagnosticFacts{operatorId: state.noID, operatorKnown: true})
+			releaseDiagnostic(ctx, "operator", "ledger_audit_ctf_census_bound", 0, false, 0, releaseDiagnosticFacts{operatorId: state.noID, operatorKnown: true})
 		}
 	}
 	return &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}, nil

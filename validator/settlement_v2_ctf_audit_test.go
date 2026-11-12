@@ -311,7 +311,7 @@ func TestSettlementV2CtfAuditDrawsWithoutHeadBoundCandidates(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var output bytes.Buffer
-			ctx, _, err := newReleaseDiagnostics(t.Context(), &output, time.Now)
+			ctx, owner, err := newReleaseDiagnostics(t.Context(), &output, time.Now)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -324,8 +324,12 @@ func TestSettlementV2CtfAuditDrawsWithoutHeadBoundCandidates(t *testing.T) {
 			if err := fixture.audit.audit(ctx, pool); err != nil {
 				t.Fatal(err)
 			}
+			// Closing the owner writes every record before the buffer is read.
+			if err := owner.close(); err != nil {
+				t.Fatal(err)
+			}
 			record := fixture.ctfRecord(t, 1)
-			reported := strings.Contains(output.String(), "code=ledger_audit_ctf_census_bound native_epoch=5")
+			reported := strings.Contains(output.String(), "code=ledger_audit_ctf_census_bound native_epoch=0 epoch_known=false")
 			switch test.decision {
 			case settlementV2DecisionApprove:
 				if record.Decision != test.decision || record.Check != "none" || !reported || len(fixture.chain.accepted()) != 1 {
