@@ -1055,6 +1055,10 @@ Before any read, it rejects with exit 2:
 - a missing flag;
 - an artifact that does not declare `assignSurplus(uint256,uint256,uint256)`,
   `recordV1Sweep(uint256,uint256,bytes32)` and `v1Sweep(uint256)`;
+- an artifact that declares some of the capture the flag functions but not
+  all of them. One that declares them all is `STSettlement2Ctf`'s, reviewed
+  as in [Capture the flag upgrade](#capture-the-flag-upgrade), and only it
+  takes `--no-id`, `--maximum-burn-rao` and `--first-epoch`;
 - an artifact with an immutable other than UUPS's `__self`, or with code
   past the EIP-170/3860 limits.
 
@@ -1067,6 +1071,9 @@ It refuses with exit 3:
 - an STSettlement2 owner other than the Safe, naming one that answers
   `getMinDelay()` as a timelock to pass with `--timelock`;
 - a proxy without an implementation, or one already on the implementation;
+- with the phase C artifact, a proxy that runs the capture the flag
+  implementation (its `ctfPoolId` answers), which the upgrade would replace
+  with phase C, dropping the CTF calls;
 - a Safe that is not 1.4.1 with one owner at threshold one, no modules and
   no guard;
 - a Safe whose own `getTransactionHash` differs from the EIP-712 hash review
@@ -1185,13 +1192,17 @@ With `--timelock`, review also refuses with exit 3:
 - a schedule of an operation that is already waiting, ready or done (the
   same call again needs another `--timelock-salt`), and an execute of one
   that is not ready;
-- a call that fails as an `eth_call` from the timelock at the head, so a
-  schedule whose execution would revert is refused up front.
+- a call with a value from a timelock that holds less than the value, once
+  the call's preflight runs. The timelock pays the value from its own
+  balance, and review names the shortfall to send it first;
+- a call that fails as an `eth_call` from the timelock at the head, with its
+  value, so a schedule whose execution would revert is refused up front.
 
 The schedule step's `safe_transaction` is the Safe's call of
-`schedule(settlement2, 0, call, 0x0, salt, minDelay)` on the timelock,
-hashed, built and preflighted from the owner as before. With open execution,
-the execute step has no Safe transaction: any funded key sends
+`schedule(settlement2, value, call, 0x0, salt, minDelay)` on the timelock,
+hashed, built and preflighted from the owner as before. `value` is the
+call's: zero, except for the capture the flag upgrade's call. With open
+execution, the execute step has no Safe transaction: any funded key sends
 `timelock.execute_transaction`, which review preflights as an `eth_call`. A
 timelock that only the Safe executes gets the Safe's `execTransaction` of
 the same call instead. The upgrade's preflights still wait for the
@@ -1205,19 +1216,166 @@ or `…-owner-call-review-v2`. `settlement2.owner` is the timelock, and the
 - `roles`, which of the Safe, the zero address and the timelock hold each
   role (the contract keeps no member list), and `executor`, `open` or
   `safe`;
-- `step`, `call` (the owner call), `predecessor` (zero), `salt`,
-  `operation_id` and `operation_state` (`unset`, `waiting`, `ready` or
-  `done`);
+- `step`, `call` (the owner call, with its `value_wei`), `predecessor`
+  (zero), `salt`, `operation_id` and `operation_state` (`unset`, `waiting`,
+  `ready` or `done`);
 - `earliest_execution` and `earliest_execution_unix`: for a schedule, the
   head's time plus the delay (the schedule lands later, so the operation is
   ready later still); for a scheduled operation, its `getTimestamp`;
 - `execute_transaction`: `to` (the timelock), `value_wei`, `data` and
-  `data_keccak256` of `execute(settlement2, 0, call, 0x0, salt)`;
+  `data_keccak256` of `execute(settlement2, value, call, 0x0, salt)`. Its
+  own `value_wei` is `0`: the timelock pays the call's value;
 - `call_preflight`, the call run from the timelock.
 
-Its reads add `eth_getBlockByNumber` of the head, for its time.
+Its reads add `eth_getBlockByNumber` of the head, for its time, and for a
+call with a value `eth_getBalance` of the timelock at the head.
 `mainnet/evm_v2_timelock_test.go` runs both steps on the e2e chain against
 the mainnet timelock's exact code: the sweep's record and assignment with
 open execution, executed by a stranger (UP-5); the upgrade through a
 timelock only the Safe executes (UP-6); and each refusal (UP-7).
 `register-operator-pool review` still preflights a direct Safe call.
+
+## Capture the flag upgrade
+
+The capture the flag upgrade (`CAPTURETHEFLAG.md` §3.1, §11.2) replaces phase
+C's implementation with `STSettlement2Ctf`, which keeps every phase C
+function, event and storage slot, and registers an operator's CTF pool,
+vault2 pool `2^32 + noId`, in the same timelock operation. Its call is
+`upgradeToAndCall(implementation, registerCtfPool(noId, maximumBurnRao,
+firstEpoch))`, with value `maximumBurnRao × 10^9` wei. As two operations it
+would take 144 h: review refuses a schedule whose call fails at the head, and
+`registerCtfPool` does not exist before the upgrade has run. It goes out in
+four steps:
+
+1. Anyone creates the implementation through the canonical deterministic
+   deployment proxy, as phase C's was (see
+   [Settlement v2 phase C upgrade](#settlement-v2-phase-c-upgrade)).
+2. Anyone funds the timelock with at least the value, in a plain transfer
+   that its `receive()` accepts. The timelock pays the call's value from its
+   own balance when the operation executes, so the execute transaction
+   carries no value, and vault2's refund of the burn surplus comes back to
+   the timelock.
+3. The Safe's owner sends the Safe's call of `schedule(settlement2, value,
+   call, 0x0, salt, minDelay)` on the timelock.
+4. At least 72 h later, anyone sends the timelock's `execute(settlement2,
+   value, call, 0x0, salt)`. It must land before the first epoch starts:
+   `registerCtfPool` requires `firstEpoch > currentEpoch()`.
+
+`upgrade-settlement2 review` covers steps 1, 3 and 4 from the artifact of
+`STSettlement2Ctf`. With it, `--no-id`, `--maximum-burn-rao`,
+`--first-epoch` and `--timelock` are all required; `--timelock-salt` stays
+optional. `--maximum-burn-rao` must leave headroom over the live burn: vault2
+refunds the surplus, and a burn above the ceiling reverts the execution.
+
+```sh
+sn-mainnet upgrade-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --salt 0x0000000000000000000000000000000000000000000000000000000000000000 \
+  --artifact evm/out/STSettlement2Ctf.sol/STSettlement2Ctf.json --timelock "$SETTLEMENT2_TIMELOCK" \
+  --no-id 1 --maximum-burn-rao "$MAXIMUM_BURN_RAO" --first-epoch 8
+# once the operation is ready:
+sn-mainnet upgrade-settlement2 review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" \
+  --safe "$GOVERNANCE_SAFE" --salt 0x0000000000000000000000000000000000000000000000000000000000000000 \
+  --artifact evm/out/STSettlement2Ctf.sol/STSettlement2Ctf.json --timelock "$SETTLEMENT2_TIMELOCK" \
+  --no-id 1 --maximum-burn-rao "$MAXIMUM_BURN_RAO" --first-epoch 8 --execute
+```
+
+Before any read, it rejects with exit 2:
+
+- the `STSettlement2Ctf` artifact without `--no-id`, `--maximum-burn-rao`,
+  `--first-epoch` or `--timelock`;
+- any of those three flags with the phase C artifact;
+- a `--no-id` of 0 or from 2^32, and a zero `--maximum-burn-rao` or
+  `--first-epoch`;
+- an artifact that declares only some of the capture the flag functions:
+  `registerCtfPool(uint256,uint64,uint64)`,
+  `commitCtfCensus(uint256,uint256,bytes32)`, `ctfCensus(uint256,uint256)`,
+  `ctfSettlementAt(uint256,uint256)` and `ctfPoolId(uint256)`.
+
+Besides the upgrade's and the timelock's refusals, it refuses with exit 3
+what `registerCtfPool` would refuse at execution. It reads vault2 and the v1
+coordinator at the head, through the proxy's `vault()` and `v1Coordinator()`:
+
+- a proxy that does not answer `v1Sweep(uint256)`, so does not run phase C,
+  on which the upgrade is built;
+- an operator without a provider pool in vault2 (`UnknownPool`);
+- a CTF pool vault2 already holds;
+- a v1 operator that is not active in `currentEpoch()` (`InactiveOperator`);
+- a first epoch that has started, or that starts at the next block, the
+  earliest an execution can land in (`InvalidEpoch`);
+- a first epoch whose policy's `epochBlocks` is below its
+  `rootCommitWindowBlocks` plus vault2's `CHALLENGE_BLOCKS()`
+  (`CadenceTooShort`);
+- at the schedule step, an operation whose earliest execution is at or after
+  the first epoch's estimated start. The earliest execution is the head's
+  time plus the minimum delay, and the estimated start is the head's time
+  plus the epoch's remaining blocks at the measured 12 s. Executed then,
+  `registerCtfPool` reverts `InvalidEpoch`;
+- once the call's preflight runs, a timelock that holds less than the
+  value. Review names the shortfall to send it first.
+
+The preflights are timelock mode's. Once the implementation exists, the call
+runs from the timelock with its value. At the execute step, the execute
+transaction runs from any sender. Before the implementation exists neither
+runs, and the preflight's result says what comes first: create the
+implementation, and fund the timelock while it holds less than the value.
+
+Its result, schema `urnetwork-mainnet-settlement-v2-ctf-upgrade-review-v1`,
+has timelock mode's sections. `timelock.call` is
+`upgradeToAndCall(address,bytes)`, with the value as `value_wei` and the
+`registerCtfPool` call as `args.data`, and the schedule's
+`safe_transaction.args.value` is the value too. It adds a `ctf` section:
+
+- `no_id`, `pool_id` (`2^32 + no_id`, a decimal string), `maximum_burn_rao`
+  and `value_wei`;
+- `first_epoch`, `first_epoch_start_block`, `blocks_remaining` after the head,
+  and `current_epoch`;
+- `vault2`, `v1_coordinator` and `provider_pool_hotkey`, the operator's
+  provider pool's;
+- `timelock_balance_wei`;
+- `hotkey_derivation`.
+
+`registerCtfPool` derives the pool hotkey at execution, as
+`keccak256(abi.encode(proxy, pool_id, block.number, blockhash(block.number - 1)))`.
+A hotkey named in the operation would be public for its 72 h, and anyone
+could register it on SN25 first. This one is unknown until its parent block
+is sealed (below). A failed execution changes nothing and leaves the
+operation ready, so anyone can execute it again in a later block, under
+another hotkey. The preflights derive the head's hotkey, not the hotkey of
+the block the execution lands in, so they cannot rule out a hotkey
+registered first.
+
+The hotkey is known once the parent block is sealed, about 12 s before the
+executing block. Anyone who sees the execute transaction pending can take the
+hotkey first inside that block. A fee buys this through the neuron
+precompile's `tryAssociateHotkey(bytes32)`, and a burn buys it through a
+registration on any subnet. vault2's registration then fails
+(`NonAssociatedColdKey` or `HotKeyAlreadyRegisteredInSubNet`), and the execute
+reverts and consumes the gas it was given. The operation stays ready, and the
+next block derives another hotkey. A griefer can repeat this block after
+block until the first epoch starts, which moves capture the flag's start.
+Plan the execution for it:
+
+- Make the operation ready days before the first epoch. For epoch 8, schedule
+  it by about 11-22.
+- Send the execute right after a block seals, with a gas limit that bounds a
+  refused attempt's cost, and retry the next block.
+- Keep a fallback operation, with first epoch 9 and another
+  `--timelock-salt`, scheduled beside it. The Safe cancels it once the first
+  executes.
+
+Without the parent's hash, the hotkey would be known for every block in
+advance. So `registerCtfPool` refuses a zero `blockhash(block.number - 1)`
+(`BlockHashUnavailable`), and R-9 qualifies BLOCKHASH on the runtime.
+
+Its reads add `eth_getBalance` of the timelock at the head.
+`mainnet/evm_v2_ctf_upgrade_test.go` runs it on the e2e chain in mainnet's
+configuration:
+
+- UP-8: the whole operation, from the creation and the funding to a
+  stranger's execute, then the implementation, the derived hotkey in vault2,
+  the refund to the timelock and `ctfSettlementAt`;
+- UP-9: each refusal;
+- UP-10: each usage error;
+- UP-11: a failed execution, under a hotkey someone registered first or in
+  the first epoch, leaves the operation ready and the proxy on phase C; the
+  first runs again a block later.

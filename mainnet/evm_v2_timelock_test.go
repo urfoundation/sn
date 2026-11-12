@@ -166,7 +166,7 @@ func TestOwnerCallSettlement2ThroughTheTimelock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := settlement2TimelockOperation(f.settlement, recordData, common.Hash{})
+	id := settlement2TimelockOperation(f.settlement, new(big.Int), recordData, common.Hash{})
 	schedule, err := settlement2TimelockAbi.Pack("schedule", f.settlement, new(big.Int), recordData, [32]byte{}, [32]byte{}, big.NewInt(settlement2TimelockMinDelay))
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestOwnerCallSettlement2ThroughTheTimelock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assignId := settlement2TimelockOperation(f.settlement, assignData, common.Hash{})
+	assignId := settlement2TimelockOperation(f.settlement, new(big.Int), assignData, common.Hash{})
 	review, code, stderr = f.ownerCall(assignArgs...)
 	if code != 0 || review.Timelock.OperationId != assignId.Hex() || review.Safe.Nonce != "3" || review.Chain["surplus"] != surplus.String() || !review.Timelock.CallPreflight.Ran {
 		t.Fatalf("assign schedule review: exit %d %+v\n%s", code, review, stderr)
@@ -283,7 +283,7 @@ func TestOwnerCallSettlement2ThroughTheTimelock(t *testing.T) {
 	}
 	salt := common.HexToHash("0x01")
 	review, code, stderr = f.ownerCall(append(slices.Clone(assignArgs), "--timelock-salt", salt.Hex())...)
-	if code != 0 || review.Timelock.Salt != salt.Hex() || review.Timelock.OperationId != settlement2TimelockOperation(f.settlement, assignData, salt).Hex() || review.SafeTx.Args["salt"] != salt.Hex() {
+	if code != 0 || review.Timelock.Salt != salt.Hex() || review.Timelock.OperationId != settlement2TimelockOperation(f.settlement, new(big.Int), assignData, salt).Hex() || review.SafeTx.Args["salt"] != salt.Hex() {
 		t.Fatalf("a salted schedule: exit %d %+v\n%s", code, review.Timelock, stderr)
 	}
 	f.requireConservation()
@@ -302,7 +302,7 @@ func TestUpgradeSettlement2ThroughTheTimelock(t *testing.T) {
 	f.handToTimelock(t, timelock)
 	implementation := crypto.CreateAddress2(upgradeCreate2Factory, common.Hash{}, crypto.Keccak256(f.phaseC.creation))
 	upgradeData := stabi.NewSTSettlement2().PackUpgradeToAndCall(implementation, []byte{})
-	id := settlement2TimelockOperation(f.settlement, upgradeData, common.Hash{})
+	id := settlement2TimelockOperation(f.settlement, new(big.Int), upgradeData, common.Hash{})
 
 	if _, code, stderr := f.review(); code != 3 || !strings.Contains(stderr, "review the call through it with --timelock "+timelock.Hex()) {
 		t.Fatalf("a review without --timelock: exit %d\n%s", code, stderr)

@@ -472,8 +472,9 @@ type doctorCheck struct {
 
 // doctorNetwork resolves the API host, connects to it and looks at the TLS
 // certificate. The miner trusts only its own certificate roots, so a proxy
-// that inspects TLS breaks it even when a browser works.
-func doctorNetwork(apiUrl string) []doctorCheck {
+// that inspects TLS breaks it even when a browser works. A variable so tests
+// of the other checks stay off the network.
+var doctorNetwork = func(apiUrl string) []doctorCheck {
 	parsed, err := url.Parse(apiUrl)
 	if err != nil || parsed.Hostname() == "" {
 		return []doctorCheck{{false, "Network", "the API URL " + apiUrl + " isn't valid"}}

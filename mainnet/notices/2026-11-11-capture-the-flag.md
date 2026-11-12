@@ -127,9 +127,11 @@ win from the first epoch.
 2. **By about November 22:** the governance Safe schedules one operation
    through the 72-hour public timelock. It upgrades the v2 settlement
    contract and registers the network operator's capture the flag pool,
-   pool 4,294,967,297. The pool's hotkey is derived when the operation
-   executes, so nobody can register it first. The vault that holds the
-   funds does not change.
+   pool 4,294,967,297. The pool's hotkey is derived only when the
+   operation executes, so it is not public during the 72-hour wait. If an
+   execution fails, it runs again in a later block; if it cannot run before
+   epoch 8 starts, capture the flag starts with epoch 9 instead. The vault
+   that holds the funds does not change.
 3. **Around November 25, two days before epoch 8:** anyone executes the
    operation once its 72 hours have passed. The pool registers on SN25 and
    takes one UID, early enough to earn weight before its immunity ends. The
