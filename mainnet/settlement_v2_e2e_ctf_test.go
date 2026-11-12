@@ -18,15 +18,17 @@
 // the census committed by the root signer in [end(k), end(k) + 600], the
 // ledger built by ctf.Build with drand's real quicknet pulse of ρ_k, its
 // objects published, header last, and its root committed by the root signer.
-// The auditor's CTF audit reads what the validator's reads
-// (validator/settlement_v2_ctf_audit.go: the entry in force, the carry's pool
-// and coldkey, recycledFor, ctfCensus, the census block's time, the pulse and
-// the head bindings), runs ctf.Verify, and approves through the validator's
-// SettlementV2Sender; the validator's own chain reader is unexported, and its
-// unit tests run it against a fake chain. snclaim v2 check audits the pending
-// root as UR's CTF watcher does, then the root finalizes after its window, a
-// winner claims through snclaim v2 claim, and anyone recycles the carry
-// account through STCtfCarry, which the next epoch's close captures.
+// The builder reads the head bindings as the server does, from the
+// coordinator's FleetBound events and bindingAt at the epoch's boundaries.
+// The validator's CTF audit reads its input through the settlement v2
+// audit's own readers (validator.SettlementV2CtfAuditInput: the entry in
+// force, the carry's pool and coldkey, recycledFor, ctfCensus, the census
+// block's time, the pulse and its head oracle, whose bindings must equal the
+// builder's), runs ctf.Verify, and approves through the validator's
+// SettlementV2Sender. snclaim v2 check audits the pending root as UR's CTF
+// watcher does, then the root finalizes after its window, a winner claims
+// through snclaim v2 claim, and anyone recycles the carry account through
+// STCtfCarry, which the next epoch's close captures.
 //
 // The runtime is the e2e chain's Go fakes of runtime 475 (stake moves,
 // registration, UIDs) with the address mapping and the Ed25519 and sr25519
@@ -43,6 +45,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -106,12 +109,15 @@ type ctfE2E struct {
 	// carry is the carry contract and carryColdkey its coldkey.
 	carry        common.Address
 	carryColdkey [32]byte
-	// signer signs the amendments file the web server serves at
-	// /amendments.yml; it also relays quicknet's pulses.
+	// signer signs the amendments file, which web serves at /amendments.yml
+	// beside quicknet's pinned pulse, as a drand relay serves it.
 	signer     *ecdsa.PrivateKey
 	amendments []byte
 	web        *httptest.Server
-	sender     *validator.SettlementV2Sender
+	// validator is the validator's chain client, and sender its auditor
+	// sender.
+	validator *validator.ChainClient
+	sender    *validator.SettlementV2Sender
 	// ledgers are the CTF roots built, by root index once finalized.
 	ledgers []*ctf.Ledger
 	// short is the rao every stake move credits its destination short of
@@ -146,11 +152,11 @@ func newCtfE2E(t *testing.T) *ctfE2E {
 	e.web = httptest.NewServer(http.HandlerFunc(e.serveWeb))
 	t.Cleanup(e.web.Close)
 	f.snclaimEnv = []string{e2eAmendmentSignerEnv + "=" + crypto.PubkeyToAddress(e.signer.PublicKey).Hex()}
-	chain, err := validator.DialReleaseChainContext(e.ctx, []string{f.chain.server.URL}, f.coordinator)
-	if err != nil {
+	var err error
+	if e.validator, err = validator.DialReleaseChainContext(e.ctx, []string{f.chain.server.URL}, f.coordinator); err != nil {
 		t.Fatal(err)
 	}
-	if e.sender, err = validator.NewSettlementV2Sender(chain, []string{f.chain.server.URL}, e2eChainID, validator.SettlementV2Addresses{Settlement: f.settlement, Vault: f.vault2}, f.auditor.keyFile(t), t.TempDir()); err != nil {
+	if e.sender, err = validator.NewSettlementV2Sender(e.validator, []string{f.chain.server.URL}, e2eChainID, validator.SettlementV2Addresses{Settlement: f.settlement, Vault: f.vault2}, f.auditor.keyFile(t), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	e.bindHead(ctfE2EBound, ctfTestFirstEpoch, ctfTestFirstEpoch+1)
@@ -486,56 +492,62 @@ func (e *ctfE2E) commit(built *ctf.Ledger) stabi.ISTSettlementVault2Pending {
 	return after
 }
 
-// audit runs the auditor's CTF audit of the pending root at the head with
-// heads, as the validator's settlementV2CtfChain reads its input: the entry
-// in force at the pending epoch names the carry, which serves vault2's pool
-// 2^32 + 1; each covered epoch's recycledFor, ctfCensus, its block's time
-// and the pulse of its round.
-func (e *ctfE2E) audit(heads ledger.HeadOracle) *ctf.Result {
+// audit runs the validator's CTF audit of the pending root at the head:
+// validator.SettlementV2CtfAuditInput reads its input through the
+// settlement v2 audit's own readers (the entry in force in the signed file,
+// the carry's pool and coldkey, each covered epoch's recycledFor, ctfCensus,
+// its block's time and the pulse of its round from the relay, and its head
+// oracle over the coordinator's FleetBound events and bindingAt), and
+// ctf.Verify judges the published objects. Each drawn epoch's bindings by
+// the validator's oracle must equal the builder's (heads). Without
+// bindings, the draw leaves out no candidate, as a watcher that read none
+// drew.
+func (e *ctfE2E) audit(bindings bool) *ctf.Result {
 	e.t.Helper()
-	pending := e.pending()
 	file, err := amendment.ParseVerified(e.amendments, e2eChainID, e2eNetuid, crypto.PubkeyToAddress(e.signer.PublicKey))
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	inForce, err := file.At(e2eNoID, pending.Epoch, nil)
-	if err != nil || inForce.CaptureTheFlag == nil || inForce.CaptureTheFlag.Ctf.Carry != e.carry || inForce.CaptureTheFlag.Ctf.CtfPool != ctfE2EPool {
-		e.t.Fatalf("the entry in force at epoch %d: %+v (%v)", pending.Epoch, inForce.CaptureTheFlag, err)
+	in, err := validator.SettlementV2CtfAuditInput(e.ctx, e.validator, validator.SettlementV2Addresses{Settlement: e.settlement, Vault: e.vault2}, e2eChainID, e2eNetuid,
+		e.epochStart(0), file, e.web.URL, e2eNoID)
+	if err != nil {
+		e.t.Fatal(err)
 	}
-	pool := e2eView(e.e2eFixture, e.vault2, e2eVault2Binding.PackPools(ctfTestPoolId), e2eVault2Binding.UnpackPools)
-	in := ctf.VerifyInput{NoID: e2eNoID, ChainID: e2eChainID, Netuid: e2eNetuid, FirstEpoch: pool.FirstEpoch, CarryColdkey: e.carryColdkey,
-		Pending: e2eLedgerRoot(pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash), FundedThrough: map[uint64]uint256.Int{},
-		Epochs: map[uint64]ctf.EpochFacts{}, Fetcher: e.publisher, Custody: ledger.NewMemoryCustody(), Heads: heads, MaxFetchBytes: ledger.DefaultMaxFetchBytes}
-	p := pool.FirstEpoch - 1
-	if count := e.rootCount(); count > 0 {
-		root := e.root(count - 1)
-		previous := e2eLedgerRoot(root.Epoch, root.Root, root.Total, root.LeafCount, root.LedgerHash)
-		in.Previous, p = &previous, root.Epoch
+	if in.CarryColdkey != e.carryColdkey || in.FirstEpoch != ctfTestFirstEpoch {
+		e.t.Fatalf("the validator reads carry coldkey 0x%x and first epoch %d", in.CarryColdkey, in.FirstEpoch)
 	}
-	for k := p + 1; k <= pending.Epoch; k++ {
-		in.FundedThrough[k] = *uint256.MustFromBig(e.fundedThrough(k))
-		facts := ctf.EpochFacts{Recycled: *uint256.MustFromBig(e.recycledFor(k))}
-		if committed := e.census(k); committed.CensusHash != ([32]byte{}) {
-			time := e2eBlockTime(committed.BlockNumber)
-			facts.Census = &ctf.CensusCommitment{Hash: committed.CensusHash, Block: committed.BlockNumber, Time: time}
-			facts.Pulse = e.pulse(ctf.DrawRound(time))
+	builder := e.heads()
+	for k, facts := range in.Epochs {
+		if facts.Census == nil {
+			continue
 		}
-		in.Epochs[k] = facts
+		validatorBound, err := in.Heads.HeadBindings(e.ctx, k)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		builderBound, err := builder.HeadBindings(e.ctx, k)
+		if err != nil || !maps.Equal(validatorBound, builderBound) {
+			e.t.Fatalf("epoch %d: the validator's head bindings %v, the builder's %v (%v)", k, validatorBound, builderBound, err)
+		}
 	}
-	result, err := ctf.Verify(e.ctx, in)
+	in.Fetcher, in.Custody, in.MaxFetchBytes = e.publisher, ledger.NewMemoryCustody(), ledger.DefaultMaxFetchBytes
+	if !bindings {
+		in.Heads = nil
+	}
+	result, err := ctf.Verify(e.ctx, *in)
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	return result
 }
 
-// approve audits the pending root with the chain's head bindings and sends
-// the validator's approval through its sender.
+// approve audits the pending root as the validator does and sends its
+// approval through its sender.
 func (e *ctfE2E) approve() *ctf.Result {
 	e.t.Helper()
-	result := e.audit(e.heads())
+	result := e.audit(true)
 	if result.Action() != ledger.ActionApprove {
-		e.t.Fatalf("the auditor refuses the pending CTF root: %v (%v check: %v)", result.Action(), result.Check, result.Err)
+		e.t.Fatalf("the validator refuses the pending CTF root: %v (%v check: %v)", result.Action(), result.Check, result.Err)
 	}
 	pending := e.pending()
 	if err := e.sender.Approve(e.ctx, ctfE2EPool, pending); err != nil {
@@ -639,13 +651,15 @@ func ctfE2ECensus(epoch uint64) *ctf.Census {
 // 24.9 α; its census, which lists a client bound to a head fleet, is refused
 // before its window and from anyone but the root signer, committed in it once
 // and only once; the root drawn with quicknet's real pulse, leaving the bound
-// client out, is approved by the auditor's CTF audit through the validator's
-// sender, and snclaim v2 check approves it too, naming the client it left
-// out, where without head bindings it would refuse it. After its window the
+// client out, is approved by the validator's CTF audit, its input read by the
+// settlement v2 audit's own readers and its approval sent by its sender, and
+// snclaim v2 check approves it too, naming the client it left out, where
+// without head bindings it would refuse it. After its window the
 // root finalizes; snclaim v2 status lists a winner's CTF account, and the
 // winner claims it through snclaim v2 claim; anyone claims and recycles the
-// carry account through STCtfCarry, recorded for epoch 4. Epoch 4 has no
-// census: everything carries, and its root returns the carry, matured; the
+// carry account through STCtfCarry, recorded for epoch 4. Epoch 4's census
+// window passes without one, and a census after it is refused: everything
+// carries, and its root returns the carry, matured; the
 // audit and snclaim, with the previous root's accounts, approve it, it
 // finalizes, and once the watcher has claimed the carry account from vault2
 // itself the carry recycles what it holds for epoch 5. vault2's conservation
@@ -711,10 +725,10 @@ func (e *ctfE2E) cycle() {
 	}
 	e.commit(first)
 
-	// The auditor approves what reproduces with the chain's bindings; without
-	// them the draw keeps the bound client and the root is refused, which is
-	// what a watcher without bindings would answer.
-	if blind := e.audit(nil); blind.Action() != ledger.ActionRefuse || blind.Check != ctf.CheckDraw {
+	// The validator approves what reproduces with the chain's bindings;
+	// without them the draw keeps the bound client and the root is refused,
+	// which is what a watcher without bindings would answer.
+	if blind := e.audit(false); blind.Action() != ledger.ActionRefuse || blind.Check != ctf.CheckDraw {
 		t.Fatalf("an audit without head bindings: %v (%v check: %v)", blind.Action(), blind.Check, blind.Err)
 	}
 	audited := e.approve()
@@ -758,12 +772,15 @@ func (e *ctfE2E) cycle() {
 		t.Fatalf("recycled %s for epoch %d, the pots and pending awards are %s", amount, returned4, owed.Dec())
 	}
 
-	// Epoch 4: fresh emission and the returned carry; no census, so no draw
-	// and everything carries. The carry is back within the walk's tolerance:
-	// what the moves lost is written off, and the fresh amount is the funding
-	// less what was owed.
+	// Epoch 4: fresh emission and the returned carry. Its census window
+	// passes without a census, which is then refused, so there is no draw and
+	// everything carries (§4.7). The carry is back within the walk's
+	// tolerance: what the moves lost is written off, and the fresh amount is
+	// the funding less what was owed.
 	e.chain.emit(e.hotkey, e.vault2Coldkey, e2eRao(ctfE2EEmission4))
 	funded4 := e.close(ctfTestFirstEpoch + 1)
+	e.chain.rollTo(e.end(ctfTestFirstEpoch+1) + e2eCommitWindow/2 + 1)
+	e.refusedCtf(e.operator, e.settlement, e2eSettlementBinding.PackCommitCtfCensus(e2eRao(ctfTestFirstEpoch+1), big.NewInt(e2eNoID), encoded.Hash), "InvalidWindow")
 	if funded4.Cmp(less(new(big.Int).Add(amount, e2eRao(ctfE2EEmission4)), 1)) != 0 {
 		t.Fatalf("the close of epoch 4 funded %s", funded4)
 	}
