@@ -131,6 +131,9 @@ type providerExtenderStatusListener struct {
 	standings *minerExtenderStandings
 	// the command that lets this miner bind tcp 443, empty for none
 	bindFix string
+	// the run's port mapping, which the extender slot's listener alone feeds
+	// (connect/EXTENDER.md S10); nil on every other slot
+	portMapping *minerPortMappingHolder
 }
 
 // The provider borrows its enclosing run's explicitly supplied output budget.
@@ -150,9 +153,12 @@ func (self *providerExtenderStatusListener) ExtenderProvideStatusChanged(status 
 	observation := providerExtenderObservation{}
 	standing := minerExtenderStandingOf(status)
 	if status != nil {
-		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0, Reason: standing.Reason}
+		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0, Reason: standing.Reason, PortMapping: status.PortMapping}
 	}
 	self.standings.set(self.provider, standing)
+	// the status file keeps the router port mapping's state, method and ports,
+	// a closed vocabulary and numbers, never the router's words
+	self.portMapping.observe(status)
 	changed := func() bool {
 		self.stateLock.Lock()
 		defer self.stateLock.Unlock()
