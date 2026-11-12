@@ -32,8 +32,8 @@ contract V2InvariantTest is V2StackBase {
         _registerV2Pool(NO2, V2_POOL2, V2_POOL2_UID);
         address[] memory auditors = new address[](3);
         (auditors[0], auditors[1], auditors[2]) = (auditor1, makeAddr("auditor-2"), makeAddr("auditor-3"));
-        // The production upgrade: the capture the flag implementation, which
-        // keeps every phase C call the handler makes.
+        // The newest implementation, capture the flag's, which keeps every
+        // phase C call the handler makes (mainnet goes there through phase C).
         STSettlement2Ctf upgrade = new STSettlement2Ctf();
         vm.startPrank(owner);
         settlement.setAuditors(auditors, 2);

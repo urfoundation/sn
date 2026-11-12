@@ -16,8 +16,9 @@ import {MockStakingV2} from "./mocks/PrecompileMocks.sol";
 ///      registered from CTF_FIRST_EPOCH and its carry contract created. CC-1
 ///      covers creation, CC-2 and CC-3 the cycle, CC-4 claims made by others,
 ///      CC-5 to CC-7 the refusals, CC-8 rounding, CC-9 donations, CC-10 the
-///      epoch a return is recorded for, and CC-11 that it cannot be drained or
-///      redirected.
+///      epoch a return is recorded for, CC-11 that it cannot be drained or
+///      redirected, CC-12 a collateral lock on vault2's position, and CC-13
+///      the runtime's refusals of the carry's own moves.
 contract V2CtfCarryTest is V2CtfBase {
     bytes32 internal constant ELSEWHERE = keccak256("another hotkey");
 
@@ -358,6 +359,51 @@ contract V2CtfCarryTest is V2CtfBase {
             vault2.fundedThrough(CTF1, CTF_FIRST_EPOCH + 3),
             vault2.fundedThrough(CTF1, CTF_FIRST_EPOCH + 1) + 25
         );
+    }
+
+    // CC-12, §7.3: with registration collateral locked on vault2's CTF hotkey
+    // position, the carry records the whole position's growth, which is
+    // exactly what the next close can move: the lock stays.
+    function test_CC12_aCollateralLockOnVault2sPositionStays() public {
+        staking.setStake(ctfHotkey, V2_SELF, 500);
+        staking.setCollateral(ctfHotkey, V2_SELF, 500);
+        (V2TreeHelper.Node[][] memory levels, uint256 rootIndex) = _firstRoot();
+        assertEq(staking.stakes(ctfHotkey, V2_SELF), 500, "the close left the lock");
+        (, uint256 amount) = _recycle(rootIndex, _carryAccount(700), V2TreeHelper.proof(levels, 1));
+        assertEq(amount, 700);
+        _accrueV2(ctfHotkey, 40);
+        assertEq(_closeV2(CTF_FIRST_EPOCH + 1, CTF1), 740);
+        assertEq(staking.stakes(ctfHotkey, V2_SELF), 500);
+        assertTrue(vault2.conservationHolds());
+    }
+
+    // CC-13, §7.3: the runtime's refusals of the carry's own moves: below the
+    // transfer floor, and a refusal that consumes all the gas forwarded and
+    // returns no data, as the runtime refuses a precompile call. Each reverts
+    // the whole recycle, and the carry keeps what it held for a later one.
+    function test_CC13_theRuntimesRefusalsOfTheCarrysMoves() public {
+        (V2TreeHelper.Node[][] memory levels, uint256 rootIndex) = _firstRoot();
+        LedgerTree.ProofNode[] memory proof = V2TreeHelper.proof(levels, 1);
+        vm.prank(stranger);
+        vault2.claim(CTF1, rootIndex, _carryAccount(700), proof);
+
+        staking.setMinimumMoveAmount(701);
+        vm.expectRevert("mock: move amount too low");
+        _recycle(rootIndex, _noAccount(), proof);
+        staking.setMinimumMoveAmount(0);
+        staking.setMinimumTransferAmount(701);
+        vm.expectRevert("mock: transfer amount too low");
+        _recycle(rootIndex, _noAccount(), proof);
+        staking.setMinimumTransferAmount(0);
+        staking.setExhaustTransferTo(V2_SELF, true);
+        vm.expectRevert();
+        _recycle(rootIndex, _noAccount(), proof);
+        staking.setExhaustTransferTo(V2_SELF, false);
+        assertEq(staking.stakes(V2_ESCROW, carryColdkey), 700);
+        assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 1), 0);
+
+        (, uint256 amount) = _recycle(rootIndex, _noAccount(), proof);
+        assertEq(amount, 700);
     }
 
     // ------------------------------------------------------------------

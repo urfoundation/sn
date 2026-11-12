@@ -357,6 +357,25 @@ contract V2SettlementCtfTest is V2CtfBase {
         assertEq(ctf.ctfPoolId(NO2), CTF2);
     }
 
+    // CS-6: without the parent block's hash the hotkey would be known before
+    // its block, so a registration whose BLOCKHASH answers zero fails closed;
+    // once it answers, the same call registers.
+    function test_CS6_aZeroParentHashIsRefused() public {
+        vm.setBlockhash(block.number - 1, bytes32(0));
+        neuron.setUid(NETUID, _ctfHotkey(NO1), CTF1_UID);
+        vm.prank(owner);
+        vm.expectRevert(STSettlement2Ctf.BlockHashUnavailable.selector);
+        ctf.registerCtfPool(NO1, V2_BURN_LIMIT, CTF_FIRST_EPOCH);
+        assertFalse(vault2.pools(CTF1).registered);
+
+        vm.setBlockhash(block.number - 1, keccak256("a parent"));
+        bytes32 hotkey = _registerCtf(NO1, CTF_FIRST_EPOCH, CTF1_UID);
+        assertEq(
+            hotkey, keccak256(abi.encode(address(settlement), CTF1, block.number, keccak256("a parent")))
+        );
+        assertEq(vault2.pools(CTF1).hotkey, hotkey);
+    }
+
     // CS-7: a CTF pool and its provider pool are separate vault2 pools: each
     // keeps its own hotkey, epochs and funding.
     function test_CS7_theCtfPoolIsASeparateVault2Pool() public {
@@ -621,6 +640,21 @@ contract V2SettlementCtfTest is V2CtfBase {
         coordinator.setPaused(false);
         vm.prank(rootSigner1);
         ctf.commitCtfCensus(CTF_FIRST_EPOCH, NO1, CENSUS);
+
+        // A pause that spans the end of the next epoch's window cancels its
+        // census: unpaused after it, the window has closed.
+        uint256 end = _end(CTF_FIRST_EPOCH + 1);
+        vm.roll(end);
+        _pause();
+        vm.roll(end + CENSUS_WINDOW + 1);
+        vm.prank(owner);
+        coordinator.setPaused(false);
+        vm.prank(rootSigner1);
+        vm.expectRevert(ISTSettlement2.InvalidWindow.selector);
+        ctf.commitCtfCensus(CTF_FIRST_EPOCH + 1, NO1, CENSUS);
+        (bytes32 hash, uint64 committed) = ctf.ctfCensus(NO1, CTF_FIRST_EPOCH + 1);
+        assertEq(hash, bytes32(0));
+        assertEq(committed, 0);
     }
 
     // CS-15: each operator's census is its own, and an epoch whose window

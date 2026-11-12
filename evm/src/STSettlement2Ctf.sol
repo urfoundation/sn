@@ -96,6 +96,7 @@ contract STSettlement2Ctf is ISTSettlement2, Initializable, OwnableUpgradeable, 
     error NoIdOutOfRange();
     error InvalidCensusHash();
     error CensusAlreadyCommitted();
+    error BlockHashUnavailable();
 
     modifier whenNotPaused() {
         if (_v1().paused()) revert SettlementPaused();
@@ -152,14 +153,18 @@ contract STSettlement2Ctf is ISTSettlement2, Initializable, OwnableUpgradeable, 
     /// @notice O, payable. Registers operator `noId`'s CTF pool with vault2 as
     /// pool `ctfPoolId(noId)`, from `firstEpoch`, under a hotkey derived here:
     /// keccak256(abi.encode(this proxy, ctfPoolId(noId), block.number,
-    /// blockhash(block.number - 1))). A hotkey named in advance could be
-    /// registered on the subnet by anyone first; this one is unknown until its
-    /// block, and a refused registration can run again in a later block under
-    /// another. It makes registerOperatorPool's checks, with its cadence check,
-    /// and requires `noId` below 2^32 and its provider pool registered with
-    /// vault2. `msg.value` pays the burn, capped at `maximumBurnRao`, and the
-    /// surplus vault2 refunds goes back to the caller. Executed by the
-    /// timelock as the call of upgradeToAndCall, the caller is the timelock.
+    /// blockhash(block.number - 1))). A hotkey named in the scheduled call
+    /// would be public for the timelock's delay, and anyone could take it on
+    /// the subnet first. This one is known only once the parent block is
+    /// sealed, so it can be taken first only inside the executing block, and
+    /// a refused registration can run again in a later block under another.
+    /// Without the parent's hash it would be known in advance, so a zero hash
+    /// is refused (BlockHashUnavailable). It makes registerOperatorPool's
+    /// checks, with its cadence check, and requires `noId` below 2^32 and its
+    /// provider pool registered with vault2. `msg.value` pays the burn, capped
+    /// at `maximumBurnRao`, and the surplus vault2 refunds goes back to the
+    /// caller. Executed by the timelock as the call of upgradeToAndCall, the
+    /// caller is the timelock.
     function registerCtfPool(uint256 noId, uint64 maximumBurnRao, uint64 firstEpoch)
         external
         payable
@@ -169,8 +174,11 @@ contract STSettlement2Ctf is ISTSettlement2, Initializable, OwnableUpgradeable, 
         uint256 poolId = ctfPoolId(noId);
         _requireRegistration(noId, firstEpoch);
         if (!ISTSettlementVault2(vault).pools(noId).registered) revert UnknownPool();
-        bytes32 hotkey =
-            keccak256(abi.encode(address(this), poolId, block.number, blockhash(block.number - 1)));
+        bytes32 parent = blockhash(block.number - 1);
+        // Zero is the runtime giving no hash at all, not a value anyone steers.
+        // slither-disable-next-line incorrect-equality
+        if (parent == bytes32(0)) revert BlockHashUnavailable();
+        bytes32 hotkey = keccak256(abi.encode(address(this), poolId, block.number, parent));
         uid = _registerPool(poolId, hotkey, maximumBurnRao, firstEpoch);
     }
 

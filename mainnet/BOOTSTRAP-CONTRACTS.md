@@ -1343,6 +1343,29 @@ can execute it again in a later block, under another hotkey. The preflights
 derive the head's hotkey, not the hotkey of the block the execution lands in,
 so they cannot rule out a hotkey registered first.
 
+The hotkey is known once the parent block is sealed, about 12 s before the
+executing block. Anyone who sees the execute transaction pending can take the
+hotkey first inside that block. A fee buys this through the neuron
+precompile's `tryAssociateHotkey(bytes32)`, and a burn buys it through a
+registration on any subnet. vault2's registration then fails
+(`NonAssociatedColdKey` or `HotKeyAlreadyRegisteredInSubNet`), and the execute
+reverts and consumes the gas it was given. The operation stays ready, and the
+next block derives another hotkey. A griefer can repeat this block after
+block until the first epoch starts, which moves capture the flag's start.
+Plan the execution for it:
+
+- Make the operation ready days before the first epoch. For epoch 8, schedule
+  it by about 11-22.
+- Send the execute right after a block seals, with a gas limit that bounds a
+  refused attempt's cost, and retry the next block.
+- Keep a fallback operation, with first epoch 9 and another
+  `--timelock-salt`, scheduled beside it. The Safe cancels it once the first
+  executes.
+
+Without the parent's hash, the hotkey would be known for every block in
+advance. So `registerCtfPool` refuses a zero `blockhash(block.number - 1)`
+(`BlockHashUnavailable`), and R-9 qualifies BLOCKHASH on the runtime.
+
 Its reads add `eth_getBalance` of the timelock at the head.
 `mainnet/evm_v2_ctf_upgrade_test.go` runs it on the e2e chain in mainnet's
 configuration:

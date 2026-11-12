@@ -12,9 +12,13 @@ import {STSettlement2Ctf} from "../src/STSettlement2Ctf.sol";
 // STSettlement2Ctf restates STSettlement2 and STSettlement2PhaseC instead of
 // inheriting them (CAPTURETHEFLAG.md §3.1): their registerOperatorPool and
 // commitDistribution are not virtual and their sources are release-locked. So
-// every phase A suite (S-1 to S-9) and every phase C and timelock suite
-// (SC-1 to SC-17, TL-1 to TL-6) runs again, unchanged, against the CTF
+// the phase A suites (S-1 to S-9) and the phase C and timelock suites (SC-1 to
+// SC-17, TL-1 to TL-6) run again, unchanged, with the proxy on the CTF
 // implementation, which must keep each of those functions, events and errors.
+// A test that creates a phase A or phase C implementation itself still uses
+// that one: in a rerun it upgrades the CTF proxy to it, or back, and
+// V2SettlementCtf.t.sol's CS-1 and CS-2 cover the CTF implementation's own
+// upgrade, initializers and size.
 
 contract V2SettlementApprovalCtfTest is V2SettlementApprovalTest {
     function _newSettlementImplementation() internal override returns (address) {

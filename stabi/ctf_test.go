@@ -147,6 +147,7 @@ func TestCaptureTheFlagBindings(t *testing.T) {
 		{"NoIdOutOfRange()", STSettlement2NoIdOutOfRangeErrorID()},
 		{"InvalidCensusHash()", STSettlement2InvalidCensusHashErrorID()},
 		{"CensusAlreadyCommitted()", STSettlement2CensusAlreadyCommittedErrorID()},
+		{"BlockHashUnavailable()", STSettlement2BlockHashUnavailableErrorID()},
 		{"NothingToRecycle()", STCtfCarryNothingToRecycleErrorID()},
 		{"InvalidColdkey()", STCtfCarryInvalidColdkeyErrorID()},
 		{"RuntimeAccountingMismatch()", STCtfCarryRuntimeAccountingMismatchErrorID()},
