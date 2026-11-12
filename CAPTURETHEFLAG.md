@@ -908,7 +908,7 @@ brief:
 | `GET /sn/ctf/country/{cc}` | public; `public, max-age=60` | The country's row of `GET /sn/ctf` with the same context, and its history from the pool's first epoch, newest first: per role the units, the slots won, the pot in and out, what was awarded, the median award and the share of entries that won. A code outside the 249 is 404 `unknown_country`. |
 | `GET /sn/ctf/top` | public; `public, max-age=60` | The countries where a role was not fully captured at last epoch's draw, largest pot first (`role=provider\|extender\|any`, `limit` 1 to 249, 10 by default). The seven territories without a permanent population are left out unless `include_uninhabited=true`. Empty without a draw last epoch. |
 | `GET /sn/ctf/epoch/{epoch}` | public; `public, max-age=31536000, immutable` once finalized, `max-age=60` while pending | One epoch, once a committed root covers it. The census (`hash`, `block`, `candidates`, units, excused samples, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the slots and the root. Every country's units, slots, near misses, pots in and out and awards. The awards (role, country, rank, unit hash and family, client id, coldkey, `slot`, `pot_share`, `pending`) and the pending awards. `objects` names the header, countries, census, awards, pots and pending objects, served by `GET /sn/ledger/object`. Before the pool's first epoch, or until a committed root covers it, 404 `unknown_epoch`. |
-| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; a valid credential of either kind is never answered 401; `private, no-cache` | For a client JWT, its status in its recent epochs (`limit` 1 to 52, 8 by default): per role, candidate or not and the first rule that excluded it, its country and unit family, its presence against the half‑epoch rule, and whether it won, with its rank, slot, pot share, whether that share is pending, and the coldkey paid. A network credential gets no epochs. Both get `wins`: every win of the answer's clients not claimed yet, whatever its epoch, and every win of the recent epochs, newest first, each with its client, amounts, root status and `claimed`. A win is claimed once the root that pays it is finalized and vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in that root; `claimed` is null when that cannot be read. |
+| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; a valid credential of either kind is never answered 401; `private, no-cache` | For a client JWT, its status in its recent epochs (`limit` 1 to 52, 8 by default): per role, candidate or not and the first rule that excluded it, its country and unit family, its presence against the half‑epoch rule, and whether it won, with its rank, slot, pot share, whether that share is pending, and the coldkey paid. A network credential gets no epochs. Both get `wins`: every win of the answer's clients not claimed yet, whatever its epoch, and every win of the recent epochs, newest first, each with its client, amounts, root status and `claimed`. A network's wins are the awards recorded for it (`ctf_award.network_id`, from the census member, else the client's network, when the award is written), so they stay its own after a client is removed and the reaper deletes its rows. A win is claimed once the root that pays it is finalized and vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in that root. Every coldkey is read, the newest wins' first; vault2's `claimed` is read at one finalized block per answer, in batches of 50 eth_calls, and each value is kept for 30 s. `claimed` is null when that cannot be read in the five seconds the answer gives it, or when the account's cumulative in the paying root is below the win's amount, which that root pays whole; a chain outage never fails the answer. |
 | `GET /sn/ledger/account` | public; `Cache-Control: no-store` | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label` ("Pool 1", "Capture the flag"), and the answer gains `unavailable_pools`. With `partial=true`, a pool whose ledger cannot be read is left out and named there, rather than failing the whole answer with a 502. Without it, a CTF pool that cannot be read is left out, unnamed, and the other pools are answered as before; a fault in any other pool is still a 502 (§10). |
 | `GET /sn/openapi.yml` | public; `public, max-age=3600` | The document, as YAML, byte for byte as the serving release was built with it. |
 
@@ -935,7 +935,7 @@ require: `*`, or the request's own origin for the operator's own sites, which th
 (vault `services.yml`'s `cors_origins`). The cacheable CTF answers carry a strong `ETag` (304 on
 `If-None-Match`) and `Last-Modified`, which is `as_of`: their data changes only when an epoch starts, a
 census or root is committed, or a root is finalized. `/sn/ctf/client` also changes, with its `ETag` but not
-its `as_of`, when one of its wins is claimed.
+its `as_of`, when one of its wins is claimed, within 30 s of the claim's finalized block.
 
 **"Last epoch" and "this epoch".** "Paid last epoch" is the latest epoch with a committed CTF root: its
 winners per country and role. Its root may still be pending, and the status says so. "Carried into this
@@ -1177,7 +1177,8 @@ vault2, the provider pool's ledger and the extender pool did not change. Some of
 
 - **On a runtime,** R-9 ran on a local chain of runtime 490 and passed (§4.6), and E-8 runs the whole cycle
   on the e2e chain, whose runtime is a set of Go fakes. Nothing has run on mainnet.
-- **The ctf migration** has run only on disposable local databases, where every CTF database test passed.
+- **The ctf migrations** (the tables, and `ctf_award.network_id`) have run only on disposable local
+  databases, where the CTF database tests run.
 - **The apps** ran the unit tests that cover the change. No release build was made, and the Android and
   Windows apps were not built here at all.
 - **Nothing is deployed:** every server part stays off until ctf.yml and st.yml turn it on, and the site
@@ -1276,9 +1277,9 @@ coordinator's pause guardian, and it holds nothing else.
    reserves that coldkey, swaps into it or takes it: a coldkey swap into vault2 needs five days' notice and
    could stop every later pool registration, the operation's included, for good (§4.6). The account was still
    free at block 9,489,181.
-1. **Before `end(6)`, about 11‑20 18:28Z: presence.** Apply the ctf migration, deploy the server parts that
-   use it, and set ctf.yml's `presence.enabled: true`, so that epoch 7 is a full shadow epoch. The sampler has
-   to be running when epoch 8 starts in any case.
+1. **Before `end(6)`, about 11‑20 18:28Z: presence.** Apply the ctf migrations (the tables, then
+   `ctf_award.network_id`), deploy the server parts that use them, and set ctf.yml's `presence.enabled: true`,
+   so that epoch 7 is a full shadow epoch. The sampler has to be running when epoch 8 starts in any case.
 2. **First: R-9 on mainnet's runtime.** It has to pass on the runtime mainnet runs, 490 today, before the Safe
    schedules the operation and before anyone creates the carry (§4.6). It passed on 490 on 2026‑11‑12, with
    vault2's coldkey the guardian's hotkey account throughout. It runs again if the runtime is upgraded before
@@ -1318,8 +1319,9 @@ coordinator's pause guardian, and it holds nothing else.
      also shows the pending CTF balances from the first root;
    - the app releases, each built on sdk `7387af51` or later, which every app's second pass needs (sdk
      `089b7c3a` brought the first). Until then old apps show a CTF account as "Pool 4294967297" and claim it
-     like any pool (§10). The won‑slot lines also need the server with the client route (`eb9ee7a25`) deployed;
-     an older server answers no wins;
+     like any pool (§10). The won‑slot lines also need the server with the client route (`eb9ee7a25`) and its
+     fixes of 2026‑11‑12 (a network's wins by `ctf_award.network_id`, claim states within five seconds)
+     deployed; an older server answers no wins;
    - the site's first import after epoch 8's root (about 12‑04 22:30Z), then a deploy.
 10. **The extender pool** starts with epoch 8 too (`E_x`, `WHITEPAPER.md` §8.6.7). Its entry v1 is signed
     beside this one, and its validator release and server parts follow §8.6.7's own plan.
