@@ -76,7 +76,7 @@ Usage:
     provider setup [--auth-code-file=<path>] [--yes] [--no-service] [--system] [-v...]
     provider status [--json] [-v...]
     provider doctor [-v...]
-    provider service install [--system] [-v...]
+    provider service install [--system [--as=<user>]] [-v...]
     provider service uninstall [--system] [-v...]
     provider service (start | stop | restart | status) [--system] [-v...]
     provider service logs [--follow] [--system] [-v...]
@@ -207,6 +207,9 @@ Options:
     --no-service                     With setup, don't install the background service.
     --system                         With setup and service, a system-wide service run as root, with its
                                      state in /var/lib/urnetwork. Needs sudo.
+    --as=<user>                      With service install --system (Linux), run the system service as this
+                                     user, with their state folder and binary and only the right to bind
+                                     ports below 1024, such as the extender's TCP 443. Needs sudo.
     --json                           With status, print JSON for scripts and monitoring.
     --follow                         With service logs, keep printing new lines.
     --check                          With update, only say whether a newer release is out.
@@ -878,7 +881,9 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	}
 	defer progress.close()
 	// provider status reads this; it stops before progress closes
-	defer startMinerStatusFile(ctx, progress)()
+	extenderStandings := newMinerExtenderStandings()
+	extenderBindFix := minerExtenderBindFix()
+	defer startMinerStatusFile(ctx, progress, extenderStandings)()
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)
 	if err != nil {
 		output.observe(providerStatusFailed, 0, false, err, 0, nil)
@@ -1049,7 +1054,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		// one line per change, so the activation prints once it settles and
 		// nothing repeats while it holds (connect/EXTENDER.md F3, G3)
 		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(
-			newProviderExtenderStatusListener(output, index))
+			newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix))
 		defer extenderStatusSub.Close()
 
 		select {
