@@ -1631,10 +1631,7 @@ components:
             claimed: true
 
     CtfClientResultNetwork:
-      summary: |
-        A network's credential: the wins of its provider in Iceland, claimed
-        through epoch 8, and of its extender in Germany, whose coldkey has
-        claimed nothing yet
+      summary: A network's credential, its provider in Iceland claimed through epoch 8 and its extender in Germany not yet
       value:
         as_of: "2026-12-11T22:24:12Z"
         unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
