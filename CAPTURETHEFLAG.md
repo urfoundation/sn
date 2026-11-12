@@ -1040,8 +1040,9 @@ stays as it is. The changes are the owner's:
    keccak256(creation code ‖ abi.encode(vault2, 4294967297)))`. In order:
    1. R-9 has passed on the runtime mainnet runs: spec version 490 today, or whichever runs by then (§4.6).
    2. vault2's coldkey is the guardian's hotkey account already (step 0 below). The guardian makes the carry's
-      coldkey its hotkey account too, through `MevShield.submit_encrypted`, and `getHotkeyOwner` names it. That
-      reveals the coldkey, not the address. If someone else took it, the carry is created under another salt.
+      coldkey, which review prints, its hotkey account too, with `mainnet/guardian_associate.py` and so through
+      `MevShield.submit_encrypted`, and `getHotkeyOwner` names it. That reveals the coldkey, not the address.
+      If someone else took it, the carry is created under another salt.
    3. Anyone funds the proxy's mapped account above its existential deposit, with 501 rao or more, by a native
       transfer. Without it the creation's value cannot pass through the proxy (`OutOfFund`).
    4. `sn-mainnet ctf-carry review --seed-rao 1000000000 --guardian <guardian> --from <creator>` passes: it pins
@@ -1077,8 +1078,9 @@ coordinator's pause guardian, and it holds nothing else.
 *What has to ship, and by when:*
 
 0. **Now:** the guardian makes vault2's coldkey a hotkey account, before anyone reserves it, swaps into it or
-   takes it: through `MevShield.submit_encrypted`, then checked with `getHotkeyOwner`. A coldkey swap into
-   vault2 needs five days' notice and could stop the operation's pool registration for good (§4.6).
+   takes it: through `MevShield.submit_encrypted`, then checked with `getHotkeyOwner`
+   (`mainnet/guardian_associate.py associate`, a dry run unless `--send`). A coldkey swap into vault2 needs
+   five days' notice and could stop the operation's pool registration for good (§4.6).
 1. **Before `end(6)`, about 11‑20 18:28Z:** the server's presence sampler for both roles, so that epoch 7 is a
    full shadow epoch. It has to be running when epoch 8 starts in any case.
 2. **By about 11‑21:** the two contracts, their rehearsal on the live runtime, and `upgrade-settlement2
