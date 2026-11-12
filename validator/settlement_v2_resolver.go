@@ -17,6 +17,7 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 
+	"github.com/urfoundation/sn/amendment"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -100,6 +101,71 @@ func (self *ChainClient) releasePoolHotkeyContext(ctx context.Context, v2 Settle
 		return [32]byte{}, fmt.Errorf("no_id %d epoch %d settlementAt differs from vault2's immutable pool", noID, epoch)
 	}
 	return pool.Hotkey, nil
+}
+
+// releaseCtfPoolHotkeyContext returns the hotkey of operator noID's CTF pool,
+// vault2 pool 2^32 + noID, for epoch, and false when it has none: no settlement
+// v2, an operator id with no CTF pool id, a CTF pool vault2 does not hold, or
+// one whose first epoch is after epoch (CAPTURETHEFLAG.md §2.3, §3.1). vault2's
+// record, read at the finalized head, decides, and STSettlement2's
+// ctfSettlementAt at the pinned block must name exactly that pool, as
+// settlementAt must for the provider pool, so an upgrade cannot redirect the
+// CTF channel. vault2 holds a CTF pool only after the upgrade registered it, so
+// a contract without ctfSettlementAt is never asked, and registration requires
+// a first epoch after the current one, so a replay before it resolves none.
+// Whether the hotkey still holds a UID is the caller's question: a pruned CTF
+// pool leaves its operator's CTF channel empty.
+func (self *ChainClient) releaseCtfPoolHotkeyContext(ctx context.Context, v2 SettlementV2Addresses, headBlock uint64, headHash [32]byte, block uint64, blockHash [32]byte, noID, epoch uint64) ([32]byte, bool, error) {
+	poolID, ok := amendment.CtfPoolID(noID)
+	if !v2.configured() || !ok {
+		return [32]byte{}, false, nil
+	}
+	values, err := self.settlementV2ViewAtHashContext(ctx, v2.Vault, &stabi.STSettlementVault2MetaData, "pools", []any{new(big.Int).SetUint64(poolID)}, headBlock, headHash)
+	if err != nil {
+		return [32]byte{}, false, fmt.Errorf("no_id %d vault2 CTF pool: %w", noID, err)
+	}
+	pool := *abi.ConvertType(values[0], new(stabi.ISTSettlementVault2Pool)).(*stabi.ISTSettlementVault2Pool)
+	if !pool.Registered || epoch < pool.FirstEpoch {
+		return [32]byte{}, false, nil
+	}
+	values, err = self.settlementV2ViewAtHashContext(ctx, v2.Settlement, &stabi.STSettlement2MetaData, "ctfSettlementAt", []any{new(big.Int).SetUint64(noID), new(big.Int).SetUint64(epoch)}, block, blockHash)
+	if err != nil {
+		return [32]byte{}, false, fmt.Errorf("no_id %d epoch %d ctfSettlementAt: %w", noID, epoch, err)
+	}
+	if values[0].(common.Address) != v2.Vault || values[1].([32]byte) != pool.Hotkey || values[2].(uint64) != pool.FirstEpoch {
+		return [32]byte{}, false, fmt.Errorf("no_id %d epoch %d ctfSettlementAt differs from vault2's immutable CTF pool", noID, epoch)
+	}
+	return pool.Hotkey, true, nil
+}
+
+// releaseCtfPoolsContext resolves the CTF pool of each active operator in pools
+// for epoch, by no_id, at the UID its hotkey holds in hotkeyUIDs. A CTF pool
+// that resolves without a UID was pruned, and one at a provider pool's UID is
+// refused; neither is weighted.
+func (self *ChainClient) releaseCtfPoolsContext(ctx context.Context, v2 SettlementV2Addresses, headBlock uint64, headHash [32]byte, block uint64, blockHash [32]byte, epoch uint64, pools []ReleasePoolMeasurement, hotkeyUIDs map[[32]byte]uint16) ([]ReleasePoolMeasurement, error) {
+	if !v2.configured() {
+		return nil, nil
+	}
+	poolUIDs := make(map[uint16]bool, len(pools))
+	for _, pool := range pools {
+		poolUIDs[pool.UID] = true
+	}
+	var resolved []ReleasePoolMeasurement
+	for _, pool := range pools {
+		hotkey, found, err := self.releaseCtfPoolHotkeyContext(ctx, v2, headBlock, headHash, block, blockHash, pool.NoID, epoch)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			continue
+		}
+		uid, live := hotkeyUIDs[hotkey]
+		if !live || poolUIDs[uid] {
+			continue
+		}
+		resolved = append(resolved, ReleasePoolMeasurement{NoID: pool.NoID, UID: uid, PoolHotkey: releaseHex32(hotkey)})
+	}
+	return resolved, nil
 }
 
 // SettlementV2PoolHotkeyContext is the shared resolver for readers outside

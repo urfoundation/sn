@@ -42,6 +42,9 @@ type releaseDecisionChainV2Query struct {
 	settlementV2 SettlementV2Addresses
 	// The authenticated signed price the decision was judged under, nil for none.
 	priceEntry *pricesheet.Entry
+	// ctf resolves the active operators' CTF pools: for a decision that weights
+	// capture the flag. Without it none is read, as before capture the flag.
+	ctf bool
 }
 
 // Uint256 values retain exact owned integers; no float or candidate audit is
@@ -80,7 +83,10 @@ type releaseDecisionChainV2Observation struct {
 	hotkeyUIDs       map[[32]byte]uint16
 	bindings         []ReleaseBindingMeasurement
 	pools            []ReleasePoolMeasurement
-	operators        []releaseDecisionChainV2Operator
+	// ctfPools are the active operators' CTF pools that resolve at the decision
+	// (releaseCtfPoolsContext), whether or not capture the flag is in force.
+	ctfPools  []ReleasePoolMeasurement
+	operators []releaseDecisionChainV2Operator
 	// The query's signed price, and the finalized head it read vault2's pools at.
 	priceEntry    *pricesheet.Entry
 	finalized     uint64
@@ -458,6 +464,12 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	}
 	if len(observed.pools) < query.policy.Safety.MinimumHealthyNOCount {
 		return nil, errors.New("decision active operator census is below the policy minimum")
+	}
+	if query.ctf {
+		observed.ctfPools, err = chain.releaseCtfPoolsContext(ctx, query.settlementV2, finalized, finalizedHash, block, hash, query.boundary.SettlementEpoch, observed.pools, observed.hotkeyUIDs)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := readReleaseDecisionChainV2Source(ctx, chain, query, observed, read, readUint); err != nil {
 		return nil, err

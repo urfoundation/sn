@@ -18,6 +18,10 @@ netuid: 25
 state_dir: .
 hotkey_seed_file: hotkey.seed
 controlled_no_ids: []
+# Capture the flag (CAPTURETHEFLAG.md §2.3, VALIDATOR.md §11.3): support weights
+# each operator's CTF pool by its pool's weight from the signed start epoch E_c,
+# and audits its roots; off leaves the CTF channel empty. Absent is support.
+ctf: support
 trail_depth: 8
 poll_seconds: 2
 version_key: 0

@@ -98,7 +98,7 @@ func (self *releaseRuntimeV2) measurementOptionsForIntent(ctx context.Context, i
 	}
 	controlled := slices.Clone(decisionCfg.ControlledNOIDs)
 	slices.Sort(controlled)
-	result = ReleaseMeasurementV2Options{Expected: sources.decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits, Operators: make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(contexts)), MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
+	result = ReleaseMeasurementV2Options{Expected: sources.decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits, CtfPools: sources.ctfPools, CtfSupport: releaseCtfSupported(decisionCfg), AmendmentFallback: slices.Clone(decisionCfg.AmendmentFallback), Operators: make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(contexts)), MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	// The intent's own decision authority, not the current selector, decides
 	// whether an empty provider allocation may replay as a reserve-only row.
 	result.treasuryReserveFallback = treasuryReserveFallbackConfig(decisionCfg)
