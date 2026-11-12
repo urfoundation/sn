@@ -381,6 +381,9 @@ func ctfTestOptions(t *testing.T, fixture *releaseMeasurementV2TestFixture, reso
 	t.Helper()
 	options := fixture.options(t)
 	options.CtfPools = slices.Clone(resolved)
+	if ctf := fixture.artifact.CaptureTheFlag; ctf != nil {
+		options.CtfSupport = ctf.Support
+	}
 	return options
 }
 
@@ -789,5 +792,53 @@ func TestCaptureTheFlagTreasuryMeasuredRow(t *testing.T) {
 		if row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decision); err == nil || len(row.Uids) != 0 {
 			t.Fatalf("%s was admitted to the treasury row", name)
 		}
+	}
+}
+
+// A decision's capture the flag is its configuration's: it declares the
+// configuration's ctf setting, and stands on an unsigned line only where the
+// configuration names that exact line. Replay finds both in the decision's own
+// configuration, so neither a changed setting nor a line nobody signed or
+// configured can steer a replayed row.
+func TestCaptureTheFlagDecisionStandsOnItsConfiguration(t *testing.T) {
+	t.Parallel()
+	configured := ctfTestWire(t, ctfTestEntry(t, depositPriceTestChainID, 521, 10, 8, nil))
+	artifact := ctfTestArtifact()
+	artifact.CaptureTheFlag = ctfTestBlock(t)
+	artifact.CaptureTheFlag.Entries[1] = configured
+	for _, test := range []struct {
+		name     string
+		support  bool
+		fallback []string
+		ok       bool
+	}{
+		{name: "the configuration's setting and line", support: true, fallback: []string{configured.Line}, ok: true},
+		{name: "another setting", support: false, fallback: []string{configured.Line}},
+		{name: "no configured line", support: true},
+		{name: "another configured line", support: true, fallback: []string{strings.Replace(configured.Line, "from epoch 8", "from epoch 9", 1)}},
+	} {
+		if err := verifyReleaseCtfConfiguration(artifact, test.support, test.fallback); (err == nil) != test.ok {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+	}
+	if err := verifyReleaseCtfConfiguration(ctfTestArtifact(), false, nil); err != nil {
+		t.Fatalf("a decision without capture the flag: %v", err)
+	}
+	// The full V2 verifier refuses either before any replay work.
+	fixture := ctfTestMeasurement(t, 2)
+	fixture.artifact.CaptureTheFlag.Entries[1] = ctfTestWire(t, ctfTestEntry(t, depositPriceTestChainID, 521, 10, 8, nil))
+	options := ctfTestOptions(t, fixture, ctfTestPools())
+	options.CtfSupport = false
+	if _, err := VerifyReleaseMeasurementArtifactV2(t.Context(), fixture.artifact, options); err == nil || !strings.Contains(err.Error(), "another ctf setting") {
+		t.Fatalf("another setting was replayed: %v", err)
+	}
+	options = ctfTestOptions(t, fixture, ctfTestPools())
+	if _, err := VerifyReleaseMeasurementArtifactV2(t.Context(), fixture.artifact, options); err == nil || !strings.Contains(err.Error(), "unsigned line its configuration does not name") {
+		t.Fatalf("an unconfigured line was replayed: %v", err)
+	}
+	options = ctfTestOptions(t, fixture, ctfTestPools())
+	options.AmendmentFallback = []string{fixture.artifact.CaptureTheFlag.Entries[1].Line}
+	if _, err := VerifyReleaseMeasurementArtifactV2(t.Context(), fixture.artifact, options); err != nil {
+		t.Fatalf("the configured line was refused: %v", err)
 	}
 }

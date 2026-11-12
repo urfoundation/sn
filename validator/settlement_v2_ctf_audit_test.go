@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
@@ -291,38 +292,49 @@ func TestSettlementV2CtfAuditRefusesWhatDoesNotReproduce(t *testing.T) {
 	}
 }
 
-// A census that lists a head-bound client breaks P5 (CAPTURETHEFLAG.md §4.2):
-// its root is refused even when the operator's draw left the client out as the
-// audit's does, as `snclaim v2 check`, which reads no bindings, refuses it; and
-// a root whose draw kept the client is refused for its draw.
-func TestSettlementV2CtfAuditRefusesHeadBoundCandidates(t *testing.T) {
+// The draw leaves out the census's head-bound candidates, as the operator's
+// must (ctf/doc.go): a root drawn without them is approved, and the census's
+// breach of P5 (CAPTURETHEFLAG.md §4.2) is reported, since a committed census
+// cannot be rebuilt and refusing it would stall every later root of the pool.
+// A root whose draw kept the bound client is refused for its draw (§8 check 3).
+func TestSettlementV2CtfAuditDrawsWithoutHeadBoundCandidates(t *testing.T) {
 	t.Parallel()
 	client := [16]byte{1}
 	for _, test := range []struct {
-		name  string
-		bound map[[16]byte]bool
-		want  error
+		name     string
+		bound    map[[16]byte]bool
+		decision string
 	}{
-		{name: "left out of the draw", bound: map[[16]byte]bool{client: true}, want: errSettlementV2CtfCensusBound},
-		{name: "kept in the draw", want: ctf.ErrAwardWinner},
+		{name: "left out of the draw", bound: map[[16]byte]bool{client: true}, decision: settlementV2DecisionApprove},
+		{name: "kept in the draw", decision: settlementV2DecisionRefuse},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+			var output bytes.Buffer
+			ctx, _, err := newReleaseDiagnostics(t.Context(), &output, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
 			fixture := newSettlementV2AuditTestFixture(t)
 			// Client 1 holds a fleet binding at epoch 5's start boundary.
 			fixture.chain.fleetBound(t, 190, client, 5, 5)
 			fixture.chain.setActive(client, 5, 500, true)
 			scenario := newSettlementV2CtfTestScenarioBound(t, test.bound)
 			pool := fixture.useCtf(t, scenario, settlementV2CtfTestFacts(scenario))
-			if err := fixture.audit.audit(t.Context(), pool); err != nil {
+			if err := fixture.audit.audit(ctx, pool); err != nil {
 				t.Fatal(err)
 			}
 			record := fixture.ctfRecord(t, 1)
-			if record.Decision != settlementV2DecisionRefuse || record.Check != "draw" || !strings.Contains(record.Error, test.want.Error()) || !record.Done {
-				t.Fatalf("record %+v", record)
-			}
-			if len(fixture.chain.accepted()) != 0 {
-				t.Fatal("a root over a head-bound client sent a transaction")
+			reported := strings.Contains(output.String(), "code=ledger_audit_ctf_census_bound native_epoch=5")
+			switch test.decision {
+			case settlementV2DecisionApprove:
+				if record.Decision != test.decision || record.Check != "none" || !reported || len(fixture.chain.accepted()) != 1 {
+					t.Fatalf("record %+v, reported %t: %s", record, reported, output.String())
+				}
+			default:
+				if record.Decision != test.decision || record.Check != "draw" || !strings.Contains(record.Error, ctf.ErrAwardWinner.Error()) || len(fixture.chain.accepted()) != 0 {
+					t.Fatalf("record %+v", record)
+				}
 			}
 		})
 	}

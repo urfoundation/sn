@@ -1203,11 +1203,13 @@ the pool, so a contract without the upgrade is never called.
 
 **The decision record.** A v2 measurement artifact from `E_c` carries
 `capture_the_flag`: the entries in force (each line with its signature, or none for a
-configured line), the setting, and the CTF pools it weighted. Replay authenticates the
-entries, resolves the CTF pools again at the decision's block, and must reach the same
-row; the treasury row checks each CTF pool's UID and hotkey against the native census
-as it checks a provider pool's. An artifact without it was steered by θ and keeps its
-bytes. The legacy v1 transcript refuses capture the flag.
+configured line), the setting, and the CTF pools it weighted. Live steering reads the
+CTF contracts only for a decision with an entry in force under `ctf: support`. Replay
+authenticates the signed entries, finds the setting and every unsigned line in the
+decision's own configuration, resolves the CTF pools again at the decision's block, and
+must reach the same row; the treasury row checks each CTF pool's UID and hotkey against
+the native census as it checks a provider pool's. An artifact without it was steered by
+θ and keeps its bytes. The legacy v1 transcript refuses capture the flag.
 
 **The CTF audit** (`CAPTURETHEFLAG.md` §8). The settlement v2 audit audits each
 operator's CTF pool beside its provider pool, with the same custody, objects, head
@@ -1225,11 +1227,13 @@ At its pinned finalized block it reads:
 
 It approves only a root whose census, draw, slot amounts, pots, pending awards and
 accounts reproduce exactly, and challenges, demands or refuses as for the provider
-pool (`VERSION2-FINAL.md` §9.3), as UR's watcher and `snclaim v2 check` do. A census that
-lists a head-bound client breaks P5, and its root is refused even when its draw left
-the client out, as the watcher, which reads no bindings, refuses it. A pulse that no
+pool (`VERSION2-FINAL.md` §9.3), as UR's watcher and `snclaim v2 check` do. A pulse that no
 relay serves or that does not verify, or no entry in force, decides nothing and is
-tried again.
+tried again. The draw leaves out the census's head-bound candidates, as the operator's
+must, so no winner holds a fleet binding. A census that lists one breaks P5: the audit
+reports it (`ledger_audit_ctf_census_bound`) but judges the root as built, since a
+committed census cannot be rebuilt and refusing it would refuse every later root of the
+pool. The watcher, which reads no bindings, refuses such a root and is the alert.
 
 ---
 

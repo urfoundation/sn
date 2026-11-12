@@ -190,6 +190,7 @@ func ownerRecycleMeasurementLimit(ctx context.Context, authority *OwnerRecycleMe
 	}
 	if options.Expected != authority.expected || !reflect.DeepEqual(options.Policy, authority.config.Policy) ||
 		!slices.Equal(options.ControlledNOIDs, authority.config.ControlledNOIDs) ||
+		options.CtfSupport != releaseCtfSupported(&authority.config) || !slices.Equal(options.AmendmentFallback, authority.config.AmendmentFallback) ||
 		(options.ReplayPolicy != nil && (!isOwnerRecycleProductionConfig(&authority.config) || !reflect.DeepEqual(*options.ReplayPolicy, options.Policy))) {
 		return 0, errors.New("owner-recycle measurement replay authority differs from its exact approved decision")
 	}

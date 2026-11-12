@@ -6,9 +6,10 @@
 // `ctf` setting, and a CTF pool takes its operator's pool weight (§2.2, §2.3).
 //
 // A decision carries the entries it applied, its setting and the CTF pools it
-// resolved, so replay reaches the same row from the artifact and the chain
-// alone. An artifact without them was steered by its signed policy's theta and
-// keeps the bytes it always had.
+// resolved, so replay reaches the same row from the artifact, the chain and the
+// decision's own configuration, which must hold that setting and any unsigned
+// line it applied. An artifact without them was steered by its signed policy's
+// theta and keeps the bytes it always had.
 package validator
 
 import (
@@ -107,8 +108,9 @@ func newReleaseAmendmentEntry(entry *amendment.Entry) (ReleaseAmendmentEntry, er
 // verifiedReleaseAmendmentEntry authenticates a carried capture the flag entry:
 // a version 2 line for this deployment, in force at epoch, and signed by the
 // deployment's pinned signer. An entry without a signature is the validator's
-// own configured line, which its configuration names and its decision declares;
-// a signature on a deployment with no pinned signer is refused.
+// own configured line, which replay finds in the decision's configuration
+// (verifyReleaseCtfConfiguration); a signature on a deployment with no pinned
+// signer is refused.
 func verifiedReleaseAmendmentEntry(wire ReleaseAmendmentEntry, chainID uint64, netuid uint16, epoch uint64) (*amendment.Entry, error) {
 	entry, err := amendment.ParseLine(wire.Line)
 	if err != nil {
@@ -269,6 +271,26 @@ func verifyReleaseCtfPools(artifact *ReleaseMeasurementArtifact, resolved []Rele
 	}
 	if !slices.Equal(artifact.CaptureTheFlag.Pools, releaseCtfPoolsExpected(artifact.CaptureTheFlag, resolved)) {
 		return errors.New("capture the flag pools differ from the CTF pools resolved at the decision's snapshot")
+	}
+	return nil
+}
+
+// verifyReleaseCtfConfiguration requires artifact's capture the flag to be its
+// configuration's: the ctf setting support, and every unsigned entry one of the
+// configured amendment lines fallback, so no decision stands on a line nobody
+// signed or configured.
+func verifyReleaseCtfConfiguration(artifact *ReleaseMeasurementArtifact, support bool, fallback []string) error {
+	ctf := artifact.CaptureTheFlag
+	if ctf == nil {
+		return nil
+	}
+	if ctf.Support != support {
+		return errors.New("capture the flag declares another ctf setting than its configuration's")
+	}
+	for _, entry := range ctf.Entries {
+		if entry.Signature == "" && !slices.Contains(fallback, entry.Line) {
+			return errors.New("capture the flag stands on an unsigned line its configuration does not name")
+		}
 	}
 	return nil
 }

@@ -82,10 +82,14 @@ type ReleaseMeasurementV2Options struct {
 	Bindings        []ReleaseBindingMeasurement
 	Pools           []ReleasePoolMeasurement
 	DepositAudits   []DepositAudit
-	// CtfPools are the CTF pools resolved at the decision's snapshot for every
-	// active operator, whether or not capture the flag is in force; the artifact's
-	// entries and setting select its own from them (verifyReleaseCtfPools).
+	// CtfPools are the CTF pools resolved at the decision's snapshot for its
+	// active operators; the artifact's entries and setting select its own from
+	// them (verifyReleaseCtfPools). CtfSupport and AmendmentFallback are the
+	// decision configuration's ctf setting and configured amendment lines, which
+	// its capture the flag must declare and may stand on unsigned.
 	CtfPools                []ReleasePoolMeasurement
+	CtfSupport              bool
+	AmendmentFallback       []string
 	Operators               map[uint64]ReleaseMeasurementV2OperatorOptions
 	Settlement              *AttemptSettlementV2Options
 	MaxOperators            uint64
@@ -262,6 +266,9 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 	if err := verifyReleaseCtfPools(artifact, options.CtfPools); err != nil {
 		return nil, options, err
 	}
+	if err := verifyReleaseCtfConfiguration(artifact, options.CtfSupport, options.AmendmentFallback); err != nil {
+		return nil, options, err
+	}
 	if err := verifyReleaseMeasurementCommonIdentity(artifact); err != nil {
 		return nil, options, err
 	}
@@ -355,6 +362,7 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 	options.Pools = slices.Clone(owned.Pools)
 	options.DepositAudits = slices.Clone(owned.DepositAudits)
 	options.CtfPools = slices.Clone(options.CtfPools)
+	options.AmendmentFallback = slices.Clone(options.AmendmentFallback)
 	operators := make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(options.Operators))
 	for noID, operator := range options.Operators {
 		operator.Measurement.CurrentBindingKVs = maps.Clone(operator.Measurement.CurrentBindingKVs)

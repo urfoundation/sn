@@ -326,7 +326,7 @@ func (self *ReleaseEvidenceV2Archive) decisionOptions(ctx context.Context, inten
 	}
 	controlled := slices.Clone(decisionCfg.ControlledNOIDs)
 	slices.Sort(controlled)
-	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, CtfPools: observation.CtfPools, Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
+	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, CtfPools: observation.CtfPools, CtfSupport: releaseCtfSupported(decisionCfg), AmendmentFallback: slices.Clone(decisionCfg.AmendmentFallback), Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	// Archive replay admits a reserve-only decision only under its original
 	// treasury authority; the sidecar's row is still rederived and compared.
 	result.treasuryReserveFallback = treasuryReserveFallbackConfig(decisionCfg)

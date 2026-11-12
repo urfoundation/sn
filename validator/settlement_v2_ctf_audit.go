@@ -22,15 +22,19 @@
 //     epoch before E_c's too.
 //
 // It approves only a root that reproduces exactly, and challenges, demands or
-// refuses as for the provider pool (VERSION2-FINAL.md §9.3). A census that
-// lists a head-bound client breaks P5 (§4.2), and its root is refused even when
-// the draw left the client out: §8 check 3 accepts no winner with a fleet
-// binding, and `snclaim v2 check`, which reads no bindings, refuses such a root
-// too. An input it cannot read or verify (no entry in force, a pulse no relay
-// serves) decides nothing and is tried again, so nothing is approved that the
-// validator cannot rebuild. A validator whose ctf setting is off audits no CTF
-// pool. These are the facts and the verdicts of `snclaim v2 check`, so the
-// watcher and the auditor agree.
+// refuses as for the provider pool (VERSION2-FINAL.md §9.3). An input it cannot
+// read or verify (no entry in force, a pulse no relay serves) decides nothing
+// and is tried again, so nothing is approved that the validator cannot rebuild.
+// A validator whose ctf setting is off audits no CTF pool. These are the facts
+// `snclaim v2 check` reads.
+//
+// The draw leaves out the census's head-bound candidates, as the operator's
+// must (ctf.Verify, ctf/doc.go), so no winner holds a fleet binding (§8 check
+// 3). A census that lists one breaks P5 (§4.2), and the audit reports it
+// (ledger_audit_ctf_census_bound), but judges the root as built: a committed
+// census is write-once, so refusing for it would refuse every later root of the
+// pool, and anyone who can make a client look bound could stall the pool. The
+// watcher, which reads no bindings, refuses such a root; it is the alert.
 package validator
 
 import (
@@ -90,10 +94,6 @@ func settlementV2CtfHeaderAccounts(data []byte) ([]ledger.Ref, error) {
 // audit cannot rebuild the root and decides nothing.
 var errSettlementV2CtfNotInForce = errors.New("capture the flag is not in force at the pending root's epoch, so its carry contract is unknown")
 
-// errSettlementV2CtfCensusBound: a covered epoch's census lists a client with a
-// fleet binding at either boundary, which P5 keeps out of every census.
-var errSettlementV2CtfCensusBound = errors.New("the census lists head-bound clients, which P5 keeps out of every census")
-
 // settlementV2CtfReader reads what ctf.Verify takes beside vault2's state.
 type settlementV2CtfReader interface {
 	// ctfInput reads, at state's pinned block, operator noID's capture the flag
@@ -124,19 +124,14 @@ func (self *settlementV2Audit) verifyCtf(ctx context.Context, pool settlementV2A
 		return nil, fmt.Errorf("capture the flag audit of pool %d seq %d: %w", state.noID, pending.Seq, err)
 	}
 	record.FetchedBytes += res.FetchedBytes
-	finding := &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}
-	// A root that reproduces from a census listing head-bound clients is still
-	// refused: Verify's draw left them out, as the operator's did, but no census
-	// may list them (P5), and the watcher cannot tell them apart.
-	if res.Err == nil {
-		for _, epoch := range res.Epochs {
-			if len(epoch.Bound) > 0 {
-				finding.check, finding.err, finding.action = ctf.CheckDraw.String(), fmt.Errorf("%w: epoch %d, %d clients", errSettlementV2CtfCensusBound, epoch.Epoch, len(epoch.Bound)), ledger.ActionRefuse
-				break
-			}
+	// A census that lists head-bound clients breaks P5. The draw left them out,
+	// so the root is judged as built, and the breach is reported.
+	for _, epoch := range res.Epochs {
+		if len(epoch.Bound) > 0 {
+			releaseDiagnostic(ctx, "operator", "ledger_audit_ctf_census_bound", epoch.Epoch, true, 0, releaseDiagnosticFacts{operatorId: state.noID, operatorKnown: true})
 		}
 	}
-	return finding, nil
+	return &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}, nil
 }
 
 // settlementV2CtfViews are the capture the flag views the audit calls:
