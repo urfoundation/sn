@@ -671,8 +671,10 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 	if deposit.IsZeroPrice() != (audit.Status == DepositAuditZeroPrice) {
 		return fmt.Errorf("deposit audit status %q does not match the policy price", audit.Status)
 	}
-	// A usage statement is read only under a signed price in force.
-	if audit.UsageEvidence != "" && (audit.UsageEvidence != usage.EvidenceKind || artifact.DepositPriceEntry == nil || deposit.IsZeroPrice()) {
+	// A usage statement is read only under a signed price in force, as version 1,
+	// or as version 2 for an epoch with an extender component (WHITEPAPER.md
+	// §8.6.4).
+	if audit.UsageEvidence != "" && (audit.UsageEvidence != usage.EvidenceKind && audit.UsageEvidence != usage.EvidenceKindV2 || artifact.DepositPriceEntry == nil || deposit.IsZeroPrice()) {
 		return fmt.Errorf("deposit audit usage evidence %q is not admitted by the price in force", audit.UsageEvidence)
 	}
 	switch audit.Status {
