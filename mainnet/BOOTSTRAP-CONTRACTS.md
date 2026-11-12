@@ -1432,7 +1432,9 @@ through the canonical deterministic deployment proxy, in one transaction:
   The amendment entry v2 names the address after the creation. A failed
   creation reveals the salt, so a retry takes a fresh one.
 
-Two things come first:
+Rehearsal R-9 (`scripts/runtime-rehearsal/README.md`, "Capture the flag
+(R-9)") has to pass first on the runtime mainnet runs, spec version 490
+today, as it does before the upgrade's schedule. Then two things come first:
 
 - **The carry's coldkey becomes a hotkey account.** A guardian coldkey, which
   never swaps the hotkeys it holds, calls `try_associate_hotkey(coldkey)`

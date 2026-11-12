@@ -2440,7 +2440,10 @@ started, so the owner signs it during epoch 7 (`mainnet/SETTLEMENT-AMENDMENTS.md
   execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another
   salt, is scheduled beside it.
 - **The carry contract** is created after the operation, at an address known in advance that depends on its
-  exact build, so its artifact is pinned before the entry names the address.
+  exact build, so its artifact is pinned before the entry names the address. It is created with a 1 TAO seed,
+  once R-9 has passed on the runtime mainnet runs, the guardian holds its coldkey and vault2's as hotkey
+  accounts, and the deterministic deployment proxy's account is funded, within the CTF UID's immunity window,
+  and `sn-mainnet ctf-carry review` checks it before and after (`CAPTURETHEFLAG.md` §11.2).
 - **The server** samples presence from before `end(6)`, so that epoch 7 runs in shadow. Epoch 8's census is
   committed by block 9,651,028, and its root with the provider root by block 9,651,628.
 - **UR's validator** weights the CTF UID from epoch 8's first tempo. It holds the stake majority, so it alone
@@ -2485,12 +2488,16 @@ These are `CAPTURETHEFLAG.md` §12.1.
     role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so it has
     to stay about five epochs to capture most of the reward.
 17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow.
+18. **The carry's residual.** The carry contract keeps a residual of its own on vault2's escrow hotkey, pins the
+    CTF pool hotkey as its auto‑stake destination and opts out of third‑party staking‑hotkey growth, and a
+    guardian coldkey makes vault2's coldkey and the carry's hotkey accounts (§8.7.3). It replaces the first
+    carry, which third parties could block for good.
 
-Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason, except
-one that is open, pending the owner's decision: third parties can block the carry contract (§8.7.3;
-`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN units, a cap on pots or a release
-of territories' pots, per‑country slot counts, a derived‑location requirement for large pots, a wind‑down rule,
-and CTF pools for other operators.
+Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason. The one
+left open, third parties blocking the carry contract, the owner settled the same day with decision 18
+(`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN
+units, a cap on pots or a release of territories' pots, per‑country slot counts, a derived‑location requirement
+for large pots, a wind‑down rule, and CTF pools for other operators.
 
 ---
 
