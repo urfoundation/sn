@@ -189,13 +189,15 @@ func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 			picked = append(picked, account)
 		}
 	}
+	for i := range unavailable {
+		if err := unavailable[i].check(vault); err != nil {
+			return err
+		}
+	}
 	// A pool the endpoint cannot read that the selection covers may hold an
 	// account to claim: it is named, never taken as holding none.
 	var unread []error
 	for _, pool := range unavailable {
-		if err := pool.check(vault); err != nil {
-			return err
-		}
 		if all || !pickNoID || pool.NoID == noID {
 			fmt.Println(v2PoolUnavailable(pool.NoID))
 			unread = append(unread, fmt.Errorf("pool %d is unavailable at the ledger endpoint, so an account of coldkey %s there cannot be claimed until it can be read", pool.NoID, renderColdkey(coldkey)))
