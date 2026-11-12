@@ -20,8 +20,10 @@ approved this amendment on November 10 ([WHITEPAPER.md](../../WHITEPAPER.md)
   pool instead. The contract's other hops keep their shares, and no share
   passes from one hop to another.
 - **Traffic to the network operator's platform counts too.** The share of a
-  platform endpoint that the network operator registers, such as sidecar's
-  edges, goes to the pool. Sidecar has not shipped, so until it does, the
+  platform endpoint that the network operator registers goes to the pool. The
+  platform endpoints are sidecar's TLS, SMTP and MX edges, each a client on one
+  of the network operator's own networks. Any other kind would need a new
+  signed amendment entry. Sidecar has not shipped, so until it does, the
   pool's bytes come from same-network traffic alone.
 - **Only funded traffic counts.** A contract counts when a data balance funded
   it, on the free plan or a paid one. Since November 11, same-network contracts
