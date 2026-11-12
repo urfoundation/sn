@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -41,18 +40,6 @@ const (
 	existentialDeposit = 500
 )
 
-// swapViews is the staking precompile's view of the coldkey swap delays
-// (runtime 486, precompiles/src/staking.rs:1715-1723), which the vendored
-// stakingV2.sol does not declare.
-var swapViews = func() artifact {
-	parsed, err := abi.JSON(strings.NewReader(`[{"type":"function","name":"getColdkeySwapDelays","stateMutability":"view","inputs":[],` +
-		`"outputs":[{"name":"announcement","type":"uint64"},{"name":"reannouncement","type":"uint64"}]}]`))
-	if err != nil {
-		panic(err)
-	}
-	return artifact{abi: parsed}
-}()
-
 // R-9. TestR9CaptureTheFlag: the capture the flag upgrade of STSettlement2
 // and the carry contract on the real runtime (CAPTURETHEFLAG.md §3.1, §4.6,
 // §11.2). As on mainnet, the proxy runs phase C first. Anyone creates
@@ -63,19 +50,23 @@ var swapViews = func() artifact {
 // hash, which qualifies BLOCKHASH on the runtime. Operator 1's root signer
 // commits epoch 1's census once, inside its window.
 //
+// A guardian coldkey makes vault2's coldkey a hotkey account first, so no
+// coldkey swap can merge into it or reserve it, and everything runs with it.
 // The CTF pool then runs a carry cycle (§4.6, "Qualifying it"). Its epoch 1
 // closes, and its root pays the carry contract's coldkey, which is named
-// before the contract exists. A third party fills that coldkey's
-// staking-hotkey list to 128 entries first. Anyone then creates STCtfCarry
-// through the same proxy with its seed, which its constructor stakes on the
-// escrow hotkey as its residual before setting the runtime's opt-outs. No
-// third party can add an entry after that, nor a coldkey swap bring one. A
-// stranger's recycle claims the account to the contract's coldkey, moves the
-// stake above the residual onto the pool hotkey and transfers it to vault2,
-// and epoch 2's close captures it. Last, the delays the residual cannot stop
-// are tried, each until it ends: root's sweep of the residual, answered by
-// seed(); a coldkey swap reservation of the carry coldkey; and vault2's own
-// list held full, answered by absorbStake.
+// before the contract exists. The guardian makes that coldkey a hotkey account
+// too, the proxy's account gets TAO above its existential deposit, and a third
+// party fills the coldkey's staking-hotkey list to 128 entries. Anyone then
+// creates STCtfCarry through the same proxy with its seed, which its
+// constructor stakes on the escrow hotkey as its residual before pinning the
+// pool hotkey as its auto-stake destination and setting the runtime's
+// opt-outs. No third party can add an entry after that, nor a coldkey swap
+// reach it. A stranger's recycle claims the account to the contract's
+// coldkey, moves the stake above the residual onto the pool hotkey and
+// transfers it to vault2, and epoch 2's close captures it. Last, the delays
+// the residual cannot stop are tried, each until it ends: root's sweep of
+// the residual, answered by seed(); a reservation of either coldkey, refused;
+// and vault2's own list held full, answered by absorbStake.
 func TestR9CaptureTheFlag(t *testing.T) {
 	t.Parallel()
 	n := startNode(t)
@@ -86,6 +77,17 @@ func TestR9CaptureTheFlag(t *testing.T) {
 	// Operator 2 is an active v1 operator without a provider pool.
 	s := deployStack(t, n, stackConfig{operators: 2})
 	operator := s.operators[1]
+	// The guardian, a coldkey that never swaps the hotkeys it holds, makes
+	// vault2's coldkey a hotkey account, as mainnet should before the
+	// operation: no coldkey swap can then merge into vault2's coldkey, fill
+	// its staking-hotkey list for good, or reserve it. Everything below runs
+	// with it.
+	guardian := newColdkey(t)
+	n.fund(t, guardian.PublicKey(), 10*tao)
+	n.submit(t, guardian.Ring, n.call(t, "SubtensorModule.try_associate_hotkey", accountID(t, s.vaultColdkey)))
+	if n.owner(t, s.vaultColdkey) != guardian.PublicKey() {
+		t.Fatal("vault2's coldkey is not the guardian's hotkey")
+	}
 	// Epochs stop (tempo 0), so no dividend reaches a position between reads.
 	n.sudo(t, n.call(t, "AdminUtils.sudo_set_tempo", types.NewU16(s.netuid), types.NewU16(0)))
 	relayer, stranger := newEVMKey(t), newEVMKey(t)
@@ -354,6 +356,12 @@ func TestR9CaptureTheFlag(t *testing.T) {
 	// position, with their gas, rounding and staking-hotkey lists.
 	var residual uint64
 	t.Run("carry", func(t *testing.T) {
+		// Before the carry exists, the guardian makes its coldkey a hotkey
+		// account, which reveals the coldkey but not the address, and the
+		// proxy's account gets TAO above its existential deposit, without
+		// which the creation's value cannot pass through it (OutOfFund).
+		n.submit(t, guardian.Ring, n.call(t, "SubtensorModule.try_associate_hotkey", accountID(t, carryColdkey)))
+		n.fundEVM(t, factory, tao/1_000)
 		// A third party fills the list to 128 entries; a 129th is refused.
 		if _, err := fill(t, carryColdkey, thirdPartyStakingHotkeys+1); err == nil || !strings.Contains(err.Error(), "TooManyStakingHotkeys") {
 			t.Fatalf("a third party's 129th entry on the carry coldkey's list: %v", err)
@@ -422,7 +430,8 @@ func TestR9CaptureTheFlag(t *testing.T) {
 
 		// No third party can add an entry any more, while a transfer on the
 		// escrow hotkey is a donation the next recycle returns. A coldkey swap
-		// that would bring the carry a new hotkey is refused at its announcement.
+		// into the carry's coldkey, a hotkey account, is refused at its
+		// announcement.
 		if _, err := fill(t, carryColdkey, len(listed)+1); err == nil || !strings.Contains(err.Error(), "AccountRejectsStakingHotkeyGrowth") {
 			t.Fatalf("a third party's new entry on the carry coldkey's list after creation: %v", err)
 		}
@@ -434,7 +443,7 @@ func TestR9CaptureTheFlag(t *testing.T) {
 		owned := newAccount(t)
 		n.submit(t, swapper.Ring, n.batch(t, n.call(t, "SubtensorModule.try_associate_hotkey", accountID(t, owned)), n.addStakeCall(t, owned, s.netuid, 3_000_000)))
 		if _, err := n.trySubmit(t, swapper.Ring, n.call(t, "SubtensorModule.announce_coldkey_swap_v2", accountID(t, carryColdkey))); err == nil ||
-			!strings.Contains(err.Error(), "AccountRejectsStakingHotkeyGrowth") {
+			!strings.Contains(err.Error(), "NewColdKeyIsHotkey") {
 			t.Fatalf("a coldkey swap announced into the carry coldkey with a new hotkey: %v", err)
 		}
 
@@ -492,10 +501,10 @@ func TestR9CaptureTheFlag(t *testing.T) {
 	// R-9: what the residual cannot stop, and how each delay ends. Root 2
 	// grows the carry account. Root raises the nominator minimum, and its
 	// sweep clears the residual: the claim is refused until seed() restores
-	// it. A coldkey swap announced into the carry coldkey reserves it, and the
-	// claim is refused until the reservation ends. Third parties hold vault2's
-	// list at 128 after a capture, and the return is refused until vault2's
-	// absorbStake frees an entry. Then the recycle pays.
+	// it. Neither the carry's coldkey nor vault2's can be reserved as a coldkey
+	// swap's destination. Third parties hold vault2's list at 128 after a
+	// capture, and the return is refused until vault2's absorbStake frees an
+	// entry. Then the recycle pays.
 	t.Run("griefing", func(t *testing.T) {
 		funded2 := s.vaultUint(t, "fundedThrough", id(ctfPool), id(firstEpoch+1)).Uint64()
 		delta := (funded2 - funded1) / 2
@@ -539,21 +548,17 @@ func TestR9CaptureTheFlag(t *testing.T) {
 		}
 		t.Logf("seed(): gas %d, a residual of %d rao", receipt.GasUsed, residual)
 
-		// A blank coldkey reserves the carry coldkey as its swap's destination.
+		// A blank coldkey can reserve neither the carry's coldkey nor vault2's
+		// as a swap's destination, both hotkey accounts: a reservation would
+		// refuse every transfer into them, vault2's claim or the carry's return.
 		announcer := newColdkey(t)
 		n.fund(t, announcer.PublicKey(), 10*tao)
-		announced := n.number(t) + 1
-		n.submit(t, announcer.Ring, n.call(t, "SubtensorModule.announce_coldkey_swap_v2", accountID(t, carryColdkey)))
-		reserved := n.refused(t, stranger, carry, carryArtifact, nil, "recycle", id(1), a, second.proof(0))
-		_, refusal = n.ethCall(s.vault, stakingAddress, n.staking.pack(t, "transferStake", carryColdkey, s.escrow, nu, nu, owed))
-		if refusal == nil || !strings.Contains(refusal.Error(), "ColdkeySwapDestinationReserved") {
-			t.Errorf("simulated from vault2, the claim's transfer to the reserved carry answers %v", refusal)
+		for _, target := range [][32]byte{carryColdkey, s.vaultColdkey} {
+			if _, err := n.trySubmit(t, announcer.Ring, n.call(t, "SubtensorModule.announce_coldkey_swap_v2", accountID(t, target))); err == nil ||
+				!strings.Contains(err.Error(), "NewColdKeyIsHotkey") {
+				t.Fatalf("a coldkey swap announced to reserve %x: %v", target, err)
+			}
 		}
-		delays := n.read(t, stakingAddress, swapViews, "getColdkeySwapDelays")
-		until := announced + delays[0].(uint64) + delays[1].(uint64) + 1
-		t.Logf("a coldkey swap announced in block %d reserves the carry coldkey until block %d (delays %v): the recycle is refused (%s), and vault2's claim to it answers %v",
-			announced, until, delays, reserved, refusal)
-		n.sealUntil(t, until)
 
 		// Third parties hold vault2's list at 128 without the CTF pool hotkey,
 		// which epoch 2's capture left empty.
