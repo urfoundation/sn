@@ -565,3 +565,32 @@ func TestCaptureTheFlagViewSelectors(t *testing.T) {
 		}
 	}
 }
+
+// SettlementV2CtfAuditInput refuses, before any read, an operator that has no
+// capture the flag pool, no amendments file, and a deployment without both
+// settlement v2 addresses. E-8 (mainnet/settlement_v2_e2e_ctf_test.go) reads
+// a pending CTF root's input through it on the e2e chain.
+func TestSettlementV2CtfAuditInputRefusesItsArguments(t *testing.T) {
+	t.Parallel()
+	file, err := amendment.Unpublished(945, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addresses := SettlementV2Addresses{Settlement: settlementV2TestSettlement, Vault: common.HexToAddress("0x7a20000000000000000000000000000000000002")}
+	for _, c := range []struct {
+		name      string
+		addresses SettlementV2Addresses
+		file      *amendment.File
+		noID      uint64
+	}{
+		{"operator 0", addresses, file, 0},
+		{"an operator from 2^32", addresses, file, 1 << 32},
+		{"no amendments file", addresses, nil, 1},
+		{"no vault2", SettlementV2Addresses{Settlement: addresses.Settlement}, file, 1},
+		{"no STSettlement2", SettlementV2Addresses{Vault: addresses.Vault}, file, 1},
+	} {
+		if _, err := SettlementV2CtfAuditInput(t.Context(), nil, c.addresses, 945, 25, 0, c.file, "", c.noID); err == nil || !strings.Contains(err.Error(), "a capture the flag audit input needs") {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+}
