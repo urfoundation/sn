@@ -313,7 +313,7 @@ the finite UID budget and undermine the intended ~200-member head.
 | **Usage statement** | A NO's signed statement of one epoch's bytes and users, which sizes and audits the next epoch's deposit. |
 | **Routable‑IP breadth** | Split‑adjusted count of distinct /29 or /48 egress‑prefix hashes a fleet routed. |
 | **Payout root** | Merkle root of `(coldkey, share bps)` leaves splitting one NO's pool for one epoch. |
-| **Capture the flag (CTF)** | From epoch 8, a per‑country coverage lottery beside the provider pool: each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the NO's eligible miners there ([`CAPTURETHEFLAG.md`](CAPTURETHEFLAG.md)). |
+| **Capture the flag (CTF)** | From epoch 8, a per‑country coverage auction beside the provider pool: each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the NO's eligible miners there ([`CAPTURETHEFLAG.md`](CAPTURETHEFLAG.md)). |
 | **CTF pool** | A NO's second vault‑owned pool, vault2 pool `2^32 + n` (UR's is 4294967297), with its own UID. The CTF pools share 1/10 of the providers' share, by their pools' weights. Each settles and is claimed like the provider pool, and pays winners to the payout wallet the provider pool already uses. |
 | **Slot** | One CTF prize: a country, a role (provider or extender) and a rank 1–5, 2,490 in all. Each is worth the CTF pool's fresh funding for the epoch ÷ 2,490. |
 | **Pot** | What a country's unwon slots of one role carry forward. Each winner takes its own slot and a fifth of the pot, and the rest keeps carrying. |
