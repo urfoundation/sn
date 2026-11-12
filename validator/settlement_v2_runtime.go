@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
@@ -35,6 +36,10 @@ type SettlementV2RuntimeOptions struct {
 	// --drand_url, the drand relay the capture the flag audit reads
 	// quicknet's pulses from. Empty is DefaultDrandURL.
 	DrandURL string
+	// --amendments-fallback, the configured amendment lines read from it, one
+	// per line (settlement_v2_amendments.go): the fallback where no signed
+	// entry is in force. Empty configures none.
+	AmendmentsFallback string
 }
 
 type settlementV2RuntimeOptionsKey struct{}
@@ -83,5 +88,10 @@ func settlementV2RuntimeOptionsFromOpts(opts docopt.Opts) (SettlementV2RuntimeOp
 			return options, fmt.Errorf("--ledger_auditor_key_file: %w", err)
 		}
 	}
+	lines, err := readSettlementV2AmendmentsFallback(expandHome(optString(opts, "--amendments-fallback", "")))
+	if err != nil {
+		return options, err
+	}
+	options.AmendmentsFallback = strings.Join(lines, "\n")
 	return options, nil
 }
