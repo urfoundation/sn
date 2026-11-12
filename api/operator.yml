@@ -396,8 +396,10 @@ paths:
         credential, its JWT (as ur.io holds it) or an API key, is answered
         for the network: `wins` holds the wins of every client the network
         has had, removed ones included, each naming its `client_id`, while
-        `client_id` is null and `epochs` is `[]`. A token of either kind that
-        authenticates is never answered 401.
+        `client_id` is null and `epochs` is `[]`. Each win keeps the network
+        it was won for, recorded with the award, so a client's wins stay its
+        network's after the client is removed and its records are deleted.
+        A token of either kind that authenticates is never answered 401.
 
         **Which wins.** Every win of those clients that is not known to be
         claimed (`claimed` false or null), whatever its epoch, and every win
@@ -428,17 +430,26 @@ paths:
           pending pot share waits for a matured epoch that a committed root
           covers, and while the account is claimed only through an earlier
           root. A root that covers several epochs is claimed as a whole.
-        - `claimed` is null when the account's state could not be read for
-          this answer (its ledger or vault2 could not be read, or they
-          disagree), and for the wins of any coldkey beyond the 32 an answer
-          reads, those of its newest wins first. A client shows such a win
-          neither as claimed nor as not. A win whose paying root is pending,
-          or which has none yet, is never null.
+        - Every coldkey's state is read, those of the newest wins first. An
+          answer reads vault2's `claimed` of all its accounts at one finalized
+          block, and a value read is used again for up to 25 seconds.
+        - `claimed` is null when the account's state could not be read in the
+          five seconds or so an answer gives it, its ledger or vault2 being
+          unreadable or slow, and when the state disagrees with itself or
+          with the win: vault2's `claimed` above the finalized cumulative, the
+          server's records not adding up, or the account's cumulative in the
+          paying root below the win's own `amount`, which that root pays
+          whole. (A win whose pending pot share a shortfall cut before it was
+          paid, which needs every pot empty, can read null too.) A claim state
+          that cannot be read never fails the answer. A client shows such a
+          win neither as claimed nor as not. A win whose paying root is
+          pending, or which has none yet, is never null.
 
         `Cache-Control: private, no-cache`: the app may keep it, revalidating
-        with its `ETag`. `claimed` is read from the chain with every request,
-        so the answer and its `ETag` also change when an account is claimed,
-        while `as_of` stays the time of the capture the flag state.
+        with its `ETag`. `claimed` is read from the chain, each account's at
+        most every 25 seconds, so the answer and its `ETag` also change when
+        an account is claimed, within 25 seconds of the claim's finalized
+        block, while `as_of` stays the time of the capture the flag state.
       parameters:
         - $ref: "#/components/parameters/ClientLimit"
         - $ref: "#/components/parameters/IfNoneMatch"
