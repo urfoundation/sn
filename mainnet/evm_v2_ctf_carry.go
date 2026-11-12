@@ -13,9 +13,10 @@
 // vault2 and the CTF pool, which it reads through STSettlement2 at the head.
 // Before the carry exists it requires the carry's coldkey to be untouched (no
 // staking hotkeys, owned hotkeys or lock: a coldkey swap prepared into it, or
-// stake sent to it, means its address is known) and already a hotkey account,
-// which refuses every coldkey swap into it and every reservation of it; a
-// pool hotkey that holds a UID, which the auto-stake destination needs; the
+// stake sent to it, means its address is known) and already a hotkey account
+// of the guardian named by --guardian, which refuses every coldkey swap into
+// it and every reservation of it, as must vault2's coldkey be; a pool hotkey
+// that holds a UID, which the auto-stake destination needs; the
 // deterministic deployment proxy's account holding TAO above its existential
 // deposit, without which the creation's value cannot pass through it; a seed
 // of at least the contract's seedMinimum() at the head; and, with --from, the
@@ -24,8 +25,9 @@
 // outside the immutables, immutables that name vault2, the pool and the
 // carry's own coldkey, a residual held on the escrow hotkey, the pool hotkey
 // as its auto-stake destination, both on its staking-hotkey list, both
-// opt-outs, its coldkey still a hotkey account, and no hotkey of its own. It
-// neither signs nor sends, and every read is pinned to one head block.
+// opt-outs, both coldkeys still the guardian's hotkey accounts, and no hotkey
+// of its own. It neither signs nor sends, and every read is pinned to one
+// head block.
 package main
 
 import (
@@ -198,6 +200,7 @@ type ctfCarryRequest struct {
 	noId       uint64
 	salt       common.Hash
 	seedRao    uint64
+	guardian   common.Hash
 	from       *common.Address
 	artifact   ctfCarryArtifact
 }
@@ -256,8 +259,11 @@ type ctfCarryRuntime struct {
 	OwnedHotkeys        int    `json:"owned_hotkeys"`
 	Lock                bool   `json:"lock"`
 	PoolHotkeyUid       *int   `json:"pool_hotkey_uid"`
-	// The coldkey of the hotkey account the carry's coldkey is, or null.
-	ColdkeyHotkeyOwner *string `json:"coldkey_hotkey_owner"`
+	// The guardian, and the coldkeys of the hotkey accounts the carry's
+	// coldkey and vault2's are, or null.
+	Guardian                string  `json:"guardian"`
+	ColdkeyHotkeyOwner      *string `json:"coldkey_hotkey_owner"`
+	VaultColdkeyHotkeyOwner *string `json:"vault_coldkey_hotkey_owner"`
 	// The proxy's mapped account, and its balance above the existential deposit.
 	ProxyAccount    string `json:"proxy_account"`
 	ProxyBalanceWei string `json:"proxy_balance_wei"`
@@ -277,14 +283,14 @@ type ctfCarryCreated struct {
 }
 
 func runCtfCarryCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	const usage = "usage: ctf-carry review --rpc URL --settlement2 ADDRESS --no-id N --artifact evm/out/STCtfCarry.sol/STCtfCarry.json --salt 0xSALT --seed-rao RAO [--from ADDRESS]"
+	const usage = "usage: ctf-carry review --rpc URL --settlement2 ADDRESS --no-id N --artifact evm/out/STCtfCarry.sol/STCtfCarry.json --salt 0xSALT --seed-rao RAO --guardian 0xCOLDKEY [--from ADDRESS]"
 	if len(args) == 0 || args[0] != "review" {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	flags := flag.NewFlagSet("ctf-carry review", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	var settlement, artifactPath, salt, from string
+	var settlement, artifactPath, salt, guardian, from string
 	var request ctfCarryRequest
 	rpcUrl := flags.String("rpc", "", "explicit owned HTTP(S) EVM JSON-RPC URL")
 	flags.StringVar(&settlement, "settlement2", "", "the STSettlement2 proxy, running STSettlement2Ctf")
@@ -292,24 +298,27 @@ func runCtfCarryCommand(ctx context.Context, args []string, stdout, stderr io.Wr
 	flags.StringVar(&artifactPath, "artifact", "", "the forge artifact of STCtfCarry (evm/out/STCtfCarry.sol/STCtfCarry.json)")
 	flags.StringVar(&salt, "salt", "", "the CREATE2 salt: 0x and 32 bytes of hex, random and private until the creation")
 	flags.Uint64Var(&request.seedRao, "seed-rao", 0, "the TAO in rao the constructor stakes as the residual; the creation's value adds the existential deposit")
+	flags.StringVar(&guardian, "guardian", "", "the guardian coldkey's public key, 0x and 32 bytes of hex, whose hotkey accounts the carry's coldkey and vault2's must be")
 	flags.StringVar(&from, "from", "", "the creator: the preflight runs the creation as an eth_call from it")
 	complete := flags.Parse(args[1:]) == nil && flags.NArg() == 0
 	set := map[string]bool{}
 	flags.Visit(func(given *flag.Flag) { set[given.Name] = true })
-	for _, required := range []string{"rpc", "settlement2", "no-id", "artifact", "salt", "seed-rao"} {
+	for _, required := range []string{"rpc", "settlement2", "no-id", "artifact", "salt", "seed-rao", "guardian"} {
 		complete = complete && set[required]
 	}
 	var settlementOk, fromOk bool
 	request.settlement, settlementOk = poolAddress(settlement)
 	request.salt = common.HexToHash(salt)
+	request.guardian = common.HexToHash(guardian)
 	fromOk = !set["from"]
 	if set["from"] {
 		var creator common.Address
 		creator, fromOk = poolAddress(from)
 		request.from = &creator
 	}
-	if !complete || !settlementOk || !fromOk || !validHash(salt) || request.noId == 0 || request.noId >= 1<<32 || request.seedRao == 0 {
-		fmt.Fprintln(stderr, "ctf-carry review requires --rpc, --settlement2, --no-id, --artifact, --salt and --seed-rao: a nonzero 0x address, an operator of 1 to 2^32 - 1, an artifact path, a 0x 32-byte salt and a positive seed in rao; --from, when given, is another nonzero 0x address")
+	if !complete || !settlementOk || !fromOk || !validHash(salt) || !validHash(guardian) || request.guardian == (common.Hash{}) ||
+		request.noId == 0 || request.noId >= 1<<32 || request.seedRao == 0 {
+		fmt.Fprintln(stderr, "ctf-carry review requires --rpc, --settlement2, --no-id, --artifact, --salt, --seed-rao and --guardian: a nonzero 0x address, an operator of 1 to 2^32 - 1, an artifact path, a 0x 32-byte salt, a positive seed in rao and a nonzero 0x 32-byte coldkey; --from, when given, is another nonzero 0x address")
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
@@ -404,11 +413,21 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 	}
 
 	// The runtime at the head: the seed's least, and the carry coldkey.
-	runtime, nominator, price, err := reviewCtfCarryRuntime(ctx, chain, address, coldkey, pool.Netuid, poolHotkey)
+	runtime, nominator, price, err := reviewCtfCarryRuntime(ctx, chain, address, coldkey, vaultColdkey, pool.Netuid, poolHotkey)
 	if err != nil {
 		return result, err
 	}
+	runtime.Guardian = request.guardian.Hex()
 	result.Runtime = runtime
+	// vault2's coldkey, before the creation and after: a hotkey account of the
+	// guardian's, which nobody else can release together with a coldkey swap
+	// into vault2.
+	switch {
+	case runtime.VaultColdkeyHotkeyOwner == nil:
+		return result, ctfCarryRefusal("vault2's coldkey %s is not a hotkey account, so a coldkey swap could merge into it or reserve it: the guardian %s calls try_associate_hotkey(%s), through MevShield.submit_encrypted so that nobody takes it first", vaultColdkey.Hex(), request.guardian.Hex(), vaultColdkey.Hex())
+	case *runtime.VaultColdkeyHotkeyOwner != request.guardian.Hex():
+		return result, ctfCarryRefusal("vault2's coldkey %s is a hotkey account of %s, not of the guardian %s: its holder can release it together with a coldkey swap into vault2", vaultColdkey.Hex(), *runtime.VaultColdkeyHotkeyOwner, request.guardian.Hex())
+	}
 	if len(code) != 0 {
 		created, err := reviewCreatedCtfCarry(ctx, chain, request, address, code, pool, coldkey, escrow, poolHotkey, vaultColdkey, nominator, price)
 		if err != nil {
@@ -416,7 +435,9 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 		}
 		switch {
 		case runtime.ColdkeyHotkeyOwner == nil:
-			return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account, so a coldkey swap could merge into it or reserve it: from a coldkey that will never swap that hotkey, call try_associate_hotkey(%s)", coldkey.Hex(), coldkey.Hex())
+			return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account, so a coldkey swap could merge into it or reserve it: the guardian %s calls try_associate_hotkey(%s)", coldkey.Hex(), request.guardian.Hex(), coldkey.Hex())
+		case *runtime.ColdkeyHotkeyOwner != request.guardian.Hex():
+			return result, ctfCarryRefusal("the carry's coldkey %s is a hotkey account of %s, not of the guardian %s: its holder can release it together with a coldkey swap into the carry", coldkey.Hex(), *runtime.ColdkeyHotkeyOwner, request.guardian.Hex())
 		case runtime.OwnedHotkeys != 0:
 			return result, ctfCarryRefusal("the carry's coldkey owns %d hotkeys, which only a coldkey swap into it gives", runtime.OwnedHotkeys)
 		}
@@ -437,7 +458,9 @@ func reviewCtfCarry(ctx context.Context, client *rpcClient, request ctfCarryRequ
 	case runtime.PoolHotkeyUid == nil:
 		return result, ctfCarryRefusal("the CTF pool hotkey %s holds no UID on netuid %d, which the carry's auto-stake destination needs: re-register it with vault2's registerPoolUid first", poolHotkey.Hex(), pool.Netuid)
 	case runtime.ColdkeyHotkeyOwner == nil:
-		return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account yet: from a coldkey that will never swap that hotkey, call try_associate_hotkey(%s) first, so that no coldkey swap can merge into it or reserve it", coldkey.Hex(), coldkey.Hex())
+		return result, ctfCarryRefusal("the carry's coldkey %s is not a hotkey account yet: the guardian %s calls try_associate_hotkey(%s) first, through MevShield.submit_encrypted, so that no coldkey swap can merge into it or reserve it", coldkey.Hex(), request.guardian.Hex(), coldkey.Hex())
+	case *runtime.ColdkeyHotkeyOwner != request.guardian.Hex():
+		return result, ctfCarryRefusal("the carry's coldkey %s is a hotkey account of %s, not of the guardian %s: someone took it first and can release it together with a coldkey swap into it; create the carry under another salt", coldkey.Hex(), *runtime.ColdkeyHotkeyOwner, request.guardian.Hex())
 	case runtime.ProxyBalanceWei == "0":
 		return result, ctfCarryRefusal("the deterministic deployment proxy's account holds no TAO above its existential deposit, so the creation's value cannot pass through it (OutOfFund): send its mapped account %s at least 501 rao first", runtime.ProxyAccount)
 	}
@@ -515,8 +538,9 @@ func reviewCtfCarryPool(ctx context.Context, chain *upgradeChain, request ctfCar
 
 // reviewCtfCarryRuntime reads the seed's least at the head, the alpha price,
 // and what the runtime holds for the carry's coldkey: its staking hotkeys,
-// owned hotkeys and lock, and the address's balance, which a seed stakes too.
-func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address common.Address, coldkey common.Hash, netuid uint16, poolHotkey common.Hash) (ctfCarryRuntime, *big.Int, *big.Int, error) {
+// owned hotkeys and lock, the address's balance, which a seed stakes too, and
+// the owners of the hotkey accounts the carry's coldkey and vault2's are.
+func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address common.Address, coldkey, vaultColdkey common.Hash, netuid uint16, poolHotkey common.Hash) (ctfCarryRuntime, *big.Int, *big.Int, error) {
 	var runtime ctfCarryRuntime
 	values, err := ctfCarryRead(ctx, chain, ctfCarryStaking, "getNominatorMinRequiredStake")
 	if err != nil {
@@ -555,12 +579,17 @@ func reviewCtfCarryRuntime(ctx context.Context, chain *upgradeChain, address com
 		return runtime, nil, nil, ctfCarryRefusal("getColdkeyLock answered %v, not a lock record", values[0])
 	}
 	runtime.Lock = exists.Bool()
-	if values, err = ctfCarryRead(ctx, chain, ctfCarryStaking, "getHotkeyOwner", [32]byte(coldkey)); err != nil {
-		return runtime, nil, nil, err
-	}
-	if values[0].(bool) {
-		owner := common.Hash(values[1].([32]byte)).Hex()
-		runtime.ColdkeyHotkeyOwner = &owner
+	for _, account := range []struct {
+		key   common.Hash
+		owner **string
+	}{{coldkey, &runtime.ColdkeyHotkeyOwner}, {vaultColdkey, &runtime.VaultColdkeyHotkeyOwner}} {
+		if values, err = ctfCarryRead(ctx, chain, ctfCarryStaking, "getHotkeyOwner", [32]byte(account.key)); err != nil {
+			return runtime, nil, nil, err
+		}
+		if values[0].(bool) {
+			owner := common.Hash(values[1].([32]byte)).Hex()
+			*account.owner = &owner
+		}
 	}
 	proxyBalance, err := chain.balance(ctx, upgradeCreate2Factory)
 	if err != nil {

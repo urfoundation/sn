@@ -103,8 +103,10 @@ func newCtfCarryFake(t *testing.T) *ctfCarryFake {
 	}
 	f.address = crypto.CreateAddress2(upgradeCreate2Factory, ctfCarryTestSalt, crypto.Keccak256(initcode))
 	f.coldkey = ss58.EvmMirrorPubkey([20]byte(f.address))
-	// The operator associated the carry's coldkey as a hotkey of its own.
+	// The guardian associated the carry's coldkey and vault2's as hotkeys of
+	// its own.
 	f.hotkeyOwners[f.coldkey] = [32]byte(ctfCarryTestGuardian)
+	f.hotkeyOwners[ctfCarryTestSelf] = [32]byte(ctfCarryTestGuardian)
 	return f
 }
 
@@ -348,7 +350,7 @@ func (self *ctfCarryFake) review(t *testing.T, extra ...string) (int, ctfCarryRe
 	}
 	flags := map[string]string{
 		"--rpc": self.serve(), "--settlement2": ctfCarryTestSettlement.Hex(), "--no-id": "1", "--artifact": path,
-		"--salt": ctfCarryTestSalt.Hex(), "--seed-rao": "1000000000",
+		"--salt": ctfCarryTestSalt.Hex(), "--seed-rao": "1000000000", "--guardian": ctfCarryTestGuardian.Hex(),
 	}
 	var args []string
 	for i := 0; i < len(extra); i += 2 {
@@ -406,7 +408,9 @@ func TestCtfCarryReviewBeforeCreation(t *testing.T) {
 		t.Fatalf("pool %+v", review.Pool)
 	case review.Runtime.NominatorMinimumRao != "20000000" || review.Runtime.SeedMinimumRao != "200000000" || review.Runtime.StakingHotkeys != 0 ||
 		review.Runtime.PoolHotkeyUid == nil || *review.Runtime.PoolHotkeyUid != 31 || review.Runtime.ColdkeyHotkeyOwner == nil ||
-		*review.Runtime.ColdkeyHotkeyOwner != ctfCarryTestGuardian.Hex() || review.Runtime.ProxyBalanceWei != "1000000000000" ||
+		*review.Runtime.ColdkeyHotkeyOwner != ctfCarryTestGuardian.Hex() || review.Runtime.Guardian != ctfCarryTestGuardian.Hex() ||
+		review.Runtime.VaultColdkeyHotkeyOwner == nil || *review.Runtime.VaultColdkeyHotkeyOwner != ctfCarryTestGuardian.Hex() ||
+		review.Runtime.ProxyBalanceWei != "1000000000000" ||
 		review.Runtime.ProxyAccount != common.Hash(ss58.EvmMirrorPubkey([20]byte(upgradeCreate2Factory))).Hex():
 		t.Fatalf("runtime %+v", review.Runtime)
 	case review.Preflight.Ran || !strings.Contains(review.Preflight.Result, "--from"):
@@ -429,8 +433,10 @@ func TestCtfCarryReviewBeforeCreation(t *testing.T) {
 // CR-2: before the creation review refuses, exit 3, what the creation would
 // make unsafe or fail: the proxy's code, a proxy without the capture the flag
 // implementation, a pool vault2 does not hold or the proxy resolves
-// elsewhere, a carry coldkey someone has touched, a seed below the least,
-// and a creation that fails or answers another address.
+// elsewhere, a carry coldkey someone has touched, either coldkey not the
+// guardian's hotkey account, a proxy without TAO above its existential
+// deposit, a seed below the least, and a creation that fails or answers
+// another address.
 func TestCtfCarryReviewRefusesBeforeCreation(t *testing.T) {
 	other := common.HexToAddress("0x0123456789012345678901234567890123456789")
 	for _, c := range []struct {
@@ -448,6 +454,9 @@ func TestCtfCarryReviewRefusesBeforeCreation(t *testing.T) {
 		{"a lock", func(f *ctfCarryFake) { f.locked[f.coldkey] = true }, nil, "conviction lock"},
 		{"a pool hotkey without a UID", func(f *ctfCarryFake) { f.noPoolUid = true }, nil, "holds no UID"},
 		{"a coldkey that is no hotkey account", func(f *ctfCarryFake) { delete(f.hotkeyOwners, f.coldkey) }, nil, "not a hotkey account yet"},
+		{"a coldkey someone else associated", func(f *ctfCarryFake) { f.hotkeyOwners[f.coldkey] = [32]byte{7} }, nil, "someone took it first"},
+		{"vault2's coldkey no hotkey account", func(f *ctfCarryFake) { delete(f.hotkeyOwners, [32]byte(ctfCarryTestSelf)) }, nil, "vault2's coldkey"},
+		{"vault2's coldkey someone else's hotkey account", func(f *ctfCarryFake) { f.hotkeyOwners[ctfCarryTestSelf] = [32]byte{7} }, nil, "not of the guardian"},
 		{"a proxy with nothing above its existential deposit", func(f *ctfCarryFake) { f.proxyBalance = new(big.Int) }, nil, "OutOfFund"},
 		{"seed below ten times the nominator minimum", func(f *ctfCarryFake) { f.nominator = big.NewInt(100_000_001) }, nil, "below the carry's least seed"},
 		{"seed below the floor", func(*ctfCarryFake) {}, []string{"--seed-rao", "99999999"}, "below the carry's least seed"},
@@ -484,6 +493,9 @@ func TestCtfCarryReviewUsage(t *testing.T) {
 		{"operator 2^32", []string{"--no-id", "4294967296"}, "requires"},
 		{"bad settlement", []string{"--settlement2", "0x00"}, "requires"},
 		{"bad creator", []string{"--from", "creator"}, "requires"},
+		{"no guardian", []string{"--guardian", ""}, "requires"},
+		{"short guardian", []string{"--guardian", "0x01"}, "requires"},
+		{"zero guardian", []string{"--guardian", "0x0000000000000000000000000000000000000000000000000000000000000000"}, "requires"},
 		{"zero salt", []string{"--salt", "0x0000000000000000000000000000000000000000000000000000000000000000"}, "zero salt"},
 		{"phase C artifact", []string{"--artifact", phaseC}, "not the reviewed STCtfCarry"},
 		{"missing artifact", []string{"--artifact", filepath.Join(t.TempDir(), "none.json")}, "artifact"},
@@ -549,6 +561,9 @@ func TestCtfCarryReviewRefusesACreatedCarry(t *testing.T) {
 		{"locked alpha accepted", func(f *ctfCarryFake) { f.rejectsLocked[f.coldkey] = false }, "opt-outs"},
 		{"a residual worth less than the nominator minimum", func(f *ctfCarryFake) { f.price = big.NewInt(1e16) }, "below the nominator minimum"},
 		{"a coldkey that is no hotkey account", func(f *ctfCarryFake) { delete(f.hotkeyOwners, f.coldkey) }, "not a hotkey account"},
+		{"a coldkey someone else holds", func(f *ctfCarryFake) { f.hotkeyOwners[f.coldkey] = [32]byte{7} }, "not of the guardian"},
+		{"vault2's coldkey no hotkey account", func(f *ctfCarryFake) { delete(f.hotkeyOwners, [32]byte(ctfCarryTestSelf)) }, "vault2's coldkey"},
+		{"vault2's coldkey someone else's", func(f *ctfCarryFake) { f.hotkeyOwners[ctfCarryTestSelf] = [32]byte{7} }, "not of the guardian"},
 		{"owned hotkeys", func(f *ctfCarryFake) { f.owned[f.coldkey] = [][32]byte{{5}} }, "owns 1 hotkeys"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

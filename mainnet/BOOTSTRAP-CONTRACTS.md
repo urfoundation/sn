@@ -1336,7 +1336,11 @@ has timelock mode's sections. `timelock.call` is
 
 **vault2's coldkey as a hotkey account.** Now, and in any case before the
 Safe schedules the operation, a guardian coldkey that never swaps the hotkeys
-it holds calls `try_associate_hotkey(selfColdkey)` with vault2's coldkey. vault2 opts out of
+it holds calls `try_associate_hotkey(selfColdkey)` with vault2's coldkey,
+through `MevShield.submit_encrypted` so that nobody sees it pending, and then
+checks that the staking precompile's `getHotkeyOwner(selfColdkey)` names the
+guardian: the call succeeds and changes nothing when someone else already
+holds that hotkey account. vault2 opts out of
 nothing, so otherwise a coldkey swap into its coldkey, announced five days
 ahead, could merge up to 256 staking-hotkey entries that `absorbStake`
 cannot free (positions on other subnets, or below the transfer floor). A new
@@ -1346,10 +1350,12 @@ good. As a hotkey account its coldkey can be neither swapped into nor
 reserved as a swap's destination (`NewColdKeyIsHotkey`), which also keeps a
 reservation from refusing the carry's returns. vault2's own calls are
 unaffected; R-9 runs the whole capture the flag flow with it. Whoever
-associates vault2's coldkey first holds that hotkey account, and while a swap
-announcement reserves it the runtime refuses the association
-(`ColdkeySwapDestinationReserved`) and that swap can go through, so the
-guardian does it before anyone else does anything with it.
+associates vault2's coldkey first holds that hotkey account, and can release
+it, by a hotkey swap, in the same batch as a coldkey swap's announcement into
+vault2. While a swap announcement reserves it the runtime refuses the
+association (`ColdkeySwapDestinationReserved`) and that swap can go through.
+So the guardian does it before anyone else does anything with it, and
+`ctf-carry review` requires it.
 
 `registerCtfPool` derives the pool hotkey at execution, as
 `keccak256(abi.encode(proxy, pool_id, block.number, blockhash(block.number - 1)))`.
@@ -1430,11 +1436,13 @@ Two things come first:
 
 - **The carry's coldkey becomes a hotkey account.** A guardian coldkey, which
   never swaps the hotkeys it holds, calls `try_associate_hotkey(coldkey)`
-  with the carry's coldkey, which `ctf-carry review` prints; that reveals
-  the coldkey but not the address. The runtime then refuses every coldkey
-  swap into it, and every reservation of it as a swap's destination
-  (`NewColdKeyIsHotkey`). The same guardian makes vault2's coldkey a hotkey
-  account now, before the capture the flag upgrade's schedule (see below).
+  with the carry's coldkey, which `ctf-carry review` prints, through
+  `MevShield.submit_encrypted`; that reveals the coldkey but not the address.
+  The runtime then refuses every coldkey swap into it, and every reservation
+  of it as a swap's destination (`NewColdKeyIsHotkey`). If someone else took
+  it first, which review reports, the carry is created under another salt.
+  The same guardian makes vault2's coldkey a hotkey account now, before the
+  capture the flag upgrade's schedule (see the upgrade above).
 - **The proxy's account holds TAO above its existential deposit.** The EVM
   checks the proxy's spendable balance, which the runtime reports less the
   500-rao existential deposit, before CREATE2 passes the value on. A proxy
@@ -1451,14 +1459,15 @@ head block:
 ```sh
 sn-mainnet ctf-carry review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" --no-id 1 \
   --artifact evm/out/STCtfCarry.sol/STCtfCarry.json --salt "$CARRY_SALT" --seed-rao 1000000000 \
-  --from "$CREATOR"
+  --guardian "$GUARDIAN_COLDKEY" --from "$CREATOR"
 ```
 
 Before any read, it rejects with exit 2:
 
-- a missing `--rpc`, `--settlement2`, `--no-id`, `--artifact`, `--salt` or
-  `--seed-rao`, a `--no-id` of 0 or from 2^32, a zero seed, and a `--from`
-  that is not a nonzero address;
+- a missing `--rpc`, `--settlement2`, `--no-id`, `--artifact`, `--salt`,
+  `--seed-rao` or `--guardian`, a `--no-id` of 0 or from 2^32, a zero seed, a
+  `--guardian` that is not a nonzero 32-byte public key, and a `--from` that
+  is not a nonzero address;
 - the zero salt, which makes the address known before the carry exists; and
 - an artifact that is not `STCtfCarry`'s: one without every carry function
   (`recycle`, `recycledFor`, `seed`, `residual`, `seedMinimum`,
@@ -1471,17 +1480,22 @@ It reads the pool through the proxy, which must run `STSettlement2Ctf`:
 `ctfSettlementAt(noId, firstEpoch)`, which must agree, and vault2's
 `netuid()`, `escrowHotkey()` and `selfColdkey()`. From the staking and alpha
 precompiles it reads the nominator minimum, the alpha price, whether the pool
-hotkey holds a UID, and the carry coldkey's staking hotkeys, owned hotkeys and
-conviction lock.
+hotkey holds a UID, the carry coldkey's staking hotkeys, owned hotkeys and
+conviction lock, and the owners of the hotkey accounts the carry's coldkey and
+vault2's are.
 
-**Before the creation** it refuses with exit 3:
+**Before the creation and after** it refuses with exit 3 a vault2 coldkey
+that is not a hotkey account of the guardian's. **Before the creation** it
+refuses with exit 3:
 
 - a deterministic deployment proxy that is missing or whose code differs;
 - a proxy without the capture the flag implementation, a CTF pool vault2
   does not hold, and a pool that `ctfSettlementAt` resolves elsewhere;
 - a carry coldkey that already holds staking hotkeys, owns hotkeys or holds a
   lock: someone knows its address, so it is created under another salt;
-- a carry coldkey that is not yet a hotkey account;
+- a carry coldkey that is not yet a hotkey account, or is one of another
+  coldkey than the guardian, which could release it with a coldkey swap into
+  it: the carry is created under another salt;
 - a pool hotkey that holds no UID, which the auto-stake destination needs;
 - a proxy whose account holds nothing above its existential deposit
   (`eth_getBalance` of the proxy is zero);
@@ -1502,10 +1516,10 @@ Without `--from` the preflight does not run, and its result says so.
 - no residual, a position on the escrow hotkey below the residual, a
   staking-hotkey list without the escrow hotkey, an auto-stake destination
   other than the pool hotkey or a list without it, and either opt-out unset;
-  and
 - a residual worth less, at the head's alpha price, than the nominator
   minimum, which root's next sweep would clear. `seed()` adds to it; and
-- a carry coldkey that is no longer a hotkey account, or owns hotkeys.
+- a carry coldkey that is no longer the guardian's hotkey account, or owns
+  hotkeys.
 
 Its result, schema `urnetwork-mainnet-ctf-carry-review-v1`, has:
 
@@ -1518,8 +1532,9 @@ Its result, schema `urnetwork-mainnet-ctf-carry-review-v1`, has:
   epoch, vault2's netuid, escrow hotkey and coldkey;
 - `runtime`: the nominator minimum, `seedMinimum()`, the alpha price, the
   address's balance, which the seed's staking includes, the coldkey's staking
-  hotkeys, owned hotkeys and lock, the owner of the hotkey account the
-  coldkey is, the pool hotkey's UID, and the proxy's balance;
+  hotkeys, owned hotkeys and lock, the guardian, the owners of the hotkey
+  accounts the coldkey and vault2's coldkey are, the pool hotkey's UID, and
+  the proxy's mapped account and balance;
 - `created`, once it exists: its code hash, the residual, its position on the
   escrow hotkey and its worth in TAO at the head, whether the list holds the
   escrow hotkey, whether the pool hotkey is its auto-stake destination and on
