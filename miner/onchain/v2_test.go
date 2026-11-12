@@ -92,11 +92,13 @@ type v2TestChain struct {
 	receipts map[common.Hash]*types.Receipt
 	emitted  []*types.Log // logs of the transactions snclaim sent
 
-	// The operator API: account replies by coldkey query, and objects.
-	accounts      map[string]string
-	accountStatus int
-	objects       ledger.Objects
-	apiCalls      map[string]int
+	// The operator API: account replies by coldkey query, and objects;
+	// accountQueries holds the query of each account read.
+	accounts       map[string]string
+	accountStatus  int
+	accountQueries []string
+	objects        ledger.Objects
+	apiCalls       map[string]int
 
 	// mute drops the events of the transactions snclaim sends.
 	mute bool
@@ -681,6 +683,7 @@ func (c *v2TestChain) serveAPI(writer http.ResponseWriter, request *http.Request
 	c.apiCalls[request.URL.Path]++
 	switch request.URL.Path {
 	case "/sn/ledger/account":
+		c.accountQueries = append(c.accountQueries, request.URL.RawQuery)
 		if c.accountStatus != 0 {
 			http.Error(writer, "synthetic account refusal", c.accountStatus)
 			return
