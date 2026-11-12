@@ -81,6 +81,9 @@ func TestCaptureTheFlagBindings(t *testing.T) {
 		{"coldkey()", carry.PackColdkey()},
 		{"poolHotkey()", carry.PackPoolHotkey()},
 		{"poolId()", carry.PackPoolId()},
+		{"seed()", carry.PackSeed()},
+		{"residual()", carry.PackResidual()},
+		{"seedMinimum()", carry.PackSeedMinimum()},
 	} {
 		if !bytes.Equal(test.packed[:4], selector(test.signature)) {
 			t.Errorf("%s: selector %x", test.signature, test.packed[:4])
@@ -139,6 +142,24 @@ func TestCaptureTheFlagBindings(t *testing.T) {
 	if err != nil || recycled.Epoch.Cmp(epoch) != 0 || recycled.Amount.Cmp(big.NewInt(700)) != 0 {
 		t.Fatalf("UnpackRecycledEvent = %+v, %v", recycled, err)
 	}
+	data, err = carryAbi.Events["Seeded"].Inputs.NonIndexed().Pack(big.NewInt(1_000_000_000), big.NewInt(987_654_321), big.NewInt(987_654_321))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log = &types.Log{Topics: []common.Hash{crypto.Keccak256Hash([]byte("Seeded(uint256,uint256,uint256)"))}, Data: data}
+	seeded, err := carry.UnpackSeededEvent(log)
+	if err != nil || seeded.Tao.Cmp(big.NewInt(1_000_000_000)) != 0 || seeded.Amount.Cmp(big.NewInt(987_654_321)) != 0 || seeded.Residual.Cmp(big.NewInt(987_654_321)) != 0 {
+		t.Fatalf("UnpackSeededEvent = %+v, %v", seeded, err)
+	}
+	data, err = carryAbi.Events["ResidualLowered"].Inputs.NonIndexed().Pack(big.NewInt(987_654_321), big.NewInt(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log = &types.Log{Topics: []common.Hash{crypto.Keccak256Hash([]byte("ResidualLowered(uint256,uint256)"))}, Data: data}
+	lowered, err := carry.UnpackResidualLoweredEvent(log)
+	if err != nil || lowered.From.Cmp(big.NewInt(987_654_321)) != 0 || lowered.To.Sign() != 0 {
+		t.Fatalf("UnpackResidualLoweredEvent = %+v, %v", lowered, err)
+	}
 
 	for _, test := range []struct {
 		signature string
@@ -151,6 +172,8 @@ func TestCaptureTheFlagBindings(t *testing.T) {
 		{"NothingToRecycle()", STCtfCarryNothingToRecycleErrorID()},
 		{"InvalidColdkey()", STCtfCarryInvalidColdkeyErrorID()},
 		{"RuntimeAccountingMismatch()", STCtfCarryRuntimeAccountingMismatchErrorID()},
+		{"SeedTooSmall()", STCtfCarrySeedTooSmallErrorID()},
+		{"ResidualMissing()", STCtfCarryResidualMissingErrorID()},
 	} {
 		if !bytes.Equal(test.id.Bytes()[:4], selector(test.signature)) {
 			t.Errorf("%s: error ID %x", test.signature, test.id.Bytes()[:4])
