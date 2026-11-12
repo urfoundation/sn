@@ -912,15 +912,17 @@ func TestV2CheckCtfDrawsEveryCommittedCensus(t *testing.T) {
 		output, err := s.c.run(s.argv())
 		terms := "  finalized root:    none; the pending root is the pool's first\n" +
 			"  capture the flag:  operator 1, from epoch 9 by the signed amendment entry, carry contract " + common.HexToAddress(v2CtfTestCarry).Hex() + "\n" +
-			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey) + v2CtfTestHeads(0)
+			fmt.Sprintf("                     carry coldkey 0x%x\n", v2CtfTestCarryColdkey)
 		if drawn {
-			want := terms + fmt.Sprintf("  epoch 8:           census %v at block %d, 10 candidates; drand round 1000, 8 winners\n", eight.Hash, block8)
+			want := terms + v2CtfTestHeads(0) + fmt.Sprintf("  epoch 8:           census %v at block %d, 10 candidates; drand round 1000, 8 winners\n", eight.Hash, block8)
 			if err != nil || !strings.Contains(output, want) || !strings.HasSuffix(output, "  audit:             approve\n") {
 				t.Fatalf("drawn: %v\n%s\nwant:\n%s", err, output, want)
 			}
 		} else {
 			refusal := fmt.Sprintf("census check: ctf: header census is not the committed census: epoch 8, committed %v", eight.Hash)
-			if err == nil || err.Error() != "the capture the flag audit refuses pending root seq 1 ("+refusal+")" || !strings.HasSuffix(output, terms+"  audit:             refuse ("+refusal+")\n") {
+			// The audit refused before any draw, so it read no head bindings.
+			if err == nil || err.Error() != "the capture the flag audit refuses pending root seq 1 ("+refusal+")" || !strings.HasSuffix(output, terms+"  audit:             refuse ("+refusal+")\n") ||
+				s.c.calls["eth_call:v1Coordinator"] != 0 || len(s.c.fleetSpans) != 0 {
 				t.Fatalf("undrawn: %v\n%s", err, output)
 			}
 		}

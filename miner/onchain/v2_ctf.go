@@ -118,8 +118,7 @@ type v2CtfAudit struct {
 	// epoch, and carry its carry contract.
 	entry *amendment.Entry
 	carry common.Address
-	// heads are the drawn epochs' head bindings, nil when no covered epoch's
-	// census was committed.
+	// heads reads the head bindings of the epochs the audit draws.
 	heads *v2CtfHeads
 }
 
@@ -187,12 +186,8 @@ func readV2Ctf(ctx context.Context, r *v2Reader, sources v2CtfSources, chainID *
 	}
 	// Each draw leaves out the head-bound candidates the validator's leaves
 	// out (v2_ctf_heads.go).
-	if audit.heads, err = readV2CtfHeads(ctx, r, coordinator, in.Epochs); err != nil {
-		return nil, err
-	}
-	if audit.heads != nil {
-		in.Heads = audit.heads
-	}
+	audit.heads = newV2CtfHeads(r, coordinator)
+	in.Heads = audit.heads
 	return audit, nil
 }
 
@@ -330,14 +325,18 @@ func v2CtfAccounts(data []byte) ([]ledger.Ref, error) {
 	return header.Accounts, nil
 }
 
-// reportV2Ctf prints the terms of the audit: the entry in force, the carry
-// contract and, for a draw, where the head bindings came from.
+// reportV2Ctf prints the terms of the audit: the entry in force and the
+// carry contract.
 func reportV2Ctf(audit *v2CtfAudit) {
 	entry := audit.entry
 	fmt.Printf("  capture the flag:  operator %d, from epoch %d by the signed amendment entry, carry contract %s\n", entry.NoID, entry.FromEpoch, audit.carry.Hex())
 	fmt.Printf("                     carry coldkey 0x%x\n", audit.in.CarryColdkey)
-	if h := audit.heads; h != nil {
-		fmt.Printf("  head bindings:     %d FleetBound events of v1 coordinator %s from block %d\n", h.events, h.coordinator.Hex(), h.from)
+}
+
+// reportV2CtfHeads prints where an audit that drew read its head bindings.
+func reportV2CtfHeads(h *v2CtfHeads) {
+	if h != nil && h.scanned {
+		fmt.Printf("  head bindings:     %d FleetBound events of v1 coordinator %s from block %d\n", len(h.bindings), h.coordinator.Hex(), h.from)
 	}
 }
 
@@ -394,6 +393,7 @@ func v2CheckCtf(ctx context.Context, r *v2Reader, objects ledger.Fetcher, source
 		reportV2Ctf(audit)
 		audit.in.Previous, audit.in.Fetcher = previous, objects
 		res, unavailable = ctf.Verify(ctx, *audit.in)
+		reportV2CtfHeads(audit.heads)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, nil, ctxErr

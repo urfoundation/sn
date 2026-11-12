@@ -25,6 +25,7 @@ package onchain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math/big"
@@ -34,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/urfoundation/sn/ctf"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -58,135 +58,144 @@ type v2FleetBinding struct {
 	validFrom, validTo uint64
 }
 
-// v2CtfHeads holds the head bindings of the drawn epochs: for each epoch
-// with a committed census, the clients whose FleetBound validity covers it,
-// mapped to whether bindingAt was active at either of its boundaries. It is
-// the audit's ledger.HeadOracle.
+// v2CtfHeads is the audit's ledger.HeadOracle, over the v1 coordinator of
+// STSettlement2 at settlement, read at the reader's block. ctf.Verify asks it
+// for each epoch it draws, as it asks the validator's: the first ask reads
+// the coordinator, checks that the RPC serves its first block's state and
+// scans its FleetBound events; each epoch's bindings are then read once. An
+// audit that draws nothing reads nothing.
 type v2CtfHeads struct {
+	r          *v2Reader
+	settlement common.Address
+	// scanned is set once the scan read coordinator, its first block from,
+	// where the scan began, and the FleetBound events through the finalized
+	// block.
+	scanned     bool
 	coordinator common.Address
-	// from is the coordinator's first block, where the scan began, and events
-	// the FleetBound events it read through the finalized block.
-	from   uint64
-	events int
-	bound  map[uint64]map[[16]byte]bool
+	from        uint64
+	bindings    []v2FleetBinding
+	// bound holds each drawn epoch's clients whose FleetBound validity covers
+	// it, mapped to whether bindingAt was active at either of its boundaries.
+	bound map[uint64]map[[16]byte]bool
+}
+
+func newV2CtfHeads(r *v2Reader, settlement common.Address) *v2CtfHeads {
+	return &v2CtfHeads{r: r, settlement: settlement, bound: map[uint64]map[[16]byte]bool{}}
 }
 
 func (h *v2CtfHeads) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
+	if !h.scanned {
+		if err := h.scan(ctx); err != nil {
+			return nil, err
+		}
+	}
 	bound, ok := h.bound[epoch]
 	if !ok {
-		return nil, fmt.Errorf("no head bindings were read for epoch %d", epoch)
+		var err error
+		if bound, err = h.read(ctx, epoch); err != nil {
+			return nil, err
+		}
+		h.bound[epoch] = bound
 	}
 	return maps.Clone(bound), nil
 }
 
-// readV2CtfHeads reads, at the reader's block, the head bindings of each
-// covered epoch whose census was committed, from the v1 coordinator of
-// STSettlement2 at settlement. It reads nothing when no census was
-// committed: there is no draw.
-func readV2CtfHeads(ctx context.Context, r *v2Reader, settlement common.Address, epochs map[uint64]ctf.EpochFacts) (*v2CtfHeads, error) {
-	var drawn []uint64
-	for k, facts := range epochs {
-		if facts.Census != nil {
-			drawn = append(drawn, k)
-		}
+// scan reads the v1 coordinator, checks that the RPC serves the state of its
+// first block, and reads its FleetBound events from there through the
+// reader's block.
+func (h *v2CtfHeads) scan(ctx context.Context) error {
+	r := h.r
+	ret, err := ethCallAt(ctx, r.client, h.settlement, v2Settlement.PackV1Coordinator(), r.block)
+	var coordinator common.Address
+	if err == nil {
+		coordinator, err = v2Settlement.UnpackV1Coordinator(ret)
 	}
-	if len(drawn) == 0 {
-		return nil, nil
-	}
-	slices.Sort(drawn)
-	head := r.block.Uint64()
-	ret, err := ethCallAt(ctx, r.client, settlement, v2Settlement.PackV1Coordinator(), r.block)
 	if err != nil {
-		return nil, fmt.Errorf("coordinator %s v1Coordinator(): %w", settlement.Hex(), err)
+		return fmt.Errorf("coordinator %s v1Coordinator(): %w", h.settlement.Hex(), err)
 	}
-	coordinator, err := v2Settlement.UnpackV1Coordinator(ret)
+	from, err := h.boundary(ctx, coordinator, "epochStartBlock", stCoordinator.PackEpochStartBlock, stCoordinator.UnpackEpochStartBlock, 0)
 	if err != nil {
-		return nil, fmt.Errorf("coordinator %s v1Coordinator(): %w", settlement.Hex(), err)
+		return err
 	}
-	h := &v2CtfHeads{coordinator: coordinator, bound: map[uint64]map[[16]byte]bool{}}
-	boundary := func(name string, pack func(*big.Int) []byte, unpack func([]byte) (*big.Int, error), epoch uint64) (uint64, error) {
-		ret, err := ethCallAt(ctx, r.client, coordinator, pack(new(big.Int).SetUint64(epoch)), r.block)
-		var block *big.Int
-		if err == nil {
-			block, err = unpack(ret)
-		}
-		if err == nil && !block.IsUint64() {
-			err = fmt.Errorf("block %s is not a 64-bit integer", block)
-		}
-		if err != nil {
-			return 0, fmt.Errorf("v1 coordinator %s %s(%d): %w", coordinator.Hex(), name, epoch, err)
-		}
-		return block.Uint64(), nil
+	if head := r.block.Uint64(); from > head {
+		return fmt.Errorf("v1 coordinator %s starts at block %d, after the finalized block %d", coordinator.Hex(), from, head)
 	}
-	start := func(epoch uint64) (uint64, error) {
-		return boundary("epochStartBlock", stCoordinator.PackEpochStartBlock, stCoordinator.UnpackEpochStartBlock, epoch)
-	}
-	end := func(epoch uint64) (uint64, error) {
-		return boundary("epochEndBlock", stCoordinator.PackEpochEndBlock, stCoordinator.UnpackEpochEndBlock, epoch)
-	}
-	if h.from, err = start(0); err != nil {
-		return nil, err
-	}
-	if h.from > head {
-		return nil, fmt.Errorf("v1 coordinator %s starts at block %d, after the finalized block %d", coordinator.Hex(), h.from, head)
-	}
-	from := new(big.Int).SetUint64(h.from)
 	code, err := retryOnchainRead(ctx, func(ctx context.Context) ([]byte, error) {
 		cctx, cancel := context.WithTimeout(ctx, callTimeout)
 		defer cancel()
-		return r.client.CodeAt(cctx, coordinator, from)
+		return r.client.CodeAt(cctx, coordinator, new(big.Int).SetUint64(from))
 	})
 	if err == nil && len(code) == 0 {
-		err = fmt.Errorf("the RPC answered no code")
+		err = errors.New("the RPC answered no code")
 	}
 	if err != nil {
-		return nil, fmt.Errorf("the head bindings need an archive RPC: v1 coordinator %s's code at its first block %d: %w", coordinator.Hex(), h.from, err)
+		return fmt.Errorf("the head bindings need an archive RPC: v1 coordinator %s's code at its first block %d: %w", coordinator.Hex(), from, err)
 	}
-	bindings, err := readV2FleetBindings(ctx, r, coordinator, h.from, head)
+	bindings, err := readV2FleetBindings(ctx, r, coordinator, from, r.block.Uint64())
+	if err != nil {
+		return err
+	}
+	h.scanned, h.coordinator, h.from, h.bindings = true, coordinator, from, bindings
+	return nil
+}
+
+// read reads epoch's head bindings: for each client with a FleetBound event
+// whose validity covers it, in first-bound order, bindingAt(client, epoch) at
+// the epoch's start and end blocks.
+func (h *v2CtfHeads) read(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
+	var candidates [][16]byte
+	for _, binding := range h.bindings {
+		if binding.validFrom <= epoch && epoch <= binding.validTo && !slices.Contains(candidates, binding.client) {
+			candidates = append(candidates, binding.client)
+		}
+	}
+	bound := make(map[[16]byte]bool, len(candidates))
+	if len(candidates) == 0 {
+		return bound, nil
+	}
+	first, err := h.boundary(ctx, h.coordinator, "epochStartBlock", stCoordinator.PackEpochStartBlock, stCoordinator.UnpackEpochStartBlock, epoch)
 	if err != nil {
 		return nil, err
 	}
-	h.events = len(bindings)
-	for _, k := range drawn {
-		var candidates [][16]byte
-		for _, binding := range bindings {
-			if binding.validFrom <= k && k <= binding.validTo && !slices.Contains(candidates, binding.client) {
-				candidates = append(candidates, binding.client)
+	last, err := h.boundary(ctx, h.coordinator, "epochEndBlock", stCoordinator.PackEpochEndBlock, stCoordinator.UnpackEpochEndBlock, epoch)
+	if err != nil {
+		return nil, err
+	}
+	if head := h.r.block.Uint64(); first >= last || last > head {
+		return nil, fmt.Errorf("epoch %d boundaries [%d,%d] are not closed at the finalized block %d", epoch, first, last, head)
+	}
+	k := new(big.Int).SetUint64(epoch)
+	for _, block := range []uint64{first, last} {
+		at := new(big.Int).SetUint64(block)
+		for _, client := range candidates {
+			ret, err := ethCallAt(ctx, h.r.client, h.coordinator, stCoordinator.PackBindingAt(client, k), at)
+			var binding stabi.BindingAtOutput
+			if err == nil {
+				binding, err = stCoordinator.UnpackBindingAt(ret)
 			}
-		}
-		bound := make(map[[16]byte]bool, len(candidates))
-		h.bound[k] = bound
-		if len(candidates) == 0 {
-			continue
-		}
-		first, err := start(k)
-		if err != nil {
-			return nil, err
-		}
-		last, err := end(k)
-		if err != nil {
-			return nil, err
-		}
-		if first >= last || last > head {
-			return nil, fmt.Errorf("epoch %d boundaries [%d,%d] are not closed at the finalized block %d", k, first, last, head)
-		}
-		epoch := new(big.Int).SetUint64(k)
-		for _, block := range []uint64{first, last} {
-			at := new(big.Int).SetUint64(block)
-			for _, client := range candidates {
-				ret, err := ethCallAt(ctx, r.client, coordinator, stCoordinator.PackBindingAt(client, epoch), at)
-				var binding stabi.BindingAtOutput
-				if err == nil {
-					binding, err = stCoordinator.UnpackBindingAt(ret)
-				}
-				if err != nil {
-					return nil, fmt.Errorf("v1 coordinator %s bindingAt(0x%x,%d) at block %d: %w", coordinator.Hex(), client, k, block, err)
-				}
-				bound[client] = bound[client] || binding.Active
+			if err != nil {
+				return nil, fmt.Errorf("v1 coordinator %s bindingAt(0x%x,%d) at block %d: %w", h.coordinator.Hex(), client, epoch, block, err)
 			}
+			bound[client] = bound[client] || binding.Active
 		}
 	}
-	return h, nil
+	return bound, nil
+}
+
+// boundary reads one of coordinator's epoch boundaries at the reader's block.
+func (h *v2CtfHeads) boundary(ctx context.Context, coordinator common.Address, name string, pack func(*big.Int) []byte, unpack func([]byte) (*big.Int, error), epoch uint64) (uint64, error) {
+	ret, err := ethCallAt(ctx, h.r.client, coordinator, pack(new(big.Int).SetUint64(epoch)), h.r.block)
+	var block *big.Int
+	if err == nil {
+		block, err = unpack(ret)
+	}
+	if err == nil && !block.IsUint64() {
+		err = fmt.Errorf("block %s is not a 64-bit integer", block)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("v1 coordinator %s %s(%d): %w", coordinator.Hex(), name, epoch, err)
+	}
+	return block.Uint64(), nil
 }
 
 // readV2FleetBindings reads the coordinator's FleetBound events over
