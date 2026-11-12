@@ -104,7 +104,7 @@ var e2eRuntimeGas = map[string]uint64{
 	// Not measured by the R battery: the runtime's Ed25519 and sr25519
 	// checks charge a 6,000 base, and its address mapping charges nothing of
 	// its own.
-	"addressMapping": 100, "verify": 6_000,
+	"addressMapping": 0, "verify": 6_000,
 }
 
 // Runtime 475 charges a dispatch's actual weight but admits it only if the gas
@@ -358,30 +358,48 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 	case "addressMapping":
 		return method.Outputs.Pack(ss58.EvmMirrorPubkey(args[0].(common.Address)))
 	case "verify":
-		// The runtime checks the 32-byte message as signed, Ed25519 at 0x402
-		// and sr25519 at 0x403 in the substrate signing context; a key or
-		// signature it cannot decode fails the call.
+		// The runtime checks the 32-byte message as signed: Ed25519 at 0x402,
+		// whose key must decode as a curve point or the call fails, and
+		// sr25519 at 0x403 in the substrate signing context, where a key or
+		// signature that does not decode is only an invalid signature.
 		message, key, r, s := args[0].([32]byte), args[1].([32]byte), args[2].([32]byte), args[3].([32]byte)
 		signature := append(r[:], s[:]...)
 		if self.address == e2eEd25519 {
+			if !e2eEdwardsPoint(key) {
+				return nil, errors.New("Public key recover failed")
+			}
 			return method.Outputs.Pack(ed25519.Verify(key[:], message[:], signature))
 		}
 		var public schnorrkel.PublicKey
 		var decoded schnorrkel.Signature
-		if err := errors.Join(public.Decode(key), decoded.Decode([64]byte(signature))); err != nil {
-			return nil, err
+		if errors.Join(public.Decode(key), decoded.Decode([64]byte(signature))) != nil {
+			return method.Outputs.Pack(false)
 		}
 		valid, err := public.Verify(&decoded, schnorrkel.NewSigningContext([]byte("substrate"), message[:]))
-		if err != nil {
-			return nil, err
-		}
-		return method.Outputs.Pack(valid)
+		return method.Outputs.Pack(valid && err == nil)
 	default: // getAlphaPrice
 		if err := netuid(args[0]); err != nil {
 			return nil, err
 		}
 		return method.Outputs.Pack(rt.price())
 	}
+}
+
+// e2eEdwardsPoint reports whether key decodes as an Ed25519 curve point, as
+// the runtime's VerifyingKey::try_from requires: its y, the sign bit cleared
+// and reduced mod p = 2^255 − 19, has an x with x² = (y² − 1) / (d·y² + 1).
+func e2eEdwardsPoint(key [32]byte) bool {
+	p := new(big.Int).Sub(new(big.Int).Lsh(common.Big1, 255), big.NewInt(19))
+	encoded := key
+	encoded[31] &= 0x7f
+	slices.Reverse(encoded[:])
+	y := new(big.Int).Mod(new(big.Int).SetBytes(encoded[:]), p)
+	d := new(big.Int).Mul(big.NewInt(-121665), new(big.Int).ModInverse(big.NewInt(121666), p))
+	y2 := new(big.Int).Mul(y, y)
+	u := new(big.Int).Mod(new(big.Int).Sub(y2, common.Big1), p)
+	v := new(big.Int).Mod(new(big.Int).Add(new(big.Int).Mul(d, y2), common.Big1), p)
+	x2 := new(big.Int).Mod(new(big.Int).Mul(u, new(big.Int).ModInverse(v, p)), p)
+	return x2.Sign() == 0 || new(big.Int).Exp(x2, new(big.Int).Rsh(new(big.Int).Sub(p, common.Big1), 1), p).Cmp(common.Big1) == 0
 }
 
 // e2eBlock is a block with a state change; virtual blocks between two of
