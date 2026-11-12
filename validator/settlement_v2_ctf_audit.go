@@ -37,8 +37,8 @@
 // (ledger_audit_ctf_census_bound), but judges the root as built: a committed
 // census is write-once, so refusing for it would refuse every later root of the
 // pool, and anyone who can make a client look bound could stall the pool. The
-// watcher, which reads no bindings, refuses such a root wherever the bound
-// client changes its draw.
+// watcher, snclaim v2 check, reads the same bindings from the chain
+// (miner/onchain/v2_ctf_heads.go) and reaches the same draw.
 package validator
 
 import (
@@ -118,11 +118,7 @@ func (self *settlementV2Audit) verifyCtf(ctx context.Context, pool settlementV2A
 	if err != nil {
 		return nil, fmt.Errorf("capture the flag audit of pool %d seq %d: %w", state.noID, pending.Seq, err)
 	}
-	in.Pending, in.FundedThrough = settlementV2PendingRoot(pending), state.funded
-	if previous := state.previous; previous != nil {
-		root := settlementV2LedgerRoot(previous.Epoch, previous.Root, previous.Total, previous.LeafCount, previous.LedgerHash)
-		in.Previous = &root
-	}
+	settlementV2CtfPoolInput(in, state)
 	in.Fetcher, in.Custody, in.Heads, in.MaxFetchBytes = pool.objects, self.custody, self.reader.headOracle(state), self.remainingBytes(record)
 	res, err := ctf.Verify(ctx, *in)
 	if err != nil {
@@ -159,11 +155,60 @@ func newSettlementV2CtfChain(cfg *ReleaseConfig, chain *ChainClient, addresses S
 	if err != nil {
 		return nil, err
 	}
+	return newSettlementV2CtfReader(chain, addresses, cfg.ChainID, cfg.Netuid, amendments, drand), nil
+}
+
+// newSettlementV2CtfReader reads the capture the flag facts of the
+// deployment at addresses on chainID's sn netuid, with its amendments and
+// the drand relay drand, DefaultDrandURL when empty.
+func newSettlementV2CtfReader(chain *ChainClient, addresses SettlementV2Addresses, chainID uint64, netuid uint16, amendments *releaseAmendments, drand string) *settlementV2CtfChain {
 	if drand == "" {
 		drand = DefaultDrandURL
 	}
-	return &settlementV2CtfChain{chain: chain, settlement: addresses.Settlement, vault: addresses.Vault, chainID: cfg.ChainID, netuid: cfg.Netuid, amendments: amendments, drand: []string{drand},
-		client: &http.Client{Timeout: settlementV2DrandTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &settlementV2CtfChain{chain: chain, settlement: addresses.Settlement, vault: addresses.Vault, chainID: chainID, netuid: netuid, amendments: amendments, drand: []string{drand},
+		client: &http.Client{Timeout: settlementV2DrandTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+}
+
+// settlementV2CtfPoolInput sets in's pending root, the covered epochs'
+// funding and the latest finalized root from the pool's state.
+func settlementV2CtfPoolInput(in *ctf.VerifyInput, state *settlementV2PoolState) {
+	in.Pending, in.FundedThrough = settlementV2PendingRoot(&state.pending), state.funded
+	if previous := state.previous; previous != nil {
+		root := settlementV2LedgerRoot(previous.Epoch, previous.Root, previous.Total, previous.LeafCount, previous.LedgerHash)
+		in.Previous = &root
+	}
+}
+
+// SettlementV2CtfAuditInput reads, at chain's finalized block, what the
+// settlement v2 audit gives ctf.Verify for operator noID's capture the flag
+// pool, through the audit's own readers: the pool's vault2 state at
+// addresses.Vault; the entry in force in file, which must be verified, and
+// its carry contract; each covered epoch's census commitment, block time,
+// drand pulse from the relay drand and returned carry; and the head oracle
+// over the v1 coordinator chain was dialed for, whose FleetBound events it
+// scans from deployBlock. The caller sets Fetcher, Custody and
+// MaxFetchBytes. It decides and sends nothing: it serves the end-to-end
+// tests and tools that check a CTF root as the validator does.
+func SettlementV2CtfAuditInput(ctx context.Context, chain *ChainClient, addresses SettlementV2Addresses, chainID uint64, netuid uint16, deployBlock uint64, file *amendment.File, drand string, noID uint64) (*ctf.VerifyInput, error) {
+	poolID, ok := amendment.CtfPoolID(noID)
+	if !ok || file == nil || addresses.Settlement == (common.Address{}) || addresses.Vault == (common.Address{}) {
+		return nil, errors.New("a capture the flag audit input needs an operator from 1 to 2^32 - 1, a verified amendments file and both settlement v2 addresses")
+	}
+	reader := &settlementV2AuditChain{chain: chain, vault: addresses.Vault, deployBlock: deployBlock}
+	state, err := reader.poolState(ctx, poolID)
+	if err != nil {
+		return nil, err
+	}
+	if !state.registered || state.pending.Seq == 0 {
+		return nil, fmt.Errorf("vault2 pool %d has no pending root at block %d", poolID, state.block)
+	}
+	in, err := newSettlementV2CtfReader(chain, addresses, chainID, netuid, &releaseAmendments{file: file}, drand).ctfInput(ctx, state, noID)
+	if err != nil {
+		return nil, err
+	}
+	settlementV2CtfPoolInput(in, state)
+	in.Heads = reader.headOracle(state)
+	return in, nil
 }
 
 func (self *settlementV2CtfChain) ctfInput(ctx context.Context, state *settlementV2PoolState, noID uint64) (*ctf.VerifyInput, error) {

@@ -2299,9 +2299,11 @@ epoch whose carry is back.
 - **`snclaim` and the claim daemon** (§10). Both already treat each
   `(vault, noId, index)` as its own account, so they claim CTF accounts
   unchanged. `snclaim v2 check --no_id 4294967297` runs the CTF audit
-  through the same `ctf.Verify`, but without fleet bindings, so a census
-  that lists a fleet-bound client reproduces only for the validator
-  (CAPTURETHEFLAG.md §8).
+  through the same `ctf.Verify`, with the fleet bindings the validator
+  reads (the v1 coordinator's `FleetBound` events and archive `bindingAt`
+  at each drawn epoch's boundaries), so a census that lists a fleet-bound
+  client draws alike for both (CAPTURETHEFLAG.md §8). It needs an archive
+  RPC.
 - **SDK and apps** (§11). `SnLedgerAccount` gains `Kind` and `Label`. The SDK
   asks with `partial=true`, and claims two or more claimable accounts in one
   `STClaimBatcher` transaction (§10.2). The apps label CTF accounts "Capture
@@ -2358,6 +2360,7 @@ As §15 is for phase A, this is the acceptance list for the CTF pool.
 | CC-1 to CC-21 | `evm/test/V2CtfCarry.t.sol` | The carry, on a mock with runtime 486's staking-hotkey rules: what it reads at creation, its own coldkey, its seed, opt-outs and auto-stake destination; the recycle cycle and the cumulative carry account; claims made by others not repeated; only its own account, vault2's and the runtime's refusals reverting the whole recycle, the move checks and the reentrancy guard; at most four rao of rounding a cycle; donations; the epoch a return is recorded for; no other way out; registration collateral; the runtime's refusals of its own moves; a full griefing attempt on its list, before and after creation, which fails where it blocks a coldkey without a residual; coldkey swaps into it; root's sweep of the residual and `seed()`; a lowered residual; swap reservations; vault2's own list held full; a list past 256 entries |
 | Regression | `evm/test/V2SettlementCtfRegression.t.sol` | Phase A's S-1 to S-9 and the phase C and timelock suites (SC-1 to SC-17, TL-1 to TL-6) rerun unchanged with the proxy on `STSettlement2Ctf` |
 | UP-8 to UP-11 | `mainnet/evm_v2_ctf_upgrade_test.go` | `upgrade-settlement2 review` on the e2e chain: the whole operation to a stranger's execute; each refusal; each usage error; a failed execution leaving the operation ready |
+| E-8 | `mainnet/settlement_v2_e2e_ctf_test.go` | The whole cycle on the e2e chain: the folded timelock operation with its value; the carry created through the deterministic deployment proxy and named by the signed entry; a census listing a head-bound client, refused before its window, from anyone but the root signer and a second time, committed in it, and the next epoch's refused after its window; the root built by `ctf.Build` with quicknet's real pulse, the bound client left out; the validator's CTF audit, its input read by its own readers (`validator.SettlementV2CtfAuditInput`) and its head oracle agreeing with the builder's, approving through its sender, and refusing without the bindings; `snclaim v2 check` approving and naming the client; finalization, a winner's `snclaim v2 claim`, and the carry claimed and recycled for the next epoch, whose root returns it matured; conservation across both pools; and the whole cycle again with every stake move a rao short, the root still maturing within the walk's tolerance |
 | R-9 | `rehearsal/r9_ctf_test.go` | On the live runtime: the folded upgrade and `BLOCKHASH`, the census window, the carry's creation with its seed over a list third parties filled first, the carry cycle, and the griefing tried again: third-party entries and a coldkey swap refused, root's sweep answered by `seed()`, a swap reservation (`scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)"). Not yet run; it gates the schedule and the carry's creation |
 | ctf | `ctf/*_test.go` | The package: the countries and slot order, the census, the draw, the walk, CAPTURETHEFLAG.md §6's tables, Build, and Verify against byte mutations, with a 100,000-candidate fixture |
-| snclaim | `miner/onchain/v2_ctf_test.go`, `miner/claim_v2_ctf_test.go` | `v2 check` on a CTF pool, and CTF accounts claimed as their own `(vault, noId, index)` units |
+| snclaim | `miner/onchain/v2_ctf_test.go`, `miner/claim_v2_ctf_test.go` | `v2 check` on a CTF pool, with the head bindings read as the validator reads them (a bound client left out at either boundary; an inactive, missing or non-covering binding drawn; every read failing closed, a node without archive state included), and CTF accounts claimed as their own `(vault, noId, index)` units |

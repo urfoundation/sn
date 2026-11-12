@@ -184,12 +184,16 @@ Beside vault2 and the operator API, the run reads:
   source kept current;
 - a drand relay at `--drand_url`, by default `https://api.drand.sh`, for the
   pulse of each drawn epoch. Any relay will do, since each pulse must verify
-  against quicknet's key.
+  against quicknet's key;
+- for each drawn epoch, the head bindings its draw leaves out, where the
+  validator reads them: the v1 coordinator's `FleetBound` events since its
+  first block, and `bindingAt` at the epoch's start and end blocks. Those are
+  past blocks' state, so `<O21-evm-rpc-url>` must be an archive node.
 
 The audit fails closed. When it cannot run, the run still challenges a
 provable fault and demands an unverifiable root, then fails. That happens when
-the file or the relay cannot be read, or when capture the flag is not in
-force.
+the file, the relay or the head bindings cannot be read (a node without
+archive state cannot serve them), or when capture the flag is not in force.
 
 A refused audit with nothing to challenge or demand also fails the run, unlike
 the pool watcher's. A wrong draw or wrong amounts never fault an account, so

@@ -96,7 +96,10 @@ Options:
                        or do not reproduce it, demand the paths of the §9.3
                        demand set, paying demandFeeWei each.
     --rpc=<url>        EVM JSON-RPC endpoint; repeatable, tried in order
-                       until one answers (failover).
+                       until one answers (failover). v2 check of a capture
+                       the flag pool reads the head bindings its draws leave
+                       out at past blocks, as the validator does: give it an
+                       archive node.
     --key_file=<path>  File holding the hex-encoded 32-byte secp256k1 EVM
                        private key that signs the transaction.
     --chain_id=<id>    Expected chain id; errors if the RPC reports a

@@ -767,10 +767,13 @@ countries, units and address dedupe, the wallets, and the declared networks. A f
 and rebuilt only on the operator's explicit command.
 
 **What anyone can check.** `snclaim v2 check --no_id 4294967297` runs the same audit from the published
-objects, and UR's watcher runs it beside the provider pool's. Without an archive of fleet bindings it leaves
-out no candidate, so a census that lists a fleet‑bound client reproduces only for the validator. The CTF
-statement (§9.1) publishes the per‑country counts and amounts, so concentration and jumps between epochs
-show.
+objects, and UR's watcher runs it beside the provider pool's. It reads the fleet bindings where the validator
+reads them, the v1 coordinator's `FleetBound` events and `bindingAt` at each drawn epoch's boundaries, so a
+census that lists a fleet‑bound client draws alike for both: the client is left out, and the check names it.
+Those reads are of past blocks' state, made once the audit draws an epoch, so the check needs an archive RPC,
+as the validator does. On a node without one it says so and does not approve; it still challenges a provable
+fault or demands an unverifiable root from the published objects, then fails. The CTF statement (§9.1)
+publishes the per‑country counts and amounts, so concentration and jumps between epochs show.
 
 ## 9. External inspection
 
@@ -904,7 +907,10 @@ today is on the server and in the presentation:
 
 - **Server endpoint.** Today the server records and serves accounts for its own `NoId` only. It records the
   CTF pool's accounts too and serves both pools, each built independently, with `kind`, `label` and
-  `unavailable_pools` (§9.1).
+  `unavailable_pools` (§9.1). The route and the claim relay read the CTF pool only while capture the flag is
+  on: st.yml's `ctf` block runs it and ctf.yml enables its `api` block. With either off they read no CTF pool,
+  so no fault of one reaches a client, and its balances are neither shown nor claimed by the relay until it
+  is on again.
 - **Claim relay** (`server/controller/sn_claim_relay.go`). Today it covers one pool and keys its candidates by
   coldkey.
   - Its units become (coldkey, pool).
@@ -1055,6 +1061,9 @@ carry's, hotkey accounts and never swaps them (§4.6).
    the draw, the build and the commit.
 9. **Before the first CTF claims, about 12‑07:** the multi‑pool relay, then the SDK and app releases with the
    labels. Until then old apps show a CTF account as "Pool 4294967297" and claim it like any pool (§10).
+   ctf.yml's `api` block has to be enabled by then, beside the live driver: the ledger route and the relay
+   read the CTF pool only while both are on (§10). Enabled with the driver at `end(8)`, it also shows the
+   pending CTF balances from the first root.
 
 *What would move the start to epoch 9:*
 

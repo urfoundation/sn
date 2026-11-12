@@ -1,7 +1,9 @@
 # The capture the flag watcher (CAPTURETHEFLAG.md §8) beside the settlement v2
 # watcher, on the same host and with the same key. One run audits the pending
 # root of UR's capture the flag pool, vault2 pool 4294967297 (2^32 + 1),
-# challenges a provable fault and demands an unverifiable root. Enable
+# challenges a provable fault and demands an unverifiable root. Its draws
+# leave out head-bound clients, read at past blocks as the validator reads
+# them, so <O21-evm-rpc-url> must be an archive node. Enable
 # settlement-v2-ctf-watcher.example.timer once the pool is registered and
 # https://ur.xyz/amendments.yml serves the signed capture the flag entry.
 # Replace each <...> placeholder with the input SETTLEMENT-V2-EXAMPLES.md names.
