@@ -112,7 +112,11 @@
 // zero for the pool's first root): that root's walk gave the carry account
 // everything it did not pay less what was still owed, so the carry account's
 // cumulative less everything returned and written off is exactly O_p, the
-// design's X. For each covered epoch k, in order:
+// design's X. The carry contract's residual, the stake of its own it keeps on
+// vault2's escrow hotkey so that its claims always land (§4.6), comes from
+// outside the pool and is never recycled: it is in no account and no
+// recycledFor, so it changes neither X nor any return. For each covered epoch
+// k, in order:
 //
 //	f_k      = fundedThrough[k] − fundedThrough[k−1]   (the previous total for p)
 //	raw      = recycledFor[k] + the returns of uncaptured epochs before it;

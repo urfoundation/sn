@@ -449,8 +449,8 @@ recycle(rootIndex, account, proof)   anyone
 seed()                               anyone, payable
     addStake(escrowHotkey, all its TAO, at least seedMinimum());  residual = kept + the gain
 seedMinimum() = max(0.1 TAO, 10 × the runtime's nominator minimum)
-no owner, no upgrade, no other entry point; beyond its residual it holds stake on the escrow and pool hotkeys only
-until the next recycle
+no owner, no upgrade, no entry point but recycle and seed; beyond its residual it holds stake on the escrow and
+pool hotkeys only until the next recycle
 ```
 
 vault2's claims are anyone's and always pay the leaf's coldkey, so a third party's claim of the carry account
