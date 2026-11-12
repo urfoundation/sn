@@ -148,12 +148,12 @@ func depositUsageReadShare(ctx context.Context, limit time.Duration, operators i
 type depositUsageVerified struct {
 	chunks []string
 	rows   DepositUsageRows
-	// extenders is the committed extender component as its statement must carry
-	// it (usage.CommittedExtenders), nil for an epoch without one.
+	// The committed extender component as its statement must carry it
+	// (usage.CommittedExtenders), nil for an epoch without one.
 	extenders *usage.Extenders
 }
 
-// clone copies a verified value, so a memo entry shares nothing with its readers.
+// Copies a verified value, so a memo entry shares nothing with its readers.
 func (self depositUsageVerified) clone() depositUsageVerified {
 	self.chunks = slices.Clone(self.chunks)
 	if self.extenders != nil {
@@ -468,16 +468,17 @@ func checkDepositUsageChunk(length, index, count int) error {
 	return checkDepositUsageChunkOf(length, ledger.ProviderRowBytes, index, count)
 }
 
-// depositUsageFullCensusChunkBytes is every census chunk but a list's last.
+// Every census chunk but a list's last.
 const depositUsageFullCensusChunkBytes = ledger.ChunkRows * ledger.CensusRowBytes
 
-// depositUsageCensusChunksAhead is depositUsageChunksAhead for a census chunk list.
+// The fewest bytes census chunks index to count-1 of a valid list hold, as
+// depositUsageChunksAhead counts a provider chunk list.
 func depositUsageCensusChunksAhead(index, count int) uint64 {
 	return uint64(count-1-index)*depositUsageFullCensusChunkBytes + ledger.CensusRowBytes
 }
 
-// checkDepositUsageChunkOf applies the list shape a verifier checks to chunk index
-// of count, of rows rowBytes long: whole rows, full chunks but a non-empty last.
+// Applies the list shape a verifier checks to chunk index of count, of rows
+// rowBytes long: whole rows, full chunks but a non-empty last.
 func checkDepositUsageChunkOf(length, rowBytes, index, count int) error {
 	full := ledger.ChunkRows * rowBytes
 	if length%rowBytes != 0 || length > full {
@@ -632,14 +633,14 @@ func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectat
 	return verified, nil, nil
 }
 
-// readDepositUsageExtenders reads and verifies a covered epoch's extender component
-// (WHITEPAPER.md §8.6.4) as its statement must carry it, after its provider rows:
-// the census chunks, their shape and the census rules (ledger.CheckCensusRows), then
-// the share-row chunks, their shape and the rules provider rows follow. The share
-// rows must sum to Z' = min(Z, W_k) with eligible as W_k, and to 0 with no eligible
-// extender: the cap the ledger's split applies. Whether they are exactly the split
-// is check 11 of the settlement v2 audit. A verdict is the operator's; an error is
-// the validator's own failure.
+// Reads and verifies a covered epoch's extender component (WHITEPAPER.md
+// §8.6.4) as its statement must carry it, after its provider rows: the census
+// chunks, their shape and the census rules (ledger.CheckCensusRows), then the
+// share-row chunks, their shape and the rules provider rows follow. The share
+// rows must sum to Z' = min(Z, W_k) with eligible as W_k, and to 0 with no
+// eligible extender: the cap the ledger's split applies. Whether they are
+// exactly the split is check 11 of the settlement v2 audit. A verdict is the
+// operator's; an error is the validator's own failure.
 func readDepositUsageExtenders(ctx context.Context, covered *ledger.HeaderEpoch, eligible uint64, objects depositUsageObjectRead, unavailable string) (*usage.Extenders, *depositUsageVerdict, error) {
 	invalid := func(cause error) *depositUsageVerdict {
 		return &depositUsageVerdict{status: DepositAuditInvalid, cause: cause}
@@ -776,16 +777,16 @@ type depositUsageEnvelope struct {
 	Signature    string          `json:"signature"`
 }
 
-// readDepositUsageStatements reads the operator's statements of one epoch under one
-// evidence kind, distinct by their bytes, in the order of its history. A nonempty
-// status is why there are none to choose from, with its cause.
-func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, epoch, noID uint64, kind, unavailable string) ([]*usage.Statement, string, error) {
-	runID := usage.RunID(noID, epoch)
+// Reads the operator's statements of one epoch under one evidence kind,
+// distinct by their bytes, in the order of its history. A nonempty status is
+// why there are none to choose from, with its cause.
+func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, epoch, noId uint64, kind, unavailable string) ([]*usage.Statement, string, error) {
+	runId := usage.RunID(noId, epoch)
 	endpoint := self.endpoint("/sn/evidence/history", url.Values{
 		"deployment_id": []string{self.deploymentID},
 		"netuid":        []string{fmt.Sprint(self.netuid)},
 		"kind":          []string{kind},
-		"run_id":        []string{runID},
+		"run_id":        []string{runId},
 		"limit":         []string{fmt.Sprint(maximumExactArtifactObjects + 1)},
 	})
 	value, err := self.get(ctx, endpoint, maximumUsageHistoryBytes)
@@ -808,7 +809,7 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 	if len(history.Objects) == 0 {
 		return nil, unavailable, errors.New("no usage statement is published")
 	}
-	suffix := fmt.Sprintf("/st/v1/evidence/history/%s/%d/%s/%s/", self.deploymentID, self.netuid, kind, runID)
+	suffix := fmt.Sprintf("/st/v1/evidence/history/%s/%d/%s/%s/", self.deploymentID, self.netuid, kind, runId)
 	seen := make(map[string]bool, len(history.Objects))
 	statements := make([]*usage.Statement, 0, len(history.Objects))
 	for _, object := range history.Objects {
@@ -824,7 +825,7 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 		if object.Size != int64(len(value)) {
 			return nil, DepositAuditInvalid, errors.New("usage statement size does not match its history")
 		}
-		statement, err := self.decodeDepositUsageEnvelope(value, contentHash, kind, runID)
+		statement, err := self.decodeDepositUsageEnvelope(value, contentHash, kind, runId)
 		if err != nil {
 			return nil, DepositAuditInvalid, err
 		}
@@ -840,15 +841,15 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 	return statements, "", nil
 }
 
-// decodeDepositUsageEnvelope reads a statement published under kind, which must be
-// the statement's own version: a version 1 statement under the version 2 kind, or
-// the reverse, is the operator's invalid evidence.
-func (self *HTTPArtifactReader) decodeDepositUsageEnvelope(value []byte, contentHash, kind, runID string) (*usage.Statement, error) {
+// Reads a statement published under kind, which must be the statement's own
+// version: a version 1 statement under the version 2 kind, or the reverse, is
+// the operator's invalid evidence.
+func (self *HTTPArtifactReader) decodeDepositUsageEnvelope(value []byte, contentHash, kind, runId string) (*usage.Statement, error) {
 	var envelope depositUsageEnvelope
 	if err := decodeAttemptStreamV2JSON(value, maximumUsageEnvelopeBytes, &envelope); err != nil {
 		return nil, fmt.Errorf("usage statement envelope: %w", err)
 	}
-	if envelope.Schema != releaseUsageEnvelopeSchema || envelope.DeploymentID != self.deploymentID || envelope.Netuid != self.netuid || envelope.Kind != kind || envelope.RunID != runID || !strings.EqualFold(envelope.ContentHash, contentHash) {
+	if envelope.Schema != releaseUsageEnvelopeSchema || envelope.DeploymentID != self.deploymentID || envelope.Netuid != self.netuid || envelope.Kind != kind || envelope.RunID != runId || !strings.EqualFold(envelope.ContentHash, contentHash) {
 		return nil, errors.New("usage statement envelope is outside the requested identity")
 	}
 	statement, err := usage.Decode(envelope.Payload)
@@ -1168,8 +1169,8 @@ func parseDepositUsageRootName(name string) (epoch uint64, ledgerHash [32]byte, 
 	return epoch, ledgerHash, true
 }
 
-// listed adds to keep a root's header and every chunk its header lists for epoch,
-// its extender component's census and share-row chunks included: all replay of an
+// Adds to keep a root's header and every chunk its header lists for epoch, its
+// extender component's census and share-row chunks included: all replay of an
 // audit of the root can read.
 func (self *depositUsageObjects) listed(ctx context.Context, epoch uint64, ledgerHash [32]byte, keep map[ledger.Ref]bool) error {
 	keep[ledger.Ref(ledgerHash)] = true

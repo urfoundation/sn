@@ -17,11 +17,11 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// extenderDeclarations runs check 11's first part: every covered epoch from
-// ExtendersFrom that is not declared unrecoverable carries an extender
-// component, and no other epoch carries one. It runs once the pending
-// accounts are read, as check 10 does, so a dispute over which epochs the
-// amendment covers is a refusal with the root reproduced, never a demand.
+// Runs check 11's first part: every covered epoch from ExtendersFrom that
+// is not declared unrecoverable carries an extender component, and no
+// other epoch carries one. It runs once the pending accounts are read, as
+// check 10 does, so a dispute over which epochs the amendment covers is a
+// refusal with the root reproduced, never a demand.
 func (v *verifier) extenderDeclarations(h *Header) error {
 	if v.in.ExtendersUnchecked {
 		return nil
@@ -40,10 +40,10 @@ func (v *verifier) extenderDeclarations(h *Header) error {
 	return nil
 }
 
-// fixedExtenders runs check 3 for extender components: an epoch's
-// component, once custody holds it as valid, is fixed like its provider rows,
-// and an epoch whose rows were fixed without one cannot gain one. It returns,
-// per covered epoch, whether custody holds its valid component.
+// Runs check 3 for extender components: an epoch's component, once custody
+// holds it as valid, is fixed like its provider rows, and an epoch whose rows
+// were fixed without one cannot gain one. It returns, per covered epoch,
+// whether custody holds its valid component.
 func (v *verifier) fixedExtenders(h *Header, held []bool) ([]bool, error) {
 	heldExtenders := make([]bool, len(h.Epochs))
 	for i := range h.Epochs {
@@ -63,12 +63,11 @@ func (v *verifier) fixedExtenders(h *Header, held []bool) ([]bool, error) {
 	return heldExtenders, nil
 }
 
-// extenderRows checks a covered epoch's extender component against its
-// provider rows and returns its share rows: its census chunks (check 4), the
-// census rules (11), the census head flags against the epoch's bindings (6),
-// then that the share rows it lists are the split of its bytes, capped at the
-// provider rows' eligible usage, over the census (11), and that they are
-// published (4).
+// Checks a covered epoch's extender component against its provider rows and
+// returns its share rows: its census chunks (check 4), the census rules (11),
+// the census head flags against the epoch's bindings (6), then that the share
+// rows it lists are the split of its bytes, capped at the provider rows'
+// eligible usage, over the census (11), and that they are published (4).
 func (v *verifier) extenderRows(epoch *HeaderEpoch, providers []protocol.LedgerUsageRow) ([]protocol.LedgerUsageRow, error) {
 	extenders := epoch.Extenders
 	label := fmt.Sprintf("epoch %d census", epoch.Epoch)
@@ -97,12 +96,12 @@ func (v *verifier) extenderRows(epoch *HeaderEpoch, providers []protocol.LedgerU
 	if err != nil {
 		return nil, fail(CheckExtenders, fmt.Errorf("epoch %d: %w", epoch.Epoch, err))
 	}
-	want := EncodeProviderChunks(split.Rows)
-	if len(want) != len(extenders.Rows) {
-		return nil, fail(CheckExtenders, fmt.Errorf("%w: epoch %d lists %d share chunks, not %d", ErrExtenderRows, epoch.Epoch, len(extenders.Rows), len(want)))
+	wantChunks := EncodeProviderChunks(split.Rows)
+	if len(wantChunks) != len(extenders.Rows) {
+		return nil, fail(CheckExtenders, fmt.Errorf("%w: epoch %d lists %d share chunks, not %d", ErrExtenderRows, epoch.Epoch, len(extenders.Rows), len(wantChunks)))
 	}
-	for j := range want {
-		if RefOf(want[j]) != extenders.Rows[j] {
+	for j := range wantChunks {
+		if RefOf(wantChunks[j]) != extenders.Rows[j] {
 			return nil, fail(CheckExtenders, fmt.Errorf("%w: epoch %d share chunk %d", ErrExtenderRows, epoch.Epoch, j))
 		}
 	}
@@ -116,20 +115,20 @@ func (v *verifier) extenderRows(epoch *HeaderEpoch, providers []protocol.LedgerU
 	return split.Rows, nil
 }
 
-// censusHeads runs check 6 on a census: a row's head-bound flag is set
-// exactly for the candidates the epoch's bindings map to true, as a provider
-// row's head_excluded is. Nil Heads skips it, as it skips check 6.
+// Runs check 6 on a census: a row's head-bound flag is set exactly for the
+// candidates the epoch's bindings map to true, as a provider row's
+// head_excluded is. Nil Heads skips it, as it skips check 6.
 func (v *verifier) censusHeads(epoch uint64, census []CensusRow, label string) error {
 	if v.in.Heads == nil || len(census) == 0 {
 		return nil
 	}
-	bound, err := v.in.Heads.HeadBindings(v.ctx, epoch)
+	boundClientIds, err := v.in.Heads.HeadBindings(v.ctx, epoch)
 	if err != nil {
 		return err
 	}
 	for i := range census {
 		flagged := census[i].Flags&CensusHeadBound != 0
-		switch want := bound[census[i].ClientID]; {
+		switch want := boundClientIds[census[i].ClientID]; {
 		case flagged && !want:
 			return fail(CheckHeadExclusion, fmt.Errorf("%w: %s row %d", ErrHeadFlagSet, label, i))
 		case !flagged && want:

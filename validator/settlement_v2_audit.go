@@ -177,8 +177,8 @@ func settlementV2LedgerFinding(res *ledger.Result) *settlementV2Finding {
 type settlementV2Audit struct {
 	reader  settlementV2AuditReader
 	custody *settlementV2Custody
-	// amendments say which covered epochs carry an extender component; nil
-	// covers none (settlement_v2_amendments.go).
+	// Which covered epochs carry an extender component; nil covers none
+	// (settlement_v2_amendments.go).
 	amendments *settlementV2Amendments
 	// sender is nil without --ledger_auditor_key_file.
 	sender   settlementV2AuditSender
