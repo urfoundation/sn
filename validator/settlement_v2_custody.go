@@ -224,8 +224,8 @@ func (self *settlementV2Custody) KeepNull(ctx context.Context, noID, epoch, seq 
 	return self.writeJSON(self.path("nulls", fmt.Sprintf("%d-%d-%d.json", noID, epoch, seq)), record)
 }
 
-// ValidExtenders returns the extender component of the epoch that an audit
-// found valid.
+// Returns the extender component of the epoch that an audit found
+// valid.
 func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch uint64) (*ledger.HeaderExtenders, bool, error) {
 	var record settlementV2ExtendersRecord
 	path := self.path("extenders", fmt.Sprintf("%d-%d.json", noID, epoch))
@@ -254,7 +254,7 @@ func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch
 	return component, true, nil
 }
 
-// KeepValidExtenders records the epoch's extender component as valid.
+// Records the epoch's extender component as valid.
 func (self *settlementV2Custody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *ledger.HeaderExtenders) error {
 	record := settlementV2ExtendersRecord{Schema: settlementV2CustodySchema, NoID: noID, Epoch: epoch, Bytes: strconv.FormatUint(component.Bytes, 10),
 		Census: make([]string, len(component.Census)), Rows: make([]string, len(component.Rows))}

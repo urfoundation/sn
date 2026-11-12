@@ -246,8 +246,8 @@ type DepositUsageExpectation struct {
 	End          payoutartifact.Boundary
 	// ProviderChunks is the committed header's chunk list for Epoch.
 	ProviderChunks []string
-	// Extenders is Epoch's committed extender component as its statement must
-	// carry it, read from the header and its census and share-row chunks
+	// Epoch's committed extender component as its statement must carry it, read
+	// from the header and its census and share-row chunks
 	// (usage.CommittedExtenders); nil for an epoch without one, whose statement
 	// is version 1.
 	Extenders   *usage.Extenders
@@ -317,9 +317,9 @@ func selectDepositUsageStatement(statements []*usage.Statement, expectation *Dep
 	return selected, "", nil
 }
 
-// depositUsageNamesExtenders reports whether a statement names an epoch's committed
-// extender chunks: its census and share-row chunks, in order. Without a committed
-// component every statement does: the version is checked as it is judged.
+// Reports whether a statement names an epoch's committed extender chunks: its
+// census and share-row chunks, in order. Without a committed component every
+// statement does: the version is checked as it is judged.
 func depositUsageNamesExtenders(statement *usage.Statement, committed *usage.Extenders) bool {
 	if committed == nil {
 		return true
@@ -327,7 +327,7 @@ func depositUsageNamesExtenders(statement *usage.Statement, committed *usage.Ext
 	return statement.ExtenderPool != nil && slices.Equal(statement.ExtenderCensus, committed.Census) && slices.Equal(statement.ExtenderChunks, committed.Chunks)
 }
 
-// sameDepositUsageExtenderPool reports two equal extender pools, both nil included.
+// Reports two equal extender pools, both nil included.
 func sameDepositUsageExtenderPool(a, b *usage.ExtenderPool) bool {
 	if a == nil || b == nil {
 		return a == b

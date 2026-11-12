@@ -78,6 +78,9 @@ func TestSchemaMatchesStatement(t *testing.T) {
 	})
 }
 
+// Checks that the JSON schema docs/spec/file refuses the fields Decode
+// refuses and describes exactly the fields of a statement with pool, nil for
+// version 1.
 func checkSchemaMatchesStatement(t *testing.T, file string, pool *ExtenderPool) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec", file))
 	if err != nil {

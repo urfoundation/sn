@@ -265,7 +265,7 @@ var checkErrors = []error{
 	ErrTreeLeafCount, ErrTreeTotal, ErrTreeRoot,
 	ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount, ErrRecoveryFunding,
 	ErrExtendersMissing, ErrExtendersUnexpected, ErrExtenderRows, ErrExtenderOverflow,
-	ErrCensusEncoding, ErrCensusZeroID, ErrCensusUnsorted, ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags, ErrCensusClient,
+	ErrCensusEncoding, ErrCensusZeroId, ErrCensusUnsorted, ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags, ErrCensusClient,
 }
 
 // expectFailure requires that res failed exactly check with exactly the

@@ -210,21 +210,21 @@ type depositUsageTestOperator struct {
 	lock      sync.Mutex
 	objects   map[string][]byte
 	envelopes map[string][]byte
-	// kinds is each envelope's evidence kind; history lists those of the kind asked.
-	kinds          map[string]string
-	historyKinds   []string
-	historyRequest int
-	historyStatus  int
-	objectStatus   int
-	stalled        map[string]bool
-	contentType    string
-	before         map[string]func()
-	payoutHistory  []byte
-	payoutBody     []byte
+	// Each envelope's evidence kind; history lists those of the kind asked.
+	contentHashKinds map[string]string
+	historyKinds     []string
+	historyRequest   int
+	historyStatus    int
+	objectStatus     int
+	stalled          map[string]bool
+	contentType      string
+	before           map[string]func()
+	payoutHistory    []byte
+	payoutBody       []byte
 }
 
 func newDepositUsageTestOperator(deploymentID string, netuid uint16) *depositUsageTestOperator {
-	return &depositUsageTestOperator{deploymentID: deploymentID, netuid: netuid, objects: map[string][]byte{}, envelopes: map[string][]byte{}, kinds: map[string]string{}}
+	return &depositUsageTestOperator{deploymentID: deploymentID, netuid: netuid, objects: map[string][]byte{}, envelopes: map[string][]byte{}, contentHashKinds: map[string]string{}}
 }
 
 func (self *depositUsageTestOperator) serve(writer http.ResponseWriter, request *http.Request) bool {
@@ -278,7 +278,7 @@ func (self *depositUsageTestOperator) serve(writer http.ResponseWriter, request 
 		self.historyKinds = append(self.historyKinds, kind)
 		names := make([]string, 0, len(self.envelopes))
 		for hash := range self.envelopes {
-			if self.kinds[hash] == kind {
+			if self.contentHashKinds[hash] == kind {
 				names = append(names, hash)
 			}
 		}
@@ -350,7 +350,7 @@ func (self *depositUsageTestOperator) publish(t *testing.T, statement *usage.Sta
 	return self.publishAs(t, statement, identity, statement.Kind())
 }
 
-// publishAs publishes a statement under any evidence kind.
+// Publishes a statement under any evidence kind.
 func (self *depositUsageTestOperator) publishAs(t *testing.T, statement *usage.Statement, identity, kind string) string {
 	t.Helper()
 	payload, err := statement.Bytes()
@@ -370,7 +370,7 @@ func (self *depositUsageTestOperator) publishAs(t *testing.T, statement *usage.S
 	self.lock.Lock()
 	defer self.lock.Unlock()
 	self.envelopes[contentHash] = envelope
-	self.kinds[contentHash] = kind
+	self.contentHashKinds[contentHash] = kind
 	return contentHash
 }
 

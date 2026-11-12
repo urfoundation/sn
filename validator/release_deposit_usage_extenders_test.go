@@ -32,8 +32,8 @@ type depositExtenderTestParts struct {
 	intraPlatform, intraNetwork, contracts, payers uint64
 }
 
-// depositExtenderTestFixture is a depositUsageTestFixture whose source epoch 0 has
-// an extender component: Z bytes, a census and the share rows of its split.
+// A depositUsageTestFixture whose source epoch 0 has an extender component:
+// Z bytes, a census and the share rows of its split.
 type depositExtenderTestFixture struct {
 	*depositUsageTestFixture
 	z         uint64
@@ -44,9 +44,9 @@ type depositExtenderTestFixture struct {
 	shareRef  []ledger.Ref
 }
 
-// depositExtenderTestCensus is the worked example's census (WHITEPAPER.md §8.6.5)
-// in miniature: x1 and x2 share unit u1, x3 is alone in u2, x4 has no wallet (E4)
-// and x5 is revoked. So N = 3 and M = 2.
+// The worked example's census (WHITEPAPER.md §8.6.5) in miniature: x1 and x2
+// share unit u1, x3 is alone in u2, x4 has no wallet (E4) and x5 is revoked. So
+// N = 3 and M = 2.
 func depositExtenderTestCensus() []ledger.CensusRow {
 	active := func(extender, client, unit, coldkey byte) ledger.CensusRow {
 		row := ledger.CensusRow{ExtenderID: [16]byte{extender}, ClientID: [16]byte{client}, Unit: [32]byte{unit}, Family: ledger.UnitIPv4, Flags: ledger.CensusActive}
@@ -68,14 +68,15 @@ func depositExtenderTestCensus() []ledger.CensusRow {
 // depositUsageTestRows (its other row is head excluded), so Z' = Z.
 const depositExtenderTestZ = uint64(1<<30 + 1)
 
+// A fixture whose source epoch 0 carries the worked example's Z.
 func newDepositExtenderTestFixture(t *testing.T) *depositExtenderTestFixture {
 	t.Helper()
 	return &depositExtenderTestFixture{depositUsageTestFixture: newDepositUsageTestFixture(t), z: depositExtenderTestZ,
 		parts: depositExtenderTestParts{intraPlatform: 1, intraNetwork: depositExtenderTestZ - 1, contracts: 5, payers: 2}}
 }
 
-// publishExtenderLedger publishes rows, census and the share rows of z's split as
-// source epoch 0's chunks, and a v3 header listing them.
+// Publishes rows, census and the share rows of z's split as source
+// epoch 0's chunks, and a v3 header listing them.
 func (self *depositExtenderTestFixture) publishExtenderLedger(t *testing.T, rows []protocol.LedgerUsageRow, z uint64, census []ledger.CensusRow) {
 	t.Helper()
 	split, err := ledger.SplitExtenderPool(z, rows, census)
@@ -85,7 +86,7 @@ func (self *depositExtenderTestFixture) publishExtenderLedger(t *testing.T, rows
 	self.publishComponent(t, rows, z, census, split.Rows)
 }
 
-// publishComponent publishes a component with the share rows given, split or not.
+// Publishes a component with the share rows given, split or not.
 func (self *depositExtenderTestFixture) publishComponent(t *testing.T, rows []protocol.LedgerUsageRow, z uint64, census []ledger.CensusRow, shares []protocol.LedgerUsageRow) {
 	t.Helper()
 	encoded := ledger.EncodeProviderChunks(rows)
@@ -104,6 +105,8 @@ func (self *depositExtenderTestFixture) publishComponent(t *testing.T, rows []pr
 	self.publishExtenderHeader(t)
 }
 
+// Publishes source epoch 0's v3 header, listing its provider, census and
+// share-row chunks.
 func (self *depositExtenderTestFixture) publishExtenderHeader(t *testing.T) {
 	t.Helper()
 	header, err := ledger.EncodeHeader(&ledger.Header{NoID: 1, Epoch: 0, Epochs: []ledger.HeaderEpoch{{Epoch: 0, Providers: self.chunks,
@@ -114,7 +117,7 @@ func (self *depositExtenderTestFixture) publishExtenderHeader(t *testing.T) {
 	self.header = self.operator.putObject(header)
 }
 
-// committed is what the published component holds, as its statement must carry it.
+// What the published component holds, as its statement must carry it.
 func (self *depositExtenderTestFixture) committed(t *testing.T) *usage.Extenders {
 	t.Helper()
 	committed, err := usage.CommittedExtenders(&ledger.HeaderExtenders{Bytes: self.z, Census: self.censusRef, Rows: self.shareRef}, self.census, self.shares)
@@ -124,9 +127,9 @@ func (self *depositExtenderTestFixture) committed(t *testing.T) *usage.Extenders
 	return committed
 }
 
-// statementV2 is the operator's version 2 statement of the published component:
-// the provider rows' usage plus all of Z, and the extender pool. mutate runs before
-// it is sealed.
+// The operator's version 2 statement of the published component: the provider
+// rows' usage plus all of Z, and the extender pool. mutate runs before it is
+// sealed.
 func (self *depositExtenderTestFixture) statementV2(t *testing.T, mutate func(*usage.Statement)) *usage.Statement {
 	t.Helper()
 	pool, err := usage.NewExtenderPool(self.parts.intraPlatform, self.parts.intraNetwork, self.parts.contracts, self.parts.payers, self.committed(t))
@@ -142,7 +145,7 @@ func (self *depositExtenderTestFixture) statementV2(t *testing.T, mutate func(*u
 	})
 }
 
-// settleV2 is everything a compliant operator does for source epoch 0 but its
+// Everything a compliant operator does for source epoch 0 but its
 // deposit.
 func (self *depositExtenderTestFixture) settleV2(t *testing.T) {
 	t.Helper()
@@ -151,7 +154,7 @@ func (self *depositExtenderTestFixture) settleV2(t *testing.T) {
 	self.operator.publish(t, self.statementV2(t, nil), "")
 }
 
-// owedV2 is what the provider rows' usage and all of Z owe at a conviction.
+// What the provider rows' usage and all of Z owe at a conviction.
 func (self *depositExtenderTestFixture) owedV2(t *testing.T, entry *pricesheet.Entry, conviction *big.Int) *big.Int {
 	t.Helper()
 	total, _, err := usage.SumRows(self.rows)
@@ -165,6 +168,8 @@ func (self *depositExtenderTestFixture) owedV2(t *testing.T, entry *pricesheet.E
 	return required
 }
 
+// Requires the run's audit refused with status and message under evidence kind,
+// with no weight.
 func requireDepositExtenderRefused(t *testing.T, run depositUsageTestRun, status, message, kind string) {
 	t.Helper()
 	audit := run.audit
@@ -725,8 +730,7 @@ func TestEvaluateDepositUsageExtenders(t *testing.T) {
 	}
 }
 
-// fixturePayoutBoundary is the source epoch's boundary at block as an expectation
-// names it.
+// The source epoch's boundary at block as an expectation names it.
 func fixturePayoutBoundary(fixture *depositExtenderTestFixture, block uint64) payoutartifact.Boundary {
 	return payoutartifact.Boundary{Number: block, Hash: releaseHex32(fixture.blocks[block])}
 }

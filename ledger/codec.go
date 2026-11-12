@@ -56,15 +56,14 @@ var (
 	// or repeated key, an escaped string, or null in place of a number or a
 	// string.
 	ErrHeaderNotCanonical = errors.New("ledger: header is not canonical")
-	// ErrHeaderSchema is returned for a schema other than the one the
-	// header's epochs call for: Schema without an extender component,
-	// SchemaV3 with one.
+	// Returned for a schema other than the one the header's epochs call
+	// for: Schema without an extender component, SchemaV3 with one.
 	ErrHeaderSchema = errors.New("ledger: header schema is not " + Schema + ", or " + SchemaV3 + " for a header with an extender component")
-	// ErrHeaderNull is returned for "epochs", "accounts" or an extender
-	// component's "census" or "rows" written as null.
+	// Returned for "epochs", "accounts" or an extender component's
+	// "census" or "rows" written as null.
 	ErrHeaderNull = errors.New("ledger: header has null outside providers")
-	// ErrHeaderExtenders is returned for an extender component on an epoch
-	// declared unrecoverable.
+	// Returned for an extender component on an epoch declared
+	// unrecoverable.
 	ErrHeaderExtenders = errors.New("ledger: an unrecoverable epoch has an extender component")
 	// ErrTooManyEpochs is returned for more than 96 covered epochs.
 	ErrTooManyEpochs = errors.New("ledger: more than 96 covered epochs")
@@ -289,29 +288,29 @@ type HeaderEpoch struct {
 	// Recovery lists the epoch's recovery components ("recovery"), written
 	// only when there is one (§16 step 6).
 	Recovery []HeaderRecovery
-	// Extenders is the epoch's extender component ("extenders",
-	// WHITEPAPER.md §8.6.4), written for an epoch the extender pool amendment
-	// covers and for no other. A header with one is SchemaV3.
+	// The epoch's extender component ("extenders", WHITEPAPER.md §8.6.4),
+	// written for an epoch the extender pool amendment covers and for no
+	// other. A header with one is SchemaV3.
 	Extenders *HeaderExtenders
 }
 
-// HeaderExtenders is one covered epoch's extender component.
+// One covered epoch's extender component.
 type HeaderExtenders struct {
-	// Bytes is Z, the epoch's extender pool bytes, before the cap.
+	// Z, the epoch's extender pool bytes, before the cap.
 	Bytes uint64
-	// Census lists the census chunks, CensusRowBytes-byte rows.
+	// The census chunks, CensusRowBytes-byte rows.
 	Census []Ref
-	// Rows lists the extender share row chunks, ProviderRowBytes-byte rows;
-	// empty when no extender is eligible or Z is 0.
+	// The extender share row chunks, ProviderRowBytes-byte rows; empty when no
+	// extender is eligible or Z is 0.
 	Rows []Ref
 }
 
-// Equal reports the same bytes, census and share rows.
-func (e *HeaderExtenders) Equal(other *HeaderExtenders) bool {
-	if e == nil || other == nil {
-		return e == other
+// Reports the same bytes, census and share rows.
+func (self *HeaderExtenders) Equal(other *HeaderExtenders) bool {
+	if self == nil || other == nil {
+		return self == other
 	}
-	return e.Bytes == other.Bytes && slices.Equal(e.Census, other.Census) && slices.Equal(e.Rows, other.Rows)
+	return self.Bytes == other.Bytes && slices.Equal(self.Census, other.Census) && slices.Equal(self.Rows, other.Rows)
 }
 
 // HeaderRecovery is one recovery component of a covered epoch: the funding
@@ -341,16 +340,17 @@ type headerEpochJSON struct {
 	Epoch     uint64               `json:"epoch"`
 	Providers []string             `json:"providers"`
 	Recovery  []headerRecoveryJSON `json:"recovery"`
-	Extenders *headerExtendersJSON `json:"extenders"`
+	Extenders *headerExtendersJson `json:"extenders"`
 }
 
-type headerExtendersJSON struct {
+// An extender component as a header is encoded and decoded.
+type headerExtendersJson struct {
 	Bytes  uint64   `json:"bytes"`
 	Census []string `json:"census"`
 	Rows   []string `json:"rows"`
 }
 
-// schema is the schema the header's epochs call for.
+// The schema the header's epochs call for.
 func (h *headerJSON) schema() string {
 	for i := range h.Epochs {
 		if h.Epochs[i].Extenders != nil {
@@ -467,7 +467,7 @@ func EncodeHeader(h *Header) ([]byte, error) {
 			if h.Epochs[i].Null {
 				return nil, fmt.Errorf("%w: epoch %d", ErrHeaderExtenders, h.Epochs[i].Epoch)
 			}
-			raw.Epochs[i].Extenders = &headerExtendersJSON{Bytes: extenders.Bytes, Census: refStrings(extenders.Census), Rows: refStrings(extenders.Rows)}
+			raw.Epochs[i].Extenders = &headerExtendersJson{Bytes: extenders.Bytes, Census: refStrings(extenders.Census), Rows: refStrings(extenders.Rows)}
 		}
 	}
 	raw.Schema = raw.schema()

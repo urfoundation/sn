@@ -42,17 +42,17 @@ const (
 	// EvidenceKind is the kind it is published under on the operator's /sn/evidence
 	// routes, with RunID as its run.
 	EvidenceKind = "epoch-usage-v1"
-	// SchemaV2 names the format of an epoch with an extender component
+	// The statement format of an epoch with an extender component
 	// (WHITEPAPER.md §8.6.4): version 1's fields and its extender pool.
 	SchemaV2 = "urnetwork-epoch-usage-v2"
-	// EvidenceKindV2 is the kind a version 2 statement is published under, with
-	// RunID as its run, as version 1's is.
+	// The kind a version 2 statement is published under, with RunID as its
+	// run, as version 1's is.
 	EvidenceKindV2 = "epoch-usage-v2"
-	// MaxBytes bounds a statement: its chunk lists are the only parts that grow.
+	// Bounds a statement: its chunk lists are the only parts that grow.
 	MaxBytes = 1 << 20
 )
 
-// KindOf is the evidence kind of an epoch's statement: EvidenceKindV2 when its
+// The evidence kind of an epoch's statement: EvidenceKindV2 when its
 // committed header carries an extender component, else EvidenceKind.
 func KindOf(extenders bool) string {
 	if extenders {
@@ -86,84 +86,80 @@ type Statement struct {
 	End            Boundary       `json:"end"`
 	ProviderChunks []string       `json:"provider_chunks"`
 	ProviderRows   uint64         `json:"provider_rows"`
-	// TotalUsageBytes sums every provider row, eligible or not, as a payout
-	// artifact's total_usage_bytes does. In a version 2 statement it adds all of Z,
-	// the extender pool's bytes before the cap (WHITEPAPER.md §8.6.4).
+	// Every provider row, eligible or not, summed as a payout artifact's
+	// total_usage_bytes is. In a version 2 statement it adds all of Z, the
+	// extender pool's bytes before the cap (WHITEPAPER.md §8.6.4).
 	TotalUsageBytes uint64 `json:"total_usage_bytes"`
 	// TotalUsers counts distinct top-level clients with contract usage in the epoch
 	// window, as a payout artifact's total_users does.
 	TotalUsers uint64 `json:"total_users"`
-	// ExtenderPool is a version 2 statement's extender pool, written after
-	// total_users, and nil in a version 1 statement, which it leaves byte for byte
-	// as it was.
+	// A version 2 statement's extender pool, written after total_users, and nil
+	// in a version 1 statement, which it leaves byte for byte as it was.
 	*ExtenderPool
 	Signer    common.Address `json:"signer"`
 	Signature string         `json:"signature,omitempty"`
 }
 
-// ExtenderPool is what a version 2 statement adds (WHITEPAPER.md §8.6.4): the
-// epoch's extender pool, in the order it is written. Z and its parts, and the
-// contracts and payer networks behind them, are the operator's attestation (M4).
-// The rest is what the committed header's extender component holds: Z, its census
-// and share-row chunks, and, from those chunks, N, M and Z'.
+// What a version 2 statement adds (WHITEPAPER.md §8.6.4): the epoch's extender
+// pool, in the order it is written. Z and its parts, and the contracts and
+// payer networks behind them, are the operator's attestation (M4). The rest is
+// what the committed header's extender component holds: Z, its census and
+// share-row chunks, and, from those chunks, N, M and Z'.
 type ExtenderPool struct {
-	// IntraPlatformBytes and IntraNetworkBytes are Z's parts: the funded shares of
-	// the operator's platform endpoints, and those on each contract's origin
-	// network.
+	// Z's parts: the funded shares of the operator's platform endpoints, and
+	// those on each contract's origin network.
 	IntraPlatformBytes uint64 `json:"intra_platform_bytes"`
 	IntraNetworkBytes  uint64 `json:"intra_network_bytes"`
-	// ExtenderPoolBytes is Z, their sum, before the cap: the header's
-	// extenders.bytes.
+	// Z, their sum, before the cap: the header's extenders.bytes.
 	ExtenderPoolBytes uint64 `json:"extender_pool_bytes"`
-	// ExtenderPoolWeightBytes is Z', what Z entered the allocation as: min(Z, W_k),
-	// and 0 with no eligible extender. The share rows sum to it.
+	// Z', what Z entered the allocation as: min(Z, W_k), and 0 with no
+	// eligible extender. The share rows sum to it.
 	ExtenderPoolWeightBytes uint64 `json:"extender_pool_weight_bytes"`
-	// ExtenderPoolContracts and ExtenderPoolPayers count the contracts behind Z and
-	// their distinct payer networks.
+	// The contracts behind Z, and their distinct payer networks.
 	ExtenderPoolContracts uint64 `json:"extender_pool_contracts"`
 	ExtenderPoolPayers    uint64 `json:"extender_pool_payers"`
-	// ExtenderCensus lists the census chunks, as the header lists them; [] for a
-	// census with no rows.
+	// The census chunks, as the header lists them; [] for a census with no
+	// rows.
 	ExtenderCensus []string `json:"extender_census"`
-	// ExtenderUnits is M, the units that hold an eligible extender, and
-	// EligibleExtenders is N, the census rows that are eligible.
+	// M, the units that hold an eligible extender, and N, the census rows
+	// that are eligible.
 	ExtenderUnits     uint64 `json:"extender_units"`
 	EligibleExtenders uint64 `json:"eligible_extenders"`
-	// ExtenderChunks lists the share-row chunks, as the header lists them; []
-	// when no extender is eligible or Z is 0.
+	// The share-row chunks, as the header lists them; [] when no extender is
+	// eligible or Z is 0.
 	ExtenderChunks []string `json:"extender_chunks"`
 }
 
-// Kind is the evidence kind the statement is published under.
+// The evidence kind the statement is published under.
 func (s *Statement) Kind() string {
 	return KindOf(s.ExtenderPool != nil)
 }
 
-// validate checks the relations a version 2 statement's extender pool holds by
-// construction: Z is the sum of its parts, the weight is at most Z and is 0 with no
-// eligible extender, every eligible extender is in one of at least one unit, the
-// share rows exist exactly when the weight is positive, the contracts and payers
-// behind Z exist exactly when Z is positive, and the total holds Z.
-func (p *ExtenderPool) validate(total uint64) error {
+// Checks the relations a version 2 statement's extender pool holds by
+// construction: Z is the sum of its parts, the weight is at most Z and is 0
+// with no eligible extender, every eligible extender is in one of at least one
+// unit, the share rows exist exactly when the weight is positive, the contracts
+// and payers behind Z exist exactly when Z is positive, and the total holds Z.
+func (self *ExtenderPool) validate(total uint64) error {
 	switch {
-	case p.IntraPlatformBytes > math.MaxUint64-p.IntraNetworkBytes || p.ExtenderPoolBytes != p.IntraPlatformBytes+p.IntraNetworkBytes:
+	case self.IntraPlatformBytes > math.MaxUint64-self.IntraNetworkBytes || self.ExtenderPoolBytes != self.IntraPlatformBytes+self.IntraNetworkBytes:
 		return errors.New("usage: extender_pool_bytes is not intra_platform_bytes plus intra_network_bytes")
-	case p.ExtenderPoolWeightBytes > p.ExtenderPoolBytes:
+	case self.ExtenderPoolWeightBytes > self.ExtenderPoolBytes:
 		return errors.New("usage: extender_pool_weight_bytes exceeds extender_pool_bytes")
-	case p.ExtenderCensus == nil || p.ExtenderChunks == nil:
+	case self.ExtenderCensus == nil || self.ExtenderChunks == nil:
 		return errors.New("usage: extender_census and extender_chunks are lists, [] when empty")
-	case p.ExtenderUnits > p.EligibleExtenders || (p.EligibleExtenders != 0) != (p.ExtenderUnits != 0):
+	case self.ExtenderUnits > self.EligibleExtenders || (self.EligibleExtenders != 0) != (self.ExtenderUnits != 0):
 		return errors.New("usage: extender_units does not fit eligible_extenders")
-	case p.EligibleExtenders == 0 && p.ExtenderPoolWeightBytes != 0:
+	case self.EligibleExtenders == 0 && self.ExtenderPoolWeightBytes != 0:
 		return errors.New("usage: extender_pool_weight_bytes is positive with no eligible extender")
-	case (len(p.ExtenderChunks) != 0) != (p.ExtenderPoolWeightBytes != 0):
+	case (len(self.ExtenderChunks) != 0) != (self.ExtenderPoolWeightBytes != 0):
 		return errors.New("usage: extender_chunks are listed exactly when extender_pool_weight_bytes is positive")
-	case (p.ExtenderPoolContracts != 0) != (p.ExtenderPoolBytes != 0) || p.ExtenderPoolPayers > p.ExtenderPoolContracts || (p.ExtenderPoolPayers != 0) != (p.ExtenderPoolContracts != 0):
+	case (self.ExtenderPoolContracts != 0) != (self.ExtenderPoolBytes != 0) || self.ExtenderPoolPayers > self.ExtenderPoolContracts || (self.ExtenderPoolPayers != 0) != (self.ExtenderPoolContracts != 0):
 		return errors.New("usage: extender_pool_contracts and extender_pool_payers do not fit extender_pool_bytes")
-	case total < p.ExtenderPoolBytes:
+	case total < self.ExtenderPoolBytes:
 		return errors.New("usage: total_usage_bytes does not hold extender_pool_bytes")
 	}
-	for _, refs := range [][]string{p.ExtenderCensus, p.ExtenderChunks} {
+	for _, refs := range [][]string{self.ExtenderCensus, self.ExtenderChunks} {
 		for _, text := range refs {
 			if _, err := ledger.ParseRef(text); err != nil {
 				return fmt.Errorf("usage: extender chunk %q is not a reference", text)
@@ -173,7 +169,7 @@ func (p *ExtenderPool) validate(total uint64) error {
 	return nil
 }
 
-// schema is the schema the statement's fields call for.
+// The schema the statement's fields call for.
 func (s *Statement) schema() string {
 	if s.ExtenderPool != nil {
 		return SchemaV2
@@ -197,8 +193,8 @@ func (s *Statement) validate() error {
 	return nil
 }
 
-// signingHash covers every field but the signature, in the struct's stable order:
-// a version 2 statement's extender pool between total_users and signer.
+// Covers every field but the signature, in the struct's stable order: a
+// version 2 statement's extender pool between total_users and signer.
 func (s *Statement) signingHash() ([]byte, error) {
 	unsigned := *s
 	unsigned.Signature = ""
@@ -210,7 +206,7 @@ func (s *Statement) signingHash() ([]byte, error) {
 	return digest[:], nil
 }
 
-// Seal sets the schema its fields call for and the signer, and signs with the
+// Sets the schema its fields call for and the signer, and signs with the
 // operator's artifact key.
 func (s *Statement) Seal(key *ecdsa.PrivateKey) error {
 	if key == nil {
@@ -293,8 +289,8 @@ func SumRows(rows []protocol.LedgerUsageRow) (totalBytes uint64, count uint64, e
 	return totalBytes, count, nil
 }
 
-// TotalUsage is an epoch's total_usage_bytes: its provider rows' usage, plus Z, the
-// extender pool's bytes before the cap, for an epoch with an extender component.
+// An epoch's total_usage_bytes: its provider rows' usage, plus Z, the extender
+// pool's bytes before the cap, for an epoch with an extender component.
 func TotalUsage(providerBytes, extenderPoolBytes uint64) (uint64, error) {
 	if extenderPoolBytes > math.MaxUint64-providerBytes {
 		return 0, errors.New("usage: provider rows with the extender pool overflow")
@@ -312,7 +308,7 @@ func (s *Statement) CheckRows(rows []protocol.LedgerUsageRow) error {
 	return s.CheckSums(total, count)
 }
 
-// CheckSums is CheckRows over sums already taken: the provider rows' usage and
+// CheckRows over sums already taken: the provider rows' usage and
 // their count.
 func (s *Statement) CheckSums(providerBytes, count uint64) error {
 	var pool uint64
@@ -329,9 +325,9 @@ func (s *Statement) CheckSums(providerBytes, count uint64) error {
 	return nil
 }
 
-// Extenders is an epoch's committed extender component as its statement must carry
-// it: what the header lists, Z and its chunk lists, and what a verifier reads from
-// those chunks, N and M from the census rows and Z' from the share rows.
+// An epoch's committed extender component as its statement must carry it: what
+// the header lists, Z and its chunk lists, and what a verifier reads from those
+// chunks, N and M from the census rows and Z' from the share rows.
 type Extenders struct {
 	Bytes    uint64
 	Census   []string
@@ -341,22 +337,29 @@ type Extenders struct {
 	Weight   uint64
 }
 
-// CommittedExtenders reads a header's extender component with the rows of its
-// census and share-row chunks. census must have passed ledger.CheckCensusRows, and
-// shares are the rows its share-row chunks decode to.
+// Reads a header's extender component with the rows of its census and share-row
+// chunks. census must have passed ledger.CheckCensusRows, and shares are the
+// rows its share-row chunks decode to.
 func CommittedExtenders(header *ledger.HeaderExtenders, census []ledger.CensusRow, shares []protocol.LedgerUsageRow) (*Extenders, error) {
 	if header == nil {
 		return nil, errors.New("usage: no extender component")
 	}
-	committed := &Extenders{Bytes: header.Bytes, Census: refStrings(header.Census), Chunks: refStrings(header.Rows)}
-	units := map[[32]byte]bool{}
+	refTexts := func(refs []ledger.Ref) []string {
+		texts := make([]string, len(refs))
+		for i, ref := range refs {
+			texts[i] = ref.String()
+		}
+		return texts
+	}
+	committed := &Extenders{Bytes: header.Bytes, Census: refTexts(header.Census), Chunks: refTexts(header.Rows)}
+	eligibleUnits := map[[32]byte]bool{}
 	for i := range census {
 		if census[i].Eligible() {
 			committed.Eligible++
-			units[census[i].Unit] = true
+			eligibleUnits[census[i].Unit] = true
 		}
 	}
-	committed.Units = uint64(len(units))
+	committed.Units = uint64(len(eligibleUnits))
 	weight, _, err := SumRows(shares)
 	if err != nil {
 		return nil, err
@@ -365,17 +368,9 @@ func CommittedExtenders(header *ledger.HeaderExtenders, census []ledger.CensusRo
 	return committed, nil
 }
 
-func refStrings(refs []ledger.Ref) []string {
-	out := make([]string, len(refs))
-	for i, ref := range refs {
-		out[i] = ref.String()
-	}
-	return out
-}
-
-// NewExtenderPool is a version 2 statement's extender pool: Z's parts and the
-// contracts and payers behind them, the operator's attestation, with what the
-// committed component holds. Z's parts must sum to the component's Z.
+// A version 2 statement's extender pool: Z's parts and the contracts and
+// payers behind them, the operator's attestation, with what the committed
+// component holds. Z's parts must sum to the component's Z.
 func NewExtenderPool(intraPlatform, intraNetwork, contracts, payers uint64, committed *Extenders) (*ExtenderPool, error) {
 	if committed == nil {
 		return nil, errors.New("usage: no committed extender component")
@@ -392,9 +387,9 @@ func NewExtenderPool(intraPlatform, intraNetwork, contracts, payers uint64, comm
 	return pool, nil
 }
 
-// CheckExtenders requires the statement to be the version its epoch's committed
-// header calls for, and a version 2 statement's extender pool to carry exactly what
-// the committed component holds: Z, the census and share-row chunks in order, N, M
+// Requires the statement to be the version its epoch's committed header calls
+// for, and a version 2 statement's extender pool to carry exactly what the
+// committed component holds: Z, the census and share-row chunks in order, N, M
 // and Z'. committed is nil for an epoch without an extender component, whose
 // statement is version 1. Z's parts, contracts and payers are the operator's
 // attestation, which validate holds to Z.
