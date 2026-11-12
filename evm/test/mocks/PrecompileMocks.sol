@@ -48,7 +48,7 @@ contract MockStakingV2 {
         exhaustTransferTo[coldkey] = exhaust;
     }
 
-    function setStake(bytes32 hotkey, bytes32 coldkey, uint256 amount) external {
+    function setStake(bytes32 hotkey, bytes32 coldkey, uint256 amount) public virtual {
         stakes[hotkey][coldkey] = amount;
     }
 
@@ -150,7 +150,7 @@ contract MockStakingV2 {
     ///      runtime withdraws native funds from the caller's mapped account;
     ///      EVM value sent to 0x805 cannot fund that withdrawal. Model this
     ///      native debit with a cheatcode because Solidity cannot debit callers.
-    function addStake(bytes32 hotkey, uint256 amount, uint256) external payable {
+    function addStake(bytes32 hotkey, uint256 amount, uint256) public payable virtual {
         require(address(this) == address(0x805), "runtime453: foreign staking frame");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
@@ -161,7 +161,8 @@ contract MockStakingV2 {
     }
 
     function moveStake(bytes32 originHotkey, bytes32 destinationHotkey, uint256, uint256, uint256 amount)
-        external
+        public
+        virtual
     {
         require(address(this) == address(0x805), "runtime453: foreign staking frame");
         require(!failMoveStake, "mock: moveStake down");
@@ -178,7 +179,8 @@ contract MockStakingV2 {
     }
 
     function transferStake(bytes32 destinationColdkey, bytes32 hotkey, uint256, uint256, uint256 amount)
-        external
+        public
+        virtual
     {
         require(address(this) == address(0x805), "runtime453: foreign staking frame");
         require(!failTransferStake, "mock: transferStake down");

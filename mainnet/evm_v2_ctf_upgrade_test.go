@@ -86,7 +86,9 @@ func newCtfTestChain(t *testing.T) *ctfTestChain {
 }
 
 // ctfTestRpc serves the e2e chain's JSON-RPC and answers eth_getBalance at a
-// block, which the capture the flag review reads for the timelock.
+// block, which the capture the flag reviews read for the timelock, the
+// deterministic deployment proxy and the carry: the balance the EVM can
+// spend, as Frontier answers it.
 func ctfTestRpc(t *testing.T, chain *e2eChain) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -113,7 +115,7 @@ func ctfTestRpc(t *testing.T, chain *e2eChain) string {
 				response["error"] = e2eInvalidParams(fmt.Errorf("block %v", err))
 				return
 			}
-			response["result"] = (*hexutil.Big)(chain.stateLocked(number).GetBalance(address).ToBig())
+			response["result"] = (*hexutil.Big)(chain.runtime.spendable(chain.stateLocked(number), address).ToBig())
 		})
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(response)

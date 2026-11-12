@@ -5,8 +5,9 @@
 Design, 2026‑11‑11. From the CTF start epoch `E_c` (epoch 8, the owner's decision; §11.2) it
 amends the steering split of `WHITEPAPER.md` §8.5 and adds a second settlement v2 pool per network operator
 (`VERSION2-FINAL.md`). The owner's decisions of 2026‑11‑11 are folded in (§12.1). Every other question the
-design raised is resolved in §12.2, each with its reason, for the owner's review, except one that is open,
-pending the owner's decision (§12.4). Where the code built since departs from this design's first draft, the
+design raised is resolved in §12.2, each with its reason, for the owner's review. The one left open, third
+parties blocking the carry contract for good, the owner settled the same day by adopting the carry's residual
+(§12.1, item 18; §12.4). Where the code built since departs from this design's first draft, the
 text follows the code and gives the reason; rows 9, 17 and 19–23 of §12.2 record the departures that change a
 resolution.
 
@@ -34,8 +35,9 @@ resolution.
 - **The carry goes round through a contract.** vault2 allocates every captured α at every root, so a pot
   cannot wait inside the pool. Each root pays the pots to the account of an immutable, ownerless **carry
   contract**. Anyone can trigger it to claim that account and move the α straight back onto the CTF pool
-  hotkey, where the next close captures it again. Third parties can block that claim for good, an open
-  problem pending the owner's decision (§4.6, §12.4).
+  hotkey, where the next close captures it again. It keeps a small residual of its own on vault2's escrow
+  hotkey and opts out of third‑party staking‑hotkey growth, so no third party can block that claim for good
+  (§4.6).
 - **Validators do not probe it.** A validator's only CTF decision is whether to weight the CTF pools. That
   weight follows the provider pools' weight. The auditor approves each CTF root after recomputing the draw
   and its arithmetic.
@@ -431,22 +433,79 @@ decision):
 ```
 STCtfCarry                       immutable, ownerless, one per CTF pool; reads escrowHotkey, selfColdkey and the
                                  pool hotkey from vault2, which never changes them
+constructor(vault2, poolId)      payable: created with at least seedMinimum() rao of TAO
+    addStake(escrowHotkey, all its TAO);  residual = the gain                    // its own stake, never returned
+    setColdkeyAutoStakeHotkey(netuid, poolHotkey)                                // pins the pool hotkey on its list
+    setRejectStakingHotkeyGrowth(true);  setRejectLockedAlpha(true)              // no third party lengthens its list
 recycle(rootIndex, account, proof)   anyone
+    kept = min(residual, this coldkey's movable stake on the escrow hotkey)     // follows a residual the runtime lowered
     if an account is given: require account.coldkey == this contract's coldkey;
                             if vault2.claimed(poolId, account.index) < account.cumulative:   // not after anyone's claim
+                                require kept > 0                                 // ResidualMissing: seed() first
                                 vault2.claim(poolId, rootIndex, account, proof) // pays this coldkey on vault2's escrow hotkey
-    amount = this coldkey's movable stake on the escrow hotkey                  // everything it holds, claimed by anyone
+    amount = this coldkey's movable stake on the escrow hotkey − kept           // all above the residual, claimed by anyone
     moveStake(escrowHotkey → poolHotkey, amount)                                 // its own position
     transferStake(to vault2's coldkey, on poolHotkey, all of it)                 // vault2's position on the pool hotkey grows
     g = the growth of vault2's position, measured as vault2 measures its moves
     e = vault2.lastFundedEpoch(poolId) + 1;  recycledFor[e] += g;  emit Recycled(e, g)
-no owner, no upgrade, no other entry point; it holds stake on the escrow and pool hotkeys only until the next recycle
+seed()                               anyone, payable
+    addStake(escrowHotkey, all its TAO, at least seedMinimum());  residual = kept + the gain
+seedMinimum() = max(0.1 TAO, 10 × the runtime's nominator minimum)
+no owner, no upgrade, no entry point but recycle and seed; beyond its residual it holds stake on the escrow and
+pool hotkeys only until the next recycle
 ```
 
 vault2's claims are anyone's and always pay the leaf's coldkey, so a third party's claim of the carry account
-leaves stake on the carry's coldkey until the next recycle moves it. Stake that anyone sends the carry's coldkey
-on any other hotkey stays where it is: the carry cannot move it, and that is how its staking‑hotkey list can be
-filled (below).
+leaves stake on the carry's coldkey until the next recycle moves it. Third parties can send the carry's coldkey
+stake only on hotkeys already on its list (below): the escrow hotkey and the pool hotkey, whose stake goes round
+with the carry, and whatever a fill left before the creation, whose stake stays where it is.
+
+**Why it keeps a residual** (owner decision, 2026‑11‑11: §12.1, item 18). vault2's claim pays the carry by a
+transfer from another coldkey, and runtime 486 lets such a transfer add a hotkey to the destination's
+staking‑hotkey list only while that list holds fewer than 128 entries (`TooManyStakingHotkeys`). A move of a
+whole position leaves no dust, so a carry that returned everything would drop the escrow hotkey from its list
+at every recycle. Anyone could then fill the list with about 128 small transfers, before the first claim,
+since the address is known in advance, or between claims, and vault2's claim would be refused for good: slot
+amounts would still pay, but the pots and pending awards would never return. The contract closes that:
+
+- **The residual keeps the escrow hotkey on the list.** A transfer to a hotkey already on the list passes
+  whatever the list's length, so vault2's claim always lands.
+- **The pool hotkey stays on the list too.** The constructor makes the CTF pool hotkey the carry coldkey's
+  auto‑stake destination on the subnet (`setColdkeyAutoStakeHotkey`), which keeps that hotkey on its list
+  with no stake, for good: pruning never clears a destination, and a coldkey swap never overwrites one. So
+  the carry's own move lands on a listed hotkey too, which passes whatever the list's length. That matters
+  because the opt‑out below does not count hotkeys a coldkey *owns*: a coldkey swap into the carry can give it
+  registered hotkeys, and the runtime adds their emission to its list with no cap. Past 256 entries a carry
+  without the pin could no longer move onto the pool hotkey. A destination must hold a UID, which the pool
+  hotkey does once the operation of §3.1 has registered it; the escrow hotkey does not, which is why it keeps
+  a residual instead. Emission of any hotkey the carry is given on SN25 lands on the pool hotkey and goes
+  round as a donation.
+- **The opt‑out keeps the list short.** With `setRejectStakingHotkeyGrowth` set, the runtime refuses every
+  other third‑party transfer that would add a hotkey, and every coldkey swap into the carry's coldkey that
+  would bring a staking hotkey, so the list, and the gas of the carry's moves, stay small. It does not touch
+  the carry's own operations. `setRejectLockedAlpha` keeps refusing conviction‑locked alpha, as every account
+  does by default.
+- **The carry stakes the seed itself.** Its constructor stakes the TAO it is created with by its own
+  `addStake`, which only the 256 cap limits, so a fill of the list before creation, at most 128 entries,
+  cannot stop it. A seed transferred by a third party could be refused like the claim, and seeding from the
+  carry account's own stake would need a first claim that the fill can already block.
+- **The residual is outside money.** It is never returned to the pool and never enters vault2,
+  `recycledFor` or the ledger, so what the ledger counts as owed (§4.5) is unchanged. A residual the runtime
+  lowers, by rounding or by root's sweep below, is followed down and never refilled from the pool's stake.
+- **Only root's sweep can clear it.** The runtime clears a position on a hotkey its coldkey does not own when
+  it is worth less than the nominator minimum, and only on its owner's own unstake or when root raises that
+  minimum, which sweeps every account: it unstakes the position to the coldkey's TAO, or deletes it if that
+  unstake fails. So a seed stakes at least `seedMinimum()`: ten times the runtime's nominator minimum, and at
+  least 0.1 TAO. The creation seeds 1 TAO (§11.2). The sweep values the residual's alpha at the subnet's spot
+  price, so that tenfold margin, fixed in TAO at the seed, shrinks as SN25's alpha price falls; `ctf-carry
+  review` reports the residual's worth. If a sweep clears the residual anyway, `recycle` reverts
+  `ResidualMissing` and the account stays claimable; anyone restores the residual with `seed()`, which stakes
+  the TAO the sweep returned and any sent with it. A sweep that also caught carry not yet recycled would turn
+  it into residual at that seed, and the ledger would then count it as never returned, so the relay recycles
+  as soon as anyone claims the carry account.
+- **Pruning changes nothing.** Moves and `addStake` need only the hotkey's owner, which pruning keeps, and the
+  auto‑stake destination outlives a pruned UID. The escrow hotkey earns nothing and is pruned already; only
+  vault2, which has no call for it, could register it again, so it could not be pinned like the pool hotkey.
 
 - **Every epoch the carry cycles.** The root allocates the carry account its delta, the root finalizes about
   two days after the epoch ends, and the server's relay calls `recycle`. The next close then captures the
@@ -454,38 +513,89 @@ filled (below).
   Gas is one claim and two stake moves an epoch, paid by the relay.
 - **Deferred epochs.** A recycle recorded for an epoch that is later deferred (a missed close) is captured
   by the next close, so the ledger rolls its `R` forward to that epoch.
-- **Donations are fresh funding.** Stake anyone sends to the contract or to vault2 on the CTF pool hotkey is
-  counted as fresh funding: `R_k` never exceeds what is owed.
+- **Donations are fresh funding.** Stake anyone sends the carry on the escrow hotkey, or vault2 on the CTF pool
+  hotkey, is counted as fresh funding: `R_k` never exceeds what is owed.
 - **Rounding.** Each stake move may lose a rao to the runtime's rounding (§7.3 of `VERSION2-FINAL.md`), at
-  most four per cycle: the claim, the two moves and the next capture. The ledger tolerates two cycles'
-  rounding, 8 rao: a matured epoch writes off what is still owed, and a partial return writes off up to 8 rao,
-  against the fresh amount (§4.5).
+  most four per cycle: the claim, the two moves and the next capture. The residual adds none: the carry
+  moves everything above it, so the claim's rao fragments go round with the carry. The ledger tolerates two
+  cycles' rounding, 8 rao: a matured epoch writes off what is still owed, and a partial return writes off up
+  to 8 rao, against the fresh amount (§4.5).
 - **What it trusts.** It relies only on vault2 and the runtime, and it changes nothing in vault2, which pays
   the leaf's coldkey whoever calls.
-- **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R-9
-  (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)") covers, on the
-  live runtime, a claim to a contract coldkey, a `moveStake` and a `transferStake` from it, and the capture of
-  the returned position (gas, rounding, the staking‑hotkey list). It has not run yet. It must pass before
-  anyone creates the carry contract, and before the Safe schedules the operation of §3.1.
-- **Open, pending the owner's decision: third parties can block the carry for good.** This is not solved.
-  - On runtime 486 a transfer from another coldkey cannot add a hotkey to a staking‑hotkey list that holds 128
-    entries (`TooManyStakingHotkeys`). A full move leaves no dust, so the escrow hotkey leaves the carry
-    coldkey's list after every recycle.
-  - Anyone can therefore fill that list with about 128 small third‑party transfers, before the first claim,
-    since the address is known in advance, or between claims. vault2's claim to the carry is then refused for
-    good, and the carry has no entry point to clear foreign entries.
-  - Slot amounts would still pay, but the pots and pending awards would never return.
-  - The owner decides before the carry is created, since it is immutable (§12.4). A candidate fix is being
-    prepared: the carry keeps a small residual on the escrow hotkey, seeded at creation, possibly with the
-    runtime's `setRejectStakingHotkeyGrowth`. It would keep `recycle`'s interface, but change this section and
-    what the ledger counts as owed (§4.5), and it needs R-9.
-  - Meanwhile, the carry is created before its address is published, that is, before the amendment entry
-    names it.
+- **Creating it.** Anyone creates it after the operation of §3.1, through the deterministic deployment proxy,
+  with the seed as the call's value and a fresh random salt that nobody sees before the creation transaction.
+  - First, a guardian coldkey that never swaps the hotkeys it holds makes the carry's coldkey a hotkey account
+    (`try_associate_hotkey`). That reveals the coldkey, not the address. Every coldkey swap into it, and every
+    reservation of it (below), is then refused (`NewColdKeyIsHotkey`), before and after the creation: no swap
+    can fill its list to 256 so that the seed's `addStake` is refused, bring it locked alpha, or give it
+    hotkeys. Whoever holds the hotkey account can release it, by a hotkey swap, in the same batch as a coldkey
+    swap's announcement into it, and the association succeeds without effect when someone else holds it. So
+    the guardian sends it through `MevShield.submit_encrypted`, which nobody sees pending, and review requires
+    the guardian to hold it; if someone else took it, the carry is created under another salt.
+  - The proxy's mapped account must hold TAO above its existential deposit. The EVM checks the proxy's
+    spendable balance, which the runtime reports less that deposit, before CREATE2 passes the value on
+    (`OutOfFund`), so a proxy holding only the forwarded seed cannot create the carry. Anyone sends it 501 rao
+    or more once.
+  - It is created while the pool hotkey holds its UID, within the registration's immunity window, since the
+    auto‑stake destination needs one. A failed creation reveals the salt, so a retry takes a fresh one.
+  - `sn-mainnet ctf-carry review` (`mainnet/BOOTSTRAP-CONTRACTS.md`, "Capture the flag carry") pins the
+    artifact, derives the CREATE2 address, requires each of these, vault2's coldkey among the guardian's
+    hotkey accounts too, and preflights the creation; once the carry exists it checks the code, the residual,
+    the auto‑stake destination, the opt‑outs and both hotkey accounts. The amendment entry names the address
+    after the creation.
+  - A fill of the list before the creation is at most 128 entries. Anyone who sees the guardian's association
+    knows the coldkey and can send it stake from then on, and anyone who sees the creation can in its block.
+    The creation goes through, and the entries only add gas to the carry's moves, about 8,750 an entry on
+    runtime 478 and later, so review reports them and does not refuse them.
+- **Coldkey‑swap reservations, and the hotkey accounts that refuse them.** For 0.1 TAO anyone can announce a
+  coldkey swap that names a coldkey as its destination. While the reservation lasts, up to six days and
+  renewable for another 0.1 TAO, the runtime refuses every transfer into that coldkey from another one: for
+  the carry's coldkey, vault2's claim; for vault2's, the carry's return. Only the reserved account can release
+  it, and on runtime 486 no precompile lets a contract do that. But the runtime refuses to reserve, or swap
+  into, a coldkey that is a hotkey account. So the guardian makes vault2's coldkey a hotkey account now,
+  before anyone reserves it and well before the operation of §3.1, and the carry's before its creation
+  (§11.2). Without them a reservation would delay the carry, taking nothing: the account stays claimable,
+  the epochs are not matured, and pot shares wait as pending awards (§4.7). With vault2's, no coldkey swap
+  can fill vault2's own list either (below).
 - **vault2's own list can stall a recycle.** The carry's transfer adds the CTF pool hotkey to vault2's list
   whenever vault2 holds nothing there, as after a capture with no collateral lock. With third parties holding
   vault2's list at 128, `recycle` reverts `TooManyStakingHotkeys` until an emission credit re‑adds the entry,
-  or, while the CTF UID earns nothing, until someone frees an entry with vault2's `absorbStake`. The server's
-  relay retries, and absorbs foreign entries.
+  about one tempo after a capture while the CTF UID earns. vault2's permissionless `absorbStake` frees an entry
+  only for a position on SN25 worth at least the transfer floor, 100,000 rao of TAO; entries on other subnets,
+  or below the floor, stay. So while the CTF UID earns nothing, third parties can hold the return back with
+  such entries, and the pots and pending awards wait. The server's relay retries, and absorbs what it can.
+  - **A coldkey swap into vault2 could make that permanent, and stop pool registrations.** vault2 opts out of
+    nothing, so a swap could merge into its coldkey up to 256 entries that `absorbStake` cannot free, for a
+    few hundred minimum stakes and 0.1 TAO with five days' notice. A new pool hotkey needs vault2's list
+    below 256, so every later pool registration, the CTF pool's of §3.1 included, would be refused for good.
+    vault2's coldkey as a hotkey account refuses such a swap, which is why the guardian makes it one now,
+    encrypted as above, and checks with `getHotkeyOwner` that it holds it. It has to come first: while an
+    announcement reserves vault2's coldkey the runtime refuses to make it a hotkey account too
+    (`ColdkeySwapDestinationReserved`), and that swap could then go through; and anyone else who held it
+    could release it with such a swap. vault2's coldkey cannot change, so that would be for good.
+- **What the relay does when a recycle fails.** A refused precompile call returns no data, so the relay reads
+  the state first: the residual, the carry's position on the escrow hotkey, `seedMinimum()`, its TAO and
+  vault2's `claimed` of the carry account. No residual (`residual()` or the position is 0, or `recycle`
+  reverts `ResidualMissing`) means a `seed()`, which the relay does not send, since it costs TAO: it alerts
+  with the TAO a seed needs, and while the carry account is still to claim it waits, retrying hourly. vault2's
+  list at 128 without the pool hotkey means waiting a tempo, or `absorbStake` of a foreign SN25 entry worth
+  the floor. With no claim due, a surplus above the residual worth less than the runtime's transfer floor
+  waits for the next root's claim, which moves it along. A reservation, if a coldkey were not a hotkey
+  account, means waiting. Every case leaves the carry account claimable. The relay recycles as soon as a root
+  is final, so a claim of the carry account by anyone else waits on the escrow hotkey only until then.
+- **Qualifying it.** It needs the same runtime qualification as vault2's moves. Rehearsal R-9
+  (`rehearsal/r9_ctf_test.go`; `scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)") covers, on the
+  live runtime, a creation that stakes its seed from the constructor and sets the opt‑outs over a list
+  third parties filled first, a claim to the contract coldkey, a `moveStake` and a `transferStake` from it, and
+  the capture of the returned position (gas, rounding, the staking‑hotkey lists), all with vault2's and the
+  carry's coldkeys made hotkey accounts by a guardian first. It then tries the griefing again: third‑party
+  transfers, and coldkey swaps and reservations naming either coldkey, are refused, the claim still pays,
+  root's sweep of the residual is answered by `seed()`, and vault2's list held full by `absorbStake`. It has
+  not run yet. It must pass on the runtime mainnet runs, spec version 490 at block 9,487,555 (the README
+  records what 490 keeps of 486's rules), before anyone creates the carry contract and before the Safe
+  schedules the operation of §3.1; a runtime upgrade before then means running it again. E-8
+  (`mainnet/settlement_v2_e2e_ctf_test.go`) runs the same creation and the residual's cycle, root's sweep and
+  `seed()` included, on the e2e chain's fakes of the runtime, with `ctf-carry review` before and after.
 
 ### 4.7 Missed steps
 
@@ -495,7 +605,7 @@ filled (below).
 | A canonical census (the committed census is not canonical) | No draw for `k`, exactly as with none committed. The commitment is write‑once, so refusing the root instead would leave `k`, and every root after it, unbuildable (§8 check 1). |
 | The root for `k` (late, refused, deleted or replaced) | The next root covers `k` with its committed census and draw, which are fixed inputs, as provider rows are. The carry never left the pool, so nothing is lost. |
 | The close for `k` (deferred) | `f_k = 0`, and the epoch's emission and returned carry fund the next captured epoch (§6.4 of `VERSION2-FINAL.md`). `k`'s draw still runs, with zero slot amounts and, unmatured, its pot shares as pending awards. |
-| The carry's return (late root or relay down) | `k` is not matured. Winners get their slot amounts now and their pot shares as pending awards. |
+| The carry's return (late root, relay down, vault2's list held full, or a residual root's sweep cleared until `seed()`) | `k` is not matured. Winners get their slot amounts now and their pot shares as pending awards. |
 | Validator support (no fresh funding) | `F_k = 0`, and draws continue. A rounding shortfall comes from the largest pot (§4.5). Pots and pending awards pay whenever the carry is back. |
 | The CTF UID (pruned) | No emission until someone re‑registers it with `registerPoolUid`. |
 
@@ -925,12 +1035,27 @@ stays as it is. The changes are the owner's:
    metagraph loses its lowest‑ranked UID that is not immune. The live `immunity_period` has to outlast the
    time from the registration to the first revealed CTF weight, a little over two days.
 3. **The carry contract** is created through the deterministic deployment proxy after the operation, since it
-   reads the pool hotkey from vault2. Its address is known before it exists, so the entry can name it.
-   - That address depends on the carry's exact build: `CREATE2(0x4e59b448…956c, salt, keccak256(creation code
-     ‖ abi.encode(vault2, 4294967297)))`. So its artifact must be pinned before the amendment entry names the
-     address. No review command exists yet for its creation.
-   - It is created before its address is published, and only once the owner has decided the open problem of
-     §4.6.
+   reads the pool hotkey from vault2, with 1 TAO as its seed, which it stakes on vault2's escrow hotkey as its
+   residual (§4.6). Its address depends on the carry's exact build and the salt: `CREATE2(0x4e59b448…956c, salt,
+   keccak256(creation code ‖ abi.encode(vault2, 4294967297)))`. In order:
+   1. R-9 has passed on the runtime mainnet runs: spec version 490 today, or whichever runs by then (§4.6).
+   2. vault2's coldkey is the guardian's hotkey account already (step 0 below). The guardian makes the carry's
+      coldkey, which review prints, its hotkey account too, with `mainnet/guardian_associate.py` and so through
+      `MevShield.submit_encrypted`, and `getHotkeyOwner` names it. That reveals the coldkey, not the address.
+      If someone else took it, the carry is created under another salt.
+   3. Anyone funds the proxy's mapped account above its existential deposit, with 501 rao or more, by a native
+      transfer. Without it the creation's value cannot pass through the proxy (`OutOfFund`).
+   4. `sn-mainnet ctf-carry review --seed-rao 1000000000 --guardian <guardian> --from <creator>` passes: it pins
+      the artifact, derives the address and the coldkey, checks the coldkey owns no hotkeys and holds no lock,
+      reports any stake third parties sent it, checks both hotkey accounts, the pool hotkey's UID, the funded
+      proxy and the seed, and preflights the creation
+      (`mainnet/BOOTSTRAP-CONTRACTS.md`, "Capture the flag carry").
+   5. The creation goes out within the CTF UID's immunity window, since the auto‑stake destination needs the UID,
+      under a fresh random salt kept private until then, with the value review prints: the seed and the
+      existential deposit. A failed creation reveals the salt, so a retry takes a fresh salt and a fresh review.
+   6. `ctf-carry review` passes on the created carry: its code, the residual, the auto‑stake destination, both
+      opt‑outs and both hotkey accounts.
+   7. The amendment entry names the address after the creation (item 4).
 4. **The amendment entry v2,** "from epoch 8", is signed and published during epoch 7. `E_x`'s entry v1 is due
    by the same time (§8.6.7).
 5. **UR's validator** weights the CTF UID from epoch 8's first tempo.
@@ -946,15 +1071,22 @@ stays as it is. The changes are the owner's:
    4/10 once fleets are weighted.
 
 No key changes: the census commitment and the CTF roots use NO 1's root signer, and the auditor set stays as
-it is.
+it is. One new key holds hotkey accounts only: the **guardian** coldkey, which makes vault2's coldkey, and the
+carry's, hotkey accounts and never swaps them (§4.6). It is a substrate coldkey of its own, apart from the v1
+coordinator's pause guardian, and it holds nothing else.
 
 *What has to ship, and by when:*
 
+0. **Now:** the guardian makes vault2's coldkey a hotkey account, before anyone reserves it, swaps into it or
+   takes it: through `MevShield.submit_encrypted`, then checked with `getHotkeyOwner`
+   (`mainnet/guardian_associate.py associate`, a dry run unless `--send`). A coldkey swap into vault2 needs
+   five days' notice and could stop the operation's pool registration for good (§4.6).
 1. **Before `end(6)`, about 11‑20 18:28Z:** the server's presence sampler for both roles, so that epoch 7 is a
    full shadow epoch. It has to be running when epoch 8 starts in any case.
 2. **By about 11‑21:** the two contracts, their rehearsal on the live runtime, and `upgrade-settlement2
    review` for the folded call. Anyone then creates the implementation through the deterministic deployment
-   proxy. R-9 has to pass before the Safe schedules the operation and before anyone creates the carry (§4.6).
+   proxy. R-9 has to pass on the runtime mainnet runs (490 today) before the Safe schedules the operation and
+   before anyone creates the carry (§4.6).
 3. **By about 11‑22 18:30Z:** the Safe schedules the operation, with the fallback for epoch 9 beside it. It is
    ready, and executed, about 11‑25 18:30Z, two days before `E_c`. Scheduled by 11‑23 18:30Z, it still executes a
    day before, but with less time to retry an execution whose hotkey was taken (§3.1).
@@ -983,9 +1115,9 @@ it is.
 - the operation not executed before epoch 8 starts. Scheduled after about 11‑24 18:29Z, it cannot be. A
   griefer who takes the derived hotkey at every attempt until then has the same effect, and the fallback
   operation then registers the pool from epoch 9 (§3.1);
-- R-9 not passed in time for the Safe to schedule the operation, which it has to precede (§4.6);
-- the owner's decision on the carry (§12.4) not made in time to pin the carry's artifact and create it, since
-  the entry names its address;
+- R-9 not passed on mainnet's runtime in time for the Safe to schedule the operation, which it has to precede
+  (§4.6);
+- the carry not created before the entry is signed, since the entry names its address;
 - the entry not signed before epoch 8 starts, since the signing tool would then require epoch 9;
 - the sampler not running when epoch 8 starts;
 - the notice not out before epoch 8 starts.
@@ -1031,6 +1163,10 @@ it is.
     and role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so
     it has to stay about five epochs to capture most of the reward.
 17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow (§11.2).
+18. **The carry's residual.** The carry contract keeps a residual of its own on vault2's escrow hotkey, makes
+    the pool hotkey its auto‑stake destination and opts out of third‑party staking‑hotkey growth, and a
+    guardian coldkey makes vault2's coldkey and the carry's hotkey accounts (§4.6; §12.2, item 24). It
+    replaces the first carry, which anyone could block for good (§12.4).
 
 ### 12.2 Resolved in this design, for review
 
@@ -1059,6 +1195,7 @@ it is.
 | 21 | How much rounding does the walk tolerate? | Two cycles', 8 rao, and a partial return writes off as much (§4.5) | With one cycle's 4 rao, rounding left owed at a root's end never shrank, and pending awards piled up for good. |
 | 22 | What if returned carry credits more than the epoch's funding? | The shortfall comes from the pots, the largest first, then pending awards (§4.5) | It is at most a few rao. Without it, `F_k` could go negative, and with no fresh funding pending awards never paid. |
 | 23 | Does a pause stop census commitments? | Yes, and the window does not wait: a pause across it means no census, so no draw, for that epoch (§3.1, §4.7) | Pause stops settlement, as it stops closes, commits and finalization (`VERSION2-FINAL.md` §4.3, S5). |
+| 24 | How can third parties be kept from blocking the carry's claims for good? | The carry keeps a residual of its own on vault2's escrow hotkey, seeded from the TAO it is created with by its own `addStake`, pins the pool hotkey as its auto‑stake destination, and sets the runtime's opt‑out of third‑party staking‑hotkey growth. `seed()` restores a residual root's sweep cleared. A guardian coldkey makes the carry's coldkey and vault2's hotkey accounts (§4.6) | Both hotkeys the carry's claim and move land on stay on its list, which the runtime then admits whatever the list's length. The opt‑out keeps the list short. A coldkey that is a hotkey account can be neither swapped into nor reserved, so no swap can merge into either coldkey or hand them hotkeys, and no reservation can delay the carry. The seed is outside money, so the ledger's carry owed is unchanged. The escrow hotkey cannot be pinned like the pool hotkey: a destination needs a UID, which the escrow hotkey lost to pruning. |
 
 ### 12.3 Later options, not open questions
 
@@ -1072,10 +1209,19 @@ These are only options, each needing its own signed entry:
   through CTF accounts;
 - CTF pools for operators other than UR.
 
-### 12.4 Open, pending the owner's decision
+### 12.4 Settled: third parties could block the carry
 
-1. **Third parties can block the carry contract for good** (§4.6). Filling the carry coldkey's staking‑hotkey
-   list makes vault2's claim to it fail, so the pots and pending awards would never return. It is not solved.
-   The owner decides before the carry is created, which is immutable: accept the risk, or adopt a fix, such as
-   a residual kept on the escrow hotkey, which changes the contract and needs R-9. A candidate fix is being
-   prepared.
+Nothing is open. The one question that was: third parties could fill the first carry contract's
+staking‑hotkey list with about 128 small transfers, before its first claim or between claims, after which
+vault2's claims to it would be refused for good, and the pots and pending awards would never return. On
+2026‑11‑11 the owner adopted the fix (§12.1, item 18): the residual, the pinned pool hotkey and the opt‑outs of
+§4.6, with the guardian's hotkey accounts. What remains is the owner's to do, in §11.2's order:
+
+1. **The guardian, now.** The owner picks the guardian, a coldkey that never swaps the hotkeys it holds, and it
+   makes vault2's coldkey its hotkey account, through `MevShield.submit_encrypted`, checked with
+   `getHotkeyOwner` (§11.2, step 0). Whoever associates vault2's coldkey first holds that hotkey account, and a
+   coldkey swap into vault2 could stop every later pool registration (§4.6). At block 9,487,555 it was still
+   free.
+2. **The carry's creation,** once R-9 has passed on the runtime mainnet runs: the carry's coldkey made the
+   guardian's hotkey account, the proxy funded, the 1 TAO seed, a fresh private salt within the CTF UID's
+   immunity window, and `ctf-carry review` before and after (§11.2, item 3).

@@ -16,9 +16,11 @@ The tool refuses an entry whose first epoch has started, so a missed deadline mo
 ## 1. Before signing
 
 - **The carry contract's address,** for capture the flag's line. The contract is created after the timelock
-  operation, but its address is known before it exists ([CAPTURETHEFLAG.md](../CAPTURETHEFLAG.md) §11.2). Write it
-  in its EIP-55 checksum form, as `cast to-check-sum-address` prints it. The tool refuses any other form, so a
-  mistyped address fails before anyone signs it.
+  operation, with a private random salt, so the line is signed once it exists ([CAPTURETHEFLAG.md](../CAPTURETHEFLAG.md)
+  §11.2). Take the address from `sn-mainnet ctf-carry review` after the creation, which checks the code, the
+  residual and the opt-outs at it ([BOOTSTRAP-CONTRACTS.md](BOOTSTRAP-CONTRACTS.md), "Capture the flag carry").
+  Write it in its EIP-55 checksum form, as `cast to-check-sum-address` prints it. The tool refuses any other
+  form, so a mistyped address fails before anyone signs it.
 - **The readers' releases.** The server and every validator must run a build that reads amendments before epoch
   8.
 - **The site.** It must serve `amendments.yml` before any reader depends on it. A reader with a pinned signer that

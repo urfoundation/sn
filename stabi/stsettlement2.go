@@ -312,7 +312,7 @@ func (sTClaimBatcher *STClaimBatcher) UnpackClaimsNotAttemptedEvent(log *types.L
 
 // STCtfCarryMetaData contains all meta data concerning the STCtfCarry contract.
 var STCtfCarryMetaData = bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"contractISTSettlementVault2\",\"name\":\"vault_\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"poolId_\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"coldkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"escrowHotkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"netuid\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"poolHotkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"poolId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"rootIndex\",\"type\":\"uint256\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"coldkey\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"cumulative\",\"type\":\"uint256\"}],\"internalType\":\"structLedgerTree.Account\",\"name\":\"account\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"hash\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"sum\",\"type\":\"uint256\"}],\"internalType\":\"structLedgerTree.ProofNode[]\",\"name\":\"proof\",\"type\":\"tuple[]\"}],\"name\":\"recycle\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"}],\"name\":\"recycledFor\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vault\",\"outputs\":[{\"internalType\":\"contractISTSettlementVault2\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vaultColdkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Recycled\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"AmountTooLarge\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidColdkey\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidConfiguration\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NothingToRecycle\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Reentrancy\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"RuntimeAccountingMismatch\",\"type\":\"error\"}]",
+	ABI: "[{\"inputs\":[{\"internalType\":\"contractISTSettlementVault2\",\"name\":\"vault_\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"poolId_\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"MINIMUM_SEED_RAO\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SEED_NOMINATOR_MULTIPLE\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"coldkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"escrowHotkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"netuid\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"poolHotkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"poolId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"rootIndex\",\"type\":\"uint256\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"bytes32\",\"name\":\"coldkey\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"cumulative\",\"type\":\"uint256\"}],\"internalType\":\"structLedgerTree.Account\",\"name\":\"account\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"hash\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"sum\",\"type\":\"uint256\"}],\"internalType\":\"structLedgerTree.ProofNode[]\",\"name\":\"proof\",\"type\":\"tuple[]\"}],\"name\":\"recycle\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"}],\"name\":\"recycledFor\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"residual\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"seed\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"seedMinimum\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"minimum\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vault\",\"outputs\":[{\"internalType\":\"contractISTSettlementVault2\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vaultColdkey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"epoch\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Recycled\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"from\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"to\",\"type\":\"uint256\"}],\"name\":\"ResidualLowered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"tao\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"residual\",\"type\":\"uint256\"}],\"name\":\"Seeded\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"AmountTooLarge\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidColdkey\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidConfiguration\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NothingToRecycle\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Reentrancy\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ResidualMissing\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"RuntimeAccountingMismatch\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"SeedTooSmall\",\"type\":\"error\"}]",
 	ID:  "a977a5f7fcbc985300e4be1a3bc9814a75",
 }
 
@@ -339,13 +339,83 @@ func (c *STCtfCarry) Instance(backend bind.ContractBackend, addr common.Address)
 // PackConstructor is the Go binding used to pack the parameters required for
 // contract deployment.
 //
-// Solidity: constructor(address vault_, uint256 poolId_) returns()
+// Solidity: constructor(address vault_, uint256 poolId_) payable returns()
 func (sTCtfCarry *STCtfCarry) PackConstructor(vault_ common.Address, poolId_ *big.Int) []byte {
 	enc, err := sTCtfCarry.abi.Pack("", vault_, poolId_)
 	if err != nil {
 		panic(err)
 	}
 	return enc
+}
+
+// PackMINIMUMSEEDRAO is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x160873fa.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function MINIMUM_SEED_RAO() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) PackMINIMUMSEEDRAO() []byte {
+	enc, err := sTCtfCarry.abi.Pack("MINIMUM_SEED_RAO")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackMINIMUMSEEDRAO is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x160873fa.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function MINIMUM_SEED_RAO() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) TryPackMINIMUMSEEDRAO() ([]byte, error) {
+	return sTCtfCarry.abi.Pack("MINIMUM_SEED_RAO")
+}
+
+// UnpackMINIMUMSEEDRAO is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x160873fa.
+//
+// Solidity: function MINIMUM_SEED_RAO() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) UnpackMINIMUMSEEDRAO(data []byte) (*big.Int, error) {
+	out, err := sTCtfCarry.abi.Unpack("MINIMUM_SEED_RAO", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
+// PackSEEDNOMINATORMULTIPLE is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xdd052e09.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function SEED_NOMINATOR_MULTIPLE() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) PackSEEDNOMINATORMULTIPLE() []byte {
+	enc, err := sTCtfCarry.abi.Pack("SEED_NOMINATOR_MULTIPLE")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackSEEDNOMINATORMULTIPLE is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xdd052e09.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function SEED_NOMINATOR_MULTIPLE() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) TryPackSEEDNOMINATORMULTIPLE() ([]byte, error) {
+	return sTCtfCarry.abi.Pack("SEED_NOMINATOR_MULTIPLE")
+}
+
+// UnpackSEEDNOMINATORMULTIPLE is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xdd052e09.
+//
+// Solidity: function SEED_NOMINATOR_MULTIPLE() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) UnpackSEEDNOMINATORMULTIPLE(data []byte) (*big.Int, error) {
+	out, err := sTCtfCarry.abi.Unpack("SEED_NOMINATOR_MULTIPLE", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
 }
 
 // PackColdkey is the Go binding used to pack the parameters required for calling
@@ -602,6 +672,111 @@ func (sTCtfCarry *STCtfCarry) UnpackRecycledFor(data []byte) (*big.Int, error) {
 	return out0, nil
 }
 
+// PackResidual is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x69a48b71.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function residual() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) PackResidual() []byte {
+	enc, err := sTCtfCarry.abi.Pack("residual")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackResidual is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x69a48b71.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function residual() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) TryPackResidual() ([]byte, error) {
+	return sTCtfCarry.abi.Pack("residual")
+}
+
+// UnpackResidual is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x69a48b71.
+//
+// Solidity: function residual() view returns(uint256)
+func (sTCtfCarry *STCtfCarry) UnpackResidual(data []byte) (*big.Int, error) {
+	out, err := sTCtfCarry.abi.Unpack("residual", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
+// PackSeed is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x7d94792a.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function seed() payable returns(uint256 amount)
+func (sTCtfCarry *STCtfCarry) PackSeed() []byte {
+	enc, err := sTCtfCarry.abi.Pack("seed")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackSeed is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x7d94792a.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function seed() payable returns(uint256 amount)
+func (sTCtfCarry *STCtfCarry) TryPackSeed() ([]byte, error) {
+	return sTCtfCarry.abi.Pack("seed")
+}
+
+// UnpackSeed is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x7d94792a.
+//
+// Solidity: function seed() payable returns(uint256 amount)
+func (sTCtfCarry *STCtfCarry) UnpackSeed(data []byte) (*big.Int, error) {
+	out, err := sTCtfCarry.abi.Unpack("seed", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
+// PackSeedMinimum is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x8ec789c6.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function seedMinimum() view returns(uint256 minimum)
+func (sTCtfCarry *STCtfCarry) PackSeedMinimum() []byte {
+	enc, err := sTCtfCarry.abi.Pack("seedMinimum")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackSeedMinimum is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x8ec789c6.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function seedMinimum() view returns(uint256 minimum)
+func (sTCtfCarry *STCtfCarry) TryPackSeedMinimum() ([]byte, error) {
+	return sTCtfCarry.abi.Pack("seedMinimum")
+}
+
+// UnpackSeedMinimum is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x8ec789c6.
+//
+// Solidity: function seedMinimum() view returns(uint256 minimum)
+func (sTCtfCarry *STCtfCarry) UnpackSeedMinimum(data []byte) (*big.Int, error) {
+	out, err := sTCtfCarry.abi.Unpack("seedMinimum", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
 // PackVault is the Go binding used to pack the parameters required for calling
 // the contract method with ID 0xfbfa77cf.  This method will panic if any
 // invalid/nil inputs are passed.
@@ -714,6 +889,91 @@ func (sTCtfCarry *STCtfCarry) UnpackRecycledEvent(log *types.Log) (*STCtfCarryRe
 	return out, nil
 }
 
+// STCtfCarryResidualLowered represents a ResidualLowered event raised by the STCtfCarry contract.
+type STCtfCarryResidualLowered struct {
+	From *big.Int
+	To   *big.Int
+	Raw  *types.Log // Blockchain specific contextual infos
+}
+
+const STCtfCarryResidualLoweredEventName = "ResidualLowered"
+
+// ContractEventName returns the user-defined event name.
+func (STCtfCarryResidualLowered) ContractEventName() string {
+	return STCtfCarryResidualLoweredEventName
+}
+
+// UnpackResidualLoweredEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ResidualLowered(uint256 from, uint256 to)
+func (sTCtfCarry *STCtfCarry) UnpackResidualLoweredEvent(log *types.Log) (*STCtfCarryResidualLowered, error) {
+	event := "ResidualLowered"
+	if len(log.Topics) == 0 || log.Topics[0] != sTCtfCarry.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(STCtfCarryResidualLowered)
+	if len(log.Data) > 0 {
+		if err := sTCtfCarry.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range sTCtfCarry.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// STCtfCarrySeeded represents a Seeded event raised by the STCtfCarry contract.
+type STCtfCarrySeeded struct {
+	Tao      *big.Int
+	Amount   *big.Int
+	Residual *big.Int
+	Raw      *types.Log // Blockchain specific contextual infos
+}
+
+const STCtfCarrySeededEventName = "Seeded"
+
+// ContractEventName returns the user-defined event name.
+func (STCtfCarrySeeded) ContractEventName() string {
+	return STCtfCarrySeededEventName
+}
+
+// UnpackSeededEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event Seeded(uint256 tao, uint256 amount, uint256 residual)
+func (sTCtfCarry *STCtfCarry) UnpackSeededEvent(log *types.Log) (*STCtfCarrySeeded, error) {
+	event := "Seeded"
+	if len(log.Topics) == 0 || log.Topics[0] != sTCtfCarry.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(STCtfCarrySeeded)
+	if len(log.Data) > 0 {
+		if err := sTCtfCarry.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range sTCtfCarry.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
 // UnpackError attempts to decode the provided error data using user-defined
 // error definitions.
 func (sTCtfCarry *STCtfCarry) UnpackError(raw []byte) (any, error) {
@@ -732,8 +992,14 @@ func (sTCtfCarry *STCtfCarry) UnpackError(raw []byte) (any, error) {
 	if bytes.Equal(raw[:4], sTCtfCarry.abi.Errors["Reentrancy"].ID.Bytes()[:4]) {
 		return sTCtfCarry.UnpackReentrancyError(raw[4:])
 	}
+	if bytes.Equal(raw[:4], sTCtfCarry.abi.Errors["ResidualMissing"].ID.Bytes()[:4]) {
+		return sTCtfCarry.UnpackResidualMissingError(raw[4:])
+	}
 	if bytes.Equal(raw[:4], sTCtfCarry.abi.Errors["RuntimeAccountingMismatch"].ID.Bytes()[:4]) {
 		return sTCtfCarry.UnpackRuntimeAccountingMismatchError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], sTCtfCarry.abi.Errors["SeedTooSmall"].ID.Bytes()[:4]) {
+		return sTCtfCarry.UnpackSeedTooSmallError(raw[4:])
 	}
 	return nil, errors.New("Unknown error")
 }
@@ -853,6 +1119,29 @@ func (sTCtfCarry *STCtfCarry) UnpackReentrancyError(raw []byte) (*STCtfCarryReen
 	return out, nil
 }
 
+// STCtfCarryResidualMissing represents a ResidualMissing error raised by the STCtfCarry contract.
+type STCtfCarryResidualMissing struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error ResidualMissing()
+func STCtfCarryResidualMissingErrorID() common.Hash {
+	return common.HexToHash("0x6fc01ca39c0573ad40228fe008c3f4042fd68e8e1b9891f0a78b3e23372e9ddf")
+}
+
+// UnpackResidualMissingError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error ResidualMissing()
+func (sTCtfCarry *STCtfCarry) UnpackResidualMissingError(raw []byte) (*STCtfCarryResidualMissing, error) {
+	out := new(STCtfCarryResidualMissing)
+	if err := sTCtfCarry.abi.UnpackIntoInterface(out, "ResidualMissing", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // STCtfCarryRuntimeAccountingMismatch represents a RuntimeAccountingMismatch error raised by the STCtfCarry contract.
 type STCtfCarryRuntimeAccountingMismatch struct {
 }
@@ -871,6 +1160,29 @@ func STCtfCarryRuntimeAccountingMismatchErrorID() common.Hash {
 func (sTCtfCarry *STCtfCarry) UnpackRuntimeAccountingMismatchError(raw []byte) (*STCtfCarryRuntimeAccountingMismatch, error) {
 	out := new(STCtfCarryRuntimeAccountingMismatch)
 	if err := sTCtfCarry.abi.UnpackIntoInterface(out, "RuntimeAccountingMismatch", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// STCtfCarrySeedTooSmall represents a SeedTooSmall error raised by the STCtfCarry contract.
+type STCtfCarrySeedTooSmall struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error SeedTooSmall()
+func STCtfCarrySeedTooSmallErrorID() common.Hash {
+	return common.HexToHash("0x5501a9427b6671e384004cb7ba0b451e32f6287bb702604c3d89d9afe34c500b")
+}
+
+// UnpackSeedTooSmallError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error SeedTooSmall()
+func (sTCtfCarry *STCtfCarry) UnpackSeedTooSmallError(raw []byte) (*STCtfCarrySeedTooSmall, error) {
+	out := new(STCtfCarrySeedTooSmall)
+	if err := sTCtfCarry.abi.UnpackIntoInterface(out, "SeedTooSmall", raw); err != nil {
 		return nil, err
 	}
 	return out, nil
