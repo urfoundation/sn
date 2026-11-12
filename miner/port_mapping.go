@@ -32,8 +32,12 @@ func minerPortMappingEnabled() bool {
 
 // The port mapping as the extender last reported it, which the running miner
 // writes to its status file for provider status and provider doctor. The state
-// is the sdk's (sdk.ExtenderPortMapping*), and the ports are the external ones
-// the router forwards to the extender's TCP 443, UDP 443 and UDP 4053.
+// is the sdk's closed set (sdk.ExtenderPortMapping*), the method one of pcp,
+// nat-pmp and upnp, and the ports the external ones the router forwards to the
+// extender's TCP 443, UDP 443 and UDP 4053. Never the router's words, which can
+// name the gateway's or the router's own address (extender_standing.go keeps
+// the status file to a closed vocabulary for the same reason); the miner's log
+// has them.
 type minerPortMappingStatus struct {
 	Enabled bool   `json:"enabled"`
 	State   string `json:"state,omitempty"`
@@ -41,7 +45,6 @@ type minerPortMappingStatus struct {
 	TcpPort int    `json:"tcp_port,omitempty"`
 	UdpPort int    `json:"udp_port,omitempty"`
 	DnsPort int    `json:"dns_port,omitempty"`
-	Error   string `json:"error,omitempty"`
 }
 
 // The run's port mapping, from the extender slot's status. Safe for concurrent
@@ -66,7 +69,6 @@ func (self *minerPortMappingHolder) observe(status *sdk.ExtenderProvideStatus) {
 	self.status.TcpPort = status.PortMappingTcpPort
 	self.status.UdpPort = status.PortMappingUdpPort
 	self.status.DnsPort = status.PortMappingDnsPort
-	self.status.Error = status.PortMappingError
 }
 
 // A copy, nil for a run with no holder.
@@ -119,11 +121,8 @@ func minerPortMappingRow(status *minerPortMappingStatus) (ok any, warn bool, det
 		}
 		return true, false, detail
 	case sdk.ExtenderPortMappingFailed:
-		reason := firstLine(status.Error)
-		if reason == "" {
-			reason = "no answer"
-		}
-		return nil, true, "the router didn't open the extender's ports: " + reason
+		// the reason is in the log ("port mapping failed"), not here
+		return nil, true, "the router didn't open the extender's ports by UPnP, NAT-PMP or PCP; the miner's log says why"
 	default:
 		return nil, false, "off"
 	}

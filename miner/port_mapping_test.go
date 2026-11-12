@@ -97,6 +97,7 @@ func TestMinerPortMappingHolderObservesTheExtender(t *testing.T) {
 		PortMappingTcpPort: 40443,
 		PortMappingUdpPort: 443,
 		PortMappingDnsPort: 4053,
+		PortMappingError:   "udp 4053: the router's own address 198.51.100.9 is not public",
 	})
 	status := holder.snapshot()
 	if !status.Enabled || status.State != sdk.ExtenderPortMappingMapped || status.Method != "upnp" ||
@@ -109,6 +110,10 @@ func TestMinerPortMappingHolderObservesTheExtender(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(`"port_mapping":{"enabled":true,"state":"mapped","method":"upnp","tcp_port":40443`)) {
 		t.Fatalf("status file = %s", raw)
+	}
+	// the router's words can name an address, and stay out of the status file
+	if bytes.Contains(raw, []byte("198.51.100.9")) {
+		t.Fatalf("status file = %s, expected no router text", raw)
 	}
 	var holderless *minerPortMappingHolder
 	holderless.observe(&sdk.ExtenderProvideStatus{PortMapping: sdk.ExtenderPortMappingFailed})
@@ -139,10 +144,10 @@ func TestMinerPortMappingRows(t *testing.T) {
 			detail: "the router forwards TCP 40443 to 443, UDP 4053 (upnp)",
 		},
 		{
-			status: minerPortMappingStatus{Enabled: true, State: sdk.ExtenderPortMappingFailed, Error: "pcp: no answer; upnp: no answer\nmore"},
+			status: minerPortMappingStatus{Enabled: true, State: sdk.ExtenderPortMappingFailed},
 			ok:     nil,
 			warn:   true,
-			detail: "the router didn't open the extender's ports: pcp: no answer; upnp: no answer",
+			detail: "the router didn't open the extender's ports by UPnP, NAT-PMP or PCP; the miner's log says why",
 		},
 	} {
 		ok, warn, detail := minerPortMappingRow(&c.status)
@@ -161,8 +166,8 @@ func TestStatusWriterPrintsThePortMapping(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("a miner that reports no mapping printed %q", out.String())
 	}
-	w.portMapping(&minerPortMappingStatus{Enabled: true, State: sdk.ExtenderPortMappingFailed, Error: "upnp error 718"})
-	if line := out.String(); !strings.Contains(line, "! Port mapping") || !strings.Contains(line, "upnp error 718") {
-		t.Fatalf("line = %q, expected the warning with the router's reason", line)
+	w.portMapping(&minerPortMappingStatus{Enabled: true, State: sdk.ExtenderPortMappingFailed})
+	if line := out.String(); !strings.Contains(line, "! Port mapping") || !strings.Contains(line, "the miner's log says why") {
+		t.Fatalf("line = %q, expected the warning pointing at the log", line)
 	}
 }

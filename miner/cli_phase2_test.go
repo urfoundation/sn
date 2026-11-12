@@ -117,7 +117,7 @@ func TestMinerStatusFileFollowsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer progress.close()
-	stop := startMinerStatusFile(t.Context(), progress, nil)
+	stop := startMinerStatusFile(t.Context(), progress, nil, nil)
 	deadline := time.Now().Add(5 * time.Second)
 	var status *minerLocalStatus
 	for time.Now().Before(deadline) {
