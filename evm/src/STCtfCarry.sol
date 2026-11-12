@@ -171,7 +171,9 @@ contract STCtfCarry {
             if (vault.claimed(poolId, account.index) < account.cumulative) {
                 // Without its residual the escrow hotkey has left this
                 // coldkey's list, and the runtime refuses vault2's transfer
-                // to it until a seed restores the residual.
+                // to it until a seed restores the residual. A position the
+                // runtime cleared reads exactly zero.
+                // slither-disable-next-line incorrect-equality
                 if (kept == 0) revert ResidualMissing();
                 // vault2 pays this coldkey on its escrow hotkey, or reverts.
                 // slither-disable-next-line unused-return
@@ -218,9 +220,16 @@ contract STCtfCarry {
     /// adds what its position gained to the residual. It restores a residual
     /// the runtime cleared, whose TAO the runtime returned to this contract.
     function seed() external payable nonReentrant returns (uint256 amount) {
-        uint256 kept = _keepResidual();
+        // The position before the seed bounds the residual kept, as in
+        // recycle; the residual is read and written only once the seed is in.
+        uint256 position = _unlocked(escrowHotkey, _stake(escrowHotkey, coldkey));
         uint256 tao;
         (tao, amount) = _seed(escrowHotkey, netuid, coldkey);
+        uint256 kept = residual;
+        if (position < kept) {
+            emit ResidualLowered(kept, position);
+            kept = position;
+        }
         residual = kept + amount;
         emit Seeded(tao, amount, kept + amount);
     }
