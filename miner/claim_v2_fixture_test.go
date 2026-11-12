@@ -11,11 +11,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -75,11 +77,11 @@ func claimV2TestRevert(name string) *claimV2TestRPCError {
 	return &claimV2TestRPCError{Code: 3, Message: "execution reverted: " + name}
 }
 
-// One pool of one vault. Every mined block is final at once; the knobs model
-// a lost broadcast, a runtime refusal at preflight or after it, a third
-// party's claim landing first, a lagging nonce view, a failing method, a
-// moved finalized head and a receipt without its event. All fields are
-// guarded by stateLock.
+// One pool of one vault, and any further pools of the vault (pools). Every
+// mined block is final at once; the knobs model a lost broadcast, a runtime
+// refusal at preflight or after it, a third party's claim landing first, a
+// lagging nonce view, a failing method, a moved finalized head and a receipt
+// without its event. All fields are guarded by stateLock.
 type claimV2TestChain struct {
 	t            *testing.T
 	stateLock    sync.Mutex
@@ -116,11 +118,23 @@ type claimV2TestChain struct {
 	// batch models the claim batcher (claim_v2_batch_test.go); nil means
 	// the chain has none.
 	batch *claimV2TestBatcherModel
+	// pools holds the vault's pools other than noID, such as its capture the
+	// flag pool 2^32 + noID. A pool in neither has no root and nothing
+	// claimed.
+	pools map[uint64]*claimV2TestPool
+}
+
+// A further vault2 pool of the vault: its finalized roots in order, and its
+// claimed watermarks by account index.
+type claimV2TestPool struct {
+	ledgers [][]merkle.LedgerAccount
+	trees   []*merkle.LedgerSumTree
+	claimed map[uint64]uint256.Int
 }
 
 func newClaimV2TestChain(t *testing.T) *claimV2TestChain {
 	t.Helper()
-	chain := &claimV2TestChain{t: t, vault: common.HexToAddress(claimV2TestVault), noID: 7, claimed: map[uint64]uint256.Int{}, refuseIndex: map[uint64]bool{}, head: 100, receipts: map[common.Hash]*types.Receipt{}}
+	chain := &claimV2TestChain{t: t, vault: common.HexToAddress(claimV2TestVault), noID: 7, claimed: map[uint64]uint256.Int{}, refuseIndex: map[uint64]bool{}, head: 100, receipts: map[common.Hash]*types.Receipt{}, pools: map[uint64]*claimV2TestPool{}}
 	chain.server = httptest.NewServer(chain)
 	t.Cleanup(chain.server.Close)
 	return chain
@@ -129,14 +143,49 @@ func newClaimV2TestChain(t *testing.T) *claimV2TestChain {
 // Appends a finalized root over the accounts in position order.
 func (self *claimV2TestChain) finalize(accounts ...merkle.LedgerAccount) {
 	self.t.Helper()
+	self.finalizePool(self.noID, accounts...)
+}
+
+// Appends a finalized root of pool noID, the chain's pool or a further pool
+// of its vault, over the accounts in position order.
+func (self *claimV2TestChain) finalizePool(noID uint64, accounts ...merkle.LedgerAccount) {
+	self.t.Helper()
 	tree, err := merkle.BuildLedgerSumTree(context.Background(), accounts)
 	if err != nil {
 		self.t.Fatal(err)
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	self.ledgers = append(self.ledgers, accounts)
-	self.trees = append(self.trees, tree)
+	if noID == self.noID {
+		self.ledgers = append(self.ledgers, accounts)
+		self.trees = append(self.trees, tree)
+		return
+	}
+	pool := self.pools[noID]
+	if pool == nil {
+		pool = &claimV2TestPool{claimed: map[uint64]uint256.Int{}}
+		self.pools[noID] = pool
+	}
+	pool.ledgers, pool.trees = append(pool.ledgers, accounts), append(pool.trees, tree)
+}
+
+// The state of pool noID: the chain's own pool, a further pool, or one with
+// no root. The caller holds stateLock; a claim it records in an unknown
+// pool's watermarks is dropped, as the vault refuses claims without a root.
+func (self *claimV2TestChain) pool(noID uint64) *claimV2TestPool {
+	if noID == self.noID {
+		return &claimV2TestPool{ledgers: self.ledgers, trees: self.trees, claimed: self.claimed}
+	}
+	if pool := self.pools[noID]; pool != nil {
+		return pool
+	}
+	return &claimV2TestPool{claimed: map[uint64]uint256.Int{}}
+}
+
+// The pools with roots served: the chain's pool, then the further ones in
+// ascending id. The caller holds stateLock.
+func (self *claimV2TestChain) poolIDs() []uint64 {
+	return append([]uint64{self.noID}, slices.Sorted(maps.Keys(self.pools))...)
 }
 
 func (self *claimV2TestChain) with(change func()) {
@@ -149,6 +198,13 @@ func (self *claimV2TestChain) claimedOf(index uint64) uint256.Int {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	return self.claimed[index]
+}
+
+// The claimed watermark of account index of pool noID.
+func (self *claimV2TestChain) claimedIn(noID, index uint64) uint256.Int {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	return self.pool(noID).claimed[index]
 }
 
 func (self *claimV2TestChain) sent() []string {
@@ -189,7 +245,8 @@ func claimV2TestAbandoned(err error) bool {
 	return errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET)
 }
 
-// The pinned GET /sn/ledger/account body for the latest finalized root.
+// The pinned GET /sn/ledger/account body for each pool's latest finalized
+// root.
 func (self *claimV2TestChain) serveAccounts(writer http.ResponseWriter, request *http.Request) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
@@ -199,12 +256,17 @@ func (self *claimV2TestChain) serveAccounts(writer http.ResponseWriter, request 
 	}
 	coldkey := request.URL.Query().Get("coldkey")
 	accounts := []map[string]any{}
-	if last := len(self.trees) - 1; last >= 0 {
-		for index, account := range self.ledgers[last] {
+	for _, noID := range self.poolIDs() {
+		pool := self.pool(noID)
+		last := len(pool.trees) - 1
+		if last < 0 {
+			continue
+		}
+		for index, account := range pool.ledgers[last] {
 			if hexutil.Encode(account.Coldkey[:]) != coldkey {
 				continue
 			}
-			proof, err := self.trees[last].Proof(uint64(index))
+			proof, err := pool.trees[last].Proof(uint64(index))
 			if err != nil {
 				self.t.Error(err)
 			}
@@ -212,8 +274,8 @@ func (self *claimV2TestChain) serveAccounts(writer http.ResponseWriter, request 
 			for _, node := range proof {
 				nodes = append(nodes, map[string]any{"hash": hexutil.Encode(node.Hash[:]), "sum": node.Sum.Dec()})
 			}
-			claimed := self.claimed[uint64(index)]
-			entry := map[string]any{"vault": strings.ToLower(self.vault.Hex()), "no_id": self.noID, "index": index, "root_index": last,
+			claimed := pool.claimed[uint64(index)]
+			entry := map[string]any{"vault": strings.ToLower(self.vault.Hex()), "no_id": noID, "index": index, "root_index": last,
 				"cumulative": account.Cumulative.Dec(), "proof": nodes, "claimed": claimed.Dec(), "pending_cumulative": nil}
 			if self.account != nil {
 				self.account(entry)
@@ -318,17 +380,18 @@ func (self *claimV2TestChain) view(data []byte) (any, *claimV2TestRPCError) {
 	var out []byte
 	switch method.Name {
 	case "rootCount":
-		out, err = method.Outputs.Pack(big.NewInt(int64(len(self.trees))))
+		out, err = method.Outputs.Pack(big.NewInt(int64(len(self.pool(word(0)).trees))))
 	case "roots":
-		if word(1) >= uint64(len(self.trees)) {
+		trees := self.pool(word(0)).trees
+		if word(1) >= uint64(len(trees)) {
 			out, err = method.Outputs.Pack(stabi.ISTSettlementVault2Root{Total: new(big.Int)})
 			break
 		}
-		tree := self.trees[word(1)]
+		tree := trees[word(1)]
 		root, total := tree.Root()
 		out, err = method.Outputs.Pack(stabi.ISTSettlementVault2Root{Root: root, Total: total.ToBig(), LeafCount: tree.LeafCount(), Epoch: word(1) + 1, LedgerHash: [32]byte{0x1e}})
 	case "claimed":
-		claimed := self.claimed[word(1)]
+		claimed := self.pool(word(0)).claimed[word(1)]
 		out, err = method.Outputs.Pack(claimed.ToBig())
 	case "claim":
 		self.calls = append(self.calls, "preflight")
@@ -352,16 +415,18 @@ func (self *claimV2TestChain) view(data []byte) (any, *claimV2TestRPCError) {
 	return hexutil.Encode(out), nil
 }
 
-// vault2.claim's checks in the SPEC's order, without moving stake.
+// vault2.claim's checks in the SPEC's order, without moving stake, against
+// the roots and watermarks of the claim's pool.
 func (self *claimV2TestChain) execute(data []byte) (*claimIntentV2, *uint256.Int, *claimV2TestRPCError) {
 	intent, err := decodeClaimV2Calldata(data)
 	if err != nil {
 		return nil, nil, claimV2TestRevert("malformed claim")
 	}
-	if intent.RootIndex.Uint64() >= uint64(len(self.trees)) {
+	pool := self.pool(intent.NoID.Uint64())
+	if !intent.NoID.IsUint64() || intent.RootIndex.Uint64() >= uint64(len(pool.trees)) {
 		return nil, nil, claimV2TestRevert("UnknownRoot")
 	}
-	tree := self.trees[intent.RootIndex.Uint64()]
+	tree := pool.trees[intent.RootIndex.Uint64()]
 	root, total := tree.Root()
 	cumulative, _ := uint256.FromBig(intent.Account.Cumulative)
 	proof := make([]merkle.LedgerNode, len(intent.Proof))
@@ -373,7 +438,7 @@ func (self *claimV2TestChain) execute(data []byte) (*claimIntentV2, *uint256.Int
 	if !merkle.VerifyLedgerProof(root, &total, tree.LeafCount(), index, intent.Account.Coldkey, cumulative, proof) {
 		return nil, nil, claimV2TestRevert("InvalidProof")
 	}
-	claimed := self.claimed[index]
+	claimed := pool.claimed[index]
 	if !claimed.Lt(cumulative) {
 		return nil, nil, claimV2TestRevert("NothingToClaim")
 	}
@@ -423,7 +488,7 @@ func (self *claimV2TestChain) mine(param json.RawMessage) (any, *claimV2TestRPCE
 	}
 	intent, amount, refusal := self.execute(tx.Data())
 	if refusal == nil && !self.revertMined && tx.Gas() >= self.claimGas {
-		self.claimed[intent.Account.Index.Uint64()] = *uint256.MustFromBig(intent.Account.Cumulative)
+		self.pool(intent.NoID.Uint64()).claimed[intent.Account.Index.Uint64()] = *uint256.MustFromBig(intent.Account.Cumulative)
 		receipt.Status = types.ReceiptStatusSuccessful
 		if !self.dropLogs {
 			receipt.Logs = append(receipt.Logs, claimV2TestClaimedLog(*tx.To(), intent, amount, from, receipt))
@@ -564,13 +629,19 @@ func (self *claimV2TestDaemon) unit(index uint64) *ClaimUnitV2 {
 // The acknowledged on-disk unit, independent of the in-memory queue.
 func (self *claimV2TestDaemon) durable(index uint64) ClaimUnitV2 {
 	self.t.Helper()
+	return self.durableIn(self.chain.noID, index)
+}
+
+// The acknowledged on-disk unit of account index of pool noID.
+func (self *claimV2TestDaemon) durableIn(noID, index uint64) ClaimUnitV2 {
+	self.t.Helper()
 	queue, err := self.store.load()
 	if err != nil {
 		self.t.Fatal(err)
 	}
-	unit := queue.Units[claimUnitV2Key(self.cfg.Vault, self.chain.noID, index)]
+	unit := queue.Units[claimUnitV2Key(self.cfg.Vault, noID, index)]
 	if unit == nil {
-		self.t.Fatalf("durable v2 claim unit %d is absent", index)
+		self.t.Fatalf("durable v2 claim unit %d of pool %d is absent", index, noID)
 	}
 	return *unit
 }
@@ -618,13 +689,19 @@ func claimV2TestSign(t *testing.T, key *ecdsa.PrivateKey, chainID int64, to comm
 // The account as the endpoint serves it now.
 func (self *claimV2TestDaemon) account(index uint64) *claimAccountV2 {
 	self.t.Helper()
+	return self.accountIn(self.chain.noID, index)
+}
+
+// Account index of pool noID as the endpoint serves it now.
+func (self *claimV2TestDaemon) accountIn(noID, index uint64) *claimAccountV2 {
+	self.t.Helper()
 	snapshot, err := readClaimSnapshotV2(self.ctx, self.strategy, self.cfg)
 	if err != nil {
 		self.t.Fatal(err)
 	}
-	account := snapshot[claimUnitV2Key(self.cfg.Vault, self.chain.noID, index)]
+	account := snapshot[claimUnitV2Key(self.cfg.Vault, noID, index)]
 	if account == nil {
-		self.t.Fatalf("account %d is not served", index)
+		self.t.Fatalf("account %d of pool %d is not served", index, noID)
 	}
 	return account
 }

@@ -39,3 +39,8 @@ func privateDirFix(dir string) string {
 func rootOnlyProblem(string) string {
 	return ""
 }
+
+// ownerOnlyProblem: a system service run as a user is Linux only (--as).
+func ownerOnlyProblem(string, int) string {
+	return ""
+}

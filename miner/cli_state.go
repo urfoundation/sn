@@ -39,6 +39,10 @@ type minerLocalStatus struct {
 	StoppedAt      *time.Time          `json:"stopped_at,omitempty"`
 	ConnectedSince *time.Time          `json:"connected_since,omitempty"`
 	Members        []minerMemberStatus `json:"members"`
+	// The extender role of the slot that runs it (extender_standing.go): the
+	// tcp 443 bind and the last activation. Absent from an older miner, and
+	// before the first status of a run.
+	Extender *minerExtenderStanding `json:"extender,omitempty"`
 }
 
 type minerMemberStatus struct {
@@ -115,9 +119,10 @@ func writeMinerLocalStatus(status *minerLocalStatus) error {
 }
 
 // startMinerStatusFile keeps the status file current from the run's
-// progress until the returned stop is called, which records the stop time.
-// A status file that can't be written never stops the miner.
-func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) (stop func()) {
+// progress, and the extender's standing from `extender` when not nil, until
+// the returned stop is called, which records the stop time. A status file
+// that can't be written never stops the miner.
+func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, extender *minerExtenderStandings) (stop func()) {
 	if progress == nil {
 		return func() {}
 	}
@@ -134,6 +139,7 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) 
 		for _, member := range value.Members {
 			status.Members = append(status.Members, minerMemberStatus{Slot: member.Slot, ClientId: member.ClientId, Lifecycle: member.Lifecycle, Connected: member.Connected, Ready: member.Ready})
 		}
+		status.Extender = extender.current()
 		status.UpdatedAt = time.Now().UTC()
 		if status.connected() {
 			if status.ConnectedSince == nil {
@@ -170,6 +176,8 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) 
 		status.StoppedAt = &stopped
 		status.UpdatedAt = stopped
 		status.ConnectedSince = nil
+		// a stopped miner runs no extender
+		status.Extender = nil
 		for i := range status.Members {
 			status.Members[i].Connected = false
 			status.Members[i].Ready = false

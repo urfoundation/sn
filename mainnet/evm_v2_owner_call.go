@@ -217,7 +217,7 @@ var settlement2SurplusAssignedTopic = func() common.Hash {
 // ownerCallView is upgradeView for a contract binding's packed call.
 func ownerCallView[T any](ctx context.Context, chain *upgradeChain, to common.Address, data []byte, unpack func([]byte) (T, error)) (T, error) {
 	var value T
-	output, err := chain.call(ctx, nil, to, data)
+	output, err := chain.call(ctx, nil, nil, to, data)
 	if err != nil {
 		return value, fmt.Errorf("view 0x%x of %s: %w", data[:4], to.Hex(), err)
 	}
@@ -353,7 +353,7 @@ func reviewSettlement2OwnerCall(ctx context.Context, client *rpcClient, call set
 	// execute step is reviewed.
 	if call.governance.timelocked() {
 		timelocked, err := reviewSettlement2Timelock(ctx, chain, call.governance, call.settlement,
-			settlement2TimelockCall{Target: call.settlement.Hex(), ValueWei: "0", Data: hexutil.Encode(data), Function: function, Args: args}, data, true)
+			settlement2TimelockCall{Target: call.settlement.Hex(), ValueWei: "0", Data: hexutil.Encode(data), Function: function, Args: args}, data, new(big.Int), true, nil)
 		if err != nil {
 			return result, err
 		}
