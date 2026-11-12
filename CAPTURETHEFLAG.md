@@ -1043,7 +1043,8 @@ stays as it is. The changes are the owner's:
 
 No key changes: the census commitment and the CTF roots use NO 1's root signer, and the auditor set stays as
 it is. One new key holds hotkey accounts only: the **guardian** coldkey, which makes vault2's coldkey, and the
-carry's, hotkey accounts and never swaps them (§4.6).
+carry's, hotkey accounts and never swaps them (§4.6). It is a substrate coldkey of its own, apart from the v1
+coordinator's pause guardian, and it holds nothing else.
 
 *What has to ship, and by when:*
 
