@@ -590,10 +590,11 @@ amounts would still pay, but the pots and pending awards would never return. The
   the capture of the returned position (gas, rounding, the staking‑hotkey lists), all with vault2's and the
   carry's coldkeys made hotkey accounts by a guardian first. It then tries the griefing again: third‑party
   transfers, and coldkey swaps and reservations naming either coldkey, are refused, the claim still pays,
-  root's sweep of the residual is answered by `seed()`, and vault2's list held full by `absorbStake`. It has
-  not run yet. It must pass on the runtime mainnet runs, spec version 490 at block 9,487,555 (the README
-  records what 490 keeps of 486's rules), before anyone creates the carry contract and before the Safe
-  schedules the operation of §3.1; a runtime upgrade before then means running it again. E-8
+  root's sweep of the residual is answered by `seed()`, and vault2's list held full by `absorbStake`. It
+  passed on 2026‑11‑12 on spec version 490, the runtime mainnet runs, with vault2's coldkey the guardian's
+  hotkey account throughout; the README records the node, two corrections to its griefing checks and the
+  gas. A runtime upgrade before anyone creates the carry contract or the Safe schedules the operation of
+  §3.1 means running it again. E-8
   (`mainnet/settlement_v2_e2e_ctf_test.go`) runs the same creation and the residual's cycle, root's sweep and
   `seed()` included, on the e2e chain's fakes of the runtime, with `ctf-carry review` before and after.
 
@@ -1220,7 +1221,7 @@ vault2's claims to it would be refused for good, and the pots and pending awards
 1. **The guardian, now.** The owner picks the guardian, a coldkey that never swaps the hotkeys it holds, and it
    makes vault2's coldkey its hotkey account, through `MevShield.submit_encrypted`, checked with
    `getHotkeyOwner` (§11.2, step 0). Whoever associates vault2's coldkey first holds that hotkey account, and a
-   coldkey swap into vault2 could stop every later pool registration (§4.6). At block 9,487,555 it was still
+   coldkey swap into vault2 could stop every later pool registration (§4.6). At block 9,489,181 it was still
    free.
 2. **The carry's creation,** once R-9 has passed on the runtime mainnet runs: the carry's coldkey made the
    guardian's hotkey account, the proxy funded, the 1 TAO seed, a fresh private salt within the CTF UID's
