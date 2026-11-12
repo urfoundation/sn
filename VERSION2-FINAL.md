@@ -1255,7 +1255,7 @@ run the unchanged v1 daemon in the same process with the same relayer key:
 
 | Command | Does |
 | --- | --- |
-| `v2 status --coldkey` | account, claimable, claimed, pending |
+| `v2 status --coldkey` | account, claimable, claimed, pending; a pool the ledger route names unavailable shows as unavailable (§19.5) |
 | `v2 claim` | one claim; a third party's earlier claim counts as done |
 | `v2 claim --all [--batch=<batcher>]` | every finalized account of the coldkey with anything claimable, each verified against vault2's root first: one claim each, or with `--batch` two or more per transaction through the claim batcher |
 | `v2 check --all` | Rebuilds the pending root from published objects and compares every account of the protected root (§9.3): the newest finalized root whose objects it fetched and verified, F or, when F's objects are missing or do not rebuild it, an older root, which it reports. Each account is reported as having no fault, a provable fault, or as unverifiable when the objects are missing or do not reproduce the root. With `--challenge` it sends `checkPath` for a fault. With `--demand`, in the unverifiable case, it sends the §9.3 demand set (`ledger.DemandSet`) in its order until the window's end, with the same sample size and doubling, each demand naming the protected root, carrying the account's proof against it and paying the fee. Unlike the validator, it does not wait until commit + 7,200, and a sender draws one sample per pending root and protected root. A root that has left the pending slot, or an account already demanded, counts as done (§5). |
@@ -1997,7 +1997,9 @@ The provider pool's ledger and allocation (§6) do not change either. This
 addendum records what the CTF pool adds to this plan. The census, the draw,
 the amounts, the CTF ledger and its audit are specified in CAPTURETHEFLAG.md
 §4, §5 and §8, and implemented by the package `ctf`, whose `ctf/doc.go`
-states every format byte for byte.
+states every format byte for byte. Where this addendum and CAPTURETHEFLAG.md
+differ, CAPTURETHEFLAG.md governs; the addendum was last checked against it
+on 2026-11-12.
 
 ### 19.1 The CTF pool on vault2
 
@@ -2143,10 +2145,12 @@ The contract is `evm/src/STCtfCarry.sol`, with its ABI in
 `evm/abi/STCtfCarry.abi.json` and its Go binding `stabi.STCtfCarry`. There is
 one per CTF pool, immutable and ownerless. It is created through the
 deterministic deployment proxy after the timelock operation, with the
-constructor `(vault2, poolId)`, UR's `poolId` being 4294967297, and at least
-`seedMinimum()` rao of TAO as the call's value: 1 TAO on mainnet. The
+constructor `(vault2, poolId)`, UR's `poolId` being 4294967297, and as the
+call's value its seed, at least `seedMinimum()` rao of TAO (1 TAO on
+mainnet), plus the 500-rao existential deposit. The
 constructor reads the pool hotkey from vault2, so it requires vault2 to hold
-the pool (`InvalidConfiguration`). It stakes its whole TAO on vault2's escrow
+the pool (`InvalidConfiguration`). It stakes its whole spendable TAO, the seed
+above the existential deposit, on vault2's escrow
 hotkey by its own `addStake`, which is its residual, makes the pool hotkey its
 auto-stake destination on the subnet (`setColdkeyAutoStakeHotkey`, which needs
 the pool hotkey to hold a UID), and sets the runtime's opt-outs of
@@ -2227,22 +2231,26 @@ least `seedMinimum()`, on the escrow hotkey and adds the position's gain to
 the residual. It restores a residual that root's sweep cleared (§19.4).
 
 **What it guarantees.** It has no owner, no upgrade, and no entry point but
-`recycle` and `seed`. Stake reaches it only from vault2's claims, donations
-on the escrow hotkey and its own seeds, and leaves it only for vault2's
-position on the CTF pool hotkey, so it cannot be drained or redirected.
+`recycle` and `seed`. Stake reaches it only from vault2's claims, its own
+seeds and third parties' transfers, which land only on hotkeys already on its
+staking-hotkey list: the escrow and pool hotkeys, whose stake goes round with
+the carry, and whatever a fill left before the creation, whose stake stays
+where it is. It leaves only for vault2's position on the CTF pool hotkey, so
+it cannot be drained or redirected.
 Beyond its residual it holds stake on the escrow and pool hotkeys only until
 the next recycle. The residual is outside money: it never enters vault2,
 `recycledFor` or the CTF ledger. With the opt-out set, no third party can
-send its coldkey stake on any hotkey but the escrow hotkey, and no coldkey
-swap can bring it a new hotkey (§19.4).
+add a hotkey to its list, and the guardian's hotkey account on its coldkey
+refuses every coldkey swap into it (§19.4).
 It relies only on vault2 and the runtime, and it changes nothing in vault2,
 which pays the leaf's coldkey whoever calls. Stake donated to it, or to
 vault2 on the CTF pool hotkey, counts as fresh funding: the CTF ledger
 credits a return only up to what the carry owes.
 
 **Each epoch.** The root allocates the carry account its delta, the root
-finalizes about two days after the epoch ends, and the server's relay calls
-`recycle`, paying one claim and two stake moves of gas. The next close
+finalizes about two days after the epoch ends, and the server's CTF driver
+calls `recycle`, signed by the root key that sends the pool's commits, which
+pays one claim and two stake moves of gas. The next close
 captures the returned stake with the epoch's emission, and the CTF ledger
 tells them apart by `recycledFor` (CAPTURETHEFLAG.md §4.5, §4.6). A return
 recorded for an epoch that is later deferred is captured by the next close,
@@ -2264,10 +2272,10 @@ epoch whose carry is back.
 | A coldkey swap into the carry's coldkey, before it exists or after: it could fill the list to 256, so that the seed's `addStake` is refused and the creation fails, bring locked alpha, or give the carry hotkeys | A guardian coldkey makes the carry's coldkey a hotkey account before the creation, which reveals the coldkey but not the address; the runtime then refuses every swap into it (`NewColdKeyIsHotkey`). `ctf-carry review` requires it, and a coldkey that owns no hotkeys, holds no lock and holds no more staking hotkeys than third parties can add |
 | A coldkey swap into vault2's coldkey: vault2 opts out of nothing, so it could merge up to 256 staking-hotkey entries that `absorbStake` cannot free (positions on other subnets, or below the transfer floor), for a few hundred minimum stakes and 0.1 TAO with five days' notice. A new pool hotkey needs vault2's list below 256, so every later pool registration, the CTF pool's included, would be refused for good | The guardian makes vault2's coldkey a hotkey account now, which refuses every swap into it. Whoever associates it first holds that hotkey account, so it is done before anyone else does it (CAPTURETHEFLAG.md §11.2) |
 | Anyone announces a coldkey swap naming the carry's coldkey, or vault2's, as its destination: while the reservation lasts, up to six days and renewable for 0.1 TAO, the runtime refuses every transfer into it from another coldkey | No contract can release a reservation on 486, but the runtime refuses to reserve a coldkey that is a hotkey account, which the guardian makes both. Without that it would delay and take nothing: the account stays claimable, and pot shares wait as pending awards. CC-19; R-9 |
-| Third parties hold vault2's own staking-hotkey list at 128 entries. The carry's transfer re-adds the CTF pool hotkey to vault2's list when vault2 holds nothing there, as after a capture with no collateral lock | `recycle` reverts until an emission credit re-adds the entry, about a tempo after a capture while the CTF UID earns. `absorbStake` frees an entry only for a position on SN25 worth at least the transfer floor; entries on other subnets or below it stay, so while the UID earns nothing the return can be held back. The relay retries, and absorbs what it can. The epoch is not matured in the meantime. CC-20 |
+| Third parties hold vault2's own staking-hotkey list at 128 entries. The carry's transfer re-adds the CTF pool hotkey to vault2's list when vault2 holds nothing there, as after a capture with no collateral lock | `recycle` reverts until an emission credit re-adds the entry, about a tempo after a capture while the CTF UID earns. `absorbStake` frees an entry only for a position on SN25 worth at least the transfer floor; entries on other subnets or below it stay, so while the UID earns nothing the return can be held back. The server's CTF driver retries, and absorbs what it can, up to eight foreign entries an attempt. The epoch is not matured in the meantime. CC-20 |
 | Anyone takes the derived pool hotkey inside the executing block, since it is known once the parent block is sealed (§19.2), and repeats it until epoch 8 starts | The operation is ready days early, the execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another salt, registers the pool from epoch 9 if all attempts fail (`mainnet/BOOTSTRAP-CONTRACTS.md`) |
 | The v1 coordinator is paused across an epoch's 600-block census window | No census, so no draw, for that epoch: all its slots carry (CAPTURETHEFLAG.md §4.7) |
-| A late root, or the relay down | The return waits, the epoch is not matured, and pot shares are pending awards, paid when the carry is back |
+| A late root, or the CTF driver down | The return waits, the epoch is not matured, and pot shares are pending awards, paid when the carry is back |
 | Validators holding most of the stake do not support CTF | The CTF pool gets no fresh funding, the draws continue, and pots and pending awards pay whenever the carry is back (CAPTURETHEFLAG.md §4.7) |
 | The CTF pool's UID is pruned | No emission until anyone re-registers its hotkey with `registerPoolUid` (§7.1) |
 | The operator attests the census | The census is committed on chain before the drand round exists, which rules out targeted picks; the census, its exclusion counts and the awards are public; a miner can read its own status and reason at `GET /sn/ctf/client`. A second operator needs review first (CAPTURETHEFLAG.md §7) |
@@ -2281,16 +2289,22 @@ epoch whose carry is back.
   the commit and finalize with the provider pool; then `recycle`.
   `GET /sn/ledger/account` (§8.3) serves both pools, and each entry gains
   `kind` (`pool` or `ctf`) and `label`. With `partial=true`, a
-  pool whose tree cannot be built is named in `unavailable_pools` instead of
+  pool whose ledger cannot be read is named in `unavailable_pools` instead of
   failing the answer. Without it, as old apps ask, a CTF pool that cannot be
   read is left out and the other pools are answered as before, and any other
-  pool that cannot be read is a 502 (CAPTURETHEFLAG.md §9.1). The CTF
+  pool that cannot be read is a 502 (CAPTURETHEFLAG.md §9.1). The route and
+  the claim relay read the CTF pool only while capture the flag is on:
+  st.yml's `ctf` block runs the driver (`shadow` or `live`) and ctf.yml
+  enables its `api` block (CAPTURETHEFLAG.md §10). The CTF
   routes are documented in `api/operator.yml`.
 - **Claim relay** (§10.3). Its units become (coldkey, pool). A coldkey's
   "Claim now" claims all of its pools' accounts, and the 30-day limit stays
   per coldkey. When one of a coldkey's accounts is due, the relay claims
   every other account of that coldkey above the transfer floor in the same
-  batch.
+  batch. A pass that cannot read one pool claims the others and names it;
+  while that pool is a CTF pool, an app that does not send `partial=true`
+  reads the operator's pool's rows, and the relay's state, as before
+  (CAPTURETHEFLAG.md §10).
 - **Validator** (§9). The three-way split and its cede rules
   (`WHITEPAPER.md` §8.5), the `ctf` setting (`support` or `off`), the CTF
   pool's resolution above, and the CTF audit (`ctf.Verify`) and approval as
@@ -2305,48 +2319,68 @@ epoch whose carry is back.
   reads (the v1 coordinator's `FleetBound` events and archive `bindingAt`
   at each drawn epoch's boundaries), so a census that lists a fleet-bound
   client draws alike for both (CAPTURETHEFLAG.md §8). It needs an archive
-  RPC.
+  RPC. `snclaim v2 status` and `claim` ask the ledger route with
+  `partial=true`: a pool it names unavailable is shown as unavailable, never
+  as none, and a claim it may hold is not taken as nothing to claim.
 - **SDK and apps** (§11). `SnLedgerAccount` gains `Kind` and `Label`. The SDK
-  asks with `partial=true`, and claims two or more claimable accounts in one
-  `STClaimBatcher` transaction (§10.2). The apps label CTF accounts "Capture
-  the flag" and claim both pools with one action. Old apps parse the entries
-  unchanged and show a CTF account as "Pool 4294967297".
+  asks with `partial=true`. It claims two or more claimable accounts in one
+  `STClaimBatcher` transaction (§10.2) when a batcher is deployed and the
+  payer can pay for the batch; otherwise it claims the most accounts the
+  payer can pay for, the largest first, and of two accounts the largest
+  alone, and the device's gas key then tries the others alone in turn. A
+  payer that can pay for no claim is sent or given none, and every account
+  stays claimable with `needs_gas` (CAPTURETHEFLAG.md §10). The apps label
+  CTF accounts "Capture the flag" and claim both pools with one action. Old
+  apps parse the entries unchanged and show a CTF account as
+  "Pool 4294967297".
 
 ### 19.6 Activation
 
-CAPTURETHEFLAG.md §11.2 is the plan. By date:
+CAPTURETHEFLAG.md §11.2 is the plan, numbered as there. By date:
 
-1. Before `end(6)`, about 2026-11-20: the server's presence sampler for
-   providers and extenders, so that epoch 7 is a full shadow epoch.
-2. By about 2026-11-21: the two contracts and their rehearsal on the live
-   runtime. R-9 must pass on the runtime mainnet runs, spec version 490
-   today, before the schedule and before the carry's creation.
+0. Now: the guardian makes vault2's coldkey its hotkey account, through
+   `MevShield.submit_encrypted`, before anyone reserves that coldkey and
+   well before the schedule.
+1. Before `end(6)`, about 2026-11-20: the ctf migrations applied, the server
+   parts that use them deployed, and the presence sampler for providers and
+   extenders on, so that epoch 7 is a full shadow epoch.
+2. R-9 on the runtime mainnet runs: it passed on spec version 490 on
+   2026-11-12, and runs again if the runtime is upgraded before the schedule
+   or the carry's creation.
 3. By about 2026-11-22: anyone funds the timelock with the value, and the
    Safe schedules the one operation, with the fallback for epoch 9 beside
    it. It is ready, and executed, about 2026-11-25, before epoch 8 starts at
    block 9,600,028.
-4. During epoch 7, after the operation and once R-9 has passed: the
-   guardian makes the carry's coldkey a hotkey account, the proxy's account
-   is funded above its existential deposit, and the carry contract is
-   created from the pinned artifact with its 1 TAO seed and a fresh private
-   random salt, within the CTF UID's immunity window, which `ctf-carry
-   review` checks before and after; then the entry v2 is signed and
-   published. The same guardian makes vault2's coldkey a hotkey account now,
-   before anyone reserves it, and in any case before the schedule
-   (CAPTURETHEFLAG.md §11.2, step 0 and item 3).
-5. From epoch 8's first tempo, about 2026-11-27: UR's validator weights the
-   CTF pool. It holds the stake majority, so it alone makes CTF paid.
-6. After `end(7)`: the shadow run, which builds epoch 7's census, draw and
+4. After the operation, within the CTF UID's immunity window: the guardian
+   makes the carry's coldkey a hotkey account, the proxy's account is funded
+   above its existential deposit, and the carry contract is created from the
+   pinned artifact with its 1 TAO seed and a fresh private random salt,
+   which `ctf-carry review` checks before and after. st.yml's
+   `ctf.carry_address` then names it.
+5. Before `end(7)`, about 2026-11-27: the census on from epoch 7, and the
+   driver in shadow mode until epoch 7's shadow report is published.
+6. Before epoch 8 starts, about 2026-11-27: the entry v2, naming the carry,
+   signed and published, with ur.xyz deployed; UR's validator release, with
+   the CTF audit and approval; and the CTF watcher units (`snclaim v2
+   check`) on an archive RPC. From epoch 8's first tempo UR's validator
+   weights the CTF pool. It holds the stake majority, so it alone makes CTF
+   paid.
+7. After `end(7)`: the shadow run, which builds epoch 7's census, draw and
    ledger without committing them and publishes an unsigned report.
-7. By about 2026-12-01: the validator's CTF audit and approval, and
-   `snclaim v2 check`.
-8. After `end(8)`: epoch 8's census, committed by block 9,651,028, and its
-   root, with the provider pool's, by block 9,651,628.
-9. About 2026-12-07: the first CTF claims, once the root is approved and its
-   window has passed.
+8. Before `end(8)`, about 2026-12-04: the driver live. Epoch 8's census is
+   committed by block 9,651,028, and its root, with the provider pool's, by
+   block 9,651,628.
+9. Before the first CTF claims, which open about 2026-12-07 once epoch 8's
+   root is approved and its window has passed: ctf.yml's `api` block on, the
+   app releases built on sdk `7387af51` or later, and the site's first import
+   after epoch 8's root, then a deploy.
 
 No key changes: the census commitment and the CTF roots use operator 1's
-root signer, and the auditor set is unchanged.
+root signer, and the auditor set is unchanged. One new key holds hotkey
+accounts only: the guardian coldkey, which makes vault2's coldkey and the
+carry's hotkey accounts and never swaps them. It is a substrate coldkey of
+its own, apart from the v1 coordinator's pause guardian (§4.1), and it holds
+nothing else.
 
 ### 19.7 Tests
 
@@ -2364,7 +2398,12 @@ As §15 is for phase A, this is the acceptance list for the CTF pool.
 | CC-1 to CC-21 | `evm/test/V2CtfCarry.t.sol` | The carry, on a mock with runtime 486's staking-hotkey rules: what it reads at creation, its own coldkey, its seed, opt-outs and auto-stake destination; the recycle cycle and the cumulative carry account; claims made by others not repeated; only its own account, vault2's and the runtime's refusals reverting the whole recycle, the move checks and the reentrancy guard; at most four rao of rounding a cycle; donations; the epoch a return is recorded for; no other way out; registration collateral; the runtime's refusals of its own moves; a full griefing attempt on its list, before and after creation, which fails where it blocks a coldkey without a residual; coldkey swaps into it; root's sweep of the residual and `seed()`; a lowered residual; swap reservations; vault2's own list held full; a list past 256 entries |
 | Regression | `evm/test/V2SettlementCtfRegression.t.sol` | Phase A's S-1 to S-9 and the phase C and timelock suites (SC-1 to SC-17, TL-1 to TL-6) rerun unchanged with the proxy on `STSettlement2Ctf` |
 | UP-8 to UP-11 | `mainnet/evm_v2_ctf_upgrade_test.go` | `upgrade-settlement2 review` on the e2e chain: the whole operation to a stranger's execute; each refusal; each usage error; a failed execution leaving the operation ready |
+| CR-1 to CR-5 | `mainnet/evm_v2_ctf_carry_test.go` | `sn-mainnet ctf-carry review` against a JSON-RPC chain that answers what it reads, `STSettlement2Ctf` at the proxy, vault2, the staking and alpha precompiles, the deterministic deployment proxy and the created carry, with the forge build of `STCtfCarry` as its artifact. Before the creation (CR-1): the carry's address from the artifact, the salt, vault2 and the pool, its coldkey from the address, and the creation call with the seed and the 500-rao existential deposit as its value, which with `--from` runs as an eth_call answering that address; a seed of exactly `seedMinimum()` passes; up to 128 staking hotkeys third parties sent the public coldkey are reported, not refused. Its refusals, exit 3 (CR-2): another proxy code; a proxy without the capture the flag implementation; a CTF pool vault2 does not hold or `ctfSettlementAt` resolves elsewhere; a pool hotkey without a UID; a carry coldkey that owns hotkeys, holds a lock or holds 129 staking hotkeys; the carry's coldkey or vault2's not the guardian's hotkey account; a proxy with nothing above its existential deposit; a seed below `seedMinimum()`; a creation that fails or answers another address. Usage errors exit 2 before any read, a phase C artifact among them (CR-3). After the creation (CR-4): the code against the artifact outside the immutables, the immutables and constants through the views, the residual on the escrow hotkey with the escrow on its list, the pool hotkey as its auto-stake destination and both opt-outs, and the address for the amendment entry. A carry that differs in any of these, whose residual is worth less than the nominator minimum, that owns hotkeys, or whose coldkey or vault2's is not the guardian's hotkey account is refused (CR-5) |
+| guardian | `mainnet/guardian_associate_test.py` | `mainnet/guardian_associate.py associate`, the guardian's association of vault2's coldkey and later of the carry's (§19.6, steps 0 and 4), with a software key behind the Ledger signer's interface. The unit tests: its selectors, vault2's coldkey as its EVM mirror, the storage keys, the swap commitments, account parsing and its usage. With `GUARDIAN_ASSOCIATE_NODE` naming a local chain, never Finney: a dry run signs and sends nothing; a vault-like and a carry-like coldkey become the guardian's hotkeys through `MevShield.submit_encrypted`, `getHotkeyOwner` names the guardian, and a second run sends nothing; a carrier held back past its key misses and one under a fresh key lands, the Ledger signing once; a coldkey swap into the guardian's hotkey is refused (`NewColdKeyIsHotkey`); someone else's hotkey, a reserved swap destination, another genesis, a vault whose `selfColdkey()` is not the hotkey, a signer that is not the guardian and a rejection on the device are refused with nothing sent. Passed on 2026-11-12 on local chains of upstream's v490 build, fast and with mainnet's 12-second blocks, where the legacy swap's execution is skipped for its five-day delay |
 | E-8 | `mainnet/settlement_v2_e2e_ctf_test.go` | The whole cycle on the e2e chain: the folded timelock operation with its value; the carry created through the deterministic deployment proxy with its seed, once the guardian holds vault2's coldkey and the carry's as hotkey accounts and the proxy's account is funded above its existential deposit, `ctf-carry review` refusing before each and passing before and after the creation, and named by the signed entry; a census listing a head-bound client, refused before its window, from anyone but the root signer and a second time, committed in it, and the next epoch's refused after its window; the root built by `ctf.Build` with quicknet's real pulse, the bound client left out; the validator's CTF audit, its input read by its own readers (`validator.SettlementV2CtfAuditInput`) and its head oracle agreeing with the builder's, approving through its sender, and refusing without the bindings; `snclaim v2 check` approving and naming the client; finalization, a winner's `snclaim v2 claim`, and the carry claimed and recycled for the next epoch, keeping its residual, whose root returns it matured; root's sweep of the residual, after which vault2's claim to the carry is refused, `recycle` reverts `ResidualMissing` and a seed below the raised least `SeedTooSmall`, until `seed()` restores it; conservation across both pools; and the whole cycle again with every stake move a rao short, the root still maturing within the walk's tolerance |
-| R-9 | `rehearsal/r9_ctf_test.go` | On the live runtime: the folded upgrade and `BLOCKHASH`, the census window, the carry's creation with its seed over a list third parties filled first, the carry cycle, and the griefing tried again: third-party entries and a coldkey swap refused, root's sweep answered by `seed()`, a swap reservation (`scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)"). Not yet run; it gates the schedule and the carry's creation |
+| R-9 | `rehearsal/r9_ctf_test.go` | On the live runtime: the folded upgrade and `BLOCKHASH`, the census window, the carry's creation with its seed over a list third parties filled first, the carry cycle, and the griefing tried again: third-party entries and a coldkey swap refused, root's sweep answered by `seed()`, a swap reservation, and vault2's list held full, answered by `absorbStake`, all with vault2's and the carry's coldkeys made the guardian's hotkey accounts first (`scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)"). Passed on 2026-11-12 on spec version 490, the runtime mainnet runs, on a local chain of upstream's v490 build; it runs again if the runtime is upgraded before the schedule or the carry's creation (CAPTURETHEFLAG.md §4.6) |
 | ctf | `ctf/*_test.go` | The package: the countries and slot order, the census, the draw, the walk, CAPTURETHEFLAG.md §6's tables, Build, and Verify against byte mutations, with a 100,000-candidate fixture |
+| validator: split | `validator/release_capture_the_flag_test.go` | `validator run`'s weights from `E_c` (`WHITEPAPER.md` §8.5). Every cede rule: a non-empty CTF channel takes exactly its share; pool and head share the rest 4 : 5, each ceding to the other; an empty CTF channel, with no CTF pool, a masked one or no pool weight, gives its share to them; no pool or head weight is no row. Two operators divide both channels alike, each CTF pool taking its own pool's score, a controlled operator's mask covers both of its UIDs, invalid shares are refused, and θ's builder is unchanged. The treasury row's exact u16 values: `[14563, 65535, 65535]` before `E_c`, as with an empty CTF channel and no head fleet; `[13107, 1456, 65535, 65535]` without a head fleet; `[5825, 1456, 7282, 65535, 65535]` with one; `[6473, 8091, 65535, 65535]` with one and an empty CTF channel; each under the 32,768 cap and unchanged by it; through the treasury authority a CTF pool is checked as a provider pool is, and refused at a recipient's UID or at a UID its hotkey does not hold |
+| validator: entries and replay | the same | The amendment entries `validator run` steers by: version 2 lines of the deployment, in force, signed by the pinned key or configured, one per active operator, with CTF pools only for operators with an entry, at UIDs of their own and only under `ctf: support`; the reader of `amendments.yml`, which finds nothing in force before a file is ever verified, keeps the last verified file through an outage, and lets a configured line stand only where no signed entry of its kind is in force; the `ctf` setting, `support`, `off` or absent (support), a configuration with neither it nor `amendment_fallback` keeping its hash. The CTF pool resolved alike by live steering and replay from vault2 and `ctfSettlementAt`, which is read only once vault2 holds the pool and stops the pass when it differs; an unregistered, not yet started or pruned pool leaves the channel empty. A sealed two-operator measurement replays to pool 4/10, CTF 1/10 and head 5/10, each CTF pool at a quarter of its pool's weight, and refuses a CTF pool missing or moved; `off` gives pool and head 4/9 and 5/9; an artifact without capture the flag keeps its bytes and θ; replay takes a decision's setting and unsigned lines from its own configuration, so neither a changed setting nor a line nobody signed or configured steers a replayed row |
+| validator: audit | `validator/settlement_v2_ctf_audit_test.go`, `validator/settlement_v2_audit_wiring_test.go` | `validator run`'s CTF audit and approval (CAPTURETHEFLAG.md §8), with the `ctf` package and quicknet's real pulse of round 1000. A root its census, draw and walk reproduce exactly is approved with one `approveDistribution` of pool 2^32 + 1, its awards kept under that pool's id. Another committed census or none, a census a round later, another chain's or subnet's seed, another carry coldkey and another funding are refused with nothing sent; with a pulse that does not verify, no pulse or no entry in force the audit decides nothing and tries again. Head-bound candidates are left out of the draw: a root drawn without them is approved and the census reported, and one whose draw kept them refused. A pending root whose objects do not reproduce its commitment is demanded at once, every account of the finalized root with its proof, through the CTF header. The production reader takes the entry in force at the pending epoch, its carry, which must serve vault2's CTF pool, the carry's coldkey and returns, and each epoch's committed census with its block's time and its round's pulse, and stops on no entry in force, unknown amendments, two carries or a pulse no relay serves; a pulse is taken only for its own round and verified against quicknet's key. Each operator's CTF pool is audited beside its provider pool from the same objects, and none under `ctf: off`; the views are read at the contracts' selectors; `SettlementV2CtfAuditInput`, which E-8 reads through, refuses an operator without a CTF pool, no amendments file or a missing settlement v2 address before any read |
 | snclaim | `miner/onchain/v2_ctf_test.go`, `miner/claim_v2_ctf_test.go` | `v2 check` on a CTF pool, with the head bindings read as the validator reads them (a bound client left out at either boundary; an inactive, missing or non-covering binding drawn; every read failing closed, a node without archive state included), and CTF accounts claimed as their own `(vault, noId, index)` units |

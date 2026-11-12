@@ -28,7 +28,8 @@ import (
 // cmdV2Status implements `snclaim v2 status`: per pool, the account index,
 // the finalized cumulative, claimable, claimed (read from vault2) and the
 // pending cumulative. An endpoint that cannot answer shows "unavailable",
-// never zero.
+// never zero, and so does each pool whose ledger it cannot read, in no_id
+// order among the accounts.
 func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 	coldkey, err := parseColdkey(strOpt(opts, "--coldkey"))
 	if err != nil {
@@ -54,14 +55,26 @@ func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 
 	fmt.Printf("settlement v2 account status — vault %s (chain id %s, rpc %s)\n", vault.Hex(), chainID, rpcURL)
 	fmt.Printf("  coldkey:      %s\n", renderColdkey(coldkey))
-	accounts, err := fetchV2Accounts(ctx, api, coldkey)
+	accounts, unavailable, err := fetchV2Accounts(ctx, api, coldkey)
 	if err != nil {
 		fmt.Printf("  accounts:     unavailable (%v)\n", err)
 		return nil
 	}
-	if len(accounts) == 0 {
+	if len(accounts) == 0 && len(unavailable) == 0 {
 		fmt.Printf("  accounts:     none\n")
 		return nil
+	}
+	for i := range unavailable {
+		if err := unavailable[i].check(vault); err != nil {
+			return err
+		}
+	}
+	// the pools the endpoint could not read whose no_id is below an account's
+	unavailableBelow := func(below uint64) {
+		for 0 < len(unavailable) && unavailable[0].NoID < below {
+			fmt.Printf("  %s\n", v2PoolUnavailable(unavailable[0].NoID))
+			unavailable = unavailable[1:]
+		}
 	}
 	reader := &v2Reader{client: client, vault: vault}
 	for i := range accounts {
@@ -69,6 +82,7 @@ func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 		if err := account.check(vault); err != nil {
 			return err
 		}
+		unavailableBelow(account.NoID)
 		claimed, err := v2View(ctx, reader, vault2.PackClaimed(new(big.Int).SetUint64(account.NoID), new(big.Int).SetUint64(account.Index)), vault2.UnpackClaimed)
 		if err != nil {
 			return fmt.Errorf("claimed(%d,%d): %w", account.NoID, account.Index, err)
@@ -98,6 +112,9 @@ func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 		fmt.Printf("    claimable:  %s\n", claimable)
 		fmt.Printf("    pending:    %s\n", pending)
 	}
+	for _, pool := range unavailable {
+		fmt.Printf("  %s\n", v2PoolUnavailable(pool.NoID))
+	}
 	return nil
 }
 
@@ -108,7 +125,9 @@ func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 // cumulative, before the send or after a refused one, is reported as done.
 // With --all it verifies every finalized account of the coldkey first, then
 // claims each one with anything claimable, or with --batch two or more of
-// them through the claim batcher.
+// them through the claim batcher. A pool the endpoint names unavailable is
+// reported: without --all the command fails on it when it picks no account
+// from the other pools, and with --all once it has claimed them.
 func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 	coldkey, err := parseColdkey(strOpt(opts, "--coldkey"))
 	if err != nil {
@@ -159,7 +178,7 @@ func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 		}
 	}
 
-	accounts, err := fetchV2Accounts(ctx, api, coldkey)
+	accounts, unavailable, err := fetchV2Accounts(ctx, api, coldkey)
 	if err != nil {
 		return fmt.Errorf("ledger endpoint: %w", err)
 	}
@@ -169,6 +188,27 @@ func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 		if account.RootIndex != nil && (all || (!pickNoID || account.NoID == noID) && (!pickIndex || account.Index == index)) {
 			picked = append(picked, account)
 		}
+	}
+	for i := range unavailable {
+		if err := unavailable[i].check(vault); err != nil {
+			return err
+		}
+	}
+	// A pool the endpoint cannot read that the selection covers may hold an
+	// account to claim: it is named, never taken as holding none.
+	var unread []error
+	for _, pool := range unavailable {
+		if all || !pickNoID || pool.NoID == noID {
+			fmt.Println(v2PoolUnavailable(pool.NoID))
+			unread = append(unread, fmt.Errorf("pool %d is unavailable at the ledger endpoint, so an account of coldkey %s there cannot be claimed until it can be read", pool.NoID, renderColdkey(coldkey)))
+		}
+	}
+	if !all {
+		if len(picked) == 0 && 0 < len(unread) {
+			return errors.Join(unread...)
+		}
+		// the one account picked from the pools that can be read is claimed
+		unread = nil
 	}
 	if !all && len(picked) != 1 {
 		names := make([]string, len(picked))
@@ -188,15 +228,15 @@ func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 			claims = append(claims, claim)
 		}
 	}
-	if all && len(picked) == 0 {
+	if all && len(picked) == 0 && len(unread) == 0 {
 		fmt.Printf("coldkey %s has no finalized account; nothing to claim\n", renderColdkey(coldkey))
 	}
 
 	sender := &v2Sender{client: client, chainID: chainID, rpcURL: rpcURL, vault: vault, from: crypto.PubkeyToAddress(key.PublicKey), key: key, gasLimit: gasLimit, dryRun: boolOpt(opts, "--dry-run")}
 	if batcher != nil && len(claims) > 1 {
-		return sendV2Batch(ctx, sender, reader, *batcher, claims)
+		return errors.Join(append([]error{sendV2Batch(ctx, sender, reader, *batcher, claims)}, unread...)...)
 	}
-	var failures []error
+	failures := unread
 	for _, claim := range claims {
 		if err := sendV2Claim(ctx, sender, reader, claim); err != nil {
 			failures = append(failures, err)
