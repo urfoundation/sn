@@ -127,6 +127,7 @@ type releaseIntentDecisionSourcesV2 struct {
 	decision ReleaseMeasurementV2Decision
 	bindings []ReleaseBindingMeasurement
 	pools    []ReleasePoolMeasurement
+	ctfPools []ReleasePoolMeasurement
 	audits   []DepositAudit
 }
 
@@ -170,7 +171,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 	if err != nil {
 		return result, err
 	}
-	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg), priceEntry: priceEntry}
+	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg), priceEntry: priceEntry, ctf: releaseCtfResolves(artifact)}
 	if uint64(len(self.participants)) > bounds.MaxOperators {
 		return result, errors.New("historical decision operator census exceeds its bound")
 	}
@@ -220,11 +221,16 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 			return result, fmt.Errorf("historical decision operator %d was inactive at the referenced boundary", operator.noID)
 		}
 	}
-	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) {
-		return result, errors.New("historical decision binding or pool census differs from actual chain state")
+	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || verifyReleaseCtfPools(artifact, observed.ctfPools) != nil {
+		return result, errors.New("historical decision binding, pool or CTF pool census differs from actual chain state")
 	}
 	result.bindings = slices.Clone(observed.bindings)
 	result.pools = slices.Clone(observed.pools)
+	// Only the CTF pools the decision weights are its source, so a decision
+	// without capture the flag keeps the observation it always had.
+	if artifact.CaptureTheFlag != nil {
+		result.ctfPools = releaseCtfPoolsExpected(artifact.CaptureTheFlag, observed.ctfPools)
+	}
 	result.decision = ReleaseMeasurementV2Decision{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Coordinator: self.cfg.Coordinator, SettlementVault: self.cfg.SettlementVault, ValidatorID: self.cfg.ValidatorID, Netuid: self.cfg.Netuid, SubnetEpoch: schedule.SubnetEpochIndex, NativeSnapshotBlock: artifact.NativeSnapshotBlock, NativeSnapshotHash: artifact.NativeSnapshotHash, EVMSnapshotBlock: observed.boundary.EVMBlock, EVMSnapshotHash: observed.boundary.EVMBlockHash, SettlementEpoch: observed.boundary.SettlementEpoch, PolicyHash: self.cfg.PolicyHash, PreviousArtifactHash: artifact.PreviousArtifactHash, SelfUID: schedule.Stake.Identity.UID}
 	keyCtx, keyReads, err := newReleaseClientKeyAuthorityV2Reads(ctx, chain, &self.cfg, artifact, first.Activation.Hotkey, &admission)
 	if err != nil {

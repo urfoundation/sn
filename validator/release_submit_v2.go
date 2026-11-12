@@ -170,7 +170,11 @@ func newReleaseSteererV2Context(ctx context.Context, cfg *ReleaseConfig, chain *
 	ema.v2.provisionalEpochGaps = runtime.history != nil && runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&ownedCfg)
 	ema.v2.historyAdoption = runtime.history.historyAdoption
 	ema.v2.nativeGapBridge = runtime.history.nativeGapBridge
-	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg), depositPrices: newReleaseDepositPrices(&ownedCfg), depositUsageMemo: newReleaseDepositUsageMemo(), applicationHistory: newProductionApplicationHistoryMemo()}
+	amendments, err := newReleaseAmendments(&ownedCfg)
+	if err != nil {
+		return nil, err
+	}
+	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg), depositPrices: newReleaseDepositPrices(&ownedCfg), amendments: amendments, depositUsageMemo: newReleaseDepositUsageMemo(), applicationHistory: newProductionApplicationHistoryMemo()}
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err
 	}
@@ -586,6 +590,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	measurementArtifact.Pools, measurementArtifact.DepositAudits = poolObservations, depositAudits
 	options.Bindings, options.Pools, options.DepositAudits = head.Bindings, poolObservations, depositAudits
+	if err := self.gatherCaptureTheFlagV2(ctx, snapshot, hotkeyUids, measurementArtifact, &options); err != nil {
+		return err
+	}
 	if err := installReleaseBindingKeysV2(ctx, measurementArtifact, &options); err != nil {
 		return err
 	}

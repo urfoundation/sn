@@ -113,7 +113,8 @@ Usage:
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
     validator run [--config=<path>] [--progress-file=<path>]
-        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--amendments-fallback=<path>]
+        [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--drand_url=<url>]
+        [--amendments-fallback=<path>]
         [--steering-operation-timeout=<duration>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [(--native-gap-bridge=<path> --native-gap-bridge-sha256=<hash>)] [--startup-verified-progress]
@@ -149,6 +150,8 @@ Options:
                                  approvals, challenges and demands. Without it none is sent.
     --ledger_max_bytes=<n>       Ledger objects new to custody that the settlement v2 audit fetches
                                  per root, in bytes; raised operationally [default: 2147483648].
+    --drand_url=<url>            drand relay the capture the flag audit reads quicknet's pulses from;
+                                 each pulse must verify against quicknet's key. Omitted: https://api.drand.sh.
     --amendments-fallback=<path>  Configured settlement amendment lines, one per line, the fallback
                                  where no signed entry of amendments.yml is in force (WHITEPAPER.md
                                  §8.6.7). Every reader must configure the same lines; the signed

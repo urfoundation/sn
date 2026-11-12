@@ -20,11 +20,14 @@ import (
 // decision; public verification must independently reproduce it using the
 // concrete chain readers through ObserveSources below.
 type ReleaseEvidenceV2DecisionObservation struct {
-	MeasurementHash        string                       `json:"measurement_hash"`
-	Decision               ReleaseMeasurementV2Decision `json:"decision"`
-	Bindings               []ReleaseBindingMeasurement  `json:"bindings"`
-	Pools                  []ReleasePoolMeasurement     `json:"pools"`
-	DepositAudits          []DepositAudit               `json:"deposit_audits"`
+	MeasurementHash string                       `json:"measurement_hash"`
+	Decision        ReleaseMeasurementV2Decision `json:"decision"`
+	Bindings        []ReleaseBindingMeasurement  `json:"bindings"`
+	Pools           []ReleasePoolMeasurement     `json:"pools"`
+	DepositAudits   []DepositAudit               `json:"deposit_audits"`
+	// CtfPools are the CTF pools resolved at the decision (releaseCtfPoolsContext),
+	// absent while none resolves.
+	CtfPools               []ReleasePoolMeasurement     `json:"ctf_pools,omitempty"`
 	CommitNativeEpoch      uint64                       `json:"commit_native_epoch,omitempty"`
 	RevealNativeEpoch      uint64                       `json:"reveal_native_epoch,omitempty"`
 	ApplicationNativeEpoch uint64                       `json:"application_native_epoch,omitempty"`
@@ -174,7 +177,7 @@ func (self *ReleaseEvidenceV2Archive) ObserveSources(ctx context.Context, chain 
 				return nil, err
 			}
 		}
-		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits}
+		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits, CtfPools: sources.ctfPools}
 		if err := observeReleaseDecisionLifecycleV2(ctx, native, &owner.cfg, &item.Intent, &observation); err != nil {
 			return nil, err
 		}
@@ -323,7 +326,7 @@ func (self *ReleaseEvidenceV2Archive) decisionOptions(ctx context.Context, inten
 	}
 	controlled := slices.Clone(decisionCfg.ControlledNOIDs)
 	slices.Sort(controlled)
-	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
+	result := ReleaseMeasurementV2Options{Expected: observation.Decision, Policy: decisionPolicy, ControlledNOIDs: controlled, Bindings: observation.Bindings, Pools: observation.Pools, DepositAudits: observation.DepositAudits, CtfPools: observation.CtfPools, CtfSupport: releaseCtfSupported(decisionCfg), AmendmentFallback: slices.Clone(decisionCfg.AmendmentFallback), Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	// Archive replay admits a reserve-only decision only under its original
 	// treasury authority; the sidecar's row is still rederived and compared.
 	result.treasuryReserveFallback = treasuryReserveFallbackConfig(decisionCfg)

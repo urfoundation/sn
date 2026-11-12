@@ -54,6 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 
+	"github.com/urfoundation/sn/amendment"
 	"github.com/urfoundation/sn/ledger"
 	"github.com/urfoundation/sn/merkle"
 	"github.com/urfoundation/sn/stabi"
@@ -129,10 +130,47 @@ type settlementV2Anchor struct {
 	tree     *merkle.LedgerSumTree
 }
 
-// settlementV2AuditPool is one audited pool and its operator's objects.
+// settlementV2AuditPool is one audited pool and its operator's objects. noID
+// is the vault2 pool id; ctf is set for an operator's capture the flag pool,
+// whose id is 2^32 + its operator's.
 type settlementV2AuditPool struct {
 	noID    uint64
 	objects ledger.Fetcher
+	ctf     *settlementV2CtfPool
+}
+
+// headerAccounts names the account chunks of one of the pool's ledger
+// headers: a provider pool's, or a capture the flag pool's.
+func (self settlementV2AuditPool) headerAccounts(data []byte) ([]ledger.Ref, error) {
+	if self.ctf != nil {
+		return settlementV2CtfHeaderAccounts(data)
+	}
+	return settlementV2LedgerHeaderAccounts(data)
+}
+
+func settlementV2LedgerHeaderAccounts(data []byte) ([]ledger.Ref, error) {
+	header, err := ledger.DecodeHeader(data)
+	if err != nil {
+		return nil, err
+	}
+	return header.Accounts, nil
+}
+
+// settlementV2Finding is what one audit found: ledger.Verify's result for a
+// provider pool, or ctf.Verify's for a capture the flag pool. Both decide by
+// VERSION2-FINAL.md §9.3.
+type settlementV2Finding struct {
+	check            string
+	err              error
+	missing          []ledger.Ref
+	previous         *merkle.LedgerSumTree
+	previousAccounts []merkle.LedgerAccount
+	faults           []ledger.Fault
+	action           ledger.Action
+}
+
+func settlementV2LedgerFinding(res *ledger.Result) *settlementV2Finding {
+	return &settlementV2Finding{check: res.Check.String(), err: res.Err, missing: res.Missing, previous: res.Previous, previousAccounts: res.PreviousAccounts, faults: res.Faults, action: res.Action()}
 }
 
 // settlementV2Audit audits the pending roots of its pools.
@@ -152,6 +190,9 @@ type settlementV2Audit struct {
 	// contracts (§13); the audit runs no pass before it succeeds once. Nil
 	// once confirmed.
 	confirm func(context.Context) error
+	// ctf reads what a capture the flag pool's audit takes beside vault2's
+	// state; nil without capture the flag pools.
+	ctf settlementV2CtfReader
 }
 
 func newSettlementV2Audit(reader settlementV2AuditReader, custody *settlementV2Custody, sender settlementV2AuditSender, pools []settlementV2AuditPool, maxBytes uint64) *settlementV2Audit {
@@ -216,6 +257,22 @@ func newReleaseSettlementV2Audit(ctx context.Context, cfg *ReleaseConfig, chain 
 		return nil, err
 	}
 	audit.confirm = confirm
+	// Each operator's capture the flag pool is audited beside its provider
+	// pool, unless the validator's ctf setting is off (CAPTURETHEFLAG.md §2.3).
+	if releaseCtfSupported(cfg) {
+		ctfReader, err := newSettlementV2CtfChain(cfg, chain, addresses, options.DrandURL)
+		if err != nil {
+			return nil, err
+		}
+		audit.ctf = ctfReader
+		for _, pool := range pools {
+			poolID, ok := amendment.CtfPoolID(pool.noID)
+			if !ok {
+				continue
+			}
+			audit.pools = append(audit.pools, settlementV2AuditPool{noID: poolID, objects: pool.objects, ctf: &settlementV2CtfPool{noID: pool.noID}})
+		}
+	}
 	return audit, nil
 }
 
@@ -281,7 +338,11 @@ func (self *settlementV2Audit) audit(ctx context.Context, pool settlementV2Audit
 		return err
 	}
 	if record.Decision == "" {
-		res, err := self.verify(ctx, pool, state, record)
+		verify := self.verify
+		if pool.ctf != nil {
+			verify = self.verifyCtf
+		}
+		res, err := verify(ctx, pool, state, record)
 		if err != nil {
 			return err
 		}
@@ -293,7 +354,7 @@ func (self *settlementV2Audit) audit(ctx context.Context, pool settlementV2Audit
 	if self.sender == nil {
 		return nil
 	}
-	outcome, err := self.send(ctx, state, record)
+	outcome, err := self.send(ctx, pool, state, record)
 	if err != nil || outcome == "" {
 		return err
 	}
@@ -305,7 +366,7 @@ func (self *settlementV2Audit) audit(ctx context.Context, pool settlementV2Audit
 // records what it fetched. The recovery components the chain calls for are
 // planned again on every pass, from the reader's checkpointed surplus index,
 // so a plan is never kept from a read that could have lagged.
-func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord) (*ledger.Result, error) {
+func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord) (*settlementV2Finding, error) {
 	pending := &state.pending
 	recoveries, err := self.reader.recoveries(ctx, state)
 	if err != nil {
@@ -334,7 +395,7 @@ func (self *settlementV2Audit) verify(ctx context.Context, pool settlementV2Audi
 		return nil, fmt.Errorf("settlement v2 audit of pool %d seq %d: %w", state.noID, pending.Seq, err)
 	}
 	record.FetchedBytes += res.FetchedBytes
-	return res, nil
+	return settlementV2LedgerFinding(res), nil
 }
 
 // remainingBytes is what is left of the root's byte budget.
@@ -351,18 +412,18 @@ func (self *settlementV2Audit) remainingBytes(record *settlementV2AuditRecord) u
 // unanswered on an earlier root can shrink the sample or move it back, so
 // the demands sent before the challenge window closes are a sample even
 // when the whole set cannot be sent.
-func (self *settlementV2Audit) decide(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord, res *ledger.Result) error {
+func (self *settlementV2Audit) decide(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord, res *settlementV2Finding) error {
 	record.observe(state.block, res)
-	action := res.Action()
-	unobtained := len(res.Missing) > 0 || errors.Is(res.Err, ledger.ErrByteBudget)
+	action := res.action
+	unobtained := len(res.missing) > 0 || errors.Is(res.err, ledger.ErrByteBudget)
 	if unobtained && (action == ledger.ActionDemand || action == ledger.ActionRefuse) && state.block < state.pending.CommittedBlock+state.challengeBlocks/2 {
 		return self.custody.keepAuditRecord(record)
 	}
 	var anchor *settlementV2Anchor
-	faults := res.Faults
+	faults := res.faults
 	switch {
-	case res.Previous != nil:
-		anchor = &settlementV2Anchor{index: state.previousIndex, accounts: res.PreviousAccounts, tree: res.Previous}
+	case res.previous != nil:
+		anchor = &settlementV2Anchor{index: state.previousIndex, accounts: res.previousAccounts, tree: res.previous}
 	case state.previous != nil:
 		var err error
 		if anchor, action, faults, err = self.fallback(ctx, pool, state, record); err != nil {
@@ -405,7 +466,7 @@ func (self *settlementV2Audit) fallback(ctx context.Context, pool settlementV2Au
 	for rootIndex := state.previousIndex; anchor == nil && rootIndex > 0; {
 		rootIndex--
 		var err error
-		if anchor, err = self.anchor(ctx, state, rootIndex); err != nil {
+		if anchor, err = self.anchor(ctx, pool, state, rootIndex); err != nil {
 			return nil, ledger.ActionRefuse, nil, err
 		}
 	}
@@ -431,7 +492,7 @@ func (self *settlementV2Audit) fallback(ctx context.Context, pool settlementV2Au
 // anchor returns the finalized root rootIndex's accounts and tree from
 // custody alone, or nil when custody does not hold objects that rebuild that
 // root.
-func (self *settlementV2Audit) anchor(ctx context.Context, state *settlementV2PoolState, rootIndex uint64) (*settlementV2Anchor, error) {
+func (self *settlementV2Audit) anchor(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, rootIndex uint64) (*settlementV2Anchor, error) {
 	root := state.previous
 	if rootIndex != state.previousIndex {
 		read, err := self.reader.finalizedRoot(ctx, state, rootIndex)
@@ -440,7 +501,7 @@ func (self *settlementV2Audit) anchor(ctx context.Context, state *settlementV2Po
 		}
 		root = &read
 	}
-	accounts, tree, err := self.custody.accounts(ctx, settlementV2LedgerRoot(root.Epoch, root.Root, root.Total, root.LeafCount, root.LedgerHash))
+	accounts, tree, err := self.custody.accounts(ctx, settlementV2LedgerRoot(root.Epoch, root.Root, root.Total, root.LeafCount, root.LedgerHash), pool.headerAccounts)
 	if err != nil || tree == nil {
 		return nil, err
 	}
@@ -456,12 +517,12 @@ func (self *settlementV2Audit) pendingAccounts(ctx context.Context, pool settlem
 	if data == nil {
 		return nil, false, err
 	}
-	header, err := ledger.DecodeHeader(data)
+	refs, err := pool.headerAccounts(data)
 	if err != nil {
 		return nil, false, nil
 	}
-	chunks := make([][]byte, len(header.Accounts))
-	for j, ref := range header.Accounts {
+	chunks := make([][]byte, len(refs))
+	for j, ref := range refs {
 		if chunks[j], err = self.object(ctx, pool, record, ref, ledger.ChunkRows*ledger.AccountRowBytes); chunks[j] == nil {
 			return nil, false, err
 		}
@@ -501,17 +562,17 @@ func (self *settlementV2Audit) object(ctx context.Context, pool settlementV2Audi
 // at the next pass. A root that left the pending slot, an approval past
 // end(e+1), a demand past the challenge window, a finalized root and an
 // answered opening each end the decision.
-func (self *settlementV2Audit) send(ctx context.Context, state *settlementV2PoolState, record *settlementV2AuditRecord) (string, error) {
+func (self *settlementV2Audit) send(ctx context.Context, pool settlementV2AuditPool, state *settlementV2PoolState, record *settlementV2AuditRecord) (string, error) {
 	noID, pending := state.noID, state.pending
 	var anchor *settlementV2Anchor
 	var tree *merkle.LedgerSumTree
 	var err error
 	if record.Decision == settlementV2DecisionChallenge || record.Decision == settlementV2DecisionDemand {
-		if anchor, err = self.anchor(ctx, state, record.RootIndex); err != nil {
+		if anchor, err = self.anchor(ctx, pool, state, record.RootIndex); err != nil {
 			return "", err
 		}
 		if anchor != nil && record.Decision == settlementV2DecisionChallenge {
-			if _, tree, err = self.custody.accounts(ctx, settlementV2PendingRoot(&pending)); err != nil {
+			if _, tree, err = self.custody.accounts(ctx, settlementV2PendingRoot(&pending), pool.headerAccounts); err != nil {
 				return "", err
 			}
 		}

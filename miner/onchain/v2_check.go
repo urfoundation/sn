@@ -4,9 +4,9 @@ package onchain
 // §4.2 G2): an independent watcher of a pool's pending root. It reads the
 // pending root, the latest finalized root F and the covered epochs'
 // fundedThrough from vault2 at the finalized block, fetches the published
-// objects, and runs ledger.Verify (without head bindings, for which a
-// watcher has no archive state). For an operator's capture the flag pool,
-// vault2 pool 2^32 + n, it runs ctf.Verify instead, with the chain facts,
+// objects, and runs ledger.Verify without head bindings, leaving check 6 to
+// the auditors. For an operator's capture the flag pool, vault2 pool
+// 2^32 + n, it runs ctf.Verify instead, with the chain facts, head bindings,
 // signed amendments and drand pulses v2_ctf.go reads; the accounts are
 // protected the same way.
 //

@@ -50,9 +50,13 @@ type minerStatusReport struct {
 	// run or doesn't report it. It never changes the state or the exit code:
 	// the role is optional.
 	Extender *minerExtenderReport `json:"extender,omitempty"`
-	StateDir string               `json:"state_dir"`
-	Problems []string             `json:"problems"`
-	Next     string               `json:"next,omitempty"`
+	// the extender's router port mapping, while a miner that reports it runs
+	// (connect/EXTENDER.md S10); it never changes the state or the exit code
+	// either
+	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
+	StateDir    string                  `json:"state_dir"`
+	Problems    []string                `json:"problems"`
+	Next        string                  `json:"next,omitempty"`
 }
 
 // minerExtenderReport is the extender's standing with the fix, when one
@@ -95,6 +99,7 @@ func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
 		report.Connected = local.connected()
 		report.Members = len(local.Members)
 		report.MembersUp = local.connectedCount()
+		report.PortMapping = local.PortMapping
 		for _, member := range local.Members {
 			if report.ClientId == "" && member.ClientId != "" {
 				report.ClientId = member.ClientId
@@ -233,6 +238,7 @@ func statusCmd(opts docopt.Opts, stdout io.Writer) int {
 		mark, detail := minerExtenderRow(&report.Extender.minerExtenderStanding, report.Extender.Fix, os.Geteuid(), now)
 		w.mark(mark, "Extender", detail)
 	}
+	w.portMapping(report.PortMapping)
 	_, release := parseMinerReleaseVersion(report.Version)
 	_, testFeed := minerUpdateSource()
 	if by := report.Update.By; by != "" {
@@ -304,6 +310,21 @@ func (self statusWriter) row(ok any, label string, detail string) {
 
 func (self statusWriter) warn(label string, detail string) {
 	fmt.Fprintf(self.out, "  %s %-12s %s\n", cliYellow(self.out, "!"), label, detail)
+}
+
+// The extender's router port mapping line, while a running miner reports it
+// (connect/EXTENDER.md S10). A router that did not open the ports is a warning:
+// the miner provides without it.
+func (self statusWriter) portMapping(status *minerPortMappingStatus) {
+	if status == nil {
+		return
+	}
+	ok, warn, detail := minerPortMappingRow(status)
+	if warn {
+		self.warn("Port mapping", detail)
+	} else {
+		self.row(ok, "Port mapping", detail)
+	}
 }
 
 // mark writes a row whose mark may also be "!", a warning.
@@ -388,6 +409,9 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 	} else {
 		w.row(nil, "Inbound 443", "the miner isn't running, so there is no extender to check")
 	}
+	// the extender's router port mapping, which is what can open 443 behind a
+	// home router (connect/EXTENDER.md S10); a warning at worst, as above
+	w.portMapping(report.PortMapping)
 
 	// updates: can this binary replace itself?
 	if by := report.Update.By; by != "" {
