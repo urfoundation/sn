@@ -2357,16 +2357,23 @@ and role, so the first miner to reach a thin country earns far more than one mor
   per CTF pool. Once the root finalizes, anyone calls `recycle`. It claims that account and moves the α
   straight back onto the CTF pool hotkey, where the next close captures it with the epoch's emission. It
   records each return under the epoch whose close captures it (`recycledFor`), so the ledger tells returned
-  carry from fresh funding. It holds stake on the escrow and pool hotkeys only until the next recycle. Stake
-  sent to its coldkey on any other hotkey stays where it is, which is how the open problem below arises.
+  carry from fresh funding. Beyond a small residual of its own, it holds stake on the escrow and pool hotkeys
+  only until the next recycle.
 - **Pending awards.** If the carry has not come back before an epoch's close (a late root, or the relay down),
   the epoch is not matured. Its winners take their slot amounts at once and their pot shares as pending awards,
   paid in the first matured epoch, so a delay does not cost a winner its pot share.
-- **An open problem, pending the owner's decision.** Third parties can fill the carry contract's
-  staking‑hotkey list, after which the runtime refuses every claim of its account, and the contract cannot clear
-  the list. Slot amounts would still pay, but the pots and pending awards would never return. This is not
-  solved: the owner decides before the carry contract is created (`CAPTURETHEFLAG.md` §4.6, §12.4;
+- **Why the carry keeps a residual.** vault2's claim pays the carry by a transfer from another coldkey, which
+  the runtime refuses once third parties have filled the receiving coldkey's staking‑hotkey list to 128
+  entries, unless the hotkey is already on it. So the carry keeps a residual of its own on vault2's escrow
+  hotkey, which keeps that hotkey on its list, and opts out of third‑party list growth, so no transfer or
+  coldkey swap can lengthen it. It stakes the residual from the TAO it is created with, by its own
+  `addStake`, and anyone can restore it with `seed()` if root's sweep of small nominations ever clears it.
+  The residual never returns to the pool, so the ledger is unchanged (`CAPTURETHEFLAG.md` §4.6;
   `VERSION2-FINAL.md` §19.4).
+- **What still delays it.** Anyone can hold the carry's coldkey, or vault2's, reserved as a coldkey swap's
+  destination, for 0.1 TAO every six days, and the runtime then refuses the carry's claim or its return. No
+  contract can release a reservation on the current runtime. It takes nothing: the carry account stays
+  claimable, and pot shares wait as pending awards (`CAPTURETHEFLAG.md` §12.4).
 
 At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
 is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
