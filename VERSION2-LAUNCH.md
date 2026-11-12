@@ -1272,8 +1272,8 @@ umask 077 and a protected ancestry.
 whose `SettlementV2ReleaseArtifacts` the release file is exported from
 (BOOTSTRAP-CONTRACTS.md:687-705; `evm/README.md`:53-61).
 
-- `stabi/generate.sh --check` requires mode 644 on each of its fifteen
-  generated files as they are checked out (`stabi/generate.sh:148-164,174-177`).
+- `stabi/generate.sh --check` requires mode 644 on each of its sixteen
+  generated files as they are checked out (`stabi/generate.sh:154-171,181-184`).
   With any other mode it exits 1: "generated binding/ABI has non-portable
   mode: ../evm/abi/STSubnet.abi.json". A clone made under umask 002 has the
   group-writable mode 664 (STATE.md:9-10).
@@ -1286,7 +1286,7 @@ whose `SettlementV2ReleaseArtifacts` the release file is exported from
     stabi/streservesink.go stabi/stvalidatorevidence.go stabi/stsettlement2.go
   ```
 
-  Those are the eight ABI files, `stctl/st_abi.json` and the six bindings.
+  Those are the nine ABI files, `stctl/st_abi.json` and the six bindings.
 
 ```bash
 (cd evm && forge build --deny warnings --sizes)
