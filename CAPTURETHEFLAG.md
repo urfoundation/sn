@@ -843,11 +843,19 @@ today is on the server and in the presentation:
   - Old apps never send `partial=true`. While the CTF pool cannot be read, the ledger route and the claim
     relay answer them with the operator's pool exactly as before, never a 502 or an error that would hide that
     pool's balance too. The CTF account is left out until its pool reads again (owner decision, 2026‑11‑11).
+  - The relay's pass keeps claiming the operator's pool meanwhile, whether its ledger read or a claim's proof
+    finds the CTF pool unreadable, so the operator's pool's rows read as they did. Only the relay's own
+    `state`, which every client reads and no app draws, says `ledger_unavailable`.
   - Claim now names no partial answer, so it does the same for every app: a tap of a coldkey whose only
-    account is in an unreadable CTF pool reads `nothing_pending`.
-  - Only a fault in the operator's pool keeps a 502, or the relay's error, for old apps.
+    account is in an unreadable CTF pool reads `nothing_pending`. A tap of a coldkey that also has an account
+    in the operator's pool is taken, and it stays open until the CTF pool reads, so that its CTF account is
+    claimed then too.
+  - Only a fault in another pool, the operator's pool above all, keeps a 502, or the relay's error, for old
+    apps.
 - **Miner daemon and `snclaim`.** Both already treat each `(vault, noId, index)` as its own unit, so they
-  claim CTF accounts unchanged. `snclaim v2 check` needs the CTF audit (§8).
+  claim CTF accounts unchanged. `snclaim v2 check` needs the CTF audit (§8). Neither sends `partial=true`, so
+  while the CTF pool cannot be read the ledger route leaves it out for them too. The daemon keeps its CTF
+  units, which wait for the pool, and `snclaim v2 status` and `claim` see the operator's pool alone.
 
 ## 11. Changes needed elsewhere, effort and rollout
 
